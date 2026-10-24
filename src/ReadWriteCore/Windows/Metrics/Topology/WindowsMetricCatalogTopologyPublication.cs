@@ -75,6 +75,11 @@ public static class WindowsMetricCatalogTopologyPublication
         NativeMetricSnapshotCatalogProjection desired)
         => ReferenceEquals(prior.NpuEngineDirectory, desired.NpuEngineDirectory)
             && prior.CatalogIdentitySha256 == desired.CatalogIdentitySha256
+            // Capture sources compare these facts too. Retaining stale capability
+            // or battery-unit metadata would make the same refresh unsatisfiable.
+            && WindowsHardwareMetricTopologySource.SameOrdinals(prior.StorageIdentities, desired.StorageIdentities)
+            && prior.BatteryIdentities.Select(static battery => (battery.DisplayIndex, battery.ExactIdentityKey, battery.Information.IsRelative))
+                .SequenceEqual(desired.BatteryIdentities.Select(static battery => (battery.DisplayIndex, battery.ExactIdentityKey, battery.Information.IsRelative)))
             && prior.GpuScopeBindings.Count == desired.GpuScopeBindings.Count
             && prior.GpuScopeBindings.All(pair => desired.GpuScopeBindings.TryGetValue(pair.Key, out var next)
                 && pair.Value.AdapterLuid == next.AdapterLuid

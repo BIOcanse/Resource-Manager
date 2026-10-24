@@ -271,6 +271,9 @@ public sealed class HostManagerMetricSnapshotOwner :
                     IntelPlatformStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable
                 };
                 if (ReferenceEquals(current, observed)) observed.UpdateTopology(topology);
+                // This request was attempted. A source binds any subsequent request
+                // to new topology evidence, rather than retrying a failed capture every sample.
+                topologyRefresh.Confirm(requestedTicket);
                 logger.LogWarning(
                     ex,
                     "The device topology could not be refreshed; the prior metric-snapshot catalog remains declared.");

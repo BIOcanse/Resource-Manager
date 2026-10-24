@@ -15,6 +15,8 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
     };
 
     private readonly SemaphoreSlim gate = new(1, 1);
+    private IReadOnlyList<ManualSoftwareRecord>? cached;
+    private OptionalFileVersion? cachedVersion;
     private readonly string storagePath = Path.Combine(
         PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
         "Config",
@@ -101,6 +103,20 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
     private async Task<IReadOnlyList<ManualSoftwareRecord>> LoadCoreAsync(CancellationToken cancellationToken)
     {
+        var version = OptionalFileVersion.Read(storagePath);
+        if (cached is not null && version == cachedVersion) return cached;
+        if (version is null)
+        {
+            cachedVersion = null;
+            return cached = Array.Empty<ManualSoftwareRecord>();
+        }
+        var value = await ReadCoreAsync(cancellationToken);
+        cachedVersion = version;
+        return cached = value;
+    }
+
+    private async Task<IReadOnlyList<ManualSoftwareRecord>> ReadCoreAsync(CancellationToken cancellationToken)
+    {
         FileStream stream;
         try
         {
@@ -167,6 +183,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             }
 
             File.Move(temporaryPath, storagePath, overwrite: true);
+            cached = null;
         }
         finally
         {

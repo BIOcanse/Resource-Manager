@@ -15,6 +15,48 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PortableSoftwareDiscoveryLossTests
 {
     [Fact]
+    public async Task InvalidAndExitedCandidatesAreDroppedAndNewCandidateCanBeObserved()
+    {
+        var resolver = new CandidateResolver();
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            resolver, new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var registry = new RecordingRegistry();
+        var logger = new RecordingLogger();
+        var exited = new PortableProcessCandidate(Environment.ProcessId, 2);
+        PortableProcessCandidate candidate = exited;
+        var reads = 0;
+        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, logger, () => [new(0), new(-1), new(4), candidate], item =>
+            {
+                reads++;
+                if (ReferenceEquals(item, exited)) { item.HasExited = true; return null; }
+                return ReadFixtureIdentity(item);
+            });
+        for (var i = 0; i < 20; i++) await service.ScanRunningProcessesAsync(default);
+        Assert.Equal(1, reads); Assert.Empty(logger.Warnings); Assert.Equal(0, registry.Observations);
+        candidate = new(Environment.ProcessId, 2);
+        await service.ScanRunningProcessesAsync(default);
+        Assert.Equal(2, reads); Assert.Equal(1, registry.Observations);
+    }
+
+    [Fact]
+    public void NativeIdentityReaderTreatsDisappearedPidAsLifetimeAndAcceptsNewBirth()
+    {
+        var reader = new WindowsPortableProcessIdentityReader();
+        var missing = new PortableProcessCandidate(int.MaxValue);
+        for (var i = 0; i < 20; i++) Assert.Null(reader.TryRead(missing));
+        Assert.True(missing.HasExited);
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        var birth = current.StartTime.ToFileTimeUtc();
+        var old = new PortableProcessCandidate(current.Id, StartKey: birth - 1);
+        Assert.Null(reader.TryRead(old)); Assert.True(old.HasExited);
+        var delayedEvent = new PortableProcessCandidate(current.Id, StartedNoLaterThan: birth - 1);
+        Assert.Null(reader.TryRead(delayedEvent)); Assert.True(delayedEvent.HasExited);
+        Assert.Equal(birth, reader.TryRead(new(current.Id, StartKey: birth))!.StartKey);
+    }
+
+    [Fact]
     public async Task ConcurrentScanAndWorkerObserveEveryCandidateAndCancellationStopsWorker()
     {
         var resolver = new CandidateResolver();

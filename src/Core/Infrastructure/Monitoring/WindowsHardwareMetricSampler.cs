@@ -59,6 +59,7 @@ public sealed partial class WindowsHardwareMetricSampler :
     private readonly SamplingPublicationSignal publicationSignal = new();
     private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot = new("Host Manager metric snapshot");
     // 当前处于“被拒绝”状态的 dataset；只在持有 sampleGate 的发布路径上读写，用于只在状态变化时记日志。
+    private bool catalogRefreshDemand;
     private readonly HashSet<string> rejectedDatasetIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly NativeItemSamplingSubscriptionTracker<MetricSampleRequest>
         subscriptions;
@@ -174,7 +175,8 @@ public sealed partial class WindowsHardwareMetricSampler :
                 ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze => NativeMetricSnapshotZoneMode.Freeze,
                 _ => throw new InvalidOperationException("The monitoring source zone mode is invalid.")
             }, TimeSpan.FromSeconds(5), integratedGpuSensorRoute, () => metricSnapshotOwner.RequestTopologyRefresh(),
-            (error, sourceId) => logger.LogWarning(error, "Metric source {SourceId} failed.", sourceId));
+            (error, sourceId) => logger.LogWarning(error, "Metric source {SourceId} failed.", sourceId),
+            message => logger.LogWarning("{HardwareTopologyRefreshTransition}", message));
         sampleGate = capture.SampleGate;
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner, createOutputScratch);
         this.logger = logger;
@@ -559,6 +561,13 @@ public sealed partial class WindowsHardwareMetricSampler :
 
     private void SynchronizeCounterDemand(IReadOnlyList<string> activeItemIds)
     {
+        var hasCatalogDemand = activeItemIds.Contains(SamplingDatasetIds.SystemMetricCatalog, StringComparer.OrdinalIgnoreCase);
+        if (hasCatalogDemand != catalogRefreshDemand)
+        {
+            catalogRefreshDemand = hasCatalogDemand;
+            logger.LogWarning("Hardware sampling {Transition} requesting topology refresh from {Source}: {Reason}.",
+                hasCatalogDemand ? "started" : "stopped", "metric-catalog", "explicit-catalog-probe");
+        }
         // The worker also calls this with empty demand when its lifetime ends.
         if (dashboardMonitoringCatalog.Current is null || !metricSnapshotOwner.TryAcquire(out var lease))
         {

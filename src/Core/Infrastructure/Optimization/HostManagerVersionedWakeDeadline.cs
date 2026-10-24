@@ -10,30 +10,14 @@ internal sealed class HostManagerVersionedWakeDeadline
     private readonly object sync = new();
     private readonly SemaphoreSlim signal = new(0, 1);
     private readonly TimeProvider timeProvider;
-    private readonly Func<TimeSpan, CancellationToken, Task> delayAsync;
     private ulong version;
     private bool hasDeadline;
     private long deadlineTimestamp;
     private int wakePosted;
 
     internal HostManagerVersionedWakeDeadline(TimeProvider timeProvider)
-        : this(
-            timeProvider,
-            (delay, cancellationToken) => Task.Delay(
-                delay,
-                timeProvider,
-                cancellationToken))
     {
-    }
-
-    internal HostManagerVersionedWakeDeadline(
-        TimeProvider timeProvider,
-        Func<TimeSpan, CancellationToken, Task> delayAsync)
-    {
-        this.timeProvider = timeProvider
-            ?? throw new ArgumentNullException(nameof(timeProvider));
-        this.delayAsync = delayAsync
-            ?? throw new ArgumentNullException(nameof(delayAsync));
+        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         if (timeProvider.TimestampFrequency <= 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -136,56 +120,18 @@ internal sealed class HostManagerVersionedWakeDeadline
             var remaining = timeProvider.GetElapsedTime(
                 now,
                 observed.DeadlineTimestamp);
-            var outcome = await WaitForSignalOrDelayAsync(
-                remaining,
-                cancellationToken).ConfigureAwait(false);
-            if (outcome == HostManagerWakeWaitOutcome.Delay)
-            {
-                // Task.Delay can complete up to one provider timestamp quantum before
-                // the requested deadline because the provider interval is converted to
-                // TimeSpan ticks. Re-sample the provider clock before consuming so the
-                // scheduler never returns an unexpired deadline.
-                continue;
-            }
+            await WaitForSignalOrDelayAsync(remaining, cancellationToken).ConfigureAwait(false);
+            // Re-read the clock/version after either wake. A timer can complete
+            // one provider timestamp quantum early; it never consumes a deadline.
         }
     }
 
-    private async Task<HostManagerWakeWaitOutcome> WaitForSignalOrDelayAsync(
-        TimeSpan delay,
-        CancellationToken cancellationToken)
+    private async Task WaitForSignalOrDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
-        using var delayCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        using var signalCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var delayTask = delayAsync(delay, delayCancellation.Token);
-        var signalTask = signal.WaitAsync(signalCancellation.Token);
-        var completed = await Task.WhenAny(delayTask, signalTask).ConfigureAwait(false);
-        if (completed == delayTask)
-        {
-            signalCancellation.Cancel();
-            try
-            {
-                await delayTask.ConfigureAwait(false);
-            }
-            finally
-            {
-                await ObserveCancelledLoserAsync(signalTask).ConfigureAwait(false);
-            }
-            return HostManagerWakeWaitOutcome.Delay;
-        }
-
-        delayCancellation.Cancel();
-        try
-        {
-            await signalTask.ConfigureAwait(false);
-            Interlocked.Exchange(ref wakePosted, 0);
-        }
-        finally
-        {
-            await ObserveCancelledLoserAsync(delayTask).ConfigureAwait(false);
-        }
-        return HostManagerWakeWaitOutcome.Signal;
+        await using var timer = timeProvider.CreateTimer(static owner =>
+            ((HostManagerVersionedWakeDeadline)owner!).Signal(), this, delay, Timeout.InfiniteTimeSpan);
+        await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Interlocked.Exchange(ref wakePosted, 0);
     }
 
     private bool TryConsume(HostManagerWakeDeadlineSnapshot observed)
@@ -263,20 +209,4 @@ internal sealed class HostManagerVersionedWakeDeadline
         return current + 1;
     }
 
-    private static async Task ObserveCancelledLoserAsync(Task task)
-    {
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private enum HostManagerWakeWaitOutcome
-    {
-        Signal = 0,
-        Delay = 1
-    }
 }

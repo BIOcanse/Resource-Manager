@@ -21,6 +21,11 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private sealed record InventoryCapture(string? UserSid, IReadOnlyList<InstalledSoftwareEntry> Entries, DeviceInformationSnapshot Fields);
     private InventoryCapture? current;
+    // Keep service information separate from the interactive caller. Alternating
+    // attribution and user reads must not invalidate each other's inventory.
+    private InventoryCapture? callerCurrent;
+    private InventoryCapture? ReadCurrent(string? userSid)
+        => Volatile.Read(ref (userSid is null ? ref current : ref callerCurrent));
     private readonly Dictionary<string, string> committedSoftwareFingerprints = new(StringComparer.OrdinalIgnoreCase);
     private readonly CurrentValuePublicationSignal publications = new();
     private readonly Func<CancellationToken, IReadOnlyList<InstalledSoftwareEntry>> read;
@@ -121,7 +126,7 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
         bool clearFieldsOnFailure = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var previous = Volatile.Read(ref current);
+        var previous = ReadCurrent(userSid);
         if (!forceRefresh && previous is not null && previous.UserSid == userSid)
         {
             return previous.Entries;
@@ -132,7 +137,7 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
         IReadOnlyList<InstalledSoftwareEntry> result;
         try
         {
-            previous = Volatile.Read(ref current);
+            previous = ReadCurrent(userSid);
             if (!forceRefresh && previous is not null && previous.UserSid == userSid)
             {
                 result = previous.Entries;
@@ -161,7 +166,8 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
                 var fingerprint = capturedSoftwareContent ? FingerprintSoftwareContent(next.Entries) : null;
                 void Commit()
                 {
-                    Volatile.Write(ref current, next);
+                    if (userSid is null) Volatile.Write(ref current, next);
+                    else Volatile.Write(ref callerCurrent, next);
                     if (fingerprint is not null)
                     {
                         var scope = userSid ?? DefaultSoftwareScope;
@@ -189,7 +195,7 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
                 }
                 else if (!tryPublish(Commit))
                 {
-                    var visible = Volatile.Read(ref current);
+                    var visible = ReadCurrent(userSid);
                     result = visible is not null && visible.UserSid == userSid ? visible.Entries : [];
                 }
                 else
@@ -418,12 +424,17 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
     }
 
     [SupportedOSPlatform("windows")]
-    private static ulong? ReadEstimatedSizeBytes(RegistryKey key)
+    internal static ulong? ReadEstimatedSizeBytes(RegistryKey key)
+        => ReadEstimatedSizeBytes(() => key.GetValue("EstimatedSize"), () => key.GetValueKind("EstimatedSize"));
+
+    [SupportedOSPlatform("windows")]
+    internal static ulong? ReadEstimatedSizeBytes(Func<object?> readValue, Func<RegistryValueKind> readKind)
     {
         try
         {
-            if (key.GetValueKind("EstimatedSize") != RegistryValueKind.DWord) return null;
-            return DecodeEstimatedSizeBytes(key.GetValue("EstimatedSize"), RegistryValueKind.DWord);
+            var value = readValue();
+            if (value is not int) return null;
+            return DecodeEstimatedSizeBytes(value, readKind());
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
         { return null; }

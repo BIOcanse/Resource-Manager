@@ -30,7 +30,8 @@ internal sealed partial class WindowsHardwareMetricCapture
             .ToDictionary(static group => group.Key,
                 static group => (IReadOnlySet<MetricFieldCode>)group.Select(static binding => binding.FieldCode).ToHashSet(), StringComparer.Ordinal);
         var values = resources.ReadNetworkInterfaces(plan.Catalog.NetworkInterfaceIdentities, requested);
-        if (values.Any(static value => value.RequiresTopologyRefresh)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.WindowsNetworkInterface, "selected-identity-changed",
+            values.Any(static value => value.RequiresTopologyRefresh));
         return CreateNetworkInterfaceCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
 

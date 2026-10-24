@@ -95,7 +95,10 @@ public sealed class WindowsNpuMemoryReader
                         // A supported multi-physical identity still belongs to the existing 101 directory.
                         // It deliberately has no memory value in this first single-physical implementation.
                         var mismatch = countAvailable && physicalCount != identities.Identities.Count;
-                        result[key] = Empty(key, mismatch);
+                        // The 101 directory declares physical PnP identities, not
+                        // support for this single-physical memory implementation.
+                        // Rebuilding that same directory cannot fix a count limitation.
+                        result[key] = Empty(key);
                         if (!countAvailable || physicalCount != 1 || identities.Identities.Count != 1
                             || identity.PhysicalAdapterIndex != 0 || mismatch) continue;
                         candidates.Add(new Candidate(adapter, native, key, fields));

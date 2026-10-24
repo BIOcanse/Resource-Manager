@@ -32,6 +32,7 @@ internal static class MetricSnapshotOwnerTestFixture
             var source = new HostManagerMetricSnapshotCatalogTopologySource(() =>
             {
                 Interlocked.Increment(ref topologyReads);
+                if (TopologyFailure is { } failure) throw failure;
                 return Volatile.Read(ref this.topology);
             });
             Owner = new HostManagerMetricSnapshotOwner(Slots.Provider,
@@ -40,6 +41,7 @@ internal static class MetricSnapshotOwnerTestFixture
             Owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
         public NativeMetricSnapshotCatalogTopologySnapshot Topology { set => Volatile.Write(ref topology, value); }
+        public Exception? TopologyFailure { get; set; }
         public int TopologyReads => Volatile.Read(ref topologyReads);
         public DashboardMonitoringCatalogState Catalog { get; } = new();
         public HostManagerSamplingSubscriptionTestFixture Slots { get; }

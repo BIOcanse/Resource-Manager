@@ -45,11 +45,17 @@ public sealed partial class WindowsResourceBreakdownSampler
             process.WindowTitle,
             process.StartKey,
             UserSid: process.BasicMetrics.UserSid);
-        if (process.StartKey is not > 0) return identity;
-        var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
-        processAttributionCache.TryGet(key, out var cached);
-        identity = identity with { CommandLine = cached?.Identity.CommandLine ?? ReadHelperCommandLine(process) };
-        CacheRuntimeIdentity(processAttributionCache, identity);
+        return ReadRuntimeCommandLine(processAttributionCache, identity, () => ReadHelperCommandLine(process));
+    }
+
+    internal static RuntimeProcessIdentity ReadRuntimeCommandLine(
+        ProcessInstanceCache<CachedProcessAttribution> cache, RuntimeProcessIdentity identity, Func<string?> read)
+    {
+        if (identity.StartKey is not > 0) return identity;
+        var key = new ProcessInstanceKey(identity.ProcessId, identity.StartKey.Value);
+        cache.TryGet(key, out var cached);
+        identity = identity with { CommandLine = cached is not null ? cached.Identity.CommandLine : read() };
+        CacheRuntimeIdentity(cache, identity);
         return identity;
     }
 
@@ -119,10 +125,10 @@ public sealed partial class WindowsResourceBreakdownSampler
             new WeakReference<RuntimeProcessAttributionCatalog>(catalog)));
     }
 
-    private static string? ReadHelperCommandLine(ProcessResourceSample process)
+    private string? ReadHelperCommandLine(ProcessResourceSample process)
     {
         if (process.StartKey is not > 0) return null;
-        return new ResourceManager.ReadWrite.Windows.Processes.WindowsProcessBasicMetricReader().Read(
+        return processBasicMetricReader.Read(
             process.ProcessId, process.StartKey.Value,
             ResourceManager.ReadWrite.ProcessFields.ProcessMetricReadMask.CommandLine).CommandLine;
     }

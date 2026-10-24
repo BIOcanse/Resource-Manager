@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -8,6 +9,61 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ItemSamplingSubscriptionTrackerTests
 {
+    [Fact]
+    public async Task NormalDeadlineAndNewDemandWakeWithoutCancellationExceptionsOrOrphanWaits()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var tracker = CreateMetricTracker(fixture);
+        using var signal = new SemaphoreSlim(0, 1);
+        var clock = new ManualWakeClock();
+        var worker = new NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken>(
+            tracker, signal, _ => { }, failure => throw failure.Error, TimeSpan.Zero, clock);
+        var wait = worker.GetType().GetMethod("WaitForDelaySegmentAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var cancellations = 0;
+        var observing = new AsyncLocal<bool> { Value = true };
+        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (observing.Value && args.Exception is OperationCanceledException
+                && args.Exception.StackTrace?.Contains("WaitForDelaySegmentAsync") == true) Interlocked.Increment(ref cancellations);
+        }
+        AppDomain.CurrentDomain.FirstChanceException += Observe;
+        try
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                var deadline = (Task)wait.Invoke(worker, [TimeSpan.FromSeconds(1), true, CancellationToken.None])!;
+                Assert.False(deadline.IsCompleted);
+                clock.Fire();
+                await deadline.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.True(clock.Last!.Disposed);
+                var demand = (Task)wait.Invoke(worker, [TimeSpan.FromHours(1), true, CancellationToken.None])!;
+                Assert.False(demand.IsCompleted);
+                worker.NotifyDemandChanged();
+                await demand.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.True(clock.Last!.Disposed);
+                Assert.Equal(0, signal.CurrentCount);
+            }
+            Assert.Equal(0, cancellations);
+        }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= Observe; }
+    }
+
+    private sealed class ManualWakeClock : TimeProvider
+    {
+        internal WakeTimer? Last;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+            => Last = new(callback, state);
+        internal void Fire() => Last!.Fire();
+        internal sealed class WakeTimer(TimerCallback callback, object? state) : ITimer
+        {
+            internal bool Disposed;
+            internal void Fire() { if (!Disposed) callback(state); }
+            public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
+            public void Dispose() => Disposed = true;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
+    }
+
     [Fact]
     public void ActiveItemsIncludeSlowDemandDuringNoDueAndFastOnlyPlans()
     {

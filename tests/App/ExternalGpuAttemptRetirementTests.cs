@@ -15,6 +15,62 @@ public sealed class ExternalGpuAttemptRetirementTests
     private static readonly GpuPlacementProcessInstance Root = new(int.MaxValue - 1, 2, "root", @"C:\root.exe");
 
     [Fact]
+    public async Task ControlOwnershipReadReusesExitedControllerAndDetectsReplacement()
+    {
+        using var files = new GpuGraphicsApiIdentificationTests.Fixture();
+        using var store = new JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
+        await store.LoadAsync(default);
+        var runtime = Runtime(files, store);
+        var directory = Attempt(files, RunningGpuPlacementActionStatuses.NotApplied);
+        var reads = 0;
+        bool Dead(GpuPlacementProcessInstance identity) { reads++; return false; }
+        for (var i = 0; i < 20; i++) Assert.False(runtime.HasUnreleasedControlCore(Dead));
+        Assert.Equal(1, reads);
+        // Retirement consumes the same lifetime fact, and still checks the live root.
+        runtime.RetireFinishedAttempts(identity => identity == Root ? true : throw new Xunit.Sdk.XunitException("Exited controller was queried again"));
+        File.WriteAllText(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(Controller with { ProcessStartKey = 99 }));
+        Assert.True(runtime.HasUnreleasedControlCore(identity => { reads++; return true; }));
+        Assert.Equal(2, reads);
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        var replacement = new GpuPlacementProcessInstance(current.Id, (ulong)current.StartTime.ToFileTimeUtc(), current.ProcessName, Environment.ProcessPath!);
+        File.WriteAllText(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(replacement));
+        Assert.True(runtime.HasUnreleasedControl);
+    }
+
+    [Fact]
+    public async Task ExitedControllerIsNotProbedEveryAdmissionAndNewBirthIsProbed()
+    {
+        using var files = new GpuGraphicsApiIdentificationTests.Fixture();
+        using var store = new JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
+        await store.LoadAsync(default);
+        var runtime = Runtime(files, store);
+        var directory = Attempt(files, RunningGpuPlacementActionStatuses.NotApplied);
+        var controllerReads = 0;
+        bool Probe(GpuPlacementProcessInstance identity)
+        {
+            if (identity == Root) return true;
+            controllerReads++;
+            return identity.ProcessStartKey != Controller.ProcessStartKey;
+        }
+        for (var i = 0; i < 20; i++) runtime.RetireFinishedAttempts(Probe);
+        Assert.Equal(1, controllerReads); Assert.True(Directory.Exists(directory));
+        File.WriteAllText(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(Controller with { ProcessStartKey = 9 }));
+        runtime.RetireFinishedAttempts(Probe);
+        Assert.Equal(2, controllerReads); Assert.True(Directory.Exists(directory));
+    }
+
+    [Fact]
+    public void NativeLifetimeProbeDoesNotThrowForMissingPidAndChecksNewBirth()
+    {
+        for (var i = 0; i < 20; i++) Assert.False(WindowsExternalGpuPlacementRuntime.IsAlive(Controller));
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var identity = new GpuPlacementProcessInstance(process.Id, (ulong)process.StartTime.ToFileTimeUtc(),
+            process.ProcessName, Environment.ProcessPath!);
+        Assert.False(WindowsExternalGpuPlacementRuntime.IsAlive(identity with { ProcessStartKey = identity.ProcessStartKey - 1 }));
+        Assert.True(WindowsExternalGpuPlacementRuntime.IsAlive(identity));
+    }
+
+    [Fact]
     public async Task KeepsLiveAndUnreadableControllersAndLiveRootFailureSuppression()
     {
         using var files = new GpuGraphicsApiIdentificationTests.Fixture();
@@ -114,14 +170,16 @@ public sealed class ExternalGpuAttemptRetirementTests
         Assert.False(Directory.Exists(staged));
     }
 
-    [Fact]
-    public async Task CorruptControllerAndUnknownReceiptAuthorityDoNotAuthorizeRetirement()
+    [Theory]
+    [InlineData("invalid")]
+    [InlineData("{}")]
+    public async Task CorruptControllerAndUnknownReceiptAuthorityDoNotAuthorizeRetirement(string controller)
     {
         using var files = new GpuGraphicsApiIdentificationTests.Fixture();
         using var store = new JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
         var directory = Attempt(files, RunningGpuPlacementActionStatuses.NotApplied);
         await store.LoadAsync(default);
-        File.WriteAllText(Path.Combine(directory, "controller.json"), "invalid");
+        File.WriteAllText(Path.Combine(directory, "controller.json"), controller);
         Runtime(files, store).Prepare([]);
         Assert.True(Directory.Exists(directory));
         Assert.True(Runtime(files, store).HasUnreleasedControl);

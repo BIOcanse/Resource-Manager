@@ -22,6 +22,37 @@ public sealed class JsonManualSoftwareRegistryTests : IDisposable
         Assert.Equal(2, (await registry.GetAllAsync(default)).Count);
     }
 
+    [Fact]
+    public async Task AbsentFileIsNotReopenedAndCreatedFileAndWritesAreObserved()
+    {
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        var exceptions = 0;
+        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (args.Exception is FileNotFoundException or DirectoryNotFoundException
+                && args.Exception.Message.Contains(testRoot, StringComparison.OrdinalIgnoreCase)) Interlocked.Increment(ref exceptions);
+        }
+        AppDomain.CurrentDomain.FirstChanceException += Observe;
+        try
+        {
+            var empty = await registry.GetAllAsync(default);
+            for (var i = 0; i < 20; i++) Assert.Same(empty, await registry.GetAllAsync(default));
+            Assert.Equal(0, exceptions);
+            Directory.CreateDirectory(Path.GetDirectoryName(StoragePath)!);
+            var record = new ManualSoftwareRecord("manual:created", "Created", SoftwareKinds.Game, SoftwareKinds.Game,
+                "manual", [], [], "", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            await File.WriteAllTextAsync(StoragePath, JsonSerializer.Serialize(new[] { record }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            var loaded = await registry.GetAllAsync(default);
+            Assert.Equal("Created", Assert.Single(loaded).Name);
+            for (var i = 0; i < 20; i++) Assert.Same(loaded, await registry.GetAllAsync(default));
+            Assert.True(await registry.RemoveAsync(record.Id, default));
+            Assert.Empty(await registry.GetAllAsync(default));
+            File.Delete(StoragePath);
+            Assert.Empty(await registry.GetAllAsync(default));
+        }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= Observe; }
+    }
+
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-manual-software-{Guid.NewGuid():N}");
     private string StoragePath => Path.Combine(testRoot, "Config", "manual-software.json");
 

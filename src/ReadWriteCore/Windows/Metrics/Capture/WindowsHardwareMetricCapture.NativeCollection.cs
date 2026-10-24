@@ -278,7 +278,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         NativeMetricSnapshotSourceObservationIdentity identity,
         DateTimeOffset capturedAt)
     {
-        var inventory = RequireCurrentGpuInventory(plan.Catalog);
+        var inventory = RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]);
         var source = plan.Catalog.Sources.Single(
             source => source.SourceHandle == sourcePlan.SourceHandle);
         var rows =
@@ -338,7 +338,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         NativeMetricSnapshotSourceObservationIdentity identity,
         DateTimeOffset capturedAt)
     {
-        var inventory = RequireCurrentGpuInventory(plan.Catalog);
+        var inventory = RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]);
         var usage =
             resources.ReadGpuUsage(
                 inventory.Adapters);
@@ -390,7 +390,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             AdditionalMetrics = selected.Where(static binding => NvidiaNvmlReader.IsAdditionalMetric(binding.FieldCode))
                 .Select(static binding => binding.FieldCode).ToHashSet()
         };
-        var inventory = RequireCurrentGpuInventory(plan.Catalog);
+        var inventory = RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]);
         IReadOnlyList<GpuMetrics> values = [];
         if (indexes.Count != 0)
             values = await resources.ReadNvmlAsync(request, inventory, cancellationToken);
@@ -460,7 +460,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             Includes(selected, MetricFieldCode.GpuCurrent));
         var values = await resources.ReadNvapiAsync(
             request,
-            RequireCurrentGpuInventory(plan.Catalog),
+            RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]),
             cancellationToken);
         if (values.Count == 0)
         {
@@ -505,7 +505,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         var request = CreateAdlxReadRequest(selected);
         var values = await resources.ReadAdlxAsync(
             request,
-            RequireCurrentGpuInventory(plan.Catalog),
+            RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]),
             cancellationToken);
         return CreateAdlxCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
@@ -733,7 +733,8 @@ internal sealed partial class WindowsHardwareMetricCapture
         DateTimeOffset capturedAt)
     {
         var sensors = resources.ReadStorageSensors();
-        if (!MatchesStorageInventory(plan.Catalog, sensors)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.WindowsStorageSensors, "storage-inventory-changed",
+            !MatchesStorageInventory(plan.Catalog, sensors));
         return CreateStorageCompletion(plan, sourcePlan, identity, capturedAt, sensors);
     }
 
@@ -745,7 +746,8 @@ internal sealed partial class WindowsHardwareMetricCapture
             .GroupBy(static binding => binding.DisplayIndex)
             .ToDictionary(static group => group.Key, static group => group.First().DeviceIdentity);
         var sensors = resources.ReadNvmeSensors(new(devices));
-        if (!MatchesStorageInventory(plan.Catalog, sensors)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.WindowsNvmeHealth, "storage-inventory-changed",
+            !MatchesStorageInventory(plan.Catalog, sensors));
         return CreateStorageCompletion(plan, sourcePlan, identity, capturedAt, sensors);
     }
 
@@ -754,7 +756,8 @@ internal sealed partial class WindowsHardwareMetricCapture
         NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt)
     {
         var sensors = resources.ReadAtaSensors(CreateAtaSmartReadRequest(plan, sourcePlan.SourceHandle));
-        if (!MatchesStorageInventory(plan.Catalog, sensors)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.WindowsAtaSmart, "storage-inventory-changed",
+            !MatchesStorageInventory(plan.Catalog, sensors));
         return CreateStorageCompletion(plan, sourcePlan, identity, capturedAt, sensors);
     }
 
@@ -772,18 +775,21 @@ internal sealed partial class WindowsHardwareMetricCapture
         var catalogByIndex = plan.Catalog.StorageIdentities.GroupBy(static item => item.DisplayIndex)
             .Where(static group => group.Count() == 1).ToDictionary(static group => group.Key, static group => group.Single());
         var targets = new Dictionary<(int DisplayIndex, string IdentityKey), WindowsDiskPerformanceTarget>();
+        var mismatched = false;
         foreach (var binding in bindings)
         {
             if (!catalogByIndex.TryGetValue(binding.DisplayIndex, out var current)
                 || !string.Equals(current.ExactIdentityKey, binding.DeviceIdentity, StringComparison.Ordinal))
             {
-                requestTopologyRefresh();
+                mismatched = true;
                 continue;
             }
             targets[(binding.DisplayIndex, binding.DeviceIdentity)] = new(binding.DisplayIndex, binding.DeviceIdentity,
                 current.SupportsNvmeHealth, current.SupportsAtaSmart);
         }
 
+        ObserveTopology(NativeMetricSnapshotSources.WindowsDiskPerformance,
+            "disk-performance-binding-changed", mismatched);
         var supportedTargets = targets.Values.Where(static target => target.SupportsExactAtaNvmeIdentity).ToArray();
         var read = supportedTargets.Length == 0
             ? WindowsDiskPerformanceCaptureResult.Empty([])
@@ -1098,7 +1104,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         };
 
     private WindowsGpuAdapterInventoryRead RequireCurrentGpuInventory(
-        NativeMetricSnapshotCatalogProjection catalog)
+        NativeMetricSnapshotCatalogProjection catalog, string source)
     {
         var inventory = resources.ReadGpuInventory();
         if (inventory.Status != SamplingObservationStatus.Current
@@ -1110,9 +1116,10 @@ internal sealed partial class WindowsHardwareMetricCapture
             throw new InvalidOperationException(
                 "The exact Windows GPU inventory is unavailable.");
         }
-        if (!MatchesExactGpuInventory(catalog, inventory.Adapters))
+        var mismatch = !MatchesExactGpuInventory(catalog, inventory.Adapters);
+        ObserveTopology(source, "gpu-inventory-changed", mismatch);
+        if (mismatch)
         {
-            requestTopologyRefresh();
             throw new InvalidOperationException(
                 "The Windows GPU topology changed after the native catalog was published.");
         }
@@ -1125,17 +1132,15 @@ internal sealed partial class WindowsHardwareMetricCapture
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(adapters);
-        var expected = catalog.GpuScopeBindings.Values
-            .Select(static binding => binding.AdapterLuid)
-            .Order()
-            .ToArray();
-        var observed = adapters
-            .Where(static adapter => !adapter.IsSoftware)
-            .Select(static adapter =>
-                WindowsGpuAdapterIdentity.Pack(adapter.Luid))
-            .Order()
-            .ToArray();
-        return expected.SequenceEqual(observed);
+        // Use the topology owner's projection and filtering for both sides.
+        var read = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(
+            new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks,
+                checked((uint)adapters.Count), 0, 0, 0, adapters));
+        if (read.FailureCode is not null) return false;
+        return catalog.GpuIdentities.OrderBy(static row => row.AdapterLuid)
+            .Select(static row => (row.DisplayIndex, row.AdapterLuid, row.ExactIdentityKey, row.VendorMask, row.SupportsDedicatedMetrics))
+            .SequenceEqual(read.Rows.OrderBy(static row => row.AdapterLuid)
+                .Select(static row => (row.DisplayIndex, row.AdapterLuid, row.ExactIdentityKey, row.VendorMask, row.SupportsDedicatedMetrics)));
     }
 
     private static NativeMetricSnapshotSourceCompletion

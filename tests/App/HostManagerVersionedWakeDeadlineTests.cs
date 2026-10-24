@@ -5,6 +5,41 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerVersionedWakeDeadlineTests
 {
     [Fact]
+    public async Task RepeatedDeadlinesAndEarlierForegroundWorkDoNotCancelLosingWaits()
+    {
+        var time = new ManualTimeProvider();
+        var delays = new ControlledDelayQueue();
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
+        var exceptions = 0;
+        var observing = new AsyncLocal<bool> { Value = true };
+        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (observing.Value && args.Exception is OperationCanceledException
+                && args.Exception.StackTrace?.Contains("SemaphoreSlim") == true) Interlocked.Increment(ref exceptions);
+        }
+        AppDomain.CurrentDomain.FirstChanceException += Observe;
+        try
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                var scheduled = deadline.PublishScheduled(TimeSpan.FromSeconds(1));
+                var wait = deadline.WaitAsync(default);
+                var timer = await delays.WaitForRequestAsync(delays.Requests.Count - 1);
+                time.Advance(TimeSpan.FromSeconds(1)); timer.Complete();
+                Assert.Equal(scheduled, await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+                Assert.True(timer.Disposed);
+                deadline.PublishScheduled(TimeSpan.FromMinutes(1));
+                wait = deadline.WaitAsync(default);
+                var foreground = deadline.PublishForeground(TimeSpan.Zero);
+                Assert.Equal(foreground, await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+            }
+            Assert.Equal(0, exceptions);
+        }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= Observe; }
+    }
+
+    [Fact]
     public async Task ClearedNormalDeadlineParksUntilForegroundPublication()
     {
         var time = new ManualTimeProvider();
@@ -39,9 +74,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         deadline.PublishScheduled(TimeSpan.FromSeconds(60));
 
         var wait = deadline.WaitAsync(CancellationToken.None);
@@ -51,7 +85,7 @@ public sealed class HostManagerVersionedWakeDeadlineTests
         var publication = deadline.PublishForeground(TimeSpan.FromSeconds(1));
 
         var rebased = await delays.WaitForRequestAsync(1);
-        Assert.True(original.Completion.IsCanceled);
+        Assert.True(original.Disposed);
         Assert.Equal(2UL, publication.Version);
         Assert.Equal(TimeSpan.FromSeconds(1), rebased.Delay);
         time.Advance(TimeSpan.FromSeconds(1));
@@ -69,9 +103,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         deadline.PublishScheduled(TimeSpan.FromSeconds(1));
 
         var wait = deadline.WaitAsync(CancellationToken.None);
@@ -95,9 +128,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         deadline.PublishScheduled(TimeSpan.FromSeconds(60));
 
         var wait = deadline.WaitAsync(CancellationToken.None);
@@ -122,9 +154,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         deadline.PublishForeground(TimeSpan.FromSeconds(1));
         var publication = deadline.PublishScheduled(TimeSpan.FromSeconds(30));
 
@@ -133,7 +164,7 @@ public sealed class HostManagerVersionedWakeDeadlineTests
         var scheduled = await delays.WaitForRequestAsync(1);
 
         Assert.Equal(2UL, publication.Version);
-        Assert.True(stale.Completion.IsCanceled);
+        Assert.True(stale.Disposed);
         Assert.Equal(TimeSpan.FromSeconds(30), scheduled.Delay);
         time.Advance(TimeSpan.FromSeconds(30));
         scheduled.Complete();
@@ -146,9 +177,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         deadline.PublishScheduled(TimeSpan.FromSeconds(1));
 
         var firstWait = deadline.WaitAsync(CancellationToken.None);
@@ -172,9 +202,8 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     {
         var time = new ManualTimeProvider();
         var delays = new ControlledDelayQueue();
-        var deadline = new HostManagerVersionedWakeDeadline(
-            time,
-            delays.DelayAsync);
+        time.Delays = delays;
+        var deadline = new HostManagerVersionedWakeDeadline(time);
         var publication = deadline.PublishScheduled(TimeSpan.FromSeconds(1));
 
         var wait = deadline.WaitAsync(CancellationToken.None);
@@ -196,6 +225,9 @@ public sealed class HostManagerVersionedWakeDeadlineTests
     private sealed class ManualTimeProvider : TimeProvider
     {
         private long timestamp;
+        internal ControlledDelayQueue? Delays;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+            => Delays is null ? base.CreateTimer(callback, state, dueTime, period) : Delays.CreateTimer(callback, state, dueTime);
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
@@ -228,9 +260,9 @@ public sealed class HostManagerVersionedWakeDeadlineTests
             }
         }
 
-        internal Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        internal ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan delay)
         {
-            var request = new ControlledDelayRequest(delay, cancellationToken);
+            var request = new ControlledDelayRequest(callback, state, delay);
             TaskCompletionSource added;
             lock (sync)
             {
@@ -239,7 +271,7 @@ public sealed class HostManagerVersionedWakeDeadlineTests
                 requestAdded = CreateSignal();
             }
             added.TrySetResult();
-            return request.Completion;
+            return request;
         }
 
         internal async Task<ControlledDelayRequest> WaitForRequestAsync(int index)
@@ -263,24 +295,13 @@ public sealed class HostManagerVersionedWakeDeadlineTests
             => new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private sealed class ControlledDelayRequest
+    private sealed class ControlledDelayRequest(TimerCallback callback, object? state, TimeSpan delay) : ITimer
     {
-        private readonly TaskCompletionSource completion =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        internal ControlledDelayRequest(
-            TimeSpan delay,
-            CancellationToken cancellationToken)
-        {
-            Delay = delay;
-            _ = cancellationToken.Register(
-                () => completion.TrySetCanceled(cancellationToken));
-        }
-
-        internal TimeSpan Delay { get; }
-
-        internal Task Completion => completion.Task;
-
-        internal void Complete() => completion.TrySetResult();
+        internal TimeSpan Delay { get; } = delay;
+        internal bool Disposed { get; private set; }
+        internal void Complete() { if (!Disposed) callback(state); }
+        public bool Change(TimeSpan dueTime, TimeSpan period) => !Disposed;
+        public void Dispose() => Disposed = true;
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 }

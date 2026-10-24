@@ -78,12 +78,13 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 KernelTraceEventParser.Keywords.Process,
                 (kernel, _) => kernel.ProcessStartGroup += data =>
                 {
-                    if (!kernel.IsActive || workerToken.IsCancellationRequested) return;
+                    if (!kernel.IsActive || workerToken.IsCancellationRequested || data.ProcessID <= 4) return;
                     processStarts.Writer.TryWrite(new PortableProcessCandidate(
                         data.ProcessID,
                         data.ParentID > 0 ? data.ParentID : null,
                         data.ProcessName,
-                        SelectEventPath(data.ImageFileName, data.KernelImageFileName)));
+                        SelectEventPath(data.ImageFileName, data.KernelImageFileName),
+                        StartedNoLaterThan: data.TimeStamp.ToFileTimeUtc()));
                 }));
             inventorySnapshot = kernelEtwSessionBroker.GetSnapshot();
             EnqueueCurrentProcesses();
@@ -120,7 +121,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     public async Task ScanRunningProcessesAsync(CancellationToken cancellationToken)
     {
         using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
-        var candidates = captureCurrentProcesses();
+        var candidates = captureCurrentProcesses().Where(static candidate => candidate.ProcessId > 4);
         await Parallel.ForEachAsync(
             candidates,
             new ParallelOptions
@@ -196,9 +197,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         RuntimeProcessAttributionPipeline pipeline, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (candidate.ProcessId <= 4 || candidate.HasExited) return;
         try
         {
-            if (!Observe(candidate, pipeline))
+            if (!Observe(candidate, pipeline) && !candidate.HasExited)
                 LogCandidateFailure(candidate, new IOException("Process identity could not be read."));
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
@@ -265,7 +267,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     {
         foreach (var candidate in captureCurrentProcesses())
         {
-            processStarts.Writer.TryWrite(candidate);
+            if (candidate.ProcessId > 4 && !candidate.HasExited) processStarts.Writer.TryWrite(candidate);
         }
     }
 
@@ -278,11 +280,15 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         inventorySnapshot = snapshot;
     }
 
+    private static readonly ResourceManager.ReadWrite.Windows.Processes.WindowsProcessBasicMetricReader IdentityReader = new();
+
     private static PortableProcessCandidate[] CaptureCurrentProcesses()
     {
         return ProcessCollectionOwner.Use(Process.GetProcesses(), processes =>
             processes
-                .Select(static process => new PortableProcessCandidate(process.Id))
+                .Where(static process => process.Id > 4)
+                .Select(static process => new PortableProcessCandidate(process.Id,
+                    StartKey: IdentityReader.ReadCurrentCreationFileTime(process.Id)))
                 .ToArray());
     }
 

@@ -61,6 +61,7 @@ public sealed partial class WindowsProcessFieldOwner
                 catch { }
             }
         }
+        BasicReader.PruneCommandLineFailures(live);
         afterCapture?.Invoke(samples, live);
         var interval = tracker.UpdateInterval(includeCpu, now, cpu, Environment.ProcessorCount);
         return new(SamplingObservationStatus.Current, checked((uint)processes.Length), excluded, skipped, samples, now, interval);

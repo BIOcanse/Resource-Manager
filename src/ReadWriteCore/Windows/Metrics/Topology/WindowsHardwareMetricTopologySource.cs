@@ -51,7 +51,7 @@ public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTop
         return Publish(result);
     }
 
-    private static (IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> Rows, string? FailureCode) CaptureGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
+    internal static (IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> Rows, string? FailureCode) CaptureGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
     {
         if (inventory.Status != SamplingObservationStatus.Current
             || inventory.Generation == 0
@@ -67,8 +67,8 @@ public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTop
             inventory.Adapters.Count);
         foreach (var adapter in inventory.Adapters)
         {
+            if (adapter.IsSoftware) continue;
             if (adapter.Index < 0
-                || adapter.IsSoftware
                 || adapter.PhysicalIdentityStatus
                     != SamplingObservationStatus.Current
                 || adapter.PhysicalIdentities.Count == 0)

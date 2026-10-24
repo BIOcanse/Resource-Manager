@@ -269,12 +269,11 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
             return;
         }
 
-        using var delayCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var demand = demandSignal.WaitAsync(delayCancellation.Token);
-        var timer = Task.Delay(delay, clock, delayCancellation.Token);
-        await Task.WhenAny(demand, timer);
-        await delayCancellation.CancelAsync();
-        try { await Task.WhenAll(demand, timer); }
-        catch (OperationCanceledException) when (delayCancellation.IsCancellationRequested) { }
+        // Both the deadline and real demand wake the same wait. A normal wake
+        // no longer cancels a losing Task.Delay/WaitAsync and throws each sample.
+        await using var timer = clock.CreateTimer(
+            static state => SignalDemand((SemaphoreSlim)state!), demandSignal,
+            delay, Timeout.InfiniteTimeSpan);
+        await demandSignal.WaitAsync(cancellationToken);
     }
 }

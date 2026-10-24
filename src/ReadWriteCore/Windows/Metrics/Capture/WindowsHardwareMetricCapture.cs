@@ -26,19 +26,23 @@ internal sealed partial class WindowsHardwareMetricCapture
     private readonly NativeMetricSnapshotSourceRuntimeFacts sourceRuntimeFacts;
     private readonly MetricReadingSourceTracker readingSources = new();
     private readonly AmdIntegratedGpuSensorRoute integratedGpuSensorRoute;
-    private readonly Action requestTopologyRefresh;
+    private readonly TopologyRefreshRequestTracker topologyRefreshRequests;
+    private ulong activeWorkspaceIdentity;
     private readonly Action<Exception, string>? logFailure;
     public WindowsHardwareMetricCapture(WindowsHardwareMetricResources resources,
         Func<string, NativeMetricSnapshotZoneMode> modeProvider, TimeSpan transientUnavailableDuration,
         AmdIntegratedGpuSensorRoute integratedGpuSensorRoute, Action requestTopologyRefresh,
-        Action<Exception, string>? logFailure = null)
+        Action<Exception, string>? logFailure = null, Action<string>? logTopologyTransition = null)
     {
         this.resources = resources ?? throw new ArgumentNullException(nameof(resources));
         this.integratedGpuSensorRoute = integratedGpuSensorRoute ?? throw new ArgumentNullException(nameof(integratedGpuSensorRoute));
-        this.requestTopologyRefresh = requestTopologyRefresh ?? throw new ArgumentNullException(nameof(requestTopologyRefresh));
+        topologyRefreshRequests = new(requestTopologyRefresh ?? throw new ArgumentNullException(nameof(requestTopologyRefresh)), logTopologyTransition);
         this.logFailure = logFailure;
         sourceRuntimeFacts = new(modeProvider, transientUnavailableDuration);
     }
+    private void ObserveTopology(string source, string reason, bool disagrees)
+        => topologyRefreshRequests.Observe(activeWorkspaceIdentity, source, reason, disagrees);
+
     /// <summary>The caller holds this instance's original SampleGate and owns workspace lifetime and atomic publication permission.</summary>
     internal async Task<HardwareMetricSnapshot?> CaptureUnderGateAsync(MetricSampleRequest request,
         NativeMetricSnapshotWorkspace workspace, ulong workspaceIdentity,
@@ -50,6 +54,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         Action<ImmutableHashSet<string>>? sourceQueriesCompleted = null,
         HardwareMetricSnapshot? fieldCatalog = null)
     {
+        activeWorkspaceIdentity = workspaceIdentity;
         var catalog = workspace.ReadCatalog();
         var commandAt = DateTimeOffset.UtcNow;
         var collectionRequest = CreateCollectionRequest(request, catalog, fieldCatalog);

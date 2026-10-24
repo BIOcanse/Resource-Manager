@@ -33,32 +33,31 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         RendererAbsenceCache absenceCache) : this(environment, observations, logger, stateStore)
         => rendererAbsenceCache = absenceCache;
 
-    public bool HasUnreleasedControl
+    public bool HasUnreleasedControl => HasUnreleasedControlCore();
+
+    internal bool HasUnreleasedControlCore(Func<GpuPlacementProcessInstance, bool>? isAlive = null)
     {
-        get
+        lock (gate)
         {
-            lock (gate)
+            if (activeCompletion is { IsCompleted: false }) return true;
+            // A restarted backend must not forget a surviving recovery owner.
+            if (!Directory.Exists(evidenceRoot)) { exitedAttemptProcesses.Clear(); return false; }
+            var directories = Directory.EnumerateDirectories(evidenceRoot).ToArray();
+            PruneExitedAttemptProcesses(directories);
+            foreach (var directory in directories)
             {
-                if (activeCompletion is { IsCompleted: false }) return true;
-                // A restarted backend must not forget a surviving recovery owner.
-                if (!Directory.Exists(evidenceRoot)) return false;
-                foreach (var directory in Directory.EnumerateDirectories(evidenceRoot))
+                var path = Path.Combine(directory, "controller.json");
+                if (!File.Exists(path)) continue;
+                try
                 {
-                    var path = Path.Combine(directory, "controller.json");
-                    if (!File.Exists(path)) continue;
-                    try
-                    {
-                        var identity = JsonSerializer.Deserialize<GpuPlacementProcessInstance>(File.ReadAllText(path));
-                        if (identity is null) return true;
-                        using var process = Process.GetProcessById(identity.ProcessId);
-                        if (ChromiumGpuProcessIdentity.Matches(process, identity)) return true;
-                    }
-                    catch (ArgumentException) { }
-                    catch (Exception error) when (error is IOException or JsonException or Win32Exception or InvalidOperationException)
-                    { logger.LogWarning(error, "Cannot settle external GPU controller {Path}.", path); return true; }
+                    var identity = JsonSerializer.Deserialize<GpuPlacementProcessInstance>(File.ReadAllText(path));
+                    if (identity is null) return true;
+                    if (IsAttemptProcessAlive(directory, false, identity, isAlive ?? IsAlive)) return true;
                 }
-                return false;
+                catch (Exception error) when (IsRetirementError(error))
+                { logger.LogWarning(error, "Cannot settle external GPU controller {Path}.", path); return true; }
             }
+            return false;
         }
     }
 

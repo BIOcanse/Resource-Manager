@@ -20,6 +20,20 @@ public sealed class ResourceBreakdownAttributionCacheTests
         false, StartKey: 100, UserSid: Sid);
 
     [Fact]
+    public void UnavailableHelperCommandLineIsReadOncePerProcessInstance()
+    {
+        var cache = new ProcessInstanceCache<WindowsResourceBreakdownSampler.CachedProcessAttribution>();
+        var reads = 0;
+        string? Read() { reads++; return reads == 1 ? null : "child --type=utility"; }
+        for (var i = 0; i < 20; i++)
+            Assert.Null(WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, Child, Read).CommandLine);
+        Assert.Equal(1, reads);
+        var next = Child with { StartKey = Child.StartKey + 1 };
+        Assert.Equal("child --type=utility", WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, next, Read).CommandLine);
+        Assert.Equal(2, reads);
+    }
+
+    [Fact]
     public async Task ServiceMembershipAndDisplayNameFollowTheServiceOwnersSnapshot()
     {
         var clock = new Clock();

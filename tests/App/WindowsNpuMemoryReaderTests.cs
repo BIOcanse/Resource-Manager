@@ -146,6 +146,19 @@ public sealed class WindowsNpuMemoryReaderTests
     }
 
     [Fact]
+    public void StablePhysicalCountLimitationDoesNotRequestAnUnchangedDirectoryAgain()
+    {
+        var api = new RecordedApi([new() { PhysicalCount = 2 }]);
+        var reader = new WindowsNpuMemoryReader(api, (_, _, _, _) => Bound(Physical(0, FirstId)));
+        for (var i = 0; i < 20; i++)
+        {
+            var row = Assert.Single(Read(reader, NpuMemoryFields.All));
+            AssertEmpty(row); Assert.False(row.RequiresTopologyRefresh);
+        }
+        Assert.Empty(api.Queries);
+    }
+
+    [Fact]
     public void MultiplePhysicalMembersRemainKnownButHaveNoDynamicValue()
     {
         var api = new RecordedApi([new() { PhysicalCount = 2 }]);

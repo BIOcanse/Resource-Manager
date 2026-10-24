@@ -30,7 +30,8 @@ internal sealed partial class WindowsHardwareMetricCapture
             .ToDictionary(static group => group.Key,
                 static group => (IReadOnlySet<MetricFieldCode>)group.Select(static binding => binding.FieldCode).ToHashSet());
         var values = resources.ReadBattery(plan.Catalog.BatteryIdentities, requested);
-        if (values.Any(static value => value.RequiresTopologyRefresh)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.WindowsBattery, "selected-identity-changed",
+            values.Any(static value => value.RequiresTopologyRefresh));
         return CreateBatteryCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
 

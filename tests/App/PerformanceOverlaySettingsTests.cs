@@ -67,6 +67,36 @@ public sealed class PerformanceOverlaySettingsTests : IDisposable
         Assert.Equal(1, document.Version);
     }
 
+    [Fact]
+    public async Task AbsentFileIsNotReopenedAndCreationAndChangesAreObserved()
+    {
+        var store = CreateStore();
+        var exceptions = 0;
+        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (args.Exception is FileNotFoundException or DirectoryNotFoundException
+                && args.Exception.Message.Contains(root, StringComparison.OrdinalIgnoreCase)) Interlocked.Increment(ref exceptions);
+        }
+        AppDomain.CurrentDomain.FirstChanceException += Observe;
+        try
+        {
+            var empty = await store.GetAsync(default);
+            for (var i = 0; i < 20; i++) Assert.Same(empty, await store.GetAsync(default));
+            Assert.Equal(0, exceptions);
+            var path = Path.Combine(root, "UserData", "SoftwareProfiles", "performance-overlay.local.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, """{"version":1,"software":[{"softwareId":"game","enabled":true}]}""");
+            var loaded = await store.GetAsync(default);
+            Assert.True(Assert.Single(loaded.Software).Enabled);
+            for (var i = 0; i < 20; i++) Assert.Same(loaded, await store.GetAsync(default));
+            await store.SaveSoftwareAsync(Assert.Single(loaded.Software) with { Enabled = false }, default);
+            Assert.False(Assert.Single((await store.GetAsync(default)).Software).Enabled);
+            File.Delete(path);
+            Assert.Empty((await store.GetAsync(default)).Software);
+        }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= Observe; }
+    }
+
     private JsonPerformanceOverlaySettingsStore CreateStore()
         => new(new OverlayHostEnvironment(Directory.CreateDirectory(Path.Combine(root, "APP")).FullName));
 

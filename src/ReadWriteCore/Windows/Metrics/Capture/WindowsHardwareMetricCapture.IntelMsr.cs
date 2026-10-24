@@ -39,7 +39,8 @@ internal sealed partial class WindowsHardwareMetricCapture
                 static group => (IReadOnlySet<MetricFieldCode>)group.Select(static binding => binding.FieldCode).ToHashSet(), StringComparer.Ordinal);
         IReadOnlyList<IntelMsrMetricRead> values = requested.Count == 0 ? []
             : resources.ReadIntelMsr(plan.Catalog.IntelCpuIdentities, requested);
-        if (values.Any(static value => value.RequiresTopologyRefresh)) requestTopologyRefresh();
+        ObserveTopology(NativeMetricSnapshotSources.IntelMsr, "selected-identity-changed",
+            values.Any(static value => value.RequiresTopologyRefresh));
         return CreateIntelMsrCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
     internal static NativeMetricSnapshotSourceCompletion CreateIntelMsrCompletion(NativeMetricSnapshotCollectionPlan plan,

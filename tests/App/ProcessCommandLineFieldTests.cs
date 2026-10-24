@@ -127,11 +127,36 @@ public sealed class ProcessCommandLineFieldTests
     }
     private static WindowsProcessFieldOwner Owner(Api api, Inventory inventory)
     { var owner = WindowsProcessFieldOwner.CreateDefault(new NoEtw()); owner.BasicReader = new(api); owner.Inventory = inventory; return owner; }
+    [Theory]
+    [InlineData("small")]
+    [InlineData("denied")]
+    public async Task UnreadableInstanceIsNotRetriedByHostAndNewInstanceCanRead(string fault)
+    {
+        var api = new Api(); api.Raw.Fault = fault;
+        var reader = new WindowsProcessBasicMetricReader(api);
+        using var fixture = new ProcessNetworkFieldCollectorTests.Fixture(
+            new ProcessNetworkFieldCollectorTests.NetworkReader(_ => throw new InvalidOperationException("Unexpected ETW")), null, reader);
+        for (var i = 0; i < 20; i++)
+        {
+            var sample = await fixture.Sampler.CaptureSnapshotAsync(Basic.Request(Name), default);
+            Assert.Null(Basic.Value(sample, Name).StringValue);
+        }
+        Assert.Equal(1, api.CommandCalls);
+        Assert.Equal(1, api.Basic.Opens);
+        api.Raw.Fault = "";
+        Assert.Null(reader.Read(Environment.ProcessId, (long)Basic.Birth, ProcessMetricReadMask.CommandLine).CommandLine);
+        Assert.Equal(1, api.CommandCalls);
+        api.Creation = Basic.Birth + 1;
+        Assert.Equal(api.Raw.Text, reader.Read(Environment.ProcessId, (long)api.Creation.Value, ProcessMetricReadMask.CommandLine).CommandLine);
+        Assert.Equal(2, api.CommandCalls);
+    }
+
     private sealed class Api : IWindowsProcessBasicMetricApi
     {
-        internal readonly Basic.Api Basic = new(); internal readonly Calls Raw = new(); internal int CommandCalls; internal Action? AfterCommand;
+        internal readonly Basic.Api Basic = new(); internal readonly Calls Raw = new(); internal int CommandCalls; internal ulong? Creation; internal Action? AfterCommand;
         public IntPtr Open(int pid) => Basic.Open(pid);
-        public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user) => Basic.Times(handle, out creation, out kernel, out user);
+        public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user)
+        { var result = Basic.Times(handle, out creation, out kernel, out user); creation = Creation ?? creation; return result; }
         public ProcessMemoryObservation? Memory(IntPtr handle, bool privateWorkingSet) => Basic.Memory(handle, privateWorkingSet);
         public ProcessIoObservation? Io(IntPtr handle) => Basic.Io(handle);
         public uint? HandleCount(IntPtr handle) => Basic.HandleCount(handle);

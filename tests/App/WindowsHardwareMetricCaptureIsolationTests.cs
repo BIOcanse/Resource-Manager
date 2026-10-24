@@ -191,8 +191,15 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
             Path.Combine(Path.GetTempPath(), $"inventory-only-{Guid.NewGuid():N}.bin"));
+        var physical = new WindowsGpuPhysicalIdentity(0, @"PCI\VEN_10DE&DEV_0001\A",
+            WindowsGpuPnpKind.Pci, true, true, 0, 1, 0, 0, 0x10DE, 1, 1, 1, 1,
+            WindowsGpuIdentityEvidence.KmtLuidOpen, WindowsGpuPhysicalIdentityStatus.Bound, 0);
+        var recorded = new WindowsGpuAdapter(0, "recorded NVIDIA", 0x10DE, 1, 1, new() { LowPart = 23 }, false,
+            8UL * 1024 * 1024 * 1024, WindowsGpuAdapterKind.Dedicated)
+            { PhysicalIdentityStatus = SamplingObservationStatus.Current, PhysicalIdentities = [physical] };
+        var exact = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CreateExactGpuKey(recorded);
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
-            [new(0, "recorded NVIDIA", "gpu-recorded", 23, 9, 1, true)], [], [], workspace.CreateCatalogHandleMap());
+            [new(0, "recorded NVIDIA", exact, 23, 9, 1, true)], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
         var inventoryReads = 0;
         var now = DateTimeOffset.UtcNow.UtcTicks;
@@ -202,8 +209,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             {
                 inventoryReads++;
                 return new(SamplingObservationStatus.Current, 9, now, 1, 0, 0, 17,
-                    [new(0, "recorded NVIDIA", 0x10DE, 1, 1, new() { LowPart = 23 }, false,
-                        8UL * 1024 * 1024 * 1024, WindowsGpuAdapterKind.Dedicated)]);
+                    [recorded]);
             });
         var failures = new List<string>();
         var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,

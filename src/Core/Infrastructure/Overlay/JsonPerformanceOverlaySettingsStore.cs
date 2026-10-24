@@ -14,6 +14,8 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
     };
 
     private readonly SemaphoreSlim gate = new(1, 1);
+    private PerformanceOverlaySettingsDocument? cached;
+    private OptionalFileVersion? cachedVersion;
     private readonly string storagePath = Path.Combine(
         PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
         "UserData", "SoftwareProfiles", "performance-overlay.local.json");
@@ -57,6 +59,20 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
 
     private async Task<PerformanceOverlaySettingsDocument> LoadCoreAsync(CancellationToken cancellationToken)
     {
+        var version = OptionalFileVersion.Read(storagePath);
+        if (cached is not null && version == cachedVersion) return cached;
+        if (version is null)
+        {
+            cachedVersion = null;
+            return cached = PerformanceOverlaySettingsDocument.Empty;
+        }
+        var value = await ReadCoreAsync(cancellationToken);
+        cachedVersion = version;
+        return cached = value;
+    }
+
+    private async Task<PerformanceOverlaySettingsDocument> ReadCoreAsync(CancellationToken cancellationToken)
+    {
         try
         {
             await using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -80,6 +96,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
         }
         cancellationToken.ThrowIfCancellationRequested();
         NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, storagePath);
+        cached = null;
     }
 
     private static PerformanceOverlaySettingsDocument Normalize(PerformanceOverlaySettingsDocument? document)

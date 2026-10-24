@@ -20,10 +20,8 @@ internal sealed partial class WindowsHardwareMetricCapture
         var values = resources.ReadNpuEngines(plan.Catalog.NpuEngineIdentities, requested,
             plan.Catalog.NpuEngineEffectiveMaximumInstanceCount, token);
         token.ThrowIfCancellationRequested();
-        if (values.Any(static value => value.RequiresTopologyRefresh))
-        {
-            requestTopologyRefresh();
-        }
+        ObserveTopology(NativeMetricSnapshotSources.WindowsNpuEngine, "selected-identity-changed",
+            values.Any(static value => value.RequiresTopologyRefresh));
         return CreateNpuEngineCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
 

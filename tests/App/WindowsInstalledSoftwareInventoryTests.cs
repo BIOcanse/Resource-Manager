@@ -132,7 +132,7 @@ public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
 
         _ = await inventory.GetInstalledSoftwareAsync("S-1-5-21-1-2-3-1001", default);
 
-        Assert.Empty(inventory.ReadInformation().Devices);
+        Assert.NotEmpty(inventory.ReadInformation().Devices);
     }
 
     [Fact]
@@ -193,6 +193,41 @@ public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
 
         Assert.Equal("Updated", Assert.Single(accepted).Name);
         Assert.Equal(1, changeCount);
+    }
+
+    [Fact]
+    public async Task AlternatingTrayAndCallerReadsScanOncePerScopeUntilExplicitRefresh()
+    {
+        var reads = 0;
+        var inventory = new WindowsInstalledSoftwareInventory(_ => [Software("app", $"version-{++reads}")]);
+        for (var i = 0; i < 20; i++)
+        {
+            Assert.Equal("version-1", Assert.Single(await inventory.GetInstalledSoftwareAsync(default)).Name);
+            Assert.Equal("version-2", Assert.Single(await inventory.GetInstalledSoftwareAsync("S-1-5-21-1-2-3-1001", default)).Name);
+        }
+        Assert.Equal(2, reads);
+        Assert.Equal("version-3", Assert.Single(await inventory.RefreshInstalledSoftwareAsync(default)).Name);
+        Assert.Equal("version-3", Assert.Single(await inventory.GetInstalledSoftwareAsync(default)).Name);
+        Assert.Equal(3, reads);
+    }
+
+    [Fact]
+    public void AbsentOptionalRegistrySizeDoesNotQueryKindAndLaterValueIsRead()
+    {
+        object? value = null;
+        var kinds = 0;
+        RegistryValueKind ReadKind()
+        {
+            kinds++;
+            if (value is null) throw new IOException("The specified registry key does not exist.");
+            return RegistryValueKind.DWord;
+        }
+        for (var i = 0; i < 20; i++)
+            Assert.Null(WindowsInstalledSoftwareInventory.ReadEstimatedSizeBytes(() => value, ReadKind));
+        Assert.Equal(0, kinds);
+        value = 42;
+        Assert.Equal(42UL * 1024, WindowsInstalledSoftwareInventory.ReadEstimatedSizeBytes(() => value, ReadKind));
+        Assert.Equal(1, kinds);
     }
 
     private static InstalledSoftwareEntry Software(string id, string name)

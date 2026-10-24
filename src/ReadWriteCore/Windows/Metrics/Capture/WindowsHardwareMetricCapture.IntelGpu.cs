@@ -30,7 +30,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         var selected = SelectedBindings(plan, sourcePlan.SourceHandle);
         var requested = selected.Where(static binding => binding.IgclFan is null).GroupBy(static binding => binding.DisplayIndex).ToDictionary(static group => group.Key,
             static group => (IReadOnlySet<MetricFieldCode>)group.Select(static binding => binding.FieldCode).ToHashSet());
-        var inventory = RequireCurrentGpuInventory(plan.Catalog);
+        var inventory = RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]);
         IReadOnlyList<IntelGclMetricRead> values = requested.Count == 0 ? [] : resources.ReadIntelGpu(inventory, requested, cancellationToken);
         var targets = selected.Where(static binding => binding.IgclFan is not null)
             .Select(static binding => binding.IgclFan!).DistinctBy(static fan => fan.ExactIdentityKey).ToArray();
