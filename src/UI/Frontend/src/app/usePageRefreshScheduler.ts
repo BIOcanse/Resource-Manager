@@ -13,12 +13,14 @@ import {
 import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan";
 import type { AppPerformanceSettings, PageId } from "../types";
 import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils";
+import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry";
 
 type RefreshAction = () => void | Promise<unknown>;
 type RefreshActionWithForce = (force: boolean) => void | Promise<unknown>;
 const selfSchedulingSubscriptionIntervalMs = 5_000;
 
 interface PageRefreshSchedulerOptions {
+  operations: Pick<OperationRegistry, "subscribeInvalidations">;
   activePage: Accessor<PageId>;
   localSystemSource: PushValueSource<LocalSystemStatus>;
   selfSchedulingSource: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
@@ -29,6 +31,8 @@ interface PageRefreshSchedulerOptions {
     activeSubpage: Accessor<ManagementSubpageId>;
     refreshState: RefreshActionWithForce;
     refreshBrowserRuntimes: RefreshActionWithForce;
+    refreshComponents: RefreshAction;
+    refreshSoftware: RefreshAction;
   };
   optimization: {
     refreshReports: RefreshActionWithForce;
@@ -43,6 +47,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   const [localSystemStatus, setLocalSystemStatus] =
     createSignal<LocalSystemStatus | null>(null);
   const frontendVisible = options.frontendWork.frontendVisible;
+  const performanceSettingsAvailable = createMemo(() => options.performanceSettings() !== undefined);
   const foregroundInteractive = createMemo(() => frontendVisible() && frontendFocused());
   const cpuRuntimePlan = createMemo(() => resolveSelfCpuRuntimePlan(
     options.performanceSettings(),
@@ -61,28 +66,47 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   let previousRouteIdentity = "";
 
   createEffect(() => {
+    if (!frontendVisible() || options.activePage() !== "components") return;
+    const unsubscribe = options.operations.subscribeInvalidations((invalidation) => {
+      if (invalidation.targets.includes("components")
+        && options.frontendWork.isNeeded(frontendWorkIds.managementInventory)) {
+        void options.management.refreshComponents();
+      }
+      if (invalidation.targets.includes("software")
+        && options.frontendWork.isNeeded(frontendWorkIds.managementInventory)) {
+        void options.management.refreshSoftware();
+      }
+      if (invalidation.targets.includes("dependencies")
+        && options.frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes)) {
+        void options.management.refreshBrowserRuntimes(false);
+      }
+    });
+    onCleanup(unsubscribe);
+  });
+
+  createEffect(() => {
     if (!frontendVisible()) {
       return;
     }
-    const unsubscribe = options.selfSchedulingSource.subscribe(
+    const unsubscribe = options.selfSchedulingSource.subscribeSnapshot(
       selfSchedulingSubscriptionIntervalMs,
-      setSelfScheduling);
-    onCleanup(unsubscribe);
+      (snapshot) => setSelfScheduling(snapshot.data));
+    onCleanup(() => { unsubscribe(); setSelfScheduling(null); });
   });
 
   // 本机状态和其他数据源一样，窗口隐藏即停止订阅，重新显示时再订阅。
   createEffect(() => {
-    if (!options.performanceSettings()) {
+    if (!performanceSettingsAvailable()) {
       return;
     }
     const intervalMs = currentLocalSystemRefreshIntervalMs();
     if (!frontendVisible()) {
       return;
     }
-    const unsubscribe = options.localSystemSource.subscribe(
+    const unsubscribe = options.localSystemSource.subscribeSnapshot(
       intervalMs,
-      setLocalSystemStatus);
-    onCleanup(unsubscribe);
+      (snapshot) => setLocalSystemStatus(snapshot.data));
+    onCleanup(() => { unsubscribe(); setLocalSystemStatus(null); });
   });
 
   createEffect(() => {

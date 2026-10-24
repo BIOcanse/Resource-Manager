@@ -12,6 +12,7 @@ import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibility
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { useSource } from "../../frontendRuntime/source/useSource";
 import type { SourceLease } from
   "../../frontendRuntime/source/SourceDescriptor";
 import { SourceLeaseBinding } from
@@ -35,6 +36,7 @@ import type {
   MetricDefinition,
   MetricSnapshot,
   ResourceBreakdownSnapshot,
+  ResourceMonitorSnapshot,
   ResourceSoftwareSegment
 } from "../../types";
 import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
@@ -60,8 +62,8 @@ interface GpuSchedulingPosition {
   memoryClockDisplay: string | null;
   scoreSource: string;
   matchedPreset?: string | null;
-  full: boolean;
-  fullReason: string;
+  full: boolean | null;
+  fullReason: string | null;
   hasDedicatedMemoryMetrics: boolean;
   processKeys: string[];
   softwareIds: string[];
@@ -85,8 +87,6 @@ interface GpuSpecializedUsage {
   engineName?: string | null;
 }
 
-const gpuUsageFullPressurePercent = 95;
-const gpuVramFullPressurePercent = 90;
 const gpuSamplingIntervalMs = 1_000;
 
 interface GpuSchedulingModelProps {
@@ -98,6 +98,10 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsGpuModel]);
   const frontendWork = useFrontendWork();
   const runtime = useFrontendRuntime();
+  const appSettingsSource = useSource(runtime.sources.appSettings, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel),
+    refreshIntervalMs: null
+  }));
   const catalogLease = runtime.sources.metricCatalog.acquire({
     active: true,
     refreshIntervalMs: null
@@ -110,11 +114,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     setModelSource);
   let modelLease: SourceLease<GpuSchedulingModelSnapshot> | null = null;
   const [metricSnapshot, setMetricSnapshot] =
-    createSignal<MetricSnapshot | null>(null);
-  const [resourceBreakdown, setResourceBreakdown] =
-    createSignal<ResourceBreakdownSnapshot | null>(null);
+    createSignal<SourceSnapshot<MetricSnapshot> | null>(null);
+  const [resourceSnapshot, setResourceSnapshot] =
+    createSignal<SourceSnapshot<ResourceMonitorSnapshot> | null>(null);
   const [specializedTelemetry, setSpecializedTelemetry] =
-    createSignal<GpuSpecializedTelemetrySnapshot | null>(null);
+    createSignal<SourceSnapshot<GpuSpecializedTelemetrySnapshot> | null>(null);
   const unsubscribeCatalog = catalogLease.subscribe(setCatalogSource);
   const catalog = createMemo(() => {
     const source = catalogSource();
@@ -125,6 +129,30 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     .split(",")
     .filter(Boolean)
     .map((value) => Number(value)));
+  const pressureThresholds = createMemo(() => {
+    const settingsSnapshot = appSettingsSource.snapshot();
+    const performanceSettings = settingsSnapshot.status === "ready"
+      || settingsSnapshot.status === "refreshing"
+      ? settingsSnapshot.data?.settings.performance
+      : null;
+    const gpuUsagePercent = performanceSettings?.gpuOverflowUsagePercent;
+    const dedicatedMemoryPercent = performanceSettings?.gpuOverflowDedicatedMemoryPercent;
+    return {
+      gpuUsagePercent: normalizePressureThreshold(gpuUsagePercent),
+      dedicatedMemoryPercent: normalizePressureThreshold(dedicatedMemoryPercent)
+    };
+  });
+  const summaryThresholds = createMemo(() => {
+    const thresholds = pressureThresholds();
+    if (thresholds.gpuUsagePercent === null
+        || thresholds.dedicatedMemoryPercent === null) {
+      return null;
+    }
+    return {
+      gpuUsagePercent: thresholds.gpuUsagePercent,
+      dedicatedMemoryPercent: thresholds.dedicatedMemoryPercent
+    };
+  });
 
   createEffect(() => {
     const indexes = gpuIndexes();
@@ -140,7 +168,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     const indexes = gpuIndexes();
     const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
     setMetricSnapshot(null);
-    setResourceBreakdown(null);
+    setResourceSnapshot(null);
     setSpecializedTelemetry(null);
     if (!active || indexes.length === 0) {
       return;
@@ -153,11 +181,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       `gpu.${index}.graphicsClock`,
       `gpu.${index}.memoryClock`
     ]);
-    const stopMetric = runtime.sources.metricSnapshot.subscribe(
+    const stopMetric = runtime.sources.metricSnapshot.subscribeSnapshot(
       { ids: metricIds },
       gpuSamplingIntervalMs,
       setMetricSnapshot);
-    const stopResource = runtime.sources.resourceMonitor.subscribe(
+    const stopResource = runtime.sources.resourceMonitor.subscribeSnapshot(
       {
         scope: "bars",
         bars: indexes.flatMap((index) => [
@@ -172,8 +200,8 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         processDetailSoftwareIds: []
       },
       gpuSamplingIntervalMs,
-      (value) => setResourceBreakdown(value.breakdown));
-    const stopSpecialized = runtime.sources.gpuSpecializedTelemetry.subscribe(
+      setResourceSnapshot);
+    const stopSpecialized = runtime.sources.gpuSpecializedTelemetry.subscribeSnapshot(
       { counterIds: buildGpuSpecializedCounterIds(indexes) },
       gpuSamplingIntervalMs,
       setSpecializedTelemetry);
@@ -203,34 +231,54 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   });
   const observation = createMemo<ObservationState>(() => {
     const data = model();
-    if (data && metricSnapshot() !== null && resourceBreakdown() !== null) {
+    const metric = metricSnapshot();
+    const resource = resourceSnapshot();
+    const sources = [catalogSource(), modelSource(), metric, resource];
+    const failed = sources.find((source) => source?.status === "error"
+      || source?.status === "unavailable");
+    if (failed) {
+      return failedObservation(
+        loadingObservation(),
+        uiText.gpuScheduling.dataReadFailed);
+    }
+    if (data
+        && metric && sourceCanRender(metric)
+        && resource && sourceCanRender(resource)) {
       return readyObservation(data.capturedAt ?? undefined);
     }
-    const failed = [catalogSource(), modelSource()]
-      .find((source) => source?.status === "error"
-        || source?.status === "unavailable");
-    return failed
-      ? failedObservation(
-          loadingObservation(),
-          failed.error instanceof Error
-            ? failed.error.message
-            : uiText.gpuScheduling.dataReadFailed)
-      : loadingObservation();
+    return loadingObservation();
+  });
+  const resourceBreakdown = createMemo(() => {
+    const source = resourceSnapshot();
+    return source && sourceCanRender(source) ? source.data?.breakdown ?? null : null;
+  });
+  const metricData = createMemo(() => {
+    const source = metricSnapshot();
+    return source && sourceCanRender(source) ? source.data : null;
+  });
+  const specializedData = createMemo(() => {
+    const source = specializedTelemetry();
+    return source && sourceCanRender(source) ? source.data : null;
   });
   const processLoads = createMemo(() =>
     buildGpuProcessLoads(resourceBreakdown() ?? undefined));
   const specializedUsages = createMemo(() =>
-    buildGpuSpecializedUsages(specializedTelemetry() ?? undefined));
+    buildGpuSpecializedUsages(specializedData() ?? undefined));
   const specializedAdapterNames = createMemo(() =>
-    buildGpuSpecializedAdapterNames(specializedTelemetry() ?? undefined));
-  const positions = createMemo(() => buildGpuPositions(
-    metricSnapshot() ?? undefined,
-    gpuIndexes(),
-    model()?.scoreSnapshot.gpus ?? [],
-    model()?.scoreOverrides.scoresByGpuId ?? {},
-    processLoads(),
-    specializedUsages(),
-    specializedAdapterNames()));
+    buildGpuSpecializedAdapterNames(specializedData() ?? undefined));
+  const positions = createMemo(() => {
+    const thresholds = pressureThresholds();
+    return buildGpuPositions(
+      metricData() ?? undefined,
+      gpuIndexes(),
+      model()?.scoreSnapshot.gpus ?? [],
+      model()?.scoreOverrides.scoresByGpuId ?? {},
+      processLoads(),
+      specializedUsages(),
+      specializedAdapterNames(),
+      thresholds.gpuUsagePercent,
+      thresholds.dedicatedMemoryPercent);
+  });
   const sortedPositions = createMemo(() => [...positions()].sort(compareGpuPositions));
   const telemetryStatus = createMemo(() => {
     switch (observation().status) {
@@ -273,7 +321,16 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       <div class="panel-header gpu-scheduling-header">
         <div class="optimization-heading">
           <h2>{uiText.gpuScheduling.panel}</h2>
-          <span>{uiText.gpuScheduling.summary(observationCanRender(observation()) ? String(positions().length) : "--", gpuUsageFullPressurePercent, gpuVramFullPressurePercent, telemetryStatus())}</span>
+          <span>{(() => {
+            const thresholds = summaryThresholds();
+            return thresholds
+              ? uiText.gpuScheduling.summary(
+                  observationCanRender(observation()) ? String(positions().length) : "--",
+                  thresholds.gpuUsagePercent,
+                  thresholds.dedicatedMemoryPercent,
+                  telemetryStatus())
+              : `${uiText.gpuScheduling.noData} · ${telemetryStatus()}`;
+          })()}</span>
         </div>
         <div class="gpu-scheduling-actions">
           <Show when={editing()} fallback={
@@ -308,7 +365,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                 <article
                   class="gpu-position"
                   classList={{
-                    full: position.full
+                    full: position.full === true
                   }}
                 >
                 <div class="gpu-position-main">
@@ -318,7 +375,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                       <span>{position.label}</span>
                     </Show>
                   </div>
-                  <em>{position.full ? position.fullReason : uiText.gpuScheduling.schedulable}</em>
+                  <em>{position.full === null
+                    ? uiText.gpuScheduling.noData
+                    : position.full
+                      ? position.fullReason ?? uiText.gpuScheduling.noData
+                      : uiText.gpuScheduling.schedulable}</em>
                 </div>
 
                 <div class="gpu-position-meta">
@@ -433,7 +494,8 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   async function refreshAll() {
     await Promise.all([
       catalogLease.refresh(),
-      modelLease?.refresh() ?? Promise.resolve(null)
+      modelLease?.refresh() ?? Promise.resolve(null),
+      appSettingsSource.refresh()
     ]);
   }
 }
@@ -507,7 +569,9 @@ function buildGpuPositions(
   overrideScoresByGpuId: Record<string, number>,
   processLoads: Map<number, GpuProcessLoad>,
   specializedUsages: Map<number, GpuSpecializedUsage[]>,
-  specializedAdapterNames: Map<number, string>): GpuSchedulingPosition[] {
+  specializedAdapterNames: Map<number, string>,
+  gpuUsageFullPressurePercent: number | null,
+  gpuVramFullPressurePercent: number | null): GpuSchedulingPosition[] {
   const items = snapshot?.items ?? {};
   const scoreById = new Map(scoreItems.map((item) => [item.gpuId, item]));
   return indexes.map((index) => {
@@ -529,7 +593,12 @@ function buildGpuPositions(
     const usedVramPercent = dedicatedMemory
       ? sanitizePercent(vramPercent?.percent ?? vramPercent?.numericValue ?? vram?.percent)
       : null;
-    const fullReason = fullReasonFor(usagePercent, usedVramPercent);
+    const fullClassification = fullReasonFor(
+      usagePercent,
+      usedVramPercent,
+      gpuUsageFullPressurePercent,
+      gpuVramFullPressurePercent,
+      dedicatedMemory);
     const processLoad = processLoads.get(index);
 
     return {
@@ -552,8 +621,8 @@ function buildGpuPositions(
       memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : null,
       scoreSource: scoreItem?.source ?? "unknown",
       matchedPreset: scoreItem?.matchedPreset,
-      full: fullReason !== "",
-      fullReason: fullReason || uiText.gpuScheduling.schedulable,
+      full: fullClassification.full,
+      fullReason: fullClassification.reason,
       hasDedicatedMemoryMetrics: dedicatedMemory,
       processKeys: processLoad?.processKeys ?? [],
       softwareIds: processLoad?.softwareIds ?? [],
@@ -742,12 +811,45 @@ function defaultBaseScoreForKind(kind?: string | null) {
   }
 }
 
-function fullReasonFor(usagePercent: number | null, vramPercent: number | null) {
+function fullReasonFor(
+  usagePercent: number | null,
+  vramPercent: number | null,
+  gpuUsageFullPressurePercent: number | null,
+  gpuVramFullPressurePercent: number | null,
+  hasDedicatedMemoryMetrics: boolean): {
+    full: boolean | null;
+    reason: string | null;
+  } {
   const reasons = [
-    usagePercent !== null && usagePercent >= gpuUsageFullPressurePercent ? uiText.gpuScheduling.gpuFull : "",
-    vramPercent !== null && vramPercent >= gpuVramFullPressurePercent ? uiText.gpuScheduling.vramFull : ""
+    gpuUsageFullPressurePercent !== null
+        && usagePercent !== null
+        && usagePercent >= gpuUsageFullPressurePercent
+      ? uiText.gpuScheduling.gpuFull
+      : "",
+    hasDedicatedMemoryMetrics
+        && gpuVramFullPressurePercent !== null
+        && vramPercent !== null
+        && vramPercent >= gpuVramFullPressurePercent
+      ? uiText.gpuScheduling.vramFull
+      : ""
   ].filter(Boolean);
-  return reasons.join(" / ");
+  if (reasons.length > 0) {
+    return { full: true, reason: reasons.join(" / ") };
+  }
+
+  const canClassify = gpuUsageFullPressurePercent !== null
+    && usagePercent !== null
+    && (!hasDedicatedMemoryMetrics
+      || (gpuVramFullPressurePercent !== null && vramPercent !== null));
+  return canClassify
+    ? { full: false, reason: null }
+    : { full: null, reason: null };
+}
+
+function normalizePressureThreshold(value: number | undefined): number | null {
+  return value !== undefined && Number.isFinite(value) && value >= 0 && value <= 100
+    ? value
+    : null;
 }
 
 function parseGpuIndex(metricId?: string | null) {

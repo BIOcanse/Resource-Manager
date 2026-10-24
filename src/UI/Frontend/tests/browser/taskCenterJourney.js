@@ -1,3 +1,7 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+
 export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const pageErrors = [];
   const consoleErrors = [];
@@ -72,7 +76,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   assert(selectedAfterHome?.includes("进行中"),
     `Task Center Home did not activate Active: ${selectedAfterHome}`);
 
-  await dialog.getByText("安装组件", { exact: true }).waitFor({ state: "visible" });
+  await dialog.locator(".task-center-item-title-row strong").filter({ hasText: /^安装组件$/ }).waitFor({ state: "visible" });
   await dialog.getByText("40%", { exact: true }).waitFor({ state: "visible" });
   await dialog.getByText("详情", { exact: true }).click();
   await dialog.getByText("000000000000000000000000000000a1", { exact: true })
@@ -90,7 +94,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await taskButton.click();
   await dialog.waitFor({ state: "visible", timeout: 3000 });
   const cancelButton = dialog.getByRole("button", {
-    name: "取消 安装前端测试组件（component.frontend-harness）"
+    name: "取消 安装组件（000000a1）"
   });
   await cancelButton.click();
   await page.waitForFunction(async (path) => {
@@ -146,7 +150,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await taskButton.click();
   await dialog.waitFor({ state: "visible", timeout: 3000 });
   await dialog.getByRole("tab", { name: /历史/ }).click();
-  await dialog.getByText("已完成前端测试组件 24", { exact: true })
+  await dialog.locator(".task-center-item").nth(23)
     .waitFor({ state: "attached", timeout: 3000 });
   const longListGeometry = await dialogGeometry(page, dialog);
   assertDialogContained(longListGeometry, "long-history Task Center");
@@ -172,6 +176,44 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden", timeout: 3000 });
 
+  // Reuse the already-loaded dialog module across all shipped languages: its
+  // tabs, persisted operations and progress must follow the current language.
+  await setScenario({ operations: "mixed", operationCanceled: false });
+  let previousLanguage = "zh-CN";
+  const checkedLanguages = [];
+  for (const option of languageOptions.filter(option => option.id !== "system")) {
+    const oldApp = await loadAppCopy(previousLanguage);
+    const oldSettings = await loadSettingsText(previousLanguage);
+    await page.getByRole("navigation").getByRole("button", { name: oldApp.page.settings, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.sections.appearance, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.appearance.languageSelectLabel, exact: true }).click();
+    await page.getByRole("option", { name: `${option.nativeLabel} · ${option.label}`, exact: true }).click();
+    if (option.id !== previousLanguage) {
+      await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
+    }
+    await page.waitForFunction(language => document.documentElement.lang === language, option.id);
+    const app = await loadAppCopy(option.id);
+    const settings = await loadSettingsText(option.id);
+    await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
+    await taskButton.click();
+    const localizedDialog = page.getByRole("dialog", { name: app.taskCenter.title, exact: true });
+    await localizedDialog.waitFor();
+    const tabLabels = await localizedDialog.getByRole("tab").allTextContents();
+    for (const label of [app.taskCenter.tabActive, app.taskCenter.tabHistory, app.taskCenter.tabAll]) {
+      assert(tabLabels.some(value => value.includes(label)), `${option.id}: stale task center tab ${label}`);
+    }
+    await localizedDialog.getByRole("tab").filter({ hasText: app.taskCenter.tabActive }).click();
+    await localizedDialog.locator(".task-center-item-title-row strong").filter({ hasText: app.taskCenter.operation.componentInstall }).waitFor();
+    const rendered = await localizedDialog.innerText();
+    for (const prose of ["安装前端测试组件", "正在安装", "component.frontend-harness"]) {
+      assert(!rendered.includes(prose), `${option.id}: backend prose leaked into Task Center: ${prose}`);
+    }
+    checkedLanguages.push(option.id);
+    previousLanguage = option.id;
+    await page.keyboard.press("Escape");
+    await localizedDialog.waitFor({ state: "hidden" });
+  }
+
   assert(pageErrors.length === 0 && consoleErrors.length === 0,
     `Task Center browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
   const operationTelemetry = await requestTelemetry();
@@ -194,6 +236,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     longListGeometry,
     emptyDesktopGeometry,
     emptyNarrowGeometry,
+    checkedLanguages,
     operationLogicalStarts: operationTelemetry["/api/operations/subscribe"].logicalStarted,
     physicalChannelStarted: physicalChannel.physicalStarted,
     operationDirectGets: operationTelemetry["/api/operations"]?.started ?? 0,

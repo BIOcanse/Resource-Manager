@@ -15,11 +15,12 @@ import {
   LoaderCircle,
   TriangleAlert
 } from "lucide-solid";
-import { userFacingDateTime, userFacingMessage } from "../../presentation/userFacingText.ts";
-import type {
-  TaskCenterItem,
-  TaskCenterSnapshot,
-  TaskCenterProjection
+import { userFacingDateTime } from "../../presentation/userFacingText.ts";
+import {
+  operationTitleForKind,
+  type TaskCenterItem,
+  type TaskCenterSnapshot,
+  type TaskCenterProjection
 } from "../../frontendRuntime/taskCenter/TaskCenterProjection.ts";
 import {
   selectTaskCenterItems,
@@ -41,15 +42,6 @@ import { uiText } from "../../text.ts";
 
 type TaskCenterTab = TaskCenterView | "diagnostics";
 
-const taskCenterTabs: ReadonlyArray<{
-  value: TaskCenterView;
-  label: string;
-}> = [
-  { value: "active", label: uiText.taskCenter.tabActive },
-  { value: "history", label: uiText.taskCenter.tabHistory },
-  { value: "all", label: uiText.taskCenter.tabAll }
-];
-
 export function TaskCenterDialog(props: {
   readonly open: boolean;
   readonly snapshot: Accessor<TaskCenterSnapshot>;
@@ -61,9 +53,16 @@ export function TaskCenterDialog(props: {
   const [activeTab, setActiveTab] = createSignal<TaskCenterTab>("active");
   const [cancelingIds, setCancelingIds] = createSignal<ReadonlySet<string>>(new Set());
   let closeButton: HTMLButtonElement | undefined;
-  const visibleTabs = createMemo(() => props.diagnosticsEnabled
-    ? [...taskCenterTabs, { value: "diagnostics" as const, label: uiText.taskCenter.tabDiagnostics }]
-    : taskCenterTabs);
+  const visibleTabs = createMemo(() => {
+    const tabs: ReadonlyArray<{ value: TaskCenterView; label: string }> = [
+      { value: "active", label: uiText.taskCenter.tabActive },
+      { value: "history", label: uiText.taskCenter.tabHistory },
+      { value: "all", label: uiText.taskCenter.tabAll }
+    ];
+    return props.diagnosticsEnabled
+      ? [...tabs, { value: "diagnostics" as const, label: uiText.taskCenter.tabDiagnostics }]
+      : tabs;
+  });
 
   createEffect(() => {
     if (!props.diagnosticsEnabled && activeTab() === "diagnostics") {
@@ -200,56 +199,46 @@ function TaskCenterList(props: {
               </div>
               <div class="task-center-item-content">
                 <div class="task-center-item-title-row">
-                  <strong>{item().title}</strong>
+                  <strong>{taskTitle(item())}</strong>
                   <span class="task-center-state" classList={{ error: isErrorState(item()) }}>
                     {taskStatusLabel(item().status)}
                   </span>
                 </div>
                 <div class="task-center-meta">
                   <span>{item().source === "operation" ? uiText.taskCenter.sourceOperation : uiText.taskCenter.sourceFrontend}</span>
-                  <span>{taskKindLabel(item())}</span>
+                  <Show when={item().source !== "operation"}>
+                    <span>{taskKindLabel(item())}</span>
+                  </Show>
                   <span>{userFacingDateTime(item().updatedAt)}</span>
                 </div>
                 <Show when={item().progress}>
                   {(progress) => (
-                    <div class="task-center-progress">
-                      <Show when={progress().percent !== null}>
+                    <Show when={progress().percent !== null}>
+                      <div class="task-center-progress">
                         <progress
                           max="100"
                           value={progress().percent ?? 0}
-                          aria-label={uiText.taskCenter.progressLabel(item().title)}
+                          aria-label={uiText.taskCenter.progressLabel(taskTitle(item()))}
                         />
                         <span>{formatPercent(progress().percent)}</span>
-                      </Show>
-                      {/* 阶段是后端内部 id（如 install），任务类型已在上一行本地化显示，这里只放进度说明 */}
-                      <Show when={progress().message}>
-                        {(message) => <p>{message()}</p>}
-                      </Show>
-                    </div>
+                      </div>
+                    </Show>
                   )}
                 </Show>
                 <Show when={item().stateUncertain}>
                   <p class="task-center-inline-warning">{uiText.taskCenter.needsResync}</p>
                 </Show>
-                <Show when={item().errorSummary}>
-                  {(error) => (
-                    <p class="task-center-error" role="alert">
-                      {userFacingMessage(error(), uiText.taskCenter.taskFailed)}
-                    </p>
-                  )}
+                <Show when={item().status === "failed"}>
+                  <p class="task-center-error" role="alert">{uiText.taskCenter.taskFailed}</p>
                 </Show>
-                <Show when={!item().errorSummary && item().resultSummary}>
-                  {(result) => (
-                    <p class="task-center-result">
-                      {userFacingMessage(result(), uiText.taskCenter.taskCompleted)}
-                    </p>
-                  )}
+                <Show when={item().status === "succeeded" || item().status === "completed"}>
+                  <p class="task-center-result">{uiText.taskCenter.taskCompleted}</p>
                 </Show>
                 <details class="task-center-details">
                   <summary>{uiText.taskCenter.detailsSummary}</summary>
                   <dl>
-                    <div><dt>{uiText.taskCenter.kind}</dt><dd>{item().kind}</dd></div>
-                    <Show when={item().domainKey}>
+                    <div><dt>{uiText.taskCenter.kind}</dt><dd>{taskKindLabel(item())}</dd></div>
+                    <Show when={item().source !== "operation" && item().domainKey}>
                       {(domainKey) => <div><dt>{uiText.taskCenter.target}</dt><dd>{domainKey()}</dd></div>}
                     </Show>
                     <div><dt>{uiText.taskCenter.createdAt}</dt><dd>{userFacingDateTime(item().createdAt)}</dd></div>
@@ -300,20 +289,26 @@ function TaskStatusIcon(props: { readonly item: TaskCenterItem }) {
 }
 
 function taskKindLabel(item: TaskCenterItem): string {
+  if (item.source === "operation") {
+    return operationTitleForKind(item.kind);
+  }
   const known: Record<string, string> = {
-    "component.download": uiText.taskCenter.operation.componentDownload,
-    "component.install": uiText.taskCenter.operation.componentInstall,
-    "dependency.download": uiText.taskCenter.operation.dependencyDownload,
-    "dependency.launch-installer": uiText.taskCenter.operation.dependencyLaunchInstaller,
-    "software.uninstall": uiText.taskCenter.operation.softwareUninstall,
     "resource-breakdown.layout-settle": uiText.taskCenter.operation.resourceBreakdownLayoutSettle
   };
   return known[item.kind] ?? item.kind;
 }
 
+function taskTitle(item: TaskCenterItem): string {
+  return item.source === "operation"
+    ? operationTitleForKind(item.kind)
+    : item.title;
+}
+
 function taskCancelLabel(item: TaskCenterItem): string {
-  const identity = item.domainKey?.trim() || shortTaskId(item.ownerId);
-  return uiText.taskCenter.cancelWithTitle(item.title, identity);
+  const identity = item.source === "operation"
+    ? shortTaskId(item.ownerId)
+    : item.domainKey?.trim() || shortTaskId(item.ownerId);
+  return uiText.taskCenter.cancelWithTitle(taskTitle(item), identity);
 }
 
 function shortTaskId(value: string): string {

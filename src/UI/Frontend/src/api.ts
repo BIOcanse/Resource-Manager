@@ -322,14 +322,14 @@ export async function confirmPortableSoftwareRoot(softwareId: string, rootPath: 
     uiText.apiError.confirmRootFailed);
 }
 
-export async function getGpuPlacementSoftwareSettings(softwareId: string, softwareName: string, softwareKind?: string) {
+export async function getGpuPlacementSoftwareSettings(softwareId: string, softwareName: string, softwareKind?: string, signal?: AbortSignal) {
   const params = new URLSearchParams();
   params.set("softwareName", softwareName);
   if (softwareKind) {
     params.set("softwareKind", softwareKind);
   }
   return getJson<GpuPlacementSoftwareSettingsSnapshot>(
-    `/api/gpu-placement/software/${encodeURIComponent(softwareId)}?${params.toString()}`);
+    `/api/gpu-placement/software/${encodeURIComponent(softwareId)}?${params.toString()}`, { signal });
 }
 
 export async function getDefaultGpuPlacementSoftwarePolicy(softwareId: string, softwareName: string, softwareKind?: string) {
@@ -372,11 +372,11 @@ export async function saveGpuPlacementProcessPolicy(policy: GpuPlacementProcessP
   }
 }
 
-export async function observeGpuPlacementProcesses(request: GpuPlacementProcessObservationRequest) {
+export async function observeGpuPlacementProcesses(request: GpuPlacementProcessObservationRequest, signal?: AbortSignal) {
   return postJson<GpuPlacementSoftwareProcessHistory>(
     "/api/gpu-placement/process-history/observe",
     request,
-    uiText.apiError.recordGpuProcessHistoryFailed);
+    uiText.apiError.recordGpuProcessHistoryFailed, false, { signal });
 }
 
 export async function getHostManagerSmartCoordinatorStatus() {

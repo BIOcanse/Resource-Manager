@@ -61,14 +61,9 @@ export function ComponentAcquisitionDialog(props: {
   }
 
   const catalogMessage = (status: string) => {
-    const chinese = currentSettingsText().language.startsWith("zh");
-    if (status === "unavailable") return chinese
-      ? "该来源不提供可枚举的版本历史。" : "This source does not expose a release history.";
-    if (status === "partial") return chinese
-      ? "版本历史尚未完整读取。" : "Release history is incomplete.";
-    return chinese
-      ? "版本历史暂不可用，已验证版本仍可使用。"
-      : "Release history is unavailable; the verified version remains available.";
+    if (status === "unavailable") return uiText.componentAcquisition.catalogUnavailable;
+    if (status === "partial") return uiText.componentAcquisition.catalogPartial;
+    return uiText.componentAcquisition.catalogError;
   };
 
   return (

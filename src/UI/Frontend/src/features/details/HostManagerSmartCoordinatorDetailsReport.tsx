@@ -1,10 +1,10 @@
-import { formatBytes } from "../../presentation/byteUnits.ts";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
 import { userFacingDateTime } from "../../presentation/userFacingText";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
 import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
@@ -17,12 +17,6 @@ interface DetailRecord {
   target: string;
   kind: string;
   resourceKind: string;
-  acceptedCount: number;
-  timedOutCount: number;
-  rejectedCount: number;
-  needsAttention: boolean;
-  releasedMemoryBytes: number;
-  releasedVramBytes: number;
   updatedAt: string;
 }
 
@@ -32,19 +26,30 @@ export function HostManagerSmartCoordinatorDetailsReport() {
   const frontendWork = useFrontendWork();
   const frontendRuntime = useFrontendRuntime();
   const [selectedRecord, setSelectedRecord] = createSignal<DetailRecord | null>(null);
-  const [state, setState] = createSignal<HostManagerRollbackStateDocument>();
+  const [stateSource, setStateSource] =
+    createSignal<SourceSnapshot<HostManagerRollbackStateDocument> | null>(null);
+  const state = createMemo(() => {
+    const source = stateSource();
+    return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
+  });
+  const stateMessage = createMemo(() => {
+    const status = stateSource()?.status;
+    return status === "error" || status === "unavailable"
+      ? uiText.smartReport.readFailed
+      : status === "idle" || status === "loading" || status === "refreshing" || status === undefined
+        ? uiText.smartReport.loading
+        : uiText.smartReport.empty;
+  });
   const records = createMemo(() => collectDetailRecords(state()));
-  const attentionCount = createMemo(() => records().filter((record) => record.needsAttention).length);
-  const releasedMemoryBytes = createMemo(() => records().reduce((sum, record) => sum + record.releasedMemoryBytes, 0));
-  const releasedVramBytes = createMemo(() => records().reduce((sum, record) => sum + record.releasedVramBytes, 0));
 
   createEffect(() => {
     if (!frontendWork.isNeeded(frontendWorkIds.detailsSmartReport)) {
+      setStateSource(null);
       return;
     }
-    const unsubscribe = frontendRuntime.sources.smartCoordinatorState.subscribe(
+    const unsubscribe = frontendRuntime.sources.smartCoordinatorState.subscribeSnapshot(
       smartStateSubscriptionIntervalMilliseconds,
-      setState);
+      setStateSource);
     onCleanup(unsubscribe);
   });
 
@@ -61,15 +66,12 @@ export function HostManagerSmartCoordinatorDetailsReport() {
       </div>
       <Show
         when={state()}
-        fallback={<div class="optimization-empty">{uiText.smartReport.empty}</div>}
+        fallback={<div class="optimization-empty">{stateMessage()}</div>}
       >
         {(current) => (
           <>
           <div class="smart-details-summary">
             <SummaryTile label={uiText.smartReport.completed} value={formatNumber(current().appliedPlacements.length)} />
-            <SummaryTile label={uiText.smartReport.needsAttention} value={formatNumber(attentionCount())} tone={attentionCount() > 0 ? "danger" : "normal"} />
-            <SummaryTile label={uiText.smartReport.releasedMemory} value={formatBytes(releasedMemoryBytes(), "memory")} />
-            <SummaryTile label={uiText.smartReport.releasedVram} value={formatBytes(releasedVramBytes(), "memory")} />
           </div>
           <Show
             when={records().length > 0}
@@ -84,9 +86,6 @@ export function HostManagerSmartCoordinatorDetailsReport() {
                       <span>{formatRecordKind(record.kind)} · {formatResourceKind(record.resourceKind)}</span>
                     </div>
                     <div class="smart-details-record-metrics">
-                      <span classList={{ danger: record.needsAttention }}>
-                        {record.needsAttention ? uiText.smartReport.needsAttention : uiText.smartReport.completed}
-                      </span>
                       <button class="secondary details-button" type="button" onClick={() => setSelectedRecord(record)}>
                         {uiText.smartReport.details}
                       </button>
@@ -110,9 +109,9 @@ export function HostManagerSmartCoordinatorDetailsReport() {
 
 }
 
-function SummaryTile(props: { label: string; value: string; tone?: "normal" | "danger" }) {
+function SummaryTile(props: { label: string; value: string }) {
   return (
-    <div class="smart-details-tile" classList={{ danger: props.tone === "danger" }}>
+    <div class="smart-details-tile">
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
@@ -135,21 +134,7 @@ function createDetailRecord(
   resourceKind: string,
   updatedAt: string,
   record: HostManagerAppliedRecord): DetailRecord {
-  const metadata = record.metadata ?? {};
-  const resultCode = parseIntValue(metadata["resourceAction.resultCode"]);
-  const dangerFlags = parseIntValue(metadata["resourceAction.dangerFlags"]);
-  return {
-    target,
-    kind: record.kind,
-    resourceKind,
-    acceptedCount: parseIntValue(metadata["resourceAction.acceptedCount"]),
-    timedOutCount: parseIntValue(metadata["resourceAction.timedOutCount"]),
-    rejectedCount: parseIntValue(metadata["resourceAction.rejectedCount"]),
-    needsAttention: dangerFlags > 0 || resultCode >= 5,
-    releasedMemoryBytes: parseIntValue(metadata["releasedMemoryBytes"]),
-    releasedVramBytes: parseIntValue(metadata["releasedVramBytes"]),
-    updatedAt
-  };
+  return { target, kind: record.kind, resourceKind, updatedAt };
 }
 
 function detailRecordSections(record: DetailRecord) {
@@ -158,22 +143,9 @@ function detailRecordSections(record: DetailRecord) {
       userDetailItem(uiText.smartReport.field.target, record.target),
       userDetailItem(uiText.smartReport.field.change, formatRecordKind(record.kind)),
       userDetailItem(uiText.smartReport.field.affectedResource, formatResourceKind(record.resourceKind)),
-      userDetailItem(uiText.smartReport.field.state, record.needsAttention ? uiText.smartReport.needsAttention : uiText.smartReport.completed),
       userDetailItem(uiText.smartReport.field.updatedAt, userFacingDateTime(record.updatedAt))
-    ]),
-    userDetailSection(uiText.smartReport.section.execution, [
-      userDetailItem(uiText.smartReport.field.accepted, uiText.smartReport.itemCount(record.acceptedCount)),
-      record.timedOutCount > 0 ? userDetailItem(uiText.smartReport.field.timedOut, uiText.smartReport.itemCount(record.timedOutCount)) : null,
-      record.rejectedCount > 0 ? userDetailItem(uiText.smartReport.field.rejected, uiText.smartReport.itemCount(record.rejectedCount)) : null,
-      record.releasedMemoryBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedMemory, formatBytes(record.releasedMemoryBytes, "memory")) : null,
-      record.releasedVramBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedVram, formatBytes(record.releasedVramBytes, "memory")) : null
     ])
   ]);
-}
-
-function parseIntValue(value?: string) {
-  const number = Number.parseInt(value ?? "0", 10);
-  return Number.isFinite(number) ? number : 0;
 }
 
 function formatNumber(value: number) {

@@ -76,27 +76,34 @@ export function CpuTopologyDiagram(props: {
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsCpuModel]);
   const frontendWork = useFrontendWork();
   const frontendRuntime = useFrontendRuntime();
-  const [topology, setTopology] = createSignal<CpuTopologySnapshot | null>(null);
+  const [topology, setTopology] =
+    createSignal<SourceSnapshot<CpuTopologySnapshot | null> | null>(null);
   const [residency, setResidency] =
-    createSignal<CpuCoreResidencySnapshot | null>(null);
-  const [numaFields, setNumaFields] = createSignal<readonly MetricFieldDevice[] | null>(null);
-  const [frequencyFields, setFrequencyFields] = createSignal<readonly MetricFieldDevice[] | null>(null);
+    createSignal<SourceSnapshot<CpuCoreResidencySnapshot | null> | null>(null);
+  const [numaFields, setNumaFields] =
+    createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
+  const [frequencyFields, setFrequencyFields] =
+    createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
   createEffect(() => {
     if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel)) {
+      setTopology(null);
+      setResidency(null);
+      setNumaFields(null);
+      setFrequencyFields(null);
       return;
     }
-    const stopTopology = frontendRuntime.sources.cpuTopology.subscribe(
+    const stopTopology = frontendRuntime.sources.cpuTopology.subscribeSnapshot(
       60_000,
       setTopology);
-    const stopResidency = frontendRuntime.sources.cpuResidency.subscribe(
+    const stopResidency = frontendRuntime.sources.cpuResidency.subscribeSnapshot(
       1_000,
       setResidency);
-    const stopNuma = frontendRuntime.sources.metricFields.subscribe(
+    const stopNuma = frontendRuntime.sources.metricFields.subscribeSnapshot(
       { fields: numaFieldNames },
       5_000,
       setNumaFields);
     // 有效频率随拓扑视图订阅一次，弹窗只负责显示：订阅集合变化会让整条推送流重连。
-    const stopFrequency = frontendRuntime.sources.metricFields.subscribe(
+    const stopFrequency = frontendRuntime.sources.metricFields.subscribeSnapshot(
       { fields: [effectiveFrequencyFieldName] },
       1_000,
       setFrequencyFields);
@@ -120,8 +127,25 @@ export function CpuTopologyDiagram(props: {
       refreshIntervalMs: null
     }));
   const [scoreDraft, setScoreDraft] = createSignal<Record<number, string>>({});
-  const snapshot = () => topology() ?? undefined;
-  const residencySnapshot = () => residency() ?? undefined;
+  const snapshot = () => {
+    const source = topology();
+    return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
+  };
+  const residencySnapshot = () => {
+    const source = residency();
+    return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
+  };
+  const numaFieldData = () => {
+    const source = numaFields();
+    return source && sourceCanRender(source) ? source.data : null;
+  };
+  const frequencyFieldData = () => {
+    const source = frequencyFields();
+    return source && sourceCanRender(source) ? source.data : null;
+  };
+  const sourceReadFailed = createMemo(() => [
+    topology(), residency(), numaFields(), frequencyFields()
+  ].some((source) => source?.status === "error" || source?.status === "unavailable"));
   const exclusiveBindingsSnapshot = () =>
     renderableSourceData(exclusiveBindingsSource.snapshot());
   const residencyDurations = createMemo(() => buildCpuResidencyDurations(residencySnapshot()));
@@ -206,12 +230,15 @@ export function CpuTopologyDiagram(props: {
       <Show when={commandError()}>
         {(message) => <p role="alert">{message()}</p>}
       </Show>
+      <Show when={sourceReadFailed()}>
+        <p role="alert">{uiText.cpuTopology.unavailable}</p>
+      </Show>
         <Show when={snapshot()} fallback={<div class="optimization-empty">-</div>}>
           {(model) => (
             <>
             <div class="cpu-topology-meta">
               <strong>{model().cpuName}</strong>
-              <For each={numaNodeRows(numaFields())}>
+              <For each={numaNodeRows(numaFieldData())}>
                 {(node) => (
                   <span class="cpu-topology-numa" title={uiText.cpuTopology.numaHint}>
                     {uiText.cpuTopology.numaNode(node.nodeNumber, [
@@ -392,7 +419,7 @@ export function CpuTopologyDiagram(props: {
               bindings={exclusiveBindingsSnapshot()?.bindings ?? []}
               bindingsLoading={!sourceCanRender(exclusiveBindingsSource.snapshot())}
               selectedCoreId={detailsCoreId()}
-              frequencyFields={frequencyFields()}
+              frequencyFields={frequencyFieldData()}
               onSelectCore={setDetailsCoreId}
               onOpenSoftwareSettings={props.onOpenSoftwareSettings}
               onClose={() => setDetailsOpen(false)}

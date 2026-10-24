@@ -1,4 +1,7 @@
 export const frontendWorkIds = {
+  monitorMetrics: "monitor.metrics",
+  monitorBars: "monitor.bars",
+  monitorTable: "monitor.table",
   controlActual: "control.actual",
   managementInventory: "management.inventory",
   managementBrowserRuntimes: "management.browser-runtimes",
@@ -7,7 +10,8 @@ export const frontendWorkIds = {
   detailsDeviceTopology: "details.device-topology",
   detailsCpuModel: "details.cpu-model",
   detailsGpuModel: "details.gpu-model",
-  detailsSmartReport: "details.smart-report"
+  detailsSmartReport: "details.smart-report",
+  targetedReportsPage: "targeted-reports.page"
 } as const;
 
 export type FrontendWorkId = typeof frontendWorkIds[keyof typeof frontendWorkIds];

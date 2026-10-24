@@ -54,10 +54,10 @@ assert.match(details, /GpuSchedulingModel runtimeEffectsEnabled=/);
 assert.doesNotMatch(
   gpuModel,
   /createSignal<MetricSnapshot>\(\{[\s\S]*capturedAt:\s*null,[\s\S]*items:\s*\{\}/);
-assert.match(gpuModel, /createSignal<MetricSnapshot \| null>\(null\)/);
+assert.match(gpuModel, /createSignal<SourceSnapshot<MetricSnapshot> \| null>\(null\)/);
 assert.match(
   gpuModel,
-  /data && metricSnapshot\(\) !== null && resourceBreakdown\(\) !== null/);
+  /metric && sourceCanRender\(metric\)[\s\S]*resource && sourceCanRender\(resource\)/);
 assert.match(details, /CpuTopologyDiagram[\s\S]*runtimeEffectsEnabled=/);
 
 // The cancelled data migration feature must expose no workspace or requests.
@@ -116,7 +116,7 @@ assert.match(readSource("features/resourceTable/ResourcePerformancePanel.tsx"),
   /\.filter\(\(id\) => available\.has\(id\) && available\.get\(id\)!\.selectable !== false\)/);
 // 快照帧的目录修订号第一次出现或变化时重取目录；还是出厂布局时再重取看板设置（后端按新目录重新展开）。
 assert.match(monitorStore, /dashboardUsesFactoryDefaults = settings\.usesFactoryDefaults === true;/);
-assert.match(monitorStore, /if \(value\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.catalogRevision;\s*void followBackendCatalog\(value\.catalogRevision\);/);
+assert.match(monitorStore, /if \(value\.data && value\.data\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.data\.catalogRevision;\s*void followBackendCatalog\(value\.data\.catalogRevision\);/);
 assert.match(monitorStore, /if \(!await refreshCatalog\(\)\) \{\s*if \(backendCatalogRevision === revision\) \{\s*backendCatalogRevision = null;/);
 assert.match(monitorStore, /if \(dashboardUsesFactoryDefaults\) \{\s*await refreshSettings\(\);/);
 // 看板布局由后端按本机目录生成，设置到达前不画前端自带的占位卡。

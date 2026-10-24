@@ -104,6 +104,7 @@ export function MonitorPage(props: MonitorPageProps) {
       />
           <MonitorWorkRegion
             label={uiText.monitorPage.liveMetrics}
+            workId="monitor.metrics"
           >
             <ObservationStateBoundary
               state={monitor.snapshotObservation()}
@@ -132,6 +133,7 @@ export function MonitorPage(props: MonitorPageProps) {
           </MonitorWorkRegion>
           <MonitorWorkRegion
             label={uiText.monitorPage.resourceUsage}
+            workId="monitor.bars"
           >
             <ObservationStateBoundary
               state={monitor.resourceBarsObservation()}
@@ -160,6 +162,7 @@ export function MonitorPage(props: MonitorPageProps) {
           </MonitorWorkRegion>
           <MonitorWorkRegion
             label={uiText.monitorPage.resourceList}
+            workId="monitor.table"
           >
             <ObservationStateBoundary
               state={activeResourceTableObservation()}

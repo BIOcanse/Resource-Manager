@@ -4,7 +4,12 @@ import assert from "node:assert/strict";
 // 退出某个域只禁用该域的设置区，保存时三个开关原样写回，已删除的旧字段不再出现。
 export default async function softwareParticipationJourney(page, baseUrl) {
   const errors = [];
+  let placementReads = 0;
   page.on("pageerror", error => errors.push(String(error)));
+  page.on("request", request => {
+    if (request.method() === "GET"
+      && new URL(request.url()).pathname === "/api/gpu-placement/software/frontend-harness.software") placementReads++;
+  });
   const scenario = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ gpuPlacementEnabled: true, runtimeEffectOwners: true })
@@ -54,6 +59,20 @@ export default async function softwareParticipationJourney(page, baseUrl) {
   assert.equal(await memory.isChecked(), false);
   assert.equal(await gpu.isChecked(), false);
 
+  const readsBeforeHidden = placementReads;
+  await setVisible(false);
+  await waitTelemetry(t => t["/api/cpu/topology/subscribe"]?.logicalInFlight === 0);
+  await page.waitForTimeout(150);
+  assert.equal(placementReads, readsBeforeHidden, "Hidden detail must release its reads");
+  const resumedPolicy = page.waitForResponse(response => response.request().method() === "GET"
+    && new URL(response.url()).pathname === "/api/gpu-placement/software/frontend-harness.software");
+  await setVisible(true);
+  await waitTelemetry(() => placementReads === readsBeforeHidden + 1);
+  assert.equal((await resumedPolicy).status(), 200);
+  await dialog.getByText("正在加载策略...", { exact: true }).waitFor({ state: "hidden" });
+  assert.equal(await cpu.isChecked(), true, "Resuming the current policy must preserve an unsaved draft");
+  await waitTelemetry(t => t["/api/cpu/topology/subscribe"]?.logicalInFlight === 1);
+
   await gpu.check();
   assert.equal(await startupGpu.isEnabled(), false, "GPU settings must be disabled when GPU scheduling is excluded");
   await dialog.getByText("已设置为不参与 GPU 调度；下面的设置会保留但不执行。", { exact: true }).waitFor();
@@ -83,6 +102,23 @@ export default async function softwareParticipationJourney(page, baseUrl) {
   return {
     savedOptOuts: [saved.cpuSchedulingExcluded, saved.memorySchedulingExcluded, saved.gpuSchedulingExcluded],
     protectionWrites: protectionWrites.length,
-    independent: true
+    independent: true,
+    hiddenReadsReleasedAndCurrentPolicyReread: true
   };
+
+  async function setVisible(value) {
+    await page.evaluate(value => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: value ? "visible" : "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }, value);
+  }
+  async function waitTelemetry(predicate) {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const telemetry = await (await fetch(`${baseUrl}/__test/requests`)).json();
+      if (predicate(telemetry)) return;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error("Software detail reads did not reach expected state");
+  }
 }

@@ -1,4 +1,5 @@
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
+import frontendAuditJourney from "./frontendAuditJourney.js";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
@@ -11,6 +12,7 @@ import currentValueSubscriptionJourney from "./currentValueSubscriptionJourney.j
 import monitorCurrentValueRetentionJourney from "./monitorCurrentValueRetentionJourney.js";
 import deviceTopologySourceJourney from "./deviceTopologySourceJourney.js";
 import diskUsageFeedbackRefreshJourney from "./diskUsageFeedbackRefreshJourney.js";
+import diskUsageOperationInvalidationJourney from "./diskUsageOperationInvalidationJourney.js";
 import frontendUsabilityJourney from "./frontendUsabilityJourney.js";
 import frontendVisibilityDemandJourney from "./frontendVisibilityDemandJourney.js";
 import optimizationReportsJourney from "./optimizationReportsJourney.js";
@@ -26,6 +28,8 @@ import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
 import metricFieldsJourney from "./metricFieldsJourney.js";
 import metricFieldCardsJourney from "./metricFieldCardsJourney.js";
 import gpuUnknownRuntimeJourney from "./gpuUnknownRuntimeJourney.js";
+import gpuCommittedThresholdsJourney from "./gpuCommittedThresholdsJourney.js";
+import smartDetailsPlacementFactsJourney from "./smartDetailsPlacementFactsJourney.js";
 import performanceHistoryJourney from "./performanceHistoryJourney.js";
 import resourceLayoutTaskJourney from "./resourceLayoutTaskJourney.js";
 import resourceTableContentStateJourney from "./resourceTableContentStateJourney.js";
@@ -35,6 +39,7 @@ import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
 import softwareIssueJourney from "./softwareIssueJourney.js";
 import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
+import targetedRecordingSourceJourney from "./targetedRecordingSourceJourney.js";
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
 import usabilityProbe from "./usabilityProbe.js";
@@ -42,6 +47,7 @@ import localizationJourney from "./localizationJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
+  ["frontend-audit", frontendAuditJourney],
   ["localization", localizationJourney],
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],
@@ -59,6 +65,8 @@ const allJourneys = [
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
+  ["gpu-committed-thresholds", gpuCommittedThresholdsJourney],
+  ["smart-details-placement-facts", smartDetailsPlacementFactsJourney],
   ["software-participation", softwareParticipationJourney],
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
@@ -66,6 +74,8 @@ const allJourneys = [
   ["software-unclassified", softwareUnclassifiedJourney],
   ["device-topology-source", deviceTopologySourceJourney],
   ["disk-usage-feedback-refresh", diskUsageFeedbackRefreshJourney],
+  ["disk-usage-operation-invalidation", diskUsageOperationInvalidationJourney],
+  ["targeted-recording-source", targetedRecordingSourceJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
   ["current-value-subscription", currentValueSubscriptionJourney],

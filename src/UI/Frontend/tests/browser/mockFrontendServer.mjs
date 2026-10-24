@@ -30,6 +30,8 @@ const defaultScenario = {
   localSystemIntervalMs: null,
   performanceMonitorRefreshIntervalMs: null,
   diskUsageScanFailure: false,
+  diskUsageScanLifecycle: false,
+  diskUsageScanCompletionDelayMs: 900,
   diskUsageMultiRoot: false,
   diskUsageRootIndexOneDelayMs: 0,
   deviceTopologyDelayMs: 0,
@@ -45,6 +47,7 @@ const defaultScenario = {
   runtimeEffectOwners: false,
   optimizationRuntime: false,
   optimizationReports: "ready",
+  smartPlacements: [],
   // 后端调度状态（GET /api/optimization/smart/status 与它的推送订阅同源）；只写与默认值不同的字段。
   smartStatus: {},
   softwareIssues: true,
@@ -58,6 +61,8 @@ const defaultScenario = {
   dashboardSettings: null,
   gpuPlacementEnabled: false,
   unknownGpuScore: false,
+  gpuPressureFixture: false,
+  gpuOverflowThresholdsMissing: false,
   pausedSubscriptionPaths: []
 };
 const scenario = structuredClone(defaultScenario);
@@ -108,6 +113,11 @@ const operationSubscribers = new Set();
 let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
+let diskScanOperation = null;
+let diskScanCompletionTimer = null;
+let targetedRecordingCompletionTimer = null;
+let targetedRecordingSequence = 0;
+const targetedRecordings = new Map();
 const defaultAppSettings = {
   version: "1.0.28",
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80 },
@@ -137,11 +147,18 @@ const metricCatalog = [
   metric("memory.usage", "内存", "Memory", "GB"),
   metric("memory.percent", "内存占用", "Memory", "%")
 ];
-const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => ({
-  settings: structuredClone(appSettings),
-  revision: scenario.settingsRevision,
-  runtimeApplicationDisposition
-});
+const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => {
+  const settings = structuredClone(appSettings);
+  if (scenario.gpuOverflowThresholdsMissing) {
+    delete settings.performance?.gpuOverflowUsagePercent;
+    delete settings.performance?.gpuOverflowDedicatedMemoryPercent;
+  }
+  return {
+    settings,
+    revision: scenario.settingsRevision,
+    runtimeApplicationDisposition
+  };
+};
 const dashboardSettingsResult = {
   settings: {
     version: 14,
@@ -398,9 +415,53 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/disk-usage/scan" && request.method === "POST") {
     await readBody(request);
-    return scenario.diskUsageScanFailure
-      ? json(response, 503, { error: "fixture scan submission failure" })
-      : json(response, 409, { error: "scan failure scenario is not enabled" });
+    if (scenario.diskUsageScanFailure) {
+      return json(response, 503, { error: "fixture scan submission failure" });
+    }
+    if (!scenario.diskUsageScanLifecycle) {
+      return json(response, 409, { error: "scan lifecycle scenario is not enabled" });
+    }
+    const createdAt = now();
+    diskScanOperation = {
+      id: "000000000000000000000000000000d5",
+      kind: "disk-usage.scan",
+      domainKey: null,
+      title: "Disk usage scan",
+      state: "running",
+      configurationGeneration: "1",
+      stateRevision: "1",
+      attemptNumber: 1,
+      maximumAttempts: 1,
+      createdAt,
+      updatedAt: createdAt,
+      completedAt: null,
+      cancelRequested: false,
+      progress: null,
+      result: null,
+      error: null
+    };
+    commitOperationsValue();
+    diskScanCompletionTimer = setTimeout(() => {
+      diskScanCompletionTimer = null;
+      const completedAt = now();
+      diskScanOperation = {
+        ...diskScanOperation,
+        state: "succeeded",
+        stateRevision: "2",
+        updatedAt: completedAt,
+        completedAt,
+        result: "Disk usage scan completed"
+      };
+      diskUsageSummary.completedAt = completedAt;
+      diskUsageSummary.totalBytes = 92_000_000;
+      diskUsageSummary.scannedBytes = 92_000_000;
+      diskUsageLayouts.set("root-c", createDiskUsageLayout("C:\\", 0, 19_000_000, [
+        diskUsageTile(0, -1, 0, 19_000_000, "", true, 17),
+        diskUsageTile(1, 0, 1, 9_000_000, "Projects", true, 4)
+      ]));
+      commitOperationsValue();
+    }, Math.max(0, Math.min(5000, Math.floor(Number(scenario.diskUsageScanCompletionDelayMs) || 900))));
+    return json(response, 200, diskScanOperation);
   }
   if (path === "/api/settings/app") {
     if (scenario.settings === "error" && request.method === "GET") {
@@ -439,12 +500,75 @@ async function handleApi(request, response, url) {
       ? { ...dashboardSettingsResult, settings: scenario.dashboardSettings, updatedAt: now() }
       : dashboardSettingsResult);
   }
-  // 软件详情里的定向录制控件会读录制列表；夹具里没有录制。
   if (path === "/api/targeted-recordings" && request.method === "GET") {
-    return json(response, 200, []);
+    return json(response, 200, [...targetedRecordings.values()].map((entry) => entry.header));
+  }
+  if (path === "/api/targeted-recordings" && request.method === "POST") {
+    const body = JSON.parse(await readBody(request));
+    const softwareId = typeof body.softwareId === "string" ? body.softwareId : "frontend-harness.software";
+    const softwareName = softwareId === "frontend-harness.software" ? "示例软件" : softwareId;
+    const startedAt = now();
+    const id = `recording-fixture-${++targetedRecordingSequence}`;
+    const entry = {
+      header: {
+        id,
+        softwareId,
+        softwareName,
+        startedAt,
+        endedAt: null,
+        maximumDurationSeconds: body.maximumDurationSeconds ?? 600,
+        status: "recording",
+        stopReason: null,
+        incomplete: false
+      },
+      frameIntervals: [],
+      fpsDistribution: [],
+      resourceSamples: []
+    };
+    targetedRecordings.set(id, entry);
+    if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
+    targetedRecordingCompletionTimer = setTimeout(() => {
+      targetedRecordingCompletionTimer = null;
+      completeTargetedRecording(id, "max-duration");
+    }, 15_000);
+    return json(response, 200, entry.header);
+  }
+  const targetedRecordingMatch = path.match(/^\/api\/targeted-recordings\/([^/]+)$/);
+  const targetedRecordingStopMatch = path.match(/^\/api\/targeted-recordings\/([^/]+)\/stop$/);
+  if (targetedRecordingStopMatch && request.method === "POST") {
+    const entry = targetedRecordings.get(decodeURIComponent(targetedRecordingStopMatch[1]));
+    if (!entry) return json(response, 404, { error: "recording not found" });
+    if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
+    targetedRecordingCompletionTimer = null;
+    completeTargetedRecording(entry.header.id, "user");
+    return json(response, 200, entry.header);
+  }
+  if (targetedRecordingMatch && request.method === "GET") {
+    const entry = targetedRecordings.get(decodeURIComponent(targetedRecordingMatch[1]));
+    return entry ? json(response, 200, {
+      recording: entry.header,
+      summary: null,
+      frameIntervals: entry.frameIntervals,
+      fpsDistribution: entry.fpsDistribution,
+      resourceSamples: entry.resourceSamples
+    }) : json(response, 404, { error: "recording not found" });
+  }
+  if (targetedRecordingMatch && request.method === "DELETE") {
+    targetedRecordings.delete(decodeURIComponent(targetedRecordingMatch[1]));
+    response.writeHead(204);
+    response.end();
+    return;
+  }
+  if (path.startsWith("/api/targeted-recordings/") && request.method === "GET") {
+    return json(response, 200, { recording: {}, summary: null, frameIntervals: [], fpsDistribution: [], resourceSamples: [] });
   }
   if (path === "/api/metrics/catalog") {
-    return json(response, 200, metricCatalog);
+    return json(response, 200, scenario.gpuPressureFixture
+      ? [...metricCatalog,
+        metric("gpu.0.usage", "GPU 占用", "GPU", "%"),
+        metric("gpu.0.vram", "GPU 显存", "GPU", "GB"),
+        metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")]
+      : metricCatalog);
   }
   if (path === "/api/metrics/snapshot") {
     return json(response, 200, metricSnapshot(url.searchParams.getAll("ids")));
@@ -934,6 +1058,16 @@ function applyScenarioPatch(patch) {
       customValue: patch.performanceMonitorRefreshIntervalMs
     };
   }
+  if (Number.isSafeInteger(patch.gpuOverflowUsagePercent)
+    && patch.gpuOverflowUsagePercent >= 1
+    && patch.gpuOverflowUsagePercent <= 100) {
+    appSettings.performance.gpuOverflowUsagePercent = patch.gpuOverflowUsagePercent;
+  }
+  if (Number.isSafeInteger(patch.gpuOverflowDedicatedMemoryPercent)
+    && patch.gpuOverflowDedicatedMemoryPercent >= 1
+    && patch.gpuOverflowDedicatedMemoryPercent <= 100) {
+    appSettings.performance.gpuOverflowDedicatedMemoryPercent = patch.gpuOverflowDedicatedMemoryPercent;
+  }
   if (typeof patch.settingsTheme === "string") {
     appSettings.appearance.theme = patch.settingsTheme;
   }
@@ -949,6 +1083,20 @@ function applyScenarioPatch(patch) {
 }
 
 function resetScenario() {
+  if (diskScanCompletionTimer) clearTimeout(diskScanCompletionTimer);
+  if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
+  diskScanCompletionTimer = null;
+  targetedRecordingCompletionTimer = null;
+  diskScanOperation = null;
+  targetedRecordingSequence = 0;
+  targetedRecordings.clear();
+  diskUsageSummary.totalBytes = 91_000_000;
+  diskUsageSummary.scannedBytes = 91_000_000;
+  diskUsageSummary.completedAt = "2026-10-09T12:00:00.000Z";
+  diskUsageLayouts.set("root-c", createDiskUsageLayout("C:\\", 0, 18_000_000, [
+    diskUsageTile(0, -1, 0, 18_000_000, "", true, 17),
+    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4)
+  ]));
   for (const key of Object.keys(scenario)) {
     delete scenario[key];
   }
@@ -1042,6 +1190,13 @@ function metricSnapshot(requestedIds) {
     "memory.usage": { id: "memory.usage", displayValue: "8.0 GB", numericValue: 8, percent: 25 },
     "memory.percent": { id: "memory.percent", displayValue: "25%", numericValue: 25, percent: 25 }
   };
+  if (scenario.gpuPressureFixture) {
+    Object.assign(allItems, {
+      "gpu.0.usage": { id: "gpu.0.usage", displayValue: "96%", numericValue: 96, percent: 96 },
+      "gpu.0.vram": { id: "gpu.0.vram", displayValue: "4 GB", numericValue: 4, percent: 50 },
+      "gpu.0.vramPercent": { id: "gpu.0.vramPercent", displayValue: "50%", numericValue: 50, percent: 50 }
+    });
+  }
   const knownMetricIds = new Map(Object.keys(allItems).map(metricId =>
     [metricId.toLowerCase(), metricId]));
   const selectedIds = requestedIds.length > 0
@@ -1445,7 +1600,7 @@ function resourceTableRows(processMode, common) {
           processId,
           processStartKey: String(132000000000000000n + BigInt(processId)),
           processIds: [processId],
-          values: { ...common.values, pid: { displayValue: String(processId) } }
+          values: { ...common.values, pid: { displayValue: String(processId), unit: "" } }
         }
       : {
           ...common,
@@ -1523,6 +1678,12 @@ function commitOperationsValue() {
 }
 
 function createOperationsValue() {
+  const operations = scenario.operations === "mixed"
+    ? fixtureOperations()
+    : scenario.operations === "many"
+      ? fixtureManyOperations()
+      : [];
+  if (diskScanOperation) operations.push(diskScanOperation);
   return {
     schema: "host-manager.operations.state.v1",
     capturedAt: now(),
@@ -1532,11 +1693,20 @@ function createOperationsValue() {
     persistenceFaulted: false,
     faultStage: null,
     faultMessage: null,
-    operations: scenario.operations === "mixed"
-      ? fixtureOperations()
-      : scenario.operations === "many"
-        ? fixtureManyOperations()
-        : []
+    operations
+  };
+}
+
+function completeTargetedRecording(id, stopReason) {
+  const entry = targetedRecordings.get(id);
+  if (!entry) return;
+  const endedAt = now();
+  entry.header = {
+    ...entry.header,
+    status: "completed",
+    endedAt,
+    stopReason,
+    incomplete: false
   };
 }
 
@@ -1782,7 +1952,7 @@ function subscriptionPayloadFactory(url) {
         lastRunAt: null,
         lastRestoreAt: null,
         message: "frontend harness",
-        appliedPlacements: []
+        appliedPlacements: scenario.smartPlacements
       });
     case "/api/optimization/smart/status/subscribe":
       return () => smartCoordinatorStatus();

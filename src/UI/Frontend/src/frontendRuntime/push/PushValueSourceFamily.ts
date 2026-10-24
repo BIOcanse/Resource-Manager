@@ -1,3 +1,4 @@
+import type { SourceSnapshot } from "../source/SourceSnapshot.ts";
 import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
 import {
   type BackendSubscriptionChannel,
@@ -6,24 +7,28 @@ import {
 
 export interface PushValueSourceFamily<TQuery, TValue> {
   readonly key: string;
-  subscribe(
+  /** Value-only adapter retained for the control/device topology owner boundary.
+   * Other consumers must use subscribeSnapshot so failures clear their current value. */
+  subscribe(query: TQuery, intervalMs: number, listener: (value: TValue) => void): () => void;
+  subscribeSnapshot(
     query: TQuery,
     intervalMs: number,
-    listener: (value: TValue) => void
+    listener: (value: SourceSnapshot<TValue>) => void
   ): () => void;
 }
 
 export interface PushValueSource<TValue> {
   readonly key: string;
-  subscribe(
+  subscribe(intervalMs: number, listener: (value: TValue) => void): () => void;
+  subscribeSnapshot(
     intervalMs: number,
-    listener: (value: TValue) => void
+    listener: (value: SourceSnapshot<TValue>) => void
   ): () => void;
 }
 
 export interface CurrentValueSource<TValue> {
   readonly key: string;
-  subscribe(listener: (value: TValue) => void): () => void;
+  subscribeSnapshot(listener: (value: SourceSnapshot<TValue>) => void): () => void;
 }
 
 export interface PushValueSourceFamilyOptions<TQuery, TValue> {
@@ -50,13 +55,14 @@ export interface CurrentValueSourceOptions<TValue> {
 
 interface PushListener<TValue> {
   readonly intervalMs: number;
-  readonly publish: (value: TValue) => void;
+  readonly publish: (value: SourceSnapshot<TValue>) => void;
 }
 
 interface PushEntry<TQuery, TValue> {
   readonly canonicalQuery: string;
   readonly query: TQuery;
   readonly listeners: Map<number, PushListener<TValue>>;
+  snapshot: SourceSnapshot<TValue> | null;
   channelLease: BackendSubscriptionChannelLease | null;
   effectiveIntervalMs: number | null;
 }
@@ -80,10 +86,18 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.decoder = options.decoder;
   }
 
-  subscribe(
+  /** Value-only adapter retained for the control/device topology owner boundary.
+   * Other consumers must use subscribeSnapshot so failures clear their current value. */
+  subscribe(query: TQuery, intervalMs: number, listener: (value: TValue) => void): () => void {
+    return this.subscribeSnapshot(query, intervalMs, (snapshot) => {
+      if (snapshot.status === "ready") listener(snapshot.data as TValue);
+    });
+  }
+
+  subscribeSnapshot(
     query: TQuery,
     intervalMs: number,
-    listener: (value: TValue) => void
+    listener: (value: SourceSnapshot<TValue>) => void
   ): () => void {
     const canonicalQuery = this.canonicalizeQuery(query);
     let entry = this.entries.get(canonicalQuery);
@@ -92,6 +106,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
         canonicalQuery,
         query,
         listeners: new Map(),
+        snapshot: null,
         channelLease: null,
         effectiveIntervalMs: null
       };
@@ -104,6 +119,11 @@ implements PushValueSourceFamily<TQuery, TValue> {
       publish: listener
     });
 
+    if (entry.snapshot) {
+      try { listener(entry.snapshot); } catch {
+        // Subscriber failures do not change the shared current snapshot.
+      }
+    }
     this.reconfigure(entry);
 
     let disposed = false;
@@ -144,11 +164,12 @@ implements PushValueSourceFamily<TQuery, TValue> {
 
   private publish(
     entry: PushEntry<TQuery, TValue>,
-    value: TValue
+    value: SourceSnapshot<TValue>
   ): void {
     if (!this.isCurrent(entry)) {
       return;
     }
+    entry.snapshot = value;
     for (const listener of entry.listeners.values()) {
       try {
         listener.publish(value);
@@ -163,6 +184,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
       return;
     }
     this.entries.delete(entry.canonicalQuery);
+    entry.snapshot = null;
     entry.channelLease?.dispose();
     entry.channelLease = null;
   }
@@ -189,11 +211,17 @@ implements PushValueSource<TValue> {
     });
   }
 
-  subscribe(
+  subscribe(intervalMs: number, listener: (value: TValue) => void): () => void {
+    return this.subscribeSnapshot(intervalMs, (snapshot) => {
+      if (snapshot.status === "ready") listener(snapshot.data as TValue);
+    });
+  }
+
+  subscribeSnapshot(
     intervalMs: number,
-    listener: (value: TValue) => void
+    listener: (value: SourceSnapshot<TValue>) => void
   ): () => void {
-    return this.family.subscribe(null, intervalMs, listener);
+    return this.family.subscribeSnapshot(null, intervalMs, listener);
   }
 }
 
@@ -212,8 +240,8 @@ implements CurrentValueSource<TValue> {
     });
   }
 
-  subscribe(listener: (value: TValue) => void): () => void {
-    return this.source.subscribe(1, listener);
+  subscribeSnapshot(listener: (value: SourceSnapshot<TValue>) => void): () => void {
+    return this.source.subscribeSnapshot(1, listener);
   }
 }
 

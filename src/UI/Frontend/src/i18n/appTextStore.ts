@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { createAppCopy } from "./copy/index.ts";
 import { loadAppCopy } from "./copy/appCopyLoader.ts";
@@ -15,9 +15,6 @@ const [copy, setCopy] = createStore<AppCopy>(cloneCopy(createAppCopy("zh-CN")));
 const [settingsText, setSettingsText] = createSignal<SettingsTextBundle>(fallbackSettingsText);
 const [activeLanguage, setActiveLanguage] = createSignal<ConcreteAppLanguageMode>("zh-CN");
 
-let appliedLanguage: ConcreteAppLanguageMode | null = null;
-let pendingLanguage: ConcreteAppLanguageMode | null = null;
-
 export const uiText = copy;
 
 export function currentLanguage() {
@@ -28,34 +25,65 @@ export function currentSettingsText() {
   return settingsText();
 }
 
-export function applyLanguage(language?: string | null) {
-  const resolved = resolveLanguageMode(language);
-  // 切回已生效的语言也要取消其他语言的待完成载入。
-  pendingLanguage = resolved;
-  if (resolved === appliedLanguage) {
-    return;
-  }
-
-  // 语言包未到齐之前保留当前文案，避免先闪一遍基底语言再跳到目标语言。
-  void loadAppCopy(resolved).then((nextCopy) => {
-    if (pendingLanguage === resolved) {
-      applyCopy(resolved, nextCopy);
-    }
-  });
-
-  void loadSettingsText(resolved).then((nextText) => {
-    if (pendingLanguage === resolved) {
-      setSettingsText(nextText);
-    }
-  });
+interface LanguageBundleLoaders {
+  readonly appCopy: (language: ConcreteAppLanguageMode) => Promise<AppCopy>;
+  readonly settingsText: (language: ConcreteAppLanguageMode) => Promise<SettingsTextBundle>;
 }
 
-function applyCopy(language: ConcreteAppLanguageMode, nextCopy: AppCopy) {
-  setCopy(reconcile(cloneCopy(nextCopy)));
-  setActiveLanguage(language);
+export function createLanguageApplier(
+  loaders: LanguageBundleLoaders,
+  commit: (
+    language: ConcreteAppLanguageMode,
+    nextCopy: AppCopy,
+    nextSettingsText: SettingsTextBundle
+  ) => void
+) {
+  let appliedLanguage: ConcreteAppLanguageMode | null = null;
+  let pendingLanguage: ConcreteAppLanguageMode | null = null;
+
+  return (language?: string | null): Promise<void> => {
+    const resolved = resolveLanguageMode(language);
+    // 切回已生效的语言也要取消其他语言的待完成载入。
+    pendingLanguage = resolved;
+    if (resolved === appliedLanguage) {
+      return Promise.resolve();
+    }
+
+    // 两种文案包都准备好后再提交，避免异步顺序留下混合语言。
+    return Promise.all([
+      loaders.appCopy(resolved),
+      loaders.settingsText(resolved)
+    ]).then(([nextCopy, nextSettingsText]) => {
+      if (pendingLanguage !== resolved) {
+        return;
+      }
+      commit(resolved, nextCopy, nextSettingsText);
+      appliedLanguage = resolved;
+    });
+  };
+}
+
+function applyLanguageBundle(
+  language: ConcreteAppLanguageMode,
+  nextCopy: AppCopy,
+  nextSettingsText: SettingsTextBundle
+) {
+  batch(() => {
+    setCopy(reconcile(cloneCopy(nextCopy)));
+    setSettingsText(nextSettingsText);
+    setActiveLanguage(language);
+  });
   applyDocumentLanguage(language);
   notifyShellLanguage(language);
-  appliedLanguage = language;
+}
+
+const requestLanguage = createLanguageApplier(
+  { appCopy: loadAppCopy, settingsText: loadSettingsText },
+  applyLanguageBundle
+);
+
+export function applyLanguage(language?: string | null): Promise<void> {
+  return requestLanguage(language);
 }
 
 // 外壳（NativeUi）的托盘、窗口标题和启动画面用同一种语言，这里把已解析的具体语言 id 告诉它。

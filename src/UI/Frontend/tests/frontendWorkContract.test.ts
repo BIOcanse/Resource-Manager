@@ -161,9 +161,10 @@ assert.equal(
   "continuous monitor values must remain renderable while their transport reconnects");
 assert.doesNotMatch(monitorPageSource, /demandId=|frontendWorkIds\./);
 const monitorRegionSource = readSource("features/monitor/MonitorWorkRegion.tsx");
-assert.doesNotMatch(
+assert.match(
   monitorRegionSource,
-  /frontendVisibilitySurface|FrontendVisibilityDemandBinding|IntersectionObserver/);
+  /frontendVisibilitySurface/);
+assert.match(monitorRegionSource, /useFrontendVisibilityDemand/);
 assert.match(monitorRegionSource, /aria-label=\{props\.label\}/);
 for (const relativePath of [
   "features/monitor/Dashboard.tsx",
@@ -184,15 +185,15 @@ assert.doesNotMatch(
 const refreshSchedulerSource = readSource("app/usePageRefreshScheduler.ts");
 assert.match(
   refreshSchedulerSource,
-  /options\.selfSchedulingSource\.subscribe\(\s*selfSchedulingSubscriptionIntervalMs/,
+  /options\.selfSchedulingSource\.subscribeSnapshot\(\s*selfSchedulingSubscriptionIntervalMs/,
   "self-scheduling must be one backend current-value subscription");
 assert.match(
   refreshSchedulerSource,
-  /options\.localSystemSource\.subscribe\(\s*intervalMs/,
+  /options\.localSystemSource\.subscribeSnapshot\(\s*intervalMs/,
   "local system status must be one independent backend current-value subscription");
 assert.match(
   refreshSchedulerSource,
-  /if \(!options\.performanceSettings\(\)\) \{\s*return;/,
+  /if \(!performanceSettingsAvailable\(\)\) \{\s*return;/,
   "configured subscriptions must not start with a provisional pre-settings frequency");
 assert.doesNotMatch(
   refreshSchedulerSource,
@@ -242,13 +243,10 @@ assert.doesNotMatch(
   /resourceMonitorDemand|monitorResourceBarsNeeded|monitorResourceTableNeeded|monitorSnapshotNeeded|paused/);
 
 const appSource = readSource("App.tsx");
-assert.equal(
-  appSource.match(/activePage\(\) === "monitor" && frontendWork\.frontendVisible\(\)/g)?.length,
-  3,
-  "monitor push subscriptions must be owned by the visible monitor page, not section intersection");
-assert.doesNotMatch(
-  appSource,
-  /frontendWork\.isNeeded\(frontendWorkIds\.monitor/);
+assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorMetrics\)/);
+assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorBars\)/);
+assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorTable\)/);
+assert.match(monitorStoreSource, /options\.resourceTableActive\(\)\s*&& resourceTableMode\(\) !== "performance"/);
 // 监控和资源表按刷新调度器算好的间隔订阅，“自动调度”才看得到本程序 CPU 档位和窗口前台状态。
 assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.monitor/);
 assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.resourceTable/);

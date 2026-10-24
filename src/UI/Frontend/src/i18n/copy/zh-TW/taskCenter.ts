@@ -34,6 +34,8 @@ export const zhTaskCenterCopy = {
       dependencyDownload: "下載依賴",
       dependencyLaunchInstaller: "安裝依賴",
       softwareUninstall: "解除安裝軟體",
+      diskUsageScan: "掃描磁碟使用情況",
+      generic: "作業",
       migrationExecute: "遷移軟體資料",
       migrationRestore: "恢復軟體資料",
       discoveryStart: "發現遷移資料",

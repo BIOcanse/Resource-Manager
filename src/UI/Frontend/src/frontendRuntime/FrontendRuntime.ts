@@ -54,7 +54,8 @@ export function createFrontendRuntime(
     : () => undefined;
   const operationRegistry = new OperationRegistry(
     requestClient,
-    sources.operations);
+    sources.operations,
+    { active: false });
   const taskCenter = new TaskCenterProjection(taskRegistry, operationRegistry);
   let disposed = false;
 

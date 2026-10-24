@@ -173,6 +173,11 @@ export interface MonitorStore {
   cancelAllMonitorEdits: () => void;
 }
 
+interface MonitorSourceBinding<T> {
+  readonly queryKey: string;
+  readonly source: SourceSnapshot<T>;
+}
+
 export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [dashboardSettingsState, setDashboardSettingsState] = createSignal<DashboardSettingsLoadState>("loading");
   const [dashboardSettingsSource, setDashboardSettingsSource] = createSignal<DashboardSettingsResult["source"] | null>(null);
@@ -183,13 +188,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [catalog, setCatalog] = createSignal<MetricDefinition[]>([]);
   const [catalogObservation, setCatalogObservation] =
     createSignal<ObservationState>(loadingObservation());
-  const [snapshot, setSnapshot] = createSignal<MetricSnapshot | null>(null);
-  const snapshotObservation = createMemo<ObservationState>(() => {
-    const current = snapshot();
-    return current
-      ? readyObservation(current.capturedAt ?? undefined)
-      : loadingObservation();
-  });
+  const [metricSourceSnapshot, setMetricSourceSnapshot] = createSignal<MonitorSourceBinding<MetricSnapshot> | null>(null);
   // 看板布局由后端按本机目录生成，设置到达前不画卡片，免得先闪一版和后端不一样的占位卡。
   const [cards, setCards] = createSignal<DashboardCardSettings[]>([]);
   const [resourceBars, setResourceBars] = createSignal<ResourceBarSettings[]>([]);
@@ -198,14 +197,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceTableMode, setResourceTableMode] = createSignal<ResourceTableViewMode>("software");
   const [resourceTableEditMode, setResourceTableEditMode] = createSignal(false);
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
-  const [resourceBreakdownSnapshot, setResourceBreakdownSnapshot] =
-    createSignal<ResourceBreakdownSnapshot | null>(null);
-  const [resourceTableSnapshot, setResourceTableSnapshot] =
-    createSignal<ResourceTableSnapshot | null>(null);
-  const [resourceBarsObservation, setResourceBarsObservation] =
-    createSignal<ObservationState>(loadingObservation());
-  const [resourceTableObservation, setResourceTableObservation] =
-    createSignal<ObservationState>(loadingObservation());
+  const [barsSourceSnapshot, setBarsSourceSnapshot] = createSignal<MonitorSourceBinding<ResourceMonitorSnapshot> | null>(null);
+  const [tableSourceSnapshot, setTableSourceSnapshot] = createSignal<MonitorSourceBinding<ResourceMonitorSnapshot> | null>(null);
   const [resourceTableSort, setResourceTableSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "impact", direction: "desc" });
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
   const [resourceSelection, setResourceSelection] = createSignal<ResourcePrecisionSelection | null>(null);
@@ -246,7 +239,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   });
   const currentMetricIds = createMemo(() => {
     const ids = new Set<string>();
-    for (const card of activeCards()) {
+    for (const card of options.metricSnapshotActive() ? activeCards() : []) {
       // 设备字段走按字段订阅，不进原有指标订阅。
       if (card.main && !fieldCardSlot(card.main, card.mainBinding)) {
         ids.add(card.main);
@@ -257,7 +250,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
         }
       });
     }
-    if (resourceTableMode() === "performance") {
+    if (options.resourceTableActive() && resourceTableMode() === "performance") {
       for (const metricId of defaultPerformanceMetricIds(catalog())) {
         ids.add(metricId);
       }
@@ -266,17 +259,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return [...ids];
   });
   const snapshotMetricIds = createMemo(() => {
-    if (options.smartMonitoringEnabled()) {
+    if (options.smartMonitoringEnabled() || !options.metricSnapshotActive()) {
       return currentMetricIds();
     }
     const catalogIds = allCatalogMetricIds(catalog());
     return catalogIds.length > 0 ? catalogIds : currentMetricIds();
-  });
-  const orderedSnapshotBars = createMemo(() => {
-    const bars = resourceBreakdownSnapshot()?.bars ?? [];
-    const order = new Map(activeResourceBars().map((bar, index) => [bar.metricId, index]));
-    return bars.filter((bar) => order.has(bar.metricId)).sort((left, right) =>
-      (order.get(left.metricId) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.metricId) ?? Number.MAX_SAFE_INTEGER));
   });
   const resourceBreakdownProcessDetailSoftwareIds = createMemo(() => {
     const ids = new Set(
@@ -297,8 +284,12 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   applyMetricCatalogSourceSnapshot(metricCatalogLease.snapshot);
   applyDashboardSettingsSourceSnapshot(dashboardSettingsLease.snapshot);
 
+  const metricSnapshotNeeded = createMemo(() => options.metricSnapshotActive()
+    || (options.resourceTableActive() && resourceTableMode() === "performance"));
+  const resourceTableNeeded = createMemo(() => options.resourceTableActive()
+    && resourceTableMode() !== "performance");
   const metricSubscriptionKey = createMemo(() => JSON.stringify({
-    active: options.metricSnapshotActive(),
+    active: metricSnapshotNeeded(),
     query: normalizeMetricSnapshotQuery(createMetricSnapshotQuery()),
     intervalMs: options.metricSnapshotIntervalMs()
   }));
@@ -308,16 +299,36 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     intervalMs: options.resourceBarsIntervalMs()
   }));
   const resourceTableSubscriptionKey = createMemo(() => JSON.stringify({
-    active: options.resourceTableActive(),
+    active: resourceTableNeeded(),
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
     intervalMs: options.resourceTableIntervalMs()
   }));
-  let activeMetricQueryKey: string | null = null;
+  const snapshot = createMemo(() => metricSnapshotNeeded()
+    && metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
+    ? metricSourceSnapshot()?.source.data ?? null : null);
+  const snapshotObservation = createMemo(() => metricSnapshotNeeded() && metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
+    ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
+  const resourceBreakdownSnapshot = createMemo(() => options.resourceBarsActive()
+    && barsSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceBarsQuery()))
+    ? barsSourceSnapshot()?.source.data?.breakdown ?? null : null);
+  const resourceTableSnapshot = createMemo(() => resourceTableNeeded()
+    && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
+    ? tableSourceSnapshot()?.source.data?.table ?? null : null);
+  const resourceBarsObservation = createMemo(() => options.resourceBarsActive() && barsSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceBarsQuery()))
+    ? pushObservation(barsSourceSnapshot()?.source ?? null) : loadingObservation());
+  const resourceTableObservation = createMemo(() => resourceTableNeeded() && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
+    ? pushObservation(tableSourceSnapshot()?.source ?? null) : loadingObservation());
+  const orderedSnapshotBars = createMemo(() => {
+    const bars = resourceBreakdownSnapshot()?.bars ?? [];
+    const order = new Map(activeResourceBars().map((bar, index) => [bar.metricId, index]));
+    return bars.filter((bar) => order.has(bar.metricId)).sort((left, right) =>
+      (order.get(left.metricId) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.metricId) ?? Number.MAX_SAFE_INTEGER));
+  });
   // 目录每 5 秒推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
-  const [fieldCatalog, setFieldCatalog] = createSignal<readonly MetricFieldCatalogDevice[] | null>(
-    null,
-    { equals: sameMetricFieldCatalog });
-  const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldDevice[] | null>(null);
+  const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldCatalogDevice[]> | null>(null);
+  const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
+  const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data ?? null, null, { equals: sameMetricFieldCatalog });
+  const fieldDevices = createMemo(() => fieldDevicesSnapshot()?.data ?? null);
   const fieldSlots = createMemo(() => fieldCardSlots(activeCards()));
   const fieldSubscriptionKey = createMemo(() => JSON.stringify({
     active: options.metricSnapshotActive(),
@@ -336,8 +347,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     // 卡片显示不读目录修订号，沿用指标帧的；还没有指标帧时为空。
     return { version: 4, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
   });
-  let activeResourceBarsQueryKey: string | null = null;
-  let activeResourceTableQueryKey: string | null = null;
 
   createEffect(() => {
     const binding = JSON.parse(metricSubscriptionKey()) as {
@@ -346,28 +355,26 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       intervalMs: number;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (activeMetricQueryKey !== queryKey) {
-      activeMetricQueryKey = queryKey;
-    }
     if (!binding.active) {
       return;
     }
     let accepting = true;
-    const unsubscribe = options.metricSnapshotSource.subscribe(
+    const unsubscribe = options.metricSnapshotSource.subscribeSnapshot(
       binding.query,
       binding.intervalMs,
       (value) => {
-        if (accepting && activeMetricQueryKey === queryKey) {
-          setSnapshot(value);
-          if (value.catalogRevision !== backendCatalogRevision) {
-            backendCatalogRevision = value.catalogRevision;
-            void followBackendCatalog(value.catalogRevision);
+        if (accepting) {
+          setMetricSourceSnapshot({ queryKey, source: value });
+          if (value.data && value.data.catalogRevision !== backendCatalogRevision) {
+            backendCatalogRevision = value.data.catalogRevision;
+            void followBackendCatalog(value.data.catalogRevision);
           }
         }
       });
     onCleanup(() => {
       accepting = false;
       unsubscribe();
+      setMetricSourceSnapshot(null);
     });
   });
   // 设备目录变化很慢，监视页可见时 5 秒推一次就够。
@@ -375,8 +382,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     if (!options.metricSnapshotActive()) {
       return;
     }
-    const unsubscribe = options.metricFieldCatalogSource.subscribe(5_000, setFieldCatalog);
-    onCleanup(unsubscribe);
+    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(5_000, setFieldCatalogSnapshot);
+    onCleanup(() => { unsubscribe(); setFieldCatalogSnapshot(null); });
   });
   createEffect(() => {
     const binding = JSON.parse(fieldSubscriptionKey()) as {
@@ -388,17 +395,18 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       return;
     }
     let accepting = true;
-    const unsubscribe = options.metricFieldsSource.subscribe(
+    const unsubscribe = options.metricFieldsSource.subscribeSnapshot(
       { fields: binding.fields },
       binding.intervalMs,
       (value) => {
         if (accepting) {
-          setFieldDevices(value);
+          setFieldDevicesSnapshot(value);
         }
       });
     onCleanup(() => {
       accepting = false;
       unsubscribe();
+      setFieldDevicesSnapshot(null);
     });
   });
   createEffect(() => {
@@ -408,24 +416,23 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       intervalMs: number;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (activeResourceBarsQueryKey !== queryKey) {
-      activeResourceBarsQueryKey = queryKey;
-    }
     if (!binding.active) {
       return;
     }
     let accepting = true;
-    const unsubscribe = options.resourceMonitorSource.subscribe(
+    const unsubscribe = options.resourceMonitorSource.subscribeSnapshot(
       binding.query,
       binding.intervalMs,
       (value) => {
-        if (accepting && activeResourceBarsQueryKey === queryKey) {
-          applyResourceBarsValue(value);
+        if (accepting) {
+          setBarsSourceSnapshot({ queryKey, source: value });
+          pruneResourceSelection(value.data?.breakdown.bars ?? []);
         }
       });
     onCleanup(() => {
       accepting = false;
       unsubscribe();
+      setBarsSourceSnapshot(null);
     });
   });
   createEffect(() => {
@@ -435,24 +442,22 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       intervalMs: number;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (activeResourceTableQueryKey !== queryKey) {
-      activeResourceTableQueryKey = queryKey;
-    }
     if (!binding.active) {
       return;
     }
     let accepting = true;
-    const unsubscribe = options.resourceMonitorSource.subscribe(
+    const unsubscribe = options.resourceMonitorSource.subscribeSnapshot(
       binding.query,
       binding.intervalMs,
       (value) => {
-        if (accepting && activeResourceTableQueryKey === queryKey) {
-          applyResourceTableValue(value);
+        if (accepting) {
+          setTableSourceSnapshot({ queryKey, source: value });
         }
       });
     onCleanup(() => {
       accepting = false;
       unsubscribe();
+      setTableSourceSnapshot(null);
     });
   });
   onCleanup(() => {
@@ -513,19 +518,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       processDetailSoftwareIds: [],
       tableMode: resourceTableMode()
     };
-  }
-
-  function applyResourceBarsValue(monitor: ResourceMonitorSnapshot): void {
-    setResourceBreakdownSnapshot(monitor.breakdown);
-    setResourceBarsObservation(readyObservation(
-      monitor.breakdown.capturedAt));
-    pruneResourceSelection(monitor.breakdown.bars ?? []);
-  }
-
-  function applyResourceTableValue(monitor: ResourceMonitorSnapshot): void {
-    setResourceTableSnapshot(monitor.table);
-    setResourceTableObservation(readyObservation(
-      monitor.table.capturedAt));
   }
 
   function applyMetricCatalogSourceSnapshot(
@@ -1208,4 +1200,14 @@ function moveItemBefore<T>(items: T[], key: (item: T) => string, sourceKey: stri
   const [moved] = next.splice(sourceIndex, 1);
   next.splice(targetIndex, 0, moved);
   return next;
+}
+
+function pushObservation<T>(snapshot: SourceSnapshot<T> | null): ObservationState {
+  if (snapshot?.status === "ready" && snapshot.data !== null) {
+    return readyObservation(snapshot.capturedAt ?? undefined);
+  }
+  if (snapshot && (snapshot.status === "error" || snapshot.status === "unavailable" || snapshot.status === "disposed")) {
+    return { status: "error", source: "none" };
+  }
+  return loadingObservation();
 }

@@ -11,6 +11,7 @@ import {
 import {
   selectTaskCenterItems
 } from "../src/frontendRuntime/taskCenter/taskCenterSelectors.ts";
+import { uiText } from "../src/i18n/appTextStore.ts";
 
 class FakeOperationSource {
   private readonly listeners = new Set<(
@@ -71,9 +72,11 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
   assert.equal(
     projection.snapshot.items.find((item) => item.id === `frontend:${userRun.id}`)?.durability,
     "transient");
-  assert.equal(
-    projection.snapshot.items.find((item) => item.source === "operation")?.title,
-    "Install component");
+  const projectedOperation = projection.snapshot.items.find((item) =>
+    item.source === "operation")!;
+  assert.equal(projectedOperation.title, uiText.taskCenter.operation.componentInstall);
+  assert.notEqual(projectedOperation.title, operation().title,
+    "backend operation prose must not become the task title");
   assert.equal(
     projection.snapshot.items.find((item) => item.source === "operation")?.domainKey,
     "component.example");
@@ -243,6 +246,49 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
   taskRegistry.dispose();
 }
 
+{
+  const taskRegistry = new TaskRegistry();
+  const operationSource = new FakeOperationSource();
+  const projection = new TaskCenterProjection(taskRegistry, operationSource);
+  const sourceProgress = operation().progress!;
+  operationSource.publish(operationRegistrySnapshot(2, [operation({
+    state: "failed",
+    progress: Object.freeze({ ...sourceProgress, message: "Backend progress prose" }),
+    result: "Backend result prose",
+    error: "Backend error prose"
+  })]));
+  const failedOperation = projection.snapshot.items.find((item) => item.source === "operation")!;
+  assert.equal(JSON.stringify(failedOperation).includes("Backend progress prose"), false);
+  assert.equal(JSON.stringify(failedOperation).includes("Backend result prose"), false);
+  assert.equal(JSON.stringify(failedOperation).includes("Backend error prose"), false);
+  assert.equal("resultSummary" in failedOperation, false);
+  assert.equal("errorSummary" in failedOperation, false);
+  assert.equal("message" in failedOperation.progress!, false);
+  assert.equal("stage" in failedOperation.progress!, false);
+  projection.dispose();
+  taskRegistry.dispose();
+}
+
+for (const [status, expected] of [
+  ["error", "error"],
+  ["unavailable", "disconnected"]
+] as const) {
+  const taskRegistry = new TaskRegistry();
+  const operationSource = new FakeOperationSource();
+  const projection = new TaskCenterProjection(taskRegistry, operationSource);
+  operationSource.publish(operationRegistrySnapshot(2, [operation()], {
+    status,
+    actionsEnabled: false,
+    error: new Error("operation source unavailable")
+  }));
+  assert.equal(projection.snapshot.operationState, expected);
+  assert.equal(
+    projection.snapshot.items.find((item) => item.source === "operation")?.backendDisconnected,
+    true);
+  projection.dispose();
+  taskRegistry.dispose();
+}
+
 function operation(
   overrides: Partial<OperationSnapshot> = {}
 ): OperationSnapshot {
@@ -250,7 +296,7 @@ function operation(
     id: "00000000000000000000000000000001",
     kind: "component.install",
     domainKey: "component.example",
-    title: "Install component",
+    title: "安装组件 internal-component-id",
     state: "running",
     configurationGeneration: "1",
     stateRevision: "1",

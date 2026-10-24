@@ -85,9 +85,7 @@ try {
     const before = issues.length;
     const [app, settings] = await Promise.all([loadAppCopy(language), loadSettingsText(language)]);
     assert.equal(settings.language, language, `${language}: settings loader silently returned another language.`);
-    applyLanguage(language);
-    // Bundles are already cached; one microtask settles the production store.
-    await Promise.resolve();
+    await applyLanguage(language);
     assert.equal(currentLanguage(), language);
     const unclassified = { kind: "Unclassified" } as import("../src/types.ts").SoftwareIssueTag;
     assert.equal(softwareIssueLabel(unclassified), app.softwareKind.Unclassified);
