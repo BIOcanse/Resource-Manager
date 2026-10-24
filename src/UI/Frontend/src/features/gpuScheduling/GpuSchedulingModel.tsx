@@ -114,12 +114,12 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   const modelBinding = new SourceLeaseBinding<GpuSchedulingModelSnapshot>(
     setModelSource);
   let modelLease: SourceLease<GpuSchedulingModelSnapshot> | null = null;
-  const [metricSnapshot, setMetricSnapshot] =
-    createSignal<SourceSnapshot<MetricSnapshot> | null>(null);
-  const [resourceSnapshot, setResourceSnapshot] =
-    createSignal<SourceSnapshot<ResourceMonitorSnapshot> | null>(null);
-  const [specializedTelemetry, setSpecializedTelemetry] =
-    createSignal<SourceSnapshot<GpuSpecializedTelemetrySnapshot> | null>(null);
+  const [metricBinding, setMetricSnapshot] =
+    createSignal<{ key: string; source: SourceSnapshot<MetricSnapshot> } | null>(null);
+  const [resourceBinding, setResourceSnapshot] =
+    createSignal<{ key: string; source: SourceSnapshot<ResourceMonitorSnapshot> } | null>(null);
+  const [specializedBinding, setSpecializedTelemetry] =
+    createSignal<{ key: string; source: SourceSnapshot<GpuSpecializedTelemetrySnapshot> } | null>(null);
   const unsubscribeCatalog = catalogLease.subscribe(setCatalogSource);
   const catalog = createMemo(() => {
     const source = catalogSource();
@@ -130,6 +130,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     .split(",")
     .filter(Boolean)
     .map((value) => Number(value)));
+  const metricSnapshot = createMemo(() => metricBinding()?.key === gpuIndexKey() ? metricBinding()?.source : null);
+  const resourceSnapshot = createMemo(() => resourceBinding()?.key === gpuIndexKey() ? resourceBinding()?.source : null);
+  const specializedTelemetry = createMemo(() => specializedBinding()?.key === gpuIndexKey() ? specializedBinding()?.source : null);
   const pressureThresholds = createMemo(() => {
     const settingsSnapshot = appSettingsSource.snapshot();
     const performanceSettings = settingsSnapshot.status === "ready"
@@ -159,19 +162,18 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     const indexes = gpuIndexes();
     const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
     modelLease = modelBinding.switch(
-      JSON.stringify([active, indexes]),
+      JSON.stringify(indexes),
       () => runtime.sources.gpuSchedulingModel.acquire(
         { gpuIndexes: indexes },
-        { active, refreshIntervalMs: null }));
+        { active: false, refreshIntervalMs: null }));
+    modelLease.setDemand({ active, refreshIntervalMs: null });
   });
 
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     const indexes = gpuIndexes();
+    const queryKey = gpuIndexKey();
     const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
-    setMetricSnapshot(null);
-    setResourceSnapshot(null);
-    setSpecializedTelemetry(null);
     if (!active || indexes.length === 0) {
       return;
     }
@@ -187,7 +189,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     const stopMetric = runtime.sources.metricSnapshot.subscribeSnapshot(
       { ids: metricIds },
       intervalMs,
-      setMetricSnapshot);
+      source => setMetricSnapshot({ key: queryKey, source }));
     const stopResource = runtime.sources.resourceMonitor.subscribeSnapshot(
       {
         scope: "bars",
@@ -203,11 +205,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         processDetailSoftwareIds: []
       },
       intervalMs,
-      setResourceSnapshot);
+      source => setResourceSnapshot({ key: queryKey, source }));
     const stopSpecialized = runtime.sources.gpuSpecializedTelemetry.subscribeSnapshot(
       { counterIds: buildGpuSpecializedCounterIds(indexes) },
       intervalMs,
-      setSpecializedTelemetry);
+      source => setSpecializedTelemetry({ key: queryKey, source }));
     onCleanup(() => {
       stopMetric();
       stopResource();

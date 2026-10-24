@@ -51,3 +51,9 @@ assert.match(workspace, /if \(!current \|\| resultReadFailure\(\)\) \{/);
 assert.match(workspace, /failure\?\.kind === "result" \? failure : null/);
 
 console.log("diskUsageWorkspaceContract: ok");
+
+assert.match(workspace, /createSignal<DiskUsageScanSummary \| null \| undefined>\(undefined\)/);
+assert.match(workspace, /summary\(\) === undefined \|\| layout\(\) === undefined \? "loading" : "ready"/);
+assert.match(page, /!props\.hasResult && props\.resultReadState !== "error"/);
+assert.match(page, /kind=\{props\.resultReadState === "loading" \? "waiting" : "empty"\}/);
+assert.match(page, /props\.resultReadState === "loading" \? undefined : uiText\.diskUsage\.emptyDetail/);

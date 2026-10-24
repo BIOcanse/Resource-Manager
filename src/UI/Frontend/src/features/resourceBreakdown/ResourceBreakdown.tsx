@@ -62,6 +62,7 @@ interface ResourceBreakdownProps {
   saveState: "idle" | "saving" | "error";
   bars: ResourceBarSettings[];
   snapshotBars: ResourceBreakdownBar[];
+  observation: ObservationState;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
   selection: ResourcePrecisionSelection | null;
@@ -120,7 +121,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
             在标题旁边挂个"6 个项目"是重复屏幕上已有的信息。
           */}
           <Show when={props.snapshotBars.length === 0}>
-            <span>{uiText.resourceBreakdown.statusFallback}</span>
+            <span>{props.observation.status === "loading" ? "--" : uiText.resourceBreakdown.statusFallback}</span>
           </Show>
           <Show when={props.editMode}>
             <button
@@ -161,11 +162,17 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
         when={props.snapshotBars.length > 0}
         fallback={
           <ContentState
-            kind="empty"
-            title={props.bars.length === 0
+            kind={props.observation.status === "loading" ? "waiting"
+              : props.observation.status === "error" || props.observation.status === "profile-disabled" ? "unavailable" : "empty"}
+            title={props.observation.status === "loading"
+              ? uiText.observationNotice.loading(uiText.monitorPage.resourceUsage)
+              : props.observation.status === "error" || props.observation.status === "profile-disabled"
+                ? uiText.observationNotice.unavailable(uiText.monitorPage.resourceUsage)
+                : props.bars.length === 0
               ? uiText.resourceBreakdownView.emptyTitle
               : uiText.resourceBreakdownView.noDataTitle}
-            detail={props.bars.length === 0
+            detail={props.observation.status === "loading" || props.observation.status === "error" || props.observation.status === "profile-disabled"
+              ? undefined : props.bars.length === 0
               ? uiText.resourceBreakdownView.emptyDetail
               : uiText.resourceBreakdownView.noDataDetail}
           />

@@ -54,7 +54,8 @@ assert.match(details, /GpuSchedulingModel runtimeEffectsEnabled=/);
 assert.doesNotMatch(
   gpuModel,
   /createSignal<MetricSnapshot>\(\{[\s\S]*capturedAt:\s*null,[\s\S]*items:\s*\{\}/);
-assert.match(gpuModel, /createSignal<SourceSnapshot<MetricSnapshot> \| null>\(null\)/);
+assert.match(gpuModel, /createSignal<\{ key: string; source: SourceSnapshot<MetricSnapshot> \} \| null>\(null\)/);
+assert.match(gpuModel, /metricBinding\(\)\?\.key === gpuIndexKey\(\)/);
 assert.match(
   gpuModel,
   /metric && sourceCanRender\(metric\)[\s\S]*resource && sourceCanRender\(resource\)/);

@@ -77,11 +77,12 @@ assert.equal(root.binding.bars()?.data, null, "A new bars binding cannot retain 
 root.setInterval(1700); await Promise.resolve();
 assert.equal(bars.calls.at(-1)?.interval, 1700);
 assert.equal(details.calls.at(-1)?.interval, 1700);
+bars.calls.at(-1)!.emit(snapshot(barValue));
 root.setActive(false); await Promise.resolve();
-assert.equal(root.binding.bars(), null);
-assert.equal(root.binding.details(), null);
+assert.strictEqual(root.binding.bars()?.data, barValue, "Hidden region keeps its current snapshot");
+assert.equal(root.binding.details()?.status, "loading");
 assert(bars.calls.every(call => call.stopped)); assert(details.calls.every(call => call.stopped));
 root.setActive(true); await Promise.resolve();
-assert.equal(root.binding.bars()?.data, null, "Hidden demand retains no metric value");
+assert.equal(root.binding.bars()?.data, null, "Test transport has not delivered a value for the new query");
 root.dispose();
 console.log("Resource bars and process details use independent current bindings.");

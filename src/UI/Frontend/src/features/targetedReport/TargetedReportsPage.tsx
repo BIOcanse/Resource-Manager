@@ -82,16 +82,6 @@ export function TargetedReportsPage() {
       return;
     }
 
-    if (!active) {
-      reportBinding.release();
-      reportLease = null;
-      setReportSource(null);
-      setReportLoading(false);
-      setReportFailed(false);
-      finalReportRefreshId = null;
-      return;
-    }
-
     reportLease = reportBinding.switch(id, () =>
       runtime.sources.targetedRecordingReport.acquire(
         { recordingId: id },

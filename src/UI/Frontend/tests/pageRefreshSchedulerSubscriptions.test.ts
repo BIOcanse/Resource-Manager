@@ -94,17 +94,17 @@ try {
   await flush();
   assert.equal(streams.length, 2, "a real cadence change must replace the binding");
   assert.equal(streams[0].signal.aborted, true);
-  assert.equal(scheduler.selfScheduling(), null, "no previous binding value may survive");
+  assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "normal" }, "Cadence change retains the same entry current value");
 
   setVisible(false);
   await flush();
   assert.equal(inFlight, 0, "hidden window must release all subscriptions immediately");
-  assert.equal(scheduler.systemUptime(), "--");
+  assert.equal(scheduler.systemUptime(), "01:00:00");
   setVisible(true);
   await flush();
   assert.equal(streams.length, 3);
-  assert.equal(scheduler.selfScheduling(), null);
-  assert.equal(scheduler.systemUptime(), "--", "reactivation must not retain the old value");
+  assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "normal" });
+  assert.equal(scheduler.systemUptime(), "01:00:00", "Reactivation synchronously displays the current value");
   assert.equal(maxInFlight, 1);
 } finally {
   dispose(); channel.dispose(); session.dispose();

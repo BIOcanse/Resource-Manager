@@ -46,7 +46,6 @@ export function HostManagerSmartCoordinatorDetailsReport() {
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     if (!frontendWork.isNeeded(frontendWorkIds.detailsSmartReport) || intervalMs === undefined) {
-      setStateSource(null);
       return;
     }
     const unsubscribe = frontendRuntime.sources.smartCoordinatorState.subscribeSnapshot(

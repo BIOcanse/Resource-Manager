@@ -79,6 +79,12 @@ export class BackendSubscriptionChannel {
       });
   }
 
+  /** Detached source entries use this fence before replaying their current value. */
+  get backendEpoch(): string | null {
+    const session = this.backendSession.snapshot;
+    return session.status === "ready" ? session.session?.epoch ?? null : null;
+  }
+
   subscribe<TValue>(
     key: string,
     path: string,

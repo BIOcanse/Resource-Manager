@@ -16,6 +16,7 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let language = "zh-CN";
   const checked = [];
+  let pendingResultHeight = 0;
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     if (language !== option.id) {
       const oldApp = await loadAppCopy(language);
@@ -31,8 +32,26 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     const copy = await loadAppCopy(language);
     const navigation = page.locator(".shell-pages");
     await patch({ diskUsageVolumesFailure: true, diskUsageResultFailure: true, diskUsageMultiRoot: true });
+    let releaseInitialReads;
+    const initialReadPattern = /\/api\/disk-usage\/(?:volumes|summary|layout)(?:\?|$)/;
+    if (checked.length === 0) {
+      const gate = new Promise(resolve => { releaseInitialReads = resolve; });
+      await page.route(initialReadPattern, async route => { await gate; await route.continue(); });
+    }
     await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
     const workspace = page.locator(".disk-usage-page");
+    if (releaseInitialReads) {
+      try {
+        await workspace.locator(".disk-usage-result .content-state.waiting").waitFor({ state: "visible" });
+        await workspace.locator(".disk-usage-volumes .content-state.waiting").waitFor({ state: "visible" });
+        pendingResultHeight = await workspace.locator(".disk-usage-result").evaluate(node => node.getBoundingClientRect().height);
+        assert(await workspace.getByText(copy.diskUsage.emptyTitle, { exact: true }).count() === 0, "Unread disk result cannot show the accepted-empty prompt");
+        assert(await workspace.getByText(copy.diskUsage.noVolumes, { exact: true }).count() === 0, "Unread volume list cannot claim zero volumes");
+      } finally {
+        releaseInitialReads();
+        await page.unrouteAll({ behavior: "wait" });
+      }
+    }
     const volumes = workspace.locator(".disk-usage-volumes");
     const resultError = workspace.locator(".disk-usage-read-error");
     await volumes.getByText(copy.diskUsage.volumesReadFailed, { exact: true }).waitFor();
@@ -46,6 +65,10 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     await workspace.getByText(copy.diskUsage.noVolumes, { exact: true }).waitFor();
     await resultError.waitFor({ state: "hidden" });
     assert(await workspace.getByRole("alert").count() === 0, `${language}: successful empty read retained an error`);
+    if (checked.length === 0) {
+      const emptyHeight = await workspace.locator(".disk-usage-result").evaluate(node => node.getBoundingClientRect().height);
+      assert(Math.abs(emptyHeight - pendingResultHeight) <= 1, `Disk pending/accepted-empty height changed: ${pendingResultHeight} -> ${emptyHeight}`);
+    }
 
     await patch({ diskUsageVolumesEmpty: false, diskUsageMultiRoot: true });
     await navigation.getByRole("button", { name: copy.page.monitor, exact: true }).click();
@@ -82,5 +105,5 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     checked.push(language);
   }
   assert(errors.length === 0, errors.join("\n"));
-  return { languages: checked, failedReadDistinctFromEmpty: true, retainedDataStale: true, retry: true, postScanReadFailure: true };
+  return { languages: checked, pendingResultHeight, firstReadPending: true, failedReadDistinctFromEmpty: true, retainedDataStale: true, retry: true, postScanReadFailure: true };
 }

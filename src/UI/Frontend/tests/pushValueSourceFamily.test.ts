@@ -1,3 +1,4 @@
+import { MAX_UNSUBSCRIBED_SOURCE_ENTRIES } from "../src/frontendRuntime/source/sourceRetention.ts";
 import assert from "node:assert/strict";
 import type { HostMessageTransport } from
   "../src/host/hostMessageTransport.ts";
@@ -560,7 +561,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     host.publish(readyMessage("5", "state-c"));
     release = source.subscribeSnapshot(1000, (state) => states.push(state));
     assert.equal(states.at(-1)?.status, "loading");
-    assert.equal(states.at(-1)?.data, null, "Zero demand removes the current source entry");
+    assert.equal(states.at(-1)?.data, null, "Epoch change fences even detached entries");
     await waitFor(() => harness.streams.length === 4);
     publish(harness.streams[3], harness.streams[3].subscriptions[0].id, 45);
     await flush();
@@ -570,9 +571,96 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     const beforeReacquire = states.length;
     release = source.subscribeSnapshot(1000, (state) => states.push(state));
     assert.equal(states.length, beforeReacquire + 1);
-    assert.equal(states.at(-1)?.status, "loading");
-    assert.equal(states.at(-1)?.data, null, "A successful payload is also discarded at zero demand");
+    assert.equal(states.at(-1)?.status, "ready");
+    assert.equal(states.at(-1)?.data, 45, "Demand release retains the latest value");
   } finally {
     release(); channel.dispose(); owner.dispose();
   }
+}
+
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "retained-family"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch });
+  const family = new BackendPushValueSourceFamily<number, number | null>({
+    key: "test.retained-family", channel, buildUrl: id => `/api/current?id=${id}`,
+    decoder: defineResponseDecoder("nullable-number", value => {
+      if (value === null || typeof value === "number") return value;
+      throw new Error("Invalid number");
+    })
+  });
+  const states: import("../src/frontendRuntime/source/SourceSnapshot.ts").SourceSnapshot<number | null>[] = [];
+  let release = family.subscribeSnapshot(0, 1000, state => states.push(state));
+  try {
+    await waitFor(() => harness.streams.length === 1);
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 10);
+    await flush();
+    const accepted = states.at(-1);
+    release(); await flush();
+    const count = states.length;
+    release = family.subscribeSnapshot(0, 1000, state => states.push(state));
+    assert.equal(states.length, count + 1);
+    assert.strictEqual(states.at(-1), accepted, "No loading frame on demand return");
+    await waitFor(() => harness.streams.length === 2);
+    publish(harness.streams[1], harness.streams[1].subscriptions[0].id, null);
+    await flush();
+    assert.equal(states.at(-1)?.status, "ready");
+    assert.equal(states.at(-1)?.data, null, "New empty value replaces old value");
+    assert((states.at(-1)?.revision ?? 0) > (accepted?.revision ?? 0), "Entry revision survives a transport lease change");
+    release(); await flush();
+    release = family.subscribeSnapshot(0, 1000, state => states.push(state));
+    assert.equal(states.at(-1)?.status, "ready", "Empty value retained");
+    await waitFor(() => harness.streams.length === 3);
+    publish(harness.streams[2], harness.streams[2].subscriptions[0].id, "failure");
+    await flush();
+    const failed = states.at(-1);
+    assert.equal(failed?.status, "error");
+    release(); await flush();
+    release = family.subscribeSnapshot(0, 1000, state => states.push(state));
+    assert.strictEqual(states.at(-1), failed, "Failure retained, no old-good backfill");
+    release();
+    host.publish(readyMessage("2", "retained-family-next"));
+    release = family.subscribeSnapshot(0, 1000, state => states.push(state));
+    assert.equal(states.at(-1)?.status, "loading");
+    assert.equal(states.at(-1)?.data, null, "Detached values cannot cross epochs");
+  } finally { release(); channel.dispose(); owner.dispose(); }
+}
+
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "lru-family"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch });
+  const family = new BackendPushValueSourceFamily<number, number>({
+    key: "test.lru", channel, buildUrl: id => `/api/current?id=${id}`,
+    decoder: defineResponseDecoder("number", value => Number(value))
+  });
+  const releases = [];
+  let pinned: number | null = null;
+  const stopPinned = family.subscribeSnapshot(-1, 1000, state => { pinned = state.data; });
+  for (let id = 0; id < MAX_UNSUBSCRIBED_SOURCE_ENTRIES; id++) {
+    releases.push(family.subscribeSnapshot(id, 1000, () => undefined));
+  }
+  try {
+    await waitFor(() => harness.streams.length === 1);
+    for (const item of harness.streams[0].subscriptions) {
+      publish(harness.streams[0], item.id, Number(new URL(item.path, "http://test").searchParams.get("id")));
+    }
+    await flush();
+    releases.forEach(stop => stop());
+    let recent: number | null = null;
+    family.subscribeSnapshot(0, 1000, state => { recent = state.data; })();
+    assert.equal(recent, 0);
+    family.subscribeSnapshot(MAX_UNSUBSCRIBED_SOURCE_ENTRIES, 1000, () => undefined)();
+    let kept: number | null = null;
+    family.subscribeSnapshot(0, 1000, state => { kept = state.data; })();
+    assert.equal(kept, 0, "Revisited entry survives count pressure");
+    let evicted: number | null = null;
+    family.subscribeSnapshot(1, 1000, state => { evicted = state.data; })();
+    assert.equal(evicted, null, "Oldest unused entry removed");
+    assert.equal(pinned, -1, "Active entry never evicted or overwritten by another query");
+  } finally { releases.forEach(stop => stop()); stopPinned(); channel.dispose(); owner.dispose(); }
 }

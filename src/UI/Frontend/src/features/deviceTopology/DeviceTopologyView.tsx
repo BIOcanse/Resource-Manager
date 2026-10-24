@@ -78,12 +78,11 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology) || intervalMs === undefined) {
-      setMetricFieldSource(null);
       return;
     }
     const unsubscribe = runtime.sources.metricFields.subscribeSnapshot(
       { fields: deviceMetricFieldNames }, intervalMs, setMetricFieldSource);
-    onCleanup(() => { unsubscribe(); setMetricFieldSource(null); });
+    onCleanup(unsubscribe);
   });
   const snapshot = createMemo(() => topology.state().snapshot ?? null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);

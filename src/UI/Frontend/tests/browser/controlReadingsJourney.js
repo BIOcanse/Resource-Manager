@@ -47,12 +47,12 @@ export default async function controlReadingsJourney(page, baseUrl) {
   await page.locator(".control-readings dd").filter({ hasText: "89" }).waitFor();
   await visibility(false);
   await wait(t => t["/api/control/actual/subscribe"]?.logicalInFlight === 0);
-  assert.equal(await page.locator(".control-readings").count(), 0, "Hidden actual state is cleared");
+  assert.equal(await page.locator(".control-readings").count(), 1, "Hidden demand keeps the current actual state");
   await patch({ controlActualValues: "invalid-values" });
   await visibility(true);
   await wait(t => t["/api/control/actual/subscribe"]?.logicalInFlight === 1);
-  await page.waitForTimeout(250);
-  assert.equal(await page.locator(".control-readings").count(), 0, "Resuming cannot replay last-good actual state");
+  await page.waitForFunction(() => !document.querySelector(".control-readings"), null, { timeout: 5000 });
+  assert.equal(await page.locator(".control-readings").count(), 0, "A newer failure replaces the retained actual state");
   assert.equal(await boost.getByRole("radio", { name: "开启", exact: true }).getAttribute("aria-checked"), "true");
   assert.deepEqual(writes, [], "Subscription changes must never apply a draft or write control state");
   await patch({ controlActualValues: null });
@@ -60,7 +60,7 @@ export default async function controlReadingsJourney(page, baseUrl) {
   await page.getByRole("radio", { name: "固件自动管理", exact: true }).click();
   if (!await boost.getByRole("radio", { name: "开启", exact: true }).isDisabled())
     throw new Error("Explicit firmware ownership did not lock controls");
-  return { ...result, takeoverSurvivesRefresh: true, failedValueCleared: true, hiddenValueCleared: true, noSubscriptionWrites: true };
+  return { ...result, takeoverSurvivesRefresh: true, failedValueCleared: true, hiddenValueRetained: true, noSubscriptionWrites: true };
 
   async function patch(value) {
     assert.equal((await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) })).ok, true);

@@ -1,3 +1,4 @@
+import { MAX_UNSUBSCRIBED_SOURCE_ENTRIES } from "../src/frontendRuntime/source/sourceRetention.ts";
 import assert from "node:assert/strict";
 import type { BackendSessionSnapshot } from "../src/frontendRuntime/session/backendSessionTypes.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
@@ -84,7 +85,6 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
     registry: new SourceRegistry(session, {
       schedule: clock.schedule,
       cancelSchedule: clock.cancel,
-      recordRetentionMs: 25
     })
   };
 }
@@ -99,7 +99,6 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
     durationMs: number | null;
   }> = [];
   const registry = new SourceRegistry(session, {
-    recordRetentionMs: 25,
     monotonicNow: () => ++monotonic,
     onActivity: (observation) => observations.push({
       phase: observation.phase,
@@ -234,7 +233,6 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   const session = new FakeBackendSession();
   const listenerErrors: Array<{ error: unknown; sourceKey: string }> = [];
   const registry = new SourceRegistry(session, {
-    recordRetentionMs: 25,
     onListenerError: (error, sourceKey) => listenerErrors.push({ error, sourceKey })
   });
   const source = registry.define({
@@ -284,7 +282,7 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.equal(lease.snapshot.status, "error");
   assert.equal(lease.snapshot.data, null);
   lease.setDemand({ active: false, refreshIntervalMs: null });
-  assert.equal(lease.snapshot.status, "idle");
+  assert.equal(lease.snapshot.status, "error");
   lease.release();
   registry.dispose();
 }
@@ -320,11 +318,11 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.equal(lease.snapshot.status, "ready");
   assert.deepEqual(lease.snapshot.data, { value: 3 });
 
+  const current = lease.snapshot;
   lease.setDemand({ active: false, refreshIntervalMs: null });
-  assert.equal(lease.snapshot.status, "idle");
-  assert.equal(lease.snapshot.data, null);
+  assert.strictEqual(lease.snapshot, current);
   lease.setDemand({ active: true, refreshIntervalMs: null });
-  assert.equal(lease.snapshot.status, "loading");
+  assert.strictEqual(lease.snapshot, current);
   await flushPromises();
   assert.equal(lease.snapshot.status, "ready");
   assert.deepEqual(lease.snapshot.data, { value: 4 });
@@ -350,7 +348,7 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.deepEqual(lease.snapshot.data, { value: 1 });
 
   const refresh = lease.refresh();
-  assert.equal(lease.snapshot.status, "refreshing");
+  assert.equal(lease.snapshot.status, "ready");
   assert.deepEqual(lease.snapshot.data, { value: 1 });
   next.resolve({ value: 2 });
   await refresh;
@@ -458,12 +456,12 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.equal(lease.snapshot.status, "ready");
   const refresh = lease.refresh();
   await Promise.resolve();
-  assert.equal(lease.snapshot.status, "refreshing");
+  assert.equal(lease.snapshot.status, "ready");
   assert.deepEqual(lease.snapshot.data, { value: 1 });
   lease.setDemand({ active: false, refreshIntervalMs: null });
   await refresh;
-  assert.equal(lease.snapshot.status, "idle");
-  assert.equal(lease.snapshot.data, null);
+  assert.equal(lease.snapshot.status, "ready");
+  assert.deepEqual(lease.snapshot.data, { value: 1 });
   lease.release();
   registry.dispose();
 }
@@ -482,7 +480,7 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.equal(lease.snapshot.status, "loading");
   lease.setDemand({ active: false, refreshIntervalMs: null });
   await flushPromises();
-  assert.equal(lease.snapshot.status, "idle");
+  assert.equal(lease.snapshot.status, "loading");
   assert.equal(lease.snapshot.data, null);
   lease.release();
   registry.dispose();
@@ -507,8 +505,8 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   lease.release();
   await flushPromises();
   assert.equal(aborted, true);
-  clock.advance(25);
-  assert.equal(registry.recordCount, 0);
+  clock.advance(24 * 60 * 60 * 1_000);
+  assert.equal(registry.recordCount, 1, "Unused records have no time expiration");
   registry.dispose();
 }
 
@@ -763,4 +761,101 @@ function nonRetryableProblem(): RequestProblem {
       durationMs: 1
     }
   });
+}
+
+// Retention is the current value (including null/error), scoped by query and epoch.
+{
+  const session = new FakeBackendSession();
+  const { registry, clock } = createRegistry(session);
+  let next = deferred<number | null>();
+  const family = registry.defineFamily({ key: "retained", load: () => next.promise });
+  let lease = family.acquire({ id: "a" });
+  next.resolve(7);
+  await flushPromises();
+  const accepted = lease.snapshot;
+  lease.setDemand({ active: false });
+  assert.strictEqual(lease.snapshot, accepted);
+  lease.release();
+  clock.advance(86_400_000);
+  next = deferred<number | null>();
+  lease = family.acquire({ id: "a" });
+  assert.strictEqual(lease.snapshot, accepted, "Reacquire reads synchronously before load");
+  const other = family.acquire({ id: "b" }, { active: false });
+  assert.equal(other.snapshot.data, null, "Queries never share values");
+  next.resolve(null);
+  await flushPromises();
+  assert.equal(lease.snapshot.status, "ready");
+  assert.equal(lease.snapshot.data, null, "An accepted empty value replaces 7");
+  lease.release();
+  next = deferred<number | null>();
+  lease = family.acquire({ id: "a" });
+  assert.equal(lease.snapshot.status, "ready", "An empty accepted value is retained too");
+  next.reject(new Error("new failure"));
+  await flushPromises();
+  const failed = lease.snapshot;
+  assert.equal(failed.status, "error");
+  lease.release();
+  next = deferred<number | null>();
+  lease = family.acquire({ id: "a" });
+  assert.strictEqual(lease.snapshot, failed, "Failure is current, never replaced by older good");
+  lease.release();
+  session.publish(readySnapshot("epoch-b", 2));
+  lease = family.acquire({ id: "a" }, { active: false });
+  assert.equal(lease.snapshot.data, null);
+  assert.equal(lease.snapshot.status, "idle");
+  assert.notStrictEqual(lease.snapshot, failed);
+  lease.release(); other.release(); registry.dispose();
+}
+
+{
+  const session = new FakeBackendSession();
+  const { registry } = createRegistry(session);
+  const family = registry.defineFamily({ key: "lru", load: async (id: number) => id });
+  const pinned = family.acquire(-1, { active: false });
+  pinned.acceptAuthoritative(-1);
+  for (let id = 0; id < MAX_UNSUBSCRIBED_SOURCE_ENTRIES; id++) {
+    const lease = family.acquire(id, { active: false });
+    lease.acceptAuthoritative(id);
+    lease.release();
+  }
+  const recent = family.acquire(0, { active: false });
+  assert.equal(recent.snapshot.data, 0);
+  recent.release();
+  const newest = family.acquire(MAX_UNSUBSCRIBED_SOURCE_ENTRIES, { active: false });
+  newest.acceptAuthoritative(MAX_UNSUBSCRIBED_SOURCE_ENTRIES);
+  newest.release();
+  assert.equal(registry.recordCount, MAX_UNSUBSCRIBED_SOURCE_ENTRIES + 1);
+  assert.equal(pinned.snapshot.data, -1, "Leased entries are never evicted");
+  const kept = family.acquire(0, { active: false });
+  assert.equal(kept.snapshot.data, 0, "Revisited query is most recently used");
+  const evicted = family.acquire(1, { active: false });
+  assert.equal(evicted.snapshot.status, "idle", "Oldest unused query was evicted");
+  assert.equal(evicted.snapshot.data, null);
+  kept.release(); evicted.release(); pinned.release(); registry.dispose();
+}
+
+// The existing opt-in controls failure-to-stale only, never demand retention.
+{
+  const session = new FakeBackendSession();
+  const { registry } = createRegistry(session);
+  let fail = false;
+  const source = registry.define({
+    key: "existing-stale-policy", retainLastGood: true,
+    load: async () => { if (fail) throw new Error("temporary"); return 9; }
+  });
+  const lease = source.acquire();
+  await flushPromises();
+  fail = true;
+  await lease.refresh();
+  assert.equal(lease.snapshot.status, "stale");
+  assert.equal(lease.snapshot.data, 9);
+  const current = lease.snapshot;
+  lease.setDemand({ active: false });
+  assert.strictEqual(lease.snapshot, current);
+  lease.release();
+  const again = source.acquire();
+  assert.strictEqual(again.snapshot, current, "Demand return cannot make stale healthy");
+  await flushPromises();
+  assert.equal(again.snapshot.status, "stale");
+  again.release(); registry.dispose();
 }

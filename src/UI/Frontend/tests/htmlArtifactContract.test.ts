@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const managedRoot = fileURLToPath(new URL("../../../../src/Core/wwwroot/", import.meta.url));
+const managedRoot = process.env.RM_FRONTEND_STATIC_ROOT
+  ? resolve(process.env.RM_FRONTEND_STATIC_ROOT)
+  : fileURLToPath(new URL("../../../../src/Core/wwwroot/", import.meta.url));
 const managedHtml = readFileSync(join(managedRoot, "index.html"), "utf8");
 
 assertHtmlShell(sourceHtml, "source");

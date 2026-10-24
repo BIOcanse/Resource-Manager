@@ -277,3 +277,9 @@
   gap: 8px;
   align-items: center;
 }
+
+/* Result placeholders use the existing treemap viewport budget. */
+.disk-usage-result > .content-state {
+  min-height: 420px;
+  height: clamp(420px, 58vh, 900px);
+}

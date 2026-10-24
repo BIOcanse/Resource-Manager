@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 const viewports = [
   { width: 800, height: 500 },
   { width: 1067, height: 667 }
@@ -20,6 +21,7 @@ export default async function resourceTableContentStateJourney(
     await setScenario(page, baseUrl, { resourceTableVariant: scenario.variant });
     await page.setViewportSize(viewports[0]);
     await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+    await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
     const contentState = page.locator(".resource-table-panel .content-state");
     await contentState.getByText(scenario.title, { exact: true })
       .waitFor({ state: "visible", timeout: 7000 });
@@ -35,6 +37,7 @@ export default async function resourceTableContentStateJourney(
   await setScenario(page, baseUrl, { resourceTableVariant: "normal" });
   await page.setViewportSize(viewports[0]);
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+  await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
   const rowAction = page.getByRole("button", { name: "更多操作：示例软件" }).first();
   await rowAction.waitFor({ state: "visible", timeout: 7000 });
   const heat = await page.locator('.resource-table-row[aria-hidden="false"] .value-cell')
@@ -52,7 +55,7 @@ export default async function resourceTableContentStateJourney(
   if (memory?.privateWidth !== "75%" || !memory.background.includes("211, 171, 48") ||
       !/^512 (?:MB|MiB)$/.test(memory.text) || !/共享分摊 128(?:\.0)? (?:MB|MiB)/.test(memory.title))
     throw new Error(`Shared bytes must be a yellow quarter with exact tooltip: ${JSON.stringify(heat)}`);
-  await page.locator('.resource-table-panel').screenshot({ path: 'tests/browser/artifacts/resource-table-shared.png' });
+  await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" })
     .fill("no-such-resource");
   const filteredState = page.locator(".resource-table-panel .content-state");

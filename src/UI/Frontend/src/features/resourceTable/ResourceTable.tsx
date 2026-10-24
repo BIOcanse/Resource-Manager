@@ -24,6 +24,7 @@ import {
 } from "./resourceTableFocus";
 import {
   classifyResourceTableContentState,
+  resourceTableCountText,
   type ResourceTableContentState
 } from "./resourceTableContentState";
 import { pinResourceTableRow } from "./resourceTableRowPin";
@@ -60,6 +61,7 @@ interface ResourceTableProps {
   metricObservation: ObservationState;
   columnSettings: ResourceTableColumnSettings[];
   snapshot: ResourceTableSnapshot | null;
+  observation: ObservationState;
   sortColumnId: string;
   sortDirection: string;
   expandedSoftwareIds: Record<string, boolean>;
@@ -98,24 +100,24 @@ export function ResourceTable(props: ResourceTableProps) {
   });
   const visibleBusinessCount = createMemo(() => projectedRows()
     .filter((row) => row.kind !== "summary").length);
-  const contentState = createMemo(() => props.snapshot === null
-    ? "ready-empty"
-    : classifyResourceTableContentState({
-      businessRowCount: baseCount(),
-      visibleBusinessRowCount: visibleBusinessCount(),
-      searchActive: Boolean(normalizeSearchText(searchQuery()))
-    }));
+  const contentState = createMemo(() => classifyResourceTableContentState({
+    hasSnapshot: props.snapshot !== null,
+    status: props.observation.status,
+    businessRowCount: baseCount(),
+    visibleBusinessRowCount: visibleBusinessCount(),
+    searchActive: Boolean(normalizeSearchText(searchQuery()))
+  }));
   const statusText = createMemo(() => {
     if (props.mode === "performance") {
       return "--";
     }
 
-    const total = baseCount();
-    if (normalizeSearchText(searchQuery())) {
-      return `${projectedRows().filter((row) => row.kind !== "summary").length} / ${total}`;
-    }
-
-    return String(total);
+    return resourceTableCountText({
+      state: contentState(),
+      businessRowCount: baseCount(),
+      visibleBusinessRowCount: visibleBusinessCount(),
+      searchActive: Boolean(normalizeSearchText(searchQuery()))
+    });
   });
   useInlineEditorFocus({
     active: () => props.editMode,
@@ -235,23 +237,23 @@ function ResourceTableContentStateView(props: {
   readonly state: ResourceTableContentState;
   readonly onClearSearch: () => void;
 }) {
-  if (props.state === "filtered-empty") {
-    return (
-      <ContentState
-        kind="empty"
-        title={uiText.resourceTableView.noMatchTitle}
-        detail={uiText.resourceTableView.noMatchDetail}
-        actions={<button class="secondary" type="button" onClick={props.onClearSearch}>{uiText.resourceTableView.clearSearch}</button>}
-      />
-    );
-  }
-  return (
-    <ContentState
-      kind="empty"
-      title={uiText.resourceTableView.emptyTitle}
-      detail={uiText.resourceTableView.emptyDetail}
-    />
-  );
+  const title = () => {
+    switch (props.state) {
+      case "pending": return uiText.observationNotice.loading(uiText.resourceTable.panel);
+      case "unavailable": return uiText.observationNotice.unavailable(uiText.resourceTable.panel);
+      case "filtered-empty": return uiText.resourceTableView.noMatchTitle;
+      default: return uiText.resourceTableView.emptyTitle;
+    }
+  };
+  return <ContentState
+    kind={props.state === "pending" ? "waiting" : props.state === "unavailable" ? "unavailable" : "empty"}
+    title={title()}
+    detail={props.state === "filtered-empty" ? uiText.resourceTableView.noMatchDetail
+      : props.state === "ready-empty" ? uiText.resourceTableView.emptyDetail : undefined}
+    actions={<Show when={props.state === "filtered-empty"}>
+      <button class="secondary" type="button" onClick={props.onClearSearch}>{uiText.resourceTableView.clearSearch}</button>
+    </Show>}
+  />;
 }
 
 function ResourceTableModeSwitch(props: {
