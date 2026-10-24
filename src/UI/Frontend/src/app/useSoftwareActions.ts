@@ -16,7 +16,6 @@ import {
   terminateProcesses
 } from "../api";
 import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry";
-import { isTerminalOperation } from "../frontendRuntime/operations/operationMerge";
 import type { SourceFamily } from
   "../frontendRuntime/source/SourceDescriptor";
 import type { SourceSnapshot } from
@@ -46,7 +45,6 @@ import type {
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareSettingsSnapshot,
   ManagedComponent,
-  OperationSnapshot,
   OptimizationReportItem,
   PageId,
   SoftwareDetailModel,
@@ -781,22 +779,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
   }
 
-  async function runSoftwareDetailAction(progressMessage: string, action: () => Promise<void>) {
-    if (softwareDetailActionInProgress()) {
-      return;
-    }
-
-    setSoftwareDetailActionInProgress(true);
-    setSoftwareDetailNotice({ message: progressMessage, tone: "progress" });
-    try {
-      await action();
-    } catch (error) {
-      setSoftwareDetailNotice({ message: userFacingErrorMessage(error, uiText.softwareActions.actionFailed), tone: "error" });
-    } finally {
-      setSoftwareDetailActionInProgress(false);
-    }
-  }
-
   return {
     softwareDetail,
     softwareDetailNotice,
@@ -819,10 +801,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     saveGpuPlacementProcessPolicyFromDetail,
     closeContextMenu: () => setContextMenu(null)
   };
-}
-
-function operationResultText(operation: OperationSnapshot) {
-  return typeof operation.result === "string" ? operation.result : null;
 }
 
 function uniqueStrings(values: string[]) {

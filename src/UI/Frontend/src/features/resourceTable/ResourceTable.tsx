@@ -1,5 +1,4 @@
 import {
-  localizedMetricLabel,
   resourceTableCellText,
   resourceTableColumnLabel,
   resourceMetricBasis,
@@ -1262,17 +1261,6 @@ function rowStatus(row: ResourceTableRow | undefined) {
 function softwareGroupLabel(value?: string | null) {
   const group = String(value ?? "").trim() as keyof typeof uiText.softwareKind;
   return uiText.softwareKind[group];
-}
-
-function gpuMetricLabel(metricId: string, fallback: string) {
-  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(metricId);
-  if (!match) {
-    return fallback;
-  }
-
-  return match[2].toLowerCase() === "vram"
-    ? uiText.resourceTable.gpuVramLabel(match[1])
-    : uiText.resourceTable.gpuUsageLabel(match[1]);
 }
 
 function gpuColumnOrder(metricId: string) {

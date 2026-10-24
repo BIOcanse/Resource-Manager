@@ -329,14 +329,6 @@ function requireTimestamp(value: unknown, path: string): string {
   return text;
 }
 
-function optionalTimestamp(value: unknown, path: string): string | null | undefined {
-  if (value === undefined || value === null) {
-    return value;
-  }
-
-  return requireTimestamp(value, path);
-}
-
 function requireNonNegativeNumber(value: unknown, path: string): number {
   const number = requireFiniteNumber(value, path);
   if (number < 0) {

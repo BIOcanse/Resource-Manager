@@ -7,7 +7,6 @@ import {
   requireNonNegativeSafeInteger,
   requireOneOf,
   requireRecord,
-  requireSafeInteger,
   requireString,
   requireStringArray,
   ResponseDecodeError

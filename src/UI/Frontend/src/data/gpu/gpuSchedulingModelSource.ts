@@ -9,7 +9,6 @@ import {
   requireNonEmptyString,
   requireNonNegativeFiniteNumber,
   requireNonNegativeSafeInteger,
-  requireOneOf,
   requireRecord,
   requireSafeInteger,
   requireString
@@ -278,10 +277,6 @@ function optionalNullableString(
     : value === null
       ? null
       : requireString(value, path);
-}
-
-function optionalTimestamp(value: unknown, path: string): string | undefined {
-  return value === undefined ? undefined : requireTimestamp(value, path);
 }
 
 function requireTimestamp(value: unknown, path: string): string {

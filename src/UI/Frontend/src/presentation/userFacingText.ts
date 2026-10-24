@@ -1,12 +1,6 @@
 import { uiText } from "../text.ts";
 import { renderBackendMessage } from "./backendMessage.ts";
 import type { BackendMessage } from "../types";
-import type { UserDetailSection } from "./userDetails";
-import {
-  compactUserDetailSections,
-  userDetailItem,
-  userDetailSection
-} from "./userDetails.ts";
 
 const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|diskio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
 
