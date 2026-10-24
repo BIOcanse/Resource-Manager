@@ -31,15 +31,17 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     resident_byte_count: u64,
-    query_bytes: []u8,
-    plan_bytes: []u8,
-    source_plans: []protocol.SourcePlanOutput,
-    candidates: []CandidateSlot,
-    candidate_text_bytes: []u8,
-    entry_index: []u32,
-    ordinals: []OrdinalSlot,
-    ordinal_index: []u32,
-    rank_order: []u32,
+    scratch_byte_count: u64,
+    query_bytes: []u8 = &.{},
+    plan_bytes: []u8 = &.{},
+    source_plans: []protocol.SourcePlanOutput = &.{},
+    candidates: []CandidateSlot = &.{},
+    candidate_text_bytes: []u8 = &.{},
+    entry_index: []u32 = &.{},
+    ordinals: []OrdinalSlot = &.{},
+    ordinal_index: []u32 = &.{},
+    rank_order: []u32 = &.{},
+    scratch_bound: bool = false,
     phase: protocol.QueryPhase = .empty,
     state_revision: u64 = 1,
     last_operation_epoch: u64 = 0,
@@ -68,76 +70,68 @@ pub const Session = struct {
         const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        const query_bytes = try allocator.alloc(u8, config.maximum_query_utf8_byte_count);
-        errdefer allocator.free(query_bytes);
-        const plan_bytes = try allocator.alloc(u8, config.maximum_plan_utf8_byte_count);
-        errdefer allocator.free(plan_bytes);
-        const source_plans = try allocator.alloc(
-            protocol.SourcePlanOutput,
-            config.maximum_source_plan_count,
-        );
-        errdefer allocator.free(source_plans);
-        const candidates = try allocator.alloc(
-            CandidateSlot,
-            config.maximum_unique_candidate_count,
-        );
-        errdefer allocator.free(candidates);
-        const candidate_text_bytes = try allocator.alloc(
-            u8,
-            config.candidate_text_arena_byte_count,
-        );
-        errdefer allocator.free(candidate_text_bytes);
-        const entry_index = try allocator.alloc(u32, config.entry_index_capacity);
-        errdefer allocator.free(entry_index);
-        const ordinals = try allocator.alloc(
-            OrdinalSlot,
-            config.maximum_submitted_candidate_count,
-        );
-        errdefer allocator.free(ordinals);
-        const ordinal_index = try allocator.alloc(u32, config.ordinal_index_capacity);
-        errdefer allocator.free(ordinal_index);
-        const rank_order = try allocator.alloc(u32, config.maximum_unique_candidate_count);
-        errdefer allocator.free(rank_order);
-
-        @memset(query_bytes, 0);
-        @memset(plan_bytes, 0);
-        @memset(source_plans, std.mem.zeroes(protocol.SourcePlanOutput));
-        @memset(candidates, .{});
-        @memset(candidate_text_bytes, 0);
-        @memset(entry_index, no_index);
-        @memset(ordinals, .{});
-        @memset(ordinal_index, no_index);
-        @memset(rank_order, no_index);
-
         self.* = .{
             .allocator = allocator,
             .config = config.*,
             .resident_byte_count = resident,
-            .query_bytes = query_bytes,
-            .plan_bytes = plan_bytes,
-            .source_plans = source_plans,
-            .candidates = candidates,
-            .candidate_text_bytes = candidate_text_bytes,
-            .entry_index = entry_index,
-            .ordinals = ordinals,
-            .ordinal_index = ordinal_index,
-            .rank_order = rank_order,
+            .scratch_byte_count = try scratchByteCount(config),
         };
         return self;
     }
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
-        allocator.free(self.rank_order);
-        allocator.free(self.ordinal_index);
-        allocator.free(self.ordinals);
-        allocator.free(self.entry_index);
-        allocator.free(self.candidate_text_bytes);
-        allocator.free(self.candidates);
-        allocator.free(self.source_plans);
-        allocator.free(self.plan_bytes);
-        allocator.free(self.query_bytes);
         allocator.destroy(self);
+    }
+
+    // The caller owns the allocation and pins it until releaseScratch returns.
+    pub fn bindScratch(self: *Session, pointer: ?[*]u8, length: u64) ResultCode {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        if (self.scratch_bound or self.phase != .empty) return .invalid_argument;
+        const bytes = pointer orelse return .invalid_argument;
+        if (@intFromPtr(bytes) % 8 != 0) return .invalid_argument;
+        if (length < self.scratch_byte_count) return .buffer_too_small;
+        _ = std.math.add(usize, @intFromPtr(bytes), std.math.cast(usize, length) orelse return .invalid_argument) catch return .invalid_argument;
+        var offset: usize = 0;
+        self.query_bytes = column(u8, bytes, &offset, self.config.maximum_query_utf8_byte_count);
+        self.plan_bytes = column(u8, bytes, &offset, self.config.maximum_plan_utf8_byte_count);
+        self.source_plans = column(protocol.SourcePlanOutput, bytes, &offset, self.config.maximum_source_plan_count);
+        self.candidates = column(CandidateSlot, bytes, &offset, self.config.maximum_unique_candidate_count);
+        self.candidate_text_bytes = column(u8, bytes, &offset, self.config.candidate_text_arena_byte_count);
+        self.entry_index = column(u32, bytes, &offset, self.config.entry_index_capacity);
+        self.ordinals = column(OrdinalSlot, bytes, &offset, self.config.maximum_submitted_candidate_count);
+        self.ordinal_index = column(u32, bytes, &offset, self.config.ordinal_index_capacity);
+        self.rank_order = column(u32, bytes, &offset, self.config.maximum_unique_candidate_count);
+        @memset(self.query_bytes, 0);
+        @memset(self.plan_bytes, 0);
+        @memset(self.source_plans, std.mem.zeroes(protocol.SourcePlanOutput));
+        @memset(self.candidates, .{});
+        @memset(self.candidate_text_bytes, 0);
+        @memset(self.entry_index, no_index);
+        @memset(self.ordinals, .{});
+        @memset(self.ordinal_index, no_index);
+        @memset(self.rank_order, no_index);
+        self.scratch_bound = true;
+        return .ok;
+    }
+
+    pub fn releaseScratch(self: *Session) ResultCode {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        if (!self.scratch_bound) return .invalid_argument;
+        self.clearQueryState();
+        self.query_bytes = &.{};
+        self.plan_bytes = &.{};
+        self.source_plans = &.{};
+        self.candidates = &.{};
+        self.candidate_text_bytes = &.{};
+        self.entry_index = &.{};
+        self.ordinals = &.{};
+        self.ordinal_index = &.{};
+        self.rank_order = &.{};
+        self.scratch_bound = false;
+        return .ok;
     }
 
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
@@ -211,7 +205,7 @@ pub const Session = struct {
             .query_byte_count = self.query_byte_count,
             .plan_byte_count = self.plan_byte_count,
             .candidate_text_byte_count = self.candidate_text_byte_count,
-            .resident_byte_count = self.resident_byte_count,
+            .resident_byte_count = @sizeOf(Session) + if (self.scratch_bound) self.scratch_byte_count else @as(u64, 0),
             .flags = 0,
             .reserved = .{ 0, 0, 0 },
         };
@@ -407,7 +401,11 @@ fn sameShape(left: *const protocol.Config, right: *const protocol.Config) bool {
 }
 
 fn residentByteCount(config: *const protocol.Config) !u64 {
-    var total: u64 = @sizeOf(Session);
+    return try std.math.add(u64, @sizeOf(Session), try scratchByteCount(config));
+}
+
+fn scratchByteCount(config: *const protocol.Config) !u64 {
+    var total: u64 = 0;
     total = try addSliceBytes(total, u8, config.maximum_query_utf8_byte_count);
     total = try addSliceBytes(total, u8, config.maximum_plan_utf8_byte_count);
     total = try addSliceBytes(total, protocol.SourcePlanOutput, config.maximum_source_plan_count);
@@ -421,6 +419,14 @@ fn residentByteCount(config: *const protocol.Config) !u64 {
 }
 
 fn addSliceBytes(total: u64, comptime T: type, count: u32) !u64 {
+    const aligned = (try std.math.add(u64, total, @alignOf(T) - 1)) & ~@as(u64, @alignOf(T) - 1);
     const bytes = try std.math.mul(u64, @sizeOf(T), count);
-    return try std.math.add(u64, total, bytes);
+    return try std.math.add(u64, aligned, bytes);
+}
+
+fn column(comptime T: type, bytes: [*]u8, offset: *usize, count: u32) []T {
+    const start = (offset.* + @alignOf(T) - 1) & ~@as(usize, @alignOf(T) - 1);
+    offset.* = start + @sizeOf(T) * @as(usize, count);
+    const pointer: [*]T = @ptrCast(@alignCast(bytes + start));
+    return pointer[0..count];
 }

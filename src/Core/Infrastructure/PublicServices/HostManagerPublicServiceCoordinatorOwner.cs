@@ -5,6 +5,7 @@ using ResourceManager.App.Application.PublicServices.AiModels;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.PublicServices;
 
@@ -26,10 +27,12 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private readonly HostManagerRuntimeIdentity runtimeIdentity;
     private readonly IAiModelRuntimeProvider runtimeProvider;
     private readonly ILogger<HostManagerPublicServiceCoordinatorOwner> logger;
+    private readonly ResourceManagerLedgerOwner ledger;
     private CancellationTokenSource? workerCancellation;
     private Task? modelWorker;
     private Task? taskWorker;
     private WorkspaceHolder? current;
+    private WorkspaceHolder? pendingRetirement;
     private CompiledHostManagerPublicServiceCoordinatorPlan? appliedPlan;
     private long nextRequestCompletionHandle;
     private long nextOperationPayloadHandle;
@@ -42,13 +45,15 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         HostManagerPublicServiceCoordinatorRuntime deployment,
         HostManagerRuntimeIdentity runtimeIdentity,
         IAiModelRuntimeProvider runtimeProvider,
-        ILogger<HostManagerPublicServiceCoordinatorOwner> logger)
+        ILogger<HostManagerPublicServiceCoordinatorOwner> logger,
+        ResourceManagerLedgerOwner ledger)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.runtimeIdentity = runtimeIdentity;
         this.runtimeProvider = runtimeProvider;
         this.logger = logger;
+        this.ledger = ledger;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -150,6 +155,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
+            pendingRetirement?.Retire();
+            pendingRetirement = null;
             current?.Retire();
             current = null;
             appliedPlan = null;
@@ -158,8 +165,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         finally
         {
             gate.ExitWriteLock();
-            gate.Dispose();
         }
+        gate.Dispose();
         modelWake.Dispose();
         taskWake.Dispose();
     }
@@ -173,6 +180,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
+            pendingRetirement?.Retire();
+            pendingRetirement = null;
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256)
             {
                 return;
@@ -190,14 +199,16 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             WorkspaceHolder? next = null;
             try
             {
+                var models = new NativePublicServiceModelProjection();
                 replacement = new NativePublicServiceCoordinatorWorkspace(
                     desired,
                     runtimeIdentity.InstanceId,
                     NextHandle(
                         ref nextSessionIncarnation,
                         "public-service session incarnation"),
-                    desired.HotPublish.ConfigurationGeneration);
-                next = new WorkspaceHolder(replacement, desired);
+                    desired.HotPublish.ConfigurationGeneration,
+                    length => ledger.CreateScratch(length), models);
+                next = new WorkspaceHolder(replacement, desired, models);
                 replacement = null;
                 var previous = current;
                 var previousPlan = appliedPlan;
@@ -216,7 +227,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                     rejected?.Retire();
                     throw;
                 }
-                previous?.Retire();
+                pendingRetirement = previous;
                 if (!initial)
                 {
                     Signal(modelWake);
@@ -237,12 +248,16 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 }
                 throw;
             }
+            // Publication succeeded; retirement failures retain the old holder
+            // without changing the already settled deployment attempt.
+            pendingRetirement?.Retire();
+            pendingRetirement = null;
         }
         catch (Exception ex) when (!throwOnFailure)
         {
             logger.LogError(
                 ex,
-                "Host Manager public-service coordinator apply failed; the prior workspace remains active.");
+                "Host Manager public-service coordinator apply or workspace retirement failed.");
         }
         finally
         {
@@ -428,7 +443,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
 
     private sealed class WorkspaceHolder(
         NativePublicServiceCoordinatorWorkspace workspace,
-        CompiledHostManagerPublicServiceCoordinatorPlan plan)
+        CompiledHostManagerPublicServiceCoordinatorPlan plan,
+        NativePublicServiceModelProjection models)
     {
         private int referenceCount = 1;
         private int retired;
@@ -439,7 +455,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
 
         internal object ModelGate { get; } = new();
 
-        internal NativePublicServiceModelProjection Models { get; } = new();
+        internal NativePublicServiceModelProjection Models { get; } = models;
 
         internal void AddReference()
         {
@@ -454,7 +470,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         {
             if (Interlocked.Exchange(ref retired, 1) == 0)
             {
-                Release();
+                try { Release(); }
+                catch { Volatile.Write(ref retired, 0); throw; }
             }
         }
 
@@ -462,7 +479,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         {
             if (Interlocked.Decrement(ref referenceCount) == 0)
             {
-                Workspace.Dispose();
+                try { Workspace.Dispose(); }
+                catch { Interlocked.Increment(ref referenceCount); throw; }
             }
         }
     }

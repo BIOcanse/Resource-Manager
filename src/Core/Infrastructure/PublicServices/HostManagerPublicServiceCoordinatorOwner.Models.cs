@@ -140,9 +140,6 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         {
             var descriptors = await runtimeProvider.ListModelsIfRunningAsync(cancellationToken)
                 .ConfigureAwait(false);
-            var projection = holder.Models.Project(
-                descriptors,
-                holder.Plan.HotPublish.AiProviderHandle);
             if (plan.ModelGenerationAtStart == ulong.MaxValue)
             {
                 throw new InvalidOperationException(
@@ -150,6 +147,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             }
             lock (holder.ModelGate)
             {
+                var projection = holder.Models.Project(
+                    descriptors,
+                    holder.Plan.HotPublish.AiProviderHandle);
                 holder.Workspace.PublishModels(
                     plan.AttemptHandle,
                     plan.ModelGenerationAtStart + 1,

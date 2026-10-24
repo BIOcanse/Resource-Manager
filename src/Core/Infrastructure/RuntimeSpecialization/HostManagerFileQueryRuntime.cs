@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -57,9 +58,11 @@ public sealed class HostManagerFileQueryOwner :
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
     private readonly RuntimePlanProvider planProvider;
+    private readonly ResourceManagerLedgerOwner memoryOwner;
     private readonly HostManagerFileQueryRuntime deployment;
     private readonly ILogger<HostManagerFileQueryOwner> logger;
     private WorkspaceHolder? current;
+    private WorkspaceHolder? pendingRetirement;
     private CompiledHostManagerFileQueryPlan? appliedPlan;
     private long nextEpoch;
     private bool started;
@@ -68,11 +71,13 @@ public sealed class HostManagerFileQueryOwner :
     public HostManagerFileQueryOwner(
         RuntimePlanProvider planProvider,
         HostManagerFileQueryRuntime deployment,
-        ILogger<HostManagerFileQueryOwner> logger)
+        ILogger<HostManagerFileQueryOwner> logger,
+        ResourceManagerLedgerOwner memoryOwner)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.logger = logger;
+        this.memoryOwner = memoryOwner;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -127,18 +132,9 @@ public sealed class HostManagerFileQueryOwner :
                 inner.Session,
                 (_, reusable) =>
                 {
-                    try
-                    {
-                        if (reusable)
-                        {
-                            inner.MarkReusable();
-                        }
-                        inner.Dispose();
-                    }
-                    finally
-                    {
-                        holder.Release();
-                    }
+                    if (reusable) inner.MarkReusable();
+                    inner.Dispose();
+                    holder.Release();
                 });
         }
         catch
@@ -173,6 +169,7 @@ public sealed class HostManagerFileQueryOwner :
         gate.EnterWriteLock();
         try
         {
+            DrainPendingRetirement();
             current?.Retire();
             current = null;
             appliedPlan = null;
@@ -181,8 +178,14 @@ public sealed class HostManagerFileQueryOwner :
         finally
         {
             gate.ExitWriteLock();
-            gate.Dispose();
         }
+        gate.Dispose();
+    }
+
+    private void DrainPendingRetirement()
+    {
+        pendingRetirement?.Retire();
+        pendingRetirement = null;
     }
 
     private void OnPublished(CompiledRuntimePlan plan)
@@ -194,6 +197,7 @@ public sealed class HostManagerFileQueryOwner :
         gate.EnterWriteLock();
         try
         {
+            DrainPendingRetirement();
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256
                 && appliedPlan.Build == desired.Build
                 && appliedPlan.Recreate == desired.Recreate)
@@ -213,15 +217,15 @@ public sealed class HostManagerFileQueryOwner :
             WorkspaceHolder? next = null;
             try
             {
-                replacement = new NativeFileQueryWorkspace(desired);
+                replacement = new NativeFileQueryWorkspace(desired,
+                    (length, alignment) => FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment));
                 next = new WorkspaceHolder(replacement);
                 replacement = null;
                 deployment.CompleteSucceeded(token);
-                var previous = current;
+                pendingRetirement = current;
                 current = next;
                 appliedPlan = desired;
                 next = null;
-                previous?.Retire();
             }
             catch (Exception ex)
             {
@@ -237,12 +241,15 @@ public sealed class HostManagerFileQueryOwner :
                 }
                 throw;
             }
+            // Deployment already succeeded. A failed old-pool close retains
+            // that holder and must not settle the successful attempt as failed.
+            DrainPendingRetirement();
         }
         catch (Exception ex) when (!throwOnFailure)
         {
             logger.LogError(
                 ex,
-                "Host Manager file-query plan apply failed; the prior session pool remains active.");
+                "Host Manager file-query plan apply or retirement failed; the current session pool remains active.");
         }
         finally
         {
@@ -273,7 +280,14 @@ public sealed class HostManagerFileQueryOwner :
         {
             if (Interlocked.Exchange(ref retired, 1) == 0)
             {
-                Release();
+                try { Release(); }
+                catch
+                {
+                    // A failed final close retains this owner's reference.
+                    // Allow an explicit owner Dispose retry to retire it again.
+                    Volatile.Write(ref retired, 0);
+                    throw;
+                }
             }
         }
 
@@ -281,7 +295,14 @@ public sealed class HostManagerFileQueryOwner :
         {
             if (Interlocked.Decrement(ref referenceCount) == 0)
             {
-                Workspace.Dispose();
+                try { Workspace.Dispose(); }
+                catch
+                {
+                    // The lease that attempted the final release still owns
+                    // this holder until its explicit retry closes the pool.
+                    Interlocked.Increment(ref referenceCount);
+                    throw;
+                }
             }
         }
     }

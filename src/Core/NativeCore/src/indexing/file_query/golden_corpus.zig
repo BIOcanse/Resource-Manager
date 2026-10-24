@@ -3,7 +3,7 @@ const protocol = @import("protocol.zig");
 const unicode61 = @import("unicode61.zig");
 
 test "file query ABI has fixed extern layout and known masks" {
-    try std.testing.expectEqual(@as(u32, 0x0002_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x0003_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(u32, 2), protocol.unicode_remove_diacritics_mode);
     try std.testing.expectEqual(
         @as(u32, 0x0001_0000),

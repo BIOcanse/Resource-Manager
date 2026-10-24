@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativePublicServiceCoordinatorAbi
 {
-    public const uint Version = 0x0003_0000;
+    public const uint Version = 0x0004_0000;
 }
 
 internal enum NativePublicServiceCoordinatorStatus : int

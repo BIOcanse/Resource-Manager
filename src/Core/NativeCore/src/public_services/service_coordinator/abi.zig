@@ -40,6 +40,59 @@ pub export fn rm_public_service_coordinator_query_capacity(
     return code(.ok);
 }
 
+pub export fn rm_public_service_coordinator_query_model_scratch(
+    handle: ?*anyopaque,
+    byte_count: ?*u64,
+    alignment: ?*u32,
+) callconv(.c) i32 {
+    if (byte_count) |value| value.* = 0;
+    if (alignment) |value| value.* = 0;
+    const bytes = byte_count orelse return code(.invalid_argument);
+    const align_bytes = alignment orelse return code(.invalid_argument);
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    bytes.* = session.modelScratchBytes() catch |err| return mapError(err);
+    align_bytes.* = session_module.model_scratch_alignment;
+    return code(.ok);
+}
+
+pub export fn rm_public_service_coordinator_bind_model_scratch(
+    handle: ?*anyopaque,
+    scratch_pointer: ?[*]u8,
+    scratch_byte_count: u64,
+    model_generation: u64,
+    model_pointer: ?[*]const protocol.ModelInput,
+    model_count: u32,
+    alias_pointer: ?[*]const protocol.ModelAliasInput,
+    alias_count: u32,
+    text_pointer: ?[*]const u8,
+    text_byte_count: u32,
+) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    const scratch = scratch_pointer orelse return code(.invalid_argument);
+    if (scratch_byte_count > std.math.maxInt(usize)) return code(.invalid_argument);
+    const models = constSlice(protocol.ModelInput, model_pointer, model_count) orelse
+        return code(.invalid_argument);
+    const aliases = constSlice(protocol.ModelAliasInput, alias_pointer, alias_count) orelse
+        return code(.invalid_argument);
+    const text = constSlice(u8, text_pointer, text_byte_count) orelse
+        return code(.invalid_argument);
+    lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    session.bindModelScratch(scratch[0..@intCast(scratch_byte_count)], model_generation, models, aliases, text) catch |err|
+        return mapError(err);
+    return code(.ok);
+}
+
+pub export fn rm_public_service_coordinator_unbind_model_scratch(handle: ?*anyopaque) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    session.unbindModelScratch();
+    return code(.ok);
+}
+
 pub export fn rm_public_service_coordinator_replace_catalog(
     handle: ?*anyopaque,
     input: ?*const protocol.CatalogReplaceInput,

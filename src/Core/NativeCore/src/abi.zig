@@ -145,6 +145,9 @@ comptime {
     _ = file_query_abi.rm_file_query_abi_version;
     _ = file_query_abi.rm_file_query_create;
     _ = file_query_abi.rm_file_query_destroy;
+    _ = file_query_abi.rm_file_query_scratch_byte_count;
+    _ = file_query_abi.rm_file_query_bind_scratch;
+    _ = file_query_abi.rm_file_query_release_scratch;
     _ = file_query_abi.rm_file_query_reconfigure;
     _ = file_query_abi.rm_file_query_query_capacity;
     _ = file_query_abi.rm_file_query_begin;
@@ -155,6 +158,9 @@ comptime {
     _ = public_service_coordinator_abi.rm_public_service_coordinator_abi_version;
     _ = public_service_coordinator_abi.rm_public_service_coordinator_create;
     _ = public_service_coordinator_abi.rm_public_service_coordinator_destroy;
+    _ = public_service_coordinator_abi.rm_public_service_coordinator_query_model_scratch;
+    _ = public_service_coordinator_abi.rm_public_service_coordinator_bind_model_scratch;
+    _ = public_service_coordinator_abi.rm_public_service_coordinator_unbind_model_scratch;
     _ = public_service_coordinator_abi.rm_public_service_coordinator_query_capacity;
     _ = public_service_coordinator_abi.rm_public_service_coordinator_replace_catalog;
     _ = public_service_coordinator_abi.rm_public_service_coordinator_replace_models;

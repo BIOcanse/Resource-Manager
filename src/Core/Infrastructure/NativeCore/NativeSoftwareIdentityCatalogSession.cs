@@ -8,6 +8,7 @@ internal sealed partial class NativeSoftwareIdentityCatalogSession : IDisposable
     private readonly object sync = new();
     private IntPtr handle;
     private NativeSoftwareIdentityCatalogCapacity capacity;
+    private NativeSoftwareIdentityCatalogConfiguration configuration;
     private ulong configurationGeneration;
 
     public NativeSoftwareIdentityCatalogSession(
@@ -31,6 +32,7 @@ internal sealed partial class NativeSoftwareIdentityCatalogSession : IDisposable
         try
         {
             capacity = QueryAndValidateCapacity(handle, in configuration);
+            this.configuration = configuration;
             configurationGeneration = configuration.Generation;
         }
         catch
@@ -80,6 +82,7 @@ internal sealed partial class NativeSoftwareIdentityCatalogSession : IDisposable
             if (status == NativeSoftwareIdentityStatus.Ok)
             {
                 capacity = QueryAndValidateCapacity(current, in configuration);
+                this.configuration = configuration;
                 configurationGeneration = configuration.Generation;
             }
             return status;
@@ -100,8 +103,9 @@ internal sealed partial class NativeSoftwareIdentityCatalogSession : IDisposable
             fixed (NativeSoftwareIdentityCatalogRootInput* rootPointer = roots)
             fixed (byte* keyPointer = keyBytes)
             {
-                return (NativeSoftwareIdentityStatus)NativeMethods.Replace(
-                    RequireHandle(),
+                var current = RequireHandle();
+                var status = (NativeSoftwareIdentityStatus)NativeMethods.Replace(
+                    current,
                     in input,
                     entryPointer,
                     checked((uint)entries.Length),
@@ -111,6 +115,11 @@ internal sealed partial class NativeSoftwareIdentityCatalogSession : IDisposable
                     checked((uint)roots.Length),
                     keyPointer,
                     checked((uint)keyBytes.Length));
+                if (status == NativeSoftwareIdentityStatus.Ok)
+                {
+                    capacity = QueryAndValidateCapacity(current, in configuration);
+                }
+                return status;
             }
         }
     }

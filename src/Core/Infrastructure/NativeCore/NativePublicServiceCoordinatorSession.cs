@@ -56,6 +56,42 @@ internal sealed partial class NativePublicServiceCoordinatorSession : IDisposabl
 
     internal static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
+    internal (ulong ByteCount, uint Alignment) QueryModelScratch()
+    {
+        lock (sync)
+        {
+            var status = (NativePublicServiceCoordinatorStatus)NativeMethods.QueryModelScratch(
+                RequireHandle(), out var bytes, out var alignment);
+            if (status != NativePublicServiceCoordinatorStatus.Ok || bytes == 0
+                || alignment == 0 || (alignment & (alignment - 1)) != 0)
+                throw new InvalidOperationException($"Invalid public-service model scratch requirement: {status}.");
+            return (bytes, alignment);
+        }
+    }
+
+    internal unsafe NativePublicServiceCoordinatorStatus BindModelScratch(
+        IntPtr region, ulong length, ulong generation,
+        ReadOnlySpan<NativePublicServiceModelInput> models,
+        ReadOnlySpan<NativePublicServiceModelAliasInput> aliases,
+        ReadOnlySpan<byte> text)
+    {
+        lock (sync)
+        {
+            fixed (NativePublicServiceModelInput* modelPointer = models)
+            fixed (NativePublicServiceModelAliasInput* aliasPointer = aliases)
+            fixed (byte* textPointer = text)
+                return (NativePublicServiceCoordinatorStatus)NativeMethods.BindModelScratch(
+                    RequireHandle(), region, length, generation, modelPointer, checked((uint)models.Length),
+                    aliasPointer, checked((uint)aliases.Length), textPointer, checked((uint)text.Length));
+        }
+    }
+
+    internal NativePublicServiceCoordinatorStatus UnbindModelScratch()
+    {
+        lock (sync)
+            return (NativePublicServiceCoordinatorStatus)NativeMethods.UnbindModelScratch(RequireHandle());
+    }
+
     internal unsafe NativePublicServiceCoordinatorStatus ReplaceCatalog(
         in NativePublicServiceCatalogReplaceInput input,
         ReadOnlySpan<NativePublicServiceCapabilityInput> capabilities,
@@ -417,6 +453,20 @@ internal sealed partial class NativePublicServiceCoordinatorSession : IDisposabl
     private static partial class NativeMethods
     {
         private const string LibraryName = "ResourceManager.NativeCore";
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_public_service_coordinator_query_model_scratch")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int QueryModelScratch(IntPtr handle, out ulong byteCount, out uint alignment);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_public_service_coordinator_bind_model_scratch")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static unsafe partial int BindModelScratch(IntPtr handle, IntPtr scratch, ulong byteCount,
+            ulong modelGeneration, NativePublicServiceModelInput* models, uint modelCount,
+            NativePublicServiceModelAliasInput* aliases, uint aliasCount, byte* text, uint textByteCount);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_public_service_coordinator_unbind_model_scratch")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int UnbindModelScratch(IntPtr handle);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_public_service_coordinator_abi_version")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

@@ -42,15 +42,52 @@ pub const Fingerprint = struct {
     high: u64 = 0,
 };
 
+pub const Requirements = struct {
+    entry_count: u32,
+    alias_count: u32,
+    root_count: u32,
+    key_byte_count: u32,
+    entry_index_capacity: u32,
+    alias_index_capacity: u32,
+    root_index_capacity: u32,
+
+    pub fn fromInput(input: *const protocol.ReplaceInput) Requirements {
+        return .{
+            .entry_count = input.entry_count,
+            .alias_count = input.alias_count,
+            .root_count = input.root_count,
+            .key_byte_count = input.key_byte_count,
+            .entry_index_capacity = indexCapacity(input.entry_count),
+            .alias_index_capacity = indexCapacity(input.alias_count),
+            .root_index_capacity = indexCapacity(input.root_count),
+        };
+    }
+
+    pub fn byteCount(self: Requirements) u64 {
+        return @as(u64, self.entry_count) * @sizeOf(EntrySlot) +
+            @as(u64, self.alias_count) * @sizeOf(AliasSlot) +
+            @as(u64, self.root_count) * @sizeOf(RootSlot) +
+            self.key_byte_count +
+            @as(u64, self.entry_index_capacity) * @sizeOf(u32) * 2 +
+            @as(u64, self.alias_index_capacity) * @sizeOf(u32) +
+            @as(u64, self.root_index_capacity) * @sizeOf(u32);
+    }
+};
+
+fn indexCapacity(count: u32) u32 {
+    // Validated configured index ceilings guarantee this cannot overflow.
+    return if (count == 0) 0 else std.math.ceilPowerOfTwo(u32, count) catch unreachable;
+}
+
 pub const Bank = struct {
-    entries: []EntrySlot,
-    aliases: []AliasSlot,
-    roots: []RootSlot,
-    key_bytes: []u8,
-    entry_index: []u32,
-    identity_index: []u32,
-    alias_index: []u32,
-    root_index: []u32,
+    entries: []EntrySlot = &.{},
+    aliases: []AliasSlot = &.{},
+    roots: []RootSlot = &.{},
+    key_bytes: []u8 = &.{},
+    entry_index: []u32 = &.{},
+    identity_index: []u32 = &.{},
+    alias_index: []u32 = &.{},
+    root_index: []u32 = &.{},
     entry_count: u32 = 0,
     alias_count: u32 = 0,
     root_count: u32 = 0,
@@ -60,22 +97,22 @@ pub const Bank = struct {
     managed_child_rule_count: u32 = 0,
     fingerprint: Fingerprint = .{},
 
-    pub fn init(allocator: std.mem.Allocator, config: *const protocol.Config) !Bank {
-        const entries = try allocator.alloc(EntrySlot, config.maximum_entry_count);
+    pub fn init(allocator: std.mem.Allocator, requirements: Requirements) !Bank {
+        const entries = try allocator.alloc(EntrySlot, requirements.entry_count);
         errdefer allocator.free(entries);
-        const aliases = try allocator.alloc(AliasSlot, config.maximum_alias_count);
+        const aliases = try allocator.alloc(AliasSlot, requirements.alias_count);
         errdefer allocator.free(aliases);
-        const roots = try allocator.alloc(RootSlot, config.maximum_root_count);
+        const roots = try allocator.alloc(RootSlot, requirements.root_count);
         errdefer allocator.free(roots);
-        const key_bytes = try allocator.alloc(u8, config.maximum_catalog_key_byte_count);
+        const key_bytes = try allocator.alloc(u8, requirements.key_byte_count);
         errdefer allocator.free(key_bytes);
-        const entry_index = try allocator.alloc(u32, config.entry_index_capacity);
+        const entry_index = try allocator.alloc(u32, requirements.entry_index_capacity);
         errdefer allocator.free(entry_index);
-        const identity_index = try allocator.alloc(u32, config.identity_index_capacity);
+        const identity_index = try allocator.alloc(u32, requirements.entry_index_capacity);
         errdefer allocator.free(identity_index);
-        const alias_index = try allocator.alloc(u32, config.alias_index_capacity);
+        const alias_index = try allocator.alloc(u32, requirements.alias_index_capacity);
         errdefer allocator.free(alias_index);
-        const root_index = try allocator.alloc(u32, config.root_index_capacity);
+        const root_index = try allocator.alloc(u32, requirements.root_index_capacity);
         errdefer allocator.free(root_index);
 
         var bank = Bank{
@@ -264,6 +301,7 @@ pub const Bank = struct {
     }
 
     pub fn findEntry(self: *const Bank, handle: u64) ?u32 {
+        if (self.entry_index.len == 0) return null;
         const mask = self.entry_index.len - 1;
         var probe = hashU64(handle) & mask;
         var remaining = self.entry_index.len;
@@ -277,6 +315,7 @@ pub const Bank = struct {
     }
 
     pub fn findAlias(self: *const Bank, kind: protocol.AliasKind, numeric: u64, key: []const u8) ?u32 {
+        if (self.alias_index.len == 0) return null;
         const mask = self.alias_index.len - 1;
         var probe = aliasHash(kind, numeric, key) & mask;
         var remaining = self.alias_index.len;

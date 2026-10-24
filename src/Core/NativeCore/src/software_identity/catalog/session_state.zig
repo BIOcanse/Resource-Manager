@@ -12,7 +12,6 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     active: Bank,
-    staging: Bank,
     candidate_marks: []u64,
     resident_byte_count: u64,
     catalog_generation: u64 = 0,
@@ -22,24 +21,16 @@ pub const Session = struct {
 
     pub fn create(config: *const protocol.Config) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
-        const resident_byte_count = residentByteCount(config) catch return error.InvalidConfiguration;
+        const resident_byte_count = @sizeOf(Session);
         if (resident_byte_count > config.resident_byte_budget) return error.InvalidConfiguration;
         const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        var active = try Bank.init(allocator, config);
-        errdefer active.deinit(allocator);
-        var staging = try Bank.init(allocator, config);
-        errdefer staging.deinit(allocator);
-        const candidate_marks = try allocator.alloc(u64, config.maximum_entry_count);
-        errdefer allocator.free(candidate_marks);
-        @memset(candidate_marks, 0);
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .active = active,
-            .staging = staging,
-            .candidate_marks = candidate_marks,
+            .active = .{},
+            .candidate_marks = &.{},
             .resident_byte_count = resident_byte_count,
         };
         return self;
@@ -48,7 +39,6 @@ pub const Session = struct {
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
         allocator.free(self.candidate_marks);
-        self.staging.deinit(allocator);
         self.active.deinit(allocator);
         allocator.destroy(self);
     }
@@ -73,7 +63,9 @@ pub const Session = struct {
         return .ok;
     }
 
-    pub fn capacity(self: *const Session) protocol.Capacity {
+    pub fn capacity(self: *Session) protocol.Capacity {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
         return .{
             .struct_size = @sizeOf(protocol.Capacity),
             .entry_capacity = self.config.maximum_entry_count,
@@ -83,10 +75,10 @@ pub const Session = struct {
             .query_fact_capacity = self.config.maximum_query_fact_count,
             .query_signal_capacity = self.config.maximum_query_signal_count,
             .query_key_byte_capacity = self.config.maximum_query_key_byte_count,
-            .entry_index_capacity = @intCast(self.active.entry_index.len),
-            .alias_index_capacity = @intCast(self.active.alias_index.len),
-            .identity_index_capacity = @intCast(self.active.identity_index.len),
-            .root_index_capacity = @intCast(self.active.root_index.len),
+            .entry_index_capacity = self.config.entry_index_capacity,
+            .alias_index_capacity = self.config.alias_index_capacity,
+            .identity_index_capacity = self.config.identity_index_capacity,
+            .root_index_capacity = self.config.root_index_capacity,
             .resident_byte_count = self.resident_byte_count,
             .reserved = .{ 0, 0, 0 },
         };
@@ -111,7 +103,18 @@ pub const Session = struct {
         if (input.catalog_generation <= self.catalog_generation or input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
-        const load_result = self.staging.load(
+        const requirements = bank_module.Requirements.fromInput(input);
+        const candidate_byte_count = requirements.byteCount() + @as(u64, input.entry_count) * @sizeOf(u64);
+        // The old catalog remains live until its complete replacement passes validation.
+        if (self.resident_byte_count + candidate_byte_count > self.config.resident_byte_budget) {
+            return .invalid_argument;
+        }
+        var candidate = Bank.init(self.allocator, requirements) catch return .out_of_memory;
+        defer candidate.deinit(self.allocator);
+        var candidate_marks = self.allocator.alloc(u64, input.entry_count) catch return .out_of_memory;
+        defer self.allocator.free(candidate_marks);
+        @memset(candidate_marks, 0);
+        const load_result = candidate.load(
             entries,
             aliases,
             roots,
@@ -123,11 +126,14 @@ pub const Session = struct {
         if (load_result != .ok) return load_result;
 
         const previous = self.active;
-        self.active = self.staging;
-        self.staging = previous;
+        const previous_marks = self.candidate_marks;
+        self.active = candidate;
+        self.candidate_marks = candidate_marks;
+        candidate = previous;
+        candidate_marks = previous_marks;
+        self.resident_byte_count = @sizeOf(Session) + candidate_byte_count;
         self.catalog_generation = input.catalog_generation;
         self.last_operation_epoch = input.operation_epoch;
-        @memset(self.candidate_marks, 0);
         self.advanceRevision();
         return .ok;
     }
@@ -217,26 +223,6 @@ pub const Session = struct {
         if (self.state_revision == 0) self.state_revision = 1;
     }
 };
-
-fn residentByteCount(config: *const protocol.Config) !u64 {
-    var total: u64 = @sizeOf(Session);
-    total = try addAllocation(total, config.maximum_entry_count, @sizeOf(u64));
-    var bank_total: u64 = 0;
-    bank_total = try addAllocation(bank_total, config.maximum_entry_count, @sizeOf(bank_module.EntrySlot));
-    bank_total = try addAllocation(bank_total, config.maximum_alias_count, @sizeOf(bank_module.AliasSlot));
-    bank_total = try addAllocation(bank_total, config.maximum_root_count, @sizeOf(bank_module.RootSlot));
-    bank_total = try addAllocation(bank_total, config.maximum_catalog_key_byte_count, @sizeOf(u8));
-    bank_total = try addAllocation(bank_total, config.entry_index_capacity, @sizeOf(u32));
-    bank_total = try addAllocation(bank_total, config.identity_index_capacity, @sizeOf(u32));
-    bank_total = try addAllocation(bank_total, config.alias_index_capacity, @sizeOf(u32));
-    bank_total = try addAllocation(bank_total, config.root_index_capacity, @sizeOf(u32));
-    total = try std.math.add(u64, total, try std.math.mul(u64, bank_total, 2));
-    return total;
-}
-
-fn addAllocation(total: u64, count: u32, comptime item_size: usize) !u64 {
-    return std.math.add(u64, total, try std.math.mul(u64, count, item_size));
-}
 
 fn sameCapacities(left: *const protocol.Config, right: *const protocol.Config) bool {
     return left.maximum_entry_count == right.maximum_entry_count and

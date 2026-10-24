@@ -199,17 +199,18 @@ pub const CatalogBank = struct {
 };
 
 pub const ModelBank = struct {
-    models: []ModelSlot,
-    aliases: []AliasSlot,
-    model_index: []index.HandleEntry,
-    alias_index: []index.HashEntry,
-    text: []u8,
+    models: []ModelSlot = &.{},
+    aliases: []AliasSlot = &.{},
+    model_index: []index.HandleEntry = &.{},
+    alias_index: []index.HashEntry = &.{},
+    text: []u8 = &.{},
     model_count: usize = 0,
     alias_count: usize = 0,
     text_count: usize = 0,
     generation: u64 = 0,
 
-    pub fn init(allocator: std.mem.Allocator, config: protocol.Config) !ModelBank {
+    // The allocator is the caller's fixed scratch region, never a resident heap.
+    pub fn initBorrowed(allocator: std.mem.Allocator, config: protocol.Config) !ModelBank {
         const models = try allocator.alloc(ModelSlot, config.maximum_model_count);
         errdefer allocator.free(models);
         const aliases = try allocator.alloc(AliasSlot, config.maximum_model_alias_count);
@@ -235,13 +236,13 @@ pub const ModelBank = struct {
         };
     }
 
-    pub fn deinit(self: *ModelBank, allocator: std.mem.Allocator) void {
-        allocator.free(self.models);
-        allocator.free(self.aliases);
-        allocator.free(self.model_index);
-        allocator.free(self.alias_index);
-        allocator.free(self.text);
-        self.* = undefined;
+    pub fn unbind(self: *ModelBank) void {
+        self.* = .{
+            .model_count = self.model_count,
+            .alias_count = self.alias_count,
+            .text_count = self.text_count,
+            .generation = self.generation,
+        };
     }
 
     pub fn reset(self: *ModelBank) void {

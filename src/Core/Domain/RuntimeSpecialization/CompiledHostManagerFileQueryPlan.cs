@@ -50,7 +50,7 @@ public sealed record CompiledHostManagerFileQueryBuildPlan(
     long MaximumTotalResidentByteBudget,
     CompiledHostManagerFileQueryCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x0002_0000U
+    public bool IsPublished => AbiVersion == 0x0003_0000U
         && string.Equals(NativeModule, "file_query", StringComparison.Ordinal)
         && !string.IsNullOrWhiteSpace(NativeBinaryFileName)
         && NativeBinarySha256.Length == 64

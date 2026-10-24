@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0003_0000;
+pub const abi_version: u32 = 0x0004_0000;
 
 pub const ConfigFlags = struct {
     pub const loopback_only: u64 = 1 << 0;

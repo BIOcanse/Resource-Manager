@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Native;
 using System.Runtime.CompilerServices;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 namespace ResourceManager.App.Infrastructure.NativeCore;
@@ -6,10 +7,12 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 internal sealed class NativeFileQueryWorkspace : INativeFileQueryLeaseSource, IDisposable
 {
     private readonly NativeFileQueryPool pool;
-    internal NativeFileQueryWorkspace(CompiledHostManagerFileQueryPlan plan)
-        : this(CreateConfiguration(plan), plan.Recreate.QuerySessionCount, checked((ulong)plan.HotPublish.TotalResidentByteBudget)) { }
-    internal NativeFileQueryWorkspace(in NativeFileQueryConfiguration configuration, int sessionCount, ulong totalResidentByteBudget)
-        => pool = new(in configuration, sessionCount, totalResidentByteBudget);
+    internal NativeFileQueryWorkspace(CompiledHostManagerFileQueryPlan plan,
+        Func<ulong, uint, INativeFileQueryScratch> createScratch)
+        : this(CreateConfiguration(plan), plan.Recreate.QuerySessionCount, checked((ulong)plan.HotPublish.TotalResidentByteBudget), createScratch) { }
+    internal NativeFileQueryWorkspace(in NativeFileQueryConfiguration configuration, int sessionCount, ulong totalResidentByteBudget,
+        Func<ulong, uint, INativeFileQueryScratch> createScratch)
+        => pool = new(in configuration, sessionCount, totalResidentByteBudget, createScratch);
     public ValueTask<NativeFileQueryLease> AcquireAsync(CancellationToken token) => pool.AcquireAsync(token);
     public ulong NextEpoch() => pool.NextEpoch();
     public void Dispose() => pool.Dispose();
