@@ -47,7 +47,8 @@ public sealed partial class MainForm
                 ToggleMaximized();
                 break;
             case "window.close":
-                _ = HideToBackgroundAsync();
+                // Closing the window closes the frontend; the tray keeps running.
+                BeginInvoke(Close);
                 break;
             case "taskManager.shortcutReplacement:on":
                 taskManagerShortcutReplacementChanged(true);
