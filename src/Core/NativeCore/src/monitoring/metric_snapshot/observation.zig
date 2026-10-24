@@ -11,7 +11,7 @@ pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader, 
     defer state.unlock(&session.mutex);
     if (!validHeader(session, header)) return .abi_mismatch;
     if (session.phase == .completion_open) return .unavailable;
-    if (!session.operationAdvances(header.operation_epoch, header.command_at_milliseconds) or
+    if (!session.operationAdvances(header.operation_epoch) or
         header.plan_epoch != session.last_plan_epoch)
     {
         return .stale_frame;
@@ -364,10 +364,8 @@ fn stageFinalizedSource(
     source.overflow_count = session.completion.overflow_count;
     if (source.definition.source_role == @intFromEnum(protocol.SourceRole.gpu_inventory)) {
         source.gpu_inventory_count = session.gpu_staging_count;
-        source.gpu_retained_count = inventory.stagedRetainedCount(session);
     } else {
         source.gpu_inventory_count = 0;
-        source.gpu_retained_count = 0;
     }
     source.status = @enumFromInt(session.completion.status);
     source.last_reset_reason_mask = reset_reason_mask;
@@ -401,11 +399,7 @@ fn commitFinalizedSource(
     session.last_operation_epoch = input.operation_epoch;
     session.last_command_at_milliseconds = input.command_at_milliseconds;
     session.captured_at_milliseconds = session.completion.captured_at_milliseconds;
-    session.phase = if (hasRetained(session) and
-        session.completion.status != @intFromEnum(protocol.SourceStatus.complete))
-        .failed_retained
-    else
-        .ready;
+    session.phase = .ready;
     session.source_modes[source_index].completion_committed = true;
     session.clearCompletion();
     session.detachCompletion();
@@ -475,7 +469,6 @@ pub fn sourceOutput(source: catalog.SourceRecord) protocol.SourceOutput {
         .source_role = source.definition.source_role,
         .priority = source.definition.priority,
         .status = @intFromEnum(source.status),
-        .retention_policy = source.definition.retention_policy,
         .requested_count = source.requested_count,
         .observed_count = source.observed_count,
         .skipped_count = source.skipped_count,
@@ -508,13 +501,8 @@ fn validHeader(session: *const state.Session, header: *const protocol.Completion
         header.expected_gpu_inventory_count <= session.config.maximum_gpu_adapter_count and
         header.cpu_counter_count <= 1 and
         header.captured_at_milliseconds != 0 and
-        header.captured_at_milliseconds >= session.captured_at_milliseconds and
         protocol.knownEnum(protocol.SourceStatus, header.status) and
-        header.flags == 0 and allZero(header.reserved) and
-        session.futureTimeValid(
-            header.captured_at_milliseconds,
-            header.command_at_milliseconds,
-        );
+        header.flags == 0 and allZero(header.reserved);
 }
 
 fn validCompletionShape(header: *const protocol.CompletionHeader) bool {
@@ -564,11 +552,6 @@ fn validateObservation(
         observation.source_observation_sequence !=
             session.completion.source_observation_sequence or
         observation.observed_at_milliseconds == 0 or
-        observation.observed_at_milliseconds > session.completion.captured_at_milliseconds or
-        !session.futureTimeValid(
-            observation.observed_at_milliseconds,
-            session.completion.command_at_milliseconds,
-        ) or
         !protocol.knownEnum(protocol.ObservationStatus, observation.status) or
         !protocol.knownEnum(protocol.ValueKind, observation.value_kind) or
         (observation.valid_mask & ~protocol.ObservationValid.known) != 0 or
@@ -582,12 +565,6 @@ fn validateObservation(
     const active_rule = session.active.rules[rule_index];
     const definition = active_rule.definition;
     const counter_frequency = definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_frequency);
-    if (active_rule.observed_at_milliseconds != 0 and
-        observation.observed_at_milliseconds < active_rule.observed_at_milliseconds and
-        !counter_frequency)
-    {
-        return null;
-    }
     const current = observation.status == @intFromEnum(protocol.ObservationStatus.current);
     if (counter_frequency) {
         if (current) {
@@ -682,7 +659,6 @@ fn validFinalize(session: *const state.Session, input: *const protocol.FinalizeI
         input.operation_epoch == session.completion.operation_epoch and
         input.plan_epoch == session.completion.plan_epoch and
         input.source_handle == session.completion.source_handle and
-        input.command_at_milliseconds >= session.completion.command_at_milliseconds and
         input.flags == 0 and allZero(input.reserved);
 }
 
@@ -762,7 +738,11 @@ fn applyRequestedRules(
         if (slot == catalog.no_index) {
             applyMissing(
                 rule,
-                .unavailable,
+                switch (@as(protocol.SourceStatus, @enumFromInt(session.completion.status))) {
+                    .unsupported => .unsupported,
+                    .skipped => .skipped,
+                    else => .unavailable,
+                },
                 session.completion.capability_generation,
             );
             continue;
@@ -786,7 +766,6 @@ fn applyRequestedRules(
             rule.capability_generation = session.completion.capability_generation;
             rule.unsupported_until_capability_generation = 0;
             rule.status = .current;
-            rule.has_last_good = true;
         } else {
             applyMissing(rule, switch (status) {
                 .unavailable => .unavailable,
@@ -840,7 +819,6 @@ fn recomputeAffectedMetrics(
 
 fn recomputeMetric(bank: *const catalog.Bank, metric: *catalog.MetricRecord) void {
     var selected: ?*const catalog.RuleRecord = null;
-    var retained: ?*const catalog.RuleRecord = null;
     var fallback: ?*const catalog.RuleRecord = null;
     var offset: u32 = 0;
     while (offset < metric.rule_count) : (offset += 1) {
@@ -850,9 +828,8 @@ fn recomputeMetric(bank: *const catalog.Bank, metric: *catalog.MetricRecord) voi
             selected = rule;
             break;
         }
-        if (retained == null and rule.status == .retained) retained = rule;
     }
-    const winner = selected orelse retained orelse fallback.?;
+    const winner = selected orelse fallback.?;
     metric.output = outputFromRule(winner);
 }
 
@@ -887,8 +864,8 @@ fn applyCounterPair(rule: *catalog.RuleRecord, observation: *const protocol.Obse
     applyMissing(rule, .unavailable, capability_generation);
     rule.counter_baseline = .{ .valid = true, .primary = observation.value_bits, .reference = observation.value_high_bits, .ticks_per_second = observation.counter_ticks_per_second, .reference_frequency_mhz = observation.reserved_u32, .observed_at_milliseconds = observation.observed_at_milliseconds };
     const timed = protocol.isTimedCounterMetric(rule.definition.metric_kind);
-    if (!prior.valid or !same_capability or (!timed and observation.observed_at_milliseconds <= prior.observed_at_milliseconds)) return;
-    if (counter_frequency and (prior.reference_frequency_mhz != observation.reserved_u32 or observation.observed_at_milliseconds <= rule.observed_at_milliseconds)) return;
+    if (!prior.valid or !same_capability or (!timed and !protocol.isFloatingCounterMetric(rule.definition.metric_kind) and observation.observed_at_milliseconds <= prior.observed_at_milliseconds)) return;
+    if (counter_frequency and prior.reference_frequency_mhz != observation.reserved_u32) return;
     var duration: u64 = undefined;
     var ratio: f64 = undefined;
     if (protocol.isFloatingCounterMetric(rule.definition.metric_kind)) {
@@ -925,7 +902,6 @@ fn applyCounterPair(rule: *catalog.RuleRecord, observation: *const protocol.Obse
     rule.quality = observation.quality;
     rule.sample_duration_milliseconds = @intCast(duration);
     rule.status = .current;
-    rule.has_last_good = true;
 }
 
 fn applyMissing(
@@ -937,12 +913,6 @@ fn applyMissing(
     rule.capability_generation = capability_generation;
     rule.unsupported_until_capability_generation =
         if (missing_status == .unsupported) capability_generation else 0;
-    if (rule.definition.retention_policy ==
-        @intFromEnum(protocol.RetentionPolicy.retain_last_good) and rule.has_last_good)
-    {
-        rule.status = .retained;
-        return;
-    }
     rule.source_generation = 0;
     rule.value_bits = 0;
     rule.value_high_bits = 0;
@@ -952,12 +922,11 @@ fn applyMissing(
     rule.quality = 0;
     rule.sample_duration_milliseconds = 0;
     rule.status = missing_status;
-    rule.has_last_good = false;
 }
 
 fn outputFromRule(rule: *const catalog.RuleRecord) protocol.MetricOutput {
     const definition = rule.definition;
-    const has_value = rule.has_last_good;
+    const has_value = rule.status == .current;
     var output = protocol.MetricOutput{
         .struct_size = @sizeOf(protocol.MetricOutput),
         .flags = definition.flags,
@@ -1006,18 +975,6 @@ fn outputFromRule(rule: *const catalog.RuleRecord) protocol.MetricOutput {
     return output;
 }
 
-fn hasRetained(session: *const state.Session) bool {
-    for (session.active.metrics[0..session.active.metric_count]) |metric| {
-        if (metric.output.status == @intFromEnum(protocol.MetricStatus.retained)) return true;
-    }
-    for (session.gpu_active) |gpu| if (gpu.active and
-        gpu.output.status == @intFromEnum(protocol.InventoryStatus.retained))
-    {
-        return true;
-    };
-    return false;
-}
-
 fn allZero(values: anytype) bool {
     for (values) |value| if (value != 0) return false;
     return true;
@@ -1054,7 +1011,6 @@ test "timed microsecond ratio preserves integer deltas zero and values above 100
         var rule: catalog.RuleRecord = .{};
         rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage);
         rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
-        rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
         rule.definition.flags = protocol.MetricFlags.nonnegative;
         rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
         rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
@@ -1090,7 +1046,6 @@ test "timed microsecond invalid intervals rewarm and missing discards the baseli
         var rule: catalog.RuleRecord = .{};
         rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage);
         rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
-        rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
         rule.definition.flags = protocol.MetricFlags.nonnegative;
         rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
         rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
@@ -1127,7 +1082,6 @@ test "counter frequency scales C0 APERF/MPERF deltas by declared base MHz" {
     var rule: catalog.RuleRecord = .{};
     rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.counter_frequency);
     rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
-    rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
     rule.definition.flags = protocol.MetricFlags.nonnegative;
     rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
     rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
@@ -1197,3 +1151,24 @@ test "counter frequency scales C0 APERF/MPERF deltas by declared base MHz" {
     try std.testing.expectEqual(@as(f64, 2800), @as(f64, @bitCast(rule.value_bits)));
 }
 
+// Every requested failure has one empty payload, independent of the declared value type.
+test "missing requested rules empty every payload kind and preserve failure status" {
+    inline for (.{ protocol.ValueKind.float64, protocol.ValueKind.signed64, protocol.ValueKind.unsigned64, protocol.ValueKind.unsigned128, protocol.ValueKind.bytes, protocol.ValueKind.boolean }) |kind| {
+        inline for (.{ protocol.MetricStatus.unavailable, protocol.MetricStatus.unsupported, protocol.MetricStatus.skipped }) |status| {
+            var rule: catalog.RuleRecord = .{};
+            rule.definition.value_kind = @intFromEnum(kind);
+            rule.status = .current;
+            rule.source_generation = 3;
+            rule.value_bits = 17;
+            rule.value_high_bits = 9;
+            rule.byte_count = 1;
+            rule.value_bytes[0] = 4;
+            applyMissing(&rule, status, 2);
+            const output = outputFromRule(&rule);
+            try std.testing.expectEqual(@intFromEnum(status), output.status);
+            try std.testing.expectEqual(@as(u64, 0), output.value_bits);
+            try std.testing.expect(protocol.emptyPayload(output));
+            try std.testing.expectEqual(@as(u64, 0), output.observed_at_milliseconds);
+        }
+    }
+}

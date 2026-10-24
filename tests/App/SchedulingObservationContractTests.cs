@@ -38,10 +38,10 @@ public sealed class SchedulingObservationContractTests
                 NativeMetricSnapshotMetricStatus.Current,
                 NativeMetricSnapshotMetricStatus.Current));
         Assert.Equal(
-            SamplingObservationStatus.RetainedLastGood,
+            SamplingObservationStatus.Unavailable,
             NativeMetricSnapshotCommittedProjection.ProjectCompositeObservationStatus(
                 NativeMetricSnapshotMetricStatus.Current,
-                NativeMetricSnapshotMetricStatus.Retained,
+                (NativeMetricSnapshotMetricStatus)2,
                 NativeMetricSnapshotMetricStatus.Current));
         Assert.Equal(
             SamplingObservationStatus.Unavailable,

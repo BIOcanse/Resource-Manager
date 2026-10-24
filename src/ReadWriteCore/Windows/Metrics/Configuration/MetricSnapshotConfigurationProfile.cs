@@ -102,8 +102,6 @@ public sealed class MetricSnapshotSourcePolicyProfile
     public required string SourceRole { get; init; }
     [JsonPropertyName("priority")]
     public required uint Priority { get; init; }
-    [JsonPropertyName("retention")]
-    public required string Retention { get; init; }
     [JsonPropertyName("required")]
     public required bool Required { get; init; }
     [JsonPropertyName("capability_mask")]
@@ -127,8 +125,6 @@ public sealed class MetricSnapshotRuleTemplateProfile
     public required string MetricKind { get; init; }
     [JsonPropertyName("value_kind")]
     public required string ValueKind { get; init; }
-    [JsonPropertyName("retention")]
-    public required string Retention { get; init; }
     [JsonPropertyName("capability_mask")]
     public required ulong CapabilityMask { get; init; }
     [JsonPropertyName("metric_flags")]

@@ -105,13 +105,13 @@ public sealed class NativeSmartCoordinatorSessionTests
     }
 
     [Fact]
-    public void ReconfigureRequiresNewGenerationAndStableCapacityShape()
+    public void ReconfigureAcceptsSameGenerationAndRollbackWithStableCapacityShape()
     {
         var configuration = CreateConfiguration();
         using var session = new NativeSmartCoordinatorSession(in configuration);
 
         Assert.Equal(
-            NativeSmartCoordinatorStatus.StaleGeneration,
+            NativeSmartCoordinatorStatus.Ok,
             session.Reconfigure(in configuration));
 
         var resized = configuration;
@@ -131,6 +131,12 @@ public sealed class NativeSmartCoordinatorSessionTests
             NativeSmartCoordinatorStatus.Ok,
             session.Reconfigure(in replacement));
         Assert.Equal(2UL, session.Capacity.ConfigurationGeneration);
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, session.Reconfigure(in configuration));
+        Assert.Equal(configuration.Generation, session.Capacity.ConfigurationGeneration);
+        var snapshot = default(NativeSmartCoordinatorSnapshot);
+        var rows = new NativeSmartCoordinatorSnapshotRow[session.Capacity.SnapshotRowCapacity];
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, session.GetSnapshot(ref snapshot, rows));
+        Assert.Equal(configuration.Generation, snapshot.ConfigurationGeneration);
     }
 
     [Fact]

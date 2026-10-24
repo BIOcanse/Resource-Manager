@@ -1,11 +1,12 @@
 using ResourceManager.ReadWrite.Native;
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-// The SDK imports/exports native facts; callers own envelope IO and checkpoint placement.
+// Durable state contains catalog identity only; native checkpoints remain explicit in-process exports.
 public sealed record NativeMetricSnapshotPersistenceCallbacks(
-    Func<ulong, string, NativeMetricSnapshotCapacity, NativeMetricSnapshotPersistenceImage?> Load,
-    Action<ulong, NativeMetricSnapshotPersistenceImage> Save,
-    Action Discard);
+    Func<ulong, string, NativeMetricSnapshotCapacity, NativeMetricSnapshotCatalogPersistenceState?> Load,
+    Action<ulong, NativeMetricSnapshotCatalogPersistenceState> Save,
+    Action Discard,
+    Action<string>? Warning = null);
 
 public sealed record NativeMetricSnapshotPersistenceImage(
     NativeMetricSnapshotCatalogPersistenceState Catalog,

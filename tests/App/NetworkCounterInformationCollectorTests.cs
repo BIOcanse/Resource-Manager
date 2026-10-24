@@ -109,11 +109,11 @@ public sealed partial class NetworkCounterInformationCollectorTests
     }
 
     [Theory]
-    [InlineData(1U,2U,true)] [InlineData(3U,2U,false)] [InlineData(1U,1U,false)]
-    public void TimedCounterRequiresFloatOutputAndUnavailableRetention(uint kind,uint retention,bool accepted)
+    [InlineData(1U,true)] [InlineData(3U,false)]
+    public void TimedCounterRequiresFloatOutput(uint kind,bool accepted)
     {
         var template=HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish.RuleTemplates.First(row=>row.MetricKind==15);
-        Assert.Equal(accepted,(template with { ValueKind=kind,RetentionPolicy=retention }).IsPublished);
+        Assert.Equal(accepted,(template with { ValueKind=kind }).IsPublished);
     }
 
     [Theory]
@@ -314,13 +314,13 @@ public sealed partial class NetworkCounterInformationCollectorTests
     }
 
     [Fact]
-    public void RestoringCurrentRateDoesNotRestoreAnIntervalBaseline()
+    public void RestartClearsCurrentRateAndCounterBaseline()
     {
         var path=Path.Combine(Path.GetTempPath(),$"network-rate-restore-{Guid.NewGuid():N}.bin");
         try
         {
             using(var prior=new Workspace(path)) { prior.Publish(new(0,0,1000)); Assert.Equal(150,prior.Publish(new(150,1000,1000))); prior.Native.PersistRecoveryCheckpointIfAdvanced(prior.NextTime()); }
-            using var restored=new Workspace(path,100); Assert.Equal(150,restored.ReadField().NumericValue);
+            using var restored=new Workspace(path,100); Assert.Null(restored.ReadField().NumericValue);
             Assert.Null(restored.Publish(new(10000,1000,1000))); Assert.Equal(50,restored.Publish(new(10050,2000,1000)));
         }
         finally { File.Delete(path); }

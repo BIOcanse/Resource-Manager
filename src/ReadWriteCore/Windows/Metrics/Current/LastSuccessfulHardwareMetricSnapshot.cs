@@ -565,8 +565,6 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
     private static string FailureCodeForStatus(SamplingObservationStatus status)
         => status switch
         {
-            SamplingObservationStatus.RetainedLastGood =>
-                "hardware-dataset-retained",
             SamplingObservationStatus.Unavailable =>
                 "hardware-dataset-unavailable",
             SamplingObservationStatus.NotRequested =>

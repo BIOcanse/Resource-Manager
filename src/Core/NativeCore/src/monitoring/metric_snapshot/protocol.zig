@@ -1,21 +1,20 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x000A_0000;
+pub const abi_version: u32 = 0x000B_0000;
 
-pub const catalog_contract_version: u32 = 0x0005_0000;
-pub const value_contract_version: u32 = 0x0003_0000;
-pub const observation_contract_version: u32 = 0x0008_0000;
-pub const inventory_contract_version: u32 = 0x0001_0000;
-pub const persistence_contract_version: u32 = 0x0004_0000;
+pub const catalog_contract_version: u32 = 0x0006_0000;
+pub const value_contract_version: u32 = 0x0004_0000;
+pub const observation_contract_version: u32 = 0x0009_0000;
+pub const inventory_contract_version: u32 = 0x0002_0000;
+pub const persistence_contract_version: u32 = 0x0005_0000;
 pub const cpu_counter_contract_version: u32 = 0x0001_0000;
-pub const wire_contract_fingerprint: u64 = 0xF59BFA169EC0E2F7;
+pub const wire_contract_fingerprint: u64 = 0x32c6cc703f588753;
 
 pub const Phase = enum(u32) {
     empty = 1,
     catalog_ready = 2,
     completion_open = 3,
     ready = 4,
-    failed_retained = 5,
 };
 
 pub const SourceRole = enum(u32) {
@@ -52,7 +51,6 @@ pub const ObservationStatus = enum(u32) {
 
 pub const MetricStatus = enum(u32) {
     current = 1,
-    retained = 2,
     unavailable = 3,
     unsupported = 4,
     skipped = 5,
@@ -60,14 +58,8 @@ pub const MetricStatus = enum(u32) {
 
 pub const InventoryStatus = enum(u32) {
     current = 1,
-    retained = 2,
     unavailable = 3,
     unsupported = 4,
-};
-
-pub const RetentionPolicy = enum(u32) {
-    retain_last_good = 1,
-    mark_unavailable = 2,
 };
 
 pub const MetricKind = enum(u32) {
@@ -136,10 +128,9 @@ pub const SourceResetReason = struct {
 pub const SnapshotFlags = struct {
     pub const catalog_loaded: u32 = 1 << 0;
     pub const committed_data: u32 = 1 << 1;
-    pub const retained_data: u32 = 1 << 2;
     pub const gpu_inventory_present: u32 = 1 << 3;
     pub const completion_open: u32 = 1 << 4;
-    pub const known: u32 = catalog_loaded | committed_data | retained_data |
+    pub const known: u32 = catalog_loaded | committed_data |
         gpu_inventory_present | completion_open;
 };
 
@@ -267,8 +258,8 @@ pub const SourcePolicyInput = extern struct {
     source_handle: u64,
     source_role: u32,
     priority: u32,
-    retention_policy: u32,
     reserved_u32: u32,
+    alignment_reserved: u32 = 0,
     capability_mask: u64,
     semantic_fingerprint: u64,
     reserved: [2]u64,
@@ -285,9 +276,9 @@ pub const MetricDefinitionInput = extern struct {
     metric_kind: u32,
     scope_kind: u32,
     value_kind: u32,
-    retention_policy: u32,
     source_priority: u32,
     reserved_u32: u32,
+    alignment_reserved: u32 = 0,
     minimum_value_bits: u64,
     maximum_value_bits: u64,
     semantic_fingerprint: u64,
@@ -538,13 +529,13 @@ pub const SnapshotHeader = extern struct {
     rule_count: u32,
     gpu_adapter_count: u32,
     current_metric_count: u32,
-    retained_metric_count: u32,
     unavailable_metric_count: u32,
     unsupported_metric_count: u32,
     skipped_metric_count: u32,
     flags: u32,
     phase: u32,
     reserved_u32: u32,
+    alignment_reserved: u32 = 0,
     semantic_fingerprint: u64,
     reserved: [2]u64,
 };
@@ -588,13 +579,13 @@ pub const SourceOutput = extern struct {
     source_role: u32,
     priority: u32,
     status: u32,
-    retention_policy: u32,
     requested_count: u32,
     observed_count: u32,
     skipped_count: u32,
     overflow_count: u32,
     reset_count: u32,
     last_reset_reason_mask: u32,
+    alignment_reserved: u32 = 0,
     definition_fingerprint: u64,
     state_fingerprint: u64,
 };
@@ -631,7 +622,7 @@ pub const RuleStateOutput = extern struct {
     status: u32,
     value_kind: u32,
     quality: u32,
-    has_last_good: u32,
+    alignment_reserved: u32 = 0,
     sample_duration_milliseconds: u64,
     definition_fingerprint: u64,
     state_fingerprint: u64,
@@ -672,7 +663,7 @@ pub const SourcePersistenceOutput = extern struct {
     reserved_u32: u32,
     state_fingerprint: u64,
     gpu_inventory_count: u32,
-    gpu_retained_count: u32,
+    alignment_reserved: u32 = 0,
     reserved: u64,
 };
 
@@ -763,14 +754,12 @@ pub fn validConfig(config: *const Config) bool {
 
 pub fn validSourcePolicy(source: *const SourcePolicyInput) bool {
     if (source.struct_size != @sizeOf(SourcePolicyInput) or source.source_handle == 0) return false;
-    if ((source.flags & ~SourceFlags.known) != 0 or source.reserved_u32 != 0 or
+    if ((source.flags & ~SourceFlags.known) != 0 or source.reserved_u32 != 0 or source.alignment_reserved != 0 or
         !allZero(source.reserved))
     {
         return false;
     }
-    if (!knownEnum(SourceRole, source.source_role) or
-        !knownEnum(RetentionPolicy, source.retention_policy))
-    {
+    if (!knownEnum(SourceRole, source.source_role)) {
         return false;
     }
     if (source.priority == 0 or source.semantic_fingerprint == 0) return false;
@@ -783,10 +772,9 @@ pub fn validMetricDefinition(metric: *const MetricDefinitionInput) bool {
     {
         return false;
     }
-    if ((metric.flags & ~MetricFlags.known) != 0 or metric.reserved_u32 != 0) return false;
+    if ((metric.flags & ~MetricFlags.known) != 0 or metric.reserved_u32 != 0 or metric.alignment_reserved != 0) return false;
     if (!knownEnum(MetricKind, metric.metric_kind) or !knownEnum(ScopeKind, metric.scope_kind) or
-        !knownEnum(ValueKind, metric.value_kind) or
-        !knownEnum(RetentionPolicy, metric.retention_policy))
+        !knownEnum(ValueKind, metric.value_kind))
     {
         return false;
     }
@@ -797,8 +785,7 @@ pub fn validMetricDefinition(metric: *const MetricDefinitionInput) bool {
         return false;
     }
     if (isCounterMetric(metric.metric_kind) and
-        (metric.value_kind != @intFromEnum(ValueKind.float64) or
-            metric.retention_policy != @intFromEnum(RetentionPolicy.mark_unavailable))) return false;
+        metric.value_kind != @intFromEnum(ValueKind.float64)) return false;
     return validRange(metric.value_kind, metric.minimum_value_bits, metric.maximum_value_bits);
 }
 

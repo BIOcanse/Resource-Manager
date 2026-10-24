@@ -7,6 +7,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativePlacementCoordinatorAbiTests
 {
     [Fact]
+    public void ReconfigureAcceptsChangedContentAtSameGenerationAndRollbackToPreviousConfiguration()
+    {
+        var original = CreateConfiguration(21);
+        using var session = new NativePlacementCoordinatorSession(in original);
+        var changed = original;
+        changed.RetryDelayMilliseconds++;
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Reconfigure(in changed));
+        changed.Generation++;
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Reconfigure(in changed));
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Reconfigure(in original));
+        var workspace = new NativePlacementCoordinatorWorkspace(in original, session.Capacity);
+        var cycle = CreateCycle(original.Generation, 1, 1000, 0, 0, original.MaximumActionCount);
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok,
+            session.Plan(ref cycle, [], [], workspace.Actions));
+    }
+
+    [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
         Assert.Equal(NativePlacementCoordinatorAbi.Version, NativePlacementCoordinatorSession.GetAbiVersion());

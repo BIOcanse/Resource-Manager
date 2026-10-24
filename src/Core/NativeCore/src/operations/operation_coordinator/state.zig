@@ -122,12 +122,6 @@ pub const Session = struct {
         defer unlockMutex(&self.mutex);
         if (!protocol.validSubmit(input, &self.config)) return .abi_mismatch;
         if (input.submit_epoch <= self.last_submit_epoch) return .stale_frame;
-        if (!self.validAfter(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-            input.created_utc_milliseconds,
-            input.created_monotonic_milliseconds,
-        )) return .stale_frame;
         if (self.bank.findOperation(input.operation_id)) |existing_index| {
             const existing = &self.bank.records[existing_index];
             if (!sameSubmissionIdentity(existing, input)) return .invalid_argument;
@@ -269,12 +263,8 @@ pub const Session = struct {
         if (input.request_epoch <= self.last_request_epoch) return .stale_frame;
         const index = self.bank.findOperation(input.operation_id) orelse return .no_data;
         const record = &self.bank.records[index];
-        if (!self.validAfter(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-            record.updated_utc_milliseconds,
-            record.updated_monotonic_milliseconds,
-        )) return .stale_frame;
+        if (input.observed_monotonic_milliseconds <
+            record.updated_monotonic_milliseconds) return .stale_frame;
         var changed = false;
         switch (record.state) {
             .queued, .retry_wait => {
@@ -333,10 +323,8 @@ pub const Session = struct {
         defer unlockMutex(&self.mutex);
         if (!protocol.validPlan(input, &self.config)) return .abi_mismatch;
         if (input.plan_epoch <= self.last_plan_epoch) return .stale_frame;
-        if (!self.validGlobalObserved(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-        )) return .stale_frame;
+        if (input.observed_monotonic_milliseconds <
+            self.last_observed_monotonic_milliseconds) return .stale_frame;
         if (self.bank.action_count != 0 and
             self.last_action_read_plan_epoch != self.last_plan_epoch)
         {
@@ -618,12 +606,8 @@ pub const Session = struct {
         {
             return .stale_frame;
         }
-        if (!self.validAfter(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-            record.updated_utc_milliseconds,
-            record.updated_monotonic_milliseconds,
-        )) return .stale_frame;
+        if (input.observed_monotonic_milliseconds <
+            record.updated_monotonic_milliseconds) return .stale_frame;
         const kind = protocol.actionKindFromInt(input.action_kind) orelse
             return .abi_mismatch;
         const outcome = protocol.feedbackOutcomeFromInt(input.outcome) orelse
@@ -755,12 +739,8 @@ pub const Session = struct {
         {
             return .stale_frame;
         }
-        if (!self.validAfter(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-            record.updated_utc_milliseconds,
-            record.updated_monotonic_milliseconds,
-        )) return .stale_frame;
+        if (input.observed_monotonic_milliseconds <
+            record.updated_monotonic_milliseconds) return .stale_frame;
         const outcome = protocol.completionOutcomeFromInt(input.outcome) orelse
             return .abi_mismatch;
         self.applyOutcomeHandles(record, input.result_handle, input.error_handle, input.valid_mask);
@@ -841,12 +821,8 @@ pub const Session = struct {
         {
             return .stale_frame;
         }
-        if (!self.validAfter(
-            input.observed_utc_milliseconds,
-            input.observed_monotonic_milliseconds,
-            record.updated_utc_milliseconds,
-            record.updated_monotonic_milliseconds,
-        )) return .stale_frame;
+        if (input.observed_monotonic_milliseconds <
+            record.updated_monotonic_milliseconds) return .stale_frame;
         if ((input.valid_mask & protocol.ProgressValid.percent_milli) != 0 and
             (record.progress_valid_mask & protocol.ProgressValid.percent_milli) != 0 and
             input.percent_milli < record.percent_milli)
@@ -1287,40 +1263,6 @@ pub const Session = struct {
     fn advanceRevisionRecord(self: *Session, record: *Record) void {
         self.state_revision += 1;
         record.state_revision = self.state_revision;
-    }
-
-    fn validGlobalObserved(
-        self: *const Session,
-        utc_milliseconds: i64,
-        monotonic: u64,
-    ) bool {
-        return self.validAfter(
-            utc_milliseconds,
-            monotonic,
-            self.last_observed_utc_milliseconds,
-            self.last_observed_monotonic_milliseconds,
-        );
-    }
-
-    fn validAfter(
-        self: *const Session,
-        utc_milliseconds: i64,
-        monotonic: u64,
-        previous_utc_milliseconds: i64,
-        previous_monotonic: u64,
-    ) bool {
-        if (utc_milliseconds < 0 or monotonic == 0) return false;
-        if (previous_monotonic == 0) return true;
-        if (monotonic < previous_monotonic) return false;
-        if (utc_milliseconds <= previous_utc_milliseconds) return true;
-        const utc_delta: u64 = @intCast(
-            utc_milliseconds - previous_utc_milliseconds,
-        );
-        const monotonic_delta = monotonic - previous_monotonic;
-        return utc_delta <= addSaturating(
-            monotonic_delta,
-            self.config.maximum_future_skew_milliseconds,
-        );
     }
 
     fn commitObserved(self: *Session, utc_milliseconds: i64, monotonic: u64) void {

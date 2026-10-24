@@ -29,7 +29,6 @@ public sealed record NativeMetricSnapshotSourcePolicy(
     ulong SourceHandle,
     uint SourceRole,
     uint Priority,
-    uint RetentionPolicy,
     bool Required,
     ulong CapabilityMask,
     ulong SemanticFingerprint)
@@ -38,7 +37,6 @@ public sealed record NativeMetricSnapshotSourcePolicy(
         && SourceHandle > 0
         && SourceRole is 1 or 2
         && Priority > 0
-        && RetentionPolicy is 1 or 2
         && CapabilityMask > 0
         && SemanticFingerprint > 0;
 }
@@ -53,7 +51,6 @@ public sealed record NativeMetricSnapshotRuleTemplate(
     uint MetricKind,
     uint ScopeKind,
     uint ValueKind,
-    uint RetentionPolicy,
     ulong CapabilityMask,
     uint MetricFlags,
     ulong MinimumValueBits,
@@ -72,8 +69,7 @@ public sealed record NativeMetricSnapshotRuleTemplate(
         && MetricKind is >= 1 and <= 19
         && ScopeKind is >= 1 and <= 4
         && ValueKind is >= 1 and <= 6
-        && RetentionPolicy is 1 or 2
-        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || (ValueKind == 1 && RetentionPolicy == 2))
+        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || ValueKind == 1)
         && CapabilityMask > 0
         && (MetricFlags & ~0x0FU) == 0
         && GpuVendorMask <= 0x0FU

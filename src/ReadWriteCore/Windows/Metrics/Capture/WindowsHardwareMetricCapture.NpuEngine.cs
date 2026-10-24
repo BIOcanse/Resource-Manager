@@ -9,8 +9,7 @@ internal sealed partial class WindowsHardwareMetricCapture
 {
     private NativeMetricSnapshotSourceCompletion CollectNpuEngine(NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan, NativeMetricSnapshotSourceObservationIdentity identity,
-        DateTimeOffset capturedAt, NativeMetricSnapshotCatalogTopologySnapshot? topology, CancellationToken token,
-        Action rejectPublication)
+        DateTimeOffset capturedAt, NativeMetricSnapshotCatalogTopologySnapshot? topology, CancellationToken token)
     {
         if (topology?.NpuEngineStatus != NativeMetricSnapshotCatalogTopologyStatus.Complete)
             return Unavailable(sourcePlan.SourceHandle, identity, capturedAt);
@@ -24,7 +23,6 @@ internal sealed partial class WindowsHardwareMetricCapture
         if (values.Any(static value => value.RequiresTopologyRefresh))
         {
             requestTopologyRefresh();
-            rejectPublication();
         }
         return CreateNpuEngineCompletion(plan, sourcePlan, identity, capturedAt, values);
     }

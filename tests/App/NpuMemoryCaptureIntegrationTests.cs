@@ -18,7 +18,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NpuMemoryCaptureIntegrationTests
 {
     [Fact]
-    public async Task InvalidatedIdentityRejectsTheWholeRealNativeFrameAndTheNextPlanCanComplete()
+    public async Task InvalidatedIdentityClearsOnlyItsValuesAndTheNextPlanCanComplete()
     {
         var recording = new NpuMemoryIntegrationRecording();
         using var fixture = new NativeFixture(recording);
@@ -31,14 +31,16 @@ public sealed class NpuMemoryCaptureIntegrationTests
         recording.Invalidated = true;
         recording.SharedResidentBytes = ulong.MaxValue;
         recording.MemoryUsed = 128;
-        Assert.Null(await fixture.Capture(request));
+        var invalidated = Assert.IsType<HardwareMetricSnapshot>(await fixture.Capture(request));
         Assert.Equal(1, fixture.Refreshes);
-        Assert.Equal(callbacks, fixture.Published);
-        Assert.Equal(admissions, fixture.PermitInvocations);
-        var rejected = fixture.Workspace.ReadCommitted();
-        Assert.Equal(before.Header.CommittedGeneration, rejected.Header.CommittedGeneration);
-        Assert.Equal(before.Metrics.ToArray(), rejected.Metrics.ToArray());
-        Assert.Equal("0", Npu(fixture.Current!, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
+        Assert.Equal(callbacks + 1, fixture.Published);
+        Assert.Equal(admissions + 1, fixture.PermitInvocations);
+        Assert.True(fixture.Workspace.ReadCommitted().Header.CommittedGeneration > before.Header.CommittedGeneration);
+        var missing = Npu(invalidated, NpuMemoryIntegrationRecording.SharedResident);
+        Assert.Equal(SamplingObservationStatus.Unavailable, missing.Status);
+        Assert.Null(missing.IntegerValue);
+        Assert.Equal(128UL, invalidated.Memory.UsedBytes);
+        Assert.Equal(SamplingObservationStatus.Current, invalidated.Datasets["memory.usage"].Status);
         // The refresh retains the same precise physical target. Do not reset/recreate
         // the workspace: a leaked completion_open must make this next real Plan fail.
         recording.Invalidated = false;
@@ -47,7 +49,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         Assert.Equal("18446744073709551615", Npu(recovered, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
         Assert.Equal(128UL, recovered.Memory.UsedBytes);
         Assert.True(recovered.CommittedGeneration > first.CommittedGeneration);
-        Assert.Equal(callbacks + 1, fixture.Published);
+        Assert.Equal(callbacks + 2, fixture.Published);
         Assert.Equal(3, recording.Reads);
     }
 

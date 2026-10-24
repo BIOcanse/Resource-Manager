@@ -7,6 +7,21 @@ const software_aggregation = @import("../compute_scoring/software_aggregation.zi
 
 const ActionBuffer = [corpus.default_action_capacity]protocol.Action;
 
+test "reconfigure applies changed content at the same generation and accepts rollback" {
+    const original = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&original);
+    defer coordinator.destroy(session);
+    var changed = original;
+    changed.normal_interval_ms += 1;
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.reconfigure(session, &changed));
+    try std.testing.expectEqual(changed.normal_interval_ms, session.config.normal_interval_ms);
+    changed.generation += 1;
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.reconfigure(session, &changed));
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.reconfigure(session, &original));
+    try std.testing.expectEqual(original.generation, session.config.generation);
+    try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
+}
+
 test "ABI layout is frozen for version 9" {
     try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));

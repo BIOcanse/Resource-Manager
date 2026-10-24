@@ -39,7 +39,7 @@ pub fn plan(
     if (session.phase == .empty or session.phase == .completion_open) {
         return .unavailable;
     }
-    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds) or
+    if (!session.operationAdvances(input.operation_epoch) or
         input.plan_epoch <= session.last_plan_epoch)
     {
         return .stale_frame;
@@ -124,25 +124,8 @@ fn validateSourceModes(
             return .invalid_argument;
         }
         previous_source_handle = mode.source_handle;
-        const source_index = session.active.findSource(mode.source_handle) orelse
+        _ = session.active.findSource(mode.source_handle) orelse
             return .invalid_argument;
-        const source = session.active.sources[source_index];
-        const previous_mode = session.source_modes[source_index];
-        const highest_accepted_capability_generation = @max(
-            source.capability_generation,
-            if (previous_mode.present) previous_mode.input.capability_generation else 0,
-        );
-        if (highest_accepted_capability_generation != 0 and
-            mode.capability_generation < highest_accepted_capability_generation)
-        {
-            return .stale_frame;
-        }
-        if (source.status == .unsupported and
-            mode.capability_generation == source.capability_generation and
-            mode.availability == @intFromEnum(protocol.SourceAvailability.available))
-        {
-            return .stale_frame;
-        }
     }
     return .ok;
 }
@@ -224,11 +207,14 @@ fn selectMetricRule(
         const rule = session.active.rules[rule_index];
         const source_index = session.active.findSource(rule.definition.source_handle).?;
         const mode = session.source_modes[source_index];
+        const source = session.active.sources[source_index];
         if (!mode.present or
+            (source.status == .unsupported and
+                mode.input.capability_generation == source.capability_generation) or
             mode.input.zone_mode == @intFromEnum(protocol.ZoneMode.freeze) or
             mode.input.availability != @intFromEnum(protocol.SourceAvailability.available) or
             (rule.unsupported_until_capability_generation != 0 and
-                mode.input.capability_generation <=
+                mode.input.capability_generation ==
                     rule.unsupported_until_capability_generation))
         {
             continue;
@@ -267,6 +253,8 @@ fn selectInventorySource(
         }
         const mode = session.source_modes[ordinal];
         if (mode.present and
+            !(source.status == .unsupported and
+                mode.input.capability_generation == source.capability_generation) and
             mode.input.zone_mode != @intFromEnum(protocol.ZoneMode.freeze) and
             mode.input.availability == @intFromEnum(protocol.SourceAvailability.available))
         {

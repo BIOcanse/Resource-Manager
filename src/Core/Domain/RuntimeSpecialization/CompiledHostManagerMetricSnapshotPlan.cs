@@ -84,7 +84,7 @@ public sealed record CompiledHostManagerMetricSnapshotBuildPlan(
     string NativeModule,
     CompiledHostManagerMetricSnapshotCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x000A_0000U
+    public bool IsPublished => AbiVersion == 0x000B_0000U
         && string.Equals(NativeModule, "metric_snapshot", StringComparison.Ordinal)
         && CapacityLimits.IsPublished;
 
@@ -103,18 +103,19 @@ public sealed record CompiledHostManagerMetricSnapshotRecreatePlan(
     uint CpuCounterContractVersion)
 {
     private const uint ContractVersionV1 = 0x0001_0000U;
-    private const uint ContractVersionV3 = 0x0003_0000U;
+    private const uint ContractVersionV2 = 0x0002_0000U;
     private const uint ContractVersionV4 = 0x0004_0000U;
     private const uint ContractVersionV5 = 0x0005_0000U;
-    private const uint ContractVersionV8 = 0x0008_0000U;
+    private const uint ContractVersionV6 = 0x0006_0000U;
+    private const uint ContractVersionV9 = 0x0009_0000U;
 
     public bool IsPublished => Capacity.IsPublished
         && !string.IsNullOrWhiteSpace(PersistenceRelativePath)
-        && CatalogContractVersion == ContractVersionV5
-        && ValueContractVersion == ContractVersionV3
-        && ObservationContractVersion == ContractVersionV8
-        && InventoryContractVersion == ContractVersionV1
-        && PersistenceContractVersion == ContractVersionV4
+        && CatalogContractVersion == ContractVersionV6
+        && ValueContractVersion == ContractVersionV4
+        && ObservationContractVersion == ContractVersionV9
+        && InventoryContractVersion == ContractVersionV2
+        && PersistenceContractVersion == ContractVersionV5
         && CpuCounterContractVersion == ContractVersionV1;
 
     public static CompiledHostManagerMetricSnapshotRecreatePlan Unpublished { get; } =
@@ -126,7 +127,6 @@ public sealed record CompiledHostManagerMetricSnapshotSourcePolicy(
     ulong SourceHandle,
     uint SourceRole,
     uint Priority,
-    uint RetentionPolicy,
     bool Required,
     ulong CapabilityMask,
     ulong SemanticFingerprint)
@@ -135,7 +135,6 @@ public sealed record CompiledHostManagerMetricSnapshotSourcePolicy(
         && SourceHandle > 0
         && SourceRole is 1 or 2
         && Priority > 0
-        && RetentionPolicy is 1 or 2
         && CapabilityMask > 0
         && SemanticFingerprint > 0;
 }
@@ -150,7 +149,6 @@ public sealed record CompiledHostManagerMetricSnapshotRuleTemplate(
     uint MetricKind,
     uint ScopeKind,
     uint ValueKind,
-    uint RetentionPolicy,
     ulong CapabilityMask,
     uint MetricFlags,
     ulong MinimumValueBits,
@@ -169,8 +167,7 @@ public sealed record CompiledHostManagerMetricSnapshotRuleTemplate(
         && MetricKind is >= 1 and <= 19
         && ScopeKind is >= 1 and <= 4
         && ValueKind is >= 1 and <= 6
-        && RetentionPolicy is 1 or 2
-        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || (ValueKind == 1 && RetentionPolicy == 2))
+        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || ValueKind == 1)
         && CapabilityMask > 0
         && (MetricFlags & ~0x0FU) == 0
         && GpuVendorMask <= 0x0FU

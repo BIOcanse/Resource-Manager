@@ -68,11 +68,11 @@ public sealed class CompiledHostManagerMetricSnapshotPlanTests
         var valid = CreateRecreate();
 
         Assert.True(valid.IsPublished);
-        Assert.Equal(0x0005_0000U, valid.CatalogContractVersion);
-        Assert.Equal(0x0008_0000U, valid.ObservationContractVersion);
+        Assert.Equal(0x0006_0000U, valid.CatalogContractVersion);
+        Assert.Equal(0x0009_0000U, valid.ObservationContractVersion);
         Assert.False((valid with { CatalogContractVersion = 0x0004_0000U }).IsPublished);
         Assert.False((valid with { ObservationContractVersion = 0x0006_0000U }).IsPublished);
-        var build = new CompiledHostManagerMetricSnapshotBuildPlan(0x000A_0000U, "metric_snapshot", CreateCapacity());
+        var build = new CompiledHostManagerMetricSnapshotBuildPlan(0x000B_0000U, "metric_snapshot", CreateCapacity());
         Assert.True(build.IsPublished);
         Assert.False((build with { AbiVersion = 0x0008_0000U }).IsPublished);
         Assert.False((valid with { ObservationContractVersion = 0x0002_0000U }).IsPublished);
@@ -94,11 +94,11 @@ public sealed class CompiledHostManagerMetricSnapshotPlanTests
         => new(
             CreateCapacity(),
             "metric-snapshot/metric-snapshot-v2.bin",
-            0x0005_0000U,
-            0x0003_0000U,
-            0x0008_0000U,
-            0x0001_0000U,
+            0x0006_0000U,
             0x0004_0000U,
+            0x0009_0000U,
+            0x0002_0000U,
+            0x0005_0000U,
             0x0001_0000U);
 
     private static CompiledHostManagerMetricSnapshotCapacityPlan CreateCapacity()

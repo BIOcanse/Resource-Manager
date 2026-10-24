@@ -1,5 +1,9 @@
 using System.Collections.Immutable;
+using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -31,7 +35,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
     }
 
     [Fact]
-    public void RecoveryCheckpointPersistsOnlyWhenCatalogOrFirstFrameAdvances()
+    public void RecoveryCheckpointPersistsOnlyWhenCatalogAdvances()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -132,7 +136,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                     0),
                 capturedAt);
 
-            Assert.True(
+            Assert.False(
                 workspace.PersistRecoveryCheckpointIfAdvanced(
                     DateTimeOffset.UtcNow));
             Assert.False(
@@ -145,21 +149,29 @@ public sealed class NativeMetricSnapshotWorkspaceTests
         }
     }
 
-    [Fact]
-    public void CorruptPersistenceEnvelopeIsDiscardedBeforeFreshCatalogLoad()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CorruptPersistenceEnvelopeIsDiscardedBeforeFreshCatalogLoad(bool useWarningCallback)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
             $"metric-corrupt-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "state.bin");
+        using var messages = new StringWriter();
+        using var listener = new TextWriterTraceListener(messages);
+        Trace.Listeners.Add(listener);
+        var warnings = new List<string>();
         try
         {
             File.WriteAllBytes(path, [1, 2, 3]);
             var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
 
             using var workspace =
-                NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path,
+                    NativeMetricSnapshotScratch.CreateOrdinary,
+                    useWarningCallback ? warnings.Add : null);
             var projection = CreateProjection(
                 plan,
                 workspace.CreateCatalogHandleMap(),
@@ -169,67 +181,69 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 DateTimeOffset.UtcNow);
 
             Assert.False(File.Exists(path));
+            var diagnostics = useWarningCallback ? Assert.Single(warnings) : messages.ToString();
+            Assert.Contains("Discarding invalid metric-snapshot catalog persistence", diagnostics);
+            Assert.Contains("persistence envelope is truncated", diagnostics);
+            if (useWarningCallback) Assert.DoesNotContain("Discarding invalid metric-snapshot catalog persistence", messages.ToString());
             Assert.Equal(
                 NativeMetricSnapshotPhase.CatalogReady,
                 (NativeMetricSnapshotPhase)header.Phase);
         }
         finally
         {
+            Trace.Listeners.Remove(listener);
             Directory.Delete(root, recursive: true);
         }
     }
 
-    [Fact]
-    public void NativeRejectedPersistenceIsDiscardedWithoutImportingItsEpochs()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExistingVersionTwoEnvelopeStartsFreshWithVisibleDiagnostic(bool useWarningCallback)
     {
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            $"metric-native-reject-{Guid.NewGuid():N}");
+        var root = Path.Combine(Path.GetTempPath(), $"metric-v2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "state.bin");
+        using var messages = new StringWriter();
+        using var listener = new TextWriterTraceListener(messages);
+        Trace.Listeners.Add(listener);
+        var warnings = new List<string>();
         try
         {
             var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             NativeMetricSnapshotPersistenceImage image;
-            using (var original =
-                   NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
+            using (var original = NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
             {
-                var projection = CreateProjection(
-                    plan,
-                    original.CreateCatalogHandleMap(),
-                    []);
-                _ = original.ReplaceCatalog(
-                    projection,
-                    DateTimeOffset.UtcNow);
-                image = original.ExportAndPersist(
-                    DateTimeOffset.UtcNow);
+                original.ReplaceCatalog(CreateProjection(plan, original.CreateCatalogHandleMap(), []), DateTimeOffset.UtcNow);
+                image = original.ExportAndPersist(DateTimeOffset.UtcNow);
             }
+            var envelope = File.ReadAllBytes(path);
+            BinaryPrimitives.WriteUInt32LittleEndian(envelope.AsSpan(sizeof(ulong)), 2);
+            BinaryPrimitives.WriteUInt32LittleEndian(envelope.AsSpan(sizeof(ulong) + sizeof(uint)), 0x000A_0000);
+            using var legacy = new MemoryStream();
+            legacy.Write(envelope.AsSpan(0, envelope.Length - SHA256.HashSizeInBytes));
+            legacy.Write(MemoryMarshal.AsBytes(new[] { image.Header }.AsSpan()));
+            legacy.Write(MemoryMarshal.AsBytes(image.Sources.AsSpan()));
+            legacy.Write(MemoryMarshal.AsBytes(image.Rules.AsSpan()));
+            legacy.Write(MemoryMarshal.AsBytes(image.GpuInventory.AsSpan()));
+            var body = legacy.ToArray();
+            legacy.Write(SHA256.HashData(body));
+            File.WriteAllBytes(path, legacy.ToArray());
 
-            var rejectedHeader = image.Header;
-            rejectedHeader.Phase = uint.MaxValue;
-            rejectedHeader.LastOperationEpoch = ulong.MaxValue - 1;
-            new NativeMetricSnapshotPersistenceStore(path).Save(
-                plan.HotPublish.ConfigurationGeneration,
-                image with { Header = rejectedHeader });
-
-            using var restarted =
-                NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path);
-            var restartedProjection = CreateProjection(
-                plan,
-                restarted.CreateCatalogHandleMap(),
-                []);
-            var header = restarted.ReplaceCatalog(
-                restartedProjection,
-                DateTimeOffset.UtcNow);
-
-            Assert.False(File.Exists(path));
-            Assert.Equal(
-                NativeMetricSnapshotPhase.CatalogReady,
-                (NativeMetricSnapshotPhase)header.Phase);
-            Assert.True(header.LastOperationEpoch < ulong.MaxValue - 1);
+            using var restarted = NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path,
+                NativeMetricSnapshotScratch.CreateOrdinary,
+                useWarningCallback ? warnings.Add : null);
+            Assert.Empty(restarted.CreateCatalogHandleMap().Entries);
+            var header = restarted.ReplaceCatalog(CreateProjection(plan, restarted.CreateCatalogHandleMap(), []), DateTimeOffset.UtcNow);
+            Assert.Equal(NativeMetricSnapshotPhase.CatalogReady, (NativeMetricSnapshotPhase)header.Phase);
+            var diagnostics = useWarningCallback ? Assert.Single(warnings) : messages.ToString();
+            Assert.Contains($"envelope version 2 at '{path}'", diagnostics);
+            Assert.Contains("Sampling values will start empty", diagnostics);
+            if (useWarningCallback) Assert.DoesNotContain($"envelope version 2 at '{path}'", messages.ToString());
         }
         finally
         {
+            Trace.Listeners.Remove(listener);
             Directory.Delete(root, recursive: true);
         }
     }
@@ -389,9 +403,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                             VendorNvidia,
                             true)
                     ]);
-                // Exact restart retains the runtime LUID as well as stable identity.
-                // LUID changes intentionally retire persisted inventory; covered by
-                // RestartedGpuInventoryAcceptsCurrentRuntimeIdentity below.
+                // Catalog identity and stable handles survive restart independently of sampled inventory.
                 var header = restarted.ReplaceCatalog(
                     projection,
                     DateTimeOffset.UtcNow);
@@ -447,7 +459,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
     }
 
     [Fact]
-    public void ClockRollbackImportsCheckpointHistoryAndAllowsNextPlan()
+    public void RestartKeepsCatalogButStartsValuesAndSequencesEmptyAfterClockRollback()
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -476,7 +488,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                     .Select(static source =>
                         new NativeMetricSnapshotSourceRuntimeMode(
                             source.SourceHandle,
-                            1,
+                            10,
                             NativeMetricSnapshotZoneMode.Normal,
                             NativeMetricSnapshotSourceAvailability.Available))
                     .ToArray();
@@ -545,18 +557,19 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 restoredProjection,
                 rolledBackCommandAt);
             Assert.Equal(
-                NativeMetricSnapshotPhase.Ready,
+                NativeMetricSnapshotPhase.CatalogReady,
                 (NativeMetricSnapshotPhase)restoredHeader.Phase);
             Assert.Equal(
-                (ulong)completionAt.ToUnixTimeMilliseconds(),
+                0UL,
                 restoredHeader.CapturedAtMilliseconds);
 
             var committed = restored.ReadCommitted();
             var restoredMetric = Assert.Single(committed.Metrics.Where(metric =>
                 metric.MetricHandle == metricHandle));
-            Assert.Equal(expectedValueBits, restoredMetric.ValueBits);
+            Assert.Equal(0UL, restoredMetric.ValueBits);
+            Assert.NotEqual((uint)NativeMetricSnapshotMetricStatus.Current, restoredMetric.Status);
             Assert.Equal(
-                (ulong)observedAt.ToUnixTimeMilliseconds(),
+                0UL,
                 restoredMetric.ObservedAtMilliseconds);
 
             var restoredModes = restoredProjection.Sources
@@ -579,12 +592,38 @@ public sealed class NativeMetricSnapshotWorkspaceTests
 
             var afterPlan = restored.ReadCommitted();
             Assert.Equal(
-                (ulong)completionAt.ToUnixTimeMilliseconds(),
+                0UL,
                 afterPlan.Header.CapturedAtMilliseconds);
             Assert.Equal(
-                (ulong)observedAt.ToUnixTimeMilliseconds(),
+                0UL,
                 Assert.Single(afterPlan.Metrics.Where(metric =>
                     metric.MetricHandle == metricHandle)).ObservedAtMilliseconds);
+
+            var nextMetric = Assert.Single(nextPlan.Metrics.Where(metric =>
+                metric.MetricHandle == metricHandle
+                && (metric.Flags & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) != 0));
+            var nextSource = Assert.Single(nextPlan.Sources.Where(source =>
+                source.SourceHandle == nextMetric.SourceHandle));
+            Assert.Equal(1UL, nextSource.CapabilityGeneration);
+            var nextObservedAt = rolledBackCommandAt.AddMilliseconds(-100);
+            var nextCommandAt = rolledBackCommandAt.AddMilliseconds(-200);
+            var nextValue = NativeMetricSnapshotObservationProjection.CreateObservation(
+                nextMetric,
+                restoredProjection.RuleBindings[nextMetric.RuleHandle],
+                new(nextSource.SourceHandle, 1, 1),
+                nextObservedAt,
+                321,
+                sampleDurationMilliseconds: 1);
+            restored.CompleteSource(nextPlan,
+                new(nextSource.SourceHandle, 1, 1, nextObservedAt,
+                    NativeMetricSnapshotSourceStatus.Complete, [nextValue], null, [], 0, 0),
+                nextCommandAt);
+            var afterRollback = Assert.Single(restored.ReadCommitted().Metrics.Where(metric =>
+                metric.MetricHandle == metricHandle));
+            Assert.Equal((uint)NativeMetricSnapshotMetricStatus.Current, afterRollback.Status);
+            Assert.Equal(ValueBits(nextMetric.ValueKind, 321), afterRollback.ValueBits);
+            Assert.Equal((ulong)nextObservedAt.ToUnixTimeMilliseconds(), afterRollback.ObservedAtMilliseconds);
+            restored.ExportAndPersist(nextCommandAt);
         }
         finally
         {
@@ -620,7 +659,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var current = CreateProjection(compiled, restarted.CreateCatalogHandleMap(),
                 [new(0, "GPU A", "gpu-a", restartedLuid, 2, VendorNvidia, true)]);
             _ = restarted.ReplaceCatalog(current, DateTimeOffset.UtcNow);
-            Assert.Equal(restartedLuid == 0xA1UL ? 1 : 0, restarted.ReadCommitted().GpuInventory.Length);
+            Assert.Empty(restarted.ReadCommitted().GpuInventory);
             CompleteGpuInventory(restarted, current, incarnation: 3);
             var frame = restarted.ReadCommitted();
             var adapter = Assert.Single(frame.GpuInventory);

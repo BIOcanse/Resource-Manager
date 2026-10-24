@@ -17,7 +17,6 @@ pub const SourceRecord = struct {
     skipped_count: u32 = 0,
     overflow_count: u32 = 0,
     gpu_inventory_count: u32 = 0,
-    gpu_retained_count: u32 = 0,
     reset_count: u32 = 0,
     last_reset_reason_mask: u32 = 0,
     status: protocol.SourceStatus = .unavailable,
@@ -55,7 +54,6 @@ pub const RuleRecord = struct {
     capability_generation: u64 = 0,
     unsupported_until_capability_generation: u64 = 0,
     status: protocol.MetricStatus = .unavailable,
-    has_last_good: bool = false,
     counter_baseline: CounterBaseline = .{},
 };
 

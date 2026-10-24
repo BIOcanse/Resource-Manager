@@ -585,7 +585,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             configuration.CatalogConfiguration with { MaximumMetricCount = 12288 });
         using var after = new NativeMetricSnapshotWorkspace(intermediate,
             configuration.CatalogConfiguration with { MaximumMetricCount = 12800 });
-        Assert.Equal(0x000A_0000U, before.Configuration.AbiVersion); Assert.Equal(before.Configuration.AbiVersion, after.Configuration.AbiVersion);
+        Assert.Equal(0x000B_0000U, before.Configuration.AbiVersion); Assert.Equal(before.Configuration.AbiVersion, after.Configuration.AbiVersion);
         Assert.Equal(12288U, before.Capacity.MetricCapacity); Assert.Equal(12800U, after.Capacity.MetricCapacity);
         Assert.Equal(1_013_760UL, (after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) - (before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount));
         Assert.Equal(67_108_864UL, before.Configuration.ResidentByteBudget); Assert.Equal(before.Configuration.ResidentByteBudget, after.Configuration.ResidentByteBudget);

@@ -215,8 +215,7 @@ fn expectOmittedRestoreUnchanged(retry_feedback: bool) !void {
     var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
     var old_applied = [_]protocol.AppliedInput{corpus.applied(1, 2, 10, 9, 10)};
     var cycle = corpus.cycle(14, 1, 1_000, 0, 1);
-    try std.testing.expectEqual(ResultCode.ok,
-        session_module.plan(session, &cycle, null, 0, &old_applied, 1, &actions, 8));
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, null, 0, &old_applied, 1, &actions, 8));
     try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
     try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), actions[0].disposition);
     if (retry_feedback) {
@@ -226,8 +225,7 @@ fn expectOmittedRestoreUnchanged(retry_feedback: bool) !void {
     const before = session.slots[session.findSlot(1, 2).?];
     var other = [_]protocol.DesiredInput{corpus.desired(3, 4, 20)};
     cycle = corpus.cycle(14, 2, 2_000, 1, 0);
-    try std.testing.expectEqual(ResultCode.ok,
-        session_module.plan(session, &cycle, &other, 1, null, 0, &actions, 8));
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &other, 1, null, 0, &actions, 8));
     try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
     try std.testing.expectEqual(@as(u64, 3), actions[0].target_key);
     try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.apply), actions[0].disposition);
@@ -240,8 +238,7 @@ fn expectOmittedRestoreUnchanged(retry_feedback: bool) !void {
     var applied_feedback = [_]protocol.FeedbackInput{corpus.feedback(actions[0], .applied, 2_010)};
     try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(session, &applied_feedback, 1));
     cycle = corpus.cycle(14, 3, 3_000, 0, 1);
-    try std.testing.expectEqual(ResultCode.ok,
-        session_module.plan(session, &cycle, null, 0, &old_applied, 1, &actions, 8));
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, null, 0, &old_applied, 1, &actions, 8));
     try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
     try std.testing.expectEqual(@as(u64, 1), actions[0].target_key);
     try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), actions[0].disposition);
@@ -375,11 +372,11 @@ test "placement coordinator requires explicit override after ownership loss" {
     try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.apply), actions[0].disposition);
 }
 
-test "placement coordinator reconfigure is strict and capacity changes require recreate" {
+test "placement coordinator reconfigure accepts same generation and rollback but capacity changes require recreate" {
     var config = corpus.config(21);
     const session = try session_module.Session.create(&config);
     defer session.destroy();
-    try std.testing.expectEqual(ResultCode.stale_frame, session.reconfigure(&config));
+    try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&config));
     var changed_capacity = corpus.config(22);
     changed_capacity.maximum_state_count = 9;
     changed_capacity.maximum_action_count = 9;
@@ -387,6 +384,9 @@ test "placement coordinator reconfigure is strict and capacity changes require r
     var hot = corpus.config(22);
     hot.retry_delay_milliseconds = 200;
     try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&hot));
+    try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&config));
+    try std.testing.expectEqual(config.generation, session.config.generation);
+    try std.testing.expectEqual(config.retry_delay_milliseconds, session.config.retry_delay_milliseconds);
 }
 
 test "placement coordinator golden corpus produces exact action and state vector" {

@@ -106,7 +106,6 @@ pub const Session = struct {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
         if (!protocol.validConfig(config)) return .abi_mismatch;
-        if (config.generation <= self.config.generation) return .stale_frame;
         if (config.maximum_desired_count != self.config.maximum_desired_count or
             config.maximum_applied_count != self.config.maximum_applied_count or
             config.maximum_action_count != self.config.maximum_action_count or

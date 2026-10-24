@@ -24,7 +24,6 @@ public sealed class IntelPsysCatalogTests
             Assert.Equal(1U, template.ScopeKind);
             Assert.Equal(13U, template.MetricKind);
             Assert.Equal(1U, template.MaximumInstanceCount);
-            Assert.Equal(2U, template.RetentionPolicy);
         });
         var platform = Platform();
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, [], [], [],

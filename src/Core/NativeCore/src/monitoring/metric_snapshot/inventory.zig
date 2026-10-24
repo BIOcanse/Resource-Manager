@@ -74,7 +74,6 @@ pub fn submit(
 pub fn prepareFinalized(session: *state.Session, source_generation: u64) void {
     const status: protocol.SourceStatus = @enumFromInt(session.completion.status);
     const source_index = session.active.findSource(session.completion.source_handle).?;
-    const retention = session.active.sources[source_index].definition.retention_policy;
     if (session.active.sources[source_index].definition.source_role !=
         @intFromEnum(protocol.SourceRole.gpu_inventory))
     {
@@ -90,16 +89,6 @@ pub fn prepareFinalized(session: *state.Session, source_generation: u64) void {
         }
         return;
     }
-    if (retention == @intFromEnum(protocol.RetentionPolicy.retain_last_good) and
-        activeCount(session) != 0)
-    {
-        copyActiveToStaging(session);
-        for (session.gpu_staging) |*gpu| if (gpu.active) {
-            gpu.output.status = @intFromEnum(protocol.InventoryStatus.retained);
-            gpu.output.semantic_fingerprint = fingerprint(&gpu.output);
-        };
-        return;
-    }
     clearStaging(session);
 }
 
@@ -108,18 +97,6 @@ pub fn activeCount(session: *const state.Session) u32 {
     for (session.gpu_active) |gpu| if (gpu.active) {
         count += 1;
     };
-    return count;
-}
-
-pub fn stagedRetainedCount(session: *const state.Session) u32 {
-    var count: u32 = 0;
-    for (session.gpu_staging[0..session.gpu_staging_count]) |gpu| {
-        if (gpu.active and gpu.output.status ==
-            @intFromEnum(protocol.InventoryStatus.retained))
-        {
-            count += 1;
-        }
-    }
     return count;
 }
 
@@ -133,15 +110,12 @@ pub fn stageOutputs(
     if (inputs.len > session.gpu_staging.len or
         definition.source_role != @intFromEnum(protocol.SourceRole.gpu_inventory) or
         source.source_handle != definition.source_handle or
-        source.gpu_inventory_count != inputs.len or
-        source.gpu_retained_count > source.gpu_inventory_count)
+        source.gpu_inventory_count != inputs.len)
     {
         return .invalid_argument;
     }
     if (source.source_generation == 0) {
-        if (inputs.len != 0 or source.gpu_inventory_count != 0 or
-            source.gpu_retained_count != 0)
-        {
+        if (inputs.len != 0 or source.gpu_inventory_count != 0) {
             return .invalid_argument;
         }
         clearStaging(session);
@@ -149,15 +123,7 @@ pub fn stageOutputs(
     }
     if (captured_at_milliseconds == 0) return .invalid_argument;
     const source_status: protocol.SourceStatus = @enumFromInt(source.status);
-    const expected_inventory_status: protocol.InventoryStatus = switch (source_status) {
-        .complete => .current,
-        .partial, .unavailable, .unsupported, .skipped => .retained,
-    };
-    if (source_status == .complete) {
-        if (source.gpu_retained_count != 0) return .invalid_argument;
-    } else if (source.gpu_retained_count != inputs.len) {
-        return .invalid_argument;
-    }
+    if (source_status != .complete and inputs.len != 0) return .invalid_argument;
     clearIdentityScratch(session);
     var previous_adapter_handle: u64 = 0;
     for (inputs, 0..) |input, ordinal| {
@@ -165,16 +131,12 @@ pub fn stageOutputs(
             &input,
             definition.source_handle,
             source.source_generation,
-            captured_at_milliseconds,
             definition.capability_mask,
         ) or input.adapter_handle <= previous_adapter_handle or
             !existingOutputCompatible(session, &input) or
             !insertScratchIdentity(session, identityFromOutput(&input), @intCast(ordinal)) or
-            input.status != @intFromEnum(expected_inventory_status) or
-            (expected_inventory_status == .current and
-                (input.source_generation != source.source_generation or
-                    input.observed_at_milliseconds >
-                        source.last_current_at_milliseconds)))
+            input.status != @intFromEnum(protocol.InventoryStatus.current) or
+            input.source_generation != source.source_generation)
         {
             return .invalid_argument;
         }
@@ -246,11 +208,6 @@ fn validInput(session: *const state.Session, input: *const protocol.GpuInventory
         input.source_observation_sequence ==
             session.completion.source_observation_sequence and
         input.observed_at_milliseconds != 0 and
-        input.observed_at_milliseconds <= session.completion.captured_at_milliseconds and
-        session.futureTimeValid(
-            input.observed_at_milliseconds,
-            session.completion.command_at_milliseconds,
-        ) and
         (input.adapter_luid_low != 0 or input.adapter_luid_high != 0) and
         input.stable_key_handle != 0 and
         input.valid_mask == protocol.InventoryValid.required and
@@ -285,7 +242,6 @@ fn validOutput(
     input: *const protocol.GpuInventoryOutput,
     expected_source_handle: u64,
     maximum_source_generation: u64,
-    maximum_observed_at_milliseconds: u64,
     source_capability_mask: u64,
 ) bool {
     if (input.struct_size != @sizeOf(protocol.GpuInventoryOutput) or
@@ -293,7 +249,6 @@ fn validOutput(
         input.source_handle != expected_source_handle or input.source_generation == 0 or
         input.source_generation > maximum_source_generation or
         input.observed_at_milliseconds == 0 or
-        input.observed_at_milliseconds > maximum_observed_at_milliseconds or
         (input.adapter_luid_low == 0 and input.adapter_luid_high == 0) or
         input.stable_key_handle == 0 or
         (input.capability_mask & ~source_capability_mask) != 0 or
@@ -305,7 +260,7 @@ fn validOutput(
         return false;
     }
     const status: protocol.InventoryStatus = @enumFromInt(input.status);
-    if (status != .current and status != .retained) return false;
+    if (status != .current) return false;
     return fingerprint(input) == input.semantic_fingerprint;
 }
 
@@ -539,9 +494,7 @@ fn existingIdentityCompatible(
         adapterHandle,
     )) |record_index| {
         const active = session.gpu_active[record_index].output;
-        if (!sameIdentity(&active, input) or
-            input.observed_at_milliseconds < active.observed_at_milliseconds)
-        {
+        if (!sameIdentity(&active, input)) {
             return false;
         }
     }
@@ -595,8 +548,7 @@ fn existingOutputCompatible(
     if (active.adapter_luid_low != input.adapter_luid_low or
         active.adapter_luid_high != input.adapter_luid_high or
         active.stable_key_handle != input.stable_key_handle or
-        input.source_generation < active.source_generation or
-        input.observed_at_milliseconds < active.observed_at_milliseconds)
+        input.source_generation < active.source_generation)
     {
         return false;
     }
@@ -605,29 +557,7 @@ fn existingOutputCompatible(
     {
         return true;
     }
-    return input.semantic_fingerprint == active.semantic_fingerprint or
-        input.status == @intFromEnum(protocol.InventoryStatus.retained) and
-            samePayloadExceptStatus(&active, input);
-}
-
-fn samePayloadExceptStatus(
-    active: *const protocol.GpuInventoryOutput,
-    input: *const protocol.GpuInventoryOutput,
-) bool {
-    return active.struct_size == input.struct_size and
-        active.flags == input.flags and
-        active.adapter_handle == input.adapter_handle and
-        active.source_handle == input.source_handle and
-        active.source_generation == input.source_generation and
-        active.observed_at_milliseconds == input.observed_at_milliseconds and
-        active.adapter_luid_low == input.adapter_luid_low and
-        active.adapter_luid_high == input.adapter_luid_high and
-        active.stable_key_handle == input.stable_key_handle and
-        active.capability_mask == input.capability_mask and
-        active.topology_fingerprint == input.topology_fingerprint and
-        active.valid_mask == input.valid_mask and
-        active.reserved_u32 == input.reserved_u32 and
-        std.mem.eql(u64, &active.reserved, &input.reserved);
+    return input.semantic_fingerprint == active.semantic_fingerprint;
 }
 
 fn findIndexed(

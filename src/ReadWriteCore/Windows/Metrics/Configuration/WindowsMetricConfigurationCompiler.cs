@@ -110,13 +110,6 @@ public static class WindowsMetricConfigurationCompiler
                     $"Unknown metric-snapshot source role '{source.SourceRole}'.")
             },
             source.Priority,
-            source.Retention switch
-            {
-                "retain_last_good" => 1,
-                "mark_unavailable" => 2,
-                _ => throw new InvalidDataException(
-                    $"Unknown metric-snapshot retention policy '{source.Retention}'.")
-            },
             source.Required,
             source.CapabilityMask,
             source.SemanticFingerprint);
@@ -234,13 +227,6 @@ public static class WindowsMetricConfigurationCompiler
             },
             scopeKind,
             valueKind,
-            source.Retention switch
-            {
-                "retain_last_good" => 1,
-                "mark_unavailable" => 2,
-                _ => throw new InvalidDataException(
-                    $"Unknown metric-snapshot retention policy '{source.Retention}'.")
-            },
             source.CapabilityMask,
             flags,
             source.MinimumValueBits,

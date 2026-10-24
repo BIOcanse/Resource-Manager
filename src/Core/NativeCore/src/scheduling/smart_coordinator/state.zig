@@ -514,7 +514,6 @@ pub const Session = struct {
         const validation = protocol.validateConfig(config);
         if (validation != .ok) return validation;
         if (!sameCapacityShape(&self.config, config)) return .recreate_required;
-        if (config.generation <= self.config.generation) return .stale_generation;
         if (self.inflightCount() != 0) return .unavailable;
         self.config = config.*;
         self.bumpRevision();

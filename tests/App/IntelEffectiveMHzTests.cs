@@ -125,7 +125,7 @@ public sealed partial class IntelMsrThermalCollectorTests
                 declaredFrequency.TemplateId, declaredFrequency.MetricIdTemplate, declaredFrequency.SourceId,
                 declaredFrequency.SourceHandle, declaredFrequency.SourcePriority, declaredFrequency.ScopeExpansion,
                 declaredFrequency.MetricKind, declaredFrequency.ScopeKind, declaredFrequency.ValueKind,
-                declaredFrequency.RetentionPolicy, declaredFrequency.CapabilityMask, declaredFrequency.MetricFlags,
+                declaredFrequency.CapabilityMask, declaredFrequency.MetricFlags,
                 declaredFrequency.MinimumValueBits, declaredFrequency.MaximumValueBits, declaredFrequency.GpuVendorMask,
                 declaredFrequency.ApplicabilityMask, declaredFrequency.MaximumInstanceCount, declaredFrequency.SemanticFingerprint);
             var ruleTemplates = original.HotPublish.RuleTemplates.Any(

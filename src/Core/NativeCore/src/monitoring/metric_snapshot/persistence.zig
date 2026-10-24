@@ -85,11 +85,10 @@ pub fn importState(
         return .abi_mismatch;
     }
     if (session.phase == .completion_open) return .unavailable;
-    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds) or
+    if (!session.operationAdvances(input.operation_epoch) or
         input.operation_epoch <= header.last_operation_epoch or
         header.state_revision < session.state_revision or
-        header.last_plan_epoch < session.last_plan_epoch or
-        header.captured_at_milliseconds < session.captured_at_milliseconds)
+        header.last_plan_epoch < session.last_plan_epoch)
     {
         return .stale_frame;
     }
@@ -111,7 +110,6 @@ pub fn importState(
             &source_input,
             &definition,
             &active_source,
-            header.captured_at_milliseconds,
             session.config.maximum_gpu_adapter_count,
         )) {
             return .invalid_argument;
@@ -130,7 +128,6 @@ pub fn importState(
             &definition,
             &session.active.rules[ordinal],
             &session.staging.sources[source_index],
-            header.captured_at_milliseconds,
         )) {
             return .invalid_argument;
         }
@@ -216,7 +213,6 @@ pub fn sourceOutput(source: catalog.SourceRecord) protocol.SourcePersistenceOutp
         .reserved_u32 = 0,
         .state_fingerprint = 0,
         .gpu_inventory_count = source.gpu_inventory_count,
-        .gpu_retained_count = source.gpu_retained_count,
         .reserved = 0,
     };
     output.state_fingerprint = sourceFingerprint(&output);
@@ -278,25 +274,20 @@ fn validImportHeader(
         return false;
     }
     const phase: protocol.Phase = @enumFromInt(header.phase);
-    if (phase != .catalog_ready and phase != .ready and phase != .failed_retained) {
+    if (phase != .catalog_ready and phase != .ready) {
         return false;
     }
-    // Validate the persisted timeline against its own historical command time.
-    return session.futureTimeValid(
-        header.captured_at_milliseconds,
-        header.last_command_at_milliseconds,
-    );
+    return true;
 }
 
 fn validSourceState(
     input: *const protocol.SourcePersistenceOutput,
     definition: *const protocol.SourcePolicyInput,
     active: *const catalog.SourceRecord,
-    captured_at_milliseconds: u64,
     maximum_gpu_adapter_count: u32,
 ) bool {
     if (!validSourceEnvelope(input, definition) or
-        !validSourceMonotonicity(input, active, captured_at_milliseconds))
+        !validSourceMonotonicity(input, active))
     {
         return false;
     }
@@ -304,8 +295,7 @@ fn validSourceState(
         return validEmptySourceState(input);
     }
     if (input.source_incarnation == 0 or input.source_observation_sequence == 0 or
-        input.last_attempt_at_milliseconds == 0 or input.capability_generation == 0 or
-        input.last_current_at_milliseconds > input.last_attempt_at_milliseconds)
+        input.last_attempt_at_milliseconds == 0 or input.capability_generation == 0)
     {
         return false;
     }
@@ -314,7 +304,6 @@ fn validSourceState(
         .metrics => validMetricSourceState(input) and validCpuBaseline(input),
         .gpu_inventory => validGpuSourceState(
             input,
-            definition,
             maximum_gpu_adapter_count,
         ),
     };
@@ -330,20 +319,16 @@ fn validSourceEnvelope(
         input.capability_mask == definition.capability_mask and
         (input.last_reset_reason_mask & ~protocol.SourceResetReason.known) == 0 and
         input.cpu_baseline_valid <= 1 and protocol.knownEnum(protocol.SourceStatus, input.status) and
-        input.reserved_u32 == 0 and input.reserved == 0 and
+        input.reserved_u32 == 0 and input.alignment_reserved == 0 and input.reserved == 0 and
         input.state_fingerprint != 0 and sourceFingerprint(input) == input.state_fingerprint;
 }
 
 fn validSourceMonotonicity(
     input: *const protocol.SourcePersistenceOutput,
     active: *const catalog.SourceRecord,
-    captured_at_milliseconds: u64,
 ) bool {
     if (input.source_generation < active.source_generation or
-        input.capability_generation < active.capability_generation or
-        input.reset_count < active.reset_count or
-        input.last_attempt_at_milliseconds > captured_at_milliseconds or
-        input.last_current_at_milliseconds > captured_at_milliseconds)
+        input.reset_count < active.reset_count)
     {
         return false;
     }
@@ -380,12 +365,11 @@ fn validEmptySourceState(input: *const protocol.SourcePersistenceOutput) bool {
         input.requested_count == 0 and input.capability_generation == 0 and
         input.observed_count == 0 and input.skipped_count == 0 and input.overflow_count == 0 and
         input.reset_count == 0 and input.last_reset_reason_mask == 0 and
-        input.cpu_baseline_valid == 0 and input.gpu_inventory_count == 0 and
-        input.gpu_retained_count == 0 and cpuBaselineEmpty(input);
+        input.cpu_baseline_valid == 0 and input.gpu_inventory_count == 0 and cpuBaselineEmpty(input);
 }
 
 fn validMetricSourceState(input: *const protocol.SourcePersistenceOutput) bool {
-    if (input.gpu_inventory_count != 0 or input.gpu_retained_count != 0) return false;
+    if (input.gpu_inventory_count != 0) return false;
     const observed_and_skipped = std.math.add(
         u32,
         input.observed_count,
@@ -410,17 +394,13 @@ fn validMetricSourceState(input: *const protocol.SourcePersistenceOutput) bool {
 
 fn validGpuSourceState(
     input: *const protocol.SourcePersistenceOutput,
-    definition: *const protocol.SourcePolicyInput,
     maximum_gpu_adapter_count: u32,
 ) bool {
     if (input.requested_count != 0 or input.skipped_count != 0 or
-        input.cpu_baseline_valid != 0 or !cpuBaselineEmpty(input) or
-        input.gpu_retained_count > input.gpu_inventory_count)
+        input.cpu_baseline_valid != 0 or !cpuBaselineEmpty(input))
     {
         return false;
     }
-    const retained = definition.retention_policy ==
-        @intFromEnum(protocol.RetentionPolicy.retain_last_good);
     const status: protocol.SourceStatus = @enumFromInt(input.status);
     const accounted = std.math.add(
         u32,
@@ -436,15 +416,12 @@ fn validGpuSourceState(
     return switch (status) {
         .complete => input.overflow_count == 0 and
             input.observed_count == input.gpu_inventory_count and
-            input.gpu_retained_count == 0 and
             input.last_current_at_milliseconds == input.last_attempt_at_milliseconds,
         .partial => input.overflow_count != 0 and
-            input.gpu_retained_count == input.gpu_inventory_count and
-            (retained or input.gpu_inventory_count == 0),
+            input.gpu_inventory_count == 0,
         .unavailable, .unsupported, .skipped => input.observed_count == 0 and
             input.overflow_count == 0 and
-            input.gpu_retained_count == input.gpu_inventory_count and
-            (retained or input.gpu_inventory_count == 0),
+            input.gpu_inventory_count == 0,
     };
 }
 
@@ -467,18 +444,16 @@ fn validRuleState(
     definition: *const protocol.MetricDefinitionInput,
     active: *const catalog.RuleRecord,
     source: *const catalog.SourceRecord,
-    captured_at_milliseconds: u64,
 ) bool {
     if (input.struct_size != @sizeOf(protocol.RuleStateOutput) or
-        input.flags != definition.flags or input.rule_handle != definition.rule_handle or
+        input.alignment_reserved != 0 or input.flags != definition.flags or input.rule_handle != definition.rule_handle or
         input.metric_handle != definition.metric_handle or
         input.source_handle != definition.source_handle or
         input.value_kind != definition.value_kind or
         input.definition_fingerprint != definition.semantic_fingerprint or
         (input.capability_mask & ~definition.capability_mask) != 0 or
         (input.capability_mask & ~source.definition.capability_mask) != 0 or
-        input.capability_generation > source.capability_generation or
-        input.has_last_good > 1 or !protocol.knownEnum(protocol.MetricStatus, input.status) or
+        !protocol.knownEnum(protocol.MetricStatus, input.status) or
         input.state_fingerprint == 0)
     {
         return false;
@@ -488,21 +463,9 @@ fn validRuleState(
         return false;
     }
     const status: protocol.MetricStatus = @enumFromInt(input.status);
-    if (input.capability_generation < active.capability_generation or
-        input.unsupported_until_capability_generation > input.capability_generation)
-    {
-        return false;
-    }
     switch (status) {
         .unsupported => {
             if (input.capability_generation == 0 or
-                input.unsupported_until_capability_generation != input.capability_generation)
-            {
-                return false;
-            }
-        },
-        .retained => {
-            if (input.unsupported_until_capability_generation != 0 and
                 input.unsupported_until_capability_generation != input.capability_generation)
             {
                 return false;
@@ -513,28 +476,23 @@ fn validRuleState(
         },
     }
     if (active.unsupported_until_capability_generation != 0 and
-        input.capability_generation <= active.unsupported_until_capability_generation and
+        input.capability_generation == active.unsupported_until_capability_generation and
         (input.unsupported_until_capability_generation !=
             active.unsupported_until_capability_generation or
             input.state_fingerprint != session_module.ruleOutput(active.*).state_fingerprint))
     {
         return false;
     }
-    if (input.has_last_good != 0) {
-        if (status != .current and status != .retained) return false;
+    if (status == .current) {
         if (input.source_generation == 0 or input.capability_generation == 0 or
             input.source_generation > source.source_generation or
             input.observed_at_milliseconds == 0 or
-            input.observed_at_milliseconds > captured_at_milliseconds or
-            input.observed_at_milliseconds > source.last_current_at_milliseconds or
             !protocol.validPayload(definition.*, input.*))
         {
             return false;
         }
-        if (active.has_last_good) {
-            if (input.source_generation < active.source_generation or
-                input.observed_at_milliseconds < active.observed_at_milliseconds)
-            {
+        if (active.status == .current) {
+            if (input.source_generation < active.source_generation) {
                 return false;
             }
             if (input.source_generation == active.source_generation and
@@ -546,19 +504,11 @@ fn validRuleState(
         }
         return true;
     }
-    if (status == .current or status == .retained or
-        input.source_generation != 0 or input.value_bits != 0 or !protocol.emptyPayload(input.*))
-    {
+    if (input.source_generation != 0 or input.value_bits != 0 or !protocol.emptyPayload(input.*)) {
         return false;
     }
     if (input.capability_mask != 0 or input.quality != 0 or
         input.sample_duration_milliseconds != 0)
-    {
-        return false;
-    }
-    if (input.observed_at_milliseconds > captured_at_milliseconds or
-        input.observed_at_milliseconds > source.last_current_at_milliseconds or
-        input.observed_at_milliseconds < active.observed_at_milliseconds)
     {
         return false;
     }
@@ -583,7 +533,6 @@ fn sourceRecord(
         .skipped_count = input.skipped_count,
         .overflow_count = input.overflow_count,
         .gpu_inventory_count = input.gpu_inventory_count,
-        .gpu_retained_count = input.gpu_retained_count,
         .reset_count = input.reset_count,
         .last_reset_reason_mask = input.last_reset_reason_mask,
         .status = @enumFromInt(input.status),
@@ -616,7 +565,6 @@ fn ruleRecord(
         .capability_generation = input.capability_generation,
         .unsupported_until_capability_generation = input.unsupported_until_capability_generation,
         .status = @enumFromInt(input.status),
-        .has_last_good = input.has_last_good != 0,
     };
 }
 
@@ -626,25 +574,19 @@ fn validImportedPhase(
     gpu_inventory: []const state.GpuRecord,
 ) bool {
     var committed = false;
-    var retained = false;
     for (bank.sources[0..bank.source_count]) |source| {
         if (source.source_generation != 0) committed = true;
     }
     for (bank.rules[0..bank.rule_count]) |rule| {
-        if (rule.has_last_good) committed = true;
-        if (rule.status == .retained) retained = true;
+        if (rule.status == .current) committed = true;
     }
     for (gpu_inventory) |gpu| {
         if (!gpu.active) continue;
         committed = true;
-        if (gpu.output.status == @intFromEnum(protocol.InventoryStatus.retained)) {
-            retained = true;
-        }
     }
     return switch (phase) {
         .catalog_ready => !committed,
         .ready => committed,
-        .failed_retained => committed and retained,
         .empty, .completion_open => false,
     };
 }

@@ -87,33 +87,29 @@ public sealed class NvmePayloadContractTests
             bytes.Metrics.Single(m => m.MetricHandle == fixture.RawHandle).SemanticFingerprint);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PersistenceRoundtripPreservesPayloadAndNativeChecksumRejectsTampering(bool corruptHighLimb)
+    [Fact]
+    public void DurableCatalogKeepsHandlesButDoesNotRestoreNvmePayloads()
     {
         using var fixture = new Fixture();
         fixture.Commit(UInt128.MaxValue, Log(), 1);
         var image = fixture.Workspace.ExportAndPersist(fixture.Now.AddSeconds(1));
-        using (var restored = NativeMetricSnapshotHostConfiguration.CreateWorkspace(fixture.Compiled, fixture.File))
+        Assert.Contains(image.Rules, rule => rule.MetricHandle == fixture.CounterHandle && rule.ValueHighBits != 0);
+        var envelope = File.ReadAllBytes(fixture.File);
+        image.Rules[Array.FindIndex(image.Rules, rule => rule.MetricHandle == fixture.CounterHandle)].ValueHighBits ^= 1;
+        new NativeMetricSnapshotPersistenceStore(fixture.File).Save(fixture.Compiled.HotPublish.ConfigurationGeneration, image.Catalog);
+        Assert.Equal(envelope, File.ReadAllBytes(fixture.File));
+
+        using var restarted = NativeMetricSnapshotHostConfiguration.CreateWorkspace(fixture.Compiled, fixture.File);
+        var catalog = fixture.CreateCatalog(restarted);
+        restarted.ReplaceCatalog(catalog, fixture.Now.AddSeconds(2));
+        Assert.Equal(fixture.CounterHandle, catalog.MetricBindings.Values.Single(b => b.FieldCode == MetricFieldCode.NvmeMediaErrors).MetricHandle);
+        Assert.All(restarted.ReadCommitted().Metrics.Where(m => m.MetricHandle == fixture.CounterHandle || m.MetricHandle == fixture.RawHandle), m =>
         {
-            var catalog = fixture.CreateCatalog(restored);
-            restored.ReplaceCatalog(catalog, fixture.Now.AddSeconds(2));
-            var snapshot = NativeMetricSnapshotCommittedProjection.Create(restored.ReadCommitted(), "fixture", "fixture", 1);
-            var fields = Assert.Single(MetricDeviceFields.Read(snapshot, Device, new HashSet<string> { Counter, Raw })).Fields;
-            Assert.Equal(UInt128.MaxValue.ToString(), fields.Single(f => f.Name == Counter).IntegerValue);
-            Assert.Equal(Log(), fields.Single(f => f.Name == Raw).BytesValue);
-        }
-        var index = Array.FindIndex(image.Rules, rule => rule.MetricHandle ==
-            (corruptHighLimb ? fixture.CounterHandle : fixture.RawHandle));
-        if (corruptHighLimb) image.Rules[index].ValueHighBits ^= 1;
-        else MemoryMarshal.AsBytes(image.Rules.AsSpan(index, 1))[^1] ^= 1;
-        // Save recomputes the outer file checksum. The unchanged native checksum must still reject this image.
-        new NativeMetricSnapshotPersistenceStore(fixture.File).Save(fixture.Compiled.HotPublish.ConfigurationGeneration, image);
-        using var rejected = NativeMetricSnapshotHostConfiguration.CreateWorkspace(fixture.Compiled, fixture.File);
-        rejected.ReplaceCatalog(fixture.CreateCatalog(rejected), fixture.Now.AddSeconds(3));
-        Assert.All(rejected.ReadCommitted().Metrics.Where(m => m.MetricHandle == fixture.CounterHandle || m.MetricHandle == fixture.RawHandle),
-            m => Assert.NotEqual((uint)NativeMetricSnapshotMetricStatus.Current, m.Status));
+            Assert.NotEqual((uint)NativeMetricSnapshotMetricStatus.Current, m.Status);
+            Assert.Equal(0UL, m.ValueBits);
+            Assert.Equal(0UL, m.ValueHighBits);
+            Assert.Equal(0U, m.ByteCount);
+        });
     }
 
     [Theory]

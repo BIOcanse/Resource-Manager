@@ -677,21 +677,11 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var applied = appliedNativeRuntimePlan;
-        if (applied.Configuration.Generation != desired.Configuration.Generation)
-        {
-            return false;
-        }
-        if (!string.Equals(
+        return string.Equals(
                 applied.SmartCoordinator.ConfigurationSha256,
                 desired.SmartCoordinator.ConfigurationSha256,
                 StringComparison.Ordinal)
-            || applied.SmartCoordinator.Build != desired.SmartCoordinator.Build)
-        {
-            throw new InvalidOperationException(
-                "The Host Manager smart coordinator configuration drifted without a profile revision change.");
-        }
-
-        return true;
+            && applied.SmartCoordinator.Build == desired.SmartCoordinator.Build;
     }
 
     private void EnsureNativeWorkspace(HostManagerSmartCoordinatorRuntimePlan desired, ulong incarnation)
@@ -739,25 +729,13 @@ public sealed partial class HostManagerSmartCoordinator
 
         var applied = appliedNativeRuntimePlan
             ?? throw new InvalidOperationException("The applied smart coordinator runtime identity is missing.");
-        if (applied.Configuration.Generation == desired.Configuration.Generation)
+        if (string.Equals(
+                applied.SmartCoordinator.ConfigurationSha256,
+                desired.SmartCoordinator.ConfigurationSha256,
+                StringComparison.Ordinal)
+            && applied.SmartCoordinator.Build == desired.SmartCoordinator.Build)
         {
-            if (!string.Equals(
-                    applied.SmartCoordinator.ConfigurationSha256,
-                    desired.SmartCoordinator.ConfigurationSha256,
-                    StringComparison.Ordinal)
-                || applied.SmartCoordinator.Build != desired.SmartCoordinator.Build)
-            {
-                throw new InvalidOperationException(
-                    "The Host Manager smart coordinator configuration drifted without a profile revision change.");
-            }
-
             return;
-        }
-
-        if (desired.Configuration.Generation < applied.Configuration.Generation)
-        {
-            throw new InvalidOperationException(
-                $"The Host Manager smart coordinator generation must increase: applied {applied.Configuration.Generation}, desired {desired.Configuration.Generation}.");
         }
 
         if (nativeWorkspace.Snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.AwaitingFeedback))

@@ -127,7 +127,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void BooleanCacheCommitWireAndPersistencePreserveFalseAndClearFailure(bool initial)
+    public void BooleanCommitAndWirePreserveFalseWhileRestartStartsEmptyAndFailureClears(bool initial)
     {
         var path = Path.Combine(Path.GetTempPath(), $"boolean-recovery-{Guid.NewGuid():N}.bin");
         try
@@ -140,8 +140,9 @@ public sealed partial class IntelMsrThermalCollectorTests
                 Assert.Null(active.Read().NumericValue); Assert.Null(active.Read().IntegerValue); Assert.Null(active.Read().BytesValue);
                 Assert.True(active.Workspace.PersistRecoveryCheckpointIfAdvanced(active.NextTime()));
             }
-            using var recovered = new StatusWorkspace(path, 100);
-            Assert.Equal(initial, recovered.Read().BooleanValue);
+            using var recovered = new StatusWorkspace(path);
+            Assert.Null(recovered.Read().BooleanValue);
+            Assert.Equal(SamplingObservationStatus.Unavailable, recovered.Read().Status);
             Assert.Null(recovered.Publish(null).BooleanValue); Assert.Equal(SamplingObservationStatus.Unavailable, recovered.Read().Status);
             Assert.Equal(!initial, recovered.Publish(!initial).BooleanValue);
             Assert.Equal("boolean", recovered.Read().ValueKind); Assert.Equal("flag", recovered.Read().Unit);

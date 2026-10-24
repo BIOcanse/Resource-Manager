@@ -99,9 +99,7 @@ pub const Session = struct {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
         if (!protocol.validImport(input, &self.config)) return .abi_mismatch;
-        if (input.import_generation <= self.import_generation or input.operation_epoch <= self.last_operation_epoch or
-            input.command_utc_ms < self.last_command_utc_ms)
-        {
+        if (input.import_generation <= self.import_generation or input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
         const result = self.staging.loadPersisted(&self.config, input, rows, key_bytes);
@@ -132,7 +130,7 @@ pub const Session = struct {
         defer self.mutex.unlock();
         if (!protocol.validObserve(input, &self.config, key_bytes)) return .abi_mismatch;
         if (!packedObservationKeys(input, key_bytes)) return .invalid_argument;
-        if (input.operation_epoch <= self.last_operation_epoch or input.command_utc_ms < self.last_command_utc_ms) {
+        if (input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
         const executable = protocol.keySlice(key_bytes, input.executable_path_offset, input.executable_path_length).?;
@@ -261,7 +259,7 @@ pub const Session = struct {
         defer self.mutex.unlock();
         if (confirmed_count.* != 0) return .abi_mismatch;
         if (!protocol.validConfirmRoot(input, &self.config, key_bytes)) return .abi_mismatch;
-        if (input.operation_epoch <= self.last_operation_epoch or input.command_utc_ms < self.last_command_utc_ms) {
+        if (input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
         const registration_slot = self.active.findRegistration(input.software_handle) orelse return .no_data;
@@ -302,7 +300,7 @@ pub const Session = struct {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
         if (!protocol.validMarkMissing(input, &self.config)) return .abi_mismatch;
-        if (input.operation_epoch <= self.last_operation_epoch or input.command_utc_ms < self.last_command_utc_ms) {
+        if (input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
         const path_slot = self.active.findPath(input.path_handle) orelse return .no_data;

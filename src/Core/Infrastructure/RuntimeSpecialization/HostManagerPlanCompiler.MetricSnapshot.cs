@@ -85,7 +85,7 @@ public sealed partial class HostManagerPlanCompiler
         var value = WindowsMetricConfigurationCompiler.CompileMetricSnapshotHotPublish(source, nativeRecreate, profileRevision);
         return new(value.ConfigurationGeneration, value.CatalogGenerationBase, value.CatalogManifestVersion,
             value.CatalogManifestSha256, value.MaximumFutureSkewMilliseconds, value.ResidentByteBudget,
-            value.SourcePolicies.Select(static row => new CompiledHostManagerMetricSnapshotSourcePolicy(row.SourceId, row.SourceHandle, row.SourceRole, row.Priority, row.RetentionPolicy, row.Required, row.CapabilityMask, row.SemanticFingerprint)).ToImmutableArray(),
-            value.RuleTemplates.Select(static row => new CompiledHostManagerMetricSnapshotRuleTemplate(row.TemplateId, row.MetricIdTemplate, row.SourceId, row.SourceHandle, row.SourcePriority, row.ScopeExpansion, row.MetricKind, row.ScopeKind, row.ValueKind, row.RetentionPolicy, row.CapabilityMask, row.MetricFlags, row.MinimumValueBits, row.MaximumValueBits, row.GpuVendorMask, row.ApplicabilityMask, row.MaximumInstanceCount, row.SemanticFingerprint)).ToImmutableArray());
+            value.SourcePolicies.Select(static row => new CompiledHostManagerMetricSnapshotSourcePolicy(row.SourceId, row.SourceHandle, row.SourceRole, row.Priority, row.Required, row.CapabilityMask, row.SemanticFingerprint)).ToImmutableArray(),
+            value.RuleTemplates.Select(static row => new CompiledHostManagerMetricSnapshotRuleTemplate(row.TemplateId, row.MetricIdTemplate, row.SourceId, row.SourceHandle, row.SourcePriority, row.ScopeExpansion, row.MetricKind, row.ScopeKind, row.ValueKind, row.CapabilityMask, row.MetricFlags, row.MinimumValueBits, row.MaximumValueBits, row.GpuVendorMask, row.ApplicabilityMask, row.MaximumInstanceCount, row.SemanticFingerprint)).ToImmutableArray());
     }
 }

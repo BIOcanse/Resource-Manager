@@ -51,8 +51,6 @@ internal sealed partial class WindowsHardwareMetricCapture
         var queriedMetricAddresses = sourceQueriesCompleted is null ? null
             : ImmutableHashSet.CreateBuilder<string>(StringComparer.OrdinalIgnoreCase);
         PdhGpuEngineUsageRead? pdhGpuEngineUsage = null;
-        var sourceIdentityInvalidated = false;
-        Action rejectPublication = () => sourceIdentityInvalidated = true;
         var completions = new List<(NativeMetricSnapshotCollectionPlan Plan, NativeMetricSnapshotSourceCompletion Completion)>();
         if (requestedMetricHandles.Length != 0)
         {
@@ -72,9 +70,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             foreach (var sourcePlan in plan.Sources)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var completion = await CollectNativeSourceAsync(plan, sourcePlan, cancellationToken, topology, rejectPublication);
-                if (completion.PdhGpuEngineUsage is { } engineUsage)
-                    pdhGpuEngineUsage = engineUsage;
+                var completion = await CollectNativeSourceAsync(plan, sourcePlan, cancellationToken, topology);
                 completions.Add((plan, completion));
                 if (completedQuerySources is not null
                     && (sourcePlan.Flags & (uint)NativeMetricSnapshotSourcePlanFlags.Selected) != 0
@@ -108,21 +104,25 @@ internal sealed partial class WindowsHardwareMetricCapture
         }
         if (queriedMetricAddresses is not null) sourceQueriesCompleted!(queriedMetricAddresses.ToImmutable());
         HardwareMetricSnapshot? published = null;
-        if (sourceIdentityInvalidated || !tryPublish(() =>
+        if (!tryPublish(() =>
             {
                 // Source results become native committed values at the same admission
                 // boundary as the caller's current. A rejected/canceled collection
                 // cannot reappear through a later frozen or partially selected read.
                 cancellationToken.ThrowIfCancellationRequested();
+                var committedCompletions = new List<NativeMetricSnapshotSourceCompletion>(completions.Count);
                 foreach (var (plan, completion) in completions)
                 {
                     var completedAt = DateTimeOffset.UtcNow;
-                    _ = workspace.CompleteSource(plan, completion, completedAt);
-                    sourceRuntimeFacts.RecordCompletion(completion.SourceHandle, completion.Status, completedAt);
+                    var accepted = CompleteSource(workspace, plan, completion, completedAt);
+                    sourceRuntimeFacts.RecordCompletion(accepted.SourceHandle, accepted.Status, completedAt);
+                    committedCompletions.Add(accepted);
+                    if (accepted.PdhGpuEngineUsage is { } engineUsage)
+                        pdhGpuEngineUsage = engineUsage;
                 }
                 checkpoint?.Invoke(workspace);
                 var committed = workspace.ReadCommitted();
-                readingSources.Observe(committed, workspaceIdentity, completions.Select(static row => row.Completion));
+                readingSources.Observe(committed, workspaceIdentity, committedCompletions);
                 var sourceSelection = readingSources.Select(committed, workspaceIdentity);
                 var snapshot = NativeMetricSnapshotCommittedProjection.Create(committed, resources.CpuName,
                     resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel, sourceSelection);
@@ -135,6 +135,28 @@ internal sealed partial class WindowsHardwareMetricCapture
                 published = snapshot;
             })) return null;
         return published;
+    }
+
+    private NativeMetricSnapshotSourceCompletion CompleteSource(NativeMetricSnapshotWorkspace workspace,
+        NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourceCompletion completion, DateTimeOffset completedAt)
+    {
+        try
+        {
+            _ = workspace.CompleteSource(plan, completion, completedAt);
+            return completion;
+        }
+        catch (Exception error)
+        {
+            var sourceId = plan.Catalog.SourceIds[completion.SourceHandle];
+            logFailure?.Invoke(error, sourceId);
+            // CompleteSource aborts a rejected payload before returning. Commit the
+            // same source's empty value so neither its old value nor its metadata
+            // can survive while the remaining sources publish normally.
+            var unavailable = Unavailable(completion.SourceHandle,
+                new(completion.SourceHandle, completion.SourceIncarnation, completion.SourceObservationSequence), completedAt);
+            _ = workspace.CompleteSource(plan, unavailable, completedAt);
+            return unavailable;
+        }
     }
 
     internal static MetricSampleRequest CreateCollectionRequest(

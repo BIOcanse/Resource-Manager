@@ -9,8 +9,7 @@ internal sealed partial class WindowsHardwareMetricCapture
 {
     private NativeMetricSnapshotSourceCompletion CollectNpuMemory(NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan, NativeMetricSnapshotSourceObservationIdentity identity,
-        DateTimeOffset capturedAt, NativeMetricSnapshotCatalogTopologySnapshot? topology, CancellationToken cancellationToken,
-        Action rejectPublication)
+        DateTimeOffset capturedAt, NativeMetricSnapshotCatalogTopologySnapshot? topology, CancellationToken cancellationToken)
     {
         // A retained declaration is not fresh permission to sample an unavailable directory.
         if (topology?.NpuMemoryStatus != NativeMetricSnapshotCatalogTopologyStatus.Complete)
@@ -23,10 +22,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         cancellationToken.ThrowIfCancellationRequested();
         if (values.Any(static value => value.RequiresTopologyRefresh))
         {
-            // An invalidated physical association cannot clear or replace the old displayed object.
-            // CompleteSource has not begun; the original final admission boundary drops this frame.
             requestTopologyRefresh();
-            rejectPublication();
         }
         return CreateNpuMemoryCompletion(plan, sourcePlan, identity, capturedAt, values);
     }
@@ -37,7 +33,8 @@ internal sealed partial class WindowsHardwareMetricCapture
     {
         var devices = values.ToDictionary(static value => value.DeviceIdentity, StringComparer.Ordinal);
         return CompleteWithValues(plan, sourcePlan, identity, capturedAt, _ => null,
-            unsignedValue: binding => devices.TryGetValue(binding.DeviceIdentity, out var device) ? binding.FieldCode switch
+            unsignedValue: binding => devices.TryGetValue(binding.DeviceIdentity, out var device)
+                && !device.RequiresTopologyRefresh ? binding.FieldCode switch
             {
                 MetricFieldCode.NpuDedicatedMemoryCommitted => device.DedicatedCommitted,
                 MetricFieldCode.NpuDedicatedMemoryResident => device.DedicatedResident,

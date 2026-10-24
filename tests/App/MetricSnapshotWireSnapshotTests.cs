@@ -33,7 +33,7 @@ public sealed class MetricSnapshotWireSnapshotTests
 
     [Theory]
     [InlineData(SamplingObservationStatus.Current)]
-    [InlineData(SamplingObservationStatus.RetainedLastGood)]
+    [InlineData(SamplingObservationStatus.Unavailable)]
     public void CatalogRevisionIsAnOpaqueStringIndependentOfCurrentValue(SamplingObservationStatus status)
     {
         const string revision = "opaque-catalog-token";
@@ -55,7 +55,7 @@ public sealed class MetricSnapshotWireSnapshotTests
         var wire = MetricSnapshotWireSnapshot.From(
             CreateSnapshot(
                 attemptedAt,
-                SamplingObservationStatus.RetainedLastGood,
+                SamplingObservationStatus.Unavailable,
                 observedAt,
                 attemptedAt,
                 "fixture-failure"),

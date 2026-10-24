@@ -114,13 +114,12 @@ public sealed partial class NativeMetricSnapshotAbiTests
             Session = session;
             NativeMetricSnapshotSourcePolicyInput[] sources =
                 [new() { StructSize = Size<NativeMetricSnapshotSourcePolicyInput>(), SourceHandle = 1,
-                    SourceRole = (uint)NativeMetricSnapshotSourceRole.Metrics, RetentionPolicy = (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable,
+                    SourceRole = (uint)NativeMetricSnapshotSourceRole.Metrics,
                     Priority = 1, CapabilityMask = 1, SemanticFingerprint = 11 }];
             NativeMetricSnapshotMetricDefinitionInput[] rules =
                 [new() { StructSize = Size<NativeMetricSnapshotMetricDefinitionInput>(), RuleHandle = 1, MetricHandle = 1,
                     SourceHandle = 1, ScopeHandle = 1, MetricKind = (uint)NativeMetricSnapshotMetricKind.CustomNumeric,
-                    ScopeKind = (uint)NativeMetricSnapshotScopeKind.Host, ValueKind = (uint)NativeMetricSnapshotValueKind.Unsigned64,
-                    RetentionPolicy = (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable, CapabilityMask = 1,
+                    ScopeKind = (uint)NativeMetricSnapshotScopeKind.Host, ValueKind = (uint)NativeMetricSnapshotValueKind.Unsigned64, CapabilityMask = 1,
                     SourcePriority = 1, MaximumValueBits = ulong.MaxValue, SemanticFingerprint = 22 }];
             var replace = new NativeMetricSnapshotCatalogReplaceInput
             {

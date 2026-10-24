@@ -4,16 +4,16 @@ namespace ResourceManager.ReadWrite.Native;
 
 public static class NativeMetricSnapshotAbi
 {
-    public const uint Version = 0x000A_0000;
-    public const uint CatalogContractVersion = 0x0005_0000;
-    public const uint ValueContractVersion = 0x0003_0000;
-    public const uint ObservationContractVersion = 0x0008_0000;
-    public const uint InventoryContractVersion = 0x0001_0000;
-    public const uint PersistenceContractVersion = 0x0004_0000;
+    public const uint Version = 0x000B_0000;
+    public const uint CatalogContractVersion = 0x0006_0000;
+    public const uint ValueContractVersion = 0x0004_0000;
+    public const uint ObservationContractVersion = 0x0009_0000;
+    public const uint InventoryContractVersion = 0x0002_0000;
+    public const uint PersistenceContractVersion = 0x0005_0000;
     public const uint CpuCounterContractVersion = 0x0001_0000;
     public const int MaximumValueBytes = 512;
-    public const ulong LayoutFingerprint = 0x65F57826A9339DF5;
-    public const ulong WireContractFingerprint = 0xF59BFA169EC0E2F7;
+    public const ulong LayoutFingerprint = 0xBABB9B97E9199C19;
+    public const ulong WireContractFingerprint = 0x32C6CC703F588753;
 }
 
 public enum NativeMetricSnapshotStatus : int
@@ -34,8 +34,7 @@ public enum NativeMetricSnapshotPhase : uint
     Empty = 1,
     CatalogReady = 2,
     CompletionOpen = 3,
-    Ready = 4,
-    FailedRetained = 5
+    Ready = 4
 }
 
 public enum NativeMetricSnapshotSourceRole : uint
@@ -78,7 +77,6 @@ public enum NativeMetricSnapshotObservationStatus : uint
 public enum NativeMetricSnapshotMetricStatus : uint
 {
     Current = 1,
-    Retained = 2,
     Unavailable = 3,
     Unsupported = 4,
     Skipped = 5
@@ -87,15 +85,8 @@ public enum NativeMetricSnapshotMetricStatus : uint
 public enum NativeMetricSnapshotInventoryStatus : uint
 {
     Current = 1,
-    Retained = 2,
     Unavailable = 3,
     Unsupported = 4
-}
-
-public enum NativeMetricSnapshotRetentionPolicy : uint
-{
-    RetainLastGood = 1,
-    MarkUnavailable = 2
 }
 
 public enum NativeMetricSnapshotMetricKind : uint
@@ -180,12 +171,10 @@ public enum NativeMetricSnapshotSnapshotFlags : uint
     None = 0,
     CatalogLoaded = 1U << 0,
     CommittedData = 1U << 1,
-    RetainedData = 1U << 2,
     GpuInventoryPresent = 1U << 3,
     CompletionOpen = 1U << 4,
     Known = CatalogLoaded
         | CommittedData
-        | RetainedData
         | GpuInventoryPresent
         | CompletionOpen
 }
@@ -344,8 +333,8 @@ public unsafe struct NativeMetricSnapshotSourcePolicyInput
     public ulong SourceHandle;
     public uint SourceRole;
     public uint Priority;
-    public uint RetentionPolicy;
     public uint ReservedU32;
+    public uint AlignmentReserved;
     public ulong CapabilityMask;
     public ulong SemanticFingerprint;
     public fixed ulong Reserved[2];
@@ -364,9 +353,9 @@ public struct NativeMetricSnapshotMetricDefinitionInput
     public uint MetricKind;
     public uint ScopeKind;
     public uint ValueKind;
-    public uint RetentionPolicy;
     public uint SourcePriority;
     public uint ReservedU32;
+    public uint AlignmentReserved;
     public ulong MinimumValueBits;
     public ulong MaximumValueBits;
     public ulong SemanticFingerprint;
@@ -647,13 +636,13 @@ public unsafe struct NativeMetricSnapshotSnapshotHeader
     public uint RuleCount;
     public uint GpuAdapterCount;
     public uint CurrentMetricCount;
-    public uint RetainedMetricCount;
     public uint UnavailableMetricCount;
     public uint UnsupportedMetricCount;
     public uint SkippedMetricCount;
     public uint Flags;
     public uint Phase;
     public uint ReservedU32;
+    public uint AlignmentReserved;
     public ulong SemanticFingerprint;
     public fixed ulong Reserved[2];
 }
@@ -701,13 +690,13 @@ public struct NativeMetricSnapshotSourceOutput
     public uint SourceRole;
     public uint Priority;
     public uint Status;
-    public uint RetentionPolicy;
     public uint RequestedCount;
     public uint ObservedCount;
     public uint SkippedCount;
     public uint OverflowCount;
     public uint ResetCount;
     public uint LastResetReasonMask;
+    public uint AlignmentReserved;
     public ulong DefinitionFingerprint;
     public ulong StateFingerprint;
 }
@@ -748,7 +737,7 @@ public unsafe struct NativeMetricSnapshotRuleStateOutput
     public uint Status;
     public uint ValueKind;
     public uint Quality;
-    public uint HasLastGood;
+    public uint AlignmentReserved;
     public ulong SampleDurationMilliseconds;
     public ulong DefinitionFingerprint;
     public ulong StateFingerprint;
@@ -791,7 +780,7 @@ public struct NativeMetricSnapshotSourcePersistenceOutput
     public uint ReservedU32;
     public ulong StateFingerprint;
     public uint GpuInventoryCount;
-    public uint GpuRetainedCount;
+    public uint AlignmentReserved;
     public ulong Reserved;
 }
 

@@ -196,17 +196,8 @@ pub const Session = struct {
         self.observations = &.{};
     }
 
-    pub fn operationAdvances(self: *const Session, epoch: u64, command_at: u64) bool {
-        return epoch > self.last_operation_epoch and command_at >= self.last_command_at_milliseconds;
-    }
-
-    pub fn futureTimeValid(self: *const Session, observed_at: u64, command_at: u64) bool {
-        const maximum = std.math.add(
-            u64,
-            command_at,
-            self.config.maximum_future_skew_milliseconds,
-        ) catch return false;
-        return observed_at <= maximum;
+    pub fn operationAdvances(self: *const Session, epoch: u64) bool {
+        return epoch > self.last_operation_epoch;
     }
 
     pub fn nextRevision(self: *const Session) ?u64 {

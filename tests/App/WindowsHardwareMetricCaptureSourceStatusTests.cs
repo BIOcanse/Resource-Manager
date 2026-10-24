@@ -287,7 +287,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
     }
 
     [Fact]
-    public void ImportedUnsupportedOemFanRestoresModeUntilZoneGenerationChanges()
+    public void RestartedOemFanStartsFreshAndCurrentUnsupportedStateClearsOnZoneChange()
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         var directory = Path.Combine(
@@ -297,7 +297,6 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         try
         {
             var fanMode = NativeMetricSnapshotZoneMode.LowPower;
-            NativeMetricSnapshotSourceOutput persistedOem;
             using (var original = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
                        compiled, persistencePath))
             {
@@ -339,13 +338,14 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                     sourcePlan.SourceHandle, completion.Status, unsupportedAt);
                 _ = original.ExportAndPersist(startedAt.AddMilliseconds(3));
 
-                persistedOem = Assert.Single(original.ReadCommitted().Sources,
+                var persistedOem = Assert.Single(original.ReadCommitted().Sources,
                     source => source.SourceHandle == sourcePlan.SourceHandle);
                 Assert.Equal(
                     (uint)NativeMetricSnapshotSourceStatus.Unsupported,
                     persistedOem.Status);
             }
 
+            fanMode = NativeMetricSnapshotZoneMode.Normal;
             using var restarted = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
                 compiled, persistencePath);
             var restoredCatalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
@@ -357,77 +357,58 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                     == NativeMetricSnapshotSources.NotebookOemFan).SourceHandle;
             var restoredOem = Assert.Single(restoredSources,
                 source => source.SourceHandle == restoredOemHandle);
-            Assert.Equal(persistedOem.CapabilityGeneration, restoredOem.CapabilityGeneration);
-            Assert.Equal(
-                (uint)NativeMetricSnapshotSourceStatus.Unsupported,
-                restoredOem.Status);
+            Assert.Equal(0UL, restoredOem.CapabilityGeneration);
+            Assert.Equal((uint)NativeMetricSnapshotSourceStatus.Unavailable, restoredOem.Status);
+            Assert.Equal(0UL, restoredOem.SourceObservationSequence);
 
             var restoredFacts = new NativeMetricSnapshotSourceRuntimeFacts(
                 sourceId => sourceId == NativeMetricSnapshotSources.NotebookOemFan
-                    ? fanMode
-                    : NativeMetricSnapshotZoneMode.Normal,
+                    ? fanMode : NativeMetricSnapshotZoneMode.Normal,
                 TimeSpan.FromSeconds(5));
-            restoredFacts.SynchronizeWorkspaceSources(
-                22, restoredCatalog, restoredSources);
+            restoredFacts.SynchronizeWorkspaceSources(22, restoredCatalog, restoredSources);
             var fanRequest = new[] { restoredCatalog.MetricHandles["cpu.fanRpm"] };
             var memoryRequest = new[] { restoredCatalog.MetricHandles["memory.usage"] };
             var restoredAt = DateTimeOffset.UtcNow;
             var restoredModes = restoredFacts.CaptureModesForRequest(
                 restoredCatalog, restoredAt, memoryRequest, includeGpuInventory: false);
-            Assert.Equal(
-                NativeMetricSnapshotSourceAvailability.Unsupported,
-                Assert.Single(restoredModes.Where(mode =>
-                    mode.SourceHandle == restoredOemHandle)).Availability);
-            var memoryPlan = restarted.PlanCollection(
-                memoryRequest,
-                restoredModes,
-                includeGpuInventory: false,
-                commandAt: restoredAt.AddMilliseconds(1));
-            Assert.Equal(
-                NativeMetricSnapshotSources.WindowsMemory,
+            var freshMode = Assert.Single(restoredModes, mode => mode.SourceHandle == restoredOemHandle);
+            Assert.Equal(NativeMetricSnapshotSourceAvailability.Available, freshMode.Availability);
+            Assert.Equal(NativeMetricSnapshotZoneMode.Normal, freshMode.ZoneMode);
+            var memoryPlan = restarted.PlanCollection(memoryRequest, restoredModes,
+                includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(1));
+            Assert.Equal(NativeMetricSnapshotSources.WindowsMemory,
                 restoredCatalog.SourceIds[Assert.Single(memoryPlan.Sources).SourceHandle]);
 
             var fanModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog,
-                restoredAt.AddMilliseconds(2),
-                fanRequest,
-                includeGpuInventory: false);
-            var restoredMode = Assert.Single(fanModes,
-                mode => mode.SourceHandle == restoredOemHandle);
-            Assert.Equal(
-                NativeMetricSnapshotSourceAvailability.Unsupported,
-                restoredMode.Availability);
-            Assert.Equal(persistedOem.CapabilityGeneration,
-                restoredMode.CapabilityGeneration);
-            var fallbackPlan = restarted.PlanCollection(
-                fanRequest,
-                fanModes,
-                includeGpuInventory: false,
-                commandAt: restoredAt.AddMilliseconds(3));
-            Assert.Equal(
-                NativeMetricSnapshotSources.HardwareMonitorWmi,
+                restoredCatalog, restoredAt.AddMilliseconds(2), fanRequest, includeGpuInventory: false);
+            var freshPlan = restarted.PlanCollection(fanRequest, fanModes,
+                includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(3));
+            var freshSource = Assert.Single(freshPlan.Sources);
+            Assert.Equal(NativeMetricSnapshotSources.NotebookOemFan, restoredCatalog.SourceIds[freshSource.SourceHandle]);
+            var freshUnsupportedAt = restoredAt.AddMilliseconds(4);
+            var unsupported = WindowsHardwareMetricCapture.CreateNotebookFanCompletion(
+                freshPlan, freshSource, restoredFacts.BeginObservation(freshSource.SourceHandle), freshUnsupportedAt,
+                new(new HardwareSensorProviderState("recorded OEM fan", "UnsupportedFirmware", "recorded"), null, null, []));
+            restarted.CompleteSource(freshPlan, unsupported, freshUnsupportedAt);
+            restoredFacts.RecordCompletion(freshSource.SourceHandle, unsupported.Status, freshUnsupportedAt);
+            var fallbackModes = restoredFacts.CaptureModesForRequest(
+                restoredCatalog, restoredAt.AddMilliseconds(5), fanRequest, includeGpuInventory: false);
+            Assert.Equal(NativeMetricSnapshotSourceAvailability.Unsupported,
+                Assert.Single(fallbackModes, mode => mode.SourceHandle == restoredOemHandle).Availability);
+            var fallbackPlan = restarted.PlanCollection(fanRequest, fallbackModes,
+                includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(6));
+            Assert.Equal(NativeMetricSnapshotSources.HardwareMonitorWmi,
                 restoredCatalog.SourceIds[Assert.Single(fallbackPlan.Sources).SourceHandle]);
 
-            fanMode = NativeMetricSnapshotZoneMode.Normal;
+            fanMode = NativeMetricSnapshotZoneMode.LowPower;
             var changedModes = restoredFacts.CaptureModesForRequest(
-                restoredCatalog,
-                restoredAt.AddMilliseconds(4),
-                fanRequest,
-                includeGpuInventory: false);
-            var changedOem = Assert.Single(changedModes,
-                mode => mode.SourceHandle == restoredOemHandle);
-            Assert.Equal(
-                NativeMetricSnapshotSourceAvailability.Available,
-                changedOem.Availability);
-            Assert.Equal(persistedOem.CapabilityGeneration + 1,
-                changedOem.CapabilityGeneration);
-            var recoveredPlan = restarted.PlanCollection(
-                fanRequest,
-                changedModes,
-                includeGpuInventory: false,
-                commandAt: restoredAt.AddMilliseconds(5));
-            Assert.Equal(
-                NativeMetricSnapshotSources.NotebookOemFan,
+                restoredCatalog, restoredAt.AddMilliseconds(7), fanRequest, includeGpuInventory: false);
+            var changedOem = Assert.Single(changedModes, mode => mode.SourceHandle == restoredOemHandle);
+            Assert.Equal(NativeMetricSnapshotSourceAvailability.Available, changedOem.Availability);
+            Assert.Equal(freshMode.CapabilityGeneration + 1, changedOem.CapabilityGeneration);
+            var recoveredPlan = restarted.PlanCollection(fanRequest, changedModes,
+                includeGpuInventory: false, commandAt: restoredAt.AddMilliseconds(8));
+            Assert.Equal(NativeMetricSnapshotSources.NotebookOemFan,
                 restoredCatalog.SourceIds[Assert.Single(recoveredPlan.Sources).SourceHandle]);
         }
         finally

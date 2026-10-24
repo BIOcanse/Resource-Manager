@@ -38,7 +38,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         AssertNode(partial, "windows-numa-node|9", "0");
         AssertCapacityNode(partial, "windows-numa-node|0", null);
         AssertCapacityNode(partial, "windows-numa-node|9", "0");
-        Assert.Equal(SamplingObservationStatus.RetainedLastGood, partial.Memory.ObservationStatus);
+        Assert.Equal(SamplingObservationStatus.Unavailable, partial.Memory.ObservationStatus);
         Assert.All(Assert.Single(MetricDeviceFields.Read(partial, "static|memory")).Fields, field =>
         { Assert.NotEqual(SamplingObservationStatus.Current, field.Status); Assert.Null(field.NumericValue); Assert.Null(field.IntegerValue); });
         var recovered = Publish(3, global, new Dictionary<string, ulong> { ["windows-numa-node|0"] = exact },

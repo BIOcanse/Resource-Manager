@@ -98,6 +98,52 @@ test "inflight action and attempt generations survive hot reconfiguration" {
     try std.testing.expectEqual(ResultCode.ok, session.complete(&completed));
 }
 
+test "wall clock jumps do not reject operation plans feedback progress or completion" {
+    for ([_]i64{ -120_000, 120_000 }) |jump| {
+        var config = testConfig();
+        const session = try state.Session.create(&config);
+        defer session.destroy();
+        var output = std.mem.zeroes(protocol.SubmitOutput);
+        var submit = submitInput(1, 0, 1, 1_000_000, 100);
+        submit.valid_mask = 0;
+        submit.domain_id = zeroHandle();
+        submit.observed_utc_milliseconds += jump;
+        try std.testing.expectEqual(ResultCode.ok, session.submit(&submit, &output));
+
+        const plan = try runPlan(session, 1, 1_000_000 + 2 * jump, 101, 8);
+        try std.testing.expectEqual(@as(u32, 1), plan.action_count);
+        var actions = zeroActions();
+        try readCurrentActions(session, &plan, &actions);
+        var started = feedbackInput(&actions[0], 1, .started, 1_000_000 + 3 * jump, 102);
+        try std.testing.expectEqual(ResultCode.ok, session.feedback(&started));
+        var progress = progressInput(&actions[0], 1, 1_000_000 + 4 * jump, 103);
+        progress.valid_mask = protocol.ProgressValid.percent_milli;
+        progress.percent_milli = 50_000;
+        try std.testing.expectEqual(ResultCode.ok, session.reportProgress(&progress));
+        var completed = completionInput(&actions[0], 1, .succeeded, 1_000_000 + 5 * jump, 102);
+        try std.testing.expectEqual(ResultCode.stale_frame, session.complete(&completed));
+        completed.observed_monotonic_milliseconds = 104;
+        try std.testing.expectEqual(ResultCode.ok, session.complete(&completed));
+
+        var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+        try std.testing.expectEqual(ResultCode.ok, session.snapshot(&snapshot));
+        var operations = zeroOperations();
+        try std.testing.expectEqual(ResultCode.ok, session.readOperations(&readInput(snapshot.state_revision, 0), &operations));
+        try std.testing.expectEqual(@intFromEnum(protocol.OperationState.succeeded), operations[0].state);
+        try std.testing.expectEqual(completed.observed_utc_milliseconds, operations[0].updated_utc_milliseconds);
+
+        submit = submitInput(2, 0, 2, 1_000_000, 105);
+        submit.valid_mask = 0;
+        submit.domain_id = zeroHandle();
+        output = std.mem.zeroes(protocol.SubmitOutput);
+        try std.testing.expectEqual(ResultCode.ok, session.submit(&submit, &output));
+        var cancel = cancelInput(submit.operation_id, 1, 1_000_000 + jump, 106);
+        var cancel_output = std.mem.zeroes(protocol.CancelOutput);
+        try std.testing.expectEqual(ResultCode.ok, session.cancel(&cancel, &cancel_output));
+        _ = try runPlan(session, 2, 1_000_000 + 2 * jump, 107, 8);
+    }
+}
+
 test "active domain submission returns the existing operation without duplicating state" {
     var config = testConfig();
     var session = try state.Session.create(&config);
@@ -1032,7 +1078,6 @@ test "empty persistence has no observed clock baseline until its first import" {
     try std.testing.expectEqual(@as(u32, 0), snapshot.operation_count);
     try std.testing.expectEqual(input.observed_utc_milliseconds, snapshot.last_observed_utc_milliseconds);
     try std.testing.expectEqual(input.observed_monotonic_milliseconds, snapshot.last_observed_monotonic_milliseconds);
-    const revision = snapshot.state_revision;
 
     export_input.operation_epoch = 2;
     try std.testing.expectEqual(
@@ -1043,21 +1088,22 @@ test "empty persistence has no observed clock baseline until its first import" {
     input.observed_utc_milliseconds += @intCast(config.maximum_future_skew_milliseconds + 2);
     input.observed_monotonic_milliseconds += 1;
     try std.testing.expectEqual(
-        ResultCode.stale_frame,
+        ResultCode.ok,
         restored.importPersistence(&input, &header, records[0..0]),
     );
     try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
-    try std.testing.expectEqual(revision, snapshot.state_revision);
-    try std.testing.expectEqual(header.last_observed_utc_milliseconds, snapshot.last_observed_utc_milliseconds);
-    try std.testing.expectEqual(header.last_observed_monotonic_milliseconds, snapshot.last_observed_monotonic_milliseconds);
+    try std.testing.expectEqual(input.observed_utc_milliseconds, snapshot.last_observed_utc_milliseconds);
+    try std.testing.expectEqual(input.observed_monotonic_milliseconds, snapshot.last_observed_monotonic_milliseconds);
 
-    // Rejected skew must not consume the persistence epoch or suppress later validation.
-    input.observed_utc_milliseconds = header.last_observed_utc_milliseconds + 1;
+    // A wall-clock rollback is accepted too; the monotonic clock still orders imports.
+    input.operation_epoch = 4;
+    input.observed_utc_milliseconds = header.last_observed_utc_milliseconds - 60_000;
+    input.observed_monotonic_milliseconds += 1;
     try std.testing.expectEqual(
         ResultCode.ok,
         restored.importPersistence(&input, &header, records[0..0]),
     );
-    input.operation_epoch = 4;
+    input.operation_epoch = 5;
     input.observed_monotonic_milliseconds = header.last_observed_monotonic_milliseconds - 1;
     try std.testing.expectEqual(
         ResultCode.stale_frame,
