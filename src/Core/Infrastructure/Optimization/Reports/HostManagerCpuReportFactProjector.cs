@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 
@@ -40,6 +41,9 @@ internal static class HostManagerCpuReportFactProjector
                 NativeReportSourceStatus.Skipped);
         }
 
+        var usageCurrent = snapshot.TryGetCurrentDataset(MetricDatasetIds.SystemCpuUsage, out var usage);
+        var temperatureCurrent = snapshot.TryGetCurrentDataset(MetricDatasetIds.ForSystemMetric("cpu.temperature"), out var temperatureDataset);
+        var frequencyCurrent = snapshot.TryGetCurrentDataset(MetricDatasetIds.ForSystemMetric("cpu.frequencyPercent"), out var frequency);
         var temperature = cpu.Sensors.TemperatureCelsius;
         var complete = cpu.ObservationStatus == CpuMetricObservationStatus.Complete
             && cpu.IsUsageAvailable
@@ -48,11 +52,8 @@ internal static class HostManagerCpuReportFactProjector
             && double.IsFinite(cpu.UsagePercent)
             && temperature is not null
             && double.IsFinite(temperature.Value)
-            && cpu.Sensors.ProviderState.State.Equals(
-                "Active",
-                StringComparison.OrdinalIgnoreCase)
-            && double.IsFinite(cpu.FrequencyPercent)
-            && IsFrequencySourceAvailable(cpu.FrequencySource);
+            && usageCurrent && temperatureCurrent && frequencyCurrent
+            && double.IsFinite(cpu.FrequencyPercent);
         if (!complete)
         {
             return Unavailable(
@@ -63,12 +64,16 @@ internal static class HostManagerCpuReportFactProjector
                 NativeReportSourceStatus.Unavailable);
         }
 
+        var publicationGeneration = Math.Max(usage.CommittedGeneration,
+            Math.Max(temperatureDataset.CommittedGeneration, frequency.CommittedGeneration));
+        var observedAt = new DateTimeOffset(Math.Max(usage.ObservedAtUtcTicks,
+            Math.Max(temperatureDataset.ObservedAtUtcTicks, frequency.ObservedAtUtcTicks)), TimeSpan.Zero);
         var temperatureValue = temperature.GetValueOrDefault();
         return new HostManagerReportSourceObservation(
             sourceHandle,
             coverageScopeHandle,
-            checked((long)cpu.SourceGeneration),
-            snapshot.CapturedAt,
+            checked((long)publicationGeneration),
+            observedAt,
             NativeReportSourceStatus.Complete,
             cpu.SampleDurationMilliseconds,
             rules.Select(rule => new HostManagerReportFactValue(
@@ -100,9 +105,4 @@ internal static class HostManagerCpuReportFactProjector
             0,
             []);
 
-    private static bool IsFrequencySourceAvailable(string source)
-        => !string.IsNullOrWhiteSpace(source)
-            && !source.Contains("Unavailable", StringComparison.OrdinalIgnoreCase)
-            && !source.Contains("Frozen", StringComparison.OrdinalIgnoreCase)
-            && !source.Contains("Not requested", StringComparison.OrdinalIgnoreCase);
 }

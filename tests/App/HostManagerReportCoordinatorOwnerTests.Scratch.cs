@@ -295,6 +295,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         services.AddSingleton<INativeReportCoordinatorPersistenceStore>(new NativeReportCoordinatorPersistenceStore(CreateDatabase()));
         services.AddSingleton<IMetricSnapshotObservationSource>(new CachedMetricSource());
         services.AddSingleton<IResourceBreakdownObservationSource>(new CachedResourceSource());
+        services.AddSingleton<ISchedulingProcessFactObservationSource>(new BackgroundProcessSource());
+        services.AddSingleton<ResourceManager.App.Application.Software.ISoftwareRegistryView>(new RegisteredSoftware());
         services.AddSingleton<ISystemInterruptSnapshotSource>(new UnavailableInterruptSource());
         services.AddSingleton<IOptimizationProtectionService>(new EmptyProtectionService());
         services.AddSingleton<ILogger<HostManagerReportCoordinatorOwner>>(NullLogger<HostManagerReportCoordinatorOwner>.Instance);
@@ -536,7 +538,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
         return new(provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             persistence, metrics ?? new CachedMetricSource(), resources, new UnavailableInterruptSource(),
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, factory);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, factory, new BackgroundProcessSource(), new RegisteredSoftware());
     }
 
     private static CompiledHostManagerPlan NextReportScratchPlan(int delta)
@@ -572,8 +574,12 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         internal bool IgnoreWaitCancellation;
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<HostManagerReportTargetDescriptor[]> LoadTargetsAsync(CancellationToken cancellationToken)
+            => inner.LoadTargetsAsync(cancellationToken);
+
         public Task<NativeReportPersistenceOperation[]> LoadAsync(CancellationToken token) => inner.LoadAsync(token);
-        public async Task PersistAsync(ReadOnlyMemory<NativeReportPersistenceOperation> operations, CancellationToken token)
+        public async Task PersistAsync(ReadOnlyMemory<NativeReportPersistenceOperation> operations, CancellationToken token,
+            IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null)
         {
             if (FailNext) { FailNext = false; throw new IOException("recorded-persist-failure"); }
             if (FailSuppressedReportBatchOnce)
@@ -596,7 +602,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             }
             var failAfterCommit = FailAfterCommitNext;
             FailAfterCommitNext = false;
-            await inner.PersistAsync(operations, token);
+            await inner.PersistAsync(operations, token, targets);
             if (failAfterCommit) throw new IOException("recorded-after-commit-failure");
         }
     }

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Software;
 namespace ResourceManager.App.Application.SoftwareIssues;
 
 public interface IOptimizationSoftwareIssueSignalSource
@@ -21,4 +22,7 @@ public sealed record OptimizationSoftwareIssueSignal(
     string Label,
     string Message,
     string? SoftwareId,
-    string? ArtifactPath);
+    string? ArtifactPath)
+{
+    public IReadOnlyList<SoftwareIssueEvidence> Evidence { get; init; } = [];
+}

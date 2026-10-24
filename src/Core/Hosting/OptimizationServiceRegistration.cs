@@ -94,7 +94,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<ResourceManager.App.Application.SystemHealth.ISystemInterruptSnapshotSource>(),
             provider.GetRequiredService<IOptimizationProtectionService>(),
             provider.GetRequiredService<ILogger<HostManagerReportCoordinatorOwner>>(),
-            provider.GetRequiredService<ResourceManagerSelfLocalResourceManager>().CreateScratch));
+            provider.GetRequiredService<ResourceManagerSelfLocalResourceManager>().CreateScratch,
+            provider.GetRequiredService<ResourceManager.App.Application.ResourceBreakdown.ISchedulingProcessFactObservationSource>(),
+            provider.GetRequiredService<ResourceManager.App.Application.Software.ISoftwareRegistryView>()));
         services.AddSingleton<IHostManagerReportService>(static provider =>
             provider.GetRequiredService<HostManagerReportCoordinatorOwner>());
         services.AddSingleton<IOptimizationSoftwareIssueSignalSource>(static provider =>

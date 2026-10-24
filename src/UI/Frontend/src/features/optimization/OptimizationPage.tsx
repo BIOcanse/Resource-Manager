@@ -79,12 +79,12 @@ export function OptimizationPage(props: OptimizationPageProps) {
   const [searchQuery, setSearchQuery] = createSignal("");
   const [detailReport, setDetailReport] = createSignal<OptimizationReportItem | null>(null);
   const allReports = () => props.overview?.reports ?? [];
-  const trustedReports = () => allReports().filter(isTrustedReport);
+  const trustedTargets = () => props.overview?.trustedTargets ?? [];
   const untrustedReports = () => allReports().filter((report) => !isTrustedReport(report));
   const reports = () => {
     const filter = reportFilter();
     if (filter === "trusted") {
-      return trustedReports();
+      return [];
     }
     if (filter === "all") {
       return allReports();
@@ -209,7 +209,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
               options={[
                 { id: "untrusted", label: uiText.optimization.filterUntrusted(String(reportsAvailable() ? untrustedReports().length : "--")) },
                 { id: "all", label: uiText.optimization.filterAll(String(reportsAvailable() ? allReports().length : "--")) },
-                { id: "trusted", label: uiText.optimization.filterTrusted(String(reportsAvailable() ? trustedReports().length : "--")) }
+                { id: "trusted", label: uiText.optimization.filterTrusted(String(reportsAvailable() ? trustedTargets().length : "--")) }
               ] satisfies Array<{ id: ReportFilter; label: string }>}
               ariaLabel={uiText.optimization.filterLabel}
               class="optimization-report-filter"
@@ -235,9 +235,22 @@ export function OptimizationPage(props: OptimizationPageProps) {
           state={props.reportsObservation}
           label={uiText.optimization.reportPanel}
         >
+          <Show when={reportFilter() === "trusted"}>
+            <div class="optimization-trusted-targets" aria-label={uiText.optimization.trusted}>
+              <For each={trustedTargets().filter(target =>
+                matchesSearch(normalizeSearchQuery(searchQuery()), target.displayName, target.targetKey))}>
+                {(target) => <article class="optimization-report">
+                  <strong>{target.displayName || uiText.optimizationReport.currentTarget}</strong>
+                  <button class="secondary" type="button"
+                    disabled={!reportActionsAvailable() || props.actionId === target.id}
+                    onClick={() => props.onRemoveTrust(target)}>{uiText.optimization.removeTrust}</button>
+                </article>}
+              </For>
+            </div>
+          </Show>
           <Show
             when={visibleReports().length > 0}
-            fallback={<div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div>}
+            fallback={<Show when={reportFilter() === "untrusted" || !(props.overview?.trustedTargets.length)}><div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div></Show>}
           >
             <div class="optimization-report-list">
               <For each={visibleReports()}>
@@ -262,7 +275,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                       <Show when={isTrustedReport(report)}>
                         <span class="optimization-report-state">{uiText.optimization.trusted}</span>
                       </Show>
-                      <Show when={report.target.targetType === "Software"}>
+                      <Show when={report.target.targetType === "Software" && Boolean(report.target.softwareId)}>
                         <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewSoftware}</button>
                       </Show>
                       <Show when={["Device", "Display", "PhysicalDisk"].includes(report.target.targetType)}>

@@ -66,7 +66,10 @@ public sealed class OptimizationReportSoftwareIssueSource(
                         [],
                         signals.Select(static signal => signal.ReportId)
                             .Distinct(StringComparer.Ordinal)
-                            .ToArray()));
+                            .ToArray())
+                    {
+                        Evidence = signals.SelectMany(signal => signal.Evidence).Distinct().ToArray()
+                    });
             })
             .OrderBy(static assignment => assignment.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static assignment => assignment.Issue.Kind, StringComparer.Ordinal)

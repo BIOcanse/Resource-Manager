@@ -56,7 +56,12 @@ public sealed record SoftwareIssueTag(
     string Message,
     bool Dynamic,
     IReadOnlyList<SoftwareIssueReference> References,
-    IReadOnlyList<string> ReportIds);
+    IReadOnlyList<string> ReportIds)
+{
+    public IReadOnlyList<SoftwareIssueEvidence> Evidence { get; init; } = [];
+}
+
+public sealed record SoftwareIssueEvidence(string MetricKind, double Value, string ValueUnit, string? ModuleName = null);
 
 public sealed record SoftwareIssueCatalogDocument(
     string Version,

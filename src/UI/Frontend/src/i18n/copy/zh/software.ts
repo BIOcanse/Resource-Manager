@@ -23,6 +23,19 @@ export const zhSoftwareCopy = {
     Support: "支持"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "内存占用异常",
+      LongSystemInterrupts: "长系统中断",
+      ExcessiveSystemInterrupts: "系统中断占用高",
+      KnownSecurityVulnerability: "存在已公开安全漏洞",
+      DependencyIssue: "依赖问题",
+      CompatibilityIssue: "兼容性问题",
+      KnownMalware: "已知恶意软件",
+      memoryAdvice: "检查后台软件是否仍需要运行；不再使用时可关闭。",
+      interruptAdvice: "检查相关驱动是否有更新；不要直接删除驱动文件。",
+      winringMessage: "随软件安装的 WinRing0x64.sys 1.2.0.5 与已公开漏洞记录匹配。建议更新或卸载包含该驱动的旧版本；这不代表软件被判定为恶意软件。",
+      driverReference: "Microsoft 易受攻击驱动阻止规则",
+    },
     categorySource: "分类来源",
     windowsGameList: "Windows 游戏列表（GameConfigStore）",
     classifySoftware: "选择分类",

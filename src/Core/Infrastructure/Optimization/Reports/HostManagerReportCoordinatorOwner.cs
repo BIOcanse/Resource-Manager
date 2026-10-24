@@ -1,6 +1,8 @@
 using ResourceManager.App.Infrastructure.Adaptation;
 using System.Collections.Immutable;
 using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.Software;
+using ResourceManager.Adapter;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.SystemHealth;
@@ -25,7 +27,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     ISystemInterruptSnapshotSource interruptSource,
     IOptimizationProtectionService protectionService,
     ILogger<HostManagerReportCoordinatorOwner> logger,
-    Func<ulong, IComputeScratch> createScratch)
+    Func<ulong, IComputeScratch> createScratch,
+    ISchedulingProcessFactObservationSource processSource,
+    ISoftwareRegistryView softwareRegistry)
     : BackgroundService,
         IHostManagerReportService,
         IOptimizationSoftwareIssueSignalSource,
@@ -64,6 +68,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private IDisposable? metricSubscription;
     private IDisposable? resourceSubscription;
     private IDisposable? interruptSubscription;
+    private IDisposable? processSubscription;
     private ulong incarnation;
     private ulong operationEpoch;
     private ulong planEpoch;
@@ -367,11 +372,19 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             var hardware = metricSource.ReadLatest(ReportMetricRequest);
             var resources = resourceSource.ReadLatest(ReportResourceRequest);
             var interrupts = interruptSource.Read();
+            var processFacts = processSource.ReadLatest(new SchedulingProcessFactRequest(
+                SchedulingProcessMetricMask.RuntimeState, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
+                    SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
+            var backgroundIds = BackgroundSoftwareIds(processFacts);
+            var protectedIds = (await protectionService.GetProtectedTargetsAsync(cancellationToken))
+                .Where(item => item.State == OptimizationProtectionStates.Active && item.SoftwareId is not null)
+                .Select(item => item.SoftwareId!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var batch = HostManagerReportFactProjector.Project(
                 plan,
                 hardware,
                 interrupts,
-                resources);
+                resources, backgroundIds, protectedIds);
             foreach (var target in batch.Targets)
             {
                 targetCatalog[target.Key] = target.Value;
@@ -396,9 +409,34 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         }
     }
 
+    internal static IReadOnlySet<string>? BackgroundSoftwareIds(SchedulingProcessFactSnapshot? snapshot)
+    {
+        if (snapshot is null || snapshot.InventoryStatus != SamplingObservationStatus.Current
+            || !snapshot.TryGetCurrentDataset(SchedulingProcessMetricMask.RuntimeState, out _))
+            return null;
+        return snapshot.Processes.GroupBy(item => item.SoftwareId, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.All(process => process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState)
+                && process.RuntimeState is HostManagerRuntimeStates.BackgroundProcess or HostManagerRuntimeStates.TrayOnly
+                && !process.ForegroundFocused && !process.HasVisibleWindow))
+            .Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task RestoreRegisteredTargetsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var target in await persistenceStore.LoadTargetsAsync(cancellationToken))
+            targetCatalog[target.TargetHandle] = target;
+        foreach (var software in await softwareRegistry.GetSoftwareAsync(cancellationToken))
+        {
+            var handle = AdapterResourceKey.FromString($"report:software:{software.Id}");
+            targetCatalog[handle] = new HostManagerReportTargetDescriptor(handle,
+                software.Id, software.Name, software.Kind, software.DisplayKind, [], []);
+        }
+    }
+
     private void AcquireObservationSubscriptions()
     {
-        if (metricSubscription is not null
+        if (processSubscription is not null
+            || metricSubscription is not null
             || resourceSubscription is not null
             || interruptSubscription is not null)
         {
@@ -408,6 +446,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 
         try
         {
+            processSubscription = processSource.AcquireSubscription(
+                "host-manager.reports.runtime-state",
+                SchedulingProcessMetricMask.RuntimeState, SampleInterval);
             metricSubscription = metricSource.AcquireSubscription(
                 "host-manager.reports.hardware",
                 ReportMetricRequest,
@@ -430,6 +471,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 
     private void ReleaseObservationSubscriptions(ICollection<Exception> failures)
     {
+        var processes = Interlocked.Exchange(ref processSubscription, null);
+        CaptureDisposalFailure(processes, failures);
         var interrupts = Interlocked.Exchange(ref interruptSubscription, null);
         var resources = Interlocked.Exchange(ref resourceSubscription, null);
         var metrics = Interlocked.Exchange(ref metricSubscription, null);
