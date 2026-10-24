@@ -25,6 +25,9 @@ internal sealed partial class NativeTransactionJournalPayloadStore
         try
         {
             ThrowIfDisposed();
+            // Reconciliation is an explicit disk boundary, including recovery after restart.
+            verifiedPayloads.Clear();
+            verifiedSequence = null;
             var live = BuildLiveSet(liveReferences.Span);
             var liveIdentities = live
                 .Select(static item => (item.Reference.Slot, item.Reference.Generation))
@@ -136,6 +139,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore
                 $"The payload store contains a non-canonical payload file name: {fileName}.");
         }
 
+        PayloadFileReadCount++;
         await using var stream = OpenRead(path);
         if (stream.Length <= PayloadHeaderSize)
         {

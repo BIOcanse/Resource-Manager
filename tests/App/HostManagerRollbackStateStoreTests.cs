@@ -9,6 +9,93 @@ public sealed class HostManagerRollbackStateStoreTests
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task IdenticalCommittedDocumentDoesNotReadEncodeOrWriteAtCheckpointOrDispose()
+    {
+        var root = CreateTempDirectory();
+        var path = Path.Combine(root, "rollback-state.json");
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var commits = 0;
+        try
+        {
+            var store = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1),
+                beforeCommit: () => commits++);
+            try
+            {
+                var reserved = await store.ReserveNativeHostSessionIncarnationAsync(CancellationToken.None);
+                var document = reserved with { AppliedPlacements = [Placement("cpu", "cpu-record")] };
+                await store.SaveAsync(document, CancellationToken.None);
+                var before = await File.ReadAllBytesAsync(path);
+                var committed = commits;
+                time.Advance(TimeSpan.FromMinutes(2));
+                // Any canonical read or write would fail while this probe owns the file.
+                using (var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                {
+                    await store.SaveAsync(document with { AppliedPlacements = document.AppliedPlacements.ToArray() }, CancellationToken.None);
+                    Assert.Equal(document.Message, (await store.LoadAsync(CancellationToken.None)).Message);
+                    store.Dispose();
+                }
+                Assert.Equal(committed, commits);
+                Assert.Equal(before, await File.ReadAllBytesAsync(path));
+            }
+            finally { store.Dispose(); }
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task SkippingCommittedStateDoesNotDiscardAPendingTransientWrite()
+    {
+        var root = CreateTempDirectory();
+        var path = Path.Combine(root, "rollback-state.json");
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        try
+        {
+            using (var store = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1)))
+            {
+                var reserved = await store.ReserveNativeHostSessionIncarnationAsync(CancellationToken.None);
+                await store.SaveAsync(reserved, CancellationToken.None);
+                var transient = reserved with { Message = "new transient value" };
+                await store.SaveAsync(transient, CancellationToken.None);
+                await store.SaveAsync(transient, CancellationToken.None);
+            }
+            using var reopened = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1));
+            Assert.Equal("new transient value", (await reopened.LoadAsync(CancellationToken.None)).Message);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task CallerMetadataMutationCannotTurnANeededWriteIntoAnUnchangedSave()
+    {
+        var root = CreateTempDirectory();
+        var path = Path.Combine(root, "rollback-state.json");
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        try
+        {
+            using (var store = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1)))
+            {
+                var placement = Placement("cpu", "record");
+                await store.SaveAsync(HostManagerRollbackStateDocument.Empty with
+                {
+                    AppliedPlacements = [placement with
+                    {
+                        Records = [new HostManagerAppliedRecord(placement.Records[0].Kind, "record",
+                            new Dictionary<string, string> { ["value"] = "before" })]
+                    }]
+                }, CancellationToken.None);
+                var loaded = await store.LoadAsync(CancellationToken.None);
+                var metadata = Assert.IsType<Dictionary<string, string>>(loaded.AppliedPlacements[0].Records[0].Metadata);
+                metadata["value"] = "after";
+                await store.SaveAsync(loaded, CancellationToken.None);
+            }
+            using var reopened = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1));
+            Assert.Equal("after", (await reopened.LoadAsync(CancellationToken.None))
+                .AppliedPlacements[0].Records[0].Metadata!["value"]);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task SaveAsync_KeepsTransientCycleUpdatesInMemoryUntilCheckpoint()
     {
         var root = CreateTempDirectory();

@@ -175,6 +175,17 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             var materialChanged = !HasSameRecoveryState(baseline, normalized);
             var recoveryCompleted = baseline.LastRestoreAt != normalized.LastRestoreAt;
 
+            // Only an already committed document can suppress a write. A virgin store,
+            // pending transient update or failed/ambiguous commit still needs publication.
+            if (!materialChanged && !recoveryCompleted
+                && canonicalAuthorityObserved && persistedDocument is not null
+                && HasSameCheckpointFields(persistedDocument, normalized))
+            {
+                cachedDocument = normalized;
+                dirty = false;
+                return;
+            }
+
             if (materialChanged
                 || recoveryCompleted
                 || now - lastPersistedAt >= checkpointInterval)
@@ -260,11 +271,14 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         DateTimeOffset persistedAt,
         CancellationToken cancellationToken)
     {
+        // Snapshot before encoding/awaiting IO. A caller can retain mutable metadata,
+        // but it must never mutate the baseline used to suppress a later write.
+        var canonicalDocument = SnapshotDocument(document);
         HostManagerRollbackStatePersistedImage persisted;
         try
         {
             persisted = await PersistAsync(
-                document,
+                canonicalDocument,
                 checked(persistedRevision + 1),
                 cancellationToken);
         }
@@ -276,7 +290,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         }
 
         cachedDocument = document;
-        persistedDocument = document;
+        persistedDocument = canonicalDocument;
         persistedRevision = persisted.Revision;
         persistedCanonicalSha256 = persisted.CanonicalSha256;
         canonicalAuthorityObserved = true;
@@ -304,7 +318,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                     Mode = FileMode.CreateNew,
                     Access = FileAccess.Write,
                     Share = FileShare.None,
-                    BufferSize = 64 * 1024,
+                    BufferSize = 1,
                     Options = FileOptions.Asynchronous | FileOptions.WriteThrough
                 }))
             {
@@ -551,7 +565,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
-                64 * 1024,
+                1,
                 FileOptions.SequentialScan);
         }
         catch (FileNotFoundException)
@@ -610,22 +624,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 "Host Manager rollback state changed outside its active owner.");
         }
 
-        if (persistedRevision == 0)
-        {
-            _ = DecodeLegacyState(image);
-            rootManifest.ValidateOrAdoptCanonical(image);
-        }
-        else
-        {
-            var decoded = HostManagerRollbackStateEnvelopeCodec.Decode(image);
-            if (decoded.Revision != persistedRevision)
-            {
-                throw new InvalidDataException(
-                    "Host Manager rollback state revision changed outside its active owner.");
-            }
-
-            rootManifest.ValidateExistingCanonical(image);
-        }
+        // The hash binds the exact image/revision decoded on load or verified on commit.
+        // Decoding identical JSON cannot establish any additional authority.
+        if (persistedRevision == 0) rootManifest.ValidateOrAdoptCanonical(image);
+        else rootManifest.ValidateExistingCanonical(image);
     }
 
     private void PublishLoadedAuthority(
@@ -635,7 +637,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         DateTimeOffset loadedAt)
     {
         cachedDocument = document;
-        persistedDocument = document;
+        persistedDocument = SnapshotDocument(document);
         persistedRevision = revision;
         persistedCanonicalSha256 = SHA256.HashData(canonicalImage);
         canonicalAuthorityObserved = true;
@@ -772,6 +774,42 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         return AppliedPlacementsEqual(left.AppliedPlacements, right.AppliedPlacements)
             && left.NativeHostSessionIncarnation == right.NativeHostSessionIncarnation;
     }
+
+    // Recovery fields/record metadata were already compared by HasSameRecoveryState.
+    private static bool HasSameCheckpointFields(
+        HostManagerRollbackStateDocument left, HostManagerRollbackStateDocument right)
+    {
+        if (left.Version != right.Version || left.LastRunAt != right.LastRunAt
+            || left.LastRestoreAt != right.LastRestoreAt || left.Message != right.Message)
+            return false;
+        for (var index = 0; index < left.AppliedPlacements.Count; index++)
+        {
+            var before = left.AppliedPlacements[index];
+            var after = right.AppliedPlacements[index];
+            if (before.TargetId != after.TargetId || before.SoftwareId != after.SoftwareId
+                || before.ResourceKind != after.ResourceKind || before.DisplayName != after.DisplayName
+                || before.AppliedAt != after.AppliedAt || before.UpdatedAt != after.UpdatedAt)
+                return false;
+            for (var record = 0; record < before.Records.Count; record++)
+                if (before.Records[record].Kind != after.Records[record].Kind
+                    || before.Records[record].RecordId != after.Records[record].RecordId)
+                    return false;
+        }
+        return true;
+    }
+
+    private static HostManagerRollbackStateDocument SnapshotDocument(HostManagerRollbackStateDocument document)
+        => document with
+        {
+            AppliedPlacements = document.AppliedPlacements.Select(placement => placement with
+            {
+                Records = placement.Records.Select(record => record with
+                {
+                    Metadata = record.Metadata is null ? null
+                        : new Dictionary<string, string>(record.Metadata, StringComparer.Ordinal)
+                }).ToArray()
+            }).ToArray()
+        };
 
     private static bool AppliedPlacementsEqual(
         IReadOnlyList<HostManagerAppliedPlacementReceipt> left,

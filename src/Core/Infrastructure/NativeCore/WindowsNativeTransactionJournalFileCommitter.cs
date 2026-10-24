@@ -1,5 +1,3 @@
-using System.Buffers;
-
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal enum NativeTransactionJournalCommitOutcome
@@ -97,7 +95,7 @@ internal sealed class NativeTransactionJournalCommitHook : INativeTransactionJou
 internal sealed class WindowsNativeTransactionJournalFileCommitter
     : INativeTransactionJournalFileCommitter
 {
-    private const int IoBufferSize = 64 * 1024;
+    private const int IoBufferSize = 4096;
 
     public static WindowsNativeTransactionJournalFileCommitter Instance { get; } = new();
 
@@ -147,7 +145,7 @@ internal sealed class WindowsNativeTransactionJournalFileCommitter
                 Mode = FileMode.Open,
                 Access = FileAccess.Read,
                 Share = FileShare.Read,
-                BufferSize = IoBufferSize,
+                BufferSize = 1,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });
         if (stream.Length != expectedImage.Length)
@@ -156,29 +154,23 @@ internal sealed class WindowsNativeTransactionJournalFileCommitter
                 "The committed transaction journal length does not match the native image.");
         }
 
-        var buffer = ArrayPool<byte>.Shared.Rent(IoBufferSize);
-        try
+        // One short-lived verification buffer; the canonical image already has its ledger owner.
+        var buffer = new byte[Math.Min(IoBufferSize, expectedImage.Length)];
+        var offset = 0;
+        while (offset < expectedImage.Length)
         {
-            var offset = 0;
-            while (offset < expectedImage.Length)
+            var length = Math.Min(buffer.Length, expectedImage.Length - offset);
+            var read = await stream.ReadAsync(
+                buffer.AsMemory(0, length),
+                cancellationToken);
+            if (read == 0 ||
+                !buffer.AsSpan(0, read).SequenceEqual(expectedImage.Span.Slice(offset, read)))
             {
-                var length = Math.Min(buffer.Length, expectedImage.Length - offset);
-                var read = await stream.ReadAsync(
-                    buffer.AsMemory(0, length),
-                    cancellationToken);
-                if (read == 0 ||
-                    !buffer.AsSpan(0, read).SequenceEqual(expectedImage.Span.Slice(offset, read)))
-                {
-                    throw new InvalidDataException(
-                        "The committed transaction journal differs from the native canonical image.");
-                }
-
-                offset += read;
+                throw new InvalidDataException(
+                    "The committed transaction journal differs from the native canonical image.");
             }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer, clearArray: false);
+
+            offset += read;
         }
     }
 

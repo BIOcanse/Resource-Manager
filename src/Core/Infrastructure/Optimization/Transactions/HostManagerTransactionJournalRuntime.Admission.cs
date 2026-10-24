@@ -164,6 +164,15 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
             cancellationToken,
             () => payloadStore.ReadAsync(reference, expectedBinding, cancellationToken));
 
+    public Task<byte[]> ReadOwnedPayloadAsync(
+        NativeTransactionJournalPayloadReference reference,
+        NativeTransactionJournalPayloadBinding expectedBinding,
+        CancellationToken cancellationToken)
+        => ExecutePayloadOperationAsync(
+            HostManagerTransactionJournalOperation.ReadPayload,
+            cancellationToken,
+            () => payloadStore.ReadOwnedAsync(reference, expectedBinding, cancellationToken));
+
     public Task<byte[]> ReadPayloadAsync(
         NativeTransactionJournalPayloadReference reference,
         NativeTransactionJournalPayloadProvenance expectedProvenance,

@@ -47,9 +47,15 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
     private readonly int maximumPayloadCount;
     private readonly long maximumPayloadBytes;
     private readonly FileStream ownerLock;
+    // Immutable canonical proof, owned under ownerLock and gate. Never retain a caller's array.
+    private readonly Dictionary<NativeTransactionJournalPayloadReference, CachedPayload> verifiedPayloads = new();
+    private ulong? verifiedSequence;
     private int livePayloadCount;
     private long livePayloadBytes;
     private bool disposed;
+
+    internal long PayloadFileReadCount { get; private set; }
+    internal long SequenceFileReadCount { get; private set; }
 
     public NativeTransactionJournalPayloadStore(
         string directoryPath,
@@ -119,8 +125,10 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             Directory.CreateDirectory(directoryPath);
             EnsureCanPersist(payload.Length);
 
+            var canonicalPayload = payload.ToArray();
+
             var sequence = await AllocateSequenceAsync(cancellationToken);
-            var reference = CreateReference(sequence, payload.Span);
+            var reference = CreateReference(sequence, canonicalPayload);
             var payloadPath = ResolvePayloadPath(reference.Slot, reference.Generation);
             var header = CreatePayloadHeader(reference, binding);
             var temporaryPath = CreateTemporaryPath(payloadPath);
@@ -129,7 +137,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                 await WriteDurableFileAsync(
                     temporaryPath,
                     header,
-                    payload,
+                    canonicalPayload,
                     cancellationToken);
                 CommitNewFile(temporaryPath, payloadPath);
                 livePayloadCount = checked(livePayloadCount + 1);
@@ -167,6 +175,26 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         {
             gate.Release();
         }
+    }
+
+    // Steady live inspections consume immutable proof, not a new disk verification.
+    // The first read verifies disk; transaction/recovery ReadAsync always verifies it again.
+    public async Task<byte[]> ReadOwnedAsync(
+        NativeTransactionJournalPayloadReference reference,
+        NativeTransactionJournalPayloadBinding expectedBinding,
+        CancellationToken cancellationToken)
+    {
+        ValidateReference(reference);
+        ValidateBinding(expectedBinding);
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            ThrowIfDisposed();
+            await ValidateSequenceCoversReferenceAsync(reference, cancellationToken);
+            return await ReadValidatedPayloadAsync(reference, expectedBinding, cancellationToken,
+                useVerifiedState: true);
+        }
+        finally { gate.Release(); }
     }
 
     public async Task<byte[]> ReadAsync(
@@ -211,18 +239,22 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                 if (WindowsNativeAtomicFileCommitter.DeleteExact(payloadPath) ==
                     WindowsNativeFileDeleteResult.NotFound)
                 {
+                    verifiedPayloads.Remove(reference);
                     return false;
                 }
+                verifiedPayloads.Remove(reference);
                 livePayloadCount = checked(livePayloadCount - 1);
                 livePayloadBytes = checked(livePayloadBytes - checked((long)reference.Length));
                 return true;
             }
             catch (FileNotFoundException)
             {
+                verifiedPayloads.Remove(reference);
                 return false;
             }
             catch (DirectoryNotFoundException)
             {
+                verifiedPayloads.Remove(reference);
                 return false;
             }
         }
@@ -256,18 +288,22 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                 if (WindowsNativeAtomicFileCommitter.DeleteExact(payloadPath) ==
                     WindowsNativeFileDeleteResult.NotFound)
                 {
+                    verifiedPayloads.Remove(reference);
                     return false;
                 }
+                verifiedPayloads.Remove(reference);
                 livePayloadCount = checked(livePayloadCount - 1);
                 livePayloadBytes = checked(livePayloadBytes - checked((long)reference.Length));
                 return true;
             }
             catch (FileNotFoundException)
             {
+                verifiedPayloads.Remove(reference);
                 return false;
             }
             catch (DirectoryNotFoundException)
             {
+                verifiedPayloads.Remove(reference);
                 return false;
             }
         }
@@ -290,6 +326,8 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             try
             {
                 disposed = true;
+                verifiedPayloads.Clear();
+                verifiedSequence = null;
                 ownerLock.Dispose();
             }
             finally
@@ -419,6 +457,15 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         bool allowMissingForEmptyStore,
         CancellationToken cancellationToken)
     {
+        if (verifiedSequence is { } known)
+        {
+            if (known == 0 && !allowMissingForEmptyStore)
+            {
+                throw new InvalidDataException("The durable payload allocation sequence is missing.");
+            }
+            return known;
+        }
+        SequenceFileReadCount++;
         FileStream stream;
         try
         {
@@ -426,11 +473,11 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         }
         catch (FileNotFoundException)
         {
-            return ResolveMissingSequence(allowMissingForEmptyStore);
+            return (verifiedSequence = ResolveMissingSequence(allowMissingForEmptyStore)).Value;
         }
         catch (DirectoryNotFoundException)
         {
-            return ResolveMissingSequence(allowMissingForEmptyStore);
+            return (verifiedSequence = ResolveMissingSequence(allowMissingForEmptyStore)).Value;
         }
 
         var bytes = new byte[SequenceFileSize];
@@ -465,6 +512,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             throw new InvalidDataException("The durable payload allocation sequence checksum is invalid.");
         }
 
+        verifiedSequence = sequence;
         return sequence;
     }
 
@@ -479,6 +527,8 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         SHA256.HashData(bytes.AsSpan(0, 32), bytes.AsSpan(32, 32));
 
         var temporaryPath = CreateTemporaryPath(sequencePath);
+        // A failed commit may have replaced the file. Re-establish proof before allocating again.
+        verifiedSequence = null;
         try
         {
             await WriteDurableFileAsync(
@@ -487,6 +537,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                 ReadOnlyMemory<byte>.Empty,
                 cancellationToken);
             CommitReplaceableFile(temporaryPath, sequencePath);
+            verifiedSequence = sequence;
         }
         finally
         {
@@ -497,8 +548,13 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
     private async Task<byte[]> ReadValidatedPayloadAsync(
         NativeTransactionJournalPayloadReference reference,
         NativeTransactionJournalPayloadBinding expectedBinding,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useVerifiedState = false)
     {
+        var provenance = NativeTransactionJournalPayloadProvenance.Create(expectedBinding);
+        if (useVerifiedState && TryReadVerifiedPayload(reference, provenance, out var verified)) return verified;
+        verifiedPayloads.Remove(reference);
+        PayloadFileReadCount++;
         var payloadPath = ResolvePayloadPath(reference.Slot, reference.Generation);
         await using var stream = OpenRead(payloadPath);
         var expectedFileLength = checked((long)PayloadHeaderSize + checked((long)reference.Length));
@@ -521,6 +577,11 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             throw new InvalidDataException("The durable rollback payload checksum is invalid.");
         }
 
+        if (useVerifiedState)
+        {
+            verifiedPayloads[reference] = new(provenance, payload);
+            return payload.ToArray();
+        }
         return payload;
     }
 
@@ -529,6 +590,8 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         NativeTransactionJournalPayloadProvenance expectedProvenance,
         CancellationToken cancellationToken)
     {
+        verifiedPayloads.Remove(reference);
+        PayloadFileReadCount++;
         var payloadPath = ResolvePayloadPath(reference.Slot, reference.Generation);
         await using var stream = OpenRead(payloadPath);
         var expectedFileLength = checked((long)PayloadHeaderSize + checked((long)reference.Length));
@@ -553,6 +616,25 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
 
         return payload;
     }
+
+    private bool TryReadVerifiedPayload(
+        NativeTransactionJournalPayloadReference reference,
+        NativeTransactionJournalPayloadProvenance provenance,
+        out byte[] payload)
+    {
+        if (verifiedPayloads.TryGetValue(reference, out var known))
+        {
+            if (known.Provenance != provenance)
+                throw new InvalidDataException("The durable rollback payload header is invalid.");
+            payload = known.Payload.ToArray();
+            return true;
+        }
+        payload = null!;
+        return false;
+    }
+
+    private sealed record CachedPayload(
+        NativeTransactionJournalPayloadProvenance Provenance, byte[] Payload);
 
     private static NativeTransactionJournalPayloadReference CreateReference(
         ulong sequence,
@@ -724,7 +806,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                 Mode = FileMode.Open,
                 Access = FileAccess.Read,
                 Share = FileShare.Read,
-                BufferSize = IoBufferSize,
+                BufferSize = 1,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });
 

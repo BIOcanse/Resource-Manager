@@ -320,7 +320,7 @@ public sealed partial class HostManagerSmartCoordinator
             .CreatePayloadReference(in ownership);
         var payloadBinding = HostManagerAppliedOwnershipProjection
             .CreatePayloadBinding(in ownership);
-        var payload = await admission.ReadPayloadAsync(
+        var payload = await admission.ReadOwnedPayloadAsync(
             payloadReference,
             payloadBinding,
             cancellationToken);

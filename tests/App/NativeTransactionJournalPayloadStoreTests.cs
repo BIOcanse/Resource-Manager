@@ -14,6 +14,100 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task TransactionReadRevalidatesAndDiscardsPreviouslyVerifiedOwnedProof(bool provenanceRead)
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            using var store = CreateStore(root);
+            var binding = CreateBinding(actionId: 104);
+            var reference = await store.PersistAsync(binding, new byte[] { 1, 2, 3 }, CancellationToken.None);
+            _ = await store.ReadOwnedAsync(reference, binding, CancellationToken.None);
+            var path = Directory.GetFiles(root, "payload-??????????-??????????.bin").Single();
+            var image = await File.ReadAllBytesAsync(path);
+            image[^1] ^= 1;
+            await File.WriteAllBytesAsync(path, image);
+            await Assert.ThrowsAsync<InvalidDataException>(() => provenanceRead
+                ? store.ReadAsync(reference, NativeTransactionJournalPayloadProvenance.Create(binding), CancellationToken.None)
+                : store.ReadAsync(reference, binding, CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadOwnedAsync(reference, binding, CancellationToken.None));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task VerifiedPayloadAndSequenceAreReusedWithoutSharingMutableCallerMemory()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var binding = CreateBinding(actionId: 101);
+            var source = new byte[] { 1, 2, 3 };
+            NativeTransactionJournalPayloadReference reference;
+            using (var store = CreateStore(root))
+            {
+                reference = await store.PersistAsync(binding, source, CancellationToken.None);
+                source[0] = 99;
+                var first = await store.ReadOwnedAsync(reference, binding, CancellationToken.None);
+                Assert.Equal(new byte[] { 1, 2, 3 }, first);
+                var payloadReads = store.PayloadFileReadCount;
+                var sequenceReads = store.SequenceFileReadCount;
+                first[1] = 99;
+                Assert.Equal(new byte[] { 1, 2, 3 }, await store.ReadOwnedAsync(reference,
+                    binding, CancellationToken.None));
+                await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadOwnedAsync(reference,
+                    binding with { ActionIdentity = CreateIdentity(actionId: 103) }, CancellationToken.None));
+                Assert.Equal(payloadReads, store.PayloadFileReadCount);
+                Assert.Equal(sequenceReads, store.SequenceFileReadCount);
+            }
+            using (var reopened = CreateStore(root))
+            {
+                Assert.Equal(new byte[] { 1, 2, 3 }, await reopened.ReadOwnedAsync(reference, binding, CancellationToken.None));
+                Assert.Equal(1, reopened.PayloadFileReadCount);
+                Assert.Equal(1, reopened.SequenceFileReadCount);
+                _ = await reopened.ReadOwnedAsync(reference, binding, CancellationToken.None);
+                Assert.Equal(1, reopened.PayloadFileReadCount);
+                Assert.Equal(1, reopened.SequenceFileReadCount);
+                Assert.True(await reopened.DeleteAsync(reference, binding, CancellationToken.None));
+                await Assert.ThrowsAsync<FileNotFoundException>(
+                    () => reopened.ReadAsync(reference, binding, CancellationToken.None));
+            }
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task ReconciliationRevalidatesSequenceAndPayloadDespitePriorOwnerProof()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            using var store = CreateStore(root);
+            var binding = CreateBinding(actionId: 102);
+            var reference = await store.PersistAsync(binding, new byte[] { 4, 5, 6 }, CancellationToken.None);
+            var path = Directory.GetFiles(root, "payload-??????????-??????????.bin").Single();
+            var image = await File.ReadAllBytesAsync(path);
+            image[^1] ^= 1;
+            await File.WriteAllBytesAsync(path, image);
+            _ = await store.ReconcileAsync(new NativeTransactionJournalPayloadLiveReference[]
+            {
+                new(reference, NativeTransactionJournalPayloadProvenance.Create(binding))
+            }, CancellationToken.None);
+            await Assert.ThrowsAsync<FileNotFoundException>(
+                () => store.ReadAsync(reference, binding, CancellationToken.None));
+            var sequence = Path.Combine(root, "payload-sequence.bin");
+            image = await File.ReadAllBytesAsync(sequence);
+            image[16] ^= 1;
+            await File.WriteAllBytesAsync(sequence, image);
+            await Assert.ThrowsAsync<InvalidDataException>(() => store.ReconcileAsync(
+                ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty, CancellationToken.None));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task QuarantineRetainsOnlyLiveEvidenceAcrossRestartAndSettlement(bool truncated)
     {
         var root = CreateTempDirectory();
