@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
@@ -116,20 +117,36 @@ public sealed partial class DashboardMonitoringCatalogStateTests
     }
 
     [Fact]
-    public async Task FailedInitialRebuildRetriesWithoutKeepingSamplingDemand()
+    public async Task FailedRebuildWaitsForCatalogChangeAndLogsRepeatedFailureAtDebug()
     {
         var state = new DashboardMonitoringCatalogState();
         var source = new CatalogueSource(state);
-        var coordinator = new RecordingRuntimeSpecializationCoordinator { FailOnce = true };
+        var coordinator = new RecordingRuntimeSpecializationCoordinator { Failure = "Plan rebuild failure." };
+        var logger = new RecordingSynchronizerLogger();
         using var synchronizer = new DashboardMonitoringPlanSynchronizer(source, state,
-            coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
+            coordinator, logger);
         await synchronizer.StartAsync(CancellationToken.None);
         await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         source.Publish(CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage"));
         await source.Released.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(LogLevel.Warning, await logger.Entries.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(0, source.ActiveSubscriptions);
-        await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(8));
-        Assert.Equal(["monitoring-catalog-ready", "monitoring-catalog-ready"], coordinator.Reasons);
+        await Task.Delay(DashboardMonitoringPlanSynchronizer.CatalogSubscriptionInterval + TimeSpan.FromMilliseconds(250));
+        Assert.Single(coordinator.Reasons);
+        source.Publish(CreateSnapshot(2, "gpu-dedicated", "gpu.0.usage"));
+        Assert.Equal(LogLevel.Debug, await logger.Entries.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        coordinator.Failure = "Different plan rebuild failure.";
+        source.Publish(CreateSnapshot(3, "gpu-dedicated", "gpu.0.usage"));
+        Assert.Equal(LogLevel.Warning, await logger.Entries.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        coordinator.Failure = null;
+        source.Publish(CreateSnapshot(4, "gpu-dedicated", "gpu.0.usage"));
+        await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        coordinator.Failure = "Different plan rebuild failure.";
+        source.Publish(CreateSnapshot(5, "gpu-dedicated", "gpu.0.usage"));
+        Assert.Equal(LogLevel.Warning, await logger.Entries.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(5, coordinator.Reasons.Count);
+        Assert.All(coordinator.Reasons.Take(4), reason => Assert.Equal("monitoring-catalog-ready", reason));
+        Assert.Equal("monitoring-catalog-changed", coordinator.Reasons[4]);
         Assert.False(source.Started.Reader.TryRead(out _));
         await synchronizer.StopAsync(CancellationToken.None);
     }
@@ -276,7 +293,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
         public Task<ResourceManager.App.Domain.CpuTopology.CpuBaselineRatioUpdateResult> ApplyCpuBaselineRatioAsync(
             double? overrideRatio, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public bool FailOnce { get; set; }
+        public string? Failure { get; set; }
         private readonly List<string> reasons = [];
 
         public IReadOnlyList<string> Reasons
@@ -303,10 +320,9 @@ public sealed partial class DashboardMonitoringCatalogStateTests
             {
                 reasons.Add(reason);
             }
-            if (FailOnce)
+            if (Failure is { } failure)
             {
-                FailOnce = false;
-                throw new IOException("Transient plan rebuild failure.");
+                throw new IOException(failure);
             }
             if (reason == "monitoring-catalog-changed")
             {
@@ -330,5 +346,14 @@ public sealed partial class DashboardMonitoringCatalogStateTests
             string reason,
             CancellationToken cancellationToken) =>
             Task.FromResult<AppSettingsUpdateResult>(null!);
+    }
+
+    private sealed class RecordingSynchronizerLogger : ILogger<DashboardMonitoringPlanSynchronizer>
+    {
+        public Channel<LogLevel> Entries { get; } = Channel.CreateUnbounded<LogLevel>();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Writer.TryWrite(logLevel);
     }
 }

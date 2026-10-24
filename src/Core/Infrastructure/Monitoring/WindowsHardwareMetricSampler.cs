@@ -271,15 +271,15 @@ public sealed partial class WindowsHardwareMetricSampler :
         await sampleGate.WaitAsync(cancellationToken);
         try
         {
-            var snapshot = await ReadSnapshotCoreAsync(
+            var (snapshot, sampledRequest) = await ReadSnapshotCoreAsync(
                 request,
                 cancellationToken,
-                completed =>
+                (completed, selection) =>
                 {
-                    _ = publishedSnapshot.Publish(completed, request);
+                    _ = publishedSnapshot.Publish(completed, selection);
                 });
-            if (request.IncludesCatalog) dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
-            PublishCompletedDatasets(GetPublicationItemIds(request));
+            if (sampledRequest.IncludesCatalog) dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
+            PublishCompletedDatasets(GetPublicationItemIds(sampledRequest));
             return ProjectSnapshot(snapshot, request);
         }
         finally
@@ -596,7 +596,7 @@ public sealed partial class WindowsHardwareMetricSampler :
 
         HardwareMetricHostedPublicationTicket? ticket = null;
         var queriedAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var publicationDatasetIds = request.IncludesCatalog
+        IReadOnlyList<string> publicationDatasetIds = request.IncludesCatalog
             ? dueDatasetIds.Concat([SamplingDatasetIds.StorageInventory, SamplingDatasetIds.FanInventory, SamplingDatasetIds.BatteryInventory]).ToArray()
             : dueDatasetIds;
         try
@@ -610,10 +610,13 @@ public sealed partial class WindowsHardwareMetricSampler :
                 return SubscriptionSampleCompletion.Skipped;
             }
             ticket = capturedTicket;
-            var snapshot = await ReadSnapshotCoreAsync(
+            var (snapshot, sampledRequest) = await ReadSnapshotCoreAsync(
                 request,
                 cancellationToken,
                 sourceQueriesCompleted: queriedAddresses.UnionWith);
+            request = sampledRequest;
+            if (request.IncludesCatalog)
+                publicationDatasetIds = dueDatasetIds.Concat([SamplingDatasetIds.StorageInventory, SamplingDatasetIds.FanInventory, SamplingDatasetIds.BatteryInventory]).ToArray();
             if (!publishedSnapshot.TryPublishHosted(
                     capturedTicket,
                     snapshot,
@@ -1019,26 +1022,32 @@ public sealed partial class WindowsHardwareMetricSampler :
             || name.Equals("vramPercent", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<HardwareMetricSnapshot> ReadSnapshotCoreAsync(MetricSampleRequest request,
-        CancellationToken cancellationToken, Action<HardwareMetricSnapshot>? onCommitted = null,
+    private async Task<(HardwareMetricSnapshot Snapshot, MetricSampleRequest Request)> ReadSnapshotCoreAsync(MetricSampleRequest request,
+        CancellationToken cancellationToken, Action<HardwareMetricSnapshot, MetricSampleRequest>? onCommitted = null,
         Action<ImmutableHashSet<string>>? sourceQueriesCompleted = null)
     {
         if (request.IncludesCatalog) metricSnapshotOwner.RequestTopologyRefresh();
         _ = metricSnapshotOwner.RefreshTopologyIfRequested();
         using var lease = await metricSnapshotOwner.AcquireAsync(cancellationToken);
+        // Publish structural changes with this due sample; unchanged topology adds no catalog demand.
+        var catalog = dashboardMonitoringCatalog.Current;
+        var catalogChanged = catalog is null || catalog.WorkspaceIdentity != lease.WorkspaceIdentity
+            || catalog.CatalogGeneration != lease.Workspace.ReadHeader().CatalogGeneration;
+        if (catalogChanged) request = request.WithCatalog();
         var result = await capture.CaptureUnderGateAsync(request, lease.Workspace, lease.WorkspaceIdentity, lease.Topology,
             commit => lease.TryPublish(_ => { commit(); return true; }, out _),
             new(HostMetricSnapshotCopy.VirtualMemoryDetail, HostMetricSnapshotCopy.LegacyLabel), cancellationToken,
-            workspace => { _ = workspace.PersistRecoveryCheckpointIfAdvanced(DateTimeOffset.UtcNow); }, onCommitted,
+            workspace => { _ = workspace.PersistRecoveryCheckpointIfAdvanced(DateTimeOffset.UtcNow); },
+            onCommitted is null ? null : completed => onCommitted(completed, request),
             enrichBeforeCommit: async (snapshot, selection, token, sourceQueryStarted) =>
             {
-                if (selection.IsCatalogProbe) snapshot = controlFields.Discover(snapshot);
+                if (selection.IsCatalogProbe || catalogChanged) snapshot = controlFields.Discover(snapshot);
                 return selection.IsCatalogProbe ? snapshot
                     : await controlFields.ReadSelectedAsync(snapshot, selection, token, sourceQueryStarted);
             },
             sourceQueriesCompleted: sourceQueriesCompleted,
             fieldCatalog: dashboardMonitoringCatalog.Current);
-        return result ?? throw new MetricSnapshotWorkspaceRetiredException();
+        return (result ?? throw new MetricSnapshotWorkspaceRetiredException(), request);
     }
     internal static HardwareMetricSnapshot AddCatalogObservations(HardwareMetricSnapshot snapshot, NativeMetricSnapshotCatalogTopologySnapshot? topology, DateTimeOffset observedAt)
         => WindowsHardwareMetricCapture.AddCatalogObservations(snapshot, topology, observedAt);
