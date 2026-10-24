@@ -9,6 +9,8 @@ export default async function softwareIssueJourney(page, baseUrl) {
       failures.push(`console: ${message.text()}`);
     }
   });
+  // This journey doesn't exercise report-rule settings, but the shared shell reads them.
+  await page.route("**/api/settings/report-rules", route => route.fulfill({ json: { rules: [] } }));
 
   const assert = (condition, message) => {
     if (!condition) {
@@ -109,7 +111,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
     await page.getByRole("navigation", { name: app.management.categoryNav }).getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
     const localizedCard = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
-    await localizedCard.getByText(app.management.issueText.AbnormalMemoryUsage, { exact: true }).waitFor();
+    await localizedCard.getByText(app.management.issueText.abnormal_memory_usage, { exact: true }).waitFor();
     await localizedCard.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const detail = page.getByRole("dialog", { name: "示例软件", exact: true });
     await detail.getByText(app.management.issueText.winringMessage, { exact: true }).waitFor();

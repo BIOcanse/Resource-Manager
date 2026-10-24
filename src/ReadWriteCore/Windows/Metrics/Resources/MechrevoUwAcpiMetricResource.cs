@@ -48,12 +48,14 @@ public MechrevoUwAcpiMetricResource(Func<string?> resolveLibraryPath,
             }
             if (reader is null)
             {
-                return new(new HardwareSensorProviderState(ProviderName, "Missing",
+                return new(new HardwareSensorProviderState(ProviderName, HardwareSensorProviderStates.Missing,
                     missingMessage), null, null, null);
             }
 
             var result = reader.Read();
-            var state = result.Status == MechrevoUwAcpiReadStatus.Active ? "Active" : "Unavailable";
+            var state = result.Status == MechrevoUwAcpiReadStatus.Active
+                ? HardwareSensorProviderStates.Active
+                : HardwareSensorProviderStates.Unavailable;
             var message = describe?.Invoke(result, reader.LibraryPath) ?? result.Status.ToString();
             var gpuSensor = result.GpuFanSpeedRpm is null && result.GpuFanSpeedPercent is null
                 ? null

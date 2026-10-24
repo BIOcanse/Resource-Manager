@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using Microsoft.Win32.SafeHandles;
+using ResourceManager.App.Domain.Components;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -49,7 +50,7 @@ internal static class PawnIoRuntimeProbe
                 runtimeAvailable,
                 false,
                 installed?.Version,
-                installed is not null ? "InstalledUnverified" : "Missing",
+                installed is not null ? ComponentProviderStates.InstalledUnverified : ComponentProviderStates.Missing,
                 installed is not null
                     ? $"检测到 PawnIO 安装记录，但设备暂不可打开：{deviceError ?? "未知错误"}。"
                     : "未检测到 PawnIO 安装记录；需要通过组件安装显式安装官方签名驱动。",
@@ -62,7 +63,7 @@ internal static class PawnIoRuntimeProbe
                 runtimeAvailable,
                 true,
                 installed?.Version,
-                "RuntimeAvailable",
+                ComponentProviderStates.RuntimeAvailable,
                 "PawnIO 设备可打开。点「验证」确认 RyzenSMU 读数。",
                 installed?.InstallLocation ?? installed?.DisplayName);
         }
@@ -72,7 +73,7 @@ internal static class PawnIoRuntimeProbe
             runtimeAvailable,
             bridge.Verified,
             installed?.Version,
-            bridge.Verified ? "RuntimeActive" : "RuntimeAvailable",
+            bridge.Verified ? ComponentProviderStates.RuntimeActive : ComponentProviderStates.RuntimeAvailable,
             bridge.Message,
             installed?.InstallLocation ?? installed?.DisplayName);
     }

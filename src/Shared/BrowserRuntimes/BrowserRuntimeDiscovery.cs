@@ -7,9 +7,18 @@ namespace ResourceManager.Shared.BrowserRuntimes;
 
 public static class BrowserRuntimeKinds
 {
-    public const string WebView2Runtime = "WebView2Runtime";
-    public const string ChromiumBrowser = "ChromiumBrowser";
-    public const string GeckoBrowser = "GeckoBrowser";
+    public const string WebView2Runtime = "web_view2_runtime";
+    public const string ChromiumBrowser = "chromium_browser";
+    public const string GeckoBrowser = "gecko_browser";
+}
+
+public static class BrowserRuntimeSources
+{
+    public const string SystemMachine = "system_machine";
+    public const string SystemUser = "system_user";
+    public const string Managed = "managed";
+    public const string BrowserRegistration = "browser_registration";
+    public const string KnownInstall = "known_install";
 }
 
 public sealed record BrowserRuntimeCandidate(
@@ -122,7 +131,7 @@ public static class BrowserRuntimeDiscovery
                 runtimeDirectory,
                 "Resource Manager 共享 WebView2 Runtime",
                 version: null,
-                source: "Managed");
+                source: BrowserRuntimeSources.Managed);
         }
     }
 
@@ -155,10 +164,10 @@ public static class BrowserRuntimeDiscovery
     private static void AddInstalledWebView2Runtimes(
         IDictionary<string, BrowserRuntimeCandidate> candidates)
     {
-        AddInstalledWebView2Runtime(candidates, RegistryHive.LocalMachine, RegistryView.Registry32, "SystemMachine");
-        AddInstalledWebView2Runtime(candidates, RegistryHive.LocalMachine, RegistryView.Registry64, "SystemMachine");
-        AddInstalledWebView2Runtime(candidates, RegistryHive.CurrentUser, RegistryView.Registry32, "SystemUser");
-        AddInstalledWebView2Runtime(candidates, RegistryHive.CurrentUser, RegistryView.Registry64, "SystemUser");
+        AddInstalledWebView2Runtime(candidates, RegistryHive.LocalMachine, RegistryView.Registry32, BrowserRuntimeSources.SystemMachine);
+        AddInstalledWebView2Runtime(candidates, RegistryHive.LocalMachine, RegistryView.Registry64, BrowserRuntimeSources.SystemMachine);
+        AddInstalledWebView2Runtime(candidates, RegistryHive.CurrentUser, RegistryView.Registry32, BrowserRuntimeSources.SystemUser);
+        AddInstalledWebView2Runtime(candidates, RegistryHive.CurrentUser, RegistryView.Registry64, BrowserRuntimeSources.SystemUser);
     }
 
     private static void AddInstalledWebView2Runtime(
@@ -284,7 +293,7 @@ public static class BrowserRuntimeDiscovery
                         AddBrowserCandidate(
                             candidates,
                             appPath?.GetValue(null) as string,
-                            "BrowserRegistration",
+                            BrowserRuntimeSources.BrowserRegistration,
                             fallbackName: Path.GetFileNameWithoutExtension(subKeyName));
                     }
                 }
@@ -318,7 +327,7 @@ public static class BrowserRuntimeDiscovery
                         AddBrowserCandidate(
                             candidates,
                             command?.GetValue(null) as string,
-                            "BrowserRegistration",
+                            BrowserRuntimeSources.BrowserRegistration,
                             CleanText(client?.GetValue(null) as string) ?? clientKeyName);
                     }
                 }
@@ -379,7 +388,7 @@ public static class BrowserRuntimeDiscovery
 
         foreach (var (name, path) in knownPaths)
         {
-            AddBrowserCandidate(candidates, path, "KnownInstall", name);
+            AddBrowserCandidate(candidates, path, BrowserRuntimeSources.KnownInstall, name);
         }
     }
 

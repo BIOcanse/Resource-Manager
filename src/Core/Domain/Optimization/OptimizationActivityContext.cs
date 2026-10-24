@@ -2,10 +2,10 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class OptimizationActivityContextKinds
 {
-    public const string Unknown = "Unknown";
-    public const string Normal = "Normal";
-    public const string Game = "Game";
-    public const string HighPerformance = "HighPerformance";
+    public const string Unknown = "unknown";
+    public const string Normal = "normal";
+    public const string Game = "game";
+    public const string HighPerformance = "high_performance";
 }
 
 public sealed record OptimizationActivityContext(
@@ -27,7 +27,7 @@ public sealed record OptimizationActivityContext(
             null,
             null,
             null,
-            "Low",
+            OptimizationConfidence.Low,
             []);
     }
 }

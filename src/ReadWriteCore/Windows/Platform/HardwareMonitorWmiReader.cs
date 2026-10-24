@@ -66,7 +66,7 @@ public sealed partial class HardwareMonitorWmiReader
         return new HardwareMonitorSensorSnapshot(
             new HardwareSensorProviderState(
                 "Hardware monitor WMI",
-                "Unavailable",
+                HardwareSensorProviderStates.Unavailable,
                 $"{libre.Error}; {open.Error}"),
             null,
             null,
@@ -98,7 +98,7 @@ public sealed partial class HardwareMonitorWmiReader
         if (result.Error is not null && result.Rows.Count == 0)
         {
             return new HardwareMonitorSensorSnapshot(
-                new HardwareSensorProviderState(provider, "Unavailable", result.Error),
+                new HardwareSensorProviderState(provider, HardwareSensorProviderStates.Unavailable, result.Error),
                 null,
                 null,
                 null,
@@ -213,8 +213,8 @@ public sealed partial class HardwareMonitorWmiReader
             || cpuFanPercent is not null
             || systemFans.Any(static fan => fan.SpeedRpm is not null || fan.SpeedPercent is not null)
             || gpuSensors.Any(static sensor => sensor.HasAnyValue)
-                ? new HardwareSensorProviderState(provider, "Active", null)
-                : new HardwareSensorProviderState(provider, "Unavailable", null);
+                ? new HardwareSensorProviderState(provider, HardwareSensorProviderStates.Active, null)
+                : new HardwareSensorProviderState(provider, HardwareSensorProviderStates.Unavailable, null);
 
         return new HardwareMonitorSensorSnapshot(
             state,

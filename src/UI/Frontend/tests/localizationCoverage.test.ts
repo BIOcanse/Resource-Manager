@@ -14,7 +14,7 @@ import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { applyLanguage, currentLanguage, currentSettingsText, uiText } from "../src/i18n/appTextStore.ts";
 import { controlCapabilityLabel, controlDisplayText } from "../src/features/control/controlPresentation.ts";
 import { systemProcessResultSummary } from "../src/presentation/systemProcessResult.ts";
-import { userFacingErrorMessage, userFacingMessage } from "../src/presentation/userFacingText.ts";
+import { userFacingErrorMessage, userFacingMessage, userFacingState } from "../src/presentation/userFacingText.ts";
 import { ApiRequestError } from "../src/api/httpTransport.ts";
 import { resourceMetricBasis } from "../src/presentation/metricLabels.ts";
 import { flattenCopy, inspectCopy, inspectParameters, inspectText, inspectTraditional } from "./localizationCoverage.ts";
@@ -43,6 +43,21 @@ const appCases: FunctionCase<AppCopy>[] = [
   { path: "diskUsage.scanTotals", render: copy => copy.diskUsage.scanTotals("29 GiB", 13, 7), parameters: ["29 GiB", "13", "7"], requiresTranslation: true },
   { path: "shell.documentTitle", render: copy => copy.shell.documentTitle("Test-page", "Resource Manager"), parameters: ["Test-page", "Resource Manager"], requiresTranslation: false }
 ];
+const componentProviderStateCases = [
+  ["active", "available"],
+  ["installed", "installed"],
+  ["installed_unverified", "installedUnverified"],
+  ["ready_to_install", "readyToInstall"],
+  ["manual_download_required", "manualDownload"],
+  ["provider_missing", "unavailable"],
+  ["missing", "missing"],
+  ["runtime_available", "available"],
+  ["driver_missing", "missing"],
+  ["runtime_active", "available"],
+  ["readyToInstall", "readyToInstall"],
+  ["manualDownloadRequired", "manualDownload"],
+  ["runtimeAvailable", "available"]
+] as const;
 for (const count of [0, 1, 37]) {
   appCases.push(
     { path: `diskUsage.fileCount(${count})`, render: copy => copy.diskUsage.fileCount(count), parameters: [String(count)], requiresTranslation: true },
@@ -89,7 +104,7 @@ try {
     assert.equal(settings.language, language, `${language}: settings loader silently returned another language.`);
     await applyLanguage(language);
     assert.equal(currentLanguage(), language);
-    const unclassified = { kind: "Unclassified" } as import("../src/types.ts").SoftwareIssueTag;
+    const unclassified = { kind: "unclassified" } as import("../src/types.ts").SoftwareIssueTag;
     assert.equal(softwareIssueLabel(unclassified), app.softwareKind.Unclassified);
     assert.equal(softwareIssueMessage(unclassified), app.management.unclassifiedReminder);
     assert.equal(runtimeDiscoveryLabel("runtime_package"), app.management.discoveredPackage);
@@ -109,6 +124,11 @@ try {
     }
 
     assert.equal(currentSettingsText().language, language);
+    for (const [wireState, copyState] of componentProviderStateCases) {
+      assert.equal(userFacingState(wireState), uiText.status.state[copyState], `${language}: state ${wireState}`);
+    }
+    assert.equal(userFacingState("InstalledUnverified"), uiText.status.unknownState,
+      `${language}: state conversion must match exact wire values`);
     assert.deepEqual(flattenCopy(uiText), flattenCopy(app), `${language}: active UI differs from the loaded bundle.`);
     assert.deepEqual(flattenCopy(currentSettingsText()), flattenCopy(settings));
     assert.equal(documentState.lang, language);

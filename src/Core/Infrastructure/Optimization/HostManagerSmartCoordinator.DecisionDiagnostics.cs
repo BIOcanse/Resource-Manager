@@ -1,4 +1,6 @@
 using System.Globalization;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -98,7 +100,7 @@ public sealed partial class HostManagerSmartCoordinator
                     Exact(score.AdapterKey),
                     score.Score,
                     score.MemberCount,
-                    score.RuntimeState.ToString()))
+                    RuntimeStateToken(score.RuntimeState)))
                 .ToArray());
     }
 
@@ -174,8 +176,8 @@ public sealed partial class HostManagerSmartCoordinator
             row.ProcessId,
             Exact(row.ProcessStartKey),
             row.SourceIndex,
-            row.SoftwareKind.ToString(),
-            row.RuntimeState.ToString(),
+            SoftwareKindToken(row.SoftwareKind),
+            RuntimeStateToken(row.RuntimeState),
             row.ProtectionLevel,
             row.BaseScore,
             row.CpuScore,
@@ -232,6 +234,49 @@ public sealed partial class HostManagerSmartCoordinator
                 directive.TargetMemoryPriority))
             .ToArray();
     }
+
+    private static string RuntimeStateToken(NativeSmartCoordinatorRuntimeState state)
+        => state switch
+        {
+            NativeSmartCoordinatorRuntimeState.Unknown => HostManagerRuntimeStates.Unknown,
+            NativeSmartCoordinatorRuntimeState.ForegroundFocused => HostManagerRuntimeStates.ForegroundFocused,
+            NativeSmartCoordinatorRuntimeState.ForegroundUnfocused => HostManagerRuntimeStates.ForegroundUnfocused,
+            NativeSmartCoordinatorRuntimeState.BackgroundWindow => HostManagerRuntimeStates.BackgroundWindow,
+            NativeSmartCoordinatorRuntimeState.TrayOnly => HostManagerRuntimeStates.TrayOnly,
+            NativeSmartCoordinatorRuntimeState.BackgroundProcess => HostManagerRuntimeStates.BackgroundProcess,
+            NativeSmartCoordinatorRuntimeState.NotRunning => HostManagerRuntimeStates.NotRunning,
+            _ => throw new InvalidDataException($"Unknown native runtime state '{state}'.")
+        };
+
+    private static string RuntimeStateToken(NativeComputeScoringRuntimeState state)
+        => state switch
+        {
+            NativeComputeScoringRuntimeState.Unknown => HostManagerRuntimeStates.Unknown,
+            NativeComputeScoringRuntimeState.ForegroundFocused => HostManagerRuntimeStates.ForegroundFocused,
+            NativeComputeScoringRuntimeState.ForegroundUnfocused => HostManagerRuntimeStates.ForegroundUnfocused,
+            NativeComputeScoringRuntimeState.BackgroundWindow => HostManagerRuntimeStates.BackgroundWindow,
+            NativeComputeScoringRuntimeState.TrayOnly => HostManagerRuntimeStates.TrayOnly,
+            NativeComputeScoringRuntimeState.BackgroundProcess => HostManagerRuntimeStates.BackgroundProcess,
+            NativeComputeScoringRuntimeState.NotRunning => HostManagerRuntimeStates.NotRunning,
+            _ => throw new InvalidDataException($"Unknown native compute runtime state '{state}'.")
+        };
+
+    private static string SoftwareKindToken(NativeSmartCoordinatorSoftwareKind kind)
+        => kind switch
+        {
+            NativeSmartCoordinatorSoftwareKind.Unknown => "unknown",
+            NativeSmartCoordinatorSoftwareKind.Game => SoftwareKinds.Game,
+            NativeSmartCoordinatorSoftwareKind.HighPerformance => SoftwareKinds.HighPerformance,
+            NativeSmartCoordinatorSoftwareKind.WindowsSystem => SoftwareKinds.WindowsSystem,
+            NativeSmartCoordinatorSoftwareKind.Adapted => SoftwareKinds.Adapted,
+            NativeSmartCoordinatorSoftwareKind.Dependency => SoftwareManagementRoles.Dependency,
+            NativeSmartCoordinatorSoftwareKind.Runtime => "runtime",
+            NativeSmartCoordinatorSoftwareKind.Controlled => SoftwareKinds.Controlled,
+            NativeSmartCoordinatorSoftwareKind.Managed => SoftwareKinds.Managed,
+            NativeSmartCoordinatorSoftwareKind.Unattributed => SoftwareKinds.Unattributed,
+            NativeSmartCoordinatorSoftwareKind.GeneralApplication => "general_application",
+            _ => throw new InvalidDataException($"Unknown native software kind '{kind}'.")
+        };
 
     private static string Exact(ulong value)
         => value.ToString(CultureInfo.InvariantCulture);

@@ -25,6 +25,7 @@ import {
   type SourceSnapshot
 } from "../../frontendRuntime/source/SourceSnapshot";
 import { resolveGpuDeviceName } from "./gpuDeviceName";
+import { defaultGpuSoftwareBaseScore } from "./gpuSoftwareBaseScore";
 import { metricDisplayValue } from "../../presentation/metricLabels";
 import {
   failedObservation,
@@ -809,32 +810,7 @@ function resolveSegmentBaseScore(segment: ResourceSoftwareSegment) {
 }
 
 function defaultBaseScoreForKind(kind?: string | null) {
-  switch ((kind ?? "").toLowerCase()) {
-    case "game":
-      return 95;
-    case "highperformance":
-      return 85;
-    case "windowssystem":
-    case "windowscomponent":
-    case "windowsservice":
-      return 90;
-    case "adapted":
-      return 80;
-    case "dependencysupport":
-      return 65;
-    case "runtimeproduct":
-    case "runtimepackage":
-    case "runtimeroot":
-      return 55;
-    case "controlled":
-      return 45;
-    case "managed":
-      return 42;
-    case "unattributed":
-      return 30;
-    default:
-      return 35;
-  }
+  return defaultGpuSoftwareBaseScore(kind);
 }
 
 function fullReasonFor(

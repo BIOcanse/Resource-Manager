@@ -56,9 +56,9 @@ public static class BrowserRuntimeSelection
     private static int SourcePriority(BrowserRuntimeCandidate candidate)
         => candidate.Source switch
         {
-            "SystemMachine" => 0,
-            "SystemUser" => 1,
-            "Managed" => 2,
+            BrowserRuntimeSources.SystemMachine => 0,
+            BrowserRuntimeSources.SystemUser => 1,
+            BrowserRuntimeSources.Managed => 2,
             _ => 3
         };
 

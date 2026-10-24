@@ -12,9 +12,9 @@ export interface OptimizationReportPresentation {
 }
 
 export function presentOptimizationReport(report: OptimizationReportItem): OptimizationReportPresentation {
-  const name = userFacingOptionalValue(report.target.displayName, report.target.targetType === "System"
+  const name = userFacingOptionalValue(report.target.displayName, report.target.targetType === "system"
     ? uiText.optimizationReport.resource.systemInterrupt : uiText.optimizationReport.currentTarget);
-  const resource = resourceLabel(report.evidence.resourceKind);
+  const resource = optimizationResourceLabel(report.evidence.resourceKind);
   return {
     title: reportTitle(report.type, name, resource),
     summary: reportSummary(report, name, resource),
@@ -23,7 +23,7 @@ export function presentOptimizationReport(report: OptimizationReportItem): Optim
 }
 
 export function optimizationSeverityLabel(value: string) {
-  switch (value.toLocaleLowerCase()) {
+  switch (value) {
     case "critical": return uiText.optimizationReport.severityCritical;
     case "warning": return uiText.optimizationReport.severityWarning;
     default: return uiText.optimizationReport.severityInfo;
@@ -33,27 +33,27 @@ export function optimizationSeverityLabel(value: string) {
 function reportTitle(type: string, name: string, resource: string) {
   switch (type) {
     case "suspected_stray_process": return uiText.optimizationReport.strayProcess.title(name);
-    case "GameBackgroundResourceUsage": return uiText.optimizationReport.title.gameBackgroundResourceUsage(name);
-    case "BackgroundHighUsage": return uiText.optimizationReport.title.backgroundHighUsage(name, resource);
-    case "BackgroundPersistentMicroUsage": return uiText.optimizationReport.title.backgroundPersistentMicroUsage(name);
-    case "VramResidency": return uiText.optimizationReport.title.vramResidency(name);
-    case "DiskPressure": return uiText.optimizationReport.title.diskPressure(name);
-    case "RollingDiskTraffic": return uiText.optimizationReport.title.rollingDiskTraffic(name);
-    case "RollingDiskWrite": return uiText.optimizationReport.title.rollingDiskWrite(name);
-    case "RollingNetworkTraffic": return uiText.optimizationReport.title.rollingNetworkTraffic(name);
-    case "RollingNetworkActivity": return uiText.optimizationReport.title.rollingNetworkActivity(name);
-    case "SoftwareFootprint": return uiText.optimizationReport.title.softwareFootprint(name);
-    case "PowerProfileNotPerformanceFocused": return uiText.optimizationReport.title.powerProfileNotPerformanceFocused;
-    case "ExternalDisplayLinkCapabilityGap": return uiText.optimizationReport.title.externalDisplayLinkCapabilityGap(name);
-    case "DeviceDriverProblem": return uiText.optimizationReport.title.deviceDriverProblem(name);
-    case "ExternalDiskDuplicateSecurityScan": return uiText.optimizationReport.title.externalDiskDuplicateSecurityScan(name);
-    case "ExternalDiskIdleTimeoutTooShort": return uiText.optimizationReport.title.externalDiskIdleTimeoutTooShort(name);
-    case "PhysicalDiskLatencyHigh": return uiText.optimizationReport.title.physicalDiskLatencyHigh(name);
-    case "PhysicalDiskHealthWarning": return uiText.optimizationReport.title.physicalDiskHealthWarning(name);
-    case "ExternalDiskLinkCapabilityGap": return uiText.optimizationReport.title.externalDiskLinkCapabilityGap(name);
-    case "VolumeFragmentationHigh": return uiText.optimizationReport.title.volumeFragmentationHigh(name);
-    case "CpuSustainedThermalThrottling": return uiText.optimizationReport.title.cpuSustainedThermalThrottling;
-    case "SystemInterruptPressure": return uiText.optimizationReport.title.systemInterruptPressure;
+    case "game_background_resource_usage": return uiText.optimizationReport.title.gameBackgroundResourceUsage(name);
+    case "background_high_usage": return uiText.optimizationReport.title.backgroundHighUsage(name, resource);
+    case "background_persistent_micro_usage": return uiText.optimizationReport.title.backgroundPersistentMicroUsage(name);
+    case "vram_residency": return uiText.optimizationReport.title.vramResidency(name);
+    case "disk_pressure": return uiText.optimizationReport.title.diskPressure(name);
+    case "rolling_disk_traffic": return uiText.optimizationReport.title.rollingDiskTraffic(name);
+    case "rolling_disk_write": return uiText.optimizationReport.title.rollingDiskWrite(name);
+    case "rolling_network_traffic": return uiText.optimizationReport.title.rollingNetworkTraffic(name);
+    case "rolling_network_activity": return uiText.optimizationReport.title.rollingNetworkActivity(name);
+    case "software_footprint": return uiText.optimizationReport.title.softwareFootprint(name);
+    case "power_profile_not_performance_focused": return uiText.optimizationReport.title.powerProfileNotPerformanceFocused;
+    case "external_display_link_capability_gap": return uiText.optimizationReport.title.externalDisplayLinkCapabilityGap(name);
+    case "device_driver_problem": return uiText.optimizationReport.title.deviceDriverProblem(name);
+    case "external_disk_duplicate_security_scan": return uiText.optimizationReport.title.externalDiskDuplicateSecurityScan(name);
+    case "external_disk_idle_timeout_too_short": return uiText.optimizationReport.title.externalDiskIdleTimeoutTooShort(name);
+    case "physical_disk_latency_high": return uiText.optimizationReport.title.physicalDiskLatencyHigh(name);
+    case "physical_disk_health_warning": return uiText.optimizationReport.title.physicalDiskHealthWarning(name);
+    case "external_disk_link_capability_gap": return uiText.optimizationReport.title.externalDiskLinkCapabilityGap(name);
+    case "volume_fragmentation_high": return uiText.optimizationReport.title.volumeFragmentationHigh(name);
+    case "cpu_sustained_thermal_throttling": return uiText.optimizationReport.title.cpuSustainedThermalThrottling;
+    case "system_interrupt_pressure": return uiText.optimizationReport.title.systemInterruptPressure;
     default: return uiText.optimizationReport.title.generic(name);
   }
 }
@@ -68,15 +68,15 @@ function reportSummary(report: OptimizationReportItem, name: string, resource: s
         process?.memoryBytes == null ? userFacingOptionalValue(null) : formatBytes(process.memoryBytes, "memory"),
         process?.idleDurationSeconds == null ? userFacingOptionalValue(null) : formatDuration(process.idleDurationSeconds));
     }
-    case "DiskPressure": return uiText.optimizationReport.summary.diskPressure(name, current);
-    case "SoftwareFootprint": return uiText.optimizationReport.summary.softwareFootprint(name, current);
-    case "RollingDiskTraffic":
-    case "RollingDiskWrite":
-    case "RollingNetworkTraffic": return uiText.optimizationReport.summary.rollingTotal(average);
-    case "RollingNetworkActivity": return uiText.optimizationReport.summary.rollingNetworkActivity;
-    case "PowerProfileNotPerformanceFocused": return uiText.optimizationReport.summary.powerProfileNotPerformanceFocused;
-    case "CpuSustainedThermalThrottling": return uiText.optimizationReport.summary.cpuSustainedThermalThrottling;
-    case "SystemInterruptPressure": return `${uiText.optimizationReport.summary.systemInterruptPressure} ${uiText.optimizationReport.detail.current}: ${current}. ${uiText.management.issueText.interruptAdvice}`;
+    case "disk_pressure": return uiText.optimizationReport.summary.diskPressure(name, current);
+    case "software_footprint": return uiText.optimizationReport.summary.softwareFootprint(name, current);
+    case "rolling_disk_traffic":
+    case "rolling_disk_write":
+    case "rolling_network_traffic": return uiText.optimizationReport.summary.rollingTotal(average);
+    case "rolling_network_activity": return uiText.optimizationReport.summary.rollingNetworkActivity;
+    case "power_profile_not_performance_focused": return uiText.optimizationReport.summary.powerProfileNotPerformanceFocused;
+    case "cpu_sustained_thermal_throttling": return uiText.optimizationReport.summary.cpuSustainedThermalThrottling;
+    case "system_interrupt_pressure": return `${uiText.optimizationReport.summary.systemInterruptPressure} ${uiText.optimizationReport.detail.current}: ${current}. ${uiText.management.issueText.interruptAdvice}`;
     default: return uiText.optimizationReport.summary.generic(resource, current, average);
   }
 }
@@ -95,7 +95,7 @@ function reportDetails(report: OptimizationReportItem, name: string, resource: s
       userDetailItem(text.detail.lastObserved, userFacingDateTime(report.lastObservedAt))
     ])]);
   }
-  const foreground = report.context?.contextKind === "Game"
+  const foreground = report.context?.contextKind === "game"
     ? report.context.foregroundSoftwareName || report.context.foregroundProcessName
     : null;
   const processes = (report.target.processNames ?? []).filter(Boolean).slice(0, 6).join("、");
@@ -155,25 +155,25 @@ function trimNumber(value: number, maximumDigits: number) {
   return Number(value.toFixed(maximumDigits)).toString();
 }
 
-function resourceLabel(value: string) {
-  switch (value.toLocaleLowerCase()) {
+export function optimizationResourceLabel(value: string) {
+  switch (value) {
     case "cpu": return uiText.optimizationReport.resource.cpu;
     case "gpu": return uiText.optimizationReport.resource.gpu;
     case "memory": return uiText.optimizationReport.resource.memory;
     case "vram": return uiText.optimizationReport.resource.vram;
     case "disk": return uiText.optimizationReport.resource.disk;
-    case "diskwrite": return uiText.optimizationReport.resource.diskWrite;
+    case "disk_write": return uiText.optimizationReport.resource.diskWrite;
     case "network": return uiText.optimizationReport.resource.network;
-    case "networkactivity": return uiText.optimizationReport.resource.networkActivity;
-    case "softwarefootprint": return uiText.optimizationReport.resource.softwareFootprint;
-    case "powerprofile": return uiText.optimizationReport.resource.powerProfile;
-    case "devicedriver": return uiText.optimizationReport.resource.deviceDriver;
-    case "diskhealth": return uiText.optimizationReport.resource.diskHealth;
-    case "disklink": return uiText.optimizationReport.resource.diskLink;
-    case "disklatency": return uiText.optimizationReport.resource.diskLatency;
-    case "diskpower": return uiText.optimizationReport.resource.diskPower;
-    case "cputhermal": return uiText.optimizationReport.resource.cpuThermal;
-    case "systeminterrupt": return uiText.optimizationReport.resource.systemInterrupt;
+    case "network_activity": return uiText.optimizationReport.resource.networkActivity;
+    case "software_footprint": return uiText.optimizationReport.resource.softwareFootprint;
+    case "power_profile": return uiText.optimizationReport.resource.powerProfile;
+    case "device_driver": return uiText.optimizationReport.resource.deviceDriver;
+    case "disk_health": return uiText.optimizationReport.resource.diskHealth;
+    case "disk_link": return uiText.optimizationReport.resource.diskLink;
+    case "disk_latency": return uiText.optimizationReport.resource.diskLatency;
+    case "disk_power": return uiText.optimizationReport.resource.diskPower;
+    case "cpu_thermal": return uiText.optimizationReport.resource.cpuThermal;
+    case "system_interrupt": return uiText.optimizationReport.resource.systemInterrupt;
     default: return uiText.optimizationReport.resource.generic;
   }
 }

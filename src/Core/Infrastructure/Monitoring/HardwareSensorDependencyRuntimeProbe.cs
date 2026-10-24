@@ -1,6 +1,7 @@
 using System.Management;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.ReadWrite.Windows.Platform;
 
@@ -20,7 +21,9 @@ internal static class HardwareSensorDependencyRuntimeProbe
             try
             {
                 var hasQueryInterface = NativeLibrary.TryGetExport(handle, "nvapi_QueryInterface", out _);
-                var state = hasQueryInterface ? "RuntimeAvailable" : "InstalledUnverified";
+                var state = hasQueryInterface
+                    ? ComponentProviderStates.RuntimeAvailable
+                    : ComponentProviderStates.InstalledUnverified;
                 var message = hasQueryInterface
                     ? "NVIDIA NVAPI DLL 可加载，QueryInterface 导出存在；风扇/电压能力以实时 NVAPI 读数验证为准。"
                     : "NVIDIA NVAPI DLL 可加载，但未找到 QueryInterface 导出；需要后续桥接验证。";
@@ -35,7 +38,7 @@ internal static class HardwareSensorDependencyRuntimeProbe
         return new HardwareSensorDependencyRuntimeStatus(
             false,
             false,
-            "Missing",
+            ComponentProviderStates.Missing,
             "未能加载 NVIDIA NVAPI DLL；通常需要安装或修复 NVIDIA Windows 驱动。",
             null);
     }
@@ -45,7 +48,8 @@ internal static class HardwareSensorDependencyRuntimeProbe
         var library = typeof(LibreHardwareMonitor.Hardware.Computer).Assembly.Location;
         // Status reads never open the driver or enumerate sensors.
         var installed = LibreHardwareMonitor.PawnIo.PawnIo.IsInstalled;
-        return new(true, false, installed ? "InstalledUnverified" : "DriverMissing",
+        return new(true, false,
+            installed ? ComponentProviderStates.InstalledUnverified : ComponentProviderStates.DriverMissing,
             installed ? "官方核心库与 PawnIO 已安装；传感器能力由实际采样确认。"
                 : "官方核心库已随产品提供；需要显式安装 PawnIO 驱动。", library);
     }

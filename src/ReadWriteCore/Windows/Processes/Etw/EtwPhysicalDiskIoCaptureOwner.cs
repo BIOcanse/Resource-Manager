@@ -29,7 +29,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     private long processRevision;
     private int observedLoss;
     private bool disposed;
-    private volatile string state = "Idle";
+    private volatile string state = PhysicalDiskIoProviderStates.Idle;
     private volatile string message = "ETW DiskIO 物理磁盘归因按需启动。";
     public string State => state;
     public string Message => message;
@@ -65,10 +65,10 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                 legacy = new();
                 observed = includeObservedTraffic && after.IsRunning && after.Generation == selected.Generation
                     ? new PhysicalDiskProcessIoWindow(now, WindowMilliseconds, []) { Complete = false, Disks = scopes } : null;
-                state = after.IsRunning ? "Warming" : after.State;
+                state = after.IsRunning ? PhysicalDiskIoProviderStates.Warming : PhysicalDiskIoProviderStates.FromKernelEtwState(after.State);
                 message = after.IsRunning ? "ETW DiskIO 采样窗口不完整。" : after.Message;
             }
-            else { state = "Running"; message = "ETW DiskIO 正在采集磁盘传输完成事件。"; }
+            else { state = PhysicalDiskIoProviderStates.Running; message = "ETW DiskIO 正在采集磁盘传输完成事件。"; }
             return new(now, legacy, new("etw-fileio-disk", state, message)) { ObservedTraffic = observed };
         }
     }
@@ -85,7 +85,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                     RequiredKeywords,
                     BindKernelEvents));
             }
-            catch (Exception error) { state = "Unavailable"; message = error.Message; diagnostics.LogWarning(error, "Failed to start shared DiskIO source."); }
+            catch (Exception error) { state = PhysicalDiskIoProviderStates.Unavailable; message = error.Message; diagnostics.LogWarning(error, "Failed to start shared DiskIO source."); }
         }
     }
 
@@ -115,7 +115,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                 if (snapshot.EventsLost != observedLoss)
                 { events.Clear(); incompleteThroughTick = clock(); observedLoss = snapshot.EventsLost; }
             }
-            else { state = snapshot.State; message = snapshot.Message; }
+            else { state = PhysicalDiskIoProviderStates.FromKernelEtwState(snapshot.State); message = snapshot.Message; }
         }
     }
     internal void ObserveDiskTransfer(int pid, long bytes, bool write, long tick)
@@ -216,7 +216,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         {
             if (subscription is not null) return;
             lock (eventGate) { events.Clear(); startedTick = long.MinValue; incompleteThroughTick = long.MinValue; processRevision++; }
-            state = "Idle"; message = idleMessage;
+            state = PhysicalDiskIoProviderStates.Idle; message = idleMessage;
         }
     }
     public void Dispose()

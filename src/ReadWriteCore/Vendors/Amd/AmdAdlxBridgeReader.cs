@@ -324,7 +324,7 @@ public sealed partial class AmdAdlxBridgeReader
             || HasAvailable(native, IntakeTemperatureFlag)
             || HasAvailable(native, FanFlag)
             || HasAvailable(native, VoltageFlag);
-        var state = hasAnyValue ? "Partial" : "Unavailable";
+        var state = hasAnyValue ? HardwareSensorProviderStates.Partial : HardwareSensorProviderStates.Unavailable;
         var message = describeProviderMessage?.Invoke("AMD ADLX", state);
 
         return new GpuSensorMetrics(

@@ -191,7 +191,7 @@ public sealed class AmdSmuCpuSensorReader : IDisposable
         return new CpuSensorMetrics(
             new HardwareSensorProviderState(
                 "AMD SMU / PawnIO",
-                "Active",
+                HardwareSensorProviderStates.Active,
                 string.Format(
                     CultureInfo.InvariantCulture,
                     "PM table 0x{0:X8}; executor {1}; module {2}",
@@ -357,7 +357,7 @@ public sealed class AmdSmuCpuSensorReader : IDisposable
         return new CpuSensorMetrics(
             new HardwareSensorProviderState(
                 "AMD SMU / PawnIO",
-                "NotRequested",
+                HardwareSensorProviderStates.NotRequested,
                 "当前快照未请求 AMD SMU CPU 传感指标。"),
             null,
             null,
@@ -370,7 +370,7 @@ public sealed class AmdSmuCpuSensorReader : IDisposable
         return new CpuSensorMetrics(
             new HardwareSensorProviderState(
                 "AMD SMU / PawnIO",
-                "Unavailable",
+                HardwareSensorProviderStates.Unavailable,
                 message),
             null,
             null,

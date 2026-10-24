@@ -62,27 +62,27 @@ public static class WindowsNotebookFanProjection
 
     private static HardwareSensorProviderState MergeProviderStates(IReadOnlyList<HardwareSensorProviderState> states)
     {
-        if (states.Any(static state => state.State.Equals("Active", StringComparison.OrdinalIgnoreCase)))
+        if (states.Any(static state => state.State == HardwareSensorProviderStates.Active))
         {
             return new HardwareSensorProviderState(
                 ComponentName,
-                "Active",
+                HardwareSensorProviderStates.Active,
                 string.Join("; ", states.Select(static state => $"{state.Provider}: {state.State}")));
         }
 
         if (states.Any(static state =>
-            state.State.Equals("RuntimeAvailable", StringComparison.OrdinalIgnoreCase)
-            || state.State.Equals("InstalledUnverified", StringComparison.OrdinalIgnoreCase)))
+            state.State == HardwareSensorProviderStates.RuntimeAvailable
+            || state.State == HardwareSensorProviderStates.InstalledUnverified))
         {
             return new HardwareSensorProviderState(
                 ComponentName,
-                "InstalledUnverified",
+                HardwareSensorProviderStates.InstalledUnverified,
                 string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
         }
 
         return new HardwareSensorProviderState(
             ComponentName,
-            "Unavailable",
+            HardwareSensorProviderStates.Unavailable,
             string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
     }
 

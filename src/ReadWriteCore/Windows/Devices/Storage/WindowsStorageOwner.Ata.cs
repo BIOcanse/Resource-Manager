@@ -10,7 +10,7 @@ public sealed partial class WindowsStorageOwner
     public StorageOwnerSensorSnapshot ReadAtaSensorsCore(AtaSmartSensorReadRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.Devices.Count == 0) return new(new("Windows ATA SMART", "NotRequested", ""), []);
+        if (request.Devices.Count == 0) return new(new("Windows ATA SMART", HardwareSensorProviderStates.NotRequested, ""), []);
         var physical = query(@"root\Microsoft\Windows\Storage",
             "SELECT DeviceId, FriendlyName, SerialNumber, UniqueId, UniqueIdFormat, Size, BusType FROM MSFT_PhysicalDisk");
         var osDisks = query(@"root\Microsoft\Windows\Storage", "SELECT Number, SerialNumber, UniqueId, Size, BusType FROM MSFT_Disk");
@@ -21,7 +21,7 @@ public sealed partial class WindowsStorageOwner
         QueryResult physical, QueryResult osDisks)
     {
         if (physical.Error is not null || osDisks.Error is not null)
-            return new(new("Windows ATA SMART", "Unavailable", physical.Error ?? osDisks.Error!), [])
+            return new(new("Windows ATA SMART", HardwareSensorProviderStates.Unavailable, physical.Error ?? osDisks.Error!), [])
                 { Identities = physical.Error is null ? ProjectIdentities(physical.Rows) : null };
         var identities = ProjectIdentities(physical.Rows);
         var sensors = new List<DiskTemperatureSensor>();
@@ -41,7 +41,9 @@ public sealed partial class WindowsStorageOwner
             sensors.Add(new(index, ReadString(disk, "FriendlyName") ?? "Disk", null, "ATA SMART uninterpreted raw pages")
             { IdentityKey = selected.DeviceIdentity, BytesValues = result.BytesValues });
         }
-        return new(new("Windows ATA SMART", sensors.Any(sensor => sensor.BytesValues.Count > 0) ? "Active" : "Unavailable", ""), sensors)
+        return new(new("Windows ATA SMART", sensors.Any(sensor => sensor.BytesValues.Count > 0)
+            ? HardwareSensorProviderStates.Active
+            : HardwareSensorProviderStates.Unavailable, ""), sensors)
         { Identities = identities };
     }
 

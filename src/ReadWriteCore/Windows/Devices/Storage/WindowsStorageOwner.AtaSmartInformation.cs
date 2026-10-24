@@ -55,7 +55,7 @@ public sealed partial class WindowsStorageOwner
         }
 
         var sensorSnapshot = reads.Count == 0
-            ? new StorageOwnerSensorSnapshot(new("Windows ATA SMART", "NotRequested", ""), []) { Identities = identities }
+            ? new StorageOwnerSensorSnapshot(new("Windows ATA SMART", HardwareSensorProviderStates.NotRequested, ""), []) { Identities = identities }
             : ReadAtaSensorsCore(new AtaSmartSensorReadRequest(reads), physical, osDisks);
         cancellationToken.ThrowIfCancellationRequested();
         var byIndex = sensorSnapshot.Disks.ToDictionary(static disk => disk.Index);

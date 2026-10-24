@@ -11,7 +11,7 @@ internal static class GpuPlacementTargetInventoryProjection
     {
         var referenced = referencedTargets
             .Where(GpuPlacementTargets.IsExactGpuIndexTarget)
-            .Select(static target => target!.Trim().ToUpperInvariant())
+            .Select(static target => target!.Trim().ToLowerInvariant())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -33,7 +33,7 @@ internal static class GpuPlacementTargetInventoryProjection
             .OrderBy(static adapter => adapter.Index)
             .Select(adapter =>
             {
-                var target = $"GPU{adapter.Index}";
+                var target = $"gpu{adapter.Index}";
                 names.TryGetValue(adapter.Index, out var name);
                 return new GpuPlacementExactTargetOption(
                     target,
@@ -58,7 +58,7 @@ internal static class GpuPlacementTargetInventoryProjection
 
     private static GpuPlacementExactTargetOption Missing(string target, string reason) => new(
         target,
-        $"{target}（不可用）",
+        $"{target.ToUpperInvariant()}（不可用）",
         false,
         reason);
 }

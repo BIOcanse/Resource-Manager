@@ -4,6 +4,29 @@ using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Domain.Components;
 
+public static class ComponentStatusStates
+{
+    public const string Active = "active";
+    public const string Installed = "installed";
+    public const string InstalledUnverified = "installed_unverified";
+    public const string ReadyToInstall = "ready_to_install";
+    public const string Available = "available";
+    public const string ManualDownloadRequired = "manual_download_required";
+    public const string ProviderMissing = "provider_missing";
+    public const string Missing = "missing";
+}
+
+public static class ComponentProviderStates
+{
+    public const string Active = "active";
+    public const string Installed = "installed";
+    public const string Missing = "missing";
+    public const string RuntimeAvailable = "runtime_available";
+    public const string InstalledUnverified = "installed_unverified";
+    public const string DriverMissing = "driver_missing";
+    public const string RuntimeActive = "runtime_active";
+}
+
 public sealed record ComponentDefinition(
     string Id,
     string Name,

@@ -473,7 +473,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 MaxDepth = HostManagerRollbackStateEnvelopeCodec.MaximumJsonDepth
             });
         var version = ReadVersion(json.RootElement);
-        return version switch
+        var document = version switch
         {
             HostManagerRollbackStateDocument.CurrentVersion => NormalizeDocument(
                 json.RootElement.Deserialize<HostManagerRollbackStateDocument>(JsonOptions)),
@@ -482,6 +482,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             _ => throw new InvalidDataException(
                 $"Host Manager rollback state version {version} is unsupported.")
         };
+        return ReadStoredDocument(document);
     }
 
     private static bool IsEnvelopeImage(byte[] image)
@@ -869,6 +870,26 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         {
             NativeHostSessionIncarnation = document.NativeHostSessionIncarnation
         };
+    }
+
+    internal static HostManagerRollbackStateDocument ReadStoredDocument(
+        HostManagerRollbackStateDocument? document)
+    {
+        var normalized = NormalizeDocument(document);
+        return NormalizeDocument(normalized with
+        {
+            AppliedPlacements = normalized.AppliedPlacements
+                .Select(placement => placement with
+                {
+                    Records = placement.Records
+                        .Select(record => record with
+                        {
+                            Kind = HostManagerAppliedRecordKinds.ReadStored(record.Kind)
+                        })
+                        .ToArray()
+                })
+                .ToArray()
+        });
     }
 
     private static int ReadVersion(JsonElement root)

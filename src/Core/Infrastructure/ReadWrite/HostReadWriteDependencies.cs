@@ -1,5 +1,6 @@
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.ReadWrite.Dependencies;
@@ -69,7 +70,8 @@ internal static class HostReadWriteDependencies
     }
 
     private static DependencyStatus FromProvider(string source, ComponentProviderRuntimeProbeResult result)
-        => result.State == "Missing" ? new(source, DependencyAvailability.Missing, "dependency-runtime-missing")
+        => result.State == ComponentProviderStates.Missing
+            ? new(source, DependencyAvailability.Missing, "dependency-runtime-missing")
             : result.RuntimeAvailable && result.InitializeExportAvailable
                 ? new(source, DependencyAvailability.Ready, null)
                 : new(source, DependencyAvailability.Unknown, "dependency-runtime-unverified");

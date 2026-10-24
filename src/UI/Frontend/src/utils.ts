@@ -143,9 +143,9 @@ export function isComponentInstalled(component: ManagedComponent) {
   const state = textOrEmpty(component.state);
   return Boolean(component.installed)
     || component.providerActive === true
-    || state === "Installed"
-    || state === "Active"
-    || state === "InstalledUnverified";
+    || state === "installed"
+    || state === "active"
+    || state === "installed_unverified";
 }
 
 export function isSameOrUnderPath(path: string, root: string) {

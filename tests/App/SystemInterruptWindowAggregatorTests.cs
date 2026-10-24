@@ -13,12 +13,12 @@ public sealed class SystemInterruptWindowAggregatorTests
         var identity = modules.Resolve(0x1010);
         Assert.Same(identity, modules.Resolve(0x1020));
         var aggregator = new SystemInterruptWindowAggregator();
-        aggregator.Observe(new(1000, "DPC", 2, 0x1010, identity.Name, identity.Path));
+        aggregator.Observe(new(1000, SystemInterruptEventKinds.Dpc, 2, 0x1010, identity.Name, identity.Path));
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var index = 0; index < 20_000; index++)
         {
             var module = modules.Resolve(0x1010);
-            aggregator.Observe(new(1001, "DPC", 2, 0x1010, module.Name, module.Path));
+            aggregator.Observe(new(1001, SystemInterruptEventKinds.Dpc, 2, 0x1010, module.Name, module.Path));
         }
         Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1024);
     }
@@ -44,7 +44,7 @@ public sealed class SystemInterruptWindowAggregatorTests
             1,
             now.AddSeconds(-60).ToUnixTimeMilliseconds(),
             4,
-            new SystemInterruptProviderState("test", "Running", "test"));
+            new SystemInterruptProviderState("test", SystemInterruptProviderStates.Running, "test"));
 
         Assert.True(snapshot.Available);
         Assert.Equal(6.5, snapshot.TotalDurationMilliseconds, 3);
@@ -80,10 +80,10 @@ public sealed class SystemInterruptWindowAggregatorTests
             1,
             now.AddSeconds(-9).ToUnixTimeMilliseconds(),
             8,
-            new SystemInterruptProviderState("test", "Running", "test"));
+            new SystemInterruptProviderState("test", SystemInterruptProviderStates.Running, "test"));
 
         Assert.False(snapshot.Available);
-        Assert.Equal("Warming", snapshot.ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Warming, snapshot.ProviderState.State);
         Assert.Empty(snapshot.Buckets);
     }
 

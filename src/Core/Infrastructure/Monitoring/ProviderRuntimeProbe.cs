@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.Shared.BrowserRuntimes;
 
@@ -22,7 +23,7 @@ public sealed class ProviderRuntimeProbe(
             return new ComponentProviderRuntimeProbeResult(
                 runtime is not null,
                 runtime is not null,
-                runtime is null ? "Missing" : "RuntimeAvailable",
+                runtime is null ? ComponentProviderStates.Missing : ComponentProviderStates.RuntimeAvailable,
                 runtime is null ? "未检测到共享 WebView2 运行时。" : "共享 WebView2 运行时可用。",
                 runtime?.RuntimeDirectory);
         }
@@ -56,7 +57,8 @@ public sealed class ProviderRuntimeProbe(
             var module = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "Dependencies", componentId, "IntelMSR.bin");
             var runtime = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PawnIO", "PawnIOLib.dll");
             var present = File.Exists(module) && File.Exists(runtime);
-            return new ComponentProviderRuntimeProbeResult(present, false, present ? "Installed" : "Missing",
+            return new ComponentProviderRuntimeProbeResult(present, false,
+                present ? ComponentProviderStates.Installed : ComponentProviderStates.Missing,
                 present ? "运行库与模块已安装；逐项能力由 Intel CPU 控制探测确认。" : "需要显式安装 PawnIO 运行库和签名 IntelMSR 模块。", present ? runtime : null);
         }
 
@@ -99,7 +101,7 @@ public sealed class ProviderRuntimeProbe(
         return new ComponentProviderRuntimeProbeResult(
             false,
             false,
-            "Missing",
+            ComponentProviderStates.Missing,
             "未配置该 Provider 的运行库探测。",
             null);
     }

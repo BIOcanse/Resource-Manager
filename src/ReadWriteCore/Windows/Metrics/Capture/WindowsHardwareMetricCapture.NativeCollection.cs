@@ -638,7 +638,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         // lets the planner consider alternate rules; an active provider's missing sensor stays per-field.
         if (string.Equals(
             metrics.ProviderState.State,
-            "Unavailable",
+            HardwareSensorProviderStates.Unavailable,
             StringComparison.OrdinalIgnoreCase))
         {
             return Unavailable(sourcePlan.SourceHandle, identity, capturedAt);
@@ -945,8 +945,8 @@ internal sealed partial class WindowsHardwareMetricCapture
         ArgumentNullException.ThrowIfNull(providerState);
         return providerState.State switch
         {
-            "Active" => NativeMetricSnapshotSourceStatus.Complete,
-            "UnsupportedFirmware" =>
+            HardwareSensorProviderStates.Active => NativeMetricSnapshotSourceStatus.Complete,
+            HardwareSensorProviderStates.UnsupportedFirmware =>
                 NativeMetricSnapshotSourceStatus.Unsupported,
             _ => NativeMetricSnapshotSourceStatus.Unavailable
         };

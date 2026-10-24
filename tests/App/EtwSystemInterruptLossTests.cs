@@ -1,8 +1,8 @@
+using ResourceManager.App.Domain.SystemHealth;
 using System.Reflection;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Domain.SystemHealth;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
@@ -78,7 +78,7 @@ public sealed class EtwSystemInterruptLossTests
         broker.EventsLost = 2;
         Assert.True(Publish(source, now));
         Assert.False(source.Read().Available);
-        Assert.Equal("Warming", source.Read().ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Warming, source.Read().ProviderState.State);
         Assert.Empty(source.Read().Drivers);
         Assert.Equal(0, source.Read().EventCount);
         Assert.Equal(2, source.Read().ProviderState.EventsLost);
@@ -93,7 +93,7 @@ public sealed class EtwSystemInterruptLossTests
 
         var recovered = source.Read();
         Assert.True(recovered.Available);
-        Assert.Equal("Running", recovered.ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Running, recovered.ProviderState.State);
         Assert.Equal(2, recovered.EventCount);
         Assert.Equal(13, recovered.TotalDurationMilliseconds);
         Assert.Contains(recovered.Drivers, driver => driver.ModuleName == KernelModuleAddressMap.UnknownModuleName);
@@ -149,7 +149,7 @@ public sealed class EtwSystemInterruptLossTests
         now = Start.AddSeconds(11);
 
         Assert.False(Publish(source, now));
-        Assert.Equal("Warming", source.Read().ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Warming, source.Read().ProviderState.State);
         Assert.Equal(0, source.Read().EventCount);
         Assert.Empty(source.Read().Drivers);
         Assert.Equal(1, source.Read().ProviderState.EventsLost);
@@ -242,7 +242,7 @@ public sealed class EtwSystemInterruptLossTests
 
         Assert.Equal(1, broker.DisposeCount);
         Assert.False(broker.Source.IsActive);
-        Assert.Equal("Idle", source.Read().ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Idle, source.Read().ProviderState.State);
         Assert.Throws<ObjectDisposedException>(() => source.AcquireSubscription("late", TimeSpan.FromSeconds(10)));
         Invoke(source, "EnsureStarted");
         Assert.Equal(1, broker.SubscribeCount);

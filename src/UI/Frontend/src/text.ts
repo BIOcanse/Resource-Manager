@@ -18,14 +18,14 @@ export function softwareDisplayKindLabel(kind: string | null | undefined, displa
 
 export function managementKindLabel(kind: ManagementKind) {
   return kind === "Dependency" || kind === "Support"
-    ? uiText.managementRole[kind]
+    ? uiText.managementRole[kind === "Dependency" ? "dependency" : "support"]
     : uiText.softwareKind[kind];
 }
 
 export function managementRoleLabel(role: string | null | undefined) {
-  return role === "Support"
-    ? uiText.managementRole.Support
-    : uiText.managementRole.Dependency;
+  return role === "support"
+    ? uiText.managementRole.support
+    : uiText.managementRole.dependency;
 }
 
 export { applyLanguage, currentLanguage, currentSettingsText } from "./i18n/appTextStore.ts";

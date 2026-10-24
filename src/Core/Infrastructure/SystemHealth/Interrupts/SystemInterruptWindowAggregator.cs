@@ -71,7 +71,7 @@ internal sealed class SystemInterruptWindowAggregator
                     ? providerState
                     : providerState with
                     {
-                        State = "Warming",
+                        State = SystemInterruptProviderStates.Warming,
                         Message = "ETW 系统中断监控正在收集第一个完整 10 秒桶。"
                     });
         }

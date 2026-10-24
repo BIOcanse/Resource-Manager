@@ -1,0 +1,94 @@
+{
+  "en-US": {
+    "abnormal_memory_usage": "Abnormal memory usage",
+    "long_system_interrupts": "Long system interrupts",
+    "excessive_system_interrupts": "High system interrupt usage",
+    "known_security_vulnerability": "Known security vulnerability",
+    "dependency_issue": "Dependency issue",
+    "compatibility_issue": "Compatibility issue",
+    "known_malware": "Known malware"
+  },
+  "zh-CN": {
+    "abnormal_memory_usage": "内存占用异常",
+    "long_system_interrupts": "长系统中断",
+    "excessive_system_interrupts": "系统中断占用高",
+    "known_security_vulnerability": "存在已公开安全漏洞",
+    "dependency_issue": "依赖问题",
+    "compatibility_issue": "兼容性问题",
+    "known_malware": "已知恶意软件"
+  },
+  "zh-TW": {
+    "abnormal_memory_usage": "記憶體用量異常",
+    "long_system_interrupts": "長時間系統中斷",
+    "excessive_system_interrupts": "系統中斷用量偏高",
+    "known_security_vulnerability": "存在已公開安全漏洞",
+    "dependency_issue": "相依性問題",
+    "compatibility_issue": "相容性問題",
+    "known_malware": "已知惡意軟體"
+  },
+  "de-DE": {
+    "abnormal_memory_usage": "Ungewöhnliche Speichernutzung",
+    "long_system_interrupts": "Lange Systeminterrupts",
+    "excessive_system_interrupts": "Hohe Auslastung durch Systeminterrupts",
+    "known_security_vulnerability": "Bekannte Sicherheitslücke",
+    "dependency_issue": "Abhängigkeitsproblem",
+    "compatibility_issue": "Kompatibilitätsproblem",
+    "known_malware": "Bekannte Schadsoftware"
+  },
+  "es-ES": {
+    "abnormal_memory_usage": "Uso anormal de memoria",
+    "long_system_interrupts": "Interrupciones del sistema largas",
+    "excessive_system_interrupts": "Uso elevado de interrupciones del sistema",
+    "known_security_vulnerability": "Vulnerabilidad de seguridad conocida",
+    "dependency_issue": "Problema de dependencia",
+    "compatibility_issue": "Problema de compatibilidad",
+    "known_malware": "Software malicioso conocido"
+  },
+  "fr-FR": {
+    "abnormal_memory_usage": "Utilisation mémoire anormale",
+    "long_system_interrupts": "Interruptions système longues",
+    "excessive_system_interrupts": "Utilisation élevée des interruptions système",
+    "known_security_vulnerability": "Vulnérabilité de sécurité connue",
+    "dependency_issue": "Problème de dépendance",
+    "compatibility_issue": "Problème de compatibilité",
+    "known_malware": "Logiciel malveillant connu"
+  },
+  "ja-JP": {
+    "abnormal_memory_usage": "メモリ使用量の異常",
+    "long_system_interrupts": "長時間のシステム割り込み",
+    "excessive_system_interrupts": "システム割り込みの高負荷",
+    "known_security_vulnerability": "既知のセキュリティ脆弱性",
+    "dependency_issue": "依存関係の問題",
+    "compatibility_issue": "互換性の問題",
+    "known_malware": "既知のマルウェア"
+  },
+  "ko-KR": {
+    "abnormal_memory_usage": "비정상 메모리 사용량",
+    "long_system_interrupts": "긴 시스템 인터럽트",
+    "excessive_system_interrupts": "높은 시스템 인터럽트 사용량",
+    "known_security_vulnerability": "알려진 보안 취약점",
+    "dependency_issue": "종속성 문제",
+    "compatibility_issue": "호환성 문제",
+    "known_malware": "알려진 악성 소프트웨어"
+  },
+  "ru-RU": {
+    "abnormal_memory_usage": "Аномальное использование памяти",
+    "long_system_interrupts": "Длительные системные прерывания",
+    "excessive_system_interrupts": "Высокая нагрузка системных прерываний",
+    "known_security_vulnerability": "Известная уязвимость безопасности",
+    "dependency_issue": "Проблема зависимости",
+    "compatibility_issue": "Проблема совместимости",
+    "known_malware": "Известное вредоносное ПО"
+  },
+  "managementRole": {
+    "en-US": { "Dependency": "Dependencies", "Support": "Support" },
+    "zh-CN": { "Dependency": "依赖", "Support": "支持" },
+    "zh-TW": { "Dependency": "依賴", "Support": "支援" },
+    "de-DE": { "Dependency": "Abhängigkeiten", "Support": "Support" },
+    "es-ES": { "Dependency": "Dependencias", "Support": "Soporte" },
+    "fr-FR": { "Dependency": "Dépendances", "Support": "Assistance" },
+    "ja-JP": { "Dependency": "依存関係", "Support": "サポート" },
+    "ko-KR": { "Dependency": "종속성", "Support": "지원" },
+    "ru-RU": { "Dependency": "Зависимости", "Support": "Поддержка" }
+  }
+}

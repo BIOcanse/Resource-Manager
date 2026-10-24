@@ -667,7 +667,7 @@ public sealed class DashboardSettingsDefaultsTests
                 80,
                 "test",
                 new CpuSensorMetrics(
-                    new HardwareSensorProviderState("AMD SMU / PawnIO", "Active", null),
+                    new HardwareSensorProviderState("AMD SMU / PawnIO", HardwareSensorProviderStates.Active, null),
                     null,
                     null,
                     null,
@@ -701,7 +701,7 @@ public sealed class DashboardSettingsDefaultsTests
             0,
             0,
             new GpuSensorMetrics(
-                new HardwareSensorProviderState("test", "Active", null),
+                new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, null),
                 null,
                 null,
                 null,

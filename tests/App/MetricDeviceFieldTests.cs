@@ -357,7 +357,7 @@ public sealed class MetricDeviceFieldTests
         const string address = "memory-scope/memory_all_physical_available_bytes";
         var now = DateTimeOffset.UtcNow;
         return new(now, new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0,0,0,0,0,"fixture",
-            new(new("fixture", "NotRequested", null), null,null,null,null)),
+            new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null,null,null,null)),
             new(0,0,0,false,"fixture"), new(0,0,0,"fixture",false), [],
             new(SamplingObservationStatus.NotRequested,0,0,0,0,0,0,[]),
             new Dictionary<string,MetricValue> { [address] = new(address,"fixture","Memory","",1024,"B",null,null)

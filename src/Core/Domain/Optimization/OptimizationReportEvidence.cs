@@ -2,23 +2,23 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class OptimizationResourceKinds
 {
-    public const string Cpu = "CPU";
-    public const string Gpu = "GPU";
-    public const string Memory = "Memory";
-    public const string Vram = "VRAM";
-    public const string Disk = "Disk";
-    public const string DiskWrite = "DiskWrite";
-    public const string Network = "Network";
-    public const string NetworkActivity = "NetworkActivity";
-    public const string SoftwareFootprint = "SoftwareFootprint";
-    public const string PowerProfile = "PowerProfile";
-    public const string DeviceDriver = "DeviceDriver";
-    public const string DiskHealth = "DiskHealth";
-    public const string DiskLink = "DiskLink";
-    public const string DiskLatency = "DiskLatency";
-    public const string DiskPower = "DiskPower";
-    public const string CpuThermal = "CpuThermal";
-    public const string SystemInterrupt = "SystemInterrupt";
+    public const string Cpu = "cpu";
+    public const string Gpu = "gpu";
+    public const string Memory = "memory";
+    public const string Vram = "vram";
+    public const string Disk = "disk";
+    public const string DiskWrite = "disk_write";
+    public const string Network = "network";
+    public const string NetworkActivity = "network_activity";
+    public const string SoftwareFootprint = "software_footprint";
+    public const string PowerProfile = "power_profile";
+    public const string DeviceDriver = "device_driver";
+    public const string DiskHealth = "disk_health";
+    public const string DiskLink = "disk_link";
+    public const string DiskLatency = "disk_latency";
+    public const string DiskPower = "disk_power";
+    public const string CpuThermal = "cpu_thermal";
+    public const string SystemInterrupt = "system_interrupt";
 }
 
 public static class OptimizationValueUnits

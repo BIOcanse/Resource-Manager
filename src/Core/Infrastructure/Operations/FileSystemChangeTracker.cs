@@ -5,8 +5,8 @@ namespace ResourceManager.App.Infrastructure.Operations;
 
 public sealed class FileSystemChangeTracker : IFileChangeTracker
 {
-    private const string FileEntryKind = "File";
-    private const string DirectoryEntryKind = "Directory";
+    private const string FileEntryKind = "file";
+    private const string DirectoryEntryKind = "directory";
 
     public Task<FileInventorySnapshot> CaptureAsync(
         FileChangeTrackingScope scope,
@@ -60,17 +60,17 @@ public sealed class FileSystemChangeTracker : IFileChangeTracker
 
             if (beforeEntry is null && afterEntry is not null)
             {
-                changes.Add(CreateChange("Created", null, afterEntry));
+                changes.Add(CreateChange("created", null, afterEntry));
             }
             else if (beforeEntry is not null && afterEntry is null)
             {
-                changes.Add(CreateChange("Deleted", beforeEntry, null));
+                changes.Add(CreateChange("deleted", beforeEntry, null));
             }
             else if (beforeEntry is not null
                 && afterEntry is not null
                 && HasChanged(beforeEntry, afterEntry))
             {
-                changes.Add(CreateChange("Modified", beforeEntry, afterEntry));
+                changes.Add(CreateChange("modified", beforeEntry, afterEntry));
             }
         }
 
@@ -98,9 +98,9 @@ public sealed class FileSystemChangeTracker : IFileChangeTracker
             before.CapturedAt,
             after.CapturedAt,
             before.RootPaths.Concat(after.RootPaths).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-            changes.Count(static change => change.ChangeKind == "Created"),
-            changes.Count(static change => change.ChangeKind == "Deleted"),
-            changes.Count(static change => change.ChangeKind == "Modified"),
+            changes.Count(static change => change.ChangeKind == "created"),
+            changes.Count(static change => change.ChangeKind == "deleted"),
+            changes.Count(static change => change.ChangeKind == "modified"),
             fileChanges.Sum(static change => change.DeltaBytes),
             fileChanges.Sum(static change => Math.Abs(change.DeltaBytes)),
             driveDeltas,

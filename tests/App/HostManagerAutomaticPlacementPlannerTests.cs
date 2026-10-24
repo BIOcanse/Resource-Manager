@@ -601,7 +601,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
 
     [Theory]
     [InlineData(GpuPlacementTargets.SystemDefaultGpu)]
-    [InlineData("GPU1")]
+    [InlineData("gpu1")]
     public void StartupTargetDoesNotChangeRuntimeGpuPlan(string targetGpu)
     {
         var policy = AutoPolicy() with { StartupTargetGpu = targetGpu };

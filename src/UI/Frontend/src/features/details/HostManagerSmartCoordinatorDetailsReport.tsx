@@ -157,19 +157,19 @@ function formatNumber(value: number) {
 
 function formatRecordKind(kind: string) {
   switch (kind) {
-    case "AdapterPolicy":
+    case "adapter_policy":
       return uiText.smartReport.kind.softwareResourceSettings;
-    case "GpuPreference":
+    case "gpu_preference":
       return uiText.smartReport.kind.gpuSelection;
-    case "GpuRuntimeRebuildTrigger":
+    case "gpu_runtime_rebuild_trigger":
       return uiText.smartReport.kind.runtimeGpuSwitch;
-    case "CpuAffinity":
+    case "cpu_affinity":
       return uiText.smartReport.kind.cpuCoreAllocation;
-    case "A1":
-    case "Level1":
-    case "Level2":
-    case "Level3":
-    case "Level4":
+    case "a1":
+    case "level_1":
+    case "level_2":
+    case "level_3":
+    case "level_4":
       return uiText.smartReport.kind.resourceOptimization;
     default:
       return uiText.smartReport.kind.schedulingAdjustment;
@@ -177,7 +177,7 @@ function formatRecordKind(kind: string) {
 }
 
 function formatResourceKind(kind: string) {
-  switch (kind.trim().toLocaleLowerCase()) {
+  switch (kind) {
     case "cpu": return uiText.smartReport.resource.cpu;
     case "gpu": return uiText.smartReport.resource.gpu;
     case "memory": return uiText.smartReport.resource.memory;

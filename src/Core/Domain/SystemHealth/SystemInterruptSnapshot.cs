@@ -1,11 +1,25 @@
 namespace ResourceManager.App.Domain.SystemHealth;
 
+public static class SystemInterruptProviderStates
+{
+    public const string Running = "running";
+    public const string Warming = "warming";
+    public const string Frozen = "frozen";
+    public const string Unavailable = "unavailable";
+    public const string Idle = "idle";
+    public const string Starting = "starting";
+    public const string Stopped = "stopped";
+    public const string StopFailed = "stop_failed";
+    public const string Available = "available";
+    public const string NotStarted = "not_started";
+}
+
 public static class SystemInterruptEventKinds
 {
-    public const string Isr = "ISR";
-    public const string Dpc = "DPC";
-    public const string ThreadedDpc = "ThreadedDPC";
-    public const string TimerDpc = "TimerDPC";
+    public const string Isr = "isr";
+    public const string Dpc = "dpc";
+    public const string ThreadedDpc = "threaded_dpc";
+    public const string TimerDpc = "timer_dpc";
 }
 
 public static class SystemInterruptMeasurementSemantics

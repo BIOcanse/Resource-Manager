@@ -363,7 +363,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         bindings[unrelated] = new("unrelated", MetricFieldRegistry.FindByName("memory_all_physical_available_bytes")!, unrelated, "fixture")
             { Device = new("memory", null, null, 0) };
         return new(now, new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0, "fixture",
-            new(new("fixture", "NotRequested", null), null, null, null, null)),
+            new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null, null, null, null)),
             new(0, 0, 0, false, "fixture"), new(0, 0, 0, "fixture", false), [],
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []), items)
         {

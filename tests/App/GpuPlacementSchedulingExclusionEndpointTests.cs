@@ -89,6 +89,21 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             Assert.True(stored.CpuSchedulingExcluded);
             Assert.False(stored.MemorySchedulingExcluded);
             Assert.True(stored.GpuSchedulingExcluded);
+
+            foreach (var (field, legacy) in new[]
+            {
+                ("startupTargetGpu", "HighPerformanceGpu"),
+                ("startupTargetGpu", "GPU1"),
+                ("preferredRuntimeSwitchMethod", "FutureFrameTakeover"),
+                ("cpuMaximumOccupancyMode", "SingleCcd")
+            })
+            {
+                var invalid = defaults.DeepClone().AsObject();
+                invalid[field] = legacy;
+                using var rejected = await client.PutAsJsonAsync("/api/gpu-placement/software/app/policy", invalid);
+                Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+            }
+            Assert.Equal(1, runtime.Rebuilds);
         }
         finally
         {

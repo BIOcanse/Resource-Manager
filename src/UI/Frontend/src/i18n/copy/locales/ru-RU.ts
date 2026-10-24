@@ -482,18 +482,18 @@ const ruRuAppCopy: AppCopy = {
     Empty: "Свободно"
   },
   managementRole: {
-    Dependency: "Зависимости",
-    Support: "Поддержка"
+    dependency: "Зависимости",
+    support: "Поддержка"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "Аномальное использование памяти",
-      LongSystemInterrupts: "Длительные системные прерывания",
-      ExcessiveSystemInterrupts: "Высокая нагрузка системных прерываний",
-      KnownSecurityVulnerability: "Известная уязвимость безопасности",
-      DependencyIssue: "Проблема зависимости",
-      CompatibilityIssue: "Проблема совместимости",
-      KnownMalware: "Известное вредоносное ПО",
+      abnormal_memory_usage: "Аномальное использование памяти",
+      long_system_interrupts: "Длительные системные прерывания",
+      excessive_system_interrupts: "Высокая нагрузка системных прерываний",
+      known_security_vulnerability: "Известная уязвимость безопасности",
+      dependency_issue: "Проблема зависимости",
+      compatibility_issue: "Проблема совместимости",
+      known_malware: "Известное вредоносное ПО",
       memoryAdvice: "Проверьте, нужно ли это фоновое приложение, и закройте его, если оно больше не используется.",
       interruptAdvice: "Проверьте обновления соответствующего драйвера; не удаляйте файлы драйвера вручную.",
       winringMessage: "Установленный WinRing0x64.sys 1.2.0.5 соответствует опубликованным сведениям об уязвимостях. Обновите или удалите старую версию программы с этим драйвером; это не означает, что программа признана вредоносной.",

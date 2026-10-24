@@ -88,7 +88,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
             var source = Assert.Single(plan.Sources.Where(item => item.SourceHandle == selected.SourceHandle));
             var completion = WindowsHardwareMetricSampler.CreateNotebookFanCompletion(
                 plan, source, new(selected.SourceHandle, 1, (ulong)round + 1), capturedAt,
-                new(new("test", "Active", null), values[round], 50, []));
+                new(new("test", HardwareSensorProviderStates.Active, null), values[round], 50, []));
             Assert.Equal(values[round] is null
                     ? NativeMetricSnapshotObservationStatus.Unavailable
                     : NativeMetricSnapshotObservationStatus.Current,
@@ -125,10 +125,10 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
     }
 
     [Theory]
-    [InlineData("Active", 1U)]
-    [InlineData("UnsupportedFirmware", 4U)]
-    [InlineData("Unavailable", 3U)]
-    [InlineData("Missing", 3U)]
+    [InlineData(HardwareSensorProviderStates.Active, 1U)]
+    [InlineData(HardwareSensorProviderStates.UnsupportedFirmware, 4U)]
+    [InlineData(HardwareSensorProviderStates.Unavailable, 3U)]
+    [InlineData(HardwareSensorProviderStates.Missing, 3U)]
     public void ProviderState_IsProjectedWithoutInventingCompleteness(
         string state,
         uint expected)
@@ -158,7 +158,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
             null,
             null);
         var sensors = new NotebookOemFanSensorSnapshot(
-            new HardwareSensorProviderState("test", "Active", "test"),
+            new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, "test"),
             3100,
             50,
             [gpu]);
@@ -203,7 +203,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
     {
         var gpu = new PlatformGpuSensor(0, "dGPU fan", "test", null, null, 3200, 64, null, null);
         var sensors = new NotebookOemFanSensorSnapshot(
-            new HardwareSensorProviderState("Mechrevo UWACPI", "Active", "test"),
+            new HardwareSensorProviderState("Mechrevo UWACPI", HardwareSensorProviderStates.Active, "test"),
             3000,
             52,
             [gpu])
@@ -280,7 +280,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
             null,
             null);
         var sensors = new NotebookOemFanSensorSnapshot(
-            new HardwareSensorProviderState("test", "Active", "test"),
+            new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, "test"),
             null,
             null,
             [gpu]);

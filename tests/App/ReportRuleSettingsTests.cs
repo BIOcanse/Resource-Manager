@@ -222,7 +222,7 @@ public sealed class ReportRuleSettingsTests
         var rules = await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/report-rules");
         var listed = rules!["rules"]!.AsArray();
         Assert.Equal(RuleNames, listed.Select(static rule => rule!["name"]!.GetValue<string>()));
-        Assert.Equal("CpuSustainedThermalThrottling", listed[0]!["reportType"]!.GetValue<string>());
+        Assert.Equal("cpu_sustained_thermal_throttling", listed[0]!["reportType"]!.GetValue<string>());
         Assert.Equal("atOrBelow", listed[2]!["comparison"]!.GetValue<string>());
         Assert.Equal("suspected_stray_process", listed[8]!["reportType"]!.GetValue<string>());
         Assert.Equal(90, listed[0]!["defaults"]!["activationThreshold"]!.GetValue<double>());

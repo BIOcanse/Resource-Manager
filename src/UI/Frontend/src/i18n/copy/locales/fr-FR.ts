@@ -482,18 +482,18 @@ const frFrAppCopy: AppCopy = {
     Empty: "Libre"
   },
   managementRole: {
-    Dependency: "Dépendances",
-    Support: "Assistance"
+    dependency: "Dépendances",
+    support: "Assistance"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "Utilisation mémoire anormale",
-      LongSystemInterrupts: "Interruptions système longues",
-      ExcessiveSystemInterrupts: "Utilisation élevée des interruptions système",
-      KnownSecurityVulnerability: "Vulnérabilité de sécurité connue",
-      DependencyIssue: "Problème de dépendance",
-      CompatibilityIssue: "Problème de compatibilité",
-      KnownMalware: "Logiciel malveillant connu",
+      abnormal_memory_usage: "Utilisation mémoire anormale",
+      long_system_interrupts: "Interruptions système longues",
+      excessive_system_interrupts: "Utilisation élevée des interruptions système",
+      known_security_vulnerability: "Vulnérabilité de sécurité connue",
+      dependency_issue: "Problème de dépendance",
+      compatibility_issue: "Problème de compatibilité",
+      known_malware: "Logiciel malveillant connu",
       memoryAdvice: "Vérifiez si cette application en arrière-plan est encore nécessaire ; fermez-la si vous ne l’utilisez plus.",
       interruptAdvice: "Recherchez une mise à jour du pilote concerné ; ne supprimez pas directement ses fichiers.",
       winringMessage: "Le fichier installé WinRing0x64.sys 1.2.0.5 correspond à des vulnérabilités publiées. Mettez à jour ou désinstallez l’ancienne version du logiciel qui le contient ; cela ne signifie pas que le logiciel est malveillant.",

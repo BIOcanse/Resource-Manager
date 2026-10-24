@@ -130,7 +130,7 @@ public sealed class GpuPlacementPolicyResolverTests
     [Fact]
     public void NormalizeTarget_KeepsHighPerformanceAsCompatibilityTarget()
     {
-        var target = GpuPlacementTargets.Normalize("highperformancegpu");
+        var target = GpuPlacementTargets.Normalize("high_performance_gpu");
 
         Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, target);
     }
@@ -139,13 +139,15 @@ public sealed class GpuPlacementPolicyResolverTests
     public void NormalizeTarget_RejectsMalformedExactTarget()
     {
         Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, GpuPlacementTargets.Normalize("GPUinvalid"));
-        Assert.Equal("GPU12", GpuPlacementTargets.Normalize("gpu12"));
+        Assert.Equal("gpu12", GpuPlacementTargets.Normalize("gpu12"));
+        Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, GpuPlacementTargets.Normalize("GPU12"));
+        Assert.Equal("gpu012", GpuPlacementTargets.Normalize("gpu012"));
     }
 
     [Fact]
     public void NormalizeSystemTarget_RejectsPreciseAndSchedulingAutoTargets()
     {
-        Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, GpuPlacementTargets.NormalizeSystemTarget("GPU1"));
+        Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, GpuPlacementTargets.NormalizeSystemTarget("gpu1"));
         Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, GpuPlacementTargets.NormalizeSystemTarget(GpuPlacementTargets.AutoIdleGpu));
         Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, GpuPlacementTargets.NormalizeSystemTarget(GpuPlacementTargets.HighPerformanceGpu));
         Assert.Equal(GpuPlacementTargets.IntegratedGpu, GpuPlacementTargets.NormalizeSystemTarget(GpuPlacementTargets.IntegratedGpu));
@@ -164,6 +166,39 @@ public sealed class GpuPlacementPolicyResolverTests
             GpuPlacementRuntimeSwitchMethods.WindowRerender,
             GpuPlacementRuntimeSwitchMethods.Normalize(GpuPlacementRuntimeSwitchMethods.WindowRerender));
     }
+
+    [Theory]
+    [InlineData("SystemDefaultGpu", GpuPlacementTargets.SystemDefaultGpu)]
+    [InlineData("SYSTEM_DEFAULT_GPU", GpuPlacementTargets.SystemDefaultGpu)]
+    [InlineData("HighPerformanceGpu", GpuPlacementTargets.HighPerformanceGpu)]
+    [InlineData("GPU12", "gpu12")]
+    [InlineData("GPU_012", "gpu012")]
+    public void StoredTargetReaderMapsPriorSpellings(string stored, string expected)
+        => Assert.Equal(expected, GpuPlacementTargets.ReadStored(stored));
+
+    [Fact]
+    public void StoredTargetReaderRejectsUnknownValues()
+        => Assert.Throws<InvalidDataException>(() => GpuPlacementTargets.ReadStored("future_gpu_target"));
+
+    [Theory]
+    [InlineData("FutureFrameTakeover", GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover)]
+    [InlineData("WindowRerender", GpuPlacementRuntimeSwitchMethods.WindowRerender)]
+    public void StoredRuntimeSwitchReaderMapsPriorSpellings(string stored, string expected)
+        => Assert.Equal(expected, GpuPlacementRuntimeSwitchMethods.ReadStored(stored));
+
+    [Fact]
+    public void StoredRuntimeSwitchReaderRejectsUnknownValues()
+        => Assert.Throws<InvalidDataException>(() => GpuPlacementRuntimeSwitchMethods.ReadStored("future_switch_method"));
+
+    [Theory]
+    [InlineData("SingleCcd", CpuMaximumOccupancyModes.SingleCcd)]
+    [InlineData("AllCores", CpuMaximumOccupancyModes.AllCores)]
+    public void StoredOccupancyReaderMapsPriorSpellings(string stored, string expected)
+        => Assert.Equal(expected, CpuMaximumOccupancyModes.ReadStored(stored));
+
+    [Fact]
+    public void StoredOccupancyReaderRejectsUnknownValues()
+        => Assert.Throws<InvalidDataException>(() => CpuMaximumOccupancyModes.ReadStored("future_occupancy_mode"));
 
     [Fact]
     public void Resolve_UsesSoftwarePolicyWhenProcessInherits()

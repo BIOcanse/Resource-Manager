@@ -786,7 +786,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 Available = true, SourceGeneration = ++generation, CapturedAt = observedAt,
                 Window = TimeSpan.FromSeconds(60), LogicalProcessorCount = 16,
                 MaximumSingleDurationMilliseconds = maximum, EventsAtOrAboveOneMillisecond = 55,
-                CpuCapacityPercent = capacity, ProviderState = new SystemInterruptProviderState("test", "Running", "")
+                CpuCapacityPercent = capacity, ProviderState = new SystemInterruptProviderState("test", SystemInterruptProviderStates.Running, "")
             };
             observedAt = observedAt.AddSeconds(10);
             return await owner.RefreshReportsAsync(CancellationToken.None);
@@ -1083,7 +1083,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
 
     private sealed class CachedInterruptSource : ISystemInterruptSnapshotSource
     {
-        internal SystemInterruptSnapshot Snapshot = SystemInterruptSnapshot.Unavailable("Warming", "test");
+        internal SystemInterruptSnapshot Snapshot = SystemInterruptSnapshot.Unavailable(SystemInterruptProviderStates.Warming, "test");
         public IDisposable AcquireSubscription(string id, TimeSpan interval) => new CallbackLease(() => { });
         public SystemInterruptSnapshot Read() => Snapshot;
     }
@@ -1110,7 +1110,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             [],
             new SystemInterruptProviderState(
                 "test",
-                "Unavailable",
+                SystemInterruptProviderStates.Unavailable,
                 "Unavailable in owner test."));
 
         internal int ActiveSubscriptions => Volatile.Read(ref activeSubscriptions);

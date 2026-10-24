@@ -89,7 +89,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     public async Task CompleteEmptyWindowPublishesZeroAndEmptyInventoryRemovesOldProcessObjects()
     {
         var network = new NetworkReader(_ => new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-            new("etw-network-tcpip", "Running", "fixture"))
+            new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture"))
             { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) });
         var inventoryEmpty = false;
         using var fixture = new Fixture(network, () => inventoryEmpty ? [] : [Process.GetCurrentProcess()]);
@@ -147,7 +147,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     }
 
     private static NetworkAttributionSnapshot Window(DateTimeOffset captured, string? birth, string? receive, string? send)
-        => new(captured, new Dictionary<int, NetworkProcessAttribution>(), new("etw-network-tcpip", "Running", "fixture"))
+        => new(captured, new Dictionary<int, NetworkProcessAttribution>(), new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture"))
         { ObservedTraffic = new(captured, 2000, [new(Environment.ProcessId, birth, receive, send, 99999, 99999)]) };
 
     internal sealed class NetworkReader(Func<NetworkAttributionReadRequest, NetworkAttributionSnapshot> read) : INetworkAttributionReader

@@ -4,8 +4,8 @@
     {
       "id": "app-notebook-fan-control-winring0x64-known-vulnerabilities",
       "softwareIdentityId": "app-notebook-fan-control",
-      "kind": "KnownSecurityVulnerability",
-      "severity": "Warning",
+      "kind": "known_security_vulnerability",
+      "severity": "warning",
       "label": "存在已公开安全漏洞",
       "message": "随软件安装的 WinRing0x64.sys 1.2.0.5 与已公开漏洞记录匹配。建议更新或卸载包含该驱动的旧版本；Resource Manager 不据此判断软件为恶意软件。",
       "artifacts": [

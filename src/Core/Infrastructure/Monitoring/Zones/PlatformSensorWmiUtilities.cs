@@ -21,17 +21,17 @@ internal static class PlatformSensorWmiUtilities
         string provider,
         params HardwareSensorProviderState[] states)
     {
-        if (states.Any(static state => state.State.Equals("Active", StringComparison.OrdinalIgnoreCase)))
+        if (states.Any(static state => state.State == HardwareSensorProviderStates.Active))
         {
             return new HardwareSensorProviderState(
                 provider,
-                "Active",
+                HardwareSensorProviderStates.Active,
                 string.Join("; ", states.Select(static state => $"{state.Provider}: {state.State}")));
         }
 
         return new HardwareSensorProviderState(
             provider,
-            "Unavailable",
+            HardwareSensorProviderStates.Unavailable,
             string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
     }
 }

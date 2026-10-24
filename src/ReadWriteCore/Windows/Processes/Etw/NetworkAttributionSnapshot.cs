@@ -1,5 +1,35 @@
 namespace ResourceManager.App.Application.ResourceBreakdown;
 
+public static class NetworkAttributionProviderStates
+{
+    public const string Active = "active";
+    public const string Degraded = "degraded";
+    public const string Unavailable = "unavailable";
+    public const string NotRequested = "not_requested";
+    public const string Frozen = "frozen";
+    public const string Starting = "starting";
+    public const string Running = "running";
+    public const string Idle = "idle";
+    public const string Warming = "warming";
+    public const string Available = "available";
+    public const string Stopped = "stopped";
+    public const string StopFailed = "stop_failed";
+    public const string Failed = "failed";
+    public const string Unsupported = "unsupported";
+
+    public static string FromKernelEtwState(string state) => state switch
+    {
+        "Running" => Running,
+        "Idle" => Idle,
+        "Starting" => Starting,
+        "Stopped" => Stopped,
+        "StopFailed" => StopFailed,
+        "Available" => Available,
+        "Unavailable" => Unavailable,
+        _ => throw new InvalidDataException($"Unknown kernel ETW state '{state}'.")
+    };
+}
+
 public sealed record NetworkAttributionSnapshot(
     DateTimeOffset CapturedAt,
     IReadOnlyDictionary<int, NetworkProcessAttribution> Processes,
@@ -18,7 +48,7 @@ public sealed record NetworkAttributionSnapshot(
         new Dictionary<int, NetworkProcessAttribution>(),
         new NetworkAttributionProviderState(
             "ip-helper-network",
-            "NotRequested",
+            NetworkAttributionProviderStates.NotRequested,
             "当前快照未请求网络进程归因。"));
 }
 

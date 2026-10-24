@@ -234,7 +234,7 @@ internal static class HostManagerRollbackStateEnvelopeCodec
 
         return new HostManagerRollbackStateDecodedEnvelope(
             envelope.Revision,
-            normalized,
+            JsonHostManagerRollbackStateStore.ReadStoredDocument(normalized),
             canonicalImage);
     }
 

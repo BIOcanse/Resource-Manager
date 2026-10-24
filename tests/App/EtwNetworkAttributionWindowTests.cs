@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -15,7 +16,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var broker = new Broker();
         long tick = 0;
         using var reader = NewReader(broker, () => tick);
-        Assert.Equal("Warming", reader.Read().ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Warming, reader.Read().ProviderState.State);
         Observe(reader, broker, 41, 4000, 1000);
         tick = 2001;
         Assert.Equal(2000, reader.Read().RawProcessValues[41].SendBytesPerSecond);
@@ -23,7 +24,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         broker.EventsLost = 1;
         tick = 2100;
         var incomplete = reader.Read();
-        Assert.Equal("Warming", incomplete.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Warming, incomplete.ProviderState.State);
         Assert.Empty(incomplete.RawProcessValues);
         Assert.Empty(incomplete.Processes);
         Assert.Null(incomplete.ObservedTraffic);
@@ -31,7 +32,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Observe(reader, broker, 42, 8192, 4100);
         tick = 4201;
         var recovered = reader.Read();
-        Assert.Equal("Running", recovered.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Running, recovered.ProviderState.State);
         var row = Assert.Single(recovered.RawProcessValues);
         Assert.Equal(42, row.Key);
         Assert.Equal(4096, row.Value.SendBytesPerSecond);
@@ -59,7 +60,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Empty(result.RawProcessValues);
         Assert.Empty(result.Processes);
         Assert.Null(result.ObservedTraffic);
-        Assert.Equal("Warming", result.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Warming, result.ProviderState.State);
         Assert.Equal(1, broker.SubscribeCount);
     }
 
@@ -69,13 +70,13 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var broker = new Broker { EventsLost = 5 };
         long tick = 1000;
         using var reader = NewReader(broker, () => tick);
-        Assert.Equal("Warming", reader.Read().ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Warming, reader.Read().ProviderState.State);
         Observe(reader, broker, 41, 4000, 3000);
         tick = 3001;
 
         var snapshot = reader.Read();
 
-        Assert.Equal("Running", snapshot.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Running, snapshot.ProviderState.State);
         Assert.Equal(2000, snapshot.RawProcessValues[41].SendBytesPerSecond);
         Assert.Equal(1, broker.SubscribeCount);
     }

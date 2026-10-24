@@ -18,10 +18,10 @@ public sealed class AmdSmuLibraryIntegrationTests
             type => Assert.Same(typeof(ReadWriteCore).Assembly, type.Assembly));
         var session = new RecordedSession(); var opens = 0;
         var reader = new AmdSmuCpuSensorReader(() => { opens++; return session; }, 16, TimeSpan.FromSeconds(10), TimeProvider.System);
-        Assert.Equal("NotRequested", reader.Read(None).ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.NotRequested, reader.Read(None).ProviderState.State);
         Assert.Equal(0, opens);
         var value = reader.Read(Selected);
-        Assert.Equal("Active", value.ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Active, value.ProviderState.State);
         Assert.Equal(42, value.ActualPowerWatts);
         Assert.Null(value.PackagePowerWatts);
         Assert.Null(value.PackageCurrentAmps);
@@ -47,7 +47,7 @@ public sealed class AmdSmuLibraryIntegrationTests
         var session = new RecordedSession { TableVersion = 123 };
         using var reader = new AmdSmuCpuSensorReader(() => session, 16, TimeSpan.Zero, TimeProvider.System);
         var value = reader.Read(Selected);
-        Assert.Equal("Unavailable", value.ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Unavailable, value.ProviderState.State);
         Assert.Null(value.ActualPowerWatts); Assert.Null(value.TemperatureCelsius); Assert.Null(value.SmuFrequencyMhz);
         var description = reader.DescribeSession();
         Assert.True(description.SessionOpen); Assert.False(description.LayoutMapped);
@@ -60,9 +60,9 @@ public sealed class AmdSmuLibraryIntegrationTests
         var clock = new Clock(); var first = new RecordedSession { Fail = true }; var second = new RecordedSession();
         var opens = 0;
         using var reader = new AmdSmuCpuSensorReader(() => ++opens == 1 ? first : second, 16, TimeSpan.FromSeconds(10), clock);
-        Assert.Equal("Unavailable", reader.Read(Selected).ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Unavailable, reader.Read(Selected).ProviderState.State);
         Assert.Equal(1, first.Disposals);
-        Assert.Equal("Unavailable", reader.Read(Selected).ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Unavailable, reader.Read(Selected).ProviderState.State);
         Assert.Equal(1, opens);
         clock.Now += TimeSpan.FromSeconds(10);
         Assert.Equal(42, reader.Read(Selected).ActualPowerWatts);

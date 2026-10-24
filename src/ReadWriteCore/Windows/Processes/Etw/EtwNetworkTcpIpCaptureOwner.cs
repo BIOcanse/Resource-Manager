@@ -42,7 +42,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     private int retainedEventCount;
     private bool disposed;
     private DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
-    private volatile string state = "Idle";
+    private volatile string state = NetworkAttributionProviderStates.Idle;
     private volatile string message = "ETW 网络事件归因按需启动。";
 
     internal EtwNetworkTcpIpCaptureOwner(IKernelEtwSessionBroker broker,
@@ -74,7 +74,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 new Dictionary<int, NetworkProcessAttribution>(),
                 new NetworkAttributionProviderState(
                     "etw-network-tcpip",
-                    "Frozen",
+                    NetworkAttributionProviderStates.Frozen,
                     "ETW 网络事件归因当前处于功能区冻结。"),
                 new Dictionary<int, NetworkProcessAttribution>());
         }
@@ -109,7 +109,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             processSnapshots = ProcessSnapshots.Empty;
             observedTraffic = null;
             if (!canRead()) InvalidateFrozenWindow(nowTickMilliseconds);
-            else if (brokerAfter.IsRunning && brokerAfter.Generation == Volatile.Read(ref sessionGeneration)) state = "Warming";
+            else if (brokerAfter.IsRunning && brokerAfter.Generation == Volatile.Read(ref sessionGeneration)) state = NetworkAttributionProviderStates.Warming;
         }
         return new NetworkAttributionSnapshot(
             now,
@@ -155,7 +155,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     {
         if (!canRead())
         {
-            state = "Idle";
+            state = NetworkAttributionProviderStates.Idle;
             message = "ETW 网络事件归因当前处于功能区冻结。";
             return;
         }
@@ -177,7 +177,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             }
             catch (Exception ex)
             {
-                state = "Unavailable";
+                state = NetworkAttributionProviderStates.Unavailable;
                 message = $"ETW 网络事件归因启动失败：{ex.Message}";
                 logger.LogWarning(ex, "Failed to start ETW TCP/IP network attribution reader.");
             }
@@ -200,7 +200,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             retainedEventCount = 0;
             windowRevision = checked(windowRevision + 1);
         }
-        state = "Running";
+        state = NetworkAttributionProviderStates.Running;
         message = "ETW 网络事件归因正在采集进程收发事件。";
         kernel.TcpIpSend += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
         kernel.TcpIpSendIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
@@ -232,12 +232,12 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                     observedBrokerLoss = snapshot.EventsLost;
                 }
             }
-            state = "Running";
+            state = NetworkAttributionProviderStates.Running;
             message = "ETW 网络事件归因正在采集进程收发事件。";
             return;
         }
 
-        state = snapshot.State;
+        state = NetworkAttributionProviderStates.FromKernelEtwState(snapshot.State);
         message = snapshot.Message;
     }
 
@@ -301,7 +301,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         var cutoff = nowTickMilliseconds - CalculationWindowMilliseconds;
         if (cutoff <= incompleteThroughTick)
         {
-            state = "Warming";
+            state = NetworkAttributionProviderStates.Warming;
             return ProcessSnapshots.Empty;
         }
         var selected = new List<NetworkTransferEvent>();
@@ -350,7 +350,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         {
             if (kernelSubscription is not null) return;
             Volatile.Write(ref sessionGeneration, 0);
-            state = "Idle";
+            state = NetworkAttributionProviderStates.Idle;
             message = idleMessage;
         }
     }
@@ -374,7 +374,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             ClearEventsCore(Volatile.Read(ref events));
             incompleteThroughTick = observedTick;
         }
-        state = "Frozen";
+        state = NetworkAttributionProviderStates.Frozen;
         message = "ETW 网络事件归因当前处于功能区冻结。";
     }
 

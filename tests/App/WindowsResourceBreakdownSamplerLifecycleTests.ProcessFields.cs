@@ -48,7 +48,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             using var process = Process.GetCurrentProcess();
             var captured = DateTimeOffset.UtcNow;
             return new(captured, new Dictionary<int, NetworkProcessAttribution>
-                { [process.Id] = new(process.Id, 1000, 2000, 1, 0, true) }, new("ip-helper-network", "Active", "fixture"))
+                { [process.Id] = new(process.Id, 1000, 2000, 1, 0, true) }, new("ip-helper-network", NetworkAttributionProviderStates.Active, "fixture"))
             { ObservedTraffic = completeWindow ? new(captured, 2000, [new(process.Id,
                 process.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(CultureInfo.InvariantCulture), "3", "7", 1.5, 3.5)]) : null };
         }

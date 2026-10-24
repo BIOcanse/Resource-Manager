@@ -482,18 +482,18 @@ const deDeAppCopy: AppCopy = {
     Empty: "Frei"
   },
   managementRole: {
-    Dependency: "Abhängigkeiten",
-    Support: "Support"
+    dependency: "Abhängigkeiten",
+    support: "Support"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "Ungewöhnliche Speichernutzung",
-      LongSystemInterrupts: "Lange Systeminterrupts",
-      ExcessiveSystemInterrupts: "Hohe Auslastung durch Systeminterrupts",
-      KnownSecurityVulnerability: "Bekannte Sicherheitslücke",
-      DependencyIssue: "Abhängigkeitsproblem",
-      CompatibilityIssue: "Kompatibilitätsproblem",
-      KnownMalware: "Bekannte Schadsoftware",
+      abnormal_memory_usage: "Ungewöhnliche Speichernutzung",
+      long_system_interrupts: "Lange Systeminterrupts",
+      excessive_system_interrupts: "Hohe Auslastung durch Systeminterrupts",
+      known_security_vulnerability: "Bekannte Sicherheitslücke",
+      dependency_issue: "Abhängigkeitsproblem",
+      compatibility_issue: "Kompatibilitätsproblem",
+      known_malware: "Bekannte Schadsoftware",
       memoryAdvice: "Prüfen Sie, ob diese Hintergrundanwendung noch benötigt wird, und schließen Sie sie gegebenenfalls.",
       interruptAdvice: "Suchen Sie nach Updates für den betreffenden Treiber; löschen Sie Treiberdateien nicht direkt.",
       winringMessage: "Die installierte Datei WinRing0x64.sys 1.2.0.5 entspricht veröffentlichten Sicherheitslücken. Aktualisieren oder deinstallieren Sie die alte Softwareversion, die diesen Treiber enthält. Dies stuft die Software nicht als Schadsoftware ein.",

@@ -190,7 +190,7 @@ public sealed partial class IpHelperNetworkAttributionReader
     {
         if (hasEstimatedContributions)
         {
-            return new NetworkAttributionProviderState("ip-helper-network", "Degraded",
+            return new NetworkAttributionProviderState("ip-helper-network", NetworkAttributionProviderStates.Degraded,
                 "部分网络速率按活动 endpoint 权重估算，或由已知代理重新分配。");
         }
 
@@ -198,7 +198,7 @@ public sealed partial class IpHelperNetworkAttributionReader
         {
             return new NetworkAttributionProviderState(
                 "ip-helper-network",
-                "Active",
+                NetworkAttributionProviderStates.Active,
                 "网络进程归因可用。");
         }
 
@@ -206,18 +206,18 @@ public sealed partial class IpHelperNetworkAttributionReader
         {
             return new NetworkAttributionProviderState(
                 "ip-helper-network",
-                "Degraded",
+                NetworkAttributionProviderStates.Degraded,
                 "IP Helper 已识别 TCP/UDP owner PID，但当前没有可用 TCP EStats 字节差分；网络速率按活动 endpoint 权重估算，外部网络口径会排除本机环回 endpoint。");
         }
 
         return systemBytesPerSecond > 0
             ? new NetworkAttributionProviderState(
                 "ip-helper-network",
-                "Degraded",
+                NetworkAttributionProviderStates.Degraded,
                 "系统存在网络流量，但当前 IP Helper 连接表没有可归因 endpoint。")
             : new NetworkAttributionProviderState(
                 "ip-helper-network",
-                "Active",
+                NetworkAttributionProviderStates.Active,
                 "IP Helper 连接表可用，当前没有网络 endpoint。");
     }
 

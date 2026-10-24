@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.ReadWrite.Vendors.Mechrevo;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Paths;
@@ -30,7 +31,7 @@ internal sealed class MechrevoUwAcpiSensorReader : IDisposable
             return new HardwareSensorDependencyRuntimeStatus(
                 false,
                 false,
-                "Missing",
+                ComponentProviderStates.Missing,
                 "未检测到机械革命/同方控制中心的 ACPIDriverDll.dll。",
                 bridge ?? driver);
         }
@@ -40,7 +41,7 @@ internal sealed class MechrevoUwAcpiSensorReader : IDisposable
             return new HardwareSensorDependencyRuntimeStatus(
                 true,
                 false,
-                "InstalledUnverified",
+                ComponentProviderStates.InstalledUnverified,
                 $"检测到 ACPIDriverDll.dll，但无法加载或未找到 ReadEC 导出。驱动：{driver ?? "未检测到"}",
                 dllPath);
         }
@@ -48,7 +49,7 @@ internal sealed class MechrevoUwAcpiSensorReader : IDisposable
         return new HardwareSensorDependencyRuntimeStatus(
             true,
             driver is not null,
-            driver is not null ? "RuntimeAvailable" : "InstalledUnverified",
+            driver is not null ? ComponentProviderStates.RuntimeAvailable : ComponentProviderStates.InstalledUnverified,
             driver is not null
                 ? $"检测到 UWACPIDriver 和 ReadEC 导出；GCUBridge：{bridge ?? "未检测到"}。"
                 : "检测到 ReadEC 导出，但未检测到 UWACPIDriver 服务。",

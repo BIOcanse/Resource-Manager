@@ -237,7 +237,7 @@ public sealed class HostManagerReportFactProjectorTests
         var result = publisher.Publish(CreateHardware(now, CpuMetricObservationStatus.Complete, 7), request);
         Assert.Equal(3, result.CommittedDatasetCount);
         var composed = Assert.IsType<HardwareMetricSnapshot>(publisher.Read(now));
-        Assert.Equal("Unavailable", composed.Cpu.Sensors.ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Unavailable, composed.Cpu.Sensors.ProviderState.State);
         var facts = HostManagerReportFactProjector.Project(HostManagerTestPlanFactory.CreatePlan().ReportCoordinator,
             composed, CreateInterrupts(now, false, 0));
         Assert.Equal(3, Assert.Single(facts, source => source.ProviderGeneration == 7).Facts.Count);
@@ -314,7 +314,7 @@ public sealed class HostManagerReportFactProjectorTests
                 FrequencyPercent: 60,
                 FrequencySource: "Windows effective frequency",
                 new CpuSensorMetrics(
-                    new HardwareSensorProviderState("test", "Unavailable", null),
+                    new HardwareSensorProviderState("test", HardwareSensorProviderStates.Unavailable, null),
                     PackagePowerWatts: 80,
                     CoreVoltageVolts: 1,
                     PackageCurrentAmps: 70,
@@ -344,7 +344,7 @@ public sealed class HostManagerReportFactProjectorTests
         long sourceGeneration,
         int eventsLost = 0,
         TimeSpan? window = null,
-        string providerState = "Running")
+        string providerState = SystemInterruptProviderStates.Running)
     {
         return new SystemInterruptSnapshot(
             capturedAt,

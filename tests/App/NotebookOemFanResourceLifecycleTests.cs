@@ -66,7 +66,7 @@ public sealed class NotebookOemFanResourceLifecycleTests
         IResourceManagerSelfComputeZone registeredZone = zone;
         registeredZone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
         Assert.Equal(1, sessions[0].Releases);
-        Assert.Equal("Frozen", zone.ReadSensors().ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Frozen, zone.ReadSensors().ProviderState.State);
         zone.SynchronizeDemand(true);
         Assert.Single(sessions);
         registeredZone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
@@ -88,13 +88,13 @@ public sealed class NotebookOemFanResourceLifecycleTests
         plan = CompiledFirmwareProviderPlan.Default;
         zone.SynchronizeDemand(true);
         Assert.Equal(1, sessions[0].Releases);
-        Assert.Equal("UnsupportedFirmware", zone.ReadSensors().ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.UnsupportedFirmware, zone.ReadSensors().ProviderState.State);
         Assert.Single(sessions);
         plan = Supported;
         zone.ReadSensors();
         Assert.Equal(2, sessions.Count);
         plan = CompiledFirmwareProviderPlan.Default;
-        Assert.Equal("UnsupportedFirmware", zone.ReadSensors().ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.UnsupportedFirmware, zone.ReadSensors().ProviderState.State);
         Assert.Equal(1, sessions[1].Releases);
     }
 

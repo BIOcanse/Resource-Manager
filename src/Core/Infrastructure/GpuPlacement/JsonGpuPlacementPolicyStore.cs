@@ -120,8 +120,8 @@ public sealed partial class JsonGpuPlacementPolicyStore(
         }
     }
 
-    // Runs inside the gate. A 2.0.0 file is read as is; a missing or 1.x version is migrated
-    // and atomically written back before it is returned; any other version is refused.
+    // Runs inside the gate. A 2.0.0 file is read as is unless it contains old wire spellings,
+    // which are atomically rewritten; a missing or 1.x version is migrated before it is returned.
     private async Task<GpuPlacementPolicyDocument> LoadCoreAsync(CancellationToken cancellationToken)
     {
         byte[] content;
@@ -143,7 +143,12 @@ public sealed partial class JsonGpuPlacementPolicyStore(
         {
             var document = JsonSerializer.Deserialize<GpuPlacementPolicyDocument>(content, JsonOptions);
             if (document is null) throw new InvalidDataException("The GPU placement policy file is empty.");
-            return NormalizeDocument(document);
+            var normalized = ReadStoredDocument(document);
+            if (HasLegacyWireValues(document))
+            {
+                await SaveCoreAsync(normalized, cancellationToken);
+            }
+            return normalized;
         }
 
         if (!IsLegacyDocumentVersion(version))
@@ -152,7 +157,7 @@ public sealed partial class JsonGpuPlacementPolicyStore(
                 $"The GPU placement policy file version '{version}' is newer than this application supports.");
         }
 
-        var migrated = NormalizeDocument(MigrateLegacyDocument(content));
+        var migrated = ReadStoredDocument(MigrateLegacyDocument(content));
         await SaveCoreAsync(migrated, cancellationToken);
         return migrated;
     }
@@ -231,6 +236,15 @@ public sealed partial class JsonGpuPlacementPolicyStore(
             ? RequireText(policy.SoftwareId, "软件标识不能为空。")
             : CleanText(policy.SoftwareId) ?? "";
         var softwareName = CleanText(policy.SoftwareName) ?? softwareId;
+        if (throwOnInvalid)
+        {
+            ValidateRequestValue(GpuPlacementTargets.IsKnown(policy.StartupTargetGpu),
+                "GPU 启动目标必须使用受支持的值。", policy.StartupTargetGpu);
+            ValidateRequestValue(GpuPlacementRuntimeSwitchMethods.IsKnown(policy.PreferredRuntimeSwitchMethod),
+                "GPU 运行时切换方式必须使用受支持的值。", policy.PreferredRuntimeSwitchMethod);
+            ValidateRequestValue(CpuMaximumOccupancyModes.IsKnown(policy.CpuMaximumOccupancyMode),
+                "CPU 最大占用模式必须使用受支持的值。", policy.CpuMaximumOccupancyMode);
+        }
         return new GpuPlacementSoftwarePolicy(
             softwareId,
             softwareName,
@@ -247,6 +261,36 @@ public sealed partial class JsonGpuPlacementPolicyStore(
             CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
             NormalizeCpuPositionIds(policy.CpuManualExclusivePositionIds),
             NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds));
+    }
+
+    // Keep legacy-token compatibility at the persistence read boundary. SaveCoreAsync uses
+    // NormalizeDocument directly and therefore never accepts old stored spellings.
+    private static GpuPlacementPolicyDocument ReadStoredDocument(GpuPlacementPolicyDocument? document)
+    {
+        if (document is null)
+        {
+            return GpuPlacementPolicyDocument.Empty;
+        }
+
+        var softwarePolicies = (document.SoftwarePolicies ?? [])
+            .Select(static policy => ReadStoredSoftwarePolicy(policy))
+            .ToArray();
+        return NormalizeDocument(document with { SoftwarePolicies = softwarePolicies });
+    }
+
+    private static GpuPlacementSoftwarePolicy ReadStoredSoftwarePolicy(GpuPlacementSoftwarePolicy? policy)
+    {
+        if (policy is null)
+        {
+            return GpuPlacementPolicyDefaults.CreateSoftwarePolicy("", "");
+        }
+
+        return policy with
+        {
+            StartupTargetGpu = GpuPlacementTargets.ReadStored(policy.StartupTargetGpu),
+            PreferredRuntimeSwitchMethod = GpuPlacementRuntimeSwitchMethods.ReadStored(policy.PreferredRuntimeSwitchMethod),
+            CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.ReadStored(policy.CpuMaximumOccupancyMode)
+        };
     }
 
     private static GpuPlacementProcessPolicy NormalizeProcessPolicy(
@@ -361,6 +405,25 @@ public sealed partial class JsonGpuPlacementPolicyStore(
     private static string RequireText(string? value, string message)
     {
         return CleanText(value) ?? throw new InvalidOperationException(message);
+    }
+
+    private static void ValidateRequestValue(bool isKnown, string message, string? value)
+    {
+        if (!isKnown)
+        {
+            throw new InvalidOperationException($"{message} Unsupported value '{value}'.");
+        }
+    }
+
+    private static bool HasLegacyWireValues(GpuPlacementPolicyDocument document)
+    {
+        return (document.SoftwarePolicies ?? []).Any(policy => policy is not null &&
+            (!string.Equals(policy.StartupTargetGpu,
+                GpuPlacementTargets.ReadStored(policy.StartupTargetGpu), StringComparison.Ordinal)
+            || !string.Equals(policy.PreferredRuntimeSwitchMethod,
+                GpuPlacementRuntimeSwitchMethods.ReadStored(policy.PreferredRuntimeSwitchMethod), StringComparison.Ordinal)
+            || !string.Equals(policy.CpuMaximumOccupancyMode,
+                CpuMaximumOccupancyModes.ReadStored(policy.CpuMaximumOccupancyMode), StringComparison.Ordinal)));
     }
 
     private static string? CleanText(string? value)

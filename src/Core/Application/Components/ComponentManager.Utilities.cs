@@ -13,14 +13,14 @@ public sealed partial class ComponentManager
     {
         return state switch
         {
-            "Active" => "已激活",
-            "Installed" => "已安装",
-            "InstalledUnverified" => "已安装待验证",
-            "ReadyToInstall" => "可安装",
-            "Available" => "可下载",
-            "ManualDownloadRequired" => "需手动下载",
-            "ProviderMissing" => "Provider 未接入",
-            "Missing" => "未安装",
+            ComponentStatusStates.Active => "已激活",
+            ComponentStatusStates.Installed => "已安装",
+            ComponentStatusStates.InstalledUnverified => "已安装待验证",
+            ComponentStatusStates.ReadyToInstall => "可安装",
+            ComponentStatusStates.Available => "可下载",
+            ComponentStatusStates.ManualDownloadRequired => "需手动下载",
+            ComponentStatusStates.ProviderMissing => "Provider 未接入",
+            ComponentStatusStates.Missing => "未安装",
             _ => state
         };
     }

@@ -3,6 +3,7 @@ import { Download, ExternalLink, Info, RefreshCw } from "lucide-solid";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import type { ManagedComponent } from "../../types";
 import type { BrowserRuntimeEntry, BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
+import { browserRuntimeKindLabel, browserRuntimeSourceLabel } from "./browserRuntimePresentation";
 import { uiText } from "../../text.ts";
 
 interface BrowserRuntimePageProps {
@@ -17,7 +18,7 @@ interface BrowserRuntimePageProps {
 export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
   const [selectedRuntime, setSelectedRuntime] = createSignal<BrowserRuntimeEntry | null>(null);
   const browsers = createMemo(() =>
-    (props.snapshot?.candidates ?? []).filter((candidate) => candidate.kind !== "WebView2Runtime"));
+    (props.snapshot?.candidates ?? []).filter((candidate) => candidate.kind !== "web_view2_runtime"));
   const installAvailable = () => {
     const component = props.installComponent;
     return component && (component.canInstall || component.canDownload || component.installerAvailable);
@@ -161,11 +162,11 @@ function runtimeSummary(runtime: BrowserRuntimeEntry | null) {
     return undefined;
   }
 
-  if (runtime.kind === "WebView2Runtime") {
+  if (runtime.kind === "web_view2_runtime") {
     return uiText.browserRuntime.sharedRuntimePurpose;
   }
 
-  return runtime.kind === "GeckoBrowser"
+  return runtime.kind === "gecko_browser"
     ? uiText.browserRuntime.externalBrowserPurpose
     : uiText.browserRuntime.chromiumReusePurpose;
 }
@@ -178,30 +179,12 @@ function runtimeDetailSections(runtime: BrowserRuntimeEntry | null) {
   return [{
     title: uiText.browserRuntime.runtimeInfoTitle,
     items: [
-      { label: uiText.browserRuntime.field.kind, value: runtimeKindLabel(runtime.kind) },
+      { label: uiText.browserRuntime.field.kind, value: browserRuntimeKindLabel(runtime.kind) },
       { label: uiText.browserRuntime.field.version, value: runtime.version || uiText.browserRuntime.unknown },
       { label: uiText.browserRuntime.field.state, value: runtime.selected ? uiText.browserRuntime.inUse : uiText.browserRuntime.available },
-      { label: uiText.browserRuntime.field.source, value: runtimeSourceLabel(runtime.source) },
+      { label: uiText.browserRuntime.field.source, value: browserRuntimeSourceLabel(runtime.source) },
       { label: uiText.browserRuntime.field.runtimeDirectory, value: runtime.runtimeDirectory },
       { label: uiText.browserRuntime.field.executable, value: runtime.executablePath }
     ]
   }];
-}
-
-function runtimeKindLabel(kind: BrowserRuntimeEntry["kind"]) {
-  return ({
-    WebView2Runtime: uiText.browserRuntime.kind.webView2Runtime,
-    ChromiumBrowser: uiText.browserRuntime.kind.chromiumBrowser,
-    GeckoBrowser: uiText.browserRuntime.kind.geckoBrowser
-  } as const)[kind];
-}
-
-function runtimeSourceLabel(source: string) {
-  return ({
-    SystemMachine: uiText.browserRuntime.source.systemMachine,
-    SystemUser: uiText.browserRuntime.source.systemUser,
-    Managed: uiText.browserRuntime.source.managed,
-    BrowserRegistration: uiText.browserRuntime.source.browserRegistration,
-    KnownInstall: uiText.browserRuntime.source.knownInstall
-  } as Record<string, string>)[source] ?? uiText.browserRuntime.source.local;
 }

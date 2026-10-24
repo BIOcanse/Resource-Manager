@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Infrastructure.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
 
@@ -42,9 +43,9 @@ public sealed class HostReadWriteDependencyTests
     }
 
     [Theory]
-    [InlineData("Missing", false, false, DependencyAvailability.Missing)]
-    [InlineData("Installed", true, false, DependencyAvailability.Unknown)]
-    [InlineData("RuntimeAvailable", true, true, DependencyAvailability.Ready)]
+    [InlineData(ComponentProviderStates.Missing, false, false, DependencyAvailability.Missing)]
+    [InlineData(ComponentProviderStates.Installed, true, false, DependencyAvailability.Unknown)]
+    [InlineData(ComponentProviderStates.RuntimeAvailable, true, true, DependencyAvailability.Ready)]
     public void UnverifiedFilesDoNotBecomeReadyRuntimeDependencies(string state, bool runtime, bool primary,
         DependencyAvailability expected)
     {
@@ -146,7 +147,7 @@ public sealed class HostReadWriteDependencyTests
     private sealed class Providers : IProviderRuntimeProbe
     {
         internal List<string> Queries { get; } = [];
-        internal ComponentProviderRuntimeProbeResult Result { get; set; } = new(true, true, "RuntimeAvailable", "recorded", null);
+        internal ComponentProviderRuntimeProbeResult Result { get; set; } = new(true, true, ComponentProviderStates.RuntimeAvailable, "recorded", null);
         public ComponentProviderRuntimeProbeResult Probe(string component) { Queries.Add(component); return Result; }
     }
 }
