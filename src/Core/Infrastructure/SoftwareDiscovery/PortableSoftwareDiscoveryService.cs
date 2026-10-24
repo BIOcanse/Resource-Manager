@@ -6,7 +6,9 @@ using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Domain.SoftwareDiscovery;
 using ResourceManager.App.Domain.SoftwareIdentity;
+using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.Infrastructure.ProcessAttribution;
 
 namespace ResourceManager.App.Infrastructure.SoftwareDiscovery;
 
@@ -18,7 +20,9 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     private readonly IPortableSoftwareRegistry portableSoftwareRegistry;
     private readonly ILogger<PortableSoftwareDiscoveryService> logger;
     private readonly Func<PortableProcessCandidate[]> captureCurrentProcesses;
-    private readonly WindowsPortableProcessIdentityReader identityReader = new();
+    private readonly Func<PortableProcessCandidate, RuntimeProcessIdentity?> readIdentity;
+    private readonly object failureLogGate = new();
+    private readonly Dictionary<string, long> failureLogTimes = new();
     private readonly Channel<PortableProcessCandidate> processStarts = Channel.CreateBounded<PortableProcessCandidate>(
         new BoundedChannelOptions(1024)
         {
@@ -49,7 +53,8 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         ISoftwareIdentityCatalog softwareIdentityCatalog,
         IPortableSoftwareRegistry portableSoftwareRegistry,
         ILogger<PortableSoftwareDiscoveryService> logger,
-        Func<PortableProcessCandidate[]> captureCurrentProcesses)
+        Func<PortableProcessCandidate[]> captureCurrentProcesses,
+        Func<PortableProcessCandidate, RuntimeProcessIdentity?>? readIdentity = null)
     {
         this.kernelEtwSessionBroker = kernelEtwSessionBroker;
         this.attributionCatalogProvider = attributionCatalogProvider;
@@ -57,6 +62,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         this.portableSoftwareRegistry = portableSoftwareRegistry;
         this.logger = logger;
         this.captureCurrentProcesses = captureCurrentProcesses;
+        this.readIdentity = readIdentity ?? new WindowsPortableProcessIdentityReader().TryRead;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -123,7 +129,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             },
             (candidate, _) =>
             {
-                Observe(candidate, catalog.Catalog.Pipeline);
+                ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
                 return ValueTask.CompletedTask;
             });
     }
@@ -173,13 +179,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 }
                 nextCandidate = processStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
                 using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
-                if (Observe(candidate, catalog.Catalog.Pipeline))
-                {
-                    continue;
-                }
-
-                await Task.Delay(150, cancellationToken);
-                Observe(candidate, catalog.Catalog.Pipeline);
+                ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -187,15 +187,48 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Portable software process discovery worker stopped unexpectedly.");
+            logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly; discovery is unavailable for this service lifetime.");
         }
+    }
+
+    private void ObserveCandidate(PortableProcessCandidate candidate,
+        RuntimeProcessAttributionPipeline pipeline, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            if (!Observe(candidate, pipeline))
+                LogCandidateFailure(candidate, new IOException("Process identity could not be read."));
+        }
+        catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogCandidateFailure(candidate, error);
+        }
+        catch (Exception error) when (RuntimeProcessAttributionFailure.IsCandidateFailure(error))
+        {
+            LogCandidateFailure(candidate, error);
+        }
+    }
+
+    private void LogCandidateFailure(PortableProcessCandidate candidate, Exception error)
+    {
+        var kind = RuntimeProcessAttributionFailure.Kind(error);
+        var now = Environment.TickCount64;
+        lock (failureLogGate)
+        {
+            if (failureLogTimes.TryGetValue(kind, out var previous) && now - previous < 60_000) return;
+            failureLogTimes[kind] = now;
+        }
+        logger.LogWarning(error,
+            "Portable software candidate PID {ProcessId} was not observed: {FailureKind}. Further failures of this kind are logged at most once per minute.",
+            candidate.ProcessId, kind);
     }
 
     private bool Observe(
         PortableProcessCandidate candidate,
         RuntimeProcessAttributionPipeline attributionPipeline)
     {
-        var identity = identityReader.TryRead(candidate);
+        var identity = readIdentity(candidate);
         if (identity is null)
         {
             return false;

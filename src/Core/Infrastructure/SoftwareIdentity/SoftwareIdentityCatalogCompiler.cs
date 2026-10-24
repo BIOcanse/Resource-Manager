@@ -233,8 +233,7 @@ public sealed partial class SoftwareIdentityCatalogCompiler :
             out var output);
         if (status != NativeSoftwareIdentityStatus.Ok)
         {
-            throw new InvalidOperationException(
-                $"Native bundled software identity query failed with {status}.");
+            throw new NativeSoftwareIdentityException("bundled catalog query", status);
         }
         return new NativeMatchResult(output);
     }

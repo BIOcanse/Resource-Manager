@@ -152,6 +152,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             }
             var committed = new List<string>(requested.Count);
             var rejected = new List<string>(requested.Count);
+            var reasons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var datasetId in requested.Order(StringComparer.OrdinalIgnoreCase))
             {
                 if (!snapshot.Datasets.TryGetValue(datasetId, out var observation))
@@ -168,6 +169,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         snapshot,
                         snapshot.CapturedAt);
                     rejected.Add(datasetId);
+                    reasons.Add(datasetId, "hardware-dataset-missing");
                     continue;
                 }
 
@@ -216,6 +218,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         snapshot,
                         snapshot.CapturedAt);
                     rejected.Add(datasetId);
+                    reasons.Add(datasetId, observation.FailureCode ?? FailureCodeForStatus(observation.Status));
                 }
             }
 
@@ -231,7 +234,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             return new HardwareMetricPublicationResult(
                 successful,
                 committed.ToArray(),
-                rejected.ToArray());
+                rejected.ToArray()) { RejectionReasons = reasons };
         }
     }
 
@@ -998,6 +1001,9 @@ public readonly record struct HardwareMetricPublicationResult(
     IReadOnlyList<string> CommittedDatasetIds,
     IReadOnlyList<string> RejectedDatasetIds)
 {
+    public IReadOnlyDictionary<string, string> RejectionReasons { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     public int RequestedDatasetCount =>
         checked(CommittedDatasetIds.Count + RejectedDatasetIds.Count);
 

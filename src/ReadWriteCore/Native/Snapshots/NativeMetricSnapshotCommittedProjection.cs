@@ -176,7 +176,7 @@ public static class NativeMetricSnapshotCommittedProjection
                 LastSuccessAtUtcTicks = status == SamplingObservationStatus.Current
                     ? observedAtUtcTicks
                     : 0,
-                FailureCode = DatasetFailureCode(status)
+                FailureCode = DatasetFailureCode(frame, reading)
             };
         }
 
@@ -284,6 +284,20 @@ public static class NativeMetricSnapshotCommittedProjection
                 "hardware-native-warming",
             _ => "hardware-native-invalid"
         };
+
+    private static string? DatasetFailureCode(NativeMetricSnapshotCommittedFrame frame, Reading reading)
+    {
+        if (reading.Status == NativeMetricSnapshotMetricStatus.Current) return null;
+        var source = frame.Sources.FirstOrDefault(row => row.SourceHandle == reading.Output.SourceHandle);
+        if (source.Status == (uint)NativeMetricSnapshotSourceStatus.Unavailable)
+            return "hardware-source-unavailable";
+        if (reading.Status == NativeMetricSnapshotMetricStatus.Skipped
+            && source.Status == (uint)NativeMetricSnapshotSourceStatus.Complete
+            && frame.Catalog.MetricBindings.TryGetValue(reading.Output.MetricHandle, out var binding)
+            && binding.MetricKind == (uint)NativeMetricSnapshotMetricKind.CpuUsage)
+            return "hardware-counter-baseline";
+        return DatasetFailureCode(Status(reading.Status));
+    }
 
     private static IReadOnlyList<GpuMetrics> CreateGpus(
         NativeMetricSnapshotCommittedFrame frame,

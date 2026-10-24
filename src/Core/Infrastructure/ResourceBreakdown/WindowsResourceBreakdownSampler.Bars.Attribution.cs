@@ -19,6 +19,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
             processSamples.Select(CreateRuntimeIdentity).ToArray(), baseScorePlan, cancellationToken);
         var batch = capture.Batch;
+        if (batch.Failures.Count != 0)
+            logger?.LogWarning("Process attribution could not observe these processes: {FailedProcesses}.",
+                string.Join(", ", batch.Failures.Select(pair => $"{pair.Key}[{pair.Value}]")));
         return new ProcessAttributionSnapshot(
             processSamples, processById, batch.SoftwareByProcessId,
             baseScorePlan, capture.SoftwareBaseScores, batch.HelperOwnerByProcessId);
