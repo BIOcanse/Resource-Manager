@@ -68,7 +68,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Equal(777d, fastValue);
             Assert.True(await slowPending.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal(777d, Assert.Single(slow.Current).Value!.Number!.Value);
-            Assert.Equal(harness.Core.ReadCached(harness.Field), Assert.Single(slow.Current));
+            FieldReadingAssert.CurrentOrNewer(Assert.Single(slow.Current), harness.Core.ReadCached(harness.Field));
         }
         finally
         {

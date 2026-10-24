@@ -112,16 +112,7 @@ public sealed class HostPresentFrameFieldQueryIntegrationTests
             Assert.Equal(50d, stream.Current.Single(static item => item.Field.FieldName == FrameFieldRegistry.FpsDerived).Value?.Number);
             Assert.Equal(FrameIntervalStatistics.Compute([10d, 20d, 30d])!.P95FrameTimeMs,
                 stream.Current.Single(static item => item.Field.FieldName == FrameFieldRegistry.TimePercentileDerived).Value?.Number);
-            // The 100 ms demand keeps publishing, so the cache may already hold a newer publication
-            // of the same reading by the time it is read.
-            foreach (var reading in stream.Current)
-            {
-                var cached = backend.ReadCached(reading.Field)!;
-                Assert.Equal(reading.Status, cached.Status);
-                Assert.Equal(reading.Value, cached.Value);
-                Assert.Equal(reading.SourceId, cached.SourceId);
-                Assert.True(cached.ObservedAt >= reading.ObservedAt);
-            }
+            Assert.All(stream.Current, reading => FieldReadingAssert.CurrentOrNewer(reading, backend.ReadCached(reading.Field)));
 
             subscriptionCancellation.Cancel();
             try

@@ -176,7 +176,7 @@ public sealed class ProcessIoRateFieldTests
             Assert.True(await stream.MoveNextAsync()); Assert.Null(stream.Current.Single().Value); // Hosted is not Direct history
             Assert.True(await stream.MoveNextAsync()); Assert.Equal(0, stream.Current.Single().Value?.Number);
             Assert.Equal(1000UL, stream.Current.Single().SampleDurationMilliseconds);
-            Assert.Equal(stream.Current.Single(), backend.ReadCached(field));
+            FieldReadingAssert.CurrentOrNewer(stream.Current.Single(), backend.ReadCached(field));
         }
         finally { await fixture.Sampler.StopAsync(default); }
     }

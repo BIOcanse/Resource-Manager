@@ -74,7 +74,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.NotNull(sampler.CaptureSamplingWorkerTask());
             Assert.Equal(45, Assert.Single(await backend.CollectAsync([field], timeout.Token)).Value!.Number);
             Assert.True(await next);
-            Assert.Equal(backend.ReadCached(field), Assert.Single(stream.Current));
+            FieldReadingAssert.CurrentOrNewer(Assert.Single(stream.Current), backend.ReadCached(field));
             Assert.NotNull(sampler.CaptureSamplingWorkerTask());
             await sampler.StopAsync(CancellationToken.None);
             Assert.Null(sampler.CaptureSamplingWorkerTask());
