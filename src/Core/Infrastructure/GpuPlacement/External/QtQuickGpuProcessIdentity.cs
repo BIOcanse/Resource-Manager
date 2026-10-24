@@ -1,12 +1,7 @@
 using System.ComponentModel;
 using System.Buffers.Binary;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
-using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
@@ -39,59 +34,53 @@ internal static class QtQuickGpuProcessIdentity
             _ => null
         };
 
-    private static ExternalGpuRenderer? ReadBackend(Process process, ProcessModuleSnapshot quick)
+    private static ExternalGpuRenderer? ReadBackend(RendererProcessRead process, RendererModuleName quick)
     {
-        var state = new byte[8];
-        return quick.ModuleMemorySize >= AppliedBackendStateRva + state.Length
-            && ReadProcessMemory(process.SafeHandle, quick.BaseAddress + AppliedBackendStateRva, state,
-                (nuint)state.Length, out var read) && read == (nuint)state.Length ? ReadBackend(state) : null;
+        return process.ModuleSize(quick) >= AppliedBackendStateRva + 8
+            && process.ReadMemory(quick.Address + AppliedBackendStateRva, 8) is { } state ? ReadBackend(state) : null;
     }
 
     internal static ExternalGpuPlacementPlan? Read(GpuPlacementProcessInstance expected)
     {
+        using var reads = new RendererQualificationReadCycle(WindowsRendererQualificationNativeApi.Instance);
+        return Read(expected, reads);
+    }
+
+    internal static ExternalGpuPlacementPlan? Read(GpuPlacementProcessInstance expected, RendererQualificationReadCycle reads)
+    {
         if (expected.ProcessId <= 4 || expected.ProcessStartKey == 0 || string.IsNullOrWhiteSpace(expected.ExecutablePath)) return null;
         try
         {
-            if (!WindowsIfeoGpuLaunchInterceptionRegistry.TryReadMachine(expected.ExecutablePath, out var machine)
-                || machine != 0x8664) return null;
-            using var process = Process.GetProcessById(expected.ProcessId);
-            if (!ChromiumGpuProcessIdentity.Matches(process, expected) || process.SessionId == 0
-                || !CheckRemoteDebuggerPresent(process.SafeHandle, out var debugged) || debugged) return null;
-            var modules = ProcessModuleSnapshotReader.ReadAndDispose(
-                process.Modules.Cast<ProcessModule>(),
-                static module => new ProcessModuleSnapshot(
-                    module.ModuleName,
-                    module.FileName,
-                    module.BaseAddress,
-                    module.ModuleMemorySize));
-            var versions = modules.Where(module => IsQtModule(module.ModuleName)
-                    || module.ModuleName.Equals("D3D12Core.dll", StringComparison.OrdinalIgnoreCase)
-                    || module.ModuleName.Equals("vulkan-1.dll", StringComparison.OrdinalIgnoreCase))
-                .ToDictionary(module => module.ModuleName, module =>
-                {
-                    var version = FileVersionInfo.GetVersionInfo(module.FileName);
-                    return new Version(version.FileMajorPart, version.FileMinorPart, version.FileBuildPart);
-                }, StringComparer.OrdinalIgnoreCase);
+            var process = reads.Get(expected);
+            var modules = process?.Modules();
+            if (process is null || modules is null || !modules.Any(module => module.Name.Equals("Qt6Quick.dll", StringComparison.OrdinalIgnoreCase))) return null;
+            if (!process.IsAmd64() || process.Identity.SessionId == 0 || process.IsDebugged() != false) return null;
+            var versions = modules.Where(module => IsQtModule(module.Name))
+                .ToDictionary(module => module.Name, process.Version, StringComparer.OrdinalIgnoreCase);
+            foreach (var name in new[] { "D3D12Core.dll", "vulkan-1.dll" })
+            {
+                var count = modules.Count(module => module.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (count > 1) return null;
+                if (count == 1) versions.Add(name, new Version(0, 0)); // Only presence is consumed for backend libraries.
+            }
             if (!HasQualifiedModules(versions)) return null;
             foreach (var (name, hash) in QualifiedImages)
             {
-                var module = modules.SingleOrDefault(value => value.ModuleName.Equals(name, StringComparison.OrdinalIgnoreCase));
+                var module = modules.SingleOrDefault(value => value.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
                 if (module is null) return null;
-                using var file = File.OpenRead(module.FileName);
-                if (!Convert.ToHexString(SHA256.HashData(file)).Equals(hash, StringComparison.Ordinal)) return null;
+                if (!process.Hash(module).Equals(hash, StringComparison.Ordinal)) return null;
             }
-            var directories = modules.Where(module => IsQtModule(module.ModuleName))
-                .Select(module => Path.GetDirectoryName(module.FileName)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-            var quick = modules.Single(module => module.ModuleName.Equals("Qt6Quick.dll", StringComparison.OrdinalIgnoreCase));
+            var directories = modules.Where(module => IsQtModule(module.Name))
+                .Select(module => Path.GetDirectoryName(process.ModulePath(module))).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var quick = modules.Single(module => module.Name.Equals("Qt6Quick.dll", StringComparison.OrdinalIgnoreCase));
             var renderer = ReadBackend(process, quick);
             if (directories != 1 || renderer is null) return null;
             if (renderer == ExternalGpuRenderer.QtQuickD3D12 && !versions.ContainsKey("D3D12Core.dll")) return null;
             if (renderer == ExternalGpuRenderer.QtQuickVulkan)
             {
-                var loader = modules.SingleOrDefault(module => module.ModuleName.Equals("vulkan-1.dll", StringComparison.OrdinalIgnoreCase));
+                var loader = modules.SingleOrDefault(module => module.Name.Equals("vulkan-1.dll", StringComparison.OrdinalIgnoreCase));
                 if (loader is null) return null;
-                using var file = File.OpenRead(loader.FileName);
-                if (!Convert.ToHexString(SHA256.HashData(file)).Equals(
+                if (!process.Hash(loader).Equals(
                     "CD63989744D15FE13972511D3AFB7BBC171C7C72FE9C479B4909595A2F9D6EFB", StringComparison.Ordinal)) return null;
             }
             return new(expected, expected) { Renderer = renderer.Value };
@@ -101,14 +90,4 @@ internal static class QtQuickGpuProcessIdentity
         { return null; }
     }
 
-    private sealed record ProcessModuleSnapshot(string ModuleName, string FileName, IntPtr BaseAddress, int ModuleMemorySize);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CheckRemoteDebuggerPresent(SafeProcessHandle process, [MarshalAs(UnmanagedType.Bool)] out bool present);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ReadProcessMemory(SafeProcessHandle process, IntPtr address, [Out] byte[] buffer,
-        nuint size, out nuint bytesRead);
 }

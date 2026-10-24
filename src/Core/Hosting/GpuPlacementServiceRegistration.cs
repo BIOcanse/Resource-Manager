@@ -28,7 +28,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<WindowsGpuWindowActionRuntime>();
         services.AddSingleton<WindowsGpuCallbackPreparationRuntime>();
         services.AddSingleton<ExternalGpuResidentObservation>();
-        services.AddSingleton<WindowsExternalGpuPlacementRuntime>();
+        services.AddSingleton<RendererAbsenceCache>();
+        services.AddSingleton<WindowsExternalGpuPlacementRuntime>(provider => new(
+            provider.GetRequiredService<IHostEnvironment>(), provider.GetRequiredService<ExternalGpuResidentObservation>(),
+            provider.GetRequiredService<ILogger<WindowsExternalGpuPlacementRuntime>>(),
+            provider.GetRequiredService<IHostManagerRollbackStateStore>(), provider.GetRequiredService<RendererAbsenceCache>()));
         services.AddSingleton<IGpuPlacementCapabilityReader, WindowsGpuPlacementCapabilityReader>();
         services.AddSingleton<IGpuLaunchInterceptionRegistry, WindowsIfeoGpuLaunchInterceptionRegistry>();
         services.AddSingleton<IGpuLaunchExecutionReportStore, JsonGpuLaunchExecutionReportStore>();

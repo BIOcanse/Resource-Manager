@@ -1,8 +1,5 @@
-using ResourceManager.ReadWrite.Windows.Processes;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.ProcessIdentity;
@@ -30,27 +27,27 @@ internal static class ChromiumGpuProcessIdentity
 
     internal static ExternalGpuPlacementPlan? Read(GpuPlacementProcessInstance expected, GpuGraphicsApi? confirmedApi)
     {
+        using var reads = new RendererQualificationReadCycle(WindowsRendererQualificationNativeApi.Instance);
+        return Read(expected, confirmedApi, reads);
+    }
+
+    internal static ExternalGpuPlacementPlan? Read(GpuPlacementProcessInstance expected, GpuGraphicsApi? confirmedApi,
+        RendererQualificationReadCycle reads)
+    {
         if (string.IsNullOrWhiteSpace(expected.ExecutablePath) || expected.ProcessId <= 4 || expected.ProcessStartKey == 0)
             return null;
         try
         {
-            if (!WindowsIfeoGpuLaunchInterceptionRegistry.TryReadMachine(expected.ExecutablePath, out var machine)
-                || machine != 0x8664) return null;
-            using var gpu = Process.GetProcessById(expected.ProcessId);
-            if (!Matches(gpu, expected) || !HasCompatibleRenderer(Arguments(gpu), confirmedApi))
+            var gpu = reads.Get(expected);
+            if (gpu is null || !gpu.IsAmd64() || !HasCompatibleRenderer(gpu.Arguments(), confirmedApi))
                 return null;
-            var basic = new BasicInformation();
-            if (NtQueryInformationProcess(gpu.SafeHandle, 0, ref basic, Marshal.SizeOf<BasicInformation>(), out _) < 0)
-                return null;
-            using var browser = Process.GetProcessById(checked((int)basic.ParentId));
-            var browserStartKey = checked((ulong)browser.StartTime.ToUniversalTime().ToFileTimeUtc());
-            var browserImage = WindowsProcessImagePathReader.TryRead(browser);
-            if (browserStartKey > expected.ProcessStartKey || browser.SessionId == 0 || browser.SessionId != gpu.SessionId
-                || string.IsNullOrWhiteSpace(browserImage)
-                || Arguments(browser).Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal))
-                || !CheckRemoteDebuggerPresent(browser.SafeHandle, out var debugged) || debugged) return null;
-            return new(new(browser.Id, browserStartKey,
-                browser.ProcessName, browserImage), expected);
+            var browser = gpu.ParentId() is int parentId ? reads.Get(parentId) : null;
+            if (browser is null || browser.Identity.StartKey > expected.ProcessStartKey || browser.Identity.SessionId == 0
+                || browser.Identity.SessionId != gpu.Identity.SessionId
+                || browser.Arguments().Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal))
+                || browser.IsDebugged() != false) return null;
+            return new(new(browser.Identity.ProcessId, browser.Identity.StartKey,
+                Path.GetFileNameWithoutExtension(browser.Identity.ImagePath), browser.Identity.ImagePath), expected);
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or OverflowException)
         {
@@ -63,33 +60,4 @@ internal static class ChromiumGpuProcessIdentity
             && string.Equals(WindowsProcessImagePathReader.TryRead(process), expected.ExecutablePath,
                 StringComparison.OrdinalIgnoreCase);
 
-    private static string[] Arguments(Process process)
-    {
-        var pointer = CommandLineToArgvW(CommandLine(process), out var count);
-        if (pointer == IntPtr.Zero) throw new Win32Exception();
-        try
-        {
-            if (count <= 0 || count > 4096) throw new InvalidOperationException("Invalid argument count.");
-            var arguments = new string[count];
-            for (var index = 0; index < count; index++)
-                arguments[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(pointer, index * IntPtr.Size)) ?? string.Empty;
-            return arguments;
-        }
-        finally { _ = LocalFree(pointer); }
-    }
-
-    private static string CommandLine(Process process)
-        => WindowsProcessCommandLineQuery.Read(process.SafeHandle);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct BasicInformation { public IntPtr Exit, Peb, Affinity, Priority, Id, ParentId; }
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern IntPtr CommandLineToArgvW(string commandLine, out int count);
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr LocalFree(IntPtr pointer);
-    [DllImport("ntdll.dll")]
-    private static extern int NtQueryInformationProcess(SafeProcessHandle process, int kind, ref BasicInformation information, int length, out int returned);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CheckRemoteDebuggerPresent(SafeProcessHandle process, [MarshalAs(UnmanagedType.Bool)] out bool present);
 }

@@ -15,8 +15,10 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placements,
         List<HostManagerAutomaticGpuPlacement>? firstUse, CancellationToken token)
     {
+        using var preparationReads = runningGpuPlacementActions.CreatePreparationReadCycle();
         var result = new List<HostManagerAutomaticPlacementProcess>(processes.Count);
         var unidentified = new List<HostManagerAutomaticGpuPlacement>();
+        var attempted = 0;
         foreach (var process in processes)
         {
             token.ThrowIfCancellationRequested();
@@ -34,7 +36,8 @@ public sealed partial class HostManagerSmartCoordinator
                         false, observed, "api-identification") { ObservedAdapterKey = observed };
                     try
                     {
-                        var preparation = await runningGpuPlacementActions.PrepareAsync(CreateAutomaticGpuActionRequest(probe), token);
+                        attempted++;
+                        var preparation = await preparationReads.PrepareAsync(CreateAutomaticGpuActionRequest(probe), token);
                         ready = preparation.Plan is not null;
                         if (!ready)
                             logger.LogDebug("GPU route preparation rejected process {ProcessId}: {Reason}",
@@ -51,6 +54,8 @@ public sealed partial class HostManagerSmartCoordinator
             }
             result.Add(process with { CanMigrateGpu = ready });
         }
+        logger.LogDebug("GPU preflight inspected {ProcessCount} process facts: {Attempted} route preparations, {Qualified} qualified routes.",
+            processes.Count, attempted, result.Count(static process => process.CanMigrateGpu));
         if (firstUse is not null && unidentified.Count != 0)
         {
             // Recognition has its own opportunity; it never consumes a movement candidate slot.
