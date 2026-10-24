@@ -14,7 +14,7 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     if (route.request().method() === "PUT") {
       const policy = route.request().postDataJSON();
       writes.push(policy);
-      return route.fulfill({ json: policy });
+      return route.fulfill({ status: 202, json: { policy, runtimeApplicationDisposition: "committedWithDeliveryFailures", startupInterceptionDisposition: "notAttempted", runtimeDeliveryFailureCount: 1 } });
     }
     const response = await route.fetch();
     const data = await response.json();
@@ -42,7 +42,10 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
   const completedSave = page.waitForResponse(response => response.request().method() === "PUT"
     && response.url().endsWith("/policy"));
   await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  assert.equal((await completedSave).status(), 200);
+  assert.equal((await completedSave).status(), 202);
+  await dialog.getByText("已保存策略，但运行调度配置尚未完全应用。", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "重新应用", exact: true }).click();
+  await dialog.getByText("已保存软件级调度策略。", { exact: true }).waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0].startupTargetGpu, "GPU1");
   assert.equal(writes[0].runtimeHotSwitchEnabled, true);

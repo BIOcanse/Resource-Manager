@@ -100,7 +100,8 @@ export function OptimizationPage(props: OptimizationPageProps) {
   });
   const selectedOptimizationMode = () => props.pendingOptimizationMode ?? props.optimizationMode;
   const reportsAvailable = () => observationCanRender(props.reportsObservation);
-  const reportActionsAvailable = () => props.reportsObservation.status === "ready";
+  const reportActionsAvailable = () => props.reportsObservation.status === "ready"
+    || props.reportsObservation.source === "backend-retained";
   const hostManagerAvailable = () => props.hostManagerObservation.status === "ready";
   const hostManagerStatusText = () => {
     if (props.pendingOptimizationMode) {
@@ -234,6 +235,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
         <ObservationStateBoundary
           state={props.reportsObservation}
           label={uiText.optimization.reportPanel}
+          onRetry={props.onRefresh}
         >
           <Show when={reportFilter() === "trusted"}>
             <div class="optimization-trusted-targets" aria-label={uiText.optimization.trusted}>
@@ -250,7 +252,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
           </Show>
           <Show
             when={visibleReports().length > 0}
-            fallback={<Show when={reportFilter() === "untrusted" || !(props.overview?.trustedTargets.length)}><div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div></Show>}
+            fallback={<Show when={props.reportsObservation.status === "ready" && (reportFilter() === "untrusted" || !(props.overview?.trustedTargets.length))}><div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div></Show>}
           >
             <div class="optimization-report-list">
               <For each={visibleReports()}>

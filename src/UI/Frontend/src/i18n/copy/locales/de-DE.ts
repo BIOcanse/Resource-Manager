@@ -898,6 +898,9 @@ const deDeAppCopy: AppCopy = {
     }
   },
   optimization: {
+    evaluationPending: "Die Berichtsauswertung ist noch nicht abgeschlossen.",
+    evaluationFailed: (reason: string) => `Berichte konnten nicht ausgewertet werden. Grund: ${reason}.`,
+    rulesUnavailable: (count: number) => `Einige Regeln sind nicht verfügbar (${count}); Berichte anderer Regeln bleiben verfügbar.`,
     scheduleStateLabel: "Status der Optimierungsplanung",
     modeBar: "Modus der Leistungsoptimierung",
     modeNormal: "Normal",

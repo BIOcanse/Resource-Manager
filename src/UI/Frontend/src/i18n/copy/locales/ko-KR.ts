@@ -898,6 +898,9 @@ const koKrAppCopy: AppCopy = {
     }
   },
   optimization: {
+    evaluationPending: "보고서 평가가 아직 완료되지 않았습니다.",
+    evaluationFailed: (reason: string) => `보고서를 평가할 수 없습니다. 사유: ${reason}.`,
+    rulesUnavailable: (count: number) => `일부 규칙을 사용할 수 없습니다(${count}개). 다른 규칙의 보고서는 계속 표시됩니다.`,
     scheduleStateLabel: "최적화 스케줄링 상태",
     modeBar: "성능 최적화 모드",
     modeNormal: "일반",

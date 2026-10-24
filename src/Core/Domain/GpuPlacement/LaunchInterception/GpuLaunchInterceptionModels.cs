@@ -70,16 +70,6 @@ public sealed record GpuLaunchInterceptionStatus(
     IReadOnlyList<string> RegisteredViews,
     GpuLaunchExecutionReport? RecentLaunchResult = null);
 
-public sealed record GpuPlacementProcessPolicySaveResult(
-    GpuPlacementProcessPolicy Policy,
-    GpuLaunchInterceptionStatus? StartupInterception,
-    string RuntimeApplicationDisposition,
-    string StartupInterceptionDisposition,
-    long? RuntimePlanVersion,
-    ulong? RuntimePublicationSequence,
-    int RuntimeDeliveryFailureCount,
-    string? FailureCode);
-
 public sealed record GpuLaunchInterceptionCleanupResult(
     bool Success,
     int RemovedRuleCount,

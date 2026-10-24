@@ -3,10 +3,11 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 export default async function targetedRecordingSourceJourney(page, baseUrl) {
   const failures = [];
   let listReads = 0;
+  let expectedDetailFailure = false;
   const reportReads = new Map();
   page.on("pageerror", error => failures.push(`pageerror: ${String(error)}`));
   page.on("console", message => {
-    if (message.type() === "error") failures.push(`console: ${message.text()}`);
+    if (message.type() === "error" && !expectedDetailFailure) failures.push(`console: ${message.text()}`);
   });
   page.on("request", request => {
     if (request.method() !== "GET") return;
@@ -131,6 +132,23 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
     `The detail source kept polling after the recording completed: ${reportReadsAfterCompletion} -> ${reportReads.get(id) ?? 0}`);
   assert(reportReadsAfterCompletion >= 3,
     `Expected the selected report to be reread through active and terminal states: ${reportReadsAfterCompletion}`);
+  await navigation.getByRole("button", { name: app.page.monitor, exact: true }).click();
+  // Remounting releases the previous detail lease so this is a no-data error.
+  expectedDetailFailure = true;
+  const failDetail = route => route.fulfill({ status: 404, contentType: "text/plain", body: "recording not found" });
+  await page.route("**/api/targeted-recordings/recording-fixture-1", failDetail);
+  await navigation.getByRole("button", { name: app.page.details, exact: true }).click();
+  await page.getByRole("tab", { name: app.targetedReport.tab, exact: true }).click();
+  await page.locator(".targeted-report-list-row").filter({ hasText: "示例软件" }).first().locator(".targeted-report-open").click();
+  const error = page.locator(".targeted-reports-page").getByRole("alert");
+  await error.waitFor();
+  assert(await page.locator(".targeted-reports-page").getByText(app.targetedReport.loading, { exact: true }).count() === 0,
+    "A failed detail must stop loading");
+  await page.unroute("**/api/targeted-recordings/recording-fixture-1", failDetail);
+  await error.getByRole("button", { name: app.observationNotice.retry, exact: true }).click();
+  await detailPanel.waitFor();
+  await error.waitFor({ state: "detached" });
+  expectedDetailFailure = false;
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {

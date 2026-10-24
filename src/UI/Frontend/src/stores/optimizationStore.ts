@@ -23,6 +23,7 @@ import { uiText } from "../text.ts";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
   failedObservation,
+  backendRetainedObservation,
   loadingObservation,
   profileDisabledObservation,
   readyObservation,
@@ -335,7 +336,18 @@ function reportSourceObservation(
   }
   if ((snapshot.status === "ready" || snapshot.status === "refreshing")
     && snapshot.data) {
-    return readyObservation(snapshot.capturedAt ?? snapshot.data.capturedAt);
+    const status = snapshot.data.status;
+    const capturedAt = snapshot.capturedAt ?? snapshot.data.capturedAt;
+    if (status.evaluationState !== "completed") {
+      return backendRetainedObservation(capturedAt, status.evaluationState === "failed"
+        ? uiText.optimization.evaluationFailed(status.evaluationFailureReason ?? "")
+        : uiText.optimization.evaluationPending);
+    }
+    if (status.unavailableRules.length > 0) {
+      return backendRetainedObservation(capturedAt,
+        uiText.optimization.rulesUnavailable(status.unavailableRules.length));
+    }
+    return readyObservation(capturedAt);
   }
   if (snapshot.status === "stale" && snapshot.data) {
     return failedObservation(

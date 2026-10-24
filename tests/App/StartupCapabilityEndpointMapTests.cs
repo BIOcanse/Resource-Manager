@@ -86,9 +86,12 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("PATCH /api/settings/app", routes);
 
         Assert.Contains("POST /api/optimization/smart/run-once", routes);
-        Assert.Contains(
+        foreach (var removed in new[] {
             "GET /api/optimization/smart/diagnostics/decision-snapshot",
-            routes);
+            "GET /api/optimization/status", "POST /api/optimization/reports/{id}/trust",
+            "POST /api/optimization/reports/{id}/protect", "POST /api/gpu-placement/startup/resolve",
+            "POST /api/gpu-placement/startup/report" }) Assert.DoesNotContain(removed, routes);
+        Assert.Contains("GET /api/optimization/smart/diagnostics/decision-snapshot/subscribe", routes);
         Assert.Contains("GET /api/operations", routes);
         Assert.DoesNotContain("GET /api/operations/subscribe", routes);
         Assert.Contains("POST /api/subscriptions/stream", routes);

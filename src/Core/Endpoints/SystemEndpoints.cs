@@ -99,8 +99,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 try
                 {
                     var result = overrideStore.Save(request);
-                    await runtimeSpecialization.RebuildAsync("cpu-performance-overrides-saved", CancellationToken.None);
-                    return Results.Ok(result);
+                    return await PublishSavedPolicyAsync(result, runtimeSpecialization, "cpu-performance-overrides-saved");
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -117,8 +116,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 try
                 {
                     var result = overrideStore.Reset(cpuName);
-                    await runtimeSpecialization.RebuildAsync("cpu-performance-overrides-reset", CancellationToken.None);
-                    return Results.Ok(result);
+                    return await PublishSavedPolicyAsync(result, runtimeSpecialization, "cpu-performance-overrides-reset");
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -190,8 +188,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CancellationToken cancellationToken) =>
             {
                 var result = overrideStore.Save(request);
-                await runtimeSpecialization.RebuildAsync("gpu-performance-overrides-saved", CancellationToken.None);
-                return Results.Ok(result);
+                return await PublishSavedPolicyAsync(result, runtimeSpecialization, "gpu-performance-overrides-saved");
             });
 
             app.MapDelete("/api/gpu/performance-overrides", async (
@@ -200,8 +197,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CancellationToken cancellationToken) =>
             {
                 var result = overrideStore.Reset();
-                await runtimeSpecialization.RebuildAsync("gpu-performance-overrides-reset", CancellationToken.None);
-                return Results.Ok(result);
+                return await PublishSavedPolicyAsync(result, runtimeSpecialization, "gpu-performance-overrides-reset");
             });
         }
 

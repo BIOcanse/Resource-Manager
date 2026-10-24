@@ -406,7 +406,22 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                 plan,
                 state,
                 cancellationToken,
-                interrupts);
+                interrupts,
+                evaluationCompleted: true);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException && Volatile.Read(ref retiring) == 0)
+        {
+            var current = Volatile.Read(ref readModel);
+            Volatile.Write(ref readModel, current with
+            {
+                Status = current.Status with
+                {
+                    LastEvaluationAt = DateTimeOffset.UtcNow,
+                    EvaluationState = "failed",
+                    EvaluationFailureReason = $"{exception.GetType().Name}: {exception.Message}"
+                }
+            });
+            throw;
         }
         finally
         {

@@ -13,7 +13,7 @@ import type {
   DashboardSettingsResult,
   GpuPlacementProcessObservationRequest,
   GpuPlacementProcessPolicy,
-  GpuPlacementProcessPolicySaveResult,
+  RuntimePolicySaveResult,
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareProcessHistory,
   GpuPlacementSoftwareSettingsSnapshot,
@@ -160,7 +160,7 @@ export async function getCpuExclusiveBindings() {
 }
 
 export async function saveCpuCorePerformanceOverrides(request: CpuCorePerformanceOverrideRequest) {
-  return putJson<CpuCorePerformanceOverrideResult>(
+  return saveRuntimePolicy<CpuCorePerformanceOverrideResult>(
     "/api/cpu/topology/performance-overrides",
     request,
     uiText.apiError.saveCpuCoreScoreFailed);
@@ -169,7 +169,7 @@ export async function saveCpuCorePerformanceOverrides(request: CpuCorePerformanc
 export async function resetCpuCorePerformanceOverrides(cpuName: string) {
   const params = new URLSearchParams();
   params.set("cpuName", cpuName);
-  return deleteJson<CpuCorePerformanceOverrideResult>(
+  return resetRuntimePolicy<CpuCorePerformanceOverrideResult>(
     `/api/cpu/topology/performance-overrides?${params.toString()}`,
     uiText.apiError.resetCpuCoreScoreFailed);
 }
@@ -183,14 +183,14 @@ export async function getGpuPerformanceScores() {
 }
 
 export async function saveGpuPerformanceScoreOverrides(request: GpuPerformanceScoreOverrideRequest) {
-  return putJson<GpuPerformanceScoreOverrideResult>(
+  return saveRuntimePolicy<GpuPerformanceScoreOverrideResult>(
     "/api/gpu/performance-overrides",
     request,
     uiText.apiError.saveGpuScoreFailed);
 }
 
 export async function resetGpuPerformanceScoreOverrides() {
-  return deleteJson<GpuPerformanceScoreOverrideResult>(
+  return resetRuntimePolicy<GpuPerformanceScoreOverrideResult>(
     "/api/gpu/performance-overrides",
     uiText.apiError.resetGpuScoreFailed);
 }
@@ -355,28 +355,38 @@ export async function getDefaultGpuPlacementSoftwarePolicy(softwareId: string, s
 }
 
 export async function saveGpuPlacementSoftwarePolicy(policy: GpuPlacementSoftwarePolicy) {
-  return putJson<GpuPlacementSoftwarePolicy>(
+  return saveRuntimePolicy<GpuPlacementSoftwarePolicy>(
     `/api/gpu-placement/software/${encodeURIComponent(policy.softwareId)}/policy`,
     policy,
     uiText.apiError.saveGpuSoftwarePolicyFailed);
 }
 
 export async function saveGpuPlacementProcessPolicy(policy: GpuPlacementProcessPolicy) {
+  return saveRuntimePolicy<GpuPlacementProcessPolicy>(
+    "/api/gpu-placement/process-policy", policy, uiText.apiError.saveGpuProcessPolicyFailed);
+}
+
+function saveRuntimePolicy<T>(url: string, body: unknown, fallbackError: string) {
+  return writeRuntimePolicy<T>(url, "PUT", body, fallbackError);
+}
+
+function resetRuntimePolicy<T>(url: string, fallbackError: string) {
+  return writeRuntimePolicy<T>(url, "DELETE", undefined, fallbackError);
+}
+
+async function writeRuntimePolicy<T>(url: string, method: string, body: unknown, fallbackError: string): Promise<RuntimePolicySaveResult<T>> {
   try {
-    return await requestJson<GpuPlacementProcessPolicySaveResult>("/api/gpu-placement/process-policy", {
-      method: "PUT",
+    return await requestJson<RuntimePolicySaveResult<T>>(url, {
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(policy),
-      fallbackError: uiText.apiError.saveGpuProcessPolicyFailed
+      body: body === undefined ? undefined : JSON.stringify(body),
+      fallbackError
     });
   } catch (error) {
     const payload = error instanceof ApiRequestError
-      ? error.payload as GpuPlacementProcessPolicySaveResult | null
-      : null;
-    if (payload?.policy && (
-      payload.runtimeApplicationDisposition === "savedNotApplied"
-      || payload.startupInterceptionDisposition === "applyFailed"
-    )) {
+      ? error.payload as RuntimePolicySaveResult<T> | null : null;
+    if (payload?.policy && (payload.runtimeApplicationDisposition === "savedNotApplied"
+      || payload.startupInterceptionDisposition === "applyFailed")) {
       return payload;
     }
     throw error;

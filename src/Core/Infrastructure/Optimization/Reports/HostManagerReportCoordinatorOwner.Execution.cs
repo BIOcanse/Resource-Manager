@@ -258,7 +258,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         CompiledHostManagerReportCoordinatorPlan plan,
         CoordinatorState state,
         CancellationToken cancellationToken,
-        SystemInterruptSnapshot? interruptSnapshot = null)
+        SystemInterruptSnapshot? interruptSnapshot = null,
+        bool evaluationCompleted = false)
     {
         var committedInterrupts = interruptSnapshot
             ?? Volatile.Read(ref readModel).InterruptSnapshot;
@@ -268,6 +269,15 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             state,
             committedInterrupts,
             cancellationToken);
+        if (evaluationCompleted)
+        {
+            model = model with { Status = model.Status with
+            {
+                LastEvaluationAt = DateTimeOffset.UtcNow,
+                EvaluationState = "completed",
+                EvaluationFailureReason = null
+            } };
+        }
         PruneRetainedMetadata(state, model);
         Volatile.Write(ref readModel, model);
     }
@@ -456,6 +466,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             nativeTrustById.Add(trust.Id, row);
         }
 
+        var evaluation = Volatile.Read(ref readModel).Status;
+        var unavailableRules = state.UnavailableRules(plan);
         var capturedAt = FromUnixMilliseconds(native.LogicalUtcMilliseconds);
         var reports = reportBuilder.ToImmutable();
         var trusted = trustBuilder.ToImmutable();
@@ -469,14 +481,19 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             reports,
             trusted,
             new OptimizationRecorderStatus(
-                capturedAt,
+                evaluation.LastEvaluationAt,
                 state.LastObservationAt,
                 plan.Recreate.Rules.Length,
-                state.AvailableRuleCount(plan),
+                plan.Recreate.Rules.Length - unavailableRules.Count,
                 checked((int)native.ActiveReportCount),
                 trusted.Length,
                 protectionService.ProtectedTargetCount,
-                SampleIntervalSeconds),
+                SampleIntervalSeconds)
+            {
+                EvaluationState = evaluation.EvaluationState,
+                EvaluationFailureReason = evaluation.EvaluationFailureReason,
+                UnavailableRules = unavailableRules
+            },
             softwareIssueSignals,
             interruptSnapshot,
             reportById.ToImmutable(),
@@ -743,21 +760,12 @@ internal sealed class CoordinatorState
                 != observation.ObservedAt.ToUnixTimeMilliseconds();
     }
 
-    internal int AvailableRuleCount(
-        CompiledHostManagerReportCoordinatorPlan plan)
-    {
-        var count = 0;
-        foreach (var group in plan.Recreate.Rules.GroupBy(static rule =>
-            (rule.SourceHandle, rule.CoverageScopeHandle)))
-        {
-            if (sourceFrames.TryGetValue(group.Key, out var source)
-                && source.Status == NativeReportSourceStatus.Complete)
-            {
-                count += group.Count();
-            }
-        }
-        return count;
-    }
+    internal IReadOnlyList<string> UnavailableRules(CompiledHostManagerReportCoordinatorPlan plan)
+        => plan.Recreate.Rules
+            .Where(rule => !sourceFrames.TryGetValue((rule.SourceHandle, rule.CoverageScopeHandle), out var source)
+                || source.Status != NativeReportSourceStatus.Complete)
+            .Select(rule => rule.Name)
+            .ToArray();
 
     internal SourceFrame PreviewNextSourceFrame(
         HostManagerReportSourceObservation observation)

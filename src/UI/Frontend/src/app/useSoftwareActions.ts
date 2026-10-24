@@ -555,16 +555,17 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     try {
-      const saved = await saveGpuPlacementSoftwarePolicy(policy);
+      const result = await saveGpuPlacementSoftwarePolicy(policy);
+      const saved = result.policy;
       setGpuPlacementSettings((current) => current
-        ? {
-          ...current,
-          softwareId: saved.softwareId,
-          softwareName: saved.softwareName,
-          softwarePolicy: saved
-        }
+        ? { ...current, softwareId: saved.softwareId, softwareName: saved.softwareName, softwarePolicy: saved }
         : current);
-      setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" });
+      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      setSoftwareDetailNotice({
+        message: pending ? uiText.softwareActions.processPolicySavedRuntimePending : uiText.softwareActions.softwarePolicySaved,
+        tone: pending ? "warning" : "success",
+        onRuntimeApplied: pending ? () => setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" }) : undefined
+      });
     } catch (error) {
       setSoftwareDetailNotice({
         message: uiText.softwareActions.softwarePolicySaveFailed,

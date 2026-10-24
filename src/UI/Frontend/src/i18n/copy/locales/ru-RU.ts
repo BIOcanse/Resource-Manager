@@ -898,6 +898,9 @@ const ruRuAppCopy: AppCopy = {
     }
   },
   optimization: {
+    evaluationPending: "Оценка отчётов ещё не завершена.",
+    evaluationFailed: (reason: string) => `Не удалось оценить отчёты. Причина: ${reason}.`,
+    rulesUnavailable: (count: number) => `Некоторые правила недоступны (${count}); отчёты остальных правил остаются доступны.`,
     scheduleStateLabel: "Состояние планирования оптимизации",
     modeBar: "Режим оптимизации производительности",
     modeNormal: "Обычный",

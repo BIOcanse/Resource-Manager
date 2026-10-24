@@ -68,16 +68,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 }
             });
 
-            app.MapGet("/api/optimization/smart/diagnostics/decision-snapshot", async (
-                HttpResponse response,
-                HostManagerSmartCoordinator coordinator,
-                CancellationToken cancellationToken) =>
-            {
-                DisableResponseCache(response);
-                return Results.Ok(await coordinator.GetDecisionDiagnosticsAsync(
-                    cancellationToken));
-            });
-
             app.MapGet("/api/optimization/smart/validation/process-effect-scope", async (
                 HttpResponse response,
                 IHostManagerProcessEffectValidationScopeControl control,

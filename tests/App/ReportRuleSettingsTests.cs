@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -284,6 +285,7 @@ public sealed class ReportRuleSettingsTests
                 StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
             builder.Services.RemoveAll<IHostedService>();
+            builder.Logging.ClearProviders();
             var app = builder.Build();
             try
             {

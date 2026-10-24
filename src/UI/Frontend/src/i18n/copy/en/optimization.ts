@@ -2,6 +2,9 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationReport"> = {
   optimization: {
+    evaluationPending: "Report evaluation has not completed yet.",
+    evaluationFailed: (reason: string) => `Could not evaluate reports. Reason: ${reason}.`,
+    rulesUnavailable: (count: number) => `Some rules are unavailable (${count}); reports from other rules remain available.`,
     scheduleStateLabel: "Optimization scheduling state",
     modeBar: "Performance optimization mode",
     modeNormal: "Normal",

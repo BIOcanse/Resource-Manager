@@ -898,6 +898,9 @@ const esEsAppCopy: AppCopy = {
     }
   },
   optimization: {
+    evaluationPending: "La evaluación de informes aún no ha terminado.",
+    evaluationFailed: (reason: string) => `No se pudieron evaluar los informes. Motivo: ${reason}.`,
+    rulesUnavailable: (count: number) => `Algunas reglas no están disponibles (${count}); los informes de otras reglas siguen disponibles.`,
     scheduleStateLabel: "Estado de la planificación de optimización",
     modeBar: "Modo de optimización del rendimiento",
     modeNormal: "Normal",

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Controlled;
@@ -155,8 +156,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var saved = await policyStore.SaveSoftwarePolicyAsync(
                     request with { SoftwareId = softwareId },
                     cancellationToken);
-                await runtimeSpecialization.RebuildAsync("gpu-placement-software-policy-saved", CancellationToken.None);
-                return Results.Ok(saved);
+                return await PublishSavedPolicyAsync(saved, runtimeSpecialization, "gpu-placement-software-policy-saved");
             }
             catch (InvalidOperationException ex)
             {
@@ -192,7 +192,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return Results.Json(
-                    new GpuPlacementProcessPolicySaveResult(
+                    new RuntimePolicySaveResult<GpuPlacementProcessPolicy>(
                         saved,
                         null,
                         "savedNotApplied",
@@ -215,7 +215,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 return Results.Json(
-                    new GpuPlacementProcessPolicySaveResult(
+                    new RuntimePolicySaveResult<GpuPlacementProcessPolicy>(
                         saved,
                         null,
                         publication.HasDeliveryFailures
@@ -229,7 +229,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     statusCode: StatusCodes.Status409Conflict);
             }
 
-            var result = new GpuPlacementProcessPolicySaveResult(
+            var result = new RuntimePolicySaveResult<GpuPlacementProcessPolicy>(
                 saved,
                 interception,
                 publication.HasDeliveryFailures
@@ -243,49 +243,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return publication.HasDeliveryFailures
                 ? Results.Json(result, statusCode: StatusCodes.Status202Accepted)
                 : Results.Ok(result);
-        });
-
-        app.MapPost("/api/gpu-placement/startup/resolve", async (
-            HttpRequest request,
-            IGpuStartupPlacementResolver resolver,
-            CancellationToken cancellationToken) =>
-        {
-            var executablePath = await ReadLimitedUtf8BodyAsync(request, 32_767, cancellationToken);
-            if (string.IsNullOrWhiteSpace(executablePath))
-            {
-                return Results.BadRequest("invalid executable path");
-            }
-
-            var decision = await resolver.ResolveAsync(
-                new GpuStartupPlacementRequest(executablePath),
-                cancellationToken);
-            return Results.Text(
-                GpuLaunchBrokerProtocol.Serialize(decision),
-                GpuLaunchBrokerProtocol.ContentType,
-                System.Text.Encoding.UTF8);
-        });
-
-        app.MapPost("/api/gpu-placement/startup/report", async (
-            HttpRequest request,
-            IGpuLaunchExecutionReportStore reportStore,
-            CancellationToken cancellationToken) =>
-        {
-            var protocol = await ReadLimitedUtf8BodyAsync(request, 64 * 1024, cancellationToken);
-            if (!GpuLaunchBrokerProtocol.TryParseExecutionReport(protocol, out var report, out var error)
-                || report is null)
-            {
-                return Results.BadRequest(error);
-            }
-
-            try
-            {
-                await reportStore.RecordAsync(report, cancellationToken);
-                return Results.NoContent();
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(ex.Message);
-            }
         });
 
         app.MapPost("/api/gpu-placement/process-history/observe", async (
@@ -306,32 +263,30 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         return app;
     }
 
-    private static async Task<string?> ReadLimitedUtf8BodyAsync(
-        HttpRequest request,
-        int maximumCharacters,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> PublishSavedPolicyAsync<T>(
+        T saved,
+        IRuntimeSpecializationCoordinator runtimeSpecialization,
+        string reason)
     {
-        if (request.ContentLength is > 0
-            && request.ContentLength > ((long)maximumCharacters * 4L) + 4L)
+        RuntimePlanPublicationResult publication;
+        try
         {
-            return null;
+            publication = await runtimeSpecialization.RebuildAsync(reason, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Results.Json(new RuntimePolicySaveResult<T>(
+                saved, null, "savedNotApplied", "notAttempted", null, null, 0,
+                "runtime-plan-publication-failed"), statusCode: StatusCodes.Status409Conflict);
         }
 
-        using var reader = new StreamReader(request.Body, System.Text.Encoding.UTF8, leaveOpen: true);
-        var buffer = new char[maximumCharacters + 1];
-        var total = 0;
-        while (total < buffer.Length)
-        {
-            var read = await reader.ReadAsync(buffer.AsMemory(total), cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-            total += read;
-        }
-
-        return total > maximumCharacters
-            ? null
-            : new string(buffer, 0, total).Trim();
+        var result = new RuntimePolicySaveResult<T>(
+            saved, null,
+            publication.HasDeliveryFailures ? "committedWithDeliveryFailures" : "committedAndApplied",
+            "notAttempted", publication.Plan.Version, publication.PublicationSequence,
+            publication.DeliveryFailures.Count, null);
+        return publication.HasDeliveryFailures
+            ? Results.Json(result, statusCode: StatusCodes.Status202Accepted)
+            : Results.Ok(result);
     }
 }

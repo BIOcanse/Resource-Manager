@@ -239,6 +239,7 @@ public sealed partial class HostManagerPlanCompiler
                 item.PredicateIndex,
                 item.PredicateCount)
             {
+                Name = name,
                 ExecutableNames = item.ExecutableNames?.ToImmutableArray() ?? [],
                 ZeroActivityThreshold = item.ZeroActivityThreshold
             };

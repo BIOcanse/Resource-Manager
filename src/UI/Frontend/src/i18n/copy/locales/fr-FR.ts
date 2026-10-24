@@ -898,6 +898,9 @@ const frFrAppCopy: AppCopy = {
     }
   },
   optimization: {
+    evaluationPending: "L’évaluation des rapports n’est pas encore terminée.",
+    evaluationFailed: (reason: string) => `Impossible d’évaluer les rapports. Motif : ${reason}.`,
+    rulesUnavailable: (count: number) => `Certaines règles sont indisponibles (${count}) ; les rapports des autres règles restent disponibles.`,
     scheduleStateLabel: "État de la planification d'optimisation",
     modeBar: "Mode d'optimisation des performances",
     modeNormal: "Normal",
