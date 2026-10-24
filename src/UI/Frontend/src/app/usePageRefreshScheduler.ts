@@ -80,6 +80,10 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
         && options.frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes)) {
         void options.management.refreshBrowserRuntimes(false);
       }
+      if (invalidation.targets.includes("components")
+        && options.frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes)) {
+        void options.management.refreshComponents();
+      }
     });
     onCleanup(unsubscribe);
   });
@@ -190,7 +194,11 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     if (options.activePage() === "components") {
       if (options.management.activeSubpage() === browserRuntimeManagementSubpageId) {
         if (options.frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes)) {
-          await options.management.refreshBrowserRuntimes(false);
+          // The runtime page also shows its install component.
+          await Promise.all([
+            options.management.refreshBrowserRuntimes(false),
+            options.management.refreshComponents()
+          ]);
         }
       } else if (options.frontendWork.isNeeded(frontendWorkIds.managementInventory)) {
         await options.management.refreshState(false);

@@ -110,6 +110,10 @@ async function run() {
     source.publish({ softwareRevision: "1", componentRevision: "1", browserRuntimeRevision: "1" });
     await settleEffects();
     assert.deepEqual(calls, { components: 1, software: 1, browserRuntimes: 1 });
+    // The runtime page shows its install component: a component change rereads the components only.
+    source.publish({ softwareRevision: "2", componentRevision: "2", browserRuntimeRevision: "1" });
+    await settleEffects();
+    assert.deepEqual(calls, { components: 2, software: 1, browserRuntimes: 1 });
     state.dispose();
   }
 
