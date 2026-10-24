@@ -58,7 +58,6 @@ import type {
   SoftwareRecord
 } from "../types";
 import type { PageId } from "../types";
-import { textOrEmpty } from "../utils";
 
 export interface ManagementStoreOptions {
   activePage: Accessor<PageId>;

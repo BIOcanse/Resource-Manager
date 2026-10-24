@@ -1,7 +1,6 @@
 import {
   connectionFacts,
   deviceTitle,
-  displayValue,
   hasAnyEvidence,
   summaryFields
 } from "./adapterEvidence.ts";

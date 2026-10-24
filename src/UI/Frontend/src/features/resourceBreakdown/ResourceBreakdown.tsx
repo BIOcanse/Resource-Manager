@@ -300,7 +300,7 @@ function ResourceBreakdownItem(props: {
   const selectable = () => resourceSelectableSoftwareSegments(props.bar);
   const label = () => resourceBreakdownLabel(props.bar);
   const denominator = () => resourceBarDenominator(props.bar);
-  const layout = createMemo(() => resourceSegmentLayout(selectable(), denominator(), resourceBarLayoutOptions(props.bar, selectable())));
+  const layout = createMemo(() => resourceSegmentLayout(selectable(), denominator(), resourceBarLayoutOptions(props.bar)));
   // Position segments by softwareId (stable DOM order) with absolute left/width so both
   // value changes AND reordering animate via CSS transitions — grid could only animate widths.
   const layoutIndex = createMemo(() => {
@@ -886,7 +886,7 @@ function resourceSegmentPercent(value: number, denominator: number) {
   return denominator > 0 ? value * 100 / denominator : 0;
 }
 
-function resourceBarLayoutOptions(bar: ResourceBreakdownBar, segments: ResourceSelectableSegment[]) {
+function resourceBarLayoutOptions(bar: ResourceBreakdownBar) {
   return {
     fill: bar.scaleMode === "active"
   };

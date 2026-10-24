@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { ReportRuleSettings } from "./components/ReportRuleSettings";
 import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
