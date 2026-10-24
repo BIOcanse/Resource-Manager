@@ -27,7 +27,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         Assert.Equal("Battlefield 6", result.Name);
         Assert.Equal(kind, result.Kind);
         Assert.Equal(SoftwareDisplayKinds.Project(kind), result.DisplayKind);
-        Assert.Equal(kind == SoftwareKinds.Game ? 95d : 55d,
+        Assert.Equal(kind == SoftwareKinds.Game ? 95d : 35d,
             ResourceManager.App.Domain.Optimization.Scoring.OptimizationRuntimeScoringDefaults.BaseScoreForKind(result.Kind));
         Assert.Equal(kind == SoftwareKinds.Game ? @"Windows GameConfigStore\Children\MatchedExeFullPath" : null,
             result.CategorySource);
