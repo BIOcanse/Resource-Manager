@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x0009_0000;
+    public const uint Version = 0x000a_0000;
     public const int RuntimeStateCount = 7;
     public const int AdapterGradeCount = 4;
 }
@@ -583,4 +583,25 @@ internal struct NativeSmartCoordinatorSnapshotRow
     public byte GpuCapabilityMask;
     public byte Reserved0;
     public ulong Reserved1;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeSmartCoordinatorScratchRequirements
+{
+    internal uint AbiVersion;
+    internal uint StructSize;
+    internal ulong ByteCount;
+    internal uint Alignment;
+    internal uint ProcessSize;
+    internal uint SoftwareSize;
+    internal uint GpuSize;
+    internal uint SoftwareGpuSize;
+    internal uint ProcessCount;
+    internal uint SoftwareCount;
+    internal uint GpuCount;
+    internal ulong ProcessIndexCount;
+    internal ulong SoftwareIndexCount;
+    internal ulong GpuIndexCount;
+    internal uint Reserved;
+    internal uint Reserved1;
 }

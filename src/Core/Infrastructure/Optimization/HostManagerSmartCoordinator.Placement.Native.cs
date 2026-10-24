@@ -9,22 +9,44 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private int placementRecoveryRecordOffset;
+    private (NativePlacementCoordinatorWorkspace Workspace, NativePlacementCoordinatorSession Session)? pendingPlacementCoordinatorClose;
+
+    private void ClosePendingPlacementCoordinator()
+    {
+        if (pendingPlacementCoordinatorClose is not { } pending) return;
+        pending.Workspace.Dispose();
+        pending.Session.Dispose();
+        pendingPlacementCoordinatorClose = null;
+    }
+
+    private void RetirePlacementCoordinator(NativePlacementCoordinatorWorkspace workspace,
+        NativePlacementCoordinatorSession session)
+    {
+        if (pendingPlacementCoordinatorClose is not null)
+            throw new InvalidOperationException("A previous placement workspace still requires close.");
+        pendingPlacementCoordinatorClose = (workspace, session);
+        ClosePendingPlacementCoordinator();
+    }
 
     private void EnsurePlacementCoordinatorWorkspace()
     {
+        ClosePendingPlacementCoordinator();
+        placementCoordinatorWorkspace?.RequireNoOutstandingOperation();
         var desired = placementCoordinatorRuntime.CaptureDesired();
         var configuration = CreatePlacementCoordinatorConfiguration(desired);
         if (placementCoordinatorSession is null || placementCoordinatorWorkspace is null)
         {
             var attempt = placementCoordinatorRuntime.BeginInitialCreate(desired.HostPlan);
             NativePlacementCoordinatorSession? createdSession = null;
+            NativePlacementCoordinatorWorkspace? createdWorkspace = null;
             try
             {
                 createdSession = new NativePlacementCoordinatorSession(in configuration);
                 ConfigureCpuExclusivity(createdSession, desired);
-                var createdWorkspace = new NativePlacementCoordinatorWorkspace(
+                createdWorkspace = new NativePlacementCoordinatorWorkspace(
                     in configuration,
-                    createdSession.Capacity);
+                    createdSession.Capacity,
+                    selfLocalResourceManagerOwner.CreateScratch);
                 RequirePlacementSettlement(
                     placementCoordinatorRuntime.CompleteSucceeded(attempt),
                     HostManagerDeploymentAttemptSettlement.Applied,
@@ -34,6 +56,7 @@ public sealed partial class HostManagerSmartCoordinator
                 appliedPlacementCoordinatorPlan = desired;
                 placementCoordinatorCycleEpoch = 0;
                 createdSession = null;
+                createdWorkspace = null;
                 return;
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -43,7 +66,10 @@ public sealed partial class HostManagerSmartCoordinator
             }
             finally
             {
-                createdSession?.Dispose();
+                if (createdWorkspace is not null && createdSession is not null)
+                    RetirePlacementCoordinator(createdWorkspace, createdSession);
+                else
+                    createdSession?.Dispose();
             }
         }
 
@@ -84,10 +110,12 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 finally
                 {
-                    placementCoordinatorSession.Dispose();
+                    var retiredWorkspace = placementCoordinatorWorkspace;
+                    var retiredSession = placementCoordinatorSession;
                     placementCoordinatorSession = null;
                     placementCoordinatorWorkspace = null;
                     appliedPlacementCoordinatorPlan = null;
+                    RetirePlacementCoordinator(retiredWorkspace, retiredSession);
                 }
                 throw;
             }
@@ -95,25 +123,28 @@ public sealed partial class HostManagerSmartCoordinator
 
         var recreateAttempt = placementCoordinatorRuntime.BeginHostRecreateAndHotPublish(desired.HostPlan);
         NativePlacementCoordinatorSession? replacementSession = null;
+        NativePlacementCoordinatorWorkspace? replacementWorkspace = null;
+        var previousSession = placementCoordinatorSession;
+        var previousWorkspace = placementCoordinatorWorkspace;
         try
         {
             replacementSession = new NativePlacementCoordinatorSession(in configuration);
             ConfigureCpuExclusivity(replacementSession, desired);
-            var replacementWorkspace = new NativePlacementCoordinatorWorkspace(
+            replacementWorkspace = new NativePlacementCoordinatorWorkspace(
                 in configuration,
-                replacementSession.Capacity);
+                replacementSession.Capacity,
+                selfLocalResourceManagerOwner.CreateScratch);
             RequirePlacementSettlement(
                 placementCoordinatorRuntime.CompleteSucceeded(recreateAttempt),
                 HostManagerDeploymentAttemptSettlement.Applied,
                 "host recreate");
 
-            var previous = placementCoordinatorSession;
             placementCoordinatorSession = replacementSession;
             placementCoordinatorWorkspace = replacementWorkspace;
             appliedPlacementCoordinatorPlan = desired;
             placementCoordinatorCycleEpoch = 0;
             replacementSession = null;
-            previous.Dispose();
+            replacementWorkspace = null;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -122,8 +153,12 @@ public sealed partial class HostManagerSmartCoordinator
         }
         finally
         {
-            replacementSession?.Dispose();
+            if (replacementWorkspace is not null && replacementSession is not null)
+                RetirePlacementCoordinator(replacementWorkspace, replacementSession);
+            else
+                replacementSession?.Dispose();
         }
+        RetirePlacementCoordinator(previousWorkspace, previousSession);
     }
 
     private IReadOnlyList<HostManagerAppliedPlacementReceipt> RestoreAppliedPlacementsThroughNative(
@@ -157,11 +192,14 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return placements;
         }
-        var projection = HostManagerPlacementCoordinatorProjection.ProjectApplied(
-            selectedPlacements,
-            workspace.Applied);
+        using var operation = workspace.BeginOperation();
+        HostManagerPlacementProjection projection;
+        {
+            using var view = workspace.CreateScratchView();
+            projection = HostManagerPlacementCoordinatorProjection.ProjectApplied(selectedPlacements, view.Applied);
+        }
         var observedAt = MonotonicMilliseconds();
-        var actionCapacity = checked((uint)workspace.Actions.Length);
+        var actionCapacity = checked((uint)workspace.ActionCapacity);
         var cycle = new NativePlacementCoordinatorCycleInput
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,
@@ -175,11 +213,7 @@ public sealed partial class HostManagerSmartCoordinator
             ActionCapacity = actionCapacity
         };
         RequirePlacementStatus(
-            session.Plan(
-                ref cycle,
-                ReadOnlySpan<NativePlacementDesiredInput>.Empty,
-                workspace.Applied.AsSpan(0, checked((int)projection.RowCount)),
-                workspace.Actions),
+            workspace.Plan(session, ref cycle),
             NativePlacementCoordinatorStatus.Ok,
             "plan");
         ValidatePlacementCycle(
@@ -190,6 +224,7 @@ public sealed partial class HostManagerSmartCoordinator
             actionCapacity,
             applied,
             workspace);
+        ObservePlacementPlan(workspace, in cycle);
 
         var settlements = new Dictionary<HostManagerPlacementNativeIdentity, HostManagerPlacementRecordSettlement>(
             checked((int)cycle.ActionCount));
@@ -197,7 +232,7 @@ public sealed partial class HostManagerSmartCoordinator
         for (var index = 0; index < cycle.ActionCount; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var action = workspace.Actions[index];
+            var action = workspace.GetAction(index);
             var projected = projection.Require(action);
             ValidatePlacementRestoreAction(action, projected, observedAt, applied, actionIds);
             if (!permit.TryReserveRecovery(1, out var reservation)
@@ -214,18 +249,39 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     throw new InvalidDataException("Native placement coordinator emitted duplicate receipt actions.");
                 }
-                workspace.Feedback[index] = CreatePlacementFeedback(action, settlement);
+                workspace.SetFeedback(index, CreatePlacementFeedback(action, settlement));
             }
         }
 
         if (cycle.ActionCount != 0)
         {
             RequirePlacementStatus(
-                session.ApplyFeedback(workspace.Feedback.AsSpan(0, checked((int)cycle.ActionCount))),
+                workspace.ApplyFeedback(session, checked((int)cycle.ActionCount)),
                 NativePlacementCoordinatorStatus.Ok,
                 "feedback");
+            ObservePlacementFeedback(workspace, checked((int)cycle.ActionCount));
         }
-        return RebuildRemainingPlacements(placements, settlements);
+        var remaining = RebuildRemainingPlacements(placements, settlements);
+        operation.Complete();
+        return remaining;
+    }
+
+    private void ObservePlacementPlan(NativePlacementCoordinatorWorkspace workspace,
+        in NativePlacementCoordinatorCycleInput cycle)
+    {
+        var probe = Volatile.Read(ref transitionProbe);
+        if (probe is null) return;
+        using var view = workspace.CreateScratchView();
+        probe.ObservePlacementPlan(view.Desired[..checked((int)cycle.DesiredCount)],
+            view.Applied[..checked((int)cycle.AppliedCount)], view.Actions[..checked((int)cycle.ActionCount)]);
+    }
+
+    private void ObservePlacementFeedback(NativePlacementCoordinatorWorkspace workspace, int count)
+    {
+        var probe = Volatile.Read(ref transitionProbe);
+        if (probe is null) return;
+        using var view = workspace.CreateScratchView();
+        probe.ObservePlacementFeedback(view.Feedback[..count]);
     }
 
     private static NativePlacementCoordinatorConfiguration CreatePlacementCoordinatorConfiguration(
@@ -271,7 +327,7 @@ public sealed partial class HostManagerSmartCoordinator
             || cycle.DesiredCount != expectedDesiredCount
             || cycle.AppliedCount != expectedAppliedCount
             || expectedActionCapacity == 0
-            || expectedActionCapacity > checked((uint)workspace.Actions.Length)
+            || expectedActionCapacity > checked((uint)workspace.ActionCapacity)
             || cycle.ActionCapacity != expectedActionCapacity
             || cycle.ActionCount > cycle.ActionCapacity
             || cycle.StateRevision == 0)

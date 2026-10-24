@@ -113,6 +113,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     ledger, runtime);
                 return actions;
             });
+        var placementCapture = CapturePlacementOperations(fixture.Coordinator);
         fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, child.AdapterLuid));
         var identification = new JsonGpuPlacementProcessHistoryStore(new GpuPolicyEnvironment(fixture.Root));
         if (existingLayer && !firstUse)
@@ -261,10 +262,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var canonical = fixture.Coordinator.SchedulingAuthority.Compute!.Gpu!.Scores
             .Where(score => score.Kind == NativeComputeScoringOutputKind.ProcessGpu && score.ProcessId == child.Identity.ProcessId)
             .Max(score => score.Score);
-        var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(fixture.Coordinator, "placementCoordinatorWorkspace")!;
-        Assert.Equal(checked((uint)Math.Round(canonical, MidpointRounding.AwayFromZero)), workspace.Desired[0].Priority);
-        Assert.Equal((uint)NativePlacementResourceKind.Gpu, workspace.Desired[0].ResourceKind);
-        Assert.Equal(child.Identity.ProcessStartKey, workspace.Desired[0].ProcessStartKey);
+        Assert.Equal(checked((uint)Math.Round(canonical, MidpointRounding.AwayFromZero)), placementCapture.Desired[0].Priority);
+        Assert.Equal((uint)NativePlacementResourceKind.Gpu, placementCapture.Desired[0].ResourceKind);
+        Assert.Equal(child.Identity.ProcessStartKey, placementCapture.Desired[0].ProcessStartKey);
         var onTarget = await child.CreateDeviceAsync();
         Assert.Equal(targetKey, onTarget);
         Assert.NotEqual(child.AdapterLuid, onTarget);

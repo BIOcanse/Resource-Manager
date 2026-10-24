@@ -4,6 +4,8 @@ const state = @import("state.zig");
 const ingest = @import("ingest.zig");
 const planner = @import("planner.zig");
 const feedback = @import("feedback.zig");
+const scratch = @import("scratch.zig");
+const disjoint = @import("../compute_scoring/scratch.zig").disjoint;
 
 pub const Session = state.Session;
 
@@ -29,6 +31,13 @@ pub fn queryCapacity(session: *Session, capacity: *protocol.Capacity) protocol.S
     return .ok;
 }
 
+pub fn queryScratchLayout(session: *Session, requirements: *scratch.Requirements) protocol.Status {
+    lock(&session.mutex);
+    defer session.mutex.unlock();
+    requirements.* = scratch.Layout.init(&session.config).requirements;
+    return .ok;
+}
+
 pub fn reconfigure(session: *Session, config: *const protocol.Config) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
@@ -50,10 +59,20 @@ pub fn plan(
     input_row_capacity: u32,
     actions_pointer: ?[*]protocol.Action,
     action_capacity: u32,
+    scratch_pointer: ?*anyopaque,
+    scratch_length: u64,
     snapshot: *protocol.Snapshot,
 ) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
+
+    const pointer = scratch_pointer orelse return .invalid_argument;
+    if (!disjoint(pointer, scratch_length, input_rows, input_row_capacity, protocol.InputRow) or
+        !disjoint(pointer, scratch_length, actions_pointer, action_capacity, protocol.Action) or
+        !disjoint(pointer, scratch_length, @as(?[*]const protocol.CycleInput, @ptrCast(input)), 1, protocol.CycleInput) or
+        !disjoint(pointer, scratch_length, @as(?[*]protocol.Snapshot, @ptrCast(snapshot)), 1, protocol.Snapshot)) return .invalid_argument;
+    if (!scratch.Layout.init(&session.config).bind(session, pointer, scratch_length)) return .invalid_argument;
+    defer scratch.unbind(session);
 
     if (action_capacity < session.config.max_actions or input.action_capacity != action_capacity) {
         return .buffer_too_small;

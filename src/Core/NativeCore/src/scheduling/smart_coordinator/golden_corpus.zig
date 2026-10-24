@@ -1,3 +1,4 @@
+const std = @import("std");
 const protocol = @import("protocol.zig");
 
 pub const default_process_capacity: u32 = 8;
@@ -87,7 +88,12 @@ pub fn plan(
     action_capacity: u32,
     snapshot: *protocol.Snapshot,
 ) protocol.Status {
-    return @import("session.zig").plan(session, input, input_rows, input_row_capacity, actions_pointer, action_capacity, snapshot);
+    // Ordinary storage is explicit in algorithm fixtures, never a production fallback.
+    const scratch = @import("scratch.zig");
+    const requirements = scratch.Layout.init(&session.config).requirements;
+    const bytes = std.heap.page_allocator.alloc(u8, @intCast(requirements.byte_count)) catch return .out_of_memory;
+    defer std.heap.page_allocator.free(bytes);
+    return @import("session.zig").plan(session, input, input_rows, input_row_capacity, actions_pointer, action_capacity, bytes.ptr, bytes.len, snapshot);
 }
 
 pub fn processFact(

@@ -14,6 +14,8 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken)
     {
         permit.Require(HostManagerCycleEffectKind.ExitedOwnershipReconciliation);
+        runningGpuPlacementActions.ReconcileExitedProcessInstances(
+            processFacts, processPolicyWriter.ReadProcessInstanceForRecovery);
         _ = memoryCleanupAttemptJournal.ReconcileAndCaptureBlocked(
             processPolicyWriter.ReadProcessInstanceForRecovery);
         if (!processEffectValidationScopeAuthorityOwner

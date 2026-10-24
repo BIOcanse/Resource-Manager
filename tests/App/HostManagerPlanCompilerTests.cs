@@ -40,7 +40,7 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(ResourceSchedulerProtocol.Version, plan.BuildSpecialize.ResourceSchedulerAbiVersion);
         Assert.Equal(AdapterPrivateResourceLedgerProtocol.Version, plan.BuildSpecialize.AdapterPrivateResourceLedgerAbiVersion);
         Assert.Equal(NativeAdapterInstanceLeaseAbi.Version, plan.BuildSpecialize.AdapterInstanceLeaseAbiVersion);
-        Assert.Equal(0x0009_0000U, plan.BuildSpecialize.SmartCoordinator.AbiVersion);
+        Assert.Equal(NativeSmartCoordinatorAbi.Version, plan.BuildSpecialize.SmartCoordinator.AbiVersion);
         Assert.Equal("smart_coordinator", plan.BuildSpecialize.SmartCoordinator.NativeModule);
         Assert.Equal(0x0001_0004U, plan.BuildSpecialize.MemoryCleanupAbiVersion);
         Assert.Equal(NativePlacementCoordinatorAbi.Version, plan.BuildSpecialize.PlacementCoordinatorAbiVersion);

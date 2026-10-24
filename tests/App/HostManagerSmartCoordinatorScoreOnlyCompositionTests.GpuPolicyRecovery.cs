@@ -29,26 +29,24 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         if (applied) Assert.True(runtime.TryApplyPolicyRecord(record));
         var path = runtime.GetPolicyPath("gpu-policy");
+        var captured = CapturePlacementOperations(fixture.Coordinator);
         if (blockWrite) File.SetAttributes(path, FileAttributes.ReadOnly);
         try
         {
             _ = await fixture.RunRealtimeCycleAsync();
-            var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(fixture.Coordinator,
-                "placementCoordinatorWorkspace");
-            Assert.NotNull(workspace);
-            Assert.Equal((uint)NativePlacementKind.GpuShimPolicy, workspace.Actions[0].PlacementKind);
-            Assert.Equal((uint)NativePlacementActionDisposition.Restore, workspace.Actions[0].Disposition);
+            Assert.Equal((uint)NativePlacementKind.GpuShimPolicy, captured.Actions[0].PlacementKind);
+            Assert.Equal((uint)NativePlacementActionDisposition.Restore, captured.Actions[0].Disposition);
             if (blockWrite)
             {
                 Assert.Single(fixture.StateStore.Current.AppliedPlacements);
-                Assert.Equal((uint)NativePlacementFeedbackStatus.RetryableFailure, workspace.Feedback[0].Status);
+                Assert.Equal((uint)NativePlacementFeedbackStatus.RetryableFailure, captured.Feedback[0].Status);
                 Assert.Equal(new byte[] { 2 }, runtime.ReadPolicy("gpu-policy"));
             }
             else
             {
                 Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
                 Assert.Equal((uint)(applied ? NativePlacementFeedbackStatus.Restored
-                    : NativePlacementFeedbackStatus.AlreadySatisfied), workspace.Feedback[0].Status);
+                    : NativePlacementFeedbackStatus.AlreadySatisfied), captured.Feedback[0].Status);
                 Assert.Equal(new byte[] { 1, 0, 255 }, runtime.ReadPolicy("gpu-policy"));
             }
             Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);

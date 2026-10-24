@@ -777,7 +777,7 @@ public sealed class NativeSmartCoordinatorSessionTests
     [Fact]
     public void SmartScratchLayoutUsesCheckedTypedExtentsWithoutAByteCountCap()
     {
-        var layout = new NativeSmartScratchLayout(64, 20_000_000, 6);
+        var layout = new NativeSmartScratchLayout(64, 20_000_000, 6, 0, 1);
         Assert.Equal(104, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
         Assert.Equal(136, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorFeedback>());
@@ -785,7 +785,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(64UL * 104 + 20_000_000UL * 136, layout.Feedback);
         Assert.Equal(layout.Feedback + 6UL * 96, layout.Length);
         Assert.True(layout.Length > int.MaxValue); // Layout proof only: no large allocation.
-        Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1));
+        Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1, 0, 1));
     }
 
     [Fact]
@@ -815,8 +815,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             }
             Assert.True(action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
             var actualLease = SmartActiveLease(workspace);
-            var layout = new NativeSmartScratchLayout(workspace.Capacity.InputRowCapacity,
-                workspace.Capacity.ActionCapacity, workspace.Capacity.FeedbackCapacity);
+            var layout = workspace.ScratchLayout;
             var nativeOutput = System.Runtime.InteropServices.MemoryMarshal.Read<NativeSmartCoordinatorAction>(
                 actualLease.GetMemoryChunk(layout.Actions, 136).Span);
             Assert.Equal(action.ActionId, nativeOutput.ActionId);
@@ -830,7 +829,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
         Assert.Contains(workspace.CurrentSnapshotRows.ToArray(), row => row.ProcessId == process.ProcessId);
-        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Snapshot reads do not reallocate the three columns.
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Snapshot reads do not reallocate the combined scratch region.
     }
 
     [Fact]

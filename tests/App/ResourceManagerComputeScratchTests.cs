@@ -221,8 +221,7 @@ public sealed class ResourceManagerComputeScratchTests
                         using var smartOperation = smart.BeginOperation();
                         smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 61 });
                         Assert.Equal(61UL, smart.GetFeedback(0).ActionId);
-                        var smartLayout = new NativeSmartScratchLayout(smart.Capacity.InputRowCapacity,
-                            smart.Capacity.ActionCapacity, smart.Capacity.FeedbackCapacity);
+                        var smartLayout = smart.ScratchLayout;
                         registered += smartLayout.Length;
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.All(readers, reader => Assert.Equal(81, reader.Tree.Count));
@@ -286,9 +285,9 @@ public sealed class ResourceManagerComputeScratchTests
                             pdh.Supply(8192);
                             registered += pdhIdentity!.Length;
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-                            // The 28 real workspaces above, then current plus pending query pools (2 * 64), model workspaces (2),
-                            // portable registry output workspaces (2) and display normalization workspaces (2).
-                            for (var index = 0; index < 134; index++)
+                            // The 28 real workspaces above, then current plus pending query pools (2 * 64),
+                            // model (2), portable registry (2), display normalization (2), and placement (2).
+                            for (var index = 0; index < 136; index++)
                             {
                                 var resource = owner.CreateScratch(8192);
                                 additionalResources.Add(resource);

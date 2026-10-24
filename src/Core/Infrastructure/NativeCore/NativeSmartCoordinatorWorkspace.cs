@@ -25,7 +25,9 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         IComputeScratch? created = null;
         try
         {
-            layout = new(Capacity.InputRowCapacity, Capacity.ActionCapacity, Capacity.FeedbackCapacity);
+            var nativeScratch = session.ScratchRequirements;
+            layout = new(Capacity.InputRowCapacity, Capacity.ActionCapacity, Capacity.FeedbackCapacity,
+                nativeScratch.ByteCount, nativeScratch.Alignment);
             snapshotRows = new NativeSmartCoordinatorSnapshotRow[Capacity.SnapshotRowCapacity];
             created = createScratch(layout.Length)
                 ?? throw new InvalidOperationException("The smart scratch factory returned no resource.");
@@ -45,6 +47,8 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
     public NativeSmartCoordinatorCapacity Capacity { get; private set; }
 
     public NativeSmartCoordinatorSnapshot Snapshot => snapshot;
+
+    internal NativeSmartScratchLayout ScratchLayout => layout;
 
     internal void RequireNoOutstandingOperation()
     {
@@ -157,6 +161,8 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
             in input,
             view.Inputs[..checked((int)input.InputCount)],
             view.Actions,
+            view.NativeScratchPointer,
+            view.NativeScratchLength,
             ref snapshot);
     }
 
