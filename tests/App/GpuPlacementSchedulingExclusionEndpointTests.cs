@@ -15,6 +15,7 @@ using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 
@@ -22,15 +23,18 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuPlacementSchedulingExclusionEndpointTests
 {
-    [Fact]
-    public async Task DefaultAndSavedPolicyCarryTheThreeExclusionsExplicitly()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task DefaultAndSavedPolicyCarryTheThreeExclusionsExplicitly(int deliveryMode)
     {
         var root = Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), "rm-gpu-exclusion-api-" + Guid.NewGuid().ToString("N"))).FullName;
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        var runtime = new Runtime();
+        var runtime = new Runtime { DeliveryMode = deliveryMode };
         builder.Services.AddSingleton<IRuntimeSpecializationCoordinator>(runtime);
         builder.Services.AddSingleton<IGpuPlacementPolicyStore, JsonGpuPlacementPolicyStore>();
         // The policy routes must not reach the other owners mapped in the same group.
@@ -70,8 +74,11 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             defaults["cpuSchedulingExcluded"] = true;
             defaults["gpuSchedulingExcluded"] = true;
             using var saved = await client.PutAsJsonAsync("/api/gpu-placement/software/app/policy", defaults);
-            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
-            var echoed = (await saved.Content.ReadFromJsonAsync<JsonObject>())!;
+            Assert.Equal(deliveryMode == 0 ? HttpStatusCode.OK : deliveryMode == 1 ? HttpStatusCode.Accepted : HttpStatusCode.Conflict, saved.StatusCode);
+            var envelope = (await saved.Content.ReadFromJsonAsync<JsonObject>())!;
+            Assert.Equal(deliveryMode == 0 ? "committedAndApplied" : deliveryMode == 1 ? "committedWithDeliveryFailures" : "savedNotApplied", envelope["runtimeApplicationDisposition"]!.GetValue<string>());
+            Assert.Equal(deliveryMode == 1 ? 1 : 0, envelope["runtimeDeliveryFailureCount"]!.GetValue<int>());
+            var echoed = envelope["policy"]!;
             Assert.True(echoed["cpuSchedulingExcluded"]!.GetValue<bool>());
             Assert.False(echoed["memorySchedulingExcluded"]!.GetValue<bool>());
             Assert.True(echoed["gpuSchedulingExcluded"]!.GetValue<bool>());
@@ -93,8 +100,14 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
     private sealed class Runtime : IRuntimeSpecializationCoordinator
     {
         internal int Rebuilds;
+        internal int DeliveryMode;
         public Task<RuntimePlanPublicationResult> RebuildAsync(string reason, CancellationToken cancellationToken)
-        { Rebuilds++; return Task.FromResult<RuntimePlanPublicationResult>(null!); }
+        {
+            Rebuilds++;
+            if (DeliveryMode == 2) throw new IOException("publish failed");
+            return Task.FromResult(new RuntimePlanPublicationResult(CompiledRuntimePlan.Default, 7,
+                DeliveryMode == 1 ? [new RuntimePlanDeliveryFailure("test-owner", "IOException", "delivery failed")] : []));
+        }
         public Task<CpuBaselineRatioUpdateResult> ApplyCpuBaselineRatioAsync(double? overrideRatio, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AppSettingsUpdateResult> ApplyAppSettingsAsync(AppSettings settings, string reason, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AppSettingsUpdateResult> ApplyAppSettingsPatchAsync(AppSettingsPatchRequest patch, string reason, CancellationToken cancellationToken) => throw new NotSupportedException();

@@ -5,6 +5,8 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   page.on("pageerror", error => failures.push(String(error)));
 
   await patchScenario(baseUrl, {
+    optimizationRuntime: true,
+    runtimeEffectOwners: true,
     gpuPressureFixture: true,
     unknownGpuScore: true,
     gpuOverflowThresholdsMissing: true
@@ -43,6 +45,36 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   assert.match(header ?? "", /GPU 99% \/ 显存 70%/);
   assert.equal(status?.trim(), "可调度");
   assert.deepEqual(pressure.map(value => value.trim()), ["96.0%", "50.0%"]);
+  let writeState = "error";
+  const writes = [];
+  await page.route("**/api/gpu/performance-overrides", async route => {
+    const method = route.request().method();
+    if (method === "GET") return route.continue();
+    writes.push(method);
+    if (writeState === "error") return route.fulfill({ status: 503, contentType: "text/plain", body: "fixture failure" });
+    return route.fulfill({ status: 202, json: {
+      policy: { scoresByGpuId: { GPU0: 321 }, updatedAt: new Date().toISOString(), storagePath: "fixture" },
+      runtimeApplicationDisposition: "committedWithDeliveryFailures", startupInterceptionDisposition: "notAttempted",
+      runtimePlanVersion: 7, runtimePublicationSequence: 8, runtimeDeliveryFailureCount: 1, failureCode: null
+    } });
+  });
+  await panel.getByRole("button", { name: "编辑", exact: true }).click();
+  const draft = panel.getByRole("spinbutton").first();
+  await draft.fill("321");
+  await panel.getByRole("button", { name: "保存", exact: true }).click();
+  await panel.getByRole("alert").getByText("保存 GPU 性能分失败。", { exact: true }).waitFor();
+  assert.equal(await draft.inputValue(), "321", "Failed save must preserve the draft");
+  await panel.getByRole("button", { name: "重置", exact: true }).click();
+  await panel.getByRole("alert").getByText("重置 GPU 性能分失败。", { exact: true }).waitFor();
+  assert.equal(await draft.inputValue(), "321", "Failed reset must preserve the draft");
+  assert.deepEqual(writes, ["PUT", "DELETE"]);
+  writeState = "partial";
+  await panel.getByRole("button", { name: "保存", exact: true }).click();
+  await panel.getByText("已保存策略，但运行调度配置尚未完全应用。", { exact: true }).waitFor();
+  assert.equal(await draft.inputValue(), "321", "Partial delivery must keep the draft");
+  await panel.getByRole("button", { name: "重新应用", exact: true }).click();
+  await panel.getByRole("button", { name: "编辑", exact: true }).waitFor();
+  assert.equal(await panel.getByRole("alert").count(), 0);
   if (failures.length) throw new Error(failures.join("\n"));
 
   return { missingThresholds: "classification unknown; telemetry retained", committedThresholds: [99, 70], pressure };

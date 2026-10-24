@@ -74,7 +74,11 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         persistence.FailNext = true;
         resources.Publish(CreateSoftwareMemorySnapshot(41, DateTimeOffset.UtcNow.AddMinutes(-1), 18));
         await Assert.ThrowsAsync<IOException>(() => owner.RefreshReportsAsync(CancellationToken.None));
-        Assert.Equal(status, owner.GetStatus());
+        var failureOverview = await owner.GetReportsAsync(CancellationToken.None);
+        Assert.Equal("failed", failureOverview.Status.EvaluationState);
+        Assert.StartsWith("IOException:", failureOverview.Status.EvaluationFailureReason);
+        Assert.Equal(status.ActiveReportCount, failureOverview.Status.ActiveReportCount);
+        Assert.Equal(status.AvailableRuleCount, failureOverview.Status.AvailableRuleCount);
         var after = await inner.LoadAsync(CancellationToken.None);
         Assert.Equal(before.Select(row => (row.OperationKind, row.IdentityHandle, row.MutationVersion)),
             after.Select(row => (row.OperationKind, row.IdentityHandle, row.MutationVersion)));
@@ -82,6 +86,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal(1UL, ledger.Tick().Released); // No use leaked by exception.
         var recovered = await owner.RefreshReportsAsync(CancellationToken.None);
         Assert.NotNull(recovered.Status.LastEvaluationAt);
+        Assert.Equal("completed", recovered.Status.EvaluationState);
+        Assert.Null(recovered.Status.EvaluationFailureReason);
         Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
     }
 
@@ -166,7 +172,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             var accepted = owner.GetStatus();
             provider.Publish(CompiledRuntimePlan.Default with { Version = 3, HostManager = NextReportScratchPlan(2) });
             await Assert.ThrowsAsync<InvalidOperationException>(() => owner.RefreshReportsAsync(CancellationToken.None));
-            Assert.Equal(accepted, owner.GetStatus());
+            Assert.Equal("failed", owner.GetStatus().EvaluationState);
+            Assert.Equal(accepted.ActiveReportCount, owner.GetStatus().ActiveReportCount);
+            Assert.Equal(accepted.ConfiguredRuleCount, owner.GetStatus().ConfiguredRuleCount);
             Assert.Equal(LedgerStatus.InUse,
                 (await Assert.ThrowsAsync<LedgerException>(() => owner.DisposeAsync().AsTask())).Status);
             Assert.Same(old, ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "pendingWorkspaceClose"));
@@ -270,7 +278,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         provider.Publish(CompiledRuntimePlan.Default with { Version = 2, HostManager = NextReportScratchPlan(1) });
         await Assert.ThrowsAsync<IOException>(() => owner.RefreshReportsAsync(CancellationToken.None));
         Assert.Same(old, ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace"));
-        Assert.Equal(status, owner.GetStatus());
+        Assert.Equal("failed", owner.GetStatus().EvaluationState);
+        Assert.Equal(status.ActiveReportCount, owner.GetStatus().ActiveReportCount);
+        Assert.Equal(status.ConfiguredRuleCount, owner.GetStatus().ConfiguredRuleCount);
         Assert.Equal(2, handles.Count);
         Assert.False(handles[0].Closed);
         Assert.True(handles[1].Closed);
@@ -350,7 +360,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         persistence.FailNext = true;
         resources.Publish(CreateSoftwareMemorySnapshot(44, observed.AddSeconds(30), 18));
         await Assert.ThrowsAsync<IOException>(() => owner.RefreshReportsAsync(CancellationToken.None));
-        Assert.Same(before, ReportOwnerField<HostManagerReportReadModel>(owner, "readModel"));
+        var failureModel = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
+        Assert.Equal("failed", failureModel.Status.EvaluationState);
+        Assert.Equal(before!.Reports, failureModel.Reports);
+        Assert.Equal(before.NativeReportById, failureModel.NativeReportById);
         resources.Publish(CreateSoftwareMemorySnapshot(45, observed.AddSeconds(40), 18));
         await owner.RefreshReportsAsync(CancellationToken.None);
         var after = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
@@ -450,7 +463,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         resources.Publish(CreateSoftwareMemorySnapshot(44, observed.AddSeconds(30), 18));
         var failure = await Assert.ThrowsAsync<IOException>(() => owner.RefreshReportsAsync(CancellationToken.None));
         Assert.Equal("recorded-after-commit-failure", failure.Message);
-        Assert.Same(before, ReportOwnerField<HostManagerReportReadModel>(owner, "readModel"));
+        var failureModel = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
+        Assert.Equal("failed", failureModel.Status.EvaluationState);
+        Assert.Equal(before!.Reports, failureModel.Reports);
+        Assert.Equal(before.NativeReportById, failureModel.NativeReportById);
         var committed = (await inner.LoadAsync(CancellationToken.None))
             .OrderBy(row => row.OperationKind).ThenBy(row => row.IdentityHandle).ToArray();
         Assert.Contains(committed,

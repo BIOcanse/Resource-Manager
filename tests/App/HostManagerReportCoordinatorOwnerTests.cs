@@ -986,6 +986,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         private int activeSubscriptions;
 
         internal Exception? ReleaseFailure { get; init; }
+        internal Exception? ReadFailure { get; set; }
 
         internal int ActiveSubscriptions => Volatile.Read(ref activeSubscriptions);
 
@@ -1003,7 +1004,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         }
 
         public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
-            => null;
+            => ReadFailure is { } failure ? throw failure : null;
     }
 
     private sealed class CachedResourceSource : IResourceBreakdownObservationSource

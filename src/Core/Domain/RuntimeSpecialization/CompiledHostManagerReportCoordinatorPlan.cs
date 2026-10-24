@@ -110,6 +110,7 @@ public sealed record CompiledHostManagerReportCoordinatorRulePlan(
     uint PredicateIndex,
     uint PredicateCount)
 {
+    public string Name { get; init; } = string.Empty;
     public ImmutableArray<string> ExecutableNames { get; init; } = [];
     public double? ZeroActivityThreshold { get; init; }
 

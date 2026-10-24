@@ -56,6 +56,9 @@ function optimizationOverview() {
     status: {
       lastEvaluationAt: "2026-08-26T08:00:00.000Z",
       lastObservedAt: "2026-08-26T07:59:58.000Z",
+      evaluationState: "completed",
+      evaluationFailureReason: null,
+      unavailableRules: ["cpu_throttle_temperature"],
       configuredRuleCount: 7,
       availableRuleCount: 6,
       activeReportCount: 0,

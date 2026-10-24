@@ -85,4 +85,9 @@ public sealed record OptimizationRecorderStatus(
     int ActiveReportCount,
     int TrustedCount,
     int ProtectedCount,
-    int SampleIntervalSeconds);
+    int SampleIntervalSeconds)
+{
+    public string EvaluationState { get; init; } = "notEvaluated";
+    public string? EvaluationFailureReason { get; init; }
+    public IReadOnlyList<string> UnavailableRules { get; init; } = [];
+}

@@ -1,3 +1,5 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 export default async function optimizationReportsJourney(page, baseUrl) {
   const failures = [];
   const reportRequests = [];
@@ -103,7 +105,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   assert(await observationStatus.count() === 0,
     "Report refresh must not restore internal rule-status copy");
   assert(await page.getByText("暂时没有需要处理的报告。", { exact: true }).isVisible(),
-    "A failed report refresh discarded the last-good overview");
+    "An invalid refresh response discarded the committed last evaluation");
 
   await postScenario({ optimizationReports: "ready", unknownGpuScore: false });
   await page.getByRole("button", { name: "刷新", exact: true }).click();
@@ -121,6 +123,20 @@ export default async function optimizationReportsJourney(page, baseUrl) {
       && request.method === "POST").length;
   assert(refreshPosts === 2,
     `Manual refresh did not publish through POST twice: ${JSON.stringify(reportRequests)}`);
+
+  for (const [state, message] of [
+    ["evaluation-failed", "无法完成报告评估，原因：IOException。"],
+    ["partial", "部分规则不可用（1 条）；其余规则的报告仍可查看。"]
+  ]) {
+    await postScenario({ optimizationReports: state });
+    await page.getByRole("button", { name: "刷新", exact: true }).click();
+    await page.getByText(message, { exact: true }).waitFor({ state: "visible", timeout: 5000 });
+    assert(await page.getByText("暂时没有需要处理的报告。", { exact: true }).count() === 0,
+      `${state} must not show a healthy empty state`);
+  }
+  await postScenario({ optimizationReports: "ready" });
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByText("暂时没有需要处理的报告。", { exact: true }).waitFor();
 
   // 调度状态跟随后端：不离开页面、不点刷新，后端的模式、运行与已优化对象数也会推到页面上。
   const modeStatus = page.locator(".optimization-mode-status");
@@ -204,9 +220,12 @@ export default async function optimizationReportsJourney(page, baseUrl) {
       activeSampleCount: 1, sampleCount: 2, durationSeconds: 0, details: [],
       process: { processId: 424242, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
         idleDurationSeconds: 900, commandLine: 'pwsh -File "stray-check.ps1"' } } };
+  let strayEvaluationFailed = false;
   const fulfillStray = route => route.fulfill({ json: { ...overview,
     reports: [{ ...strayReport, state: strayTrusted ? "TrustedSuppressed" : "Active" }], trustedTargets: strayTrusted ? [strayTrust] : [],
-    status: { ...overview.status, activeReportCount: 1, trustedCount: strayTrusted ? 1 : 0 } } });
+    status: { ...overview.status, activeReportCount: 1, trustedCount: strayTrusted ? 1 : 0,
+      evaluationState: strayEvaluationFailed ? "failed" : "completed",
+      evaluationFailureReason: strayEvaluationFailed ? "IOException: fixture failure" : null } } });
   await page.route("**/api/optimization/reports", fulfillStray);
   await page.route("**/api/optimization/reports/refresh", fulfillStray);
   await page.route("**/api/optimization/reports/stray-report/dismiss", async route => {
@@ -219,6 +238,15 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await strayCard.waitFor({ state: "visible", timeout: 5000 });
   assert((await strayCard.textContent()).includes("15") && !(await strayCard.textContent()).includes("BACKEND_PROSE"),
     "Stray report must render localized structured evidence");
+  strayEvaluationFailed = true;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByText("无法完成报告评估，原因：IOException: fixture failure。", { exact: true }).waitFor();
+  assert(await strayCard.isVisible(), "Evaluation failure discarded the committed report row");
+  assert(await strayCard.getByRole("button", { name: "忽略", exact: true }).isEnabled(),
+    "Unavailable evaluation must not block trusting a committed report");
+  strayEvaluationFailed = false;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByText("无法完成报告评估，原因：IOException: fixture failure。", { exact: true }).waitFor({ state: "detached" });
   await strayCard.getByRole("button", { name: "详细信息", exact: true }).click();
   const detail = page.getByRole("dialog");
   await detail.getByText('pwsh -File "stray-check.ps1"', { exact: true }).waitFor();
@@ -228,9 +256,40 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.getByRole("radio", { name: /已信任.*1/ }).click();
   await page.locator(".optimization-trusted-targets").getByText("pwsh", { exact: true }).waitFor();
   assert(strayTrusted, "Stray process target was not trusted");
+  await page.unroute("**/api/optimization/reports");
+  await page.unroute("**/api/optimization/reports/refresh");
+  const availabilityLanguages = [];
+  for (const option of languageOptions.filter(option => option.id !== "system")) {
+    const app = await loadAppCopy(option.id);
+    const settingsLocale = async route => {
+      const response = await route.fetch();
+      const result = await response.json();
+      result.settings.appearance.language = option.id;
+      await route.fulfill({ json: result });
+    };
+    await page.route("**/api/settings/app", settingsLocale);
+    await postScenario({ optimizationReports: "ready" });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(language => document.documentElement.lang === language, option.id);
+    await page.getByRole("navigation").getByRole("button", { name: app.page.optimization, exact: true }).click();
+    await page.getByText(app.optimization.empty, { exact: true }).waitFor();
+    for (const [state, message] of [
+      ["evaluation-failed", app.optimization.evaluationFailed("IOException")],
+      ["partial", app.optimization.rulesUnavailable(1)]
+    ]) {
+      await postScenario({ optimizationReports: state });
+      await page.getByRole("button", { name: app.optimization.refresh, exact: true }).click();
+      await page.getByText(message, { exact: true }).waitFor();
+      assert(await page.getByText(app.optimization.empty, { exact: true }).count() === 0,
+        `${option.id} ${state} incorrectly claimed no problems`);
+    }
+    availabilityLanguages.push(option.id);
+    await page.unroute("**/api/settings/app", settingsLocale);
+  }
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {
+    availabilityLanguages,
     initialSourceGetCount: initialReadCount,
     manualRefreshPostCount: 2,
     statusFollowsBackendPush: true,

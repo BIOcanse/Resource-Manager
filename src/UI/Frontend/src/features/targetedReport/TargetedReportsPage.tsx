@@ -106,7 +106,7 @@ export function TargetedReportsPage() {
     reportLease.setDemand({ active, refreshIntervalMs });
 
     if (!currentSnapshot.data) {
-      setReportLoading(active);
+      setReportLoading(active && currentSnapshot.status === "loading");
       setReportFailed(currentSnapshot.status === "error"
         || currentSnapshot.status === "unavailable");
     } else {
@@ -208,7 +208,10 @@ export function TargetedReportsPage() {
         </div>
         <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
       </div>
-      <Show when={failed()}><p class="targeted-report-note error" role="alert">{uiText.targetedReport.failed}</p></Show>
+      <Show when={failed()}><div class="targeted-report-note error" role="alert">
+        <span>{uiText.targetedReport.failed}</span>
+        <button class="secondary" type="button" onClick={() => void refresh()}>{uiText.observationNotice.retry}</button>
+      </div></Show>
       <Show when={recordings().length > 0} fallback={<div class="optimization-empty">{loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}</div>}>
         <div class="targeted-report-list" role="list">
           <For each={recordings()}>

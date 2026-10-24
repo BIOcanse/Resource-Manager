@@ -1,4 +1,5 @@
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
+import { RuntimePolicyDeliveryNotice } from "./RuntimePolicyDeliveryNotice";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { AlertTriangle, FolderOpen } from "lucide-solid";
 import { getDefaultGpuPlacementSoftwarePolicy } from "../api";
@@ -259,7 +260,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
           <Show when={props.notice}>
             {(notice) => (
               <div class={`software-detail-notice ${notice().tone ?? "info"}`}>
-                <strong>{notice().message}</strong>
+                <Show when={notice().onRuntimeApplied} fallback={<strong>{notice().message}</strong>}>
+                  <RuntimePolicyDeliveryNotice onApplied={() => notice().onRuntimeApplied?.()} />
+                </Show>
                 <Show when={notice().details?.length}>
                   <button class="secondary details-button" type="button" onClick={() => setNoticeDetailsOpen(true)}>
                     {uiText.softwareDetail.details}

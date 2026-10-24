@@ -14,8 +14,21 @@ assert.equal(decoded.status.lastEvaluationAt, source.status.lastEvaluationAt);
 assert.deepEqual(decoded.reports, []);
 assert.notEqual(decoded, source);
 
+for (const evaluationState of ["completed", "failed", "notEvaluated"] as const) {
+  const value = { ...source, status: { ...source.status, evaluationState,
+    evaluationFailureReason: evaluationState === "failed" ? "IOException: failed" : null } };
+  const status = optimizationReportsDecoder.decode(value).status;
+  assert.equal(status.evaluationState, evaluationState);
+  assert.equal(status.evaluationFailureReason, value.status.evaluationFailureReason);
+  assert.deepEqual(status.unavailableRules, ["cpu_throttle_temperature"]);
+}
+
 const invalidCases: Array<[unknown, string]> = [
   [null, "$"],
+  [{ ...source, status: { ...source.status, unavailableRules: [] } }, "$.status.unavailableRules"],
+  [{ ...source, status: { ...source.status, evaluationState: "ready" } }, "$.status.evaluationState"],
+  [{ ...source, status: { ...source.status, evaluationFailureReason: 3 } }, "$.status.evaluationFailureReason"],
+  [{ ...source, status: { ...source.status, unavailableRules: null } }, "$.status.unavailableRules"],
   [{ ...source, capturedAt: "not-a-date" }, "$.capturedAt"],
   [{ ...source, status: { ...source.status, configuredRuleCount: undefined } },
     "$.status.configuredRuleCount"],
@@ -55,6 +68,9 @@ function optimizationOverview() {
     status: {
       lastEvaluationAt: "2026-08-26T08:00:00.000Z",
       lastObservedAt: "2026-08-26T07:59:58.000Z",
+      evaluationState: "completed",
+      evaluationFailureReason: null,
+      unavailableRules: ["cpu_throttle_temperature"],
       configuredRuleCount: 7,
       availableRuleCount: 6,
       activeReportCount: 0,

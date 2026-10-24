@@ -440,7 +440,6 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("GET", "/api/debug/metrics/capture", false)]
     [InlineData("GET", "/api/debug/history/requirements", false)]
     [InlineData("GET", "/api/debug/freedom-points", false)]
-    [InlineData("GET", "/api/optimization/smart/diagnostics/decision-snapshot", false)]
     [InlineData("GET", "/api/optimization/smart/diagnostics/decision-snapshot/subscribe", false)]
     [InlineData("GET", Scope, false)]
     [InlineData("PUT", "/api/settings/app", false)]

@@ -33,15 +33,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return trust is null ? Results.NotFound(new { error = "报告不存在或已经失效。" }) : Results.Ok(trust);
         });
 
-        app.MapPost("/api/optimization/reports/{id}/trust", async (
-            string id,
-            IHostManagerReportService reportService,
-            CancellationToken cancellationToken) =>
-        {
-            var trust = await reportService.TrustReportAsync(id, cancellationToken);
-            return trust is null ? Results.NotFound(new { error = "报告不存在或已经失效。" }) : Results.Ok(trust);
-        });
-
         app.MapDelete("/api/optimization/trust/{id}", async (
             string id,
             IHostManagerReportService reportService,
@@ -51,27 +42,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ? Results.NoContent()
                 : Results.NotFound(new { error = "信任项不存在。" });
         });
-
-        app.MapPost("/api/optimization/reports/{id}/protect", async (
-            string id,
-            IHostManagerReportService reportService,
-            IOptimizationProtectionService protectionService,
-            CancellationToken cancellationToken) =>
-        {
-            var report = await reportService.GetReportAsync(id, cancellationToken);
-            var protectedTarget = report is null
-                ? null
-                : await protectionService.ProtectReportAsync(
-                    report,
-                    cancellationToken);
-            return protectedTarget is null ? Results.NotFound(new { error = "报告不存在、已经失效，或目标不是软件。" }) : Results.Ok(protectedTarget);
-        });
-
-        app.MapGet("/api/optimization/status", (HttpResponse response, IHostManagerReportService reportService) =>
-        {
-            DisableResponseCache(response);
-            return Results.Ok(reportService.GetStatus());
-        }).AllowAnonymous();
 
         return app;
     }

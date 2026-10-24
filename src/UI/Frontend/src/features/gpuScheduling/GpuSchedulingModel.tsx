@@ -1,4 +1,6 @@
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
+import { userFacingErrorMessage } from "../../presentation/userFacingText";
+import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import {
   resetGpuPerformanceScoreOverrides,
@@ -296,7 +298,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     }
   });
   const [editing, setEditing] = createSignal(false);
+  const [commandError, setCommandError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
+  const [deliveryPending, setDeliveryPending] = createSignal(false);
   const [scoreDraft, setScoreDraft] = createSignal<Record<string, string>>({});
 
   createEffect(() => {
@@ -356,6 +360,12 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         </div>
       </div>
 
+      <Show when={commandError()}>{(message) => <p role="alert">{message()}</p>}</Show>
+      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onApplied={() => {
+        setDeliveryPending(false);
+        setEditing(false);
+        void refreshAll().catch(error => setCommandError(userFacingErrorMessage(error, uiText.gpuScheduling.dataReadFailed)));
+      }} /></Show>
       <ObservationStateBoundary
         state={observation()}
         label={uiText.gpuScheduling.observationLabel}
@@ -446,6 +456,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     if (!props.runtimeEffectsEnabled || observation().status !== "ready") {
       return;
     }
+    setCommandError(null);
     setScoreDraft(createScoreDraft(positions()));
     setEditing(true);
   }
@@ -466,15 +477,21 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       return;
     }
     setSaving(true);
+    setCommandError(null);
     try {
-      await saveGpuPerformanceScoreOverrides({
+      const result = await saveGpuPerformanceScoreOverrides({
         scores: positions().map((position) => ({
           gpuId: position.id,
           performanceScore: normalizeScore(scoreDraft()[position.id], position.performanceScore)
         }))
       });
+      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      setDeliveryPending(pending);
+      if (pending) return;
       setEditing(false);
       await refreshAll();
+    } catch (error) {
+      setCommandError(userFacingErrorMessage(error, uiText.apiError.saveGpuScoreFailed));
     } finally {
       setSaving(false);
     }
@@ -485,10 +502,16 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       return;
     }
     setSaving(true);
+    setCommandError(null);
     try {
-      await resetGpuPerformanceScoreOverrides();
+      const result = await resetGpuPerformanceScoreOverrides();
+      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      setDeliveryPending(pending);
+      if (pending) return;
       setEditing(false);
       await refreshAll();
+    } catch (error) {
+      setCommandError(userFacingErrorMessage(error, uiText.apiError.resetGpuScoreFailed));
     } finally {
       setSaving(false);
     }

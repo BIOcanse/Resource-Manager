@@ -1,4 +1,5 @@
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
+import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
 import {
   createEffect,
   createMemo,
@@ -121,6 +122,7 @@ export function CpuTopologyDiagram(props: {
   const [selected, setSelected] = createSignal<CpuSelection[]>([]);
   const [editing, setEditing] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
+  const [deliveryPending, setDeliveryPending] = createSignal(false);
   const [detailsOpen, setDetailsOpen] = createSignal(false);
   const [detailsCoreId, setDetailsCoreId] = createSignal<string | null>(null);
   const exclusiveBindingsSource = useSource(
@@ -230,6 +232,7 @@ export function CpuTopologyDiagram(props: {
         </Show>
       </div>
 
+      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onApplied={() => { setDeliveryPending(false); setEditing(false); }} /></Show>
       <Show when={commandError()}>
         {(message) => <p role="alert">{message()}</p>}
       </Show>
@@ -464,13 +467,16 @@ export function CpuTopologyDiagram(props: {
     setSaving(true);
     setCommandError(null);
     try {
-      await saveCpuCorePerformanceOverrides({
+      const result = await saveCpuCorePerformanceOverrides({
         cpuName: model.cpuName,
         scores: model.physicalCores.map((core) => ({
           coreIndex: core.index,
           performanceScore: normalizeScore(scoreDraft()[core.index], core.performanceScore)
         }))
       });
+      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      setDeliveryPending(pending);
+      if (pending) return;
       setEditing(false);
     } catch (error) {
       setCommandError(userFacingErrorMessage(error, uiText.apiError.saveCpuCoreScoreFailed));
@@ -486,7 +492,10 @@ export function CpuTopologyDiagram(props: {
     setSaving(true);
     setCommandError(null);
     try {
-      await resetCpuCorePerformanceOverrides(model.cpuName);
+      const result = await resetCpuCorePerformanceOverrides(model.cpuName);
+      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      setDeliveryPending(pending);
+      if (pending) return;
       setEditing(false);
     } catch (error) {
       setCommandError(userFacingErrorMessage(error, uiText.apiError.resetCpuCoreScoreFailed));

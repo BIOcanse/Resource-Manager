@@ -400,8 +400,11 @@ async function handleApi(request, response, url) {
       status: {
         lastEvaluationAt: capturedAt,
         lastObservedAt: capturedAt,
+        evaluationState: scenario.optimizationReports === "evaluation-failed" ? "failed" : "completed",
+        evaluationFailureReason: scenario.optimizationReports === "evaluation-failed" ? "IOException" : null,
+        unavailableRules: scenario.optimizationReports === "partial" ? ["cpu_throttle_temperature"] : [],
         configuredRuleCount: 7,
-        availableRuleCount: 7,
+        availableRuleCount: scenario.optimizationReports === "partial" ? 6 : 7,
         activeReportCount: 0,
         trustedCount: 0,
         protectedCount: 0,

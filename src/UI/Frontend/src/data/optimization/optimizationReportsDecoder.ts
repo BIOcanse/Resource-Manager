@@ -17,6 +17,7 @@ import {
   requireNonEmptyString,
   requireNonNegativeSafeInteger,
   requireNullable,
+  requireOneOf,
   requireRecord,
   requireString,
   requireStringArray,
@@ -87,7 +88,14 @@ function decodeStatus(value: unknown, path: string): OptimizationRecorderStatus 
       "positive safe integer");
   }
 
+  const unavailableRules = requireStringArray(record.unavailableRules, `${path}.unavailableRules`);
+  if (unavailableRules.length !== configuredRuleCount - availableRuleCount) {
+    throw new ResponseDecodeError(`${path}.unavailableRules`, "one entry for each unavailable rule");
+  }
   return Object.freeze({
+    evaluationState: requireOneOf(record.evaluationState, `${path}.evaluationState`, ["notEvaluated", "completed", "failed"] as const),
+    evaluationFailureReason: requireNullable(record.evaluationFailureReason, `${path}.evaluationFailureReason`, requireNonEmptyString),
+    unavailableRules: Object.freeze(unavailableRules),
     lastEvaluationAt: requireNullable(
       record.lastEvaluationAt,
       `${path}.lastEvaluationAt`,

@@ -774,8 +774,8 @@ export interface GpuLaunchExecutionReport {
   occurredAt: string;
 }
 
-export interface GpuPlacementProcessPolicySaveResult {
-  policy: GpuPlacementProcessPolicy;
+export interface RuntimePolicySaveResult<T> {
+  policy: T;
   startupInterception?: GpuLaunchInterceptionStatus | null;
   runtimeApplicationDisposition:
     | "committedAndApplied"
@@ -1559,12 +1559,16 @@ export type DetailValue = string | number | boolean | null | undefined | DetailV
 export type DetailRow = [string, DetailValue];
 
 export interface DetailNotice {
+  onRuntimeApplied?: () => void;
   message: string;
   tone?: "info" | "success" | "warning" | "error" | "progress";
   details?: string[];
 }
 
 export interface OptimizationRecorderStatus {
+  evaluationState: "notEvaluated" | "completed" | "failed";
+  evaluationFailureReason: string | null;
+  unavailableRules: readonly string[];
   lastEvaluationAt?: string | null;
   lastObservedAt?: string | null;
   configuredRuleCount: number;
