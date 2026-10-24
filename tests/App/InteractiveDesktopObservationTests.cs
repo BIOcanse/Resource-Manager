@@ -9,7 +9,7 @@ public sealed class InteractiveDesktopObservationTests
     private static readonly DateTimeOffset Epoch = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
     private static readonly long Start = Epoch.AddMinutes(-1).UtcDateTime.ToFileTimeUtc();
     private static DesktopProcessWindowObservation Window(int pid, long? start = null)
-        => new(pid, start ?? Start, true, false, false);
+        => new(pid, start ?? Start, true, false);
     private static InteractiveDesktopObservation Sample(int session, int foreground, int[] windows,
         bool complete = true, bool foregroundKnown = true)
         => new(999, Start, session, Epoch.UtcTicks, complete, foregroundKnown,

@@ -1,8 +1,9 @@
 namespace ResourceManager.Shared.Runtime;
 
+// A window that is not shown is not reported: it is not tray evidence and no decision reads it.
 public sealed record DesktopProcessWindowObservation(
     int ProcessId, long CreationFileTimeUtc,
-    bool HasVisibleWindow, bool HasBackgroundWindow, bool HasHiddenWindow)
+    bool HasVisibleWindow, bool HasBackgroundWindow)
 {
     /// <summary>
     /// The publisher could not open the process (for example a protected game) and reports it by

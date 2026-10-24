@@ -62,14 +62,14 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
                     return null;
                 try
                 {
-                    return new(id, process.StartTime.ToFileTimeUtc(), false, false, false);
+                    return new(id, process.StartTime.ToFileTimeUtc(), false, false);
                 }
                 catch (Exception error) when (error is InvalidOperationException
                     or System.ComponentModel.Win32Exception or NotSupportedException)
                 {
                     // A process this user cannot open (a protected game or its anti-cheat) is still
                     // reported by PID; the service matches it against its own process inventory.
-                    return new(id, DesktopProcessWindowObservation.UnverifiedCreationTime, false, false, false);
+                    return new(id, DesktopProcessWindowObservation.UnverifiedCreationTime, false, false);
                 }
             }
         }
@@ -96,8 +96,7 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
             windows[(int)pid] = state with
             {
                 HasVisibleWindow = state.HasVisibleWindow || visible,
-                HasBackgroundWindow = state.HasBackgroundWindow || shown && !visible,
-                HasHiddenWindow = state.HasHiddenWindow || !shown
+                HasBackgroundWindow = state.HasBackgroundWindow || shown && !visible
             };
             return true;
         }, IntPtr.Zero);

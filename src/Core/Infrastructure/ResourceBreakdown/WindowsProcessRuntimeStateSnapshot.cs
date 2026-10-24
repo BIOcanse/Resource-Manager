@@ -5,17 +5,17 @@ using ResourceManager.App.Infrastructure.Windows;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
+// A window that is not shown is not tray evidence (ATTR-10) and is not observed. No source
+// proves a tray icon today, so window observation never yields tray_only.
 internal sealed record ProcessRuntimeStateFact(
     string RuntimeState,
     bool ForegroundFocused,
     bool HasVisibleWindow,
-    bool HasBackgroundWindow,
-    bool HasHiddenWindow);
+    bool HasBackgroundWindow);
 
 internal sealed record ProcessWindowPresence(
     bool HasVisibleWindow,
-    bool HasBackgroundWindow,
-    bool HasHiddenWindow);
+    bool HasBackgroundWindow);
 
 internal sealed record WindowsProcessRuntimeStateSnapshot(
     SamplingObservationStatus Status,
@@ -128,10 +128,6 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
                 {
                     state.HasBackgroundWindow = true;
                 }
-                else
-                {
-                    state.HasHiddenWindow = true;
-                }
                 return true;
             }, IntPtr.Zero);
             if (!enumerated)
@@ -143,8 +139,7 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
                 static pair => pair.Key,
                 static pair => new ProcessWindowPresence(
                     pair.Value.HasVisibleWindow,
-                    pair.Value.HasBackgroundWindow,
-                    pair.Value.HasHiddenWindow));
+                    pair.Value.HasBackgroundWindow));
             return Project(
                 expectedByPid.Values,
                 foregroundProcessId,
@@ -193,7 +188,6 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
 
             var visible = foreground || windows?.HasVisibleWindow == true;
             var background = windows?.HasBackgroundWindow == true;
-            var hidden = windows?.HasHiddenWindow == true;
             var runtimeState = foreground
                 ? HostManagerRuntimeStates.ForegroundFocused
                 : visible
@@ -207,8 +201,7 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
                     runtimeState,
                     foreground,
                     visible,
-                    background,
-                    hidden));
+                    background));
         }
 
         return new WindowsProcessRuntimeStateSnapshot(
@@ -243,7 +236,5 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
         public bool HasVisibleWindow { get; set; }
 
         public bool HasBackgroundWindow { get; set; }
-
-        public bool HasHiddenWindow { get; set; }
     }
 }
