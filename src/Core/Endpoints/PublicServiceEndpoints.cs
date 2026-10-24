@@ -36,10 +36,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 return Results.BadRequest(new { error = "query-required" });
             }
 
-            return Results.Ok(ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.FilterSearch(callerToken, await fileIndex.SearchAsync(
+            return Results.Ok(await fileIndex.SearchAsync(
                 query,
                 Math.Clamp(limit ?? 50, 1, 200),
-                cancellationToken)));
+                cancellationToken,
+                ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.CreatePathFilter(callerToken)));
         });
 
         app.MapGet("/api/public/v1/index/software/{softwareId}", async (

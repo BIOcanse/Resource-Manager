@@ -11,6 +11,36 @@ public sealed class PublicSqliteDatabaseServiceTests : IDisposable
 {
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-public-sqlite-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData("zeroblob(1048577)")]
+    [InlineData("hex(zeroblob(524289))")]
+    public async Task OversizedValueIsRejectedBeforeManagedMaterialization(string expression)
+    {
+        var service = CreateService();
+        await service.CreateAsync("bounded", default);
+        await Assert.ThrowsAsync<SqliteException>(() => service.QueryAsync("bounded", Request("SELECT " + expression), default));
+        Assert.Single((await service.QueryAsync("bounded", Request("SELECT 1"), default)).Rows);
+    }
+
+    [Theory]
+    [InlineData("zeroblob(500000)")]
+    [InlineData("printf('%500000s', 'x')")]
+    public async Task QueryAndBatchShareBoundedOutputWithoutSpendingAnotherRequestsBudget(string expression)
+    {
+        var service = CreateService();
+        await service.CreateAsync("budget", default);
+        var sql = $"SELECT {expression} FROM json_each('[{string.Join(',', Enumerable.Repeat("0", 100))}]')";
+        var result = await service.QueryAsync("budget", Request(sql), default);
+        Assert.True(result.Truncated);
+        Assert.InRange(result.Rows.Count, 1, 10);
+        var batch = await service.BatchAsync("budget", new PublicSqliteBatchRequest("immediate",
+            [new("query", sql, null, null), new("query", sql, null, null)]), default);
+        Assert.True(batch.Results[0].Truncated);
+        Assert.True(batch.Results[1].Truncated);
+        Assert.Empty(batch.Results[1].Rows);
+        Assert.Equal(result.Rows.Count, (await service.QueryAsync("budget", Request(sql), default)).Rows.Count);
+    }
+
     [Fact]
     public async Task ManagedDatabase_SupportsParametersBlobsFtsAndTransactions()
     {

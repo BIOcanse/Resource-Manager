@@ -10,11 +10,27 @@ using ResourceManager.App.Domain.Settings;
 
 namespace ResourceManager.App.Infrastructure.PublicServices.AiModels;
 
-public sealed class LmStudioAiModelService(
-    HttpClient httpClient,
-    IAppSettingsStore settingsStore,
-    ILogger<LmStudioAiModelService> logger) : IAiModelRuntimeProvider
+public sealed class LmStudioAiModelService : IAiModelRuntimeProvider
 {
+    private readonly HttpClient httpClient;
+    private readonly IAppSettingsStore settingsStore;
+    private readonly ILogger<LmStudioAiModelService> logger;
+    private readonly Func<AppAiModelServiceSettings, CancellationToken, Task> startServer;
+
+    public LmStudioAiModelService(HttpClient httpClient, IAppSettingsStore settingsStore,
+        ILogger<LmStudioAiModelService> logger)
+        : this(httpClient, settingsStore, logger, null) { }
+
+    internal LmStudioAiModelService(HttpClient httpClient, IAppSettingsStore settingsStore,
+        ILogger<LmStudioAiModelService> logger,
+        Func<AppAiModelServiceSettings, CancellationToken, Task>? startServer)
+    {
+        this.httpClient = httpClient;
+        this.settingsStore = settingsStore;
+        this.logger = logger;
+        this.startServer = startServer ?? StartServerAsync;
+    }
+
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(15);
     private readonly SemaphoreSlim startGate = new(1, 1);
 
@@ -38,7 +54,7 @@ public sealed class LmStudioAiModelService(
         using var response = await SendAsync(
             settings,
             new HttpRequestMessage(HttpMethod.Get, "/api/v1/models"),
-            ensureRunning: false,
+            ensureRunning: true,
             HttpCompletionOption.ResponseContentRead,
             cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
@@ -182,54 +198,59 @@ public sealed class LmStudioAiModelService(
                 return;
             }
 
-            var cliPath = LmStudioCliLocator.Find()
-                ?? throw new AiModelRuntimeUnavailableException("LM Studio CLI was not found.");
-            var endpoint = new Uri(settings.Endpoint, UriKind.Absolute);
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = cliPath,
-                Arguments = $"server start --port {endpoint.Port} --bind 127.0.0.1",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }) ?? throw new AiModelRuntimeUnavailableException("Unable to start the LM Studio CLI.");
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(StartTimeout);
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException)
-                {
-                }
-            }
-
-            for (var attempt = 0; attempt < 30; attempt++)
-            {
-                if (await ProbeAsync(settings, cancellationToken))
-                {
-                    return;
-                }
-
-                await Task.Delay(250, cancellationToken);
-            }
-
-            var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-            logger.LogWarning("LM Studio server failed to start: {Error}", error);
-            throw new AiModelRuntimeUnavailableException("LM Studio did not become ready after startup.");
+            await startServer(settings, cancellationToken);
         }
         finally
         {
             startGate.Release();
         }
+    }
+
+    private async Task StartServerAsync(AppAiModelServiceSettings settings, CancellationToken cancellationToken)
+    {
+        var cliPath = LmStudioCliLocator.Find()
+            ?? throw new AiModelRuntimeUnavailableException("LM Studio CLI was not found.");
+        var endpoint = new Uri(settings.Endpoint, UriKind.Absolute);
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = cliPath,
+            Arguments = $"server start --port {endpoint.Port} --bind 127.0.0.1",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        }) ?? throw new AiModelRuntimeUnavailableException("Unable to start the LM Studio CLI.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(StartTimeout);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
+
+        for (var attempt = 0; attempt < 30; attempt++)
+        {
+            if (await ProbeAsync(settings, cancellationToken))
+            {
+                return;
+            }
+
+            await Task.Delay(250, cancellationToken);
+        }
+
+        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
+        logger.LogWarning("LM Studio server failed to start: {Error}", error);
+        throw new AiModelRuntimeUnavailableException("LM Studio did not become ready after startup.");
     }
 
     private async Task<bool> ProbeAsync(

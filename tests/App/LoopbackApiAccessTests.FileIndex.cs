@@ -77,6 +77,11 @@ public sealed partial class LoopbackApiAccessTests
             Assert.DoesNotContain("denied.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("secret.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("gone.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
+            var limitedResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Token,
+                ["/api/index/files/search?query=bin&limit=1", "/api/public/v1/index/files/search?query=bin&limit=1"]);
+            Assert.Equal(2, limitedResults.GetArrayLength());
+            foreach (var response in limitedResults.EnumerateArray())
+                Assert.Equal(allowedFile, Assert.Single(response.EnumerateArray()).GetProperty("fullPath").GetString());
             var serviceSnapshot = (await index.GetSnapshotAsync("http-app", default))!;
             Assert.Equal(5, serviceSnapshot.FileCount);
             Assert.Equal(77, serviceSnapshot.TotalBytes);
@@ -84,8 +89,8 @@ public sealed partial class LoopbackApiAccessTests
             RestorePermissions();
             var readableResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Token);
             AssertIndexResponses(readableResults, allowedFile, 4, 66, 2);
-            Assert.Equal(6, fixture.PublicAccess.Evaluations);
-            Assert.Equal(6, fixture.PublicAccess.Completions);
+            Assert.Equal(7, fixture.PublicAccess.Evaluations);
+            Assert.Equal(7, fixture.PublicAccess.Completions);
             Assert.Equal(0, fixture.Administrator.Calls);
             Assert.Null(fixture.LastRequestError);
         }
@@ -132,9 +137,9 @@ public sealed partial class LoopbackApiAccessTests
         }
     }
 
-    private static async Task<JsonElement> RequestIndexFromOwnedProcessAsync(Uri url, string token)
+    private static async Task<JsonElement> RequestIndexFromOwnedProcessAsync(Uri url, string token, string[]? requestPaths = null)
     {
-        var paths = string.Join(",", IndexHttpPaths.Select(path => "'" + path + "'"));
+        var paths = string.Join(",", (requestPaths ?? IndexHttpPaths).Select(path => "'" + path + "'"));
         var command = "$ErrorActionPreference='Stop'; $bodies=@(); foreach($path in @(" + paths + ")) { "
             + "$request=[Net.WebRequest]::Create('" + url.AbsoluteUri.TrimEnd('/') + "'+$path); $request.Proxy=$null; $request.Timeout=5000; "
             + "$request.Headers.Add('" + LoopbackApiAccessToken.HeaderName + "','" + token + "'); "

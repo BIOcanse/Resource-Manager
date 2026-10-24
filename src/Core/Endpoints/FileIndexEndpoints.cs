@@ -21,8 +21,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 return Results.BadRequest(new { error = "搜索内容不能为空。" });
             }
 
-            return Results.Ok(WindowsFileIndexCallerAccess.FilterSearch(callerToken,
-                await fileIndex.SearchAsync(query, Math.Clamp(limit ?? 50, 1, 200), cancellationToken)));
+            return Results.Ok(await fileIndex.SearchAsync(query, Math.Clamp(limit ?? 50, 1, 200), cancellationToken,
+                WindowsFileIndexCallerAccess.CreatePathFilter(callerToken)));
         });
 
         app.MapGet("/api/index/software/{softwareId}", async (

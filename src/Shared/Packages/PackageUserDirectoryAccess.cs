@@ -34,23 +34,37 @@ public static class PackageUserDirectoryAccess
     }
     public static void PrepareRestoredUserCache(string packageRoot)
     {
-        using var identity = WindowsIdentity.GetCurrent();
-        var user = identity.User ?? throw new InvalidOperationException("Importing user identity is unavailable.");
-        if (user.IsWellKnown(WellKnownSidType.LocalSystemSid)) return;
         foreach (var relative in new[] { "Config/WebView2", "Config/Diagnostics/NativeUiStartup" })
         {
-            var directory = Path.Combine(packageRoot, relative.Replace('/', Path.DirectorySeparatorChar), user.Value);
-            if (!Directory.Exists(directory)) continue;
-            ReleasePackageLayout.RejectReparse(directory);
-            var security = new DirectorySecurity();
-            security.SetAccessRuleProtection(true, false);
-            security.SetOwner(user);
-            foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                         new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) })
-                security.AddAccessRule(new(sid, FileSystemRights.FullControl,
-                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-            new DirectoryInfo(directory).SetAccessControl(security);
+            var parent = Path.Combine(packageRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!Directory.Exists(parent)) continue;
+            ReleasePackageLayout.RejectReparse(parent);
+            var count = 0;
+            foreach (var directory in Directory.EnumerateDirectories(parent))
+            {
+                if (++count > 100_000) throw new IOException("Restored user cache count exceeds its entry bound.");
+                ReleasePackageLayout.RejectReparse(directory);
+                var user = RequireCacheUser(Path.GetFileName(directory));
+                var security = new DirectorySecurity();
+                security.SetAccessRuleProtection(true, false);
+                foreach (var sid in new[] { user, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                             new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) })
+                    security.AddAccessRule(new(sid, FileSystemRights.FullControl,
+                        InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+                new DirectoryInfo(directory).SetAccessControl(security);
+            }
         }
+    }
+
+    internal static SecurityIdentifier RequireCacheUser(string directoryName)
+    {
+        SecurityIdentifier user;
+        try { user = new SecurityIdentifier(directoryName); }
+        catch (ArgumentException exception) { throw new InvalidDataException("Invalid restored user cache SID.", exception); }
+        if (!user.IsAccountSid() || user.IsWellKnown(WellKnownSidType.LocalSystemSid)
+            || !string.Equals(user.Value, directoryName, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Invalid restored user cache SID.");
+        return user;
     }
 
 }

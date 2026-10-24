@@ -26,7 +26,7 @@ public partial class SqliteIndexedFileOwner
 
     private const string StableCandidateOrder = """
         ORDER BY length(entry.file_name), CAST(entry.file_name AS BLOB), entry.id
-        LIMIT $candidateLimit;
+        LIMIT $candidateLimit OFFSET $candidateOffset;
         """;
 
     private static readonly string ShortScanSql = $"""
@@ -372,45 +372,61 @@ public partial class SqliteIndexedFileOwner
                 $"Native file-query returned unknown primitive {source.PrimitiveKind}.")
         };
         command.Parameters.AddWithValue("$query", normalizedQuery);
-        command.Parameters.AddWithValue("$candidateLimit", checked((long)source.CandidateLimit));
+        const int maximumExaminedCandidates = 100_000;
+        var pageSize = canReadPath is null ? checked((int)source.CandidateLimit) :
+            256;
+        var pageLimit = command.Parameters.AddWithValue("$candidateLimit", pageSize);
+        var pageOffset = command.Parameters.AddWithValue("$candidateOffset", 0);
         if ((NativeFileQueryPrimitive)source.PrimitiveKind
             != NativeFileQueryPrimitive.ShortSubstringOrderedScan)
         {
             command.Parameters.AddWithValue("$expression", expression);
         }
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        var examined = 0;
+        var accepted = 0;
+        while (accepted < source.CandidateLimit && (canReadPath is null || examined < maximumExaminedCandidates))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var entryId = reader.GetInt64(0);
-            if (entryId <= 0)
+            pageOffset.Value = examined;
+            pageLimit.Value = canReadPath is null ? pageSize : Math.Min(pageSize, maximumExaminedCandidates - examined);
+            var pageCount = 0;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (accepted < source.CandidateLimit && await reader.ReadAsync(cancellationToken))
             {
-                throw new InvalidDataException(
-                    "The SQLite file index returned a non-positive entry identity.");
-            }
-            var softwareName = reader.GetString(2);
-            var rootPath = reader.GetString(3);
-            var relativePath = reader.GetString(4);
-            var fileName = reader.GetString(5);
-            if (canReadPath is not null && !canReadPath(rootPath, relativePath)) continue;
-            submission.Add(
-                source.SourceId,
-                checked((ulong)entryId),
-                fileName,
-                relativePath,
-                softwareName,
-                new SoftwareFileSearchResult(
-                    entryId,
-                    reader.GetString(1),
-                    softwareName,
-                    rootPath,
-                    relativePath,
-                    Path.Combine(rootPath, relativePath),
+                examined++;
+                pageCount++;
+                cancellationToken.ThrowIfCancellationRequested();
+                var entryId = reader.GetInt64(0);
+                if (entryId <= 0)
+                {
+                    throw new InvalidDataException(
+                        "The SQLite file index returned a non-positive entry identity.");
+                }
+                var softwareName = reader.GetString(2);
+                var rootPath = reader.GetString(3);
+                var relativePath = reader.GetString(4);
+                var fileName = reader.GetString(5);
+                if (canReadPath is not null && !canReadPath(rootPath, relativePath)) continue;
+                submission.Add(
+                    source.SourceId,
+                    checked((ulong)entryId),
                     fileName,
-                    reader.GetString(6),
-                    reader.GetInt64(7),
-                    new DateTimeOffset(reader.GetInt64(8), TimeSpan.Zero)));
+                    relativePath,
+                    softwareName,
+                    new SoftwareFileSearchResult(
+                        entryId,
+                        reader.GetString(1),
+                        softwareName,
+                        rootPath,
+                        relativePath,
+                        Path.Combine(rootPath, relativePath),
+                        fileName,
+                        reader.GetString(6),
+                        reader.GetInt64(7),
+                        new DateTimeOffset(reader.GetInt64(8), TimeSpan.Zero)));
+                accepted++;
+            }
+            if (canReadPath is null || pageCount < (int)pageLimit.Value) break;
         }
     }
 

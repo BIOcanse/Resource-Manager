@@ -8,6 +8,50 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PackageUserDirectoryAccessTests
 {
     [Fact]
+    public void RestoredCacheAccessUsesEveryValidatedDirectorySid()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-cache-sids-" + Guid.NewGuid().ToString("N"));
+        var users = new[] { "S-1-5-21-111-222-333-1001", "S-1-5-21-111-222-333-1002" };
+        try
+        {
+            foreach (var relative in new[] { "Config/WebView2", "Config/Diagnostics/NativeUiStartup" })
+                foreach (var user in users)
+                    Directory.CreateDirectory(Path.Combine(root, relative, user, "Profile"));
+            PackageUserDirectoryAccess.PrepareRestoredUserCache(root);
+            foreach (var relative in new[] { "Config/WebView2", "Config/Diagnostics/NativeUiStartup" })
+                foreach (var user in users)
+                {
+                    var rules = new DirectoryInfo(Path.Combine(root, relative, user, "Profile")).GetAccessControl()
+                        .GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>();
+                    Assert.Contains(rules, rule => rule.IdentityReference.Value == user && rule.IsInherited
+                        && (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify);
+                    Assert.DoesNotContain(rules, rule => users.Contains(rule.IdentityReference.Value) && rule.IdentityReference.Value != user);
+                }
+        }
+        finally
+        {
+            OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(root);
+            foreach (var relative in new[] { "Config/WebView2", "Config/Diagnostics/NativeUiStartup" })
+                foreach (var user in users)
+                {
+                    Directory.Delete(Path.Combine(root, relative, user, "Profile"));
+                    Directory.Delete(Path.Combine(root, relative, user));
+                }
+            Directory.Delete(Path.Combine(root, "Config", "WebView2"));
+            Directory.Delete(Path.Combine(root, "Config", "Diagnostics", "NativeUiStartup"));
+            Directory.Delete(Path.Combine(root, "Config", "Diagnostics"));
+            Directory.Delete(Path.Combine(root, "Config"));
+            Directory.Delete(root);
+        }
+    }
+
+    [Theory]
+    [InlineData("not-a-sid")]
+    [InlineData("S-1-1-0")]
+    [InlineData("S-1-5-18")]
+    public void RestoredCacheRejectsNamesThatDoNotIdentifyUserAccounts(string name)
+        => Assert.Throws<InvalidDataException>(() => PackageUserDirectoryAccess.RequireCacheUser(name));
+    [Fact]
     public void UserCreatedProfilesInheritOwnerAccessWithoutGrantingUsersWriteToGlobalConfig()
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-user-space-" + Guid.NewGuid().ToString("N"));

@@ -12,6 +12,22 @@ namespace Resource_Manager_APP.Tests;
 public sealed class LmStudioAiModelServiceTests
 {
     [Fact]
+    public async Task ExplicitCatalogDemandUsesExistingStartupWhileStatusOnlyProbes()
+    {
+        var running = false;
+        var starts = 0;
+        var settings = AppSettingsDefaults.Create();
+        settings = settings with { AiModelService = settings.AiModelService with { AutoStartEnabled = true } };
+        var service = new LmStudioAiModelService(new HttpClient(new StubHandler(_ => running
+                ? Json("{\"models\":[]}") : new(HttpStatusCode.ServiceUnavailable))),
+            new StaticSettingsStore(settings), NullLogger<LmStudioAiModelService>.Instance,
+            (_, _) => { starts++; running = true; return Task.CompletedTask; });
+        Assert.False((await service.GetStatusAsync(default)).ServerRunning);
+        Assert.Equal(0, starts);
+        Assert.Empty(await service.ListModelsIfRunningAsync(default));
+        Assert.Equal(1, starts);
+    }
+    [Fact]
     public async Task ListModels_MapsProviderPayloadToStableCatalog()
     {
         const string payload =

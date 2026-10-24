@@ -14,6 +14,32 @@ public sealed class JsonDashboardSettingsStoreTests : IDisposable
         "resource-manager-dashboard-settings-tests",
         Guid.NewGuid().ToString("N"));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ValidPrimaryLoadsWhenAuxiliaryBackupCannotBeReplaced(bool locked)
+    {
+        var appRoot = CreateAppRoot("backup-unwritable");
+        var environment = new TestHostEnvironment(appRoot);
+        var store = new JsonDashboardSettingsStore(environment);
+        var initial = await store.LoadAsync(default);
+        var saved = await store.SaveAsync(initial.Settings, default);
+        var backup = Path.Combine(Path.GetDirectoryName(saved.StoragePath)!, "dashboard-settings.last-good.json");
+        File.WriteAllText(backup, "{}");
+        if (!locked) File.SetAttributes(backup, FileAttributes.ReadOnly);
+        using var backupLock = locked ? new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.None) : null;
+        try
+        {
+            var logger = new SettingsBackupWarningLogger<JsonDashboardSettingsStore>();
+            var loaded = await new JsonDashboardSettingsStore(environment, logger).LoadAsync(default);
+            Assert.Equal(saved.Settings.Version, loaded.Settings.Version);
+            Assert.Equal(DashboardSettingsSourceKind.Persisted, loaded.Source.Kind);
+            Assert.Contains(logger.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning
+                && (entry.Error is IOException or UnauthorizedAccessException) && entry.Message.Contains(backup));
+        }
+        finally { if (!locked) File.SetAttributes(backup, FileAttributes.Normal); }
+    }
+
     [Fact]
     public async Task LoadAsync_NullColumnsAndBindingKindDoNotLoseValidPreferences()
     {

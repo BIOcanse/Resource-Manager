@@ -18,6 +18,32 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task ValidPrimaryLoadsWhenAuxiliaryBackupCannotBeReplaced(bool locked)
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var environment = new TestHostEnvironment(appRoot);
+        var store = new JsonAppSettingsStore(environment);
+        var initial = await store.LoadAsync(default);
+        var saved = await store.SaveAsync(initial.Settings, default);
+        var backup = Path.Combine(Path.GetDirectoryName(saved.StoragePath)!, "app-settings.last-good.json");
+        File.WriteAllText(backup, "{}");
+        if (!locked) File.SetAttributes(backup, FileAttributes.ReadOnly);
+        using var backupLock = locked ? new FileStream(backup, FileMode.Open, FileAccess.Read, FileShare.None) : null;
+        try
+        {
+            var logger = new SettingsBackupWarningLogger<JsonAppSettingsStore>();
+            var loaded = await new JsonAppSettingsStore(environment, logger).LoadAsync(default);
+            Assert.Equal(JsonSerializer.Serialize(saved.Settings), JsonSerializer.Serialize(loaded.Settings));
+            Assert.Equal(AppSettingsSourceKind.Persisted, loaded.Source.Kind);
+            Assert.Contains(logger.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning
+                && (entry.Error is IOException or UnauthorizedAccessException) && entry.Message.Contains(backup));
+        }
+        finally { if (!locked) File.SetAttributes(backup, FileAttributes.Normal); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task NativeCommitFailurePreservesPreviousBackupAndReportsWhetherPrimaryCommitted(bool failBackup)
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;

@@ -57,6 +57,13 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             lock (holder.ModelGate)
             {
                 var output = holder.Workspace.ResolveModel(model);
+                if ((NativePublicServiceModelResolveStatus)output.Status
+                    == NativePublicServiceModelResolveStatus.CatalogUnavailable)
+                {
+                    Signal(modelWake);
+                    throw new AiModelRuntimeUnavailableException(
+                        "The native local-model catalog has no usable provider snapshot.");
+                }
                 return Task.FromResult(
                     (NativePublicServiceModelResolveStatus)output.Status
                         == NativePublicServiceModelResolveStatus.Matched);
@@ -103,7 +110,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                             holder,
                             plan,
                             cancellationToken).ConfigureAwait(false);
-                        nextWake = 0;
+                        nextWake = holder.Workspace.PlanModelAcquisition().NextWakeMonotonicMilliseconds;
                         break;
                     case NativePublicServiceModelAcquisitionPlanStatus.NotDue:
                     case NativePublicServiceModelAcquisitionPlanStatus.Running:
@@ -136,9 +143,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         NativePublicServiceModelAcquisitionPlanOutput plan,
         CancellationToken cancellationToken)
     {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var now = NativePublicServiceCoordinatorWorkspace.MonotonicMilliseconds();
+        deadline.CancelAfter(TimeSpan.FromMilliseconds(
+            plan.DeadlineMonotonicMilliseconds > now ? plan.DeadlineMonotonicMilliseconds - now : 0));
         try
         {
-            var descriptors = await runtimeProvider.ListModelsIfRunningAsync(cancellationToken)
+            var descriptors = await runtimeProvider.ListModelsIfRunningAsync(deadline.Token)
+                .WaitAsync(deadline.Token)
                 .ConfigureAwait(false);
             if (plan.ModelGenerationAtStart == ulong.MaxValue)
             {
@@ -156,6 +168,13 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                     projection);
             }
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            CompleteFailedAcquisition(holder, plan.AttemptHandle,
+                NativePublicServiceModelAcquisitionCompletionStatus.Failed,
+                new TimeoutException("The local-model catalog acquisition exceeded its native deadline."),
+                plan.DeadlineMonotonicMilliseconds);
+        }
         catch (Exception ex) when (
             holder.Workspace.ReadSnapshot().ModelGeneration > plan.ModelGenerationAtStart)
         {
@@ -170,7 +189,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 NativePublicServiceModelAcquisitionCompletionStatus.Failed,
                 new OperationCanceledException(
                     "The local-model catalog acquisition was cancelled by Host Manager shutdown.",
-                    cancellationToken));
+                    cancellationToken), plan.DeadlineMonotonicMilliseconds);
             throw;
         }
         catch (AiModelRuntimeUnavailableException ex)
@@ -179,7 +198,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 holder,
                 plan.AttemptHandle,
                 NativePublicServiceModelAcquisitionCompletionStatus.Unavailable,
-                ex);
+                ex, plan.DeadlineMonotonicMilliseconds);
         }
         catch (Exception ex)
         {
@@ -187,7 +206,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 holder,
                 plan.AttemptHandle,
                 NativePublicServiceModelAcquisitionCompletionStatus.Failed,
-                ex);
+                ex, plan.DeadlineMonotonicMilliseconds);
         }
         finally
         {
@@ -199,11 +218,12 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         WorkspaceHolder holder,
         ulong attemptHandle,
         NativePublicServiceModelAcquisitionCompletionStatus status,
-        Exception acquisitionFailure)
+        Exception acquisitionFailure,
+        ulong deadlineMonotonicMilliseconds)
     {
         try
         {
-            holder.Workspace.CompleteModelAcquisition(attemptHandle, status);
+            holder.Workspace.CompleteModelAcquisition(attemptHandle, status, deadlineMonotonicMilliseconds);
         }
         catch (Exception completionFailure)
         {

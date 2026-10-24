@@ -117,11 +117,6 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
 
     private async Task<IReadOnlyList<AdapterSoftwareRegistration>> LoadCoreAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(storagePath))
-        {
-            return [];
-        }
-
         try
         {
             await using var stream = File.OpenRead(storagePath);
@@ -129,9 +124,13 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
                 stream,
                 JsonOptions,
                 cancellationToken);
-            return NormalizeRecords(document?.Registrations ?? []);
+            return NormalizeRecords((document ?? throw new JsonException("The adapter registry is null.")).Registrations);
         }
-        catch
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+        catch (DirectoryNotFoundException)
         {
             return [];
         }
@@ -151,9 +150,22 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
         var document = new AdapterSoftwareRegistryDocument(
             AdapterRegistrationSchemaVersions.Current,
             normalized);
-        await using var stream = File.Create(storagePath);
-        await JsonSerializer.SerializeAsync(stream, document, JsonOptions, cancellationToken);
-        await stream.FlushAsync(cancellationToken);
+        var staged = storagePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var stream = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await JsonSerializer.SerializeAsync(stream, document, JsonOptions, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+                stream.Flush(flushToDisk: true);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(staged, storagePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(staged)) File.Delete(staged);
+        }
         return normalized;
     }
 

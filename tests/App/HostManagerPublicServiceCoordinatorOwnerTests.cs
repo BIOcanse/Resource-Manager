@@ -16,6 +16,42 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerPublicServiceCoordinatorOwnerTests
 {
     [Fact]
+    public async Task InferenceDemandAcquiresCatalogAndUnknownModelsRemainDistinct()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await Assert.ThrowsAsync<AiModelRuntimeUnavailableException>(() => fixture.Owner.IsAllowedAsync("community/open-model", default));
+        await fixture.Provider.WaitForCatalogCallsAsync(1);
+        await WaitForCatalogAsync(fixture.Owner);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", default));
+        Assert.False(await fixture.Owner.IsAllowedAsync("unknown-model", default));
+    }
+
+    [Fact]
+    public async Task CatalogRefreshUsesNativeDueTimeWithoutAnotherDemand()
+    {
+        await using var fixture = await Fixture.CreateAsync(catalogIntervalMilliseconds: 50);
+        await WaitForCatalogAsync(fixture.Owner);
+        await fixture.Provider.WaitForCatalogCallsAsync(2);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", default));
+    }
+
+    [Fact]
+    public async Task CatalogDeadlineDoesNotFaultOtherCapabilitiesAndLateResultCannotPublish()
+    {
+        await using var fixture = await Fixture.CreateAsync(catalogTimeoutMilliseconds: 50);
+        var late = new TaskCompletionSource<IReadOnlyList<AiModelDescriptor>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Provider.FirstCatalog = late.Task;
+        await Assert.ThrowsAsync<AiModelRuntimeUnavailableException>(() => fixture.Owner.ListModelsAsync(default));
+        await fixture.Provider.WaitForCatalogCallsAsync(2);
+        await WaitForCatalogAsync(fixture.Owner);
+        late.SetResult([]);
+        await Task.Delay(50);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", default));
+        var decision = await fixture.Owner.EvaluateAsync(CreateContext("/api/public/v1/index/status", HttpMethods.Get, IPAddress.Loopback), default);
+        Assert.True(decision.Allowed);
+        await fixture.Owner.CompleteAsync(decision.CompletionHandle, default);
+    }
+    [Fact]
     public async Task ReplacementWaitsForTheSinglePendingWorkspaceToFinishItsLastOperation()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -41,7 +77,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
             fixture.Scratches[0].BeforeReturn = null;
             resume.Set();
         }
-        Assert.False(await resolving.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.ThrowsAsync<AiModelRuntimeUnavailableException>(() => resolving.WaitAsync(TimeSpan.FromSeconds(5)));
         await WaitForCatalogAsync(fixture.Owner);
         PublishReplacement(33_000);
         Assert.Equal(3, fixture.Scratches.Count);
@@ -398,7 +434,9 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
             bool holdFirstLoadIgnoringCancellation = false,
             bool cancelFirstLoad = false,
             bool failCatalogReturn = false,
-            bool failCatalogComplete = false)
+            bool failCatalogComplete = false,
+            int catalogTimeoutMilliseconds = 10_000,
+            int catalogIntervalMilliseconds = 15_000)
         {
             var hostPlan = HostManagerTestPlanFactory.CreatePlan(
                 root =>
@@ -409,6 +447,8 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                     recreate["retry_delay_ms"] = 10;
                     recreate["task_timeout_ms"] = taskTimeoutMilliseconds;
                     recreate["request_timeout_ms"] = requestTimeoutMilliseconds;
+                    recreate["model_catalog_acquisition_timeout_ms"] = catalogTimeoutMilliseconds;
+                    recreate["model_catalog_acquisition_interval_ms"] = catalogIntervalMilliseconds;
                 },
                 publicService: EnabledPublicServiceSettings);
             Assert.True(
@@ -537,6 +577,13 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         private readonly TaskCompletionSource firstLoadRelease =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int catalogCallCount;
+        internal Task<IReadOnlyList<AiModelDescriptor>>? FirstCatalog { get; set; }
+
+        internal async Task WaitForCatalogCallsAsync(int count)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (CatalogCallCount < count) await Task.Delay(10, timeout.Token);
+        }
         private int loadCallCount;
         private int remainingLoadFailures = loadFailures;
         private string? lastLoadedModel;
@@ -573,7 +620,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         public Task<IReadOnlyList<AiModelDescriptor>> ListModelsIfRunningAsync(
             CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref catalogCallCount);
+            if (Interlocked.Increment(ref catalogCallCount) == 1 && FirstCatalog is { } pending) return pending;
             return Task.FromResult<IReadOnlyList<AiModelDescriptor>>(
             [
                 new AiModelDescriptor(

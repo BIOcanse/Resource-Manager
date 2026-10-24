@@ -12,7 +12,8 @@ public interface ISoftwareFileIndex
     Task<IReadOnlyList<SoftwareFileSearchResult>> SearchAsync(
         string query,
         int limit,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        Func<string, string?, bool>? canReadPath = null);
 
     Task<SoftwareFileIndexStatistics> GetStatisticsAsync(CancellationToken cancellationToken);
 }

@@ -545,8 +545,17 @@ public sealed class JsonAppSettingsStore : IAppSettingsStore
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        var payload = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
-        await WriteLastKnownGoodAsync(payload, cancellationToken);
+        try
+        {
+            var payload = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
+            await WriteLastKnownGoodAsync(payload, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(exception,
+                "The validated primary application settings are in use; backup maintenance failed at {BackupPath}.",
+                lastKnownGoodPath);
+        }
     }
 
     private async Task<LoadedSettings?> TryRecoverMissingPrimaryAsync(
