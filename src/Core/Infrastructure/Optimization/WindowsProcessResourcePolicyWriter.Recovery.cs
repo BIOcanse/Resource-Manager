@@ -32,52 +32,59 @@ public sealed partial class WindowsProcessResourcePolicyWriter
 
         try
         {
-            if (!GetExitCodeProcess(handle, out var exitCode))
-            {
-                var nativeErrorCode = Marshal.GetLastWin32Error();
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
-                    nativeErrorCode,
-                    new Win32Exception(nativeErrorCode).Message);
-            }
-            if (exitCode != StillActive)
-            {
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
-                    0,
-                    "进程已经退出。");
-            }
-            if (!GetProcessTimes(handle, out var creation, out var exitedAt, out _, out _))
-            {
-                var nativeErrorCode = Marshal.GetLastWin32Error();
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
-                    nativeErrorCode,
-                    new Win32Exception(nativeErrorCode).Message);
-            }
-
-            // STILL_ACTIVE is also a possible exit code; use the same handle's exit time.
-            if (exitedAt.ToUInt64() != 0)
-            {
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
-                    0,
-                    "进程已经退出。");
-            }
-
-            try
-            {
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(
-                        processId,
-                        DateTimeOffset.FromFileTime(checked((long)creation.ToUInt64()))));
-            }
-            catch (ArgumentOutOfRangeException exception)
-            {
-                return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
-                    exception.HResult,
-                    exception.Message);
-            }
+            return ReadProcessInstanceForRecovery(handle, processId);
         }
         finally
         {
             NativeMethods.CloseHandle(handle);
+        }
+    }
+
+    private static RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadProcessInstanceForRecovery(
+        IntPtr handle,
+        int processId)
+    {
+        if (!GetExitCodeProcess(handle, out var exitCode))
+        {
+            var nativeErrorCode = Marshal.GetLastWin32Error();
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
+                nativeErrorCode,
+                new Win32Exception(nativeErrorCode).Message);
+        }
+        if (exitCode != StillActive)
+        {
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
+                0,
+                "进程已经退出。");
+        }
+        if (!GetProcessTimes(handle, out var creation, out var exitedAt, out _, out _))
+        {
+            var nativeErrorCode = Marshal.GetLastWin32Error();
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
+                nativeErrorCode,
+                new Win32Exception(nativeErrorCode).Message);
+        }
+
+        // STILL_ACTIVE is also a possible exit code; use the same handle's exit time.
+        if (exitedAt.ToUInt64() != 0)
+        {
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
+                0,
+                "进程已经退出。");
+        }
+
+        try
+        {
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
+                new ProcessInstanceRecoverySnapshot(
+                    processId,
+                    DateTimeOffset.FromFileTime(checked((long)creation.ToUInt64()))));
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(
+                exception.HResult,
+                exception.Message);
         }
     }
 

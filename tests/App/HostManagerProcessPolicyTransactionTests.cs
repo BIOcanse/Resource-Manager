@@ -92,6 +92,84 @@ public sealed class HostManagerProcessPolicyTransactionTests
     }
 
     [Fact]
+    public void MemoryPriorityScope_UnreadableUnrelatedPolicyCannotBlockCaptureApplyInspectOrRestore()
+    {
+        var startedAt = StartedAt.AddTicks(7);
+        var writer = new RecordingPolicyWriter(CreateSnapshot(affinity: 0) with
+        {
+            StartedAt = startedAt,
+            PriorityClass = string.Empty,
+            ExecutablePath = null,
+            PowerThrottlingControlMask = null,
+            PowerThrottlingStateMask = null
+        }) { ThrowOnFullPolicyRead = true };
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+
+        var capture = transaction.CaptureMemoryPriority(42, 3);
+        Assert.Equal(HostManagerProcessPolicyCaptureStatus.Captured, capture.Status);
+        Assert.Equal(startedAt.ToFileTime(), capture.ProcessStartKey);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Baseline,
+            transaction.InspectMemoryPriority(capture.Payload, 3).Status);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied,
+            transaction.ApplyMemoryPriority(capture.Payload, 3).Status);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectMemoryPriority(capture.Payload, 3).Status);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Normal, HostManagerProcessGrades.Level1).Status);
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.Restored,
+            transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Normal, HostManagerProcessGrades.Level1).Status);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Baseline,
+            transaction.InspectMemoryPriority(capture.Payload, 3).Status);
+
+        Assert.Equal(0, writer.FullPolicyReadCount);
+        Assert.Equal(0, writer.IdentityReadCount);
+        Assert.Equal(5U, writer.Current!.MemoryPriority);
+        Assert.Collection(writer.Requests,
+            request => AssertMemoryRequest(request, 5, 3),
+            request => AssertMemoryRequest(request, 3, 5));
+
+        void AssertMemoryRequest(ProcessResourcePolicyBatchRequest request, uint expected, uint desired)
+        {
+            Assert.Equal(startedAt.ToFileTime(), request.ExpectedStartedAt!.Value.ToFileTime());
+            Assert.Equal(expected, request.ExpectedMemoryPriority);
+            Assert.Equal(desired, request.MemoryPriority);
+            Assert.Null(request.PriorityClass);
+            Assert.Null(request.AffinityMask);
+            Assert.Null(request.CpuSetIds);
+            Assert.Null(request.PowerControlMask);
+            Assert.Null(request.PowerStateMask);
+        }
+    }
+
+    [Theory]
+    [InlineData(RecoveryReadStatus.Unavailable)]
+    [InlineData(RecoveryReadStatus.NotFoundOrExited)]
+    public void MemoryPriorityScope_UnreadableRequiredStateBlocksWrites(RecoveryReadStatus status)
+    {
+        var writer = new RecordingPolicyWriter(CreateSnapshot()) { ThrowOnFullPolicyRead = true };
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var capture = transaction.CaptureMemoryPriority(42, 3);
+        Assert.Equal(HostManagerProcessPolicyCaptureStatus.Captured, capture.Status);
+        writer.IdentityReadStatus = status;
+
+        Assert.Equal(HostManagerProcessPolicyCaptureStatus.Unavailable,
+            transaction.CaptureMemoryPriority(42, 3).Status);
+        Assert.Equal(status == RecoveryReadStatus.NotFoundOrExited
+                ? HostManagerProcessPolicyApplyStatus.ProcessExited
+                : HostManagerProcessPolicyApplyStatus.Unavailable,
+            transaction.ApplyMemoryPriority(capture.Payload, 3).Status);
+        Assert.Equal(status == RecoveryReadStatus.NotFoundOrExited
+                ? HostManagerProcessPolicyRestoreStatus.ProcessExited
+                : HostManagerProcessPolicyRestoreStatus.Unavailable,
+            transaction.RestoreMemoryPriority(capture.Payload, 3).Status);
+        Assert.Empty(writer.Requests);
+        Assert.Equal(0, writer.FullPolicyReadCount);
+        Assert.Equal(0, writer.IdentityReadCount);
+    }
+
+    [Fact]
     public void MemoryPriorityScope_MapsExecutionBoundaryConflictsToOwnershipLossWithoutWriting()
     {
         var applyWriter = new RecordingPolicyWriter(CreateSnapshot());
@@ -175,14 +253,14 @@ public sealed class HostManagerProcessPolicyTransactionTests
     }
 
     [Fact]
-    public void MemoryPriorityInspection_RejectsPidReuse()
+    public void MemoryPriorityInspectionAndWrites_RejectPidReuseWithOneTickStartKeyDifference()
     {
         var writer = new RecordingPolicyWriter(CreateSnapshot());
         var transaction = new HostManagerProcessPolicyTransaction(writer);
         var capture = transaction.CaptureMemoryPriority(42, 3);
         writer.Current = writer.Current! with
         {
-            StartedAt = StartedAt.AddSeconds(1)
+            StartedAt = StartedAt.AddTicks(1)
         };
 
         var result = transaction.InspectMemoryPriority(capture.Payload, 3);
@@ -190,6 +268,10 @@ public sealed class HostManagerProcessPolicyTransactionTests
         Assert.Equal(
             HostManagerProcessPolicyInspectionStatus.IdentityChanged,
             result.Status);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.OwnershipLost,
+            transaction.ApplyMemoryPriority(capture.Payload, 3).Status);
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost,
+            transaction.RestoreMemoryPriority(capture.Payload, 3).Status);
         Assert.Empty(writer.Requests);
     }
 
@@ -1221,6 +1303,12 @@ public sealed class HostManagerProcessPolicyTransactionTests
 
         internal int ReadCount { get; set; }
 
+        internal bool ThrowOnFullPolicyRead { get; init; }
+
+        internal int FullPolicyReadCount { get; private set; }
+
+        internal int IdentityReadCount { get; private set; }
+
         internal int? NullOnReadNumber { get; init; }
 
         internal RecoveryReadStatus IdentityReadStatus { get; set; } = RecoveryReadStatus.Found;
@@ -1239,8 +1327,32 @@ public sealed class HostManagerProcessPolicyTransactionTests
 
         public ProcessResourcePolicySnapshot? TryReadProcess(int processId)
         {
+            FullPolicyReadCount++;
+            if (ThrowOnFullPolicyRead)
+            {
+                throw new InvalidOperationException("Unrelated CPU priority, affinity and image are unreadable.");
+            }
             ReadCount++;
             return ReadCount == NullOnReadNumber ? null : Current;
+        }
+
+        public RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot> ReadMemoryPriorityStateForRecovery(
+            int processId)
+        {
+            ReadCount++;
+            if (IdentityReadStatus == RecoveryReadStatus.NotFoundOrExited)
+            {
+                return RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.NotFoundOrExited(
+                    0, "process exited");
+            }
+            return IdentityReadStatus == RecoveryReadStatus.Found
+                && ReadCount != NullOnReadNumber
+                && Current?.StartedAt is DateTimeOffset startedAt
+                && Current.MemoryPriority is uint memory
+                ? RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Found(
+                    new ProcessMemoryPriorityRecoverySnapshot(Current.ProcessId, startedAt, memory))
+                : RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Unavailable(
+                    5, "process memory priority unavailable");
         }
 
         public IReadOnlyList<ProcessResourcePolicyBatchWriteResult> TryApplyBatch(
@@ -1315,8 +1427,10 @@ public sealed class HostManagerProcessPolicyTransactionTests
 
         public DateTimeOffset? TryReadProcessStartedAt(int processId) => throw Unexpected();
 
-        public RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadProcessInstanceForRecovery(int processId) =>
-            IdentityReadStatus switch
+        public RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadProcessInstanceForRecovery(int processId)
+        {
+            IdentityReadCount++;
+            return IdentityReadStatus switch
             {
                 RecoveryReadStatus.Found when Current?.StartedAt is DateTimeOffset startedAt =>
                     RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
@@ -1329,6 +1443,7 @@ public sealed class HostManagerProcessPolicyTransactionTests
                     5,
                     "process state unavailable")
             };
+        }
 
         public RecoveryReadResult<ProcessPlacementRecoverySnapshot> ReadPlacementStateForRecovery(
             int processId,

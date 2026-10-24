@@ -101,16 +101,13 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             AssertPublishedCoreMapping(next!, topology);
             subscription.Dispose();
             await WaitUntilAsync(() => !broker.IsRunning);
-            var retained = reader.Read();
-            Assert.NotNull(retained);
-            Assert.NotSame(complete, retained);
-            AssertPublishedCoreMapping(retained, topology);
+            Assert.Null(reader.Read());
 
             reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-            Assert.Same(retained, reader.Read());
+            Assert.Null(reader.Read());
 
             await reader.StopAsync(CancellationToken.None);
-            Assert.Same(retained, reader.Read());
+            Assert.Null(reader.Read());
         }
         finally
         {

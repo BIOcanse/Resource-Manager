@@ -202,6 +202,47 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.Empty(buffer.Snapshot([0, 1]).Records);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StopOrPauseClearsPublishedWindowAndRejectsAnAlreadyCollectedWindow(bool pause)
+    {
+        var broker = new Broker(); using var capture = Capture(broker);
+        capture.EnsureStarted();
+        // Feed the existing owner buffer without introducing a production capture/test API.
+        var session = typeof(EtwCpuResidencyCaptureOwner)
+            .GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(capture)!;
+        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+        buffer.ObserveProcessStart(0, At.AddSeconds(-1), 100, 11, 1000, "recorded");
+        buffer.ObserveThreadStart(0, At.AddSeconds(-1), 100, 10);
+        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 0, 0, 0, 100, "recorded", 10);
+        buffer.ObserveContextSwitch(0, At.AddSeconds(-1), 1, 0, 0, 0, null, 0);
+        buffer.ObserveContextSwitch(Stopwatch.Frequency, At, 0, 100, 10, 0, null, 0);
+        buffer.ObserveContextSwitch(Stopwatch.Frequency, At, 1, 0, 0, 0, null, 0);
+        Assert.True(capture.Collect());
+        Assert.NotNull(capture.Read());
+        var revision = capture.Revision;
+        var committed = false;
+        var permit = new BeforeCommitPermit(() =>
+        {
+            if (pause) capture.SetCaptureEnabled(false); else capture.Stop();
+            Assert.Null(capture.Read());
+            Assert.True(capture.Revision > revision);
+        });
+        Assert.False(capture.Collect(permit, (_, _) => committed = true));
+        Assert.False(committed);
+        Assert.Null(capture.Read());
+        Assert.False(capture.HasSessionLease);
+        Assert.Equal(1, broker.Releases);
+        if (pause) capture.SetCaptureEnabled(true);
+        capture.EnsureStarted();
+        Assert.Equal(2, broker.Acquires);
+        Assert.Null(capture.Read());
+        Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
+        Assert.Null(capture.Read());
+    }
+
     [Fact]
     public void ExternalFreezeDuringLeaseCreationRejectsLateAcceptanceAndResumesWithANewWindow()
     {
@@ -351,6 +392,11 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     {
         public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1; public bool IsActive => active;
         public bool TryPublish(Action commit) { if (!active) return false; commit(); return true; }
+    }
+    private sealed class BeforeCommitPermit(Action beforeCommit) : IMetricPublicationPermit
+    {
+        public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1; public bool IsActive => true;
+        public bool TryPublish(Action commit) { beforeCommit(); commit(); return true; }
     }
     private sealed class Broker : IKernelEtwSessionBroker
     {

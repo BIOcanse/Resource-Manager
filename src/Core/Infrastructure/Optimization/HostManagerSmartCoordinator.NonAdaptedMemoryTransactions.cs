@@ -22,6 +22,7 @@ public sealed partial class HostManagerSmartCoordinator
         permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
         if (maximumTransactions == 0)
         {
+            RecordRemainingMemoryDirectiveSkips("transaction_limit");
             return default;
         }
 
@@ -61,6 +62,7 @@ public sealed partial class HostManagerSmartCoordinator
                     authority,
                     currentPlanBinding,
                     sample.ProcessFacts);
+        if (admitted is null) RecordRemainingMemoryDirectiveSkips("authority_not_ready");
         if (ownerRecoveryBatch is null)
         {
             return default;
@@ -95,6 +97,7 @@ public sealed partial class HostManagerSmartCoordinator
                         HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),
                         NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
                 {
+                    RecordMemoryDirectiveSkip(directive, "pending_journal");
                     continue;
                 }
                 var incarnation = new NativeAppliedOwnershipProcessIncarnation(
@@ -109,6 +112,7 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     if (!anchor.HasMemoryOwnership)
                     {
+                        RecordMemoryDirectiveSkip(directive, "attribution_changed");
                         continue;
                     }
                     var ownedIdentity = CreateMemoryPolicyOwnershipIdentity(
@@ -155,6 +159,9 @@ public sealed partial class HostManagerSmartCoordinator
                         cancellationToken);
                     if (inspection == HostManagerProcessPolicyInspectionStatus.Owned)
                     {
+                        RecordMemoryDirectiveSkip(directive,
+                            decision.Kind == HostManagerNonAdaptedMemoryDirectiveDecisionKind.PagedFrozenClosed
+                                ? "paged_frozen_closed" : "already_owned");
                         continue;
                     }
                     if (inspection == HostManagerProcessPolicyInspectionStatus.Unavailable)
@@ -162,6 +169,7 @@ public sealed partial class HostManagerSmartCoordinator
                         // Only this exact process read is unavailable; keep its durable owner untouched
                         // while allowing independent process-memory work to use the shared cycle budget.
                         unavailableOwnedProcessIncarnations.Add(incarnation);
+                        RecordMemoryDirectiveSkip(directive, "owned_memory_unavailable");
                         continue;
                     }
                     if (inspection is HostManagerProcessPolicyInspectionStatus.InvalidPayload
@@ -179,6 +187,11 @@ public sealed partial class HostManagerSmartCoordinator
                     HostManagerNonAdaptedMemoryDirectiveDecisionKind.None or
                     HostManagerNonAdaptedMemoryDirectiveDecisionKind.PagedFrozenClosed)
                 {
+                    RecordMemoryDirectiveSkip(directive,
+                        decision.Kind == HostManagerNonAdaptedMemoryDirectiveDecisionKind.PagedFrozenClosed
+                            ? "paged_frozen_closed"
+                            : directive.Action == HostManagerNonAdaptedMemoryProcessAction.RestoreOwnedConstraints
+                                ? "no_owned_constraints" : "fresh_apply_disabled");
                     continue;
                 }
 
@@ -196,6 +209,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 directive.ProcessId,
                                 directive.ProcessStartKey)))
                     {
+                        RecordMemoryDirectiveSkip(directive, "process_scope_excluded");
                         continue;
                     }
                     freshApplyWork.Add(work);
@@ -219,10 +233,12 @@ public sealed partial class HostManagerSmartCoordinator
             freshApplyWork.RemoveAll(work =>
             {
                 var directive = work.Decision.TransactionDirective;
-                return unavailableOwnedProcessIncarnations.Contains(
+                var unavailable = unavailableOwnedProcessIncarnations.Contains(
                     new NativeAppliedOwnershipProcessIncarnation(
                         checked((uint)directive.ProcessId),
                         directive.ProcessStartKey));
+                if (unavailable) RecordMemoryDirectiveSkip(directive, "owned_memory_unavailable");
+                return unavailable;
             });
         }
 
@@ -234,6 +250,8 @@ public sealed partial class HostManagerSmartCoordinator
             if (restoreTransactionCount >= maximumTransactions
                 || permit.OwnedMemoryRestoreRemaining == 0)
             {
+                RecordRemainingMemoryDirectiveSkips(restoreTransactionCount >= maximumTransactions
+                    ? "transaction_limit" : "restore_budget_exhausted");
                 return new(transactionCount, false);
             }
 
@@ -253,6 +271,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (result.IsBlocked)
             {
+                RecordRemainingMemoryDirectiveSkips("memory_transaction_blocked");
                 return new(transactionCount, true);
             }
         }
@@ -264,6 +283,8 @@ public sealed partial class HostManagerSmartCoordinator
             if (freshTransactionCount >= maximumTransactions
                 || permit.NewPointOfNoReturnRemaining == 0)
             {
+                RecordRemainingMemoryDirectiveSkips(freshTransactionCount >= maximumTransactions
+                    ? "transaction_limit" : "new_ponr_budget_exhausted");
                 break;
             }
 
@@ -281,6 +302,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (result.IsBlocked)
             {
+                RecordRemainingMemoryDirectiveSkips("memory_transaction_blocked");
                 return new(transactionCount, true);
             }
         }
@@ -324,17 +346,17 @@ public sealed partial class HostManagerSmartCoordinator
             CancellationToken cancellationToken)
     {
         permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
+        var directive = decision.TransactionDirective;
         if (!HostManagerProcessEffectValidationCyclePolicy.AllowsFreshProcessMemory(
                 processEffectValidationScope))
         {
-            return default;
+            return SkipMemoryDirective(directive, "process_scope_excluded");
         }
-        var directive = decision.TransactionDirective;
         if (await SkipPendingJournalTargetAsync(admission,
                 HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),
                 NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
         {
-            return default;
+            return SkipMemoryDirective(directive, "pending_journal");
         }
         var target = directive.TargetMemoryPriority
             ?? throw new InvalidDataException(
@@ -342,35 +364,18 @@ public sealed partial class HostManagerSmartCoordinator
         var capture = processPolicyTransaction.CaptureMemoryPriority(
             directive.ProcessId,
             target);
-        if (capture.Status != HostManagerProcessPolicyCaptureStatus.Captured)
-        {
-            return default;
-        }
-        if (capture.ProcessId != directive.ProcessId
-            || capture.ProcessStartKey != checked((long)directive.ProcessStartKey)
-            || capture.Fields != HostManagerProcessPolicyTransactionFields.MemoryPriority
-            || !HostManagerProcessPolicyRollbackPayloadCodec.TryDecode(
-                capture.Payload,
-                out var decoded)
-            || decoded.ProcessId != directive.ProcessId
-            || decoded.ProcessStartKey != checked((long)directive.ProcessStartKey)
-            || decoded.Fields != HostManagerProcessPolicyTransactionFields.MemoryPriority
-            || decoded.TargetMemoryPriority != target)
-        {
-            return default;
-        }
-        if (decoded.BaselineMemoryPriority == target)
+        if (TryRecordMemoryCaptureSkip(directive, capture, target))
         {
             return default;
         }
         if (permit.NewPointOfNoReturnRemaining == 0)
         {
-            return default;
+            return SkipMemoryDirective(directive, "new_ponr_budget_exhausted");
         }
         if (!permit.TryReserveNewPointOfNoReturn(1, out var effectReservation)
             || effectReservation is null)
         {
-            return default;
+            return SkipMemoryDirective(directive, "new_ponr_budget_exhausted");
         }
         using var effectReservationScope = effectReservation;
 
@@ -413,7 +418,7 @@ public sealed partial class HostManagerSmartCoordinator
                 payloadReference,
                 actionBinding,
                 CancellationToken.None);
-            return default;
+            return SkipMemoryDirective(directive, "validation_admission_refused");
         }
         var prepareCompleted = false;
         var prepareRejectedWithoutMutation = false;
@@ -448,12 +453,13 @@ public sealed partial class HostManagerSmartCoordinator
                     NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
             {
                 _ = await admission.DeletePayloadAsync(payloadReference, actionBinding, CancellationToken.None);
-                return default;
+                return SkipMemoryDirective(directive, "pending_journal");
             }
             RequireJournalStatus(
                 prepareStatus,
                 "prepare-process-memory-apply");
             prepareCompleted = true;
+            RecordMemoryDirectivePrepared(decision.DesiredDirective);
             record = await RequireJournalRecordAsync(
                 admission,
                 prepare.Identity,
@@ -521,7 +527,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (await SkipPendingJournalTargetAsync(admission, ownership.Primary,
                 NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
         {
-            return default;
+            return SkipMemoryDirective(decision.DesiredDirective, "pending_journal");
         }
         var journalPlan = nativeActionTransactions.CurrentJournalPlan;
         var action = decision.Kind ==
@@ -548,7 +554,7 @@ public sealed partial class HostManagerSmartCoordinator
             payloadSourceBinding);
         if (permit.OwnedMemoryRestoreRemaining == 0)
         {
-            return default;
+            return SkipMemoryDirective(decision.DesiredDirective, "restore_budget_exhausted");
         }
         var payload = await admission.ReadPayloadAsync(
             payloadReference,
@@ -557,7 +563,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (!permit.TryReserveOwnedMemoryRestore(1, out var recoveryReservation)
             || recoveryReservation is null)
         {
-            return default;
+            return SkipMemoryDirective(decision.DesiredDirective, "restore_budget_exhausted");
         }
         using var recoveryReservationScope = recoveryReservation;
         var journalSnapshot = await admission.ReadSnapshotAsync(cancellationToken);
@@ -593,7 +599,7 @@ public sealed partial class HostManagerSmartCoordinator
                 sourceIdentity,
                 out validationPermit))
         {
-            return default;
+            return SkipMemoryDirective(decision.DesiredDirective, "recovery_admission_refused");
         }
         NativeTransactionJournalRecord record;
         try
@@ -611,9 +617,10 @@ public sealed partial class HostManagerSmartCoordinator
                 && await SkipPendingJournalTargetAsync(admission, ownership.Primary,
                     NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
             {
-                return default;
+                return SkipMemoryDirective(decision.DesiredDirective, "pending_journal");
             }
             RequireJournalStatus(prepareStatus, "prepare-process-memory-restore");
+            RecordMemoryDirectivePrepared(decision.DesiredDirective);
             record = await RequireJournalRecordAsync(
                 admission,
                 prepare.Identity,
@@ -866,6 +873,56 @@ public sealed partial class HostManagerSmartCoordinator
                 journalSnapshot,
                 cancellationToken);
         }
+    }
+
+    internal bool TryRecordMemoryCaptureSkip(
+        HostManagerNonAdaptedMemoryProcessDirective directive,
+        HostManagerProcessPolicyCaptureResult capture,
+        uint target)
+    {
+        if (GetMemoryCaptureSkipReason(directive, capture, target) is not { } reason) return false;
+        RecordMemoryDirectiveSkip(directive, reason);
+        return true;
+    }
+
+    internal static string? GetMemoryCaptureSkipReason(
+        HostManagerNonAdaptedMemoryProcessDirective directive,
+        HostManagerProcessPolicyCaptureResult capture,
+        uint target)
+    {
+        if (capture.Status != HostManagerProcessPolicyCaptureStatus.Captured)
+        {
+            return capture.Status == HostManagerProcessPolicyCaptureStatus.Unavailable
+                ? "capture_unavailable" : "capture_invalid_request";
+        }
+        if (capture.ProcessId != directive.ProcessId
+            || capture.ProcessStartKey != checked((long)directive.ProcessStartKey)
+            || capture.Fields != HostManagerProcessPolicyTransactionFields.MemoryPriority)
+        {
+            return "capture_identity_mismatch";
+        }
+        if (!HostManagerProcessPolicyRollbackPayloadCodec.TryDecode(
+                capture.Payload,
+                out var decoded)
+            || decoded.ProcessId != directive.ProcessId
+            || decoded.ProcessStartKey != checked((long)directive.ProcessStartKey)
+            || decoded.Fields != HostManagerProcessPolicyTransactionFields.MemoryPriority
+            || decoded.TargetMemoryPriority != target)
+        {
+            return "capture_payload_mismatch";
+        }
+        if (decoded.BaselineMemoryPriority == target)
+        {
+            return "baseline_at_target";
+        }
+        return null;
+    }
+
+    private NonAdaptedMemoryTransactionResult SkipMemoryDirective(
+        HostManagerNonAdaptedMemoryProcessDirective directive, string reason)
+    {
+        RecordMemoryDirectiveSkip(directive, reason);
+        return default;
     }
 
     private readonly record struct NonAdaptedMemoryTransactionResult(
