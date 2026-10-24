@@ -495,6 +495,14 @@ fn evaluateProcesses(session: *state.Session, input: *const protocol.CycleInput)
             score_missing = true;
         }
         if (score_missing) {
+            // Undoing an owned grade already desired to be Normal needs no score.
+            if (process.transition.owned and
+                process.transition.applied != protocol.ProcessGrade.normal and
+                process.transition.desired == protocol.ProcessGrade.normal)
+            {
+                process.candidate_valid = true;
+                process.candidate_grade = protocol.ProcessGrade.normal;
+            }
             session.invalid_fact_count += 1;
             session.last_reason_mask |= process.reason_mask;
             continue;
@@ -744,8 +752,10 @@ fn updateProcessTransition(
         transition.last_source_fingerprint = source_fingerprint;
         return;
     }
-    if (source_fingerprint == 0) return;
-    if (transition.last_source_fingerprint == source_fingerprint) {
+    // Restore confirmations follow cycles, independently of CPU score freshness.
+    const restoring = transition.owned and candidate == protocol.ProcessGrade.normal;
+    if (!restoring and source_fingerprint == 0) return;
+    if (!restoring and transition.last_source_fingerprint == source_fingerprint) {
         if (transition.pending_count > 0 and transition.pending_to != candidate) {
             transition.pending_from = transition.applied;
             transition.pending_to = candidate;
