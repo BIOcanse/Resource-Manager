@@ -18,11 +18,11 @@ $OutPath = [IO.Path]::GetFullPath($OutPath)
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
 $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
-        '-Package', $Package, '-OutPath', $OutPath, '-InstallRoot', $InstallRoot,
-        '-DebugPort', $DebugPort, '-NoUiRestart')
+    # Start-Process joins arguments with spaces and does not quote them, so paths are quoted here.
+    $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Package `"$Package`" " +
+        "-OutPath `"$OutPath`" -InstallRoot `"$InstallRoot`" -DebugPort $DebugPort -NoUiRestart"
     $child = Start-Process (Get-Process -Id $PID).Path -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList $arguments
-    Get-Content -LiteralPath $OutPath
+    if (Test-Path -LiteralPath $OutPath) { Get-Content -LiteralPath $OutPath }
     if ($child.ExitCode -ne 0) { exit $child.ExitCode }
     # The UI belongs to the signed-in user, so it is started from the non-elevated caller.
     if (-not $NoUiRestart) {
