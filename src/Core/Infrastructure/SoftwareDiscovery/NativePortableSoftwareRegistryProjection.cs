@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using ResourceManager.App.Domain.SoftwareDiscovery;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.SoftwareDiscovery;
@@ -76,7 +77,11 @@ internal sealed class NativePortableSoftwareRegistryProjection
         }
 
         var displayName = RequiredText(observation.Name, nameof(observation.Name));
-        var softwareKind = CanonicalRequiredText(observation.Kind, nameof(observation.Kind));
+        var softwareKind = observation.Kind;
+        if (!SoftwareKinds.IsKnown(softwareKind))
+        {
+            throw new ArgumentException($"Unsupported software kind '{softwareKind}'.", nameof(observation));
+        }
         var executablePath = CanonicalPath(observation.ExecutablePath, nameof(observation.ExecutablePath));
         var rootPath = CanonicalPath(observation.SuggestedRootPath, nameof(observation.SuggestedRootPath));
         if (!IsSameOrUnder(executablePath, rootPath))

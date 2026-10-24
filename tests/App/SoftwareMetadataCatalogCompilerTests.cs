@@ -140,7 +140,7 @@ public sealed class SoftwareMetadataCatalogCompilerTests
         return new SoftwareIdentityCatalogEntry(
             "app-test",
             "Test App",
-            "Other",
+            "other",
             "test",
             PackageIdentifiers: ["Vendor.Test"]);
     }

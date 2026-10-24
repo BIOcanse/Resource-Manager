@@ -18,7 +18,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         var state = new SchedulingProcessFactSnapshotState();
         var fact = Fact(42, 100, SchedulingProcessMetricMask.None, 0, 0) with
         {
-            SoftwareKind = "RuntimeProduct", SoftwareRootPaths = [@"C:\Apps\Runtime"]
+            SoftwareKind = "runtime_product", SoftwareRootPaths = [@"C:\Apps\Runtime"]
         };
         var sample = Sample(now, 1, SchedulingProcessMetricMask.None, fact);
         Assert.Empty(state.ReadLatestSoftware());
@@ -588,8 +588,8 @@ public sealed class SchedulingProcessFactSnapshotStateTests
             null,
             "software",
             "Software",
-            "Other",
-            "Other",
+            "other",
+            "other",
             1,
             metric,
             cpu,

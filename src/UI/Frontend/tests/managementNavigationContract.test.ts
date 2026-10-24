@@ -10,13 +10,13 @@ assert.equal(browserRuntimeManagementSubpageId, "BrowserRuntime");
 assert.deepEqual(managementInventoryKinds, [
   "Dependency",
   "Support",
-  "Adapted",
-  "Controlled",
+  "adapted",
+  "controlled",
   "Unconfirmed",
   "Unclassified",
-  "Game",
-  "HighPerformance",
-  "Other"
+  "game",
+  "high_performance",
+  "other"
 ]);
 assert.equal(managementInventoryKinds.includes("DependencySupport" as never), false);
 assert.equal(isManagementInventorySubpage(browserRuntimeManagementSubpageId), false);

@@ -20,7 +20,7 @@ public static class SoftwareDisplayKinds
     public const string Unattributed = SoftwareKinds.Unattributed;
 
     /// <summary>系统与驱动占用的那部分资源，不属于任何进程。</summary>
-    public const string SystemResidual = "SystemResidual";
+    public const string SystemResidual = "system_residual";
 
     public static string Project(string kind)
     {

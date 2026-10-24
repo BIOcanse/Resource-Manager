@@ -943,7 +943,7 @@ function resourceEntryAtTrackPoint<T extends { value: number }>(
 
   前端这一层只决定**展示分组用什么颜色**，那才是画面该管的事。
 */
-const systemDisplayKinds = new Set(["WindowsSystem", "WindowsComponent", "WindowsService"]);
+const systemDisplayKinds = new Set(["windows_system", "windows_component", "windows_service"]);
 
 type ResourceSoftwareBucket = "system" | "adapted" | "other";
 
@@ -952,7 +952,7 @@ function resourceSoftwareBucket(displayKind: string): ResourceSoftwareBucket {
     return "system";
   }
 
-  return displayKind === "Adapted" ? "adapted" : "other";
+  return displayKind === "adapted" ? "adapted" : "other";
 }
 
 // Wide-gamut (display-p3) segment palette. Each entry carries its own foreground

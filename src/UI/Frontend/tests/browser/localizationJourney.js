@@ -160,7 +160,7 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByText(app.backendMessage.dependency.runtimeFilesUnavailable, { exact: true }).waitFor();
     if (verificationRequests !== beforeRequests + 2) throw new Error(`${option.id}: wrong verification request count`);
     await page.getByRole("navigation", { name: app.management.categoryNav })
-      .getByRole("button", { name: new RegExp(app.softwareKind.Other) }).click();
+      .getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
     const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const details = page.getByRole("dialog", { name: "示例软件" });

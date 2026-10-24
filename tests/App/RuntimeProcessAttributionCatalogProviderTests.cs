@@ -335,7 +335,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             id,
             name,
             SoftwareKinds.Other,
-            "其他软件",
+            "other",
             "manual",
             ["test"],
             [rootPath],

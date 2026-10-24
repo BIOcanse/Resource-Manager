@@ -6,7 +6,7 @@ export { uiText };
 
 export function softwareKindLabel(kind: string | null | undefined) {
   const key = (kind ?? "") as keyof typeof uiText.softwareKind;
-  return uiText.softwareKind[key] ?? uiText.softwareKind.Other;
+  return uiText.softwareKind[key] ?? uiText.softwareKind.other;
 }
 
 // displayKind 是后端把若干 kind 合并后的展示分组标识（见后端 SoftwareDisplayKinds），

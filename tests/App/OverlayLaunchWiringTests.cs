@@ -178,7 +178,7 @@ public sealed class OverlayLaunchWiringTests
         [], null, DateTimeOffset.UnixEpoch, enabled);
 
     private static SoftwareRecord Software(string path) => new(
-        "software", "Software", SoftwareKinds.Game, "Game", "registered",
+        "software", "Software", SoftwareKinds.Game, "game", "registered",
         [], [], string.Empty, new SoftwareOperationCapabilities(false, "", "", ""),
         null, ExecutablePaths: [path]);
 

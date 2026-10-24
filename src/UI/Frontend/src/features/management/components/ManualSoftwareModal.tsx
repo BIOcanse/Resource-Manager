@@ -27,7 +27,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
   const [manualName, setManualName] = createSignal("");
   const [manualRootPaths, setManualRootPaths] = createSignal("");
 
-  const [classificationKind, setClassificationKind] = createSignal<ManualSoftwareKind>("Other");
+  const [classificationKind, setClassificationKind] = createSignal<ManualSoftwareKind>("other");
   const effectiveKind = () => props.sourceSoftware ? classificationKind() : props.kind;
   createEffect(() => { if (props.open) setClassificationKind(props.kind); });
 
@@ -41,9 +41,9 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean));
-  const usesManualRootEntry = createMemo(() => !props.sourceSoftware && (effectiveKind() === "Other" || effectiveKind() === "Adapted"));
+  const usesManualRootEntry = createMemo(() => !props.sourceSoftware && (effectiveKind() === "other" || effectiveKind() === "adapted"));
   const manualSubmitName = createMemo(() => {
-    if (effectiveKind() === "Adapted") {
+    if (effectiveKind() === "adapted") {
       return inferSoftwareNameFromRootPath(rootPathLines()[0]) ?? uiText.manualSoftwareModal.defaultName;
     }
 
@@ -131,7 +131,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
                   <StandardSelect
                     value={classificationKind()}
                     ariaLabel={uiText.management.categoryNav}
-                    options={(["Other", "Game", "HighPerformance"] as const).map((kind) => ({
+                    options={(["other", "game", "high_performance"] as const).map((kind) => ({
                       value: kind, label: softwareDisplayKindLabel(kind)
                     }))}
                     onChange={(kind) => setClassificationKind(kind as ManualSoftwareKind)}
@@ -168,7 +168,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
                 </Show>
               }
             >
-              <Show when={effectiveKind() === "Other"}>
+              <Show when={effectiveKind() === "other"}>
                 <label class="manual-software-field">
                   <span>{uiText.manualSoftwareModal.name}</span>
                   <input value={manualName()} onInput={(event) => setManualName(event.currentTarget.value)} />
@@ -199,11 +199,11 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
 }
 
 export function manualSoftwareKindLabel(kind: ManualSoftwareKind) {
-  return kind === "Adapted"
+  return kind === "adapted"
     ? uiText.manualSoftware.addAdapted
-    : kind === "Game"
+    : kind === "game"
     ? uiText.manualSoftware.addGame
-    : kind === "HighPerformance"
+    : kind === "high_performance"
       ? uiText.manualSoftware.addHighPerformance
       : uiText.manualSoftware.addGeneral;
 }

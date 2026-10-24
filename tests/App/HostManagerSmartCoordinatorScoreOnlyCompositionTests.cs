@@ -1470,7 +1470,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         current with
                         {
                             SoftwareKind = SoftwareKinds.Adapted,
-                            SoftwareDisplayKind = "Adapted"
+                            SoftwareDisplayKind = "adapted"
                         }
                     ]
                 },
@@ -4714,7 +4714,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var adaptedProcess = processFacts.Processes[0] with
         {
             SoftwareKind = SoftwareKinds.Adapted,
-            SoftwareDisplayKind = "Adapted",
+            SoftwareDisplayKind = "adapted",
             SourceGeneration = 2
         };
         fixture.ProcessFacts.SetSnapshot(processFacts with
@@ -4870,7 +4870,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 initialFacts.Processes[1] with
                 {
                     SoftwareKind = SoftwareKinds.Adapted,
-                    SoftwareDisplayKind = "Adapted"
+                    SoftwareDisplayKind = "adapted"
                 }
             ]
         };

@@ -217,7 +217,7 @@ public sealed class ResourceMonitorProjectionTests
         Assert.Equal(4, softwareBIdentity.GetArrayLength());
         Assert.Equal("software:b", softwareBIdentity[0].GetString());
         Assert.Equal("App B", softwareBIdentity[1].GetString());
-        Assert.Equal("Other", softwareBIdentity[2].GetString());
+        Assert.Equal("other", softwareBIdentity[2].GetString());
         Assert.Equal(SoftwareDisplayKinds.General, softwareBIdentity[3].GetString());
 
         // 元组里不再有展示串：条形自带 unit，数值由前端按用户选的进制格式化。
@@ -266,7 +266,7 @@ public sealed class ResourceMonitorProjectionTests
             .Select(index => new ResourceSoftwareSegment(
                 $"software:{index:D3}",
                 $"Software {index:D3}",
-                "Other",
+                "other",
                 SoftwareDisplayKinds.General,
                 index + 1,
                 (index + 1) / 10d,
@@ -361,7 +361,7 @@ public sealed class ResourceMonitorProjectionTests
         {
             ProcessStartKey = checked(processId * 1000L)
         };
-        return new ResourceSoftwareSegment(id, name, "Other", SoftwareDisplayKinds.General, 1, 1, 1, [process]);
+        return new ResourceSoftwareSegment(id, name, "other", SoftwareDisplayKinds.General, 1, 1, 1, [process]);
     }
 
     private static ResourceBreakdownDatasetSamplingState CurrentDataset(

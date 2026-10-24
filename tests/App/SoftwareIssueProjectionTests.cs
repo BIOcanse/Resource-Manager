@@ -61,7 +61,7 @@ public sealed class SoftwareIssueProjectionTests
             id,
             id,
             SoftwareKinds.Other,
-            "普通软件",
+            "other",
             "installed",
             [],
             [],

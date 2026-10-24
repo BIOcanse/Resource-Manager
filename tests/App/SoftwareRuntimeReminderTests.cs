@@ -13,7 +13,7 @@ public sealed class SoftwareRuntimeReminderTests
     [InlineData(SoftwareKinds.RuntimeRoot)]
     public async Task RuntimeOnlySoftwareIsListedAndManualClassificationClearsTheReminder(string kind)
     {
-        var runtime = new RuntimeSoftwareAttribution("runtime:app", "Runtime App", kind, "Other", []);
+        var runtime = new RuntimeSoftwareAttribution("runtime:app", "Runtime App", kind, "other", []);
         var records = SoftwareRegistryView.IncludeRuntimeSoftware([], [runtime], []);
         Assert.Equal(runtime.Name, Assert.Single(records).Name);
         var issues = new SoftwareIssueProjection([]);
@@ -32,8 +32,8 @@ public sealed class SoftwareRuntimeReminderTests
     [Fact]
     public void KnownCatalogSoftwareTakesPrecedenceAndRuntimeRootsArePreserved()
     {
-        var runtime = new RuntimeSoftwareAttribution("runtime:app", "App", SoftwareKinds.RuntimeProduct, "Other", [@"C:\Apps\App"]);
-        var known = new SoftwareRecord("catalog:app", "App", SoftwareKinds.Game, "Game", "installed", [], runtime.RootPaths, "",
+        var runtime = new RuntimeSoftwareAttribution("runtime:app", "App", SoftwareKinds.RuntimeProduct, "other", [@"C:\Apps\App"]);
+        var known = new SoftwareRecord("catalog:app", "App", SoftwareKinds.Game, "game", "installed", [], runtime.RootPaths, "",
             new(false, "None", "", ""), null, SoftwareIdentityId: "catalog:app");
         Assert.Equal(known, Assert.Single(SoftwareRegistryView.IncludeRuntimeSoftware([known], [runtime], [])));
         Assert.Equal(runtime.RootPaths, Assert.Single(SoftwareRegistryView.IncludeRuntimeSoftware([], [runtime], [])).RootPaths);

@@ -9,6 +9,20 @@ public sealed class NativePortableSoftwareRegistryProjectionTests
 {
     private static readonly DateTimeOffset CommandUtc = DateTimeOffset.FromUnixTimeMilliseconds(10_000);
 
+    [Theory]
+    [InlineData("Game")]
+    [InlineData("highperformance")]
+    [InlineData("other ")]
+    [InlineData("unknown")]
+    public void ObserveRejectsNonCanonicalKindsBeforeAllocatingHandles(string kind)
+    {
+        var catalog = new NativePortableSoftwareRegistryPayloadCatalog(firstHandle: 1);
+        var projection = CreateProjection(catalog);
+        Assert.Throws<ArgumentException>(() => projection.ProjectObserve(
+            Observation() with { Kind = kind }, 1, 1, CommandUtc, CommandUtc));
+        Assert.Equal(0, catalog.Count);
+    }
+
     [Fact]
     public void ObserveProjectsCanonicalIdentityPathsTimesAndExactByteOffsets()
     {
@@ -18,7 +32,7 @@ public sealed class NativePortableSoftwareRegistryProjectionTests
             " CATALOG:Tool ",
             " TOOL ",
             " Tool UI ",
-            " Portable ",
+            "other",
             "\"C:\\Portable\\Tool\\TOOL.EXE\"",
             "c:/PORTABLE",
             IdentityConfirmed: true,
@@ -57,7 +71,7 @@ public sealed class NativePortableSoftwareRegistryProjectionTests
         Assert.Equal("Tool UI", catalog.ResolveRequired(
             NativePortableSoftwarePayloadKind.DisplayName,
             input.DisplayNameHandle).Text);
-        Assert.Equal("portable", catalog.ResolveRequired(
+        Assert.Equal("other", catalog.ResolveRequired(
             NativePortableSoftwarePayloadKind.SoftwareKind,
             input.SoftwareKindHandle).Text);
         Assert.Equal(expectedExecutable, catalog.ResolveRequired(
@@ -224,7 +238,7 @@ public sealed class NativePortableSoftwareRegistryProjectionTests
             softwareId,
             catalogEntryId,
             "Tool",
-            "Portable",
+            "other",
             executablePath,
             "c:/portable",
             IdentityConfirmed: false,

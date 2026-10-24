@@ -14,9 +14,49 @@ using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class SqlitePersistenceTests : IDisposable
+[Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
+public sealed partial class SqlitePersistenceTests : IDisposable
 {
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-sqlite-{Guid.NewGuid():N}");
+
+    [Theory]
+    [InlineData("Game", SoftwareKinds.Game)]
+    [InlineData("highperformance", SoftwareKinds.HighPerformance)]
+    public async Task PortableSoftwareRegistry_RewritesLegacyKinds(string storedKind, string expected)
+    {
+        var database = CreateDatabase();
+        var observedAt = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await InsertPortableRowAsync(database, "catalog:legacy", "legacy", "Legacy", storedKind,
+            "f:/genshin impact game/yuanshen.exe", "f:/genshin impact game", observedAt.UtcTicks, 1, 1);
+        using var registry = CreatePortableRegistry(database);
+        await registry.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.Equal(expected, Assert.Single(registry.GetSnapshot()).Kind);
+            await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT kind FROM portable_software_executables;";
+            Assert.Equal(expected, await command.ExecuteScalarAsync());
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task PortableSoftwareRegistry_UnknownStoredKindFailsWithoutRewritingRows()
+    {
+        var database = CreateDatabase();
+        await InsertPortableRowAsync(database, "catalog:legacy", "legacy", "Legacy", "not_a_kind",
+            "f:/genshin impact game/yuanshen.exe", "f:/genshin impact game", 0, 1, 1);
+        using var registry = CreatePortableRegistry(database);
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.StartAsync(CancellationToken.None));
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT kind FROM portable_software_executables;";
+        Assert.Equal("not_a_kind", await command.ExecuteScalarAsync());
+    }
 
     [Fact]
     public async Task EnsureInitializedAsync_CreatesWalDatabaseWithFts5SchemaIdempotently()
@@ -195,7 +235,7 @@ public sealed class SqlitePersistenceTests : IDisposable
             "CATALOG:TOOL",
             "TOOL",
             " Tool ",
-            "PORTABLE",
+            "Other",
             executable.ToUpperInvariant(),
             root.ToUpperInvariant(),
             observedAt.UtcTicks,
@@ -213,7 +253,7 @@ public sealed class SqlitePersistenceTests : IDisposable
         Assert.Equal("catalog:tool", registration.SoftwareId);
         Assert.Equal("tool", registration.CatalogEntryId);
         Assert.Equal("Tool", registration.Name);
-        Assert.Equal("portable", registration.Kind);
+        Assert.Equal("other", registration.Kind);
         Assert.Equal(canonicalExecutable, Assert.Single(registration.ExecutablePaths));
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         await using var command = connection.CreateCommand();
@@ -242,7 +282,7 @@ public sealed class SqlitePersistenceTests : IDisposable
             "catalog:clock-rollback",
             "clock-rollback",
             "Clock Rollback",
-            "portable",
+            "other",
             executable,
             root,
             firstObservedAt.UtcTicks,
@@ -285,7 +325,7 @@ public sealed class SqlitePersistenceTests : IDisposable
             "catalog:legacy",
             "legacy",
             "Legacy",
-            "portable",
+            "other",
             executable,
             root,
             legacyTicks,
@@ -338,7 +378,7 @@ public sealed class SqlitePersistenceTests : IDisposable
             "catalog:tool",
             "tool",
             "Tool",
-            "portable",
+            "other",
             executable,
             root,
             observedAt.UtcTicks,
@@ -349,7 +389,7 @@ public sealed class SqlitePersistenceTests : IDisposable
             "CATALOG:TOOL",
             "TOOL",
             "Tool",
-            "PORTABLE",
+            "Other",
             executable.ToUpperInvariant(),
             root.ToUpperInvariant(),
             observedAt.UtcTicks,

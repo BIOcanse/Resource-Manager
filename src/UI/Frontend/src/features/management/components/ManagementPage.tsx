@@ -490,7 +490,7 @@ function componentCanInstall(component: ManagedComponent) {
 }
 
 function canAddManualSoftware(kind: ManagementKind) {
-  return kind === "Adapted" || kind === "Game" || kind === "HighPerformance" || kind === "Other";
+  return kind === "adapted" || kind === "game" || kind === "high_performance" || kind === "other";
 }
 
 function softwareContextTargetFromSoftware(software: SoftwareRecord): SoftwareContextMenuTarget {

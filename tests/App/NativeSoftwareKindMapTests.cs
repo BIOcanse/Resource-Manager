@@ -7,9 +7,9 @@ public sealed class NativeSoftwareKindMapTests
 {
     [Theory]
     [InlineData("game", SoftwareKinds.Game, 5U)]
-    [InlineData("highperformance", SoftwareKinds.HighPerformance, 6U)]
-    [InlineData("windowssystem", SoftwareKinds.WindowsSystem, 8U)]
-    public void NativeProjectionAcceptsCanonicalKindsWithoutCaseSensitivity(
+    [InlineData("high_performance", SoftwareKinds.HighPerformance, 6U)]
+    [InlineData("windows_system", SoftwareKinds.WindowsSystem, 8U)]
+    public void NativeProjectionAcceptsExactKinds(
         string input,
         string canonical,
         uint expected)
@@ -17,6 +17,14 @@ public sealed class NativeSoftwareKindMapTests
         Assert.Equal(expected, NativeSoftwareKindMap.ToNative(input));
         Assert.Equal(canonical, NativeSoftwareKindMap.ToManaged(expected));
     }
+
+    [Theory]
+    [InlineData("Game")]
+    [InlineData("highperformance")]
+    [InlineData("HighPerformance")]
+    [InlineData("unknown")]
+    public void NativeProjectionRejectsNonCanonicalKinds(string kind)
+        => Assert.Throws<InvalidDataException>(() => NativeSoftwareKindMap.ToNative(kind));
 
     [Fact]
     public void RetiredDependencySupportNativeKindIsRejected()

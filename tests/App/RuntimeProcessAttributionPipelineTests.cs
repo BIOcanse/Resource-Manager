@@ -515,7 +515,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             id,
             name,
             SoftwareKinds.Other,
-            "其他软件",
+            "other",
             "installed",
             ["test"],
             rootPaths,

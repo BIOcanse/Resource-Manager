@@ -6,6 +6,7 @@ using Microsoft.Data.Sqlite;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.SoftwareDiscovery;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Persistence;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -677,7 +678,7 @@ public sealed class SqlitePortableSoftwareRegistry(
                         "Persisted portable software id does not exactly identify its catalog entry.");
                 }
                 var displayName = RequiredText(rawDisplayName, "display_name");
-                var kind = CanonicalToken(rawKind, "kind");
+                var kind = SoftwareKinds.ReadStored(rawKind);
                 var executablePath = NativePortableSoftwareRegistryProjection.CanonicalPath(
                     rawExecutablePath,
                     "executable_path");

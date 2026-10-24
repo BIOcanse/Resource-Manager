@@ -125,7 +125,7 @@ public sealed class PerformanceOverlayEndpointTests
     {
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SoftwareRecord>>(
-                [new SoftwareRecord("game", "Game", SoftwareKinds.Game, "Game", "registered",
+                [new SoftwareRecord("game", "Game", SoftwareKinds.Game, "game", "registered",
                     [], [], string.Empty, new SoftwareOperationCapabilities(false, "", "", ""),
                     null, ExecutablePaths: [executablePath])]);
 

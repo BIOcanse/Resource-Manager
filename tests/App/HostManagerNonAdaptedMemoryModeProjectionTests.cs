@@ -239,8 +239,8 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
         var softwareBKey = NativeStableIdentity.CreateCaseInsensitiveKey("software-b");
         var processes = new[]
         {
-            CreateProcessFact(101, 1001, "software-a", "Other"),
-            CreateProcessFact(202, 2002, "software-b", "Adapted")
+            CreateProcessFact(101, 1001, "software-a", "other"),
+            CreateProcessFact(202, 2002, "software-b", "adapted")
         };
         var observedAtUtcTicks = DateTimeOffset.UtcNow.UtcTicks;
         var processFacts = new SchedulingProcessFactSnapshot(
