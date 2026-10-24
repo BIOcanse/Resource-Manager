@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { reportRules } from "../fixtures/reportRuleSettings.ts";
 
 const port = Number(process.env.RM_FRONTEND_HARNESS_PORT || 4177);
 const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
@@ -124,6 +125,7 @@ const targetedRecordings = new Map();
 const defaultAppSettings = {
   version: "1.0.28",
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80 },
+  reports: { ruleOverrides: [] },
   appearance: {
     uiStyle: scenario.settingsUiStyle,
     theme: scenario.settingsTheme,
@@ -491,6 +493,9 @@ async function handleApi(request, response, url) {
       return json(response, 200, appSettingsResult());
     }
     return json(response, 405, { error: "settings method not supported" });
+  }
+  if (path === "/api/settings/report-rules") {
+    return json(response, 200, { rules: reportRules });
   }
   if (path === "/api/settings/app/reapply") {
     return json(response, 200, appSettingsResult());
