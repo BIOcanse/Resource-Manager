@@ -12,7 +12,7 @@ public sealed partial class NativeComputeScoringSessionTests
         using var cpu = new NativeComputeScoringSession(in configuration, [1]);
         using var gpu = new NativeComputeScoringSession(in configuration, [1]);
         var capacity = cpu.Capacity;
-        Assert.Equal(0x00060000U, NativeComputeScoringSession.GetAbiVersion());
+        Assert.Equal(0x00070000U, NativeComputeScoringSession.GetAbiVersion());
         Assert.Equal(72U, capacity.StructSize);
         // Each process/GPU slot stores its input row, computed score and two u32 order indexes.
         var processBytes = (ulong)Marshal.SizeOf<NativeComputeScoringProcessInput>() + sizeof(double) + 2UL * sizeof(uint);

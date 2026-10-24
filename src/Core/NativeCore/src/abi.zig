@@ -42,7 +42,6 @@ comptime {
     _ = compute_scoring_abi.rm_compute_scoring_query_capacity;
     _ = compute_scoring_abi.rm_compute_scoring_score_with_scratch;
     _ = compute_scoring_abi.rm_compute_scoring_weighted_cpu_use;
-    _ = compute_scoring_abi.rm_compute_scoring_software_base_mean;
     _ = memory_mode_controller_abi.rm_memory_mode_controller_abi_version;
     _ = memory_mode_controller_abi.rm_memory_mode_controller_create;
     _ = memory_mode_controller_abi.rm_memory_mode_controller_destroy;

@@ -42,15 +42,6 @@ pub const Session = struct {
         return cpu_weights.calculate(self.cpu_capacity_shares, rows, output);
     }
 
-    pub fn softwareBaseMean(self: *Session, values: []const f64, output: *f64) protocol.Status {
-        lock(&self.mutex);
-        defer self.mutex.unlock();
-        const mean = process_scores.softwareBaseMean(values, self.config.maximum_base_importance) catch
-            return .invalid_facts;
-        output.* = mean;
-        return .ok;
-    }
-
     pub fn capacity(self: *Session) protocol.Capacity {
         lock(&self.mutex);
         defer self.mutex.unlock();
@@ -209,7 +200,6 @@ pub fn score(
         .welfare_multiplier = welfare.multiplier,
         .system_pressure = welfare.system_pressure,
         .welfare_budget = welfare.budget,
-        .software_base_mean = envelope.software_base_mean,
         .cpu_welfare_multiplier = welfare.cpu_multiplier,
         .memory_welfare_multiplier = welfare.memory_multiplier,
         .cpu_welfare_bonus = welfare.cpu_bonus,

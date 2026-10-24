@@ -45,6 +45,6 @@ internal static class HostManagerComputeScoringConfigurationFactory
             maximumPolicyMultiplier,
             cpuScoring.BaselineRatio,
             checked((uint)cpuScoring.CoreWeights.Cores.Length),
-            plan.HotPublish.WelfareUtilizationBaselinePercent);
+            plan.HotPublish.WelfareBaseScore);
     }
 }

@@ -8,12 +8,12 @@ public sealed class NativeComputeScoringAbiTests
     [Theory]
     [InlineData(typeof(NativeComputeScoringConfiguration), 200)]
     [InlineData(typeof(NativeComputeScoringCapacity), 72)]
-    [InlineData(typeof(NativeComputeScoringGenerationEnvelope), 112)]
+    [InlineData(typeof(NativeComputeScoringGenerationEnvelope), 104)]
     [InlineData(typeof(NativeComputeScoringProcessInput), 88)]
     [InlineData(typeof(NativeComputeScoringCpuCoreInput), 16)]
     [InlineData(typeof(NativeComputeScoringGpuInput), 88)]
     [InlineData(typeof(NativeComputeScoringOutput), 96)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), 184)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), 176)]
     public void ManagedStructSizesMatchNativeContract(Type type, int expectedSize)
         => Assert.Equal(expectedSize, Marshal.SizeOf(type));
 
@@ -26,16 +26,14 @@ public sealed class NativeComputeScoringAbiTests
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.CpuStateMultipliers), 40)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.GpuStateMultipliers), 96)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.CpuBaselineRatio), 168)]
-    [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.WelfareUtilizationBaselinePercent), 176)]
+    [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.WelfareBaseScore), 176)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.Reserved), 184)]
-    [InlineData(typeof(NativeComputeScoringGenerationEnvelope), nameof(NativeComputeScoringGenerationEnvelope.SoftwareBaseMean), 104)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.SoftwareBaseMean), 136)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.CpuWelfareMultiplier), 144)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.MemoryWelfareMultiplier), 152)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.CpuWelfareBonus), 160)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.MemoryWelfareBonus), 168)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.SoftwareMemoryOutputCount), 176)]
-    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.Reserved1), 180)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.CpuWelfareMultiplier), 136)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.MemoryWelfareMultiplier), 144)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.CpuWelfareBonus), 152)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.MemoryWelfareBonus), 160)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.SoftwareMemoryOutputCount), 168)]
+    [InlineData(typeof(NativeComputeScoringSnapshot), nameof(NativeComputeScoringSnapshot.Reserved1), 172)]
     [InlineData(typeof(NativeComputeScoringCpuCoreInput), nameof(NativeComputeScoringCpuCoreInput.ProcessIndex), 0)]
     [InlineData(typeof(NativeComputeScoringCpuCoreInput), nameof(NativeComputeScoringCpuCoreInput.CoreIndex), 4)]
     [InlineData(typeof(NativeComputeScoringCpuCoreInput), nameof(NativeComputeScoringCpuCoreInput.UsagePercent), 8)]
@@ -56,7 +54,7 @@ public sealed class NativeComputeScoringAbiTests
     [Fact]
     public void EnumAndMaskValuesMatchNativeContract()
     {
-        Assert.Equal(0x0006_0000U, NativeComputeScoringAbi.Version);
+        Assert.Equal(0x0007_0000U, NativeComputeScoringAbi.Version);
         Assert.Equal(7, NativeComputeScoringAbi.RuntimeStateCount);
         Assert.Equal(0x0FUL, (ulong)NativeComputeScoringConfigFields.Required);
         Assert.Equal(0x03UL, (ulong)NativeComputeScoringEnvelopeFlags.Known);

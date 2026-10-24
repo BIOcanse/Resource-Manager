@@ -20,7 +20,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             x.pid, "fixture", @"C:\tests\fixture.exe", startedAt, "Normal", 1, 1,
             MemoryPriority: 5, PowerThrottlingControlMask: 0, PowerThrottlingStateMask: 0));
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
-            warm: true, scoreOnlyEnabled: false, processFactsSnapshot: CreateCompleteProcessFacts(inputs),
+            // Saturated CPU capacity makes the policy backlog independent of idle welfare.
+            warm: true, cpuUsagePercent: 100, scoreOnlyEnabled: false, processFactsSnapshot: CreateCompleteProcessFacts(inputs),
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(pid, startedAt)),
             automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.CpuOnly,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement | OptimizationModeCapabilities.AutomaticProcessPolicies,

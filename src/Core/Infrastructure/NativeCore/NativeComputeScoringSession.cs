@@ -103,21 +103,6 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
         }
     }
 
-    public unsafe double CalculateSoftwareBaseMean(ReadOnlySpan<double> values)
-    {
-        lock (sync)
-        {
-            fixed (double* pointer = values)
-            {
-                var status = (NativeComputeScoringStatus)NativeMethods.SoftwareBaseMean(
-                    RequireHandle(), pointer, checked((uint)values.Length), out var mean);
-                if (status != NativeComputeScoringStatus.Ok)
-                    throw new InvalidDataException($"Native software base mean failed with {status}.");
-                return mean;
-            }
-        }
-    }
-
     public void Dispose()
     {
         Dispose(true);
@@ -224,11 +209,6 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
             IntPtr handle,
             out NativeComputeScoringCapacity capacity,
             uint capacitySize);
-
-        [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_software_base_mean")]
-        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-        internal static unsafe partial int SoftwareBaseMean(
-            IntPtr handle, double* values, uint count, out double mean);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_score_with_scratch")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

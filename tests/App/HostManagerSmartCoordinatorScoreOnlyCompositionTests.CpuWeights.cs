@@ -32,12 +32,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true, processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             performanceLogEnabled: true, failFastEffects: true, cpuCoreReader: reader,
             cpuTopology: topology, cpuScoring: cpu);
+        // The fixture adds 100 * 0.5 CPU welfare independently of the CPU baseline ratio.
         var nativeInputs = new NativeSmartInputCaptureProbe();
         fixture.Coordinator.TransitionProbe = nativeInputs;
         for (var index = 0; index < 3; index++)
         {
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            AssertWeightedProcessScore(fixture, pid, expected: 27);
+            AssertWeightedProcessScore(fixture, pid, expected: 27 + 50);
             var cpuInput = Assert.Single(nativeInputs.Rows,
                 row => row.ProcessId == pid && row.MetricKind == NativeSmartCoordinatorMetricKind.CpuUsagePercent);
             Assert.Equal(!removeScalarCpu, cpuInput.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Metric));
@@ -53,7 +54,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         current = CpuCoreResidencyTestValues.Create(91, now.AddSeconds(5),
             CpuCoreResidencyTestValues.Process(pid, start, ("core:1", 80)));
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        AssertWeightedProcessScore(fixture, pid, expected: 18);
+        AssertWeightedProcessScore(fixture, pid, expected: 18 + 50);
 
         var changedHost = HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology,
             cpuScoring: cpu with { BaselineRatio = 0.25 });
@@ -63,14 +64,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             HostManager = changedHost
         });
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        AssertWeightedProcessScore(fixture, pid, expected: 36);
+        AssertWeightedProcessScore(fixture, pid, expected: 36 + 50);
 
         // Without residency the CPU domain is scored from the process's own CPU usage when the facts carry it.
         current = null;
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.Equal(removeScalarCpu ? null : HostManagerCpuOccupancySource.ProcessCpuUsage,
             fixture.Coordinator.SchedulingAuthority.Compute?.CpuOccupancySource);
-        AssertWeightedProcessScore(fixture, pid, expected: removeScalarCpu ? 0 : 1.8 * 99);
+        AssertWeightedProcessScore(fixture, pid, expected: removeScalarCpu ? 0 : 1.8 * 99 + 50);
         var lastCounts = Assert.IsType<Dictionary<string, object?>>(
             fixture.DebugLogWriter.Records.Last().Properties["counts"]);
         Assert.Equal(removeScalarCpu ? 0 : 1, Assert.IsType<int>(lastCounts["scoredProcesses"]));
@@ -117,7 +118,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
         var candidate = Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
         Assert.Equal(pid, candidate.ProcessId);
-        Assert.Equal(6.75, candidate.CpuScore, 10);
+        Assert.Equal(6.75 + 50, candidate.CpuScore, 10);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }
 

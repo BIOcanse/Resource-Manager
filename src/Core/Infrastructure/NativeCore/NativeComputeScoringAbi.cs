@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeComputeScoringAbi
 {
-    public const uint Version = 0x0006_0000;
+    public const uint Version = 0x0007_0000;
     public const int RuntimeStateCount = 7;
 }
 
@@ -149,7 +149,7 @@ internal unsafe struct NativeComputeScoringConfiguration
     public double MaximumBaseImportance;
     public double MaximumPolicyMultiplier;
     public double CpuBaselineRatio;
-    public double WelfareUtilizationBaselinePercent;
+    public double WelfareBaseScore;
     public fixed ulong Reserved[2];
 }
 
@@ -171,7 +171,7 @@ internal unsafe struct NativeComputeScoringCapacity
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 112)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 104)]
 internal unsafe struct NativeComputeScoringGenerationEnvelope
 {
     public uint AbiVersion;
@@ -193,7 +193,6 @@ internal unsafe struct NativeComputeScoringGenerationEnvelope
     public double MemoryFreeRatio;
     public uint WelfareEligibleProcessCount;
     public uint Reserved1;
-    public double SoftwareBaseMean;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 88)]
@@ -261,7 +260,7 @@ internal unsafe struct NativeComputeScoringOutput
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 184)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 176)]
 internal unsafe struct NativeComputeScoringSnapshot
 {
     public uint AbiVersion;
@@ -287,7 +286,6 @@ internal unsafe struct NativeComputeScoringSnapshot
     public uint WelfareEligibleProcessCount;
     public uint Reserved0;
     public ulong Reserved;
-    public double SoftwareBaseMean;
     public double CpuWelfareMultiplier;
     public double MemoryWelfareMultiplier;
     public double CpuWelfareBonus;

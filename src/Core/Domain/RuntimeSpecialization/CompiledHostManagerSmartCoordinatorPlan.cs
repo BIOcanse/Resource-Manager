@@ -148,7 +148,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     int ReservationTimeoutMilliseconds,
     int MaximumActionsPerRealtimeTick,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SoftwareWelfare)]
-    double WelfareUtilizationBaselinePercent,
+    double WelfareBaseScore,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.StateMultipliers)]
     ImmutableArray<double> ProcessStateMultipliers,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.BaseScoreTiers)]
@@ -172,8 +172,8 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
         && FailureRetryMilliseconds > 0
         && ReservationTimeoutMilliseconds > 0
         && MaximumActionsPerRealtimeTick > 0
-        && double.IsFinite(WelfareUtilizationBaselinePercent)
-        && WelfareUtilizationBaselinePercent is > 0 and <= 100
+        && double.IsFinite(WelfareBaseScore)
+        && WelfareBaseScore is >= 0 and <= 100
         && ProcessStateMultipliers.Length == CompiledHostManagerSmartCoordinatorPlan.RuntimeStateCount
         && BaseScoreTiers.IsPublished
         && CpuAdapterPolicy.IsPublished

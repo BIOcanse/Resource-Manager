@@ -188,7 +188,7 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(3.75D, snapshot.WelfareBudget, precision: 10);
         Assert.Equal(1.875D, snapshot.WelfareShare, precision: 10);
         Assert.Equal(2U, snapshot.WelfareEligibleProcessCount);
-        var cpuBonus = 60D * (1D - 50D / 70D);
+        var cpuBonus = 60D * 0.5;
         Assert.Equal(cpuBonus, snapshot.CpuWelfareBonus, precision: 10);
         Assert.Equal(cpuBonus, snapshot.MemoryWelfareBonus, precision: 10);
         var emitted = outputs[..checked((int)snapshot.OutputCount)];
@@ -221,19 +221,6 @@ public sealed partial class NativeComputeScoringSessionTests
     }
 
     [Fact]
-    public void SoftwareMeanUsesTheActualNativeEntryAndRejectsInvalidBases()
-    {
-        var configuration = CreateConfiguration();
-        using var session = new NativeComputeScoringSession(in configuration, [1]);
-        Assert.Equal(60, session.CalculateSoftwareBaseMean([80, 40]));
-        Assert.Equal(40, session.CalculateSoftwareBaseMean([80, 40, 0]));
-        Assert.Equal(0, session.CalculateSoftwareBaseMean([]));
-        foreach (var value in new[] { -1D, 101D, double.NaN, double.PositiveInfinity })
-            Assert.Throws<InvalidDataException>(() => session.CalculateSoftwareBaseMean([60, value]));
-        Assert.Equal(60, session.CalculateSoftwareBaseMean([80, 40]));
-    }
-
-    [Fact]
     public void NotRunningProcessNeitherDilutesNorReceivesWelfare()
     {
         var configuration = CreateConfiguration();
@@ -259,7 +246,7 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(1U, snapshot.WelfareEligibleProcessCount);
         Assert.Equal(3.75D, snapshot.WelfareShare);
         var emitted = outputs[..checked((int)snapshot.OutputCount)];
-        Assert.Equal(50 + 60 * (1 - 50D / 70), Assert.Single(emitted, static row =>
+        Assert.Equal(50 + 60 * 0.5, Assert.Single(emitted, static row =>
             row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score, precision: 10);
         Assert.Equal(0D, Assert.Single(emitted, static row =>
             row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 20).Score);
@@ -286,7 +273,7 @@ public sealed partial class NativeComputeScoringSessionTests
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
         Assert.Equal(1.875D, snapshot.WelfareShare);
-        Assert.Equal(50 + 60 * (1 - 50D / 70), outputs[0].Score, precision: 10);
+        Assert.Equal(50 + 60 * 0.5, outputs[0].Score, precision: 10);
     }
 
     [Fact]
@@ -377,7 +364,7 @@ public sealed partial class NativeComputeScoringSessionTests
 
 
     private static NativeComputeScoringConfiguration CreateConfiguration(
-        double cpuBaselineRatio = 1, uint cpuCoreCount = 1, double welfareUtilizationBaselinePercent = 70)
+        double cpuBaselineRatio = 1, uint cpuCoreCount = 1, double welfareBaseScore = 60)
     {
         ReadOnlySpan<double> multipliers = [1, 1, 1, 1, 1, 1, 0];
         return NativeComputeScoringConfigurationWriter.Create(
@@ -391,7 +378,7 @@ public sealed partial class NativeComputeScoringSessionTests
             maximumPolicyMultiplier: 4,
             cpuBaselineRatio: cpuBaselineRatio,
             cpuCoreCount: cpuCoreCount,
-            welfareUtilizationBaselinePercent: welfareUtilizationBaselinePercent);
+            welfareBaseScore: welfareBaseScore);
     }
 
     private static NativeComputeScoringGenerationEnvelope CreateEnvelope(
@@ -416,8 +403,7 @@ public sealed partial class NativeComputeScoringSessionTests
             GpuRowCount = checked((uint)gpuCount),
             GpuAdapterCount = gpuAdapterCount,
             OutputCapacity = checked((uint)outputCapacity),
-            WelfareEligibleProcessCount = checked((uint)processCount),
-            SoftwareBaseMean = 60
+            WelfareEligibleProcessCount = checked((uint)processCount)
         };
     }
 

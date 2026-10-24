@@ -146,7 +146,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.GameStartGraceMs => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.GameStartGraceMilliseconds)),
             BackendFreedomPointPositions.RequiredConsecutiveDecisions => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.RequiredConsecutiveDecisions)),
             BackendFreedomPointPositions.FailureRetryMs => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.FailureRetryMilliseconds)),
-            BackendFreedomPointPositions.SoftwareWelfare => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.WelfareUtilizationBaselinePercent)),
+            BackendFreedomPointPositions.SoftwareWelfare => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.WelfareBaseScore)),
             BackendFreedomPointPositions.StateMultipliers => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.ProcessStateMultipliers)),
             BackendFreedomPointPositions.BaseScoreTiers => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.BaseScoreTiers)),
             _ => throw new InvalidDataException($"Active freedom point '{point.Path}' has no compiled host member.")

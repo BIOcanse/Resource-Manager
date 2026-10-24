@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0006_0000;
+pub const abi_version: u32 = 0x0007_0000;
 pub const runtime_state_count: usize = 7;
 
 pub const Status = enum(i32) {
@@ -114,7 +114,7 @@ pub const Config = extern struct {
     maximum_base_importance: f64,
     maximum_policy_multiplier: f64,
     cpu_baseline_ratio: f64,
-    welfare_utilization_baseline_percent: f64,
+    welfare_base_score: f64,
     reserved: [2]u64,
 };
 
@@ -154,7 +154,6 @@ pub const GenerationEnvelope = extern struct {
     memory_free_ratio: f64,
     welfare_eligible_process_count: u32,
     reserved1: u32,
-    software_base_mean: f64,
 };
 
 pub const ProcessInput = extern struct {
@@ -238,7 +237,6 @@ pub const Snapshot = extern struct {
     welfare_eligible_process_count: u32,
     reserved0: u32,
     reserved: u64,
-    software_base_mean: f64,
     cpu_welfare_multiplier: f64,
     memory_welfare_multiplier: f64,
     cpu_welfare_bonus: f64,
@@ -258,8 +256,8 @@ pub fn validateConfig(config: *const Config) bool {
         !finitePositive(config.maximum_base_importance) or
         !finitePositive(config.maximum_policy_multiplier) or
         !finitePositive(config.cpu_baseline_ratio) or config.cpu_baseline_ratio > 1 or
-        !finitePositive(config.welfare_utilization_baseline_percent) or
-        config.welfare_utilization_baseline_percent > 100 or
+        !finiteNonNegative(config.welfare_base_score) or
+        config.welfare_base_score > config.maximum_base_importance or
         !finitePositive(1 / config.cpu_baseline_ratio) or
         !allZero(config.reserved[0..])) return false;
     for (config.cpu_state_multipliers) |value| {

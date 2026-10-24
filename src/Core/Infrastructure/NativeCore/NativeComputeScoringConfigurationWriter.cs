@@ -13,7 +13,7 @@ internal static unsafe class NativeComputeScoringConfigurationWriter
         double maximumPolicyMultiplier,
         double cpuBaselineRatio,
         uint cpuCoreCount,
-        double welfareUtilizationBaselinePercent)
+        double welfareBaseScore)
     {
         var configuration = new NativeComputeScoringConfiguration
         {
@@ -25,7 +25,7 @@ internal static unsafe class NativeComputeScoringConfigurationWriter
             MaximumGpuRowCount = maximumGpuRowCount,
             MaximumOutputCount = maximumOutputCount,
             CpuBaselineRatio = cpuBaselineRatio,
-            WelfareUtilizationBaselinePercent = welfareUtilizationBaselinePercent,
+            WelfareBaseScore = welfareBaseScore,
             CpuCoreCount = cpuCoreCount,
             MaximumBaseImportance = maximumBaseImportance,
             MaximumPolicyMultiplier = maximumPolicyMultiplier

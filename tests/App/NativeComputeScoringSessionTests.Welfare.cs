@@ -4,54 +4,71 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class NativeComputeScoringSessionTests
 {
-    [Theory]
-    [InlineData(0, 1)]
-    [InlineData(17.5, 0.75)]
-    [InlineData(35, 0.5)]
-    [InlineData(52.5, 0.25)]
-    [InlineData(70, 0)]
-    [InlineData(85, 0)]
-    [InlineData(100, 0)]
-    public void WelfareCutoffControlsTheActualNativeBonus(double usage, double expectedRatio)
+    [Fact]
+    public void WelfareTracksDirectFreeCapacityWithoutAKnee()
     {
-        var configuration = CreateConfiguration();
+        var configuration = CreateConfiguration(welfareBaseScore: 100);
         using var session = new NativeComputeScoringSession(in configuration, [1]);
         var process = CreateProcess(1, 10, 100, 1, 0);
         var outputs = new NativeComputeScoringOutput[4];
         var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length,
             NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-        envelope.CpuFreeRatio = 1 - usage / 100;
-        envelope.MemoryFreeRatio = 1 - usage / 100;
-        var snapshot = default(NativeComputeScoringSnapshot);
-
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
-            ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
-
-        Assert.Equal(expectedRatio, snapshot.CpuWelfareMultiplier, 10);
-        Assert.Equal(expectedRatio, snapshot.MemoryWelfareMultiplier, 10);
-        Assert.Equal(60 * expectedRatio, snapshot.CpuWelfareBonus, 10);
-        Assert.Equal(60 * expectedRatio, snapshot.MemoryWelfareBonus, 10);
-        Assert.Equal(3U, snapshot.OutputCount);
-        foreach (var output in outputs[..checked((int)snapshot.OutputCount)])
-            Assert.Equal(60 * expectedRatio, output.Score, 10);
+        var previous = 101D;
+        for (var step = 0; step <= 1000; step++)
+        {
+            var free = 1 - step / 1000D;
+            envelope.RoundNumber = checked((ulong)step + 1);
+            envelope.CpuFreeRatio = free;
+            envelope.MemoryFreeRatio = free;
+            var snapshot = default(NativeComputeScoringSnapshot);
+            Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
+                ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
+            Assert.Equal(free, snapshot.CpuWelfareMultiplier, 10);
+            Assert.Equal(free, snapshot.MemoryWelfareMultiplier, 10);
+            Assert.Equal(100 * free, snapshot.CpuWelfareBonus, 10);
+            Assert.Equal(100 * free, snapshot.MemoryWelfareBonus, 10);
+            Assert.True(snapshot.CpuWelfareBonus < previous);
+            if (step > 0) Assert.Equal(0.1, previous - snapshot.CpuWelfareBonus, 10);
+            previous = snapshot.CpuWelfareBonus;
+            Assert.Equal(3U, snapshot.OutputCount);
+            foreach (var output in outputs[..checked((int)snapshot.OutputCount)])
+                Assert.Equal(100 * free, output.Score, 10);
+        }
     }
 
     [Theory]
-    [InlineData(0)]
     [InlineData(-1)]
     [InlineData(101)]
-    [InlineData(140)]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void NativeConfigurationRejectsInvalidWelfareCutoff(double cutoff)
+    public void NativeConfigurationRejectsInvalidWelfareBase(double welfareBase)
     {
-        var configuration = CreateConfiguration(welfareUtilizationBaselinePercent: cutoff);
+        var configuration = CreateConfiguration(welfareBaseScore: welfareBase);
         Assert.Throws<InvalidOperationException>(() => new NativeComputeScoringSession(in configuration, [1]));
     }
 
     [Theory]
-    [InlineData(35, 0, 30, 60)]
-    [InlineData(0, 35, 60, 30)]
+    [InlineData(0)]
+    [InlineData(100)]
+    public void WelfareBaseAcceptsBothImportanceBounds(double welfareBase)
+    {
+        var configuration = CreateConfiguration(welfareBaseScore: welfareBase);
+        using var session = new NativeComputeScoringSession(in configuration, [1]);
+        var process = CreateProcess(1, 10, 100, 1, 0);
+        var outputs = new NativeComputeScoringOutput[4];
+        var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length,
+            NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
+        envelope.CpuFreeRatio = envelope.MemoryFreeRatio = 1;
+        var snapshot = default(NativeComputeScoringSnapshot);
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
+            ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
+        Assert.Equal(welfareBase, snapshot.CpuWelfareBonus);
+        Assert.Equal(welfareBase, snapshot.MemoryWelfareBonus);
+    }
+
+    [Theory]
+    [InlineData(35, 0, 39, 60)]
+    [InlineData(0, 35, 60, 39)]
     [InlineData(100, 0, 0, 60)]
     [InlineData(0, 100, 60, 0)]
     public void MemoryUsesCpuRawScoreAndItsOwnWelfareWithoutApplyingPolicyTwice(
@@ -81,9 +98,9 @@ public sealed partial class NativeComputeScoringSessionTests
     }
 
     [Fact]
-    public void ReplacementSessionCutoffChangesWelfareWithoutChangingRawScore()
+    public void ReplacementSessionBaseChangesWelfareWithoutChangingRawScore()
     {
-        var configuration = CreateConfiguration(welfareUtilizationBaselinePercent: 100);
+        var configuration = CreateConfiguration(welfareBaseScore: 100);
         using var session = new NativeComputeScoringSession(in configuration, [1]);
         var process = CreateProcess(1, 10, 100, 1, 50);
         var outputs = new NativeComputeScoringOutput[4];
@@ -94,15 +111,15 @@ public sealed partial class NativeComputeScoringSessionTests
         var snapshot = default(NativeComputeScoringSnapshot);
         Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
-        Assert.Equal(89, outputs[0].Score, 10);
+        Assert.Equal(115, outputs[0].Score, 10);
 
         configuration.Generation = 2;
-        configuration.WelfareUtilizationBaselinePercent = 70;
+        configuration.WelfareBaseScore = 60;
         using var replacement = new NativeComputeScoringSession(in configuration, [1]);
         envelope.RoundNumber = 2;
         Assert.Equal(NativeComputeScoringStatus.Ok, replacement.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
-        Assert.Equal(80, outputs[0].Score, 10);
+        Assert.Equal(89, outputs[0].Score, 10);
     }
 
     [Fact]
