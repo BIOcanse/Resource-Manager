@@ -1,4 +1,4 @@
-import type { ControlSetting, ControlApplyOutcome } from "./controlTypes.ts";
+import type { ControlSetting, ControlApplyOutcome, ControlStateView } from "./controlTypes.ts";
 
 /**
  * 控制面的状态机：期望状态和实际状态对不对得上。
@@ -116,4 +116,12 @@ export function hasPendingChanges(
     const previous = find(saved, setting.capabilityId);
     return !previous || !sameValue(setting, previous);
   });
+}
+
+/** Retry is derived from authoritative state, independent of the draft. */
+export function canRetryControlObject(state: ControlStateView | null, objectId: string): boolean {
+  return !!state && ((state.desired.pendingReleases ?? []).some(target => target.objectId === objectId && target.settings.length > 0)
+    || state.lastApply.outcomes.some(outcome => outcome.objectId === objectId && outcome.status !== "applied"
+      && state.desired.objects.some(target => target.objectId === objectId
+        && target.settings.some(setting => setting.capabilityId === outcome.capabilityId))));
 }

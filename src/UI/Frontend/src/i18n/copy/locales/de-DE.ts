@@ -78,6 +78,24 @@ const deDeAppCopy: AppCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "Erneut versuchen",
+      noticeReadFailed: "Der Status des Steuerungshinweises konnte nicht gelesen werden. Erneut lesen.",
+      noticeAckFailed: "Der Steuerungshinweis konnte nicht bestätigt werden. Bitte erneut versuchen.",
+      accessLoading: "Zugriffsstufe wird gelesen.",
+      accessReadFailed: "Die Zugriffsstufe konnte nicht gelesen werden. Erneut lesen.",
+      objectMissing: "Das Gerät ist derzeit nicht vorhanden.",
+      capabilityMissing: "Diese Funktion ist auf dem Gerät nicht vorhanden.",
+      writerMissing: "Schreibzugriff ist für diesen Eintrag noch nicht implementiert.",
+      backendUnavailable: "Der Schreibkanal ist derzeit nicht verfügbar.",
+      releaseFailed: "Diese Steuerung konnte nicht freigegeben werden.",
+      unitMismatch: "Die Einheit der Einstellung passt nicht zum Gerät.",
+      writeFailed: "Der Schreibvorgang ist fehlgeschlagen.",
+      writeRejected: "Das Gerät hat diese Einstellung abgelehnt. Details stehen in der Diagnose.",
+      readOnly: "Das aktuelle Startprofil erlaubt nur Lesezugriff.",
+      accessRequired: (level: string) => `Dieser Eintrag erfordert die Zugriffsstufe ${level}.`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `Dieser Wert muss zwischen ${minimum} und ${maximum} ${unit} liegen.`
+    },
     reassertionInterval: "Intervall für erneutes Anwenden (Sekunden)",
     stateUnavailable: "Die bestätigten Steuerungseinstellungen sind nicht verfügbar. Anwenden ist ausgesetzt.",
     retryRead: "Erneut lesen",

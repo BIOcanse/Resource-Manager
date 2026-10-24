@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { controlObjectsDecoder, getControlObjectCurve, setControlObjectSettings, controlHardwareRequestTimeoutMs } from "../src/features/control/controlApi.ts";
+import { controlObjectsDecoder, controlStateDecoder, getControlObjectCurve, setControlObjectSettings, retryControlObject, controlHardwareRequestTimeoutMs } from "../src/features/control/controlApi.ts";
 import { curveSettingFromRead, initialSettingFor } from "../src/features/control/controlInitialSetting.ts";
 import { canConfigureRuntimePlacement } from "../src/components/gpuPlacementTargetOptions.ts";
 import type { ControlCapability } from "../src/features/control/controlTypes.ts";
@@ -49,3 +49,16 @@ assert.deepEqual(curveSettingFromRead("fan.curve", [
     { temperatureCelsius: 80, percent: 73 }
   ]
 }, "Editable points derive only from a confirmed firmware table");
+
+const retryWire = { desired: { objects: [], pendingReleases: [{ objectId: "fan:0", settings: [{ capabilityId: "fan.duty", number: 40 }] }] },
+  lastApply: { outcomes: [{ objectId: "fan:0", capabilityId: "fan.duty", status: "failed", message: "diagnostic",
+    reason: { code: "control-out-of-range", arguments: { minimum: 20, maximum: 80, unit: "%" } } }], appliedAt: "" } };
+const decodedRetry = controlStateDecoder.decode(retryWire);
+assert.equal(decodedRetry.desired.pendingReleases?.[0].settings[0].number, 40);
+assert.deepEqual(decodedRetry.lastApply.outcomes[0].reason?.arguments, { requiredAccessLevel: null, minimum: 20, maximum: 80, unit: "%" });
+assert.throws(() => controlStateDecoder.decode({ ...retryWire, lastApply: { ...retryWire.lastApply,
+  outcomes: [{ ...retryWire.lastApply.outcomes[0], reason: { code: "control-out-of-range", arguments: { minimum: "20" } } }] } }));
+const retryRequests: unknown[] = [];
+await retryControlObject({ request: async <T>(descriptor: unknown): Promise<T> => { retryRequests.push(descriptor); return null as T; } }, "fan:0");
+assert.equal((retryRequests[0] as { url: string }).url, "/api/control/state/fan%3A0/retry");
+assert.deepEqual((retryRequests[0] as { request: unknown }).request, { method: "POST" }, "Explicit retry contains no draft body");

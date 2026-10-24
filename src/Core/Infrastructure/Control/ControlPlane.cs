@@ -21,7 +21,6 @@ public sealed class ControlPlane(
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);
     private ControlApplyReport lastApply = ControlApplyReport.Empty;
-    private ControlDesiredState applied = ControlDesiredState.Empty;
     private bool initialized;
 
     private bool CanMutate => capabilities is null || capabilities.Allows(
@@ -162,7 +161,7 @@ public sealed class ControlPlane(
     }
 
     private async Task<ControlStateView> ApplyStoredAsync(
-        ControlDesiredState next, CancellationToken cancellationToken, string? objectId = null)
+        ControlDesiredState next, CancellationToken cancellationToken, string? objectId = null, bool retryOnly = false)
     {
         var releases = next.PendingReleases.Where(target => objectId is null || target.ObjectId == objectId).ToArray();
         var releaseReport = releases.Length == 0
@@ -180,9 +179,21 @@ public sealed class ControlPlane(
         }
         var selected = objectId is null ? next : new ControlDesiredState(
             next.Objects.Where(target => target.ObjectId == objectId).ToArray());
+        if (retryOnly)
+        {
+            var failed = ReadLastApply().Outcomes.Where(outcome => outcome.ObjectId == objectId
+                && outcome.Status is ControlApplyStatuses.Failed or ControlApplyStatuses.Unsupported)
+                .Select(outcome => outcome.CapabilityId).ToHashSet(StringComparer.Ordinal);
+            selected = new(selected.Objects.Select(target => target with
+                { Settings = target.Settings.Where(setting => failed.Contains(setting.CapabilityId)).ToArray() })
+                .Where(target => target.Settings.Count > 0).ToArray());
+        }
         var applied = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
-        UpdateApplied(selected, applied, releaseReport);
-        var retained = ReadLastApply().Outcomes.Where(outcome => objectId is not null && outcome.ObjectId != objectId);
+        var replaced = releaseReport.Outcomes.Concat(applied.Outcomes)
+            .Select(outcome => (outcome.ObjectId, outcome.CapabilityId)).ToHashSet();
+        var retained = ReadLastApply().Outcomes.Where(outcome => retryOnly
+            ? !replaced.Contains((outcome.ObjectId, outcome.CapabilityId))
+            : objectId is not null && outcome.ObjectId != objectId);
         var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).ToArray(), DateTimeOffset.UtcNow);
         WriteLastApply(report);
         return new ControlStateView(next, report);
@@ -195,7 +206,8 @@ public sealed class ControlPlane(
         {
             if (!CanMutate) return ReadLastApply();
             var previous = ReadLastApply();
-            var selected = new ControlDesiredState(applied.Objects.Select(target => new ControlObjectDesiredState(target.ObjectId,
+            var saved = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var selected = new ControlDesiredState(saved.Objects.Select(target => new ControlObjectDesiredState(target.ObjectId,
                 target.Settings.Where(setting => previous.Outcomes.Any(outcome => outcome.ObjectId == target.ObjectId
                     && outcome.CapabilityId == setting.CapabilityId && outcome.Status == ControlApplyStatuses.Applied)).ToArray()))
                 .Where(target => target.Settings.Count > 0).ToArray());
@@ -212,18 +224,36 @@ public sealed class ControlPlane(
         }
     }
 
-    private void UpdateApplied(ControlDesiredState requested, ControlApplyReport written, ControlApplyReport released)
+    public async Task ForgetInstanceAsync(string instanceId, CancellationToken cancellationToken)
     {
-        var values = applied.Objects.SelectMany(target => target.Settings.Select(setting => (target.ObjectId, Setting: setting)))
-            .ToDictionary(value => (value.ObjectId, value.Setting.CapabilityId), value => value.Setting);
-        foreach (var result in released.Outcomes.Where(result => result.Status == ControlApplyStatuses.Applied))
-            values.Remove((result.ObjectId, result.CapabilityId));
-        foreach (var target in requested.Objects)
-            foreach (var setting in target.Settings)
-                if (written.Outcomes.Any(result => result.ObjectId == target.ObjectId && result.CapabilityId == setting.CapabilityId
-                    && result.Status == ControlApplyStatuses.Applied)) values[(target.ObjectId, setting.CapabilityId)] = setting;
-        applied = new(values.GroupBy(value => value.Key.ObjectId).Select(group =>
-            new ControlObjectDesiredState(group.Key, group.Select(value => value.Value).ToArray())).ToArray());
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!CanMutate) throw new InvalidOperationException("startup-profile-read-only");
+            var saved = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            await store.SaveAsync(saved with
+            {
+                Objects = saved.Objects.Where(target => target.ObjectId != instanceId).ToArray(),
+                PendingReleases = saved.PendingReleases.Where(target => target.ObjectId != instanceId).ToArray()
+            }, cancellationToken).ConfigureAwait(false);
+            var previous = ReadLastApply();
+            WriteLastApply(previous with { Outcomes = previous.Outcomes.Where(outcome => outcome.ObjectId != instanceId).ToArray() });
+        }
+        finally { operations.Release(); }
+    }
+
+    public async Task<ControlStateView> RetryObjectAsync(string objectId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(objectId);
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var saved = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (await RejectMutationAsync(saved, cancellationToken).ConfigureAwait(false) is { } rejected) return rejected;
+            return await ApplyStoredAsync(saved, cancellationToken, objectId, retryOnly: true).ConfigureAwait(false);
+        }
+        finally { operations.Release(); }
     }
 
     private ControlApplyReport ReadLastApply()

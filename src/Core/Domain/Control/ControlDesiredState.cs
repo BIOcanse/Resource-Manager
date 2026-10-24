@@ -59,6 +59,11 @@ public sealed record ControlDesiredState(
             StringComparison.Ordinal));
 }
 
+/// <summary>Stable presentation reason with typed parameters; Message remains diagnostic detail.</summary>
+public sealed record ControlApplyReason(string Code, ControlReasonArguments? Arguments = null);
+public sealed record ControlReasonArguments(
+    string? RequiredAccessLevel = null, double? Minimum = null, double? Maximum = null, string? Unit = null);
+
 /// <summary>施加一项设定之后的结果。</summary>
 public static class ControlApplyStatuses
 {
@@ -82,6 +87,8 @@ public sealed record ControlApplyOutcome(
 {
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public ResourceManager.ReadWrite.FieldWriteReceipt? Evidence { get; init; }
+
+    public ControlApplyReason? Reason { get; init; }
 }
 
 /// <summary>一次施加的整体结果。</summary>

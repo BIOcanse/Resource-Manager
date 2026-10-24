@@ -71,6 +71,24 @@ export const zhShellCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "重试",
+      noticeReadFailed: "无法读取控制须知状态。请重新读取。",
+      noticeAckFailed: "确认控制须知失败。请重试。",
+      accessLoading: "正在读取调节权限。",
+      accessReadFailed: "无法读取调节权限。请重新读取。",
+      objectMissing: "设备当前不在场。",
+      capabilityMissing: "设备没有这一项能力。",
+      writerMissing: "此项尚未接入写入通道。",
+      backendUnavailable: "此项写入通道当前不可用。",
+      releaseFailed: "未能释放此项控制。",
+      unitMismatch: "设定的单位与设备不匹配。",
+      writeFailed: "写入失败。",
+      writeRejected: "设备拒绝了此项设定。详情见诊断。",
+      readOnly: "当前启动配置只允许读取。",
+      accessRequired: (level: string) => `此项需要 ${level} 调节权限。`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `此项必须介于 ${minimum} 和 ${maximum} ${unit} 之间。`
+    },
     reassertionInterval: "重新应用间隔（秒）",
     stateUnavailable: "尚未读到权威控制设置，暂时不能应用。",
     retryRead: "重新读取",

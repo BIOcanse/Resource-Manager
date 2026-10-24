@@ -78,6 +78,24 @@ const frFrAppCopy: AppCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "Réessayer",
+      noticeReadFailed: "Impossible de lire l’état de l’avis de contrôle. Relisez-le.",
+      noticeAckFailed: "Impossible de confirmer l’avis de contrôle. Réessayez.",
+      accessLoading: "Lecture du niveau d’accès au contrôle.",
+      accessReadFailed: "Impossible de lire le niveau d’accès au contrôle. Relisez-le.",
+      objectMissing: "Le périphérique est actuellement absent.",
+      capabilityMissing: "Cette fonction est absente du périphérique.",
+      writerMissing: "L’écriture n’est pas encore implémentée pour cet élément.",
+      backendUnavailable: "Le canal d’écriture est actuellement indisponible.",
+      releaseFailed: "Impossible de libérer ce contrôle.",
+      unitMismatch: "L’unité du réglage ne correspond pas au périphérique.",
+      writeFailed: "L’écriture a échoué.",
+      writeRejected: "Le périphérique a refusé ce réglage. Consultez les diagnostics.",
+      readOnly: "Le profil de démarrage actuel autorise uniquement la lecture.",
+      accessRequired: (level: string) => `Cet élément nécessite le niveau d’accès ${level}.`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `Cette valeur doit être comprise entre ${minimum} et ${maximum} ${unit}.`
+    },
     reassertionInterval: "Intervalle de réapplication (secondes)",
     stateUnavailable: "Les réglages de contrôle confirmés sont indisponibles. Leur application est suspendue.",
     retryRead: "Relire",

@@ -78,6 +78,24 @@ const koKrAppCopy: AppCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "다시 시도",
+      noticeReadFailed: "제어 안내 상태를 읽을 수 없습니다. 다시 읽어 주세요.",
+      noticeAckFailed: "제어 안내를 확인 처리하지 못했습니다. 다시 시도해 주세요.",
+      accessLoading: "제어 접근 수준을 읽는 중입니다.",
+      accessReadFailed: "제어 접근 수준을 읽을 수 없습니다. 다시 읽어 주세요.",
+      objectMissing: "장치가 현재 연결되어 있지 않습니다.",
+      capabilityMissing: "장치에 이 기능이 없습니다.",
+      writerMissing: "이 항목의 쓰기 기능은 아직 구현되지 않았습니다.",
+      backendUnavailable: "현재 쓰기 채널을 사용할 수 없습니다.",
+      releaseFailed: "이 제어를 해제하지 못했습니다.",
+      unitMismatch: "설정 단위가 장치와 일치하지 않습니다.",
+      writeFailed: "쓰기에 실패했습니다.",
+      writeRejected: "장치가 이 설정을 거부했습니다. 자세한 내용은 진단을 확인하세요.",
+      readOnly: "현재 시작 프로필은 읽기만 허용합니다.",
+      accessRequired: (level: string) => `이 항목에는 ${level} 제어 접근 권한이 필요합니다.`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `이 값은 ${minimum}~${maximum} ${unit} 범위여야 합니다.`
+    },
     reassertionInterval: "다시 적용 간격(초)",
     stateUnavailable: "확정된 제어 설정을 읽을 수 없어 적용이 중지되었습니다.",
     retryRead: "다시 읽기",

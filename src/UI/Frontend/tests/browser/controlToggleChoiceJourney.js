@@ -12,8 +12,11 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   let settings = [];
   let outcomes = [];
   const writes = [];
+  const retries = [];
+  let failWrite = true;
   const state = () => ({
-    desired: { objects: settings.length ? [{ objectId, settings }] : [] },
+    desired: { objects: settings.length ? [{ objectId, settings }] : [],
+      pendingReleases: outcomes.some(outcome => outcome.status === "failed") ? [{ objectId, settings: [{ capabilityId, toggle: true }] }] : [] },
     lastApply: { outcomes, appliedAt: new Date().toISOString() }
   });
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
@@ -25,15 +28,21 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
     }]
   } }));
   await page.route("**/api/control/state**", route => {
+    if (route.request().method() === "POST") {
+      retries.push(route.request().url());
+      outcomes = settings.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "applied", message: null }));
+      return route.fulfill({ json: state() });
+    }
     if (route.request().method() !== "PUT") return route.fulfill({ json: state() });
     const next = route.request().postDataJSON();
     writes.push(next);
     const released = settings.filter(previous => !next.some(entry => entry.capabilityId === previous.capabilityId));
     settings = next;
     outcomes = [
-      ...next.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "applied", message: null })),
-      ...released.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "failed", message: "Restore failed" }))
+      ...next.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: failWrite ? "failed" : "applied", message: null, reason: failWrite ? { code: "control-write-failed" } : null })),
+      ...released.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "failed", message: "Restore failed", reason: { code: "control-release-failed" } }))
     ];
+    failWrite = false;
     return route.fulfill({ json: state() });
   });
 
@@ -47,7 +56,7 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   const apply = async () => {
     const before = writes.length;
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    await page.waitForFunction(() => document.querySelector(".control-object-actions button:last-child")?.disabled === true);
+    await page.waitForFunction(() => { const button = document.querySelector(".control-object-actions button:last-child"); return button?.disabled === true || button?.textContent === "重试"; });
     assert.equal(writes.length, before + 1, "Apply must send exactly one write");
     return writes.at(-1);
   };
@@ -59,6 +68,15 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
 
   await group.getByRole("radio", { name: "关闭", exact: true }).click();
   assert.deepEqual(await apply(), [{ capabilityId, toggle: false }], "Off is saved as toggle=false, not as an absent setting");
+
+  const retrySaved = page.getByRole("button", { name: "重试", exact: true });
+  await retrySaved.waitFor();
+  assert.equal(await retrySaved.isEnabled(), true, "A failed saved setting enables retry without a draft change");
+  const writesBeforeRetry = writes.length;
+  await retrySaved.click();
+  await page.waitForFunction(() => document.querySelector(".control-object-actions button:last-child")?.disabled === true);
+  assert.equal(retries.length, 1);
+  assert.equal(writes.length, writesBeforeRetry, "Retry never submits a draft");
 
   group = await openControl();
   await group.getByRole("radio", { name: "关闭", exact: true }).waitFor();
@@ -72,6 +90,10 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   assert.deepEqual(await apply(), [], "Return to firmware removes the setting instead of writing false");
   const tag = page.locator(".control-capability-tag").filter({ hasText: "没应用上" });
   await tag.waitFor();
-  assert.equal(await tag.getAttribute("title"), "Restore failed", "A failed release shows the backend reason");
-  return { writes };
+  assert.equal(await tag.getAttribute("title"), "未能释放此项控制。", "A failed release shows the localized stable reason");
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".control-object-actions button:last-child")?.disabled === true);
+  assert.equal(retries.length, 2, "Pending release can be retried explicitly without a value change");
+  assert.equal(writes.length, 3);
+  return { writes, retries: retries.length };
 }

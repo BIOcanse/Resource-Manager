@@ -73,3 +73,17 @@ assert.equal(hasPendingChanges([{ ...setting(40), unit: "W" }], [{ ...setting(40
 assert.equal(controlItemStatusOf(capability, [], [setting(40)], [], false).status, "edited");
 assert.equal(controlItemStatusOf(capability, [], [], [outcome("failed", "release failed")], false).status, "failed");
 console.log("controlStateMachine: ok");
+
+const { canRetryControlObject } = await import("../src/features/control/controlStateMachine.ts");
+const retrySetting = { capabilityId: "bad", toggle: false };
+for (const status of ["failed", "unsupported"] as const) {
+  const state = { desired: { objects: [{ objectId: "a", settings: [retrySetting] }] },
+    lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status, message: "diagnostic" }], appliedAt: "" } };
+  assert.equal(hasPendingChanges([retrySetting], state.desired.objects[0].settings), false);
+  assert.equal(canRetryControlObject(state, "a"), true);
+  assert.equal(canRetryControlObject(state, "b"), false);
+}
+assert.equal(canRetryControlObject({ desired: { objects: [], pendingReleases: [{ objectId: "a", settings: [retrySetting] }] },
+  lastApply: { outcomes: [], appliedAt: "" } }, "a"), true);
+assert.equal(canRetryControlObject({ desired: { objects: [{ objectId: "a", settings: [retrySetting] }] },
+  lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status: "applied", message: null }], appliedAt: "" } }, "a"), false);

@@ -87,5 +87,36 @@ export default async function controlAuditJourney(page, baseUrl) {
   await interval.fill("337");
   await interval.press("Tab");
   assert.equal(await interval.inputValue(), "337", "The interval is an editable Settings value");
-  return { unavailableBaselineBlocked: true, siblingSettingRetained: true, failedCurveUnavailable: true, visibilityLeaseReleased: true };
+  // Failure states must remain visible and must never invent acknowledgement or access.
+  let noticeAvailable = false;
+  let noticeWrites = 0;
+  let accessAvailable = false;
+  await page.route("**/api/control/notice", route => {
+    if (route.request().method() !== "GET") noticeWrites++;
+    return noticeAvailable ? route.fulfill({ json: { acknowledged: false } })
+      : route.fulfill({ status: 503, json: { error: "notice-read-failed" } });
+  });
+  await page.route("**/api/control/access-level", route => accessAvailable
+    ? route.fulfill({ json: { level: "root" } })
+    : route.fulfill({ status: 503, json: { error: "access-read-failed" } }));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();
+  const access = page.locator(".control-access-level");
+  await access.getByRole("alert").filter({ hasText: "无法读取调节权限" }).waitFor();
+  assert.equal(await access.locator('[role="radio"][aria-checked="true"]').count(), 0);
+  for (const radio of await access.getByRole("radio").all()) assert.equal(await radio.isDisabled(), true);
+  accessAvailable = true;
+  await access.getByRole("button", { name: "重新读取", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.control-access-level [role="radio"][aria-checked="true"]')?.textContent?.includes("root"));
+  await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "控制面", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "无法读取控制须知状态" }).waitFor();
+  assert.equal(await page.locator(".control-first-run-notice").count(), 0);
+  const beforeNoticeWrites = writes.length;
+  noticeAvailable = true;
+  await page.getByRole("button", { name: "重新读取", exact: true }).click();
+  await page.locator(".control-first-run-notice").waitFor();
+  assert.equal(noticeWrites, 0, "The journey never acknowledges the warranty notice");
+  assert.equal(writes.length, beforeNoticeWrites, "Retrying reads never applies a draft");
+  return { unavailableBaselineBlocked: true, siblingSettingRetained: true, failedCurveUnavailable: true,
+    visibilityLeaseReleased: true, accessReadFailureUnselectedAndDisabled: true, noticeReadFailureNotSeen: true };
 }

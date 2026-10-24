@@ -78,6 +78,24 @@ const esEsAppCopy: AppCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "Reintentar",
+      noticeReadFailed: "No se pudo leer el estado del aviso de control. Vuelva a leerlo.",
+      noticeAckFailed: "No se pudo confirmar el aviso de control. Reinténtelo.",
+      accessLoading: "Leyendo el nivel de acceso de control.",
+      accessReadFailed: "No se pudo leer el nivel de acceso de control. Vuelva a leerlo.",
+      objectMissing: "El dispositivo no está presente actualmente.",
+      capabilityMissing: "El dispositivo no dispone de esta función.",
+      writerMissing: "La escritura aún no está implementada para este elemento.",
+      backendUnavailable: "El canal de escritura no está disponible actualmente.",
+      releaseFailed: "No se pudo liberar este control.",
+      unitMismatch: "La unidad del ajuste no coincide con la del dispositivo.",
+      writeFailed: "La escritura ha fallado.",
+      writeRejected: "El dispositivo rechazó este ajuste. Consulte los diagnósticos.",
+      readOnly: "El perfil de inicio actual solo permite lectura.",
+      accessRequired: (level: string) => `Este elemento requiere el nivel de acceso ${level}.`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `Este valor debe estar entre ${minimum} y ${maximum} ${unit}.`
+    },
     reassertionInterval: "Intervalo de reaplicación (segundos)",
     stateUnavailable: "Los ajustes de control confirmados no están disponibles. La aplicación está suspendida.",
     retryRead: "Volver a leer",
