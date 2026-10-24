@@ -12,6 +12,103 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RuntimeProcessAttributionPipelineTests
 {
     [Theory]
+    [InlineData(@"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe", SoftwareKinds.Game)]
+    [InlineData(@"f:/STEAMLIBRARY/steamapps/common/Battlefield 6/bin/../BF6.EXE", SoftwareKinds.Game)]
+    [InlineData(@"D:\Other\bf6.exe", SoftwareKinds.RuntimeProduct)]
+    [InlineData(@"F:\SteamLibrary\steamapps\common\Battlefield 6\helper.exe", SoftwareKinds.RuntimeProduct)]
+    public void Match_WindowsGameListChangesOnlyCategoryForExactNormalizedPath(string path, string kind)
+    {
+        using var pipeline = CreatePipeline([], windowsGamePaths: new HashSet<string>
+            { @"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe" });
+        var result = pipeline.Match(new(46200, null, "bf6", path, false,
+            ProductName: "Battlefield 6", CompanyName: "EA Digital Illusions CE AB"));
+
+        Assert.Equal("runtime-product:ea-digital-illusions-ce-ab-battlefield-6", result.Id);
+        Assert.Equal("Battlefield 6", result.Name);
+        Assert.Equal(kind, result.Kind);
+        Assert.Equal(SoftwareDisplayKinds.Project(kind), result.DisplayKind);
+        Assert.Equal(kind == SoftwareKinds.Game ? 95d : 55d,
+            ResourceManager.App.Domain.Optimization.Scoring.OptimizationRuntimeScoringDefaults.BaseScoreForKind(result.Kind));
+        Assert.Equal(kind == SoftwareKinds.Game ? @"Windows GameConfigStore\Children\MatchedExeFullPath" : null,
+            result.CategorySource);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Match_WindowsCategoryOverridesCatalogButExplicitUserKindWins(bool explicitKind)
+    {
+        const string path = @"D:\Apps\WPS\wps.exe";
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "app-wps-office", "WPS Office", SoftwareKinds.Other, "test", ExecutableNames: ["wps.exe"]));
+        var software = CreateSoftware("catalog:app-wps-office", "My Office", []) with
+        {
+            HasExplicitKind = explicitKind,
+            Kind = SoftwareKinds.HighPerformance,
+            DisplayKind = SoftwareDisplayKinds.HighPerformance
+        };
+        using var pipeline = CreatePipeline([software], identityCatalog: catalog,
+            windowsGamePaths: new HashSet<string> { path });
+        var result = pipeline.Match(new(46201, null, "wps", path, false));
+        Assert.Equal(software.Id, result.Id);
+        Assert.Equal(software.Name, result.Name);
+        Assert.Equal(explicitKind ? SoftwareKinds.HighPerformance : SoftwareKinds.Game, result.Kind);
+        Assert.Equal(!explicitKind, result.CategorySource is not null);
+    }
+
+    [Fact]
+    public void Match_ExplicitManualClassificationWinsOverWindowsCategory()
+    {
+        var software = CreateSoftware("manual:word-memory", "WordMemory", [@"D:\Apps\WordMemory"]) with
+            { HasExplicitKind = true };
+        using var pipeline = CreatePipeline([software], windowsGamePaths: new HashSet<string>
+            { @"D:\Apps\WordMemory\WordMemory.WebHost.exe" });
+        var result = pipeline.Match(new(46202, null, "WordMemory.WebHost",
+            @"D:\Apps\WordMemory\WordMemory.WebHost.exe", false));
+        Assert.Equal(software.Id, result.Id);
+        Assert.Equal(SoftwareKinds.Other, result.Kind);
+        Assert.Null(result.CategorySource);
+    }
+
+    [Fact]
+    public void Match_AdaptedAndControlledRegistrationsWinOverWindowsCategory()
+    {
+        const string path = @"D:\Apps\WordMemory\WordMemory.WebHost.exe";
+        var gamePaths = new HashSet<string> { path };
+        var adapter = ScopedAdapter([new("WordMemory.WebHost", null, null)]);
+        using var adapted = CreatePipeline([], [adapter], windowsGamePaths: gamePaths);
+        var process = new RuntimeProcessIdentity(46203, null, "WordMemory.WebHost", path, false);
+        Assert.Equal(SoftwareKinds.Adapted, adapted.Match(process).Kind);
+        var registration = new ControlledSoftwareRegistration(Guid.NewGuid(), DateTimeOffset.UtcNow,
+            "test", ["WordMemory"], [@"D:\Apps\WordMemory"], [], [], "registered");
+        using var controlled = CreatePipeline([], windowsGamePaths: gamePaths, controlledRegistrations: [registration]);
+        Assert.Equal(SoftwareKinds.Controlled, controlled.Match(process).Kind);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Match_WindowsCategoryPreservesPackageAndRootIdentity(bool package)
+    {
+        const string path = @"D:\Games\Portable\client.exe";
+        var identity = new RuntimeSoftwareAttribution(package ? "package:game" : "runtime-root:game",
+            "Portable Game", package ? SoftwareKinds.RuntimePackage : SoftwareKinds.RuntimeRoot,
+            SoftwareDisplayKinds.General, [@"d:/games/portable"]);
+        using var pipeline = new RuntimeProcessAttributionPipeline([], [], [],
+            package ? new MatchedPackageIdentityResolver(identity) : new NullPackageIdentityResolver(),
+            new NullServiceIdentityResolver(),
+            package ? new NullRootIdentityResolver() : new MatchedRootIdentityResolver(identity),
+            new NullSystemProcessClassifier(), SoftwareIdentityCatalogTestData.Empty,
+            SoftwareIdentityCatalogTestData.Owner, new HashSet<string> { path });
+        var result = pipeline.Match(new(46204, null, "client", path, false));
+        Assert.Equal(identity.Id, result.Id);
+        Assert.Equal(identity.Name, result.Name);
+        Assert.Equal(identity.RootPaths, result.RootPaths);
+        Assert.Equal(SoftwareKinds.Game, result.Kind);
+        Assert.NotNull(result.CategorySource);
+    }
+
+    [Theory]
     [InlineData(false, SoftwareKinds.Other)]
     [InlineData(true, SoftwareKinds.Other)]
     [InlineData(true, SoftwareKinds.HighPerformance)]
@@ -395,18 +492,21 @@ public sealed class RuntimeProcessAttributionPipelineTests
         IReadOnlyList<AdapterSoftwareRegistration>? adapterRegistrations = null,
         ResourceManager.App.Application.SoftwareIdentity.ISoftwareIdentityCatalog? identityCatalog = null,
         IRuntimePackageIdentityResolver? packageResolver = null,
-        IRuntimeServiceIdentityResolver? serviceResolver = null)
+        IRuntimeServiceIdentityResolver? serviceResolver = null,
+        IReadOnlySet<string>? windowsGamePaths = null,
+        IReadOnlyList<ControlledSoftwareRegistration>? controlledRegistrations = null)
     {
         return new RuntimeProcessAttributionPipeline(
             software,
             adapterRegistrations ?? [],
-            Array.Empty<ControlledSoftwareRegistration>(),
+            controlledRegistrations ?? [],
             packageResolver ?? new NullPackageIdentityResolver(),
             serviceResolver ?? new NullServiceIdentityResolver(),
             new NullRootIdentityResolver(),
             new NullSystemProcessClassifier(),
             identityCatalog ?? SoftwareIdentityCatalogTestData.Empty,
-            SoftwareIdentityCatalogTestData.Owner);
+            SoftwareIdentityCatalogTestData.Owner,
+            windowsGamePaths);
     }
 
     private static SoftwareRecord CreateSoftware(string id, string name, IReadOnlyList<string> rootPaths)
@@ -428,6 +528,18 @@ public sealed class RuntimeProcessAttributionPipelineTests
     {
         public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
             => RuntimeAttributionObservation.NoMatch;
+    }
+
+    private sealed class MatchedPackageIdentityResolver(RuntimeSoftwareAttribution attribution) : IRuntimePackageIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+            => RuntimeAttributionObservation.Matched(attribution);
+    }
+
+    private sealed class MatchedRootIdentityResolver(RuntimeSoftwareAttribution attribution) : IRuntimeRootIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+            => RuntimeAttributionObservation.Matched(attribution);
     }
 
     private sealed class UnavailablePackageIdentityResolver : IRuntimePackageIdentityResolver

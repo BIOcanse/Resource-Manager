@@ -26,7 +26,8 @@ public sealed partial class SoftwareRegistryView
             return record;
         }
 
-        var projectedKind = ResolvePolicyProjectedKind(group) ?? record.Kind;
+        var policyKind = ResolvePolicyProjectedKind(group);
+        var projectedKind = policyKind ?? record.Kind;
         var projectedDisplayKind = projectedKind switch
         {
             SoftwareKinds.Game => SoftwareDisplayKinds.Game,
@@ -43,6 +44,7 @@ public sealed partial class SoftwareRegistryView
         return record with
         {
             Kind = projectedKind,
+            HasExplicitKind = record.HasExplicitKind || policyKind is not null,
             DisplayKind = projectedDisplayKind,
             Sources = sources,
             RootPaths = roots,

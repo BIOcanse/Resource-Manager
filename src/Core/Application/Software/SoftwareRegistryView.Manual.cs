@@ -14,7 +14,7 @@ public sealed partial class SoftwareRegistryView
             records.RemoveAll(record => replacedRecords.Contains(record));
             records.Add(ToManualSoftwareRecord(
                 manualRecord,
-                ResolveMergedSoftwareIdentityId(replacedRecords)));
+                ResolveMergedSoftwareIdentityId(replacedRecords)) with { HasExplicitKind = true });
         }
     }
 

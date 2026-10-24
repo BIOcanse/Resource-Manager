@@ -91,6 +91,7 @@ public sealed class SoftwareRegistryViewTests
         var record = Assert.Single(await view.GetSoftwareAsync(CancellationToken.None), item => item.Id == softwareId);
 
         Assert.Equal(SoftwareKinds.HighPerformance, record.Kind);
+        Assert.True(record.HasExplicitKind);
         Assert.Equal("game-skyrim-special-edition", record.SoftwareIdentityId);
         Assert.Contains(record.Sources, static source => source.StartsWith("软件身份目录 1.0.0", StringComparison.Ordinal));
     }
@@ -145,6 +146,7 @@ public sealed class SoftwareRegistryViewTests
             item => item.Id == manualRecord.Id);
 
         Assert.Equal(manualRecord.Id, record.Id);
+        Assert.True(record.HasExplicitKind);
         Assert.Equal("game-skyrim-special-edition", record.SoftwareIdentityId);
     }
 
@@ -201,11 +203,13 @@ public sealed class SoftwareRegistryViewTests
 
         var chronicon = Assert.Single(records, record => record.Id == chroniconId);
         Assert.Equal(SoftwareKinds.Game, chronicon.Kind);
+        Assert.True(chronicon.HasExplicitKind);
         Assert.Equal(SoftwareDisplayKinds.Game, chronicon.DisplayKind);
         Assert.Equal([@"D:\Games\Steam\steamapps\common\Chronicon"], chronicon.RootPaths);
 
         var steam = Assert.Single(records, record => record.Id == "windows-installed:steam");
         Assert.Equal(SoftwareKinds.Other, steam.Kind);
+        Assert.False(steam.HasExplicitKind);
     }
 
     [Fact]

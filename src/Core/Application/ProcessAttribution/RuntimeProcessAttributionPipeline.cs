@@ -21,7 +21,8 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         IRuntimeRootIdentityResolver rootIdentityResolver,
         IRuntimeSystemProcessClassifier systemClassifier,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
-        HostManagerSoftwareIdentityOwner softwareIdentityOwner)
+        HostManagerSoftwareIdentityOwner softwareIdentityOwner,
+        IReadOnlySet<string>? windowsGamePaths = null)
     {
         resolver = new NativeRuntimeProcessAttributionResolver(
             softwareRecords,
@@ -32,7 +33,8 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             rootIdentityResolver,
             systemClassifier,
             softwareIdentityCatalog,
-            softwareIdentityOwner);
+            softwareIdentityOwner,
+            windowsGamePaths);
     }
 
     public RuntimeSoftwareAttribution Match(RuntimeProcessIdentity process)

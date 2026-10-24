@@ -46,6 +46,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     private readonly IRuntimeRootIdentityResolver rootResolver;
     private readonly IRuntimeSystemProcessClassifier systemClassifier;
     private readonly INativeSoftwareIdentityProcessObserver bundledCatalog;
+    private readonly IReadOnlySet<string> windowsGamePaths;
+    private readonly HashSet<string> explicitKindSoftwareIds;
     private NativeSoftwareIdentityPayloadCatalog resolutionPayloads = new();
     private bool disposed;
 
@@ -58,11 +60,15 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         IRuntimeRootIdentityResolver rootResolver,
         IRuntimeSystemProcessClassifier systemClassifier,
         ISoftwareIdentityCatalog bundledCatalog,
-        HostManagerSoftwareIdentityOwner owner)
+        HostManagerSoftwareIdentityOwner owner,
+        IReadOnlySet<string>? windowsGamePaths = null)
     {
         ArgumentNullException.ThrowIfNull(softwareRecords);
         ArgumentNullException.ThrowIfNull(adapterRegistrations);
         ArgumentNullException.ThrowIfNull(controlledRegistrations);
+        this.windowsGamePaths = WindowsGameListPaths.Normalize(windowsGamePaths ?? new HashSet<string>());
+        explicitKindSoftwareIds = softwareRecords.Where(static record => record.HasExplicitKind)
+            .Select(static record => record.Id).ToHashSet(StringComparer.Ordinal);
         this.packageResolver = packageResolver;
         this.serviceResolver = serviceResolver;
         this.rootResolver = rootResolver;
@@ -239,7 +245,23 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 throw new InvalidOperationException(
                     $"Native software identity resolution failed with {status}.");
             }
-            return ResolveOutput(output);
+            var attribution = ResolveOutput(output);
+            // Category evidence does not compete with or replace software identity.
+            // Explicit registrations and user classifications retain their category.
+            return output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched
+                && output.SelectedSourceId is not (NativeRuntimeAttributionSources.Adapted
+                    or NativeRuntimeAttributionSources.Controlled
+                    or NativeRuntimeAttributionSources.ResourceManagerSelf)
+                && !explicitKindSoftwareIds.Contains(attribution.Id)
+                && WindowsGameListPaths.CanonicalPath(process.ExecutablePath) is { } path
+                && windowsGamePaths.Contains(path)
+                ? attribution with
+                {
+                    Kind = SoftwareKinds.Game,
+                    DisplayKind = SoftwareDisplayKinds.Game,
+                    CategorySource = @"Windows GameConfigStore\Children\MatchedExeFullPath"
+                }
+                : attribution;
         }
     }
 
