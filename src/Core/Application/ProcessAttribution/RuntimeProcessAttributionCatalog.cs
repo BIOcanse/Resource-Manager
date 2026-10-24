@@ -214,6 +214,7 @@ internal static class RuntimeProcessAttributionCatalogVersionFactory
             hash.Add(record.Name);
             hash.Add(record.Kind);
             hash.Add(record.HasExplicitKind ? 1 : 0);
+            hash.Add(record.SourceSoftwareId);
             hash.Add(record.DisplayKind);
             hash.Add(record.RootPaths.Count);
             foreach (var rootPath in record.RootPaths)

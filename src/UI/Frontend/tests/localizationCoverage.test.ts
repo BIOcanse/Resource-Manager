@@ -1,4 +1,4 @@
-import { runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../src/presentation/softwareClassification.ts";
+import { runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage, softwareCategorySourceLabel } from "../src/presentation/softwareClassification.ts";
 import { softwareKindLabel, softwareDisplayKindLabel } from "../src/text.ts";
 import { normalizeSoftwareKind } from "../src/utils.ts";
 import assert from "node:assert/strict";
@@ -93,6 +93,8 @@ try {
     assert.equal(runtimeDiscoveryLabel("runtime_package"), app.management.discoveredPackage);
     assert.equal(runtimeDiscoveryLabel("runtime_product"), app.management.discoveredProduct);
     assert.equal(runtimeDiscoveryLabel("runtime_root"), app.management.discoveredRoot);
+    assert.equal(softwareCategorySourceLabel("Windows GameConfigStore\\Children\\MatchedExeFullPath"), app.management.windowsGameList);
+    assert.equal(softwareCategorySourceLabel(null), "");
     for (const kind of ["adapted", "controlled", "game", "high_performance"] as const) {
       assert.equal(normalizeSoftwareKind({ id: "catalog:test", name: "Test", kind }), kind);
     }

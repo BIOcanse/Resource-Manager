@@ -390,6 +390,8 @@ const ruRuAppCopy: AppCopy = {
     Support: "Поддержка"
   },
   management: {
+    categorySource: "Источник категории",
+    windowsGameList: "Список игр Windows (GameConfigStore)",
     classifySoftware: "Выбрать категорию",
     unclassifiedReminder: "Обнаружено во время работы без известной категории. Выберите категорию или сделайте это позже.",
     discoveredPackage: "Определено по пакету работающего приложения",

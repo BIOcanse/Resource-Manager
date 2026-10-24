@@ -21,3 +21,9 @@ export function runtimeDiscoveryLabel(kind: string) {
     default: return "";
   }
 }
+
+export function softwareCategorySourceLabel(source: string | null | undefined) {
+  return source === "Windows GameConfigStore\\Children\\MatchedExeFullPath"
+    ? uiText.management.windowsGameList
+    : source ?? "";
+}

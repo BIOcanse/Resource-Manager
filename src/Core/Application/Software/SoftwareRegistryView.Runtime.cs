@@ -6,33 +6,36 @@ namespace ResourceManager.App.Application.Software;
 
 public sealed partial class SoftwareRegistryView
 {
-    public static IReadOnlyList<SoftwareRecord> IncludeRuntimeSoftware(
-        IReadOnlyList<SoftwareRecord> software,
-        IReadOnlyList<RuntimeSoftwareAttribution> runtimeSoftware,
-        IReadOnlyList<ManualSoftwareRecord> manualRecords)
+    private static void IncludeRuntimeSoftware(
+        List<SoftwareRecord> records,
+        IReadOnlyList<RuntimeSoftwareAttribution> runtimeSoftware)
     {
-        var records = software.ToList();
         foreach (var runtime in runtimeSoftware)
         {
-            if (runtime.Kind is not (SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot)
-                || software.Any(record => record.Id.Equals(runtime.Id, StringComparison.OrdinalIgnoreCase)
-                    || NormalizeSoftwareKey(record.Name) == NormalizeSoftwareKey(runtime.Name)
-                    || RootOverlaps(runtime.RootPaths, record.RootPaths)))
+            var index = records.FindIndex(record => record.Id.Equals(runtime.Id, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0)
             {
+                var record = records[index];
+                if (runtime.CategorySource is not null && !record.HasExplicitKind
+                    && record.Kind is not (SoftwareKinds.Adapted or SoftwareKinds.Controlled))
+                {
+                    records[index] = record with
+                    {
+                        Kind = runtime.Kind, DisplayKind = runtime.DisplayKind,
+                        CategorySource = runtime.CategorySource
+                    };
+                }
                 continue;
             }
+
+            if (runtime.Kind is not (SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot)
+                && runtime.CategorySource is null) continue;
 
             records.Add(new SoftwareRecord(
                 runtime.Id, runtime.Name, runtime.Kind, runtime.DisplayKind,
                 "runtime", [runtime.Kind], runtime.RootPaths, string.Empty,
-                NoUninstall(BackendMessageCodes.Software.NoUninstallUnknownRoot), null));
+                NoUninstall(BackendMessageCodes.Software.NoUninstallUnknownRoot), null,
+                CategorySource: runtime.CategorySource));
         }
-
-        ApplyManualRecords(records, manualRecords);
-        return records.GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => MergeRecords(group.ToArray()))
-            .OrderBy(static record => KindSort(record.Kind))
-            .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 }

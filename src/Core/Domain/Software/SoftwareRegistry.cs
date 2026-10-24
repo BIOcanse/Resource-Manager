@@ -76,7 +76,9 @@ public sealed record SoftwareRecord(
     string? Publisher = null,
     string? Version = null,
     /// <summary>Manual or policy classification, which precedes OS/catalog category evidence.</summary>
-    bool HasExplicitKind = false);
+    bool HasExplicitKind = false,
+    string? SourceSoftwareId = null,
+    string? CategorySource = null);
 
 public sealed record SoftwareOperationCapabilities(
     bool CanUninstall,

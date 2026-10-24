@@ -619,6 +619,7 @@ export interface SoftwareRecord {
   managementRole?: ManagementRole | null;
   state?: string;
   sources?: string[];
+  categorySource?: string | null;
   rootPaths?: string[];
   suggestedRootPaths?: string[];
   executablePaths?: string[];

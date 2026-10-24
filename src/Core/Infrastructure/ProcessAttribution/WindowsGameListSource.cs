@@ -4,51 +4,77 @@ using ResourceManager.App.Application.ProcessAttribution;
 
 namespace ResourceManager.App.Infrastructure.ProcessAttribution;
 
-public sealed class WindowsGameListSource(ILogger<WindowsGameListSource> logger) : IWindowsGameListSource
+public sealed class WindowsGameListSource : IWindowsGameListSource
 {
+    private readonly ILogger<WindowsGameListSource> logger;
+    private readonly Func<string, string[]> readChildren;
+    private readonly Func<string, string?> readExecutablePath;
+    private readonly object gate = new();
+    private Dictionary<string, string> lastFailures = new(StringComparer.OrdinalIgnoreCase);
+
+    public WindowsGameListSource(ILogger<WindowsGameListSource> logger)
+        : this(logger, ReadChildren, ReadExecutablePath) { }
+
+    internal WindowsGameListSource(ILogger<WindowsGameListSource> logger,
+        Func<string, string[]> readChildren, Func<string, string?> readExecutablePath)
+    {
+        this.logger = logger;
+        this.readChildren = readChildren;
+        this.readExecutablePath = readExecutablePath;
+    }
+
     public IReadOnlyList<string> ReadExecutablePaths()
     {
-        var paths = new List<string>();
-        if (!OperatingSystem.IsWindows()) return paths;
-
-        try
+        if (!OperatingSystem.IsWindows()) return [];
+        lock (gate)
         {
+            var paths = new List<string>();
+            var failures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             // LocalSystem's HKCU is not the interactive user's hive. Only inspect
             // already loaded user hives; never load profiles or inspect _Classes.
-            using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Default);
-            foreach (var sid in users.GetSubKeyNames())
+            foreach (var sid in Read(string.Empty, () => readChildren(string.Empty), [], failures))
             {
                 if (!sid.StartsWith("S-1-5-21-", StringComparison.OrdinalIgnoreCase)
                     || sid.EndsWith("_Classes", StringComparison.OrdinalIgnoreCase)) continue;
-                try
+                var childrenPath = $@"{sid}\System\GameConfigStore\Children";
+                foreach (var childName in Read(childrenPath, () => readChildren(childrenPath), [], failures))
                 {
-                    using var children = users.OpenSubKey($@"{sid}\System\GameConfigStore\Children");
-                    if (children is null) continue;
-                    foreach (var childName in children.GetSubKeyNames())
-                    {
-                        try
-                        {
-                            using var child = children.OpenSubKey(childName);
-                            if (child?.GetValue("MatchedExeFullPath") is string path
-                                && !string.IsNullOrWhiteSpace(path)) paths.Add(path);
-                        }
-                        catch (Exception error) when (IsRegistryReadError(error))
-                        {
-                            logger.LogWarning(error, "Cannot read Windows game list entry {Sid}/{Entry}", sid, childName);
-                        }
-                    }
-                }
-                catch (Exception error) when (IsRegistryReadError(error))
-                {
-                    logger.LogWarning(error, "Cannot read Windows game list for loaded user {Sid}", sid);
+                    var childPath = $@"{childrenPath}\{childName}";
+                    var path = Read(childPath, () => readExecutablePath(childPath), null, failures);
+                    if (!string.IsNullOrWhiteSpace(path)) paths.Add(path);
                 }
             }
+            lastFailures = failures;
+            return paths;
         }
+    }
+
+    private T Read<T>(string path, Func<T> read, T empty, Dictionary<string, string> failures)
+    {
+        try { return read(); }
         catch (Exception error) when (IsRegistryReadError(error))
         {
-            logger.LogWarning(error, "Cannot enumerate loaded user hives for the Windows game list");
+            var fingerprint = $"{error.GetType().FullName}|{error.HResult}|{error.Message}";
+            failures[path] = fingerprint;
+            if (!lastFailures.TryGetValue(path, out var previous) || previous != fingerprint)
+                logger.LogWarning(error, "Cannot read Windows game list registry key HKEY_USERS\\{RegistryPath}", path);
+            return empty;
         }
-        return paths;
+    }
+
+    private static string[] ReadChildren(string path)
+    {
+        using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Default);
+        if (path.Length == 0) return users.GetSubKeyNames();
+        using var key = users.OpenSubKey(path);
+        return key?.GetSubKeyNames() ?? [];
+    }
+
+    private static string? ReadExecutablePath(string path)
+    {
+        using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Default);
+        using var key = users.OpenSubKey(path);
+        return key?.GetValue("MatchedExeFullPath") as string;
     }
 
     private static bool IsRegistryReadError(Exception error)

@@ -390,6 +390,8 @@ const esEsAppCopy: AppCopy = {
     Support: "Soporte"
   },
   management: {
+    categorySource: "Origen de la categoría",
+    windowsGameList: "Lista de juegos de Windows (GameConfigStore)",
     classifySoftware: "Elegir categoría",
     unclassifiedReminder: "Identificado en ejecución sin una categoría conocida. Elige una categoría o déjalo para más tarde.",
     discoveredPackage: "Identificado por un paquete de aplicación en ejecución",

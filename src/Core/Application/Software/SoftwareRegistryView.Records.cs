@@ -49,7 +49,8 @@ public sealed partial class SoftwareRegistryView
             record.Message,
             NoUninstall(BackendMessageCodes.Software.ManualClassificationNoUninstall),
             null,
-            SoftwareIdentityId: softwareIdentityId);
+            SoftwareIdentityId: softwareIdentityId,
+            SourceSoftwareId: record.SourceSoftwareId);
     }
 
     private static SoftwareRecord ToOtherSoftwareRecord(InstalledSoftwareEntry entry)

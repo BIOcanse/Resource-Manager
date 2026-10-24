@@ -155,6 +155,7 @@ public sealed record SchedulingProcessFact(
     IReadOnlyList<SchedulingProcessGpuFact> Gpus)
 {
     public IReadOnlyList<string> SoftwareRootPaths { get; init; } = [];
+    public string? SoftwareCategorySource { get; init; }
 
     public string RuntimeState { get; init; } =
         HostManagerRuntimeStates.BackgroundProcess;

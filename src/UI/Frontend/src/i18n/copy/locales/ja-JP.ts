@@ -390,6 +390,8 @@ const jaJpAppCopy: AppCopy = {
     Support: "サポート"
   },
   management: {
+    categorySource: "分類の情報源",
+    windowsGameList: "Windows のゲーム一覧（GameConfigStore）",
     classifySoftware: "分類を選択",
     unclassifiedReminder: "実行時に識別されましたが、分類は不明です。分類を選択するか、後で対応できます。",
     discoveredPackage: "実行中のアプリパッケージから識別",

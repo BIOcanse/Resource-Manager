@@ -17,6 +17,16 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class SoftwareRegistryViewTests
 {
+    internal static SoftwareRegistryView CreateRuntimeReminderView(
+        IReadOnlyList<ManualSoftwareRecord>? manual = null,
+        IReadOnlyList<InstalledSoftwareEntry>? installed = null)
+        => new(new StaticAdapterSoftwareRegistry([]), new InMemoryControlledSoftwareRegistry(),
+            new EmptyDependencyManager(), new StaticManualSoftwareRegistry(manual ?? []),
+            new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
+                new Dictionary<string, SoftwarePolicyGroup>(), new Dictionary<string, SoftwarePolicyAssignment>())),
+            new StaticInstalledSoftwareInventory(installed ?? []), SoftwareIdentityCatalogTestData.Empty,
+            new StaticPortableSoftwareRegistry([]));
+
     [Fact]
     public async Task GetSoftwareAsync_ForwardsAuthenticatedCallerSidToWindowsInventory()
     {

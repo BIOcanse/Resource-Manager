@@ -48,6 +48,8 @@ export const enSoftwareCopy: Pick<
     Support: "Support"
   },
   management: {
+    categorySource: "Category source",
+    windowsGameList: "Windows game list (GameConfigStore)",
     classifySoftware: "Choose category",
     unclassifiedReminder: "Identified at runtime without a known category. Choose a category or leave it for later.",
     discoveredPackage: "Identified by a running app package",

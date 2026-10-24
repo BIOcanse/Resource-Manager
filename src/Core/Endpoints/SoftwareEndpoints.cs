@@ -44,7 +44,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ISoftwareRegistryView softwareRegistry,
             ISoftwareIssueProjection softwareIssueProjection,
             IRuntimeSoftwareObservationSource runtimeSoftware,
-            IManualSoftwareRegistry manualSoftwareRegistry,
             IPortableSoftwareDiscovery portableSoftwareDiscovery,
             CancellationToken cancellationToken) =>
         {
@@ -56,11 +55,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
 
             var records = refresh == true
-                ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken)
-                : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken);
+                ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken, runtimeSoftware.ReadLatestSoftware())
+                : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken, runtimeSoftware.ReadLatestSoftware());
             return Results.Ok(await softwareIssueProjection.ProjectAsync(
-                SoftwareRegistryView.IncludeRuntimeSoftware(records, runtimeSoftware.ReadLatestSoftware(),
-                    await manualSoftwareRegistry.GetAllAsync(cancellationToken)),
+                records,
                 cancellationToken));
         }).AllowAnonymous();
 
