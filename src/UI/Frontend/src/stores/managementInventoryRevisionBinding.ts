@@ -60,10 +60,14 @@ export function bindManagementInventoryRevisions(
         }
       }
 
-      if (browserRuntimeVisible
-        && options.browserRuntimesActive()
-        && before.browserRuntimeRevision !== next.browserRuntimeRevision) {
-        refreshWithoutEscapingStoreFailure(options.refreshBrowserRuntimes);
+      if (browserRuntimeVisible && options.browserRuntimesActive()) {
+        if (before.browserRuntimeRevision !== next.browserRuntimeRevision) {
+          refreshWithoutEscapingStoreFailure(options.refreshBrowserRuntimes);
+        }
+        // The page's Download button reflects its install component.
+        if (before.componentRevision !== next.componentRevision) {
+          refreshWithoutEscapingStoreFailure(options.refreshComponents);
+        }
       }
     });
     onCleanup(unsubscribe);

@@ -262,11 +262,12 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     return tracked;
   }
 
+  // The browser runtime page shows its install component, so it demands the component list too.
   function componentListIsDemanded(): boolean {
     const subpage = activeSubpage();
     return options.activePage() === "components"
-      && options.inventoryActive()
-      && (subpage === "Dependency" || subpage === "Support");
+      && ((options.inventoryActive() && (subpage === "Dependency" || subpage === "Support"))
+        || (options.browserRuntimesActive() && subpage === browserRuntimeManagementSubpageId));
   }
 
   async function refreshComponentsCore() {
@@ -393,8 +394,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
         while (true) {
           setBrowserRuntimesObservation(refreshingObservation);
           try {
-            // The runtime page consumes both discovery and its install component, including cold navigation.
-            const [next] = await Promise.all([getBrowserRuntimeSnapshot(nextForceRefresh), refreshComponents()]);
+            const next = await getBrowserRuntimeSnapshot(nextForceRefresh);
             setBrowserRuntimes(next);
             setBrowserRuntimesObservation(readyObservation(next.capturedAt));
           } catch (error) {

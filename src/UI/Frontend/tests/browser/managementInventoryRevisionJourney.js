@@ -79,11 +79,14 @@ export default async function managementInventoryRevisionJourney(page, baseUrl) 
     browserRuntimeRevision: "1"
   });
   await waitForReadCompletion(baseUrl, browserRuntimesPath, 1);
+  await waitForReadCompletion(baseUrl, componentsPath, 1);
+  await delay(200);
   const visibleBrowserRuntime = await readTelemetry(baseUrl);
   assert.equal(visibleBrowserRuntime[browserRuntimesPath].started, 1,
     `Visible browser runtimes should reread once for a changed fact: ${JSON.stringify(visibleBrowserRuntime)}`);
-  assert.equal(visibleBrowserRuntime[componentsPath]?.started ?? 0, 0,
-    `Hidden components should remain unread on the browser runtime tab: ${JSON.stringify(visibleBrowserRuntime)}`);
+  // The runtime page shows its install component, so a component change rereads the components once.
+  assert.equal(visibleBrowserRuntime[componentsPath]?.started ?? 0, 1,
+    `The runtime page's install component should reread once for a changed fact: ${JSON.stringify(visibleBrowserRuntime)}`);
   assert.equal(visibleBrowserRuntime[softwarePath]?.started ?? 0, 0,
     `Hidden software should remain unread on the browser runtime tab: ${JSON.stringify(visibleBrowserRuntime)}`);
   assert.deepEqual(pageErrors, []);

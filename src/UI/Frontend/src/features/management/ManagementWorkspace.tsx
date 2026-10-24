@@ -69,7 +69,7 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
                     : undefined}
                   actionLabel={management.actionLabels()[managementActionKey("component", sharedBrowserRuntimeComponentId)]}
                   refreshInProgress={management.browserRuntimeRefreshInProgress()}
-                  onRefresh={() => void management.refreshBrowserRuntimes(true)}
+                  onRefresh={() => void Promise.all([management.refreshBrowserRuntimes(true), management.refreshComponents()])}
                   onInstall={(component) => void management.installComponent(component)}
                 />
               </ObservationStateBoundary>
