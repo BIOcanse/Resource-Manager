@@ -4157,7 +4157,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             $"metricReads={fixture.MetricSampler.ReadLatestCalls}; " +
             $"authority={fixture.Coordinator.SchedulingAuthority.Availability}; " +
             $"reason={fixture.Coordinator.SchedulingAuthority.UnavailableReason ?? "none"}.");
-        Assert.Equal(pendingGpu ? 4 : 2, fixture.ProcessPolicyWriter.RecoveryReadCalls);
+        Assert.Equal(pendingGpu ? 2 : 0, fixture.ProcessPolicyWriter.RecoveryReadCalls);
+        Assert.Equal(2, fixture.ProcessPolicyWriter.MemoryRecoveryReadCalls);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         if (!pendingGpu) Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
         else
@@ -6963,6 +6964,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         internal int TotalCalls { get; private set; }
         internal int RecoveryReadCalls { get; private set; }
+        internal int MemoryRecoveryReadCalls { get; private set; }
         internal int PlacementReadCalls { get; private set; }
         internal int BatchCalls { get; private set; }
         internal int DefaultCpuSetWriteCalls { get; private set; }
@@ -6993,6 +6995,20 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             IReadOnlyList<ProcessResourcePolicyBatchWriteResult>>? BatchHandler
         { get; set; }
         internal Func<int, ProcessResourcePolicySnapshot?>? ProcessReadHandler { get; set; }
+        internal Func<int, RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>>? MemoryReadHandler { get; set; }
+        public RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot> ReadMemoryPriorityStateForRecovery(int processId)
+        {
+            TotalCalls++;
+            MemoryRecoveryReadCalls++;
+            if (MemoryReadHandler is not null) return MemoryReadHandler(processId);
+            // Existing scenarios use one in-memory state; new regressions supply the independent reader explicitly.
+            if (ProcessReadHandler is null) throw Unexpected();
+            var state = ProcessReadHandler(processId);
+            return state?.MemoryPriority is uint memory && state.StartedAt is DateTimeOffset startedAt
+                ? RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Found(new(processId, startedAt, memory))
+                : RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Unavailable(5, "fixture memory unavailable");
+        }
+
         internal Func<
             int,
             ProcessPlacementReadFields,

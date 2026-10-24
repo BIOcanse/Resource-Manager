@@ -425,6 +425,10 @@ public sealed partial class HostManagerSmartCoordinator
                                 policyExecutionEnabled && modePlan.NonAdaptedMemoryPriorityEnabled,
                                 cancellationToken);
                         }
+                        else
+                        {
+                            RecordRemainingMemoryDirectiveSkips("memory_effect_not_admitted");
+                        }
                         cycleDiagnostics?.CaptureMemoryTransactions(memoryTransactions.TransactionCount);
                         cycleDiagnostics?.Mark("memory-transactions");
                         if (memoryTransactions.IsBlocked)

@@ -27,6 +27,11 @@ public sealed record ProcessInstanceRecoverySnapshot(
     int ProcessId,
     DateTimeOffset StartedAt);
 
+public sealed record ProcessMemoryPriorityRecoverySnapshot(
+    int ProcessId,
+    DateTimeOffset StartedAt,
+    uint MemoryPriority);
+
 [Flags]
 public enum ProcessPlacementReadFields : byte
 {

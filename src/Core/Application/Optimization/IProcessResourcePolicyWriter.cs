@@ -23,6 +23,11 @@ public interface IProcessResourcePolicyWriter
     RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadProcessInstanceForRecovery(
         int processId);
 
+    RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot> ReadMemoryPriorityStateForRecovery(
+        int processId)
+        => RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Unavailable(
+            50, "Exact-process memory priority access is not supported by this writer.");
+
     RecoveryReadResult<ProcessPlacementRecoverySnapshot> ReadPlacementStateForRecovery(
         int processId,
         ProcessPlacementReadFields requiredFields);

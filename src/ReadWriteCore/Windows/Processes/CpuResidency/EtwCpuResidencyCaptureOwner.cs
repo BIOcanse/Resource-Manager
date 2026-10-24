@@ -789,6 +789,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         kernelSubscription = null;
         var session = Volatile.Read(ref activeSession);
         Volatile.Write(ref activeSession, null);
+        SetCachedSnapshot(null);
         return (subscription, session);
     }
 

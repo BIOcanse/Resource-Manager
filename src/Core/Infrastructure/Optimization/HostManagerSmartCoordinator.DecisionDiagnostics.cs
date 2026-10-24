@@ -35,6 +35,7 @@ public sealed partial class HostManagerSmartCoordinator
                 native,
                 ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
             {
+                NonAdaptedMemorySkipCounts = ProjectMemoryDirectiveSkipCounts(),
                 FactExclusionCount = cycleFactExclusions.Count,
                 FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
                     .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
@@ -217,7 +218,7 @@ public sealed partial class HostManagerSmartCoordinator
             row.LastFeedbackMilliseconds,
             row.GameStartedAtMilliseconds);
 
-    private static IReadOnlyList<HostManagerNonAdaptedMemoryDecisionDiagnostics>
+    private IReadOnlyList<HostManagerNonAdaptedMemoryDecisionDiagnostics>
         ProjectNonAdaptedMemoryDiagnostics(
             HostManagerNonAdaptedMemoryModeProjectionSnapshot? projection)
     {
@@ -226,7 +227,7 @@ public sealed partial class HostManagerSmartCoordinator
             return [];
         }
 
-        return projection.Processes.Select(static directive =>
+        return projection.Processes.Select(directive =>
             new HostManagerNonAdaptedMemoryDecisionDiagnostics(
                 Exact(directive.RoundNumber),
                 Exact(directive.SoftwareKey),
@@ -237,7 +238,11 @@ public sealed partial class HostManagerSmartCoordinator
                 directive.SoftwareRank,
                 Token(directive.Mode),
                 Token(directive.Action),
-                directive.TargetMemoryPriority))
+                directive.TargetMemoryPriority)
+            {
+                TransactionPrepared = GetMemoryDirectiveOutcome(directive).TransactionPrepared,
+                SkipReason = GetMemoryDirectiveOutcome(directive).SkipReason
+            })
             .ToArray();
     }
 
@@ -259,6 +264,7 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
     IReadOnlyList<HostManagerNonAdaptedMemoryDecisionDiagnostics>
         NonAdaptedMemoryDecisions)
 {
+    public IReadOnlyList<HostManagerMemoryDirectiveSkipDiagnostics> NonAdaptedMemorySkipCounts { get; init; } = [];
     public int FactExclusionCount { get; init; }
     public IReadOnlyList<HostManagerFactExclusionCount> FactExclusionCounts { get; init; } = [];
     public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
@@ -402,4 +408,11 @@ internal sealed record HostManagerNonAdaptedMemoryDecisionDiagnostics(
     uint SoftwareRank,
     string Mode,
     string Action,
-    uint? TargetMemoryPriority);
+    uint? TargetMemoryPriority)
+{
+    public bool TransactionPrepared { get; init; }
+    public string? SkipReason { get; init; }
+}
+
+internal sealed record HostManagerMemoryDirectiveSkipDiagnostics(
+    string Reason, int Count, IReadOnlyList<string> ExampleTargetIds);

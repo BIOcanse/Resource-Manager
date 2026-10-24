@@ -55,6 +55,11 @@ public sealed class HostManagerProcessPolicyTransaction
                 0);
         }
 
+        if (fields == HostManagerProcessPolicyTransactionFields.MemoryPriority)
+        {
+            return CaptureMemoryPriorityCore(processId, targetMemoryPriority);
+        }
+
         ProcessResourcePolicySnapshot? snapshot;
         try
         {
@@ -87,6 +92,32 @@ public sealed class HostManagerProcessPolicyTransaction
             fields,
             processId,
             processStartKey,
+            HostManagerProcessPolicyRollbackPayloadCodec.Encode(payload));
+    }
+
+    private HostManagerProcessPolicyCaptureResult CaptureMemoryPriorityCore(
+        int processId,
+        uint targetMemoryPriority)
+    {
+        var read = ReadMemoryPriority(processId);
+        var processStartKey = 0L;
+        if (read.Status != RecoveryReadStatus.Found
+            || read.Value is not ProcessMemoryPriorityRecoverySnapshot snapshot
+            || snapshot.ProcessId != processId
+            || !TryGetProcessStartKey(snapshot.StartedAt, out processStartKey)
+            || snapshot.MemoryPriority is < NativeMethods.MemoryPriorityVeryLow
+                or > NativeMethods.MemoryPriorityNormal)
+        {
+            return HostManagerProcessPolicyCaptureResult.Empty(
+                HostManagerProcessPolicyCaptureStatus.Unavailable, processId, processStartKey);
+        }
+
+        var payload = new HostManagerProcessPolicyRollbackPayload(
+            HostManagerProcessPolicyTransactionFields.MemoryPriority,
+            processId, processStartKey, 0, snapshot.MemoryPriority, 0, 0, targetMemoryPriority);
+        return new HostManagerProcessPolicyCaptureResult(
+            HostManagerProcessPolicyCaptureStatus.Captured,
+            payload.Fields, processId, processStartKey,
             HostManagerProcessPolicyRollbackPayloadCodec.Encode(payload));
     }
 
@@ -684,6 +715,11 @@ public sealed class HostManagerProcessPolicyTransaction
         HostManagerProcessPolicyRollbackPayload payload,
         ReadOnlySpan<TargetPolicy> targets)
     {
+        if (payload.Fields == HostManagerProcessPolicyTransactionFields.MemoryPriority)
+        {
+            return EvaluateCurrentMemoryPriority(payload, targets);
+        }
+
         RecoveryReadResult<ProcessInstanceRecoverySnapshot> identityRead;
         try
         {
@@ -794,6 +830,61 @@ public sealed class HostManagerProcessPolicyTransaction
             targetFields,
             foreignFields,
             unavailableFields,
+            snapshot.MemoryPriority);
+    }
+
+    private RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot> ReadMemoryPriority(int processId)
+    {
+        try
+        {
+            return policyWriter.ReadMemoryPriorityStateForRecovery(processId);
+        }
+        catch (Exception exception) when (IsExpectedBoundaryException(exception))
+        {
+            return RecoveryReadResult<ProcessMemoryPriorityRecoverySnapshot>.Unavailable(
+                exception.HResult, exception.Message);
+        }
+    }
+
+    private CurrentPolicyEvaluation EvaluateCurrentMemoryPriority(
+        HostManagerProcessPolicyRollbackPayload payload,
+        ReadOnlySpan<TargetPolicy> targets)
+    {
+        var read = ReadMemoryPriority(payload.ProcessId);
+        if (read.Status == RecoveryReadStatus.NotFoundOrExited)
+        {
+            return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.ProcessExited);
+        }
+        if (read.Status != RecoveryReadStatus.Found
+            || read.Value is not ProcessMemoryPriorityRecoverySnapshot snapshot)
+        {
+            return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.Unavailable);
+        }
+        if (snapshot.ProcessId != payload.ProcessId
+            || !TryGetProcessStartKey(snapshot.StartedAt, out var processStartKey)
+            || processStartKey != payload.ProcessStartKey)
+        {
+            return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.IdentityChanged);
+        }
+        if (snapshot.MemoryPriority is < NativeMethods.MemoryPriorityVeryLow
+            or > NativeMethods.MemoryPriorityNormal)
+        {
+            return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.Unavailable);
+        }
+
+        var matchesBaseline = snapshot.MemoryPriority == payload.BaselineMemoryPriority;
+        var matchesTarget = false;
+        foreach (var target in targets)
+        {
+            matchesTarget |= snapshot.MemoryPriority == target.MemoryPriority;
+        }
+        var field = HostManagerProcessPolicyTransactionFields.MemoryPriority;
+        return new CurrentPolicyEvaluation(
+            CurrentPolicyStatus.Available,
+            matchesBaseline ? field : 0,
+            matchesTarget ? field : 0,
+            !matchesBaseline && !matchesTarget ? field : 0,
+            0,
             snapshot.MemoryPriority);
     }
 
