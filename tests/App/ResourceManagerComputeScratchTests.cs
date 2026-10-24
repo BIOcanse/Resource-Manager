@@ -273,21 +273,38 @@ public sealed class ResourceManagerComputeScratchTests
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         ResourceManagerLedgerOwner.ComputeScratch? pdhIdentity = null;
                         using var pdh = new PdhParsingScratch(length => pdhIdentity = owner.CreateScratch(length), owner.NativePageSize);
+                        var additionalResources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+                        var additionalUses = new List<ComputeScratchLease>();
                         pdh.BeginSample();
                         try
                         {
                             pdh.Supply(8192);
                             registered += pdhIdentity!.Length;
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-                            using var twentyNinth = owner.CreateScratch(8192);
-                            var blocked = Assert.Throws<LedgerException>(() => { using var unexpected = twentyNinth.Acquire(); });
+                            // The 28 real workspaces above, then current plus pending query pools (2 * 64) and model workspaces (2).
+                            for (var index = 0; index < 130; index++)
+                            {
+                                var resource = owner.CreateScratch(8192);
+                                additionalResources.Add(resource);
+                                var use = resource.Acquire();
+                                additionalUses.Add(use);
+                                use.Complete();
+                                registered += resource.Length;
+                            }
+                            using var excess = owner.CreateScratch(8192);
+                            var blocked = Assert.Throws<LedgerException>(() => { using var unexpected = excess.Acquire(); });
                             Assert.Equal(LedgerStatus.Blocked, blocked.Status);
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                             Assert.All(readers, reader => Assert.Equal(81, reader.Tree.Count));
                             Assert.Equal(0UL, owner.Tick().Released);
                             smartOperation.Complete();
                         }
-                        finally { pdh.EndSample(); }
+                        finally
+                        {
+                            foreach (var use in additionalUses) use.Dispose();
+                            foreach (var resource in additionalResources) resource.Dispose();
+                            pdh.EndSample();
+                        }
                     }
                 }
                 owner.SetMode(LedgerTableMode.Optimize);
