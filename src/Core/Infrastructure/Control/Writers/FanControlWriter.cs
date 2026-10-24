@@ -34,7 +34,6 @@ public sealed class FanControlWriter(
     /// </summary>
     internal const string ObjectIdPrefix = "fan:oem";
 
-    private const string CoreMissing = "需要风扇控制核心。";
     private const string CoreSilent = "风扇控制核心没应答。";
     private const string NoChannel = "没有可用的风扇控制通道。";
     private const string NoDutyControl = "这台机器的风扇只有全速和自动两档。";
@@ -71,10 +70,6 @@ public sealed class FanControlWriter(
         if (!IsMine(target, capability.Id))
         {
             return ControlWriteAvailability.NotMine;
-        }
-        if (!core.IsInstalled)
-        {
-            return ControlWriteAvailability.No(CoreMissing, kind: ControlUnavailableKinds.Component);
         }
 
         /*

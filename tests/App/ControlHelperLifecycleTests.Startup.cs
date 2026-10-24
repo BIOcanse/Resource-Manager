@@ -7,14 +7,13 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class ControlHelperLifecycleTests
 {
-    [Theory]
-    [InlineData(false)] [InlineData(true)]
-    public async Task DisposalDuringStartupClosesLateProcessWithoutSendingCommand(bool fan)
+    [Fact]
+    public async Task DisposalDuringStartupClosesLateProcessWithoutSendingCommand()
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "rm-helper-starting-" + Guid.NewGuid().ToString("N"))).FullName;
         var dependencies = Directory.CreateDirectory(Path.Combine(root, "Dependencies")).FullName;
-        var helperDirectory = Directory.CreateDirectory(Path.Combine(dependencies, fan ? "fan-control-core" : "hardware-bridge")).FullName;
-        var placeholder = Path.Combine(helperDirectory, fan ? "FanControlCore.exe" : "ResourceManager.HardwareBridge.exe");
+        var helperDirectory = Directory.CreateDirectory(Path.Combine(dependencies, "hardware-bridge")).FullName;
+        var placeholder = Path.Combine(helperDirectory, "ResourceManager.HardwareBridge.exe");
         File.WriteAllText(placeholder, "test-only factory placeholder");
         var commandReceived = Path.Combine(root, "command-received");
         var finished = Path.Combine(root, "finished");
@@ -49,18 +48,8 @@ public sealed partial class ControlHelperLifecycleTests
         }
         var contentRoot = Directory.CreateDirectory(Path.Combine(root, "ResourceManager-APP")).FullName;
         var environment = new EnvironmentInfo(contentRoot);
-        IDisposable client;
-        Func<Task<JsonElement?>> send;
-        if (fan)
-        {
-            var value = new FanControlCoreClient(environment, Start); client = value;
-            send = () => value.SendAsync("owned-test", null, CancellationToken.None);
-        }
-        else
-        {
-            var value = new HardwareBridgeClient(environment, Start); client = value;
-            send = () => value.SendAsync("owned-test", null, CancellationToken.None);
-        }
+        var client = new HardwareBridgeClient(environment, Start);
+        Func<Task<JsonElement?>> send = () => client.SendAsync("owned-test", null, CancellationToken.None);
         var pending = Task.Run(send);
         try
         {

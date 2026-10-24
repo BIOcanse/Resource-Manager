@@ -35,9 +35,6 @@ public static class ComponentCatalog
             "Intel CPU control", ComponentProviderKinds.Cpu,
             ["pl1", "pl2", "time-window", "voltage-offset"]),
         CreateOptionalDependencyDefinition(
-            "fan-control-core", "风扇控制核心", "Resource Manager", "控制写入",
-            "机身风扇的读取与控制经过它。", "Fan control", ComponentProviderKinds.Fan, ["fan-control"]),
-        CreateOptionalDependencyDefinition(
             "hardware-bridge", "硬件写入辅助进程", "Resource Manager", "控制写入",
             "处理器功耗上限和电压写入经过它。", "CPU control", ComponentProviderKinds.Cpu, ["power", "voltage"]),
         CreateOptionalDependencyDefinition(

@@ -1,0 +1,13 @@
+{
+  "schema": "rm/fan-control-core-sdk-dependency/v1",
+  "managedVersion": "0.1.0-dev.4",
+  "managedPackage": {
+    "sha256": "DEE90BCD5BE71C595120868A31DE376309CB7119EC15CFFF8E95EFAC62C2844B",
+    "path": "packages/FanControlCore.Library.0.1.0-dev.4.nupkg",
+    "source": "https://github.com/BIOcanse/Fan-Control-Core (branch codex/library-host, artifacts/packages)",
+    "length": 60360
+  },
+  "sourceCommit": "65064e119c5c705b1d7ce76a49cc0836fcb5d945",
+  "status": "local review candidate; not published",
+  "license": "Apache-2.0"
+}

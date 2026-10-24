@@ -20,7 +20,6 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class ControlHelperPayloadTests
 {
     [Theory]
-    [InlineData("fan-control-core")]
     [InlineData("hardware-bridge")]
     public async Task PayloadAcquisitionExtractsCompleteReleaseIncludingLegacyRuntime(string id)
     {
@@ -48,7 +47,6 @@ public sealed partial class ControlHelperPayloadTests
     }
 
     [Theory]
-    [InlineData("fan-control-core")]
     [InlineData("hardware-bridge")]
     public async Task ComponentInstallationDownloadsAndExtractsTheCompleteArchiveWithoutVerification(string id)
     {
@@ -69,8 +67,7 @@ public sealed partial class ControlHelperPayloadTests
             Assert.True(result.Status!.Installed);
             foreach (var file in files) Assert.True(File.Exists(Path.Combine(root, "Dependencies", id, file)), file);
             using var bridge = new HardwareBridgeClient(environment);
-            using var fan = new FanControlCoreClient(environment);
-            Assert.True(id == "hardware-bridge" ? bridge.IsInstalled : fan.IsInstalled);
+            Assert.True(bridge.IsInstalled);
             await manager.InstallAsync(id, true, null, default);
             Assert.Equal(1, handler.Requests);
             Assert.EndsWith(definition.ReleaseSource!.VerifiedAssetName, handler.LastUri!.AbsolutePath);
@@ -196,7 +193,7 @@ public sealed partial class ControlHelperPayloadTests
     [Fact]
     public async Task ReleaseArchiveCannotWriteOutsideComponentDirectory()
     {
-        var definition = Assert.Single(OptionalDependencyCatalog.Definitions, row => row.Id == "fan-control-core");
+        var definition = Assert.Single(OptionalDependencyCatalog.Definitions, row => row.Id == "hardware-bridge");
         var root = Path.Combine(Path.GetTempPath(), "rm-helper-payload-" + Guid.NewGuid().ToString("N"));
         try
         {

@@ -15,16 +15,8 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class ControlHelperPayloadTests
 {
     [EnvironmentVariableFact("RM_CONTROL_HELPER_PACKAGE_DIRECTORY")]
-    public Task DeliveredFanPackageInstallsAndRunsWithoutHardwareDiscovery()
-        => CheckDeliveredPackageAsync("fan-control-core", verify: false);
-
-    [EnvironmentVariableFact("RM_CONTROL_HELPER_PACKAGE_DIRECTORY")]
     public Task DeliveredBridgePackageInstallsAndRunsWithoutHardwareDiscovery()
         => CheckDeliveredPackageAsync("hardware-bridge", verify: false);
-
-    [EnvironmentVariableFact("RM_CONTROL_HELPER_PACKAGE_DIRECTORY")]
-    public Task DeliveredFanPackageVerificationAcquiresAllRuntimeFiles()
-        => CheckDeliveredPackageAsync("fan-control-core", verify: true);
 
     [EnvironmentVariableFact("RM_CONTROL_HELPER_PACKAGE_DIRECTORY")]
     public Task DeliveredBridgePackageVerificationAcquiresAllRuntimeFiles()
@@ -85,9 +77,8 @@ public sealed partial class ControlHelperPayloadTests
                 using var actual = File.OpenRead(installed);
                 Assert.Equal(SHA256.HashData(expected), SHA256.HashData(actual));
             }
-            using var fan = new FanControlCoreClient(environment);
             using var bridge = new HardwareBridgeClient(environment);
-            Assert.True(id == "fan-control-core" ? fan.IsInstalled : bridge.IsInstalled);
+            Assert.True(bridge.IsInstalled);
 
             // The production helper exits here before constructing or opening any hardware backend.
             var start = new ProcessStartInfo(Path.Combine(directory, definition.InstalledProbeRelativePaths[0]))

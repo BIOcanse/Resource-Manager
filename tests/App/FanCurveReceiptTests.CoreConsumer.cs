@@ -7,10 +7,10 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class FanCurveReceiptTests
 {
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public async Task CompiledCoreRestorationExceptionKeepsRetryAndOtherFansRunning()
     {
-        await using var helper = new CoreChild(restoreFault: true);
+        await using var helper = new CoreFixture(restoreFault: true);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var client = helper.Client;
         Assert.Equal(2, client.Describe().Count);
@@ -49,50 +49,52 @@ public sealed partial class FanCurveReceiptTests
         Assert.True(await writer.RestoreAsync(other, capability, new HashSet<string>(), deadline.Token, setting));
     }
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public Task CompiledCoreRestoreAllRetainsAFailedFanAndContinuesTheOtherFan()
         => RunRestorationProbeAsync("--restore-all-check");
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public Task CompiledEngineStopAllRetainsAFailedFanAndContinuesTheOtherFan()
         => RunRestorationProbeAsync("--engine-stop-all-check");
 
-    private static async Task RunRestorationProbeAsync(string mode)
+    private static Task RunRestorationProbeAsync(string mode)
     {
-        var path = Environment.GetEnvironmentVariable("RM_FAN_CORE_PROTOCOL_PROBE");
-        Assert.True(File.Exists(path), "Build the owned in-memory core fixture first.");
-        var start = new ProcessStartInfo(path!)
+        var backend = new ProbeFanBackend(twoFans: true) { RestoreFailures = 1 };
+        using var core = new FanControlCore.Discovery.FanCore(backend);
+        core.Open();
+        Assert.True(core.TrySetDuty(0, 40, out _));
+        Assert.True(core.TrySetDuty(1, 50, out _));
+        if (mode == "--engine-stop-all-check")
         {
-            UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true
-        };
-        start.ArgumentList.Add(mode);
-        start.Environment["RM_FAN_CORE_PROBE_FAIL_RESTORE"] = "0";
-        start.Environment["RM_FAN_CORE_PROBE_DEFER_OPEN"] = "0";
-        using var probe = Process.Start(start)!;
-        var error = probe.StandardError.ReadToEndAsync();
-        await probe.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(probe.ExitCode == 0, $"Owned restoration probe exited {probe.ExitCode}: {await error}");
+            core.Temperatures.Push(new Dictionary<string, double> { ["cpu"] = 60 });
+            Assert.True(core.TryWriteCurve(0, [new(60, 40)], "software", out _));
+            Assert.True(core.TryWriteCurve(1, [new(60, 50)], "software", out _));
+        }
+        core.RestoreAll();
+        Assert.True(backend.Read()[1].AutomaticControl);
+        core.RestoreAll();
+        Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));
+        return Task.CompletedTask;
     }
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public Task CompiledCoreRedetectionRetriesFailedDiscoveryWithoutRestartingTheHelper()
         => RunRedetectionAsync(1);
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public Task CompiledCoreRepeatedFailedRedetectionUpdatesItsReasonBeforeLaterRecovery()
         => RunRedetectionAsync(2);
 
     private static async Task RunRedetectionAsync(int deferredOpens)
     {
-        await using var helper = new CoreChild(deferredOpens);
+        await using var helper = new CoreFixture(deferredOpens);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var client = helper.Client;
         Assert.Empty(client.Describe());
         var initialReason = client.UnavailableReason;
         Assert.NotNull(initialReason);
         Assert.False(client.NeedsTemperatures());
-        var processId = helper.ProcessId;
+        var processId = helper.SessionId;
         var unchanged = await client.SendAsync("describe", null, deadline.Token);
         Assert.False(unchanged!.Value.GetProperty("available").GetBoolean());
         Assert.Empty(unchanged.Value.GetProperty("fans").EnumerateArray());
@@ -104,14 +106,14 @@ public sealed partial class FanCurveReceiptTests
             Assert.NotNull(client.UnavailableReason);
             Assert.NotEqual(initialReason, client.UnavailableReason);
             Assert.False(client.NeedsTemperatures());
-            Assert.Equal(processId, helper.ProcessId);
+            Assert.Equal(processId, helper.SessionId);
         }
         client.ResetDetection();
         Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
         Assert.Null(client.UnavailableReason);
         Assert.False(client.NeedsTemperatures());
-        Assert.Equal(processId, helper.ProcessId);
-        Assert.False(helper.HasExited);
+        Assert.Equal(processId, helper.SessionId);
+        Assert.False(helper.IsDisposed);
         var refreshed = await client.SendAsync("describe", null, deadline.Token);
         Assert.True(refreshed!.Value.GetProperty("available").GetBoolean());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, refreshed.Value.GetProperty("reason").ValueKind);
@@ -119,21 +121,21 @@ public sealed partial class FanCurveReceiptTests
         // The deferred fixture exits unsuccessfully if detection drove any hardware.
     }
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
-    public Task CompiledCoreReceiptsAndManualRestorationUseTheProductionProcessChannel()
+    [Fact]
+    public Task CompiledCoreReceiptsAndManualRestorationUseTheProductionLibraryBoundary()
         => RunCoreConsumerAsync("manual");
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
+    [Fact]
     public Task CompiledCoreLosesTemperatureAndStopsTheSoftwarePlanWithoutReturningACachedCurve()
         => RunCoreConsumerAsync("temperature");
 
-    [EnvironmentVariableFact("RESOURCE_MANAGER_FAN_CORE_CONSUMER_TEST", "1")]
-    public Task CompiledCoreRestoresAnActiveSoftwareOverrideWhenTheHostClosesInput()
+    [Fact]
+    public Task CompiledCoreRestoresAnActiveSoftwareOverrideWhenTheHostDisposesSession()
         => RunCoreConsumerAsync("eof");
 
     private static async Task RunCoreConsumerAsync(string finish)
     {
-        await using var helper = new CoreChild();
+        await using var helper = new CoreFixture();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var client = helper.Client;
         var fan = Assert.Single(client.Describe());
@@ -164,17 +166,17 @@ public sealed partial class FanCurveReceiptTests
             }, deadline.Token);
             await Task.Delay(100, deadline.Token);
         }
-        var sameOwner = helper.ProcessId;
+        var sameOwner = helper.SessionId;
         client.ResetDetection();
         Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
-        Assert.Equal(sameOwner, helper.ProcessId);
+        Assert.Equal(sameOwner, helper.SessionId);
         Assert.Equal(setting.Curve, await client.ReadCurveAsync(0, deadline.Token));
         var stillActive = await client.SendAsync("read", null, deadline.Token);
         Assert.False(stillActive!.Value.GetProperty("fans")[0].GetProperty("automaticControl").GetBoolean());
         if (finish == "eof")
         {
-            Assert.False(helper.HasExited);
-            return; // CoreChild closes stdin; exit 0 requires core cleanup to restore this active override.
+            Assert.False(helper.IsDisposed);
+            return; // CoreFixture disposes the session; cleanup must to restore this active override.
         }
 
         if (finish == "temperature")
@@ -196,52 +198,26 @@ public sealed partial class FanCurveReceiptTests
         Assert.Null(await client.ReadCurveAsync(0, deadline.Token));
         var after = await client.SendAsync("read", null, deadline.Token);
         Assert.True(after!.Value.GetProperty("fans")[0].GetProperty("automaticControl").GetBoolean());
-        Assert.False(helper.HasExited);
+        Assert.False(helper.IsDisposed);
     }
 
-    private sealed class CoreChild : IAsyncDisposable
+    private sealed class CoreFixture : IAsyncDisposable
     {
-        private readonly string root = Path.Combine(Path.GetTempPath(), "rm-fan-core-consumer-" + Guid.NewGuid().ToString("N"));
-        private readonly string helperDirectory;
-        private Process? observer;
+        private readonly ProbeFanBackend backend;
         internal FanControlCoreClient Client { get; }
-        internal bool HasExited => observer!.HasExited;
-        internal int ProcessId => observer!.Id;
-        internal CoreChild(int deferredOpens = 0, bool restoreFault = false)
+        internal bool IsDisposed => backend.Disposed;
+        internal int SessionId { get; } = Random.Shared.Next();
+        internal CoreFixture(int deferredOpens = 0, bool restoreFault = false)
         {
-            var probePath = Environment.GetEnvironmentVariable("RM_FAN_CORE_PROTOCOL_PROBE");
-            Assert.False(string.IsNullOrWhiteSpace(probePath), "Build the owned in-memory core fixture first.");
-            Assert.True(File.Exists(probePath), "Missing owned core fixture.");
-            helperDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "fan-control-core")).FullName;
-            File.WriteAllText(Path.Combine(helperDirectory, "FanControlCore.exe"), "factory placeholder");
-            Process? Start(ProcessStartInfo original)
-            {
-                original.FileName = probePath!;
-                original.Environment["RM_FAN_CORE_PROBE_DEFER_OPEN"] = deferredOpens.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                original.Environment["RM_FAN_CORE_PROBE_FAIL_RESTORE"] = restoreFault ? "1" : "0";
-                var child = Process.Start(original)!;
-                observer = Process.GetProcessById(child.Id);
-                _ = observer.SafeHandle;
-                return child;
-            }
-            Client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")), Start);
+            backend = new ProbeFanBackend(deferredOpens, restoreFault);
+            Client = new FanControlCoreClient(new EnvironmentInfo(@"C:\FanCoreConsumerFixture"),
+                (_, _) => new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend)));
         }
         public async ValueTask DisposeAsync()
         {
-            Client.Dispose();
-            if (observer is not null)
-            {
-                try
-                {
-                    await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                    Assert.Equal(0, observer.ExitCode); // EOF restored the fake backend and exited normally.
-                }
-                finally { observer.Dispose(); }
-            }
-            File.Delete(Path.Combine(helperDirectory, "FanControlCore.exe"));
-            Directory.Delete(helperDirectory);
-            Directory.Delete(Path.Combine(root, "Dependencies"));
-            Directory.Delete(root);
+            await Client.DisposeAsync();
+            Assert.True(backend.Disposed);
+            Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));
         }
     }
 }

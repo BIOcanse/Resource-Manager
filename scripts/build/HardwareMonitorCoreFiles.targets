@@ -1,5 +1,5 @@
 <Project>
-  <!-- The desktop fan child loads the very same official core library from disk.
+  <!-- The embedded desktop fan backend loads the official core library from disk.
        Keep its resolved runtime dependencies beside it in single-file products. -->
   <PropertyGroup>
     <HardwareMonitorCoreSharedPackages>;LibreHardwareMonitorLib;DiskInfoToolkit;HidSharp;RAMSPDToolkit-NDD;BlackSharp.Core;Mono.Posix.NETStandard;System.IO.FileSystem.AccessControl;System.IO.Ports;System.Management;System.CodeDom;</HardwareMonitorCoreSharedPackages>

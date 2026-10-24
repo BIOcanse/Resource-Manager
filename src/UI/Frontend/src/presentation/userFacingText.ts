@@ -186,7 +186,6 @@ export function userFacingMetricUnavailableReason(
 export function componentDisplayName(componentId: unknown, fallback?: unknown) {
   const names = uiText.status.component.names;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
-    case "fan-control-core": return names.fanControlCore;
     case "hardware-bridge": return names.hardwareBridge;
     case "amd-smu-pawnio-provider": return names.amdSmuPawnIo;
     case "hardware-sensors-pawnio-provider": return names.hardwareSensorsPawnIo;
@@ -204,7 +203,6 @@ export function componentDisplayName(componentId: unknown, fallback?: unknown) {
 export function componentPurpose(componentId: unknown) {
   const purposes = uiText.status.component.purposes;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
-    case "fan-control-core": return purposes.fanControlCore;
     case "hardware-bridge": return purposes.hardwareBridge;
     case "amd-smu-pawnio-provider": return purposes.amdSmu;
     case "hardware-sensors-pawnio-provider": return purposes.hardwareSensorsPawnIo;

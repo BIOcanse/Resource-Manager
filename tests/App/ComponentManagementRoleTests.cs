@@ -7,6 +7,14 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ComponentManagementRoleTests
 {
     [Fact]
+    public void FanControlIsAvailableWithoutInstallingAComponent()
+    {
+        Assert.DoesNotContain(ComponentCatalog.Definitions, row => row.Id == "fan-control-core");
+        Assert.Null(ResourceManager.App.Application.Dependencies.OptionalDependencyCatalog.Find("fan-control-core"));
+        Assert.Equal("FanControlCore.Library", typeof(FanControlCore.Discovery.FanCore).Assembly.GetName().Name);
+    }
+
+    [Fact]
     public void CatalogProviderKindsUseCanonicalClassificationTokens()
     {
         var expected = new Dictionary<string, string>
@@ -14,7 +22,6 @@ public sealed class ComponentManagementRoleTests
             ["shared-webview2-runtime"] = ComponentProviderKinds.Runtime,
             ["amd-smu-pawnio-provider"] = ComponentProviderKinds.Cpu,
             ["intel-msr-pawnio-provider"] = ComponentProviderKinds.Cpu,
-            ["fan-control-core"] = ComponentProviderKinds.Fan,
             ["hardware-bridge"] = ComponentProviderKinds.Cpu,
             ["hardware-sensors-pawnio-provider"] = ComponentProviderKinds.HardwareMonitor,
             ["librehardwaremonitor-provider"] = ComponentProviderKinds.HardwareMonitor,

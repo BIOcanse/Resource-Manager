@@ -31,10 +31,10 @@ export default async function localizationJourney(page, baseUrl) {
   const pendingVerificationReleases = [];
   const verificationStartWaiters = [];
   await page.route("**/api/components", route => route.fulfill({ json: [{
-    definition: { id: "fan-control-core", name: "FanControlCore", managementRole: "dependency", capabilities: [] },
+    definition: { id: "hardware-bridge", name: "HardwareBridge", managementRole: "dependency", capabilities: [] },
     installed: false, canInstall: true, canVerify: true, providers: [], message: { domain: 1, code: 9, args: [] }
   }] }));
-  await page.route("**/api/components/fan-control-core/verify", async route => {
+  await page.route("**/api/components/hardware-bridge/verify", async route => {
     if (route.request().method() !== "POST") throw new Error("Verification must use the existing POST endpoint");
     verificationRequests++;
     await new Promise(resolve => {

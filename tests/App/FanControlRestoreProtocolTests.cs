@@ -1,5 +1,5 @@
-using System.Diagnostics;
-using System.Text;
+
+
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Domain.Control;
@@ -20,39 +20,16 @@ public sealed class FanControlRestoreProtocolTests
         bool expected, bool wantsMaximum = true)
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-fan-maximum-" + Guid.NewGuid().ToString("N"));
-        var helperDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "fan-control-core")).FullName;
-        File.WriteAllText(Path.Combine(helperDirectory, "FanControlCore.exe"), "factory placeholder");
-        var script = $$"""
-            while ($null -ne ($line = [Console]::In.ReadLine())) {
-                $request=$line | ConvertFrom-Json
-                if ($request.op -eq 'describe') {
-                    $response=@{id=$request.id; ok=$true; available=$true; backend='fixture';
-                        fans=@(@{index=0; name='Fixture'; writable=$true; supportsDuty=$true; role='cpu'})}
-                    [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 5 -Compress))
-                } else {
-                    $response=@{id=$request.id; ok=$true; fans=@(@{index=0;
-                        automaticControl=${{automatic.ToString().ToLowerInvariant()}}; dutyPercent={{(duty == "null" ? "$null" : duty)}}})}
-                    [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 5 -Compress))
-                }
-                [Console]::Out.Flush()
-            }
-            """;
-        Process? observer = null;
-        Process? Start(ProcessStartInfo productionStart)
-        {
-            var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        Directory.CreateDirectory(root);
+        using var client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")),
+            (_, _) => new DelegateFanSession(request =>
             {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
-            };
-            info.ArgumentList.Add("-NoProfile"); info.ArgumentList.Add("-NonInteractive"); info.ArgumentList.Add("-EncodedCommand");
-            info.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
-            var process = Process.Start(info)!;
-            observer = Process.GetProcessById(process.Id);
-            _ = observer.SafeHandle;
-            return process;
-        }
-        using var client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")), Start);
+                var response = request.GetProperty("op").GetString() == "describe"
+                    ? """{"ok":true,"available":true,"backend":"fixture","fans":[{"index":0,"name":"Fixture","writable":true,"supportsDuty":true,"role":"cpu"}]}"""
+                    : "{\"ok\":true,\"fans\":[{\"index\":0,\"automaticControl\":" + automatic.ToString().ToLowerInvariant()
+                        + ",\"dutyPercent\":" + duty + "}]}";
+                return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(response);
+            }));
         try
         {
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture fan",
@@ -67,12 +44,8 @@ public sealed class FanControlRestoreProtocolTests
         finally
         {
             client.Dispose();
-            if (observer is not null)
-            {
-                await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                observer.Dispose();
-            }
-            Directory.Delete(root, recursive: true);
+            foreach (var file in Directory.EnumerateFiles(root)) File.Delete(file);
+            Directory.Delete(root);
         }
     }
 
@@ -91,44 +64,37 @@ public sealed class FanControlRestoreProtocolTests
         int restoreSupport = 1, string? execution = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-fan-restore-" + Guid.NewGuid().ToString("N"));
-        var helperDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "fan-control-core")).FullName;
-        File.WriteAllText(Path.Combine(helperDirectory, "FanControlCore.exe"), "factory placeholder");
+        Directory.CreateDirectory(root);
         var operationsPath = Path.Combine(root, "operations.jsonl");
-        var operationsEncoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(operationsPath));
-        var script = $$"""
-            $operations=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{operationsEncoded}}'))
-            while ($null -ne ($line = [Console]::In.ReadLine())) {
-                [IO.File]::AppendAllText($operations,$line+[Environment]::NewLine)
-                $request = $line | ConvertFrom-Json
-                $response = @{id=$request.id; ok=$true; fans=@(@{index=0; automaticControl=$true})}
-                if ($request.op -eq 'describe') {
-                    $fan=@{index=0; name='Fixture'; writable=$true; supportsDuty=$true; role='cpu'; firmwareCurve='xy'; supportsSoftwareCurve=$true}
-                    if ({{restoreSupport}} -ge 0) { $fan.supportsFirmwareCurveReset = ({{restoreSupport}} -eq 1) }
-                    $response.available=$true; $response.backend='fixture'; $response.fans=@($fan)
-                }
-                if ({{acknowledgement}} -ge 0) { $response.firmwareCurveReset = ({{acknowledgement}} -eq 1 -and $request.resetFirmwareCurve -eq $true) }
-                [Console]::Out.WriteLine(($response | ConvertTo-Json -Depth 5 -Compress))
-                [Console]::Out.Flush()
-            }
-            """;
-        Process? observer = null;
         string? stateDirectory = null;
-        Process? Start(ProcessStartInfo productionStart)
-        {
-            stateDirectory = productionStart.Environment["FANCONTROLCORE_STATE_DIRECTORY"];
-            var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        using var client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")),
+            (state, _) =>
             {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
-            };
-            info.ArgumentList.Add("-NoProfile"); info.ArgumentList.Add("-NonInteractive"); info.ArgumentList.Add("-EncodedCommand");
-            info.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
-            var process = Process.Start(info)!;
-            observer = Process.GetProcessById(process.Id);
-            _ = observer.SafeHandle;
-            return process;
-        }
-        using var client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")), Start);
+                stateDirectory = state;
+                return new DelegateFanSession(request =>
+                {
+                    File.AppendAllText(operationsPath, request.GetRawText() + Environment.NewLine);
+                    var response = new Dictionary<string, object?>
+                    {
+                        ["ok"] = true,
+                        ["fans"] = new[] { new Dictionary<string, object?> { ["index"] = 0, ["automaticControl"] = true } }
+                    };
+                    if (request.GetProperty("op").GetString() == "describe")
+                    {
+                        var fan = new Dictionary<string, object?>
+                        {
+                            ["index"] = 0, ["name"] = "Fixture", ["writable"] = true, ["supportsDuty"] = true,
+                            ["role"] = "cpu", ["firmwareCurve"] = "xy", ["supportsSoftwareCurve"] = true
+                        };
+                        if (restoreSupport >= 0) fan["supportsFirmwareCurveReset"] = restoreSupport == 1;
+                        response["available"] = true; response["backend"] = "fixture"; response["fans"] = new[] { fan };
+                    }
+                    if (acknowledgement >= 0)
+                        response["firmwareCurveReset"] = acknowledgement == 1
+                            && request.TryGetProperty("resetFirmwareCurve", out var reset) && reset.GetBoolean();
+                    return System.Text.Json.JsonSerializer.SerializeToElement(response);
+                });
+            });
         try
         {
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture fan",
@@ -181,12 +147,8 @@ public sealed class FanControlRestoreProtocolTests
         finally
         {
             client.Dispose();
-            if (observer is not null)
-            {
-                await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                observer.Dispose();
-            }
-            Directory.Delete(root, recursive: true);
+            foreach (var file in Directory.EnumerateFiles(root)) File.Delete(file);
+            Directory.Delete(root);
         }
     }
 

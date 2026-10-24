@@ -908,7 +908,7 @@ public sealed class WindowsControlObjectCatalog(
     /// </summary>
     private static IReadOnlyList<ControlCapability> ChassisFanCapabilities(int? curvePointLimit)
     {
-        var (componentId, componentName) = ("fan-control-core", "风扇控制核心");
+        var (componentId, componentName) = ((string?)null, "风扇控制核心");
         return
         [
             Unsupported("fan.rpm", "转速", ControlValueKinds.Number, componentId, componentName),
@@ -1156,6 +1156,3 @@ public sealed class WindowsControlObjectCatalog(
             : ControlVendors.Unknown;
     }
 }
-
-
-

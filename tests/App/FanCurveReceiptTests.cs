@@ -1,5 +1,5 @@
-using System.Diagnostics;
-using System.Text;
+
+
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Domain.Control;
@@ -143,79 +143,54 @@ public sealed partial class FanCurveReceiptTests
     private static ControlObject Target => new("fan:oem0", ControlObjectKinds.Fan, "Fixture",
         new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
 
-    // Only a finite owned JSON process. No real fan core, sensors or hardware.
+    // In-memory protocol fixture; no child processes, sensors or hardware.
     private sealed class CurveHelper : IAsyncDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "rm-curve-receipt-" + Guid.NewGuid().ToString("N"));
-        private readonly string helperDirectory;
-        private Process? observer;
         internal string Operations { get; }
         internal FanControlCoreClient Client { get; }
 
         internal CurveHelper(string firstReceipt, string? laterReceipt = null, string? manualReceipt = null, bool requireSeed = false)
         {
-            laterReceipt ??= $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}";
-            helperDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "fan-control-core")).FullName;
-            File.WriteAllText(Path.Combine(helperDirectory, "FanControlCore.exe"), "factory placeholder");
+            Directory.CreateDirectory(root);
             Operations = Path.Combine(root, "operations.txt");
-            var script = $$"""
-                $count = 0
-                $seeded = $false
-                while ($null -ne ($line = [Console]::In.ReadLine())) {
-                    $request = $line | ConvertFrom-Json
-                    [IO.File]::AppendAllText('{{Operations.Replace("'", "''")}}', $request.op + [Environment]::NewLine)
-                    if ($request.op -eq 'exit-fixture') {
-                        [Console]::Out.WriteLine('{"id":' + $request.id + ',"ok":true}')
-                        [Console]::Out.Flush()
-                        break
-                    } elseif ($request.op -eq 'temp') {
-                        $seeded = $null -ne $request.samples.cpu -and $request.observedAtUtcTicks.cpu -gt 0
-                        $body = '"ok":true'
-                    } elseif ($request.op -eq 'setcurve' -and {{(requireSeed ? "$true" : "$false")}} -and -not $seeded) {
-                        $body = '"ok":false,"error":"temperature required"'
-                    } elseif ($request.op -eq 'describe') {
-                        $body = '"ok":true,"available":true,"backend":"fixture","needsTemperatures":true,"fans":[{"index":0,"name":"Fixture","role":"cpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true},{"index":1,"name":"Other","role":"gpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true}]'
-                    } elseif ($request.op -in @('set','boost','auto') -and '{{manualReceipt}}' -ne '') {
-                        $body = '{{manualReceipt}}'
-                    } else {
-                        $count++
-                        $body = if ($count -eq 1) { '{{firstReceipt}}' } else { '{{laterReceipt}}' }
-                    }
-                    [Console]::Out.WriteLine('{"id":' + $request.id + ',' + $body + '}')
-                    [Console]::Out.Flush()
-                }
-                """;
-            Process? Start(ProcessStartInfo productionStart)
-            {
-                var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+            laterReceipt ??= $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}";
+            var count = 0;
+            var seeded = false;
+            var sync = new object();
+            Client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")),
+                (_, _) => new DelegateFanSession(request =>
                 {
-                    UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                start.ArgumentList.Add("-NoProfile");
-                start.ArgumentList.Add("-NonInteractive");
-                start.ArgumentList.Add("-EncodedCommand");
-                start.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
-                var child = Process.Start(start)!;
-                observer = Process.GetProcessById(child.Id);
-                _ = observer.SafeHandle;
-                return child;
-            }
-            Client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")), Start);
+                    lock (sync)
+                    {
+                        var operation = request.GetProperty("op").GetString()!;
+                        File.AppendAllLines(Operations, [operation]);
+                        string body;
+                        if (operation == "exit-fixture") throw new IOException("Injected library failure");
+                        if (operation == "temp")
+                        {
+                            seeded = request.GetProperty("samples").TryGetProperty("cpu", out _)
+                                && request.GetProperty("observedAtUtcTicks").GetProperty("cpu").GetInt64() > 0;
+                            body = "\"ok\":true";
+                        }
+                        else if (operation == "setcurve" && requireSeed && !seeded)
+                            body = "\"ok\":false,\"error\":\"temperature required\"";
+                        else if (operation == "describe")
+                            body = """
+                                "ok":true,"available":true,"backend":"fixture","needsTemperatures":true,"fans":[{"index":0,"name":"Fixture","role":"cpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true},{"index":1,"name":"Other","role":"gpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true}]
+                                """;
+                        else if (operation is "set" or "boost" or "auto" && manualReceipt is not null) body = manualReceipt;
+                        else body = ++count == 1 ? firstReceipt : laterReceipt;
+                        var id = request.TryGetProperty("id", out var value) ? value.GetInt64() : 0;
+                        return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>("{\"id\":" + id + "," + body + "}");
+                    }
+                }));
         }
 
         public async ValueTask DisposeAsync()
         {
-            Client.Dispose();
-            if (observer is not null)
-            {
-                try { await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
-                finally { observer.Dispose(); }
-            }
+            await Client.DisposeAsync();
             File.Delete(Operations);
-            File.Delete(Path.Combine(helperDirectory, "FanControlCore.exe"));
-            Directory.Delete(helperDirectory);
-            Directory.Delete(Path.Combine(root, "Dependencies"));
             Directory.Delete(root);
         }
     }

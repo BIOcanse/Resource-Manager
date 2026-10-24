@@ -79,6 +79,7 @@
     <Compile Include="../Fixtures/DisplayIdFormulaExpectation.cs" Link="DisplayIdFormulaExpectation.cs" />
     <Compile Include="../Fixtures/DisplayIdCtaColourExpectation.cs" Link="DisplayIdCtaColourExpectation.cs" />
     <Compile Include="../Fixtures/DisplayIdCompactTimingFixture.cs" Link="DisplayIdCompactTimingFixture.cs" />
+    <ProjectReference Include="..\FanControlCoreProbe\FanControlCoreProbe.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\Core\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
@@ -93,4 +94,5 @@
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+<Target Name="CopyFanControlCoreProbe" AfterTargets="Build"><ItemGroup><FanControlCoreProbeFile Include="$(MSBuildProjectDirectory)\..\FanControlCoreProbe\bin\$(Configuration)\net10.0\*" /></ItemGroup><Copy SourceFiles="@(FanControlCoreProbeFile)" DestinationFolder="$(TargetDir)FanControlCoreProbe" /></Target>
 </Project>

@@ -46,6 +46,16 @@ public sealed class FanCurveTemperatureFeed(
 
     private void UpdateSubscription()
     {
+        try { UpdateSubscriptionCore(); }
+        catch (Exception error)
+        {
+            lock (subscriptionGate) request = null;
+            logger?.LogWarning(error, "Fan temperature subscription callback failed; curves will release on stale input.");
+        }
+    }
+
+    private void UpdateSubscriptionCore()
+    {
         lock (subscriptionGate)
         {
             lease?.Dispose();
@@ -94,6 +104,10 @@ public sealed class FanCurveTemperatureFeed(
         {
             // 关机，正常路径。
         }
+        catch (Exception error)
+        {
+            logger?.LogError(error, "Fan temperature feed stopped after a failure; curves will release on stale input.");
+        }
         finally
         {
             core.TemperatureDemandChanged -= UpdateSubscription;
@@ -101,7 +115,8 @@ public sealed class FanCurveTemperatureFeed(
             lock (subscriptionGate)
             {
                 finished = true;
-                lease?.Dispose();
+                try { lease?.Dispose(); }
+                catch (Exception error) { logger?.LogWarning(error, "Fan temperature subscription release failed."); }
                 lease = null;
                 request = null;
             }

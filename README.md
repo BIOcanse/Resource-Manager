@@ -65,7 +65,7 @@ From here you can quickly:
 
 Each application can configure its base score, permitted adjustments, startup GPU preference and Level 2 protection. Runtime GPU placement is calculated after the process enters scheduling; it is not a saved target. Startup preferences do not override that calculation.
 
-The components that readings and hardware control rely on are managed here too, such as the hardware sensor driver (PawnIO), AMD processor sensor support, the fan control core and the hardware control helper. Each one is installed and verified only when you ask; until then its readings show as unavailable and everything else keeps working.
+The components that readings and hardware control rely on are managed here too, such as the hardware sensor driver (PawnIO), AMD processor sensor support and the hardware control helper. Each one is installed and verified only when you ask; until then its readings show as unavailable and everything else keeps working. Fan Control Core is built into the backend as a library and has no separate component installation or resident process.
 
 ---
 

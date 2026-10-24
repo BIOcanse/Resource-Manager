@@ -119,8 +119,6 @@ internal static class PackageSwitchTransaction
         return pending;
     }
 
-
-
     // Cleanup runs after commit and cannot roll back the successful update.
     public static void RetainLatestBackup(string installRoot, string committedWorkspace)
     {
@@ -237,7 +235,8 @@ internal static class PackageSwitchTransaction
             if (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any())
                 throw new InvalidDataException($"目标发行包含有不该携带的运行数据：{name}");
             CopyTree(source, destination, preserveAccessRules: true,
-                preserveHostManager: includeDependencies && name == "UserData");
+                preserveHostManager: includeDependencies && name == "UserData",
+                excludeRetiredFanCore: name == "Dependencies");
         }
         // Older control stores used ContentRoot (Bin/ResourceManager), which is replaced by an update.
         var legacyControl = Path.Combine(installed, "Bin", "ResourceManager", "UserData", "Control");
@@ -257,7 +256,7 @@ internal static class PackageSwitchTransaction
         }
     }
 
-    private static void CopyTree(string source, string target, bool preserveAccessRules = false, bool preserveHostManager = false)
+    private static void CopyTree(string source, string target, bool preserveAccessRules = false, bool preserveHostManager = false, bool excludeRetiredFanCore = false)
     {
         var pending = new Queue<(string Source, string Target)>();
         var directoryPermissions = new Stack<(string Source, string Target)>();
@@ -280,6 +279,9 @@ internal static class PackageSwitchTransaction
             }
             foreach (var child in Directory.EnumerateDirectories(item.Source))
             {
+                // 核心已经随库装进后端，升级时不能再把退役的标准输入输出组件带进新目录。
+                if (excludeRetiredFanCore && string.Equals(item.Source, source, StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(child).Equals("fan-control-core", StringComparison.OrdinalIgnoreCase)) continue;
                 ReleasePackageLayout.RejectReparse(child);
                 if (preserveHostManager && string.Equals(item.Source, source, StringComparison.OrdinalIgnoreCase)
                     && Path.GetFileName(child).Equals("HostManager", StringComparison.OrdinalIgnoreCase)) continue;
