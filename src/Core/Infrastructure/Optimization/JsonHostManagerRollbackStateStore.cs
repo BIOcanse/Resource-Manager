@@ -8,7 +8,7 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
-public sealed class JsonHostManagerRollbackStateStore : IHostManagerRollbackStateStore, IDisposable
+public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRollbackStateStore, IDisposable
 {
     internal static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(1);
     private const string DurableStoreKind = "rollback-state";
