@@ -13,6 +13,38 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class EtwSystemInterruptLossTests
 {
+    [Fact]
+    public void UtcStepsDoNotChangeCoverageAdmissionOrEventExpiry()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        var utc = Start;
+        var tick = Start.ToUnixTimeMilliseconds();
+        using var source = new EtwSystemInterruptSnapshotSource(broker, fixture.Owner,
+            NullLogger<EtwSystemInterruptSnapshotSource>.Instance, () => utc, () => tick);
+        Invoke(source, "EnsureStarted");
+        var binding = Capture(source, broker);
+        utc = Start.AddDays(1);
+        tick += 3000;
+        Assert.True(Publish(source, utc));
+        Assert.False(source.Read().Available);
+        utc = Start.AddDays(-1);
+        Interrupt(source, binding, Start.AddSeconds(4), 7);
+        tick += 8000;
+        Assert.True(Publish(source, utc));
+        Assert.True(source.Read().Available);
+        Assert.Equal(TimeSpan.FromSeconds(11), source.Read().Window);
+        Assert.Equal(1, source.Read().EventCount);
+        Assert.Equal(utc, source.Read().CapturedAt);
+        Assert.Single(source.Read().Buckets);
+        tick += 61_000;
+        Assert.True(Publish(source, utc));
+        Assert.True(source.Read().Available);
+        Assert.Equal(0, source.Read().EventCount);
+        Assert.Equal(0, source.Read().MaximumSingleDurationMilliseconds);
+        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+    }
+
     private static readonly DateTimeOffset Start = new(2026, 10, 3, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -79,7 +111,7 @@ public sealed class EtwSystemInterruptLossTests
         var observation = HostManagerInterruptReportFactProjector.Project(
             rules[0].SourceHandle, rules[0].CoverageScopeHandle, rules, source.Read());
         Assert.Equal(NativeReportSourceStatus.Complete, observation.Status);
-        Assert.Equal(3, observation.Facts.Count);
+        Assert.Equal(rules.Length, observation.Facts.Count);
         source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
@@ -219,7 +251,7 @@ public sealed class EtwSystemInterruptLossTests
 
     private static EtwSystemInterruptSnapshotSource NewSource(Broker broker,
         HostManagerSamplingSubscriptionTestFixture fixture, Func<DateTimeOffset> clock)
-        => new(broker, fixture.Owner, NullLogger<EtwSystemInterruptSnapshotSource>.Instance, clock);
+        => new(broker, fixture.Owner, NullLogger<EtwSystemInterruptSnapshotSource>.Instance, clock, () => clock().ToUnixTimeMilliseconds());
 
     private static bool Publish(EtwSystemInterruptSnapshotSource source, DateTimeOffset now)
         => (bool)Invoke(source, "TryPublishCurrentSnapshot", now, new SamplingOwnerToken(1, 1))!;
@@ -232,12 +264,12 @@ public sealed class EtwSystemInterruptLossTests
     private static void Image(EtwSystemInterruptSnapshotSource source, Binding binding,
         string name, DateTimeOffset at)
         => Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Modules,
-            0x1000UL, 0x100, name, false, at);
+            0x1000UL, 0x100, name, false, at.ToUnixTimeMilliseconds());
 
     private static void Interrupt(EtwSystemInterruptSnapshotSource source, Binding binding,
         DateTimeOffset at, double duration)
         => Invoke(source, "ObserveBoundInterrupt", binding.Source, binding.Context,
-            binding.Modules, binding.Aggregator, SystemInterruptEventKinds.Dpc, duration, 0x1010UL, at);
+            binding.Modules, binding.Aggregator, SystemInterruptEventKinds.Dpc, duration, 0x1010UL, at.ToUnixTimeMilliseconds());
 
     private static object Field(EtwSystemInterruptSnapshotSource source, string name)
         => typeof(EtwSystemInterruptSnapshotSource).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!

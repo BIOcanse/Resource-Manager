@@ -88,11 +88,15 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         Prune(nowTickMilliseconds);
         var processSnapshots = brokerBefore.IsRunning
             && brokerBefore.Generation == Volatile.Read(ref sessionGeneration)
-                ? BuildProcessSnapshots(nowTickMilliseconds, includeObservedTraffic)
+                ? BuildProcessSnapshots(nowTickMilliseconds)
                 : ProcessSnapshots.Empty;
-        var observedTraffic = processSnapshots.WindowEvents is { } windowEvents
-            ? BuildObservedTraffic(windowEvents, now)
-            : null;
+        ProcessNetworkTrafficWindow? observedTraffic = null;
+        if (processSnapshots.WindowEvents is { } windowEvents)
+        {
+            var window = BuildObservedTraffic(windowEvents, now, out var raw, out var external);
+            processSnapshots = processSnapshots with { Raw = raw, External = external };
+            if (includeObservedTraffic) observedTraffic = window;
+        }
         var brokerAfter = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
         if (!brokerAfter.IsRunning || brokerAfter.Generation != brokerBefore.Generation
             || brokerAfter.Generation != Volatile.Read(ref sessionGeneration)
@@ -287,12 +291,12 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         => ObserveBoundNetworkTransfer(source, context, Volatile.Read(ref events),
             processId, size, isSend, isUdp, remoteAddress, observedTick, eventFileTime);
 
-    private ProcessSnapshots BuildProcessSnapshots(long nowTickMilliseconds, bool includeObservedTraffic)
+    private ProcessSnapshots BuildProcessSnapshots(long nowTickMilliseconds)
     {
-        lock (eventGate) return BuildProcessSnapshotsCore(nowTickMilliseconds, includeObservedTraffic);
+        lock (eventGate) return BuildProcessSnapshotsCore(nowTickMilliseconds);
     }
 
-    private ProcessSnapshots BuildProcessSnapshotsCore(long nowTickMilliseconds, bool includeObservedTraffic)
+    private ProcessSnapshots BuildProcessSnapshotsCore(long nowTickMilliseconds)
     {
         var cutoff = nowTickMilliseconds - CalculationWindowMilliseconds;
         if (cutoff <= incompleteThroughTick)
@@ -300,9 +304,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             state = "Warming";
             return ProcessSnapshots.Empty;
         }
-        var elapsedSeconds = Math.Max(0.5, CalculationWindow.TotalSeconds);
-        var totals = new Dictionary<int, NetworkAccumulator>();
-        var selected = includeObservedTraffic ? new List<NetworkTransferEvent>() : null;
+        var selected = new List<NetworkTransferEvent>();
         foreach (var item in Volatile.Read(ref events))
         {
             if (item.ObservedTickMilliseconds < cutoff || item.ObservedTickMilliseconds > nowTickMilliseconds)
@@ -310,24 +312,11 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 continue;
             }
 
-            totals.TryGetValue(item.ProcessId, out var accumulator);
-            accumulator.Add(item);
-            totals[item.ProcessId] = accumulator;
-            selected?.Add(item);
+            selected.Add(item);
         }
 
-        var raw = new Dictionary<int, NetworkProcessAttribution>(totals.Count);
-        var external = new Dictionary<int, NetworkProcessAttribution>(totals.Count);
-        foreach (var (processId, accumulator) in totals)
-        {
-            raw[processId] = accumulator.CreateRaw(processId, elapsedSeconds);
-            if (accumulator.ExternalEventCount > 0)
-            {
-                external[processId] = accumulator.CreateExternal(processId, elapsedSeconds);
-            }
-        }
-
-        return new ProcessSnapshots(external, raw, selected?.ToArray(), windowRevision);
+        return new ProcessSnapshots(new Dictionary<int, NetworkProcessAttribution>(),
+            new Dictionary<int, NetworkProcessAttribution>(), selected.ToArray(), windowRevision);
     }
 
     private void Prune(long nowTickMilliseconds)

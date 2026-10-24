@@ -18,7 +18,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (diskAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
             return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
                 diskAttribution.ProviderState.ObservationStatus, diskAttribution.ProviderState.ObservationStatus);
-        var valuesByProcess = CreateDiskProcessValues(metricId, diskAttribution);
+        var valuesByProcess = CreateDiskProcessValues(metricId, diskAttribution, processAttribution);
         var total = valuesByProcess
             .Where(static item => item.Value > 0)
             .Sum(static item => item.Value);
@@ -50,7 +50,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (networkAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
             return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
                 networkAttribution.ProviderState.ObservationStatus, networkAttribution.ProviderState.ObservationStatus);
-        var valuesByProcess = CreateNetworkProcessValues(metricId, networkAttribution);
+        var valuesByProcess = CreateNetworkProcessValues(metricId, networkAttribution, processAttribution);
         var total = valuesByProcess
             .Where(static item => item.Value > 0)
             .Sum(static item => item.Value);
@@ -73,9 +73,12 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static IReadOnlyDictionary<int, double> CreateDiskProcessValues(
         string metricId,
-        PhysicalDiskIoAttributionSnapshot diskAttribution)
+        PhysicalDiskIoAttributionSnapshot diskAttribution,
+        ProcessAttributionSnapshot processAttribution)
     {
-        return diskAttribution.Processes.ToDictionary(
+        return diskAttribution.Processes.Where(item => processAttribution.ProcessById.TryGetValue(item.Key, out var process)
+                && process.StartKey is long start && start > 0 && item.Value.ProcessStartKey == (ulong)start)
+            .ToDictionary(
             static item => item.Key,
             item => DiskProcessValue(metricId, item.Value));
     }
@@ -97,12 +100,15 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static IReadOnlyDictionary<int, double> CreateNetworkProcessValues(
         string metricId,
-        NetworkAttributionSnapshot networkAttribution)
+        NetworkAttributionSnapshot networkAttribution,
+        ProcessAttributionSnapshot processAttribution)
     {
         var processes = IsRawNetworkMetric(metricId)
             ? networkAttribution.RawProcessValues
             : networkAttribution.EffectiveProcesses;
-        return processes.ToDictionary(
+        return processes.Where(item => item.Value.ProcessStartKey is null || (processAttribution.ProcessById.TryGetValue(item.Key, out var process)
+                && process.StartKey is long start && start > 0 && item.Value.ProcessStartKey == (ulong)start))
+            .ToDictionary(
             static item => item.Key,
             item => NetworkProcessValue(metricId, item.Value));
     }

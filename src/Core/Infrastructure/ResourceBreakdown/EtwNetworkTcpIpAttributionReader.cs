@@ -66,14 +66,7 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
             try
             {
                 await Task.Delay(1000, stoppingToken);
-                if (!sourceZone.CanRead)
-                {
-                    owner.Stop("ETW 网络事件归因已按功能区冻结停止。");
-                }
-                else if (owner.IsRunning && DateTimeOffset.UtcNow - owner.LastRequestAt > CurrentIdleStopAfter())
-                {
-                    owner.Stop("ETW 网络事件归因已因无请求而停止。");
-                }
+                StopIfIdle(DateTimeOffset.UtcNow);
             }
             catch (OperationCanceledException)
             {
@@ -88,6 +81,12 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
     {
         try { await base.StopAsync(cancellationToken); }
         finally { owner.Stop("ETW 网络事件归因正在随程序停止。"); }
+    }
+
+    internal void StopIfIdle(DateTimeOffset now)
+    {
+        if (!sourceZone.CanRead) owner.Stop("ETW 网络事件归因已按功能区冻结停止。");
+        else if (now - owner.LastRequestAt > CurrentIdleStopAfter()) owner.Stop("ETW 网络事件归因已因无请求而停止。");
     }
 
     public override void Dispose()

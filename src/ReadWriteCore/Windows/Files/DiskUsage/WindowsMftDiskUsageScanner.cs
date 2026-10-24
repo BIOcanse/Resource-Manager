@@ -23,6 +23,18 @@ public sealed class WindowsMftDiskUsageScanner(
     Func<string, INtfsDiskUsageVolumeReader?>? openReader = null,
     Func<string, string, bool>? canScanFolder = null) : IDiskUsageScanner
 {
+    private readonly long retainedInputBudgetBytes = 256L * 1024 * 1024;
+    private readonly int maximumRetainedRecords = 1_000_000;
+
+    internal WindowsMftDiskUsageScanner(IDiskUsageVolumeCatalog volumes,
+        long retainedInputBudgetBytes, int maximumRetainedRecords,
+        Func<string, INtfsDiskUsageVolumeReader?>? openReader = null)
+        : this(volumes, openReader: openReader)
+    {
+        this.retainedInputBudgetBytes = retainedInputBudgetBytes;
+        this.maximumRetainedRecords = maximumRetainedRecords;
+    }
+
     /// <summary>根目录固定是 5 号记录。</summary>
     private const long RootRecordNumber = 5;
 
@@ -37,6 +49,8 @@ public sealed class WindowsMftDiskUsageScanner(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(retainedInputBudgetBytes);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumRetainedRecords);
         if (request.Scope is not DiskUsageScanScopes.AllVolumes and not DiskUsageScanScopes.Volume and not DiskUsageScanScopes.Folder)
             throw new ArgumentException("Choose an explicit supported scan scope.", nameof(request));
         if (request.Mode is not DiskUsageScanModes.Fast and not DiskUsageScanModes.Full)
@@ -188,7 +202,7 @@ public sealed class WindowsMftDiskUsageScanner(
     /// 顺序读整张主文件表。返回按记录号索引的条目表；
     /// 空洞（未用或解析不了的记录）留空，后面建树时跳过。
     /// </summary>
-    private static Dictionary<long, NtfsFileRecord> ReadAllRecords(
+    private Dictionary<long, NtfsFileRecord> ReadAllRecords(
         INtfsDiskUsageVolumeReader reader,
         IProgress<DiskUsageScanProgress>? progress,
         ScanTotals totals,
@@ -203,9 +217,12 @@ public sealed class WindowsMftDiskUsageScanner(
         var recordSize = reader.Layout.BytesPerFileRecord;
         var clusterSize = reader.Layout.BytesPerCluster;
         var chunk = new byte[recordSize * RecordsPerRead];
-        var records = new Dictionary<long, NtfsFileRecord>(1 << 16);
+        var records = new Dictionary<long, NtfsFileRecord>((int)Math.Min(1 << 16,
+            Math.Min(maximumRetainedRecords, retainedInputBudgetBytes / 256)));
         // 扩展记录先攒着：它引用的基记录可能还没读到，等整张表读完再合并。
         var extensions = new List<NtfsExtensionRecord>();
+        long retainedBytes = 0;
+        var retainedCount = 0;
         long recordNumber = 0;
 
         foreach (var run in runs)
@@ -229,10 +246,29 @@ public sealed class WindowsMftDiskUsageScanner(
 
                 for (var offset = 0; offset + recordSize <= read; offset += recordSize)
                 {
-                    switch (NtfsFileRecordParser.Classify(
+                    var kind = NtfsFileRecordParser.Classify(
                         chunk.AsSpan(offset, recordSize),
                         out var entry,
-                        out var extension))
+                        out var extension);
+                    var retain = kind == NtfsFileRecordParser.RecordKind.File && entry.InUse
+                        || kind == NtfsFileRecordParser.RecordKind.Extension && extension.InUse;
+                    if (retain)
+                    {
+                        // Include dictionary/list capacity, record values, link arrays,
+                        // link objects and UTF-16 names. Conservative retained-input
+                        // accounting bounds both base and extension collections before tree building.
+                        var names = kind == NtfsFileRecordParser.RecordKind.File ? entry.Names : extension.Names;
+                        var bytes = 256L + names.Sum(static name => 96L + name.Name.Length * 2L);
+                        if (retainedCount >= maximumRetainedRecords || bytes > retainedInputBudgetBytes - retainedBytes)
+                        {
+                            totals.Unreadable++;
+                            MergeExtensions(records, extensions);
+                            return records;
+                        }
+                        retainedBytes += bytes;
+                        retainedCount++;
+                    }
+                    switch (kind)
                     {
                         case NtfsFileRecordParser.RecordKind.File when entry.InUse:
                             records[recordNumber] = entry;

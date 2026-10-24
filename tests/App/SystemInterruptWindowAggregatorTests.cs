@@ -6,6 +6,24 @@ namespace ResourceManager.App.Tests;
 public sealed class SystemInterruptWindowAggregatorTests
 {
     [Fact]
+    public void MappedInterruptHotPathReusesIdentityAndDoesNotAllocatePerEvent()
+    {
+        var modules = new KernelModuleAddressMap();
+        modules.Upsert(0x1000, 0x1000, "driver.sys");
+        var identity = modules.Resolve(0x1010);
+        Assert.Same(identity, modules.Resolve(0x1020));
+        var aggregator = new SystemInterruptWindowAggregator();
+        aggregator.Observe(new(1000, "DPC", 2, 0x1010, identity.Name, identity.Path));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 20_000; index++)
+        {
+            var module = modules.Resolve(0x1010);
+            aggregator.Observe(new(1001, "DPC", 2, 0x1010, module.Name, module.Path));
+        }
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1024);
+    }
+
+    [Fact]
     public void CreateSnapshot_UsesCpuCapacityAndGroupsDrivers()
     {
         var now = AlignedNow();
@@ -22,8 +40,9 @@ public sealed class SystemInterruptWindowAggregatorTests
 
         var snapshot = aggregator.CreateSnapshot(
             now,
+            now.ToUnixTimeMilliseconds(),
             1,
-            now.AddSeconds(-60),
+            now.AddSeconds(-60).ToUnixTimeMilliseconds(),
             4,
             new SystemInterruptProviderState("test", "Running", "test"));
 
@@ -57,8 +76,9 @@ public sealed class SystemInterruptWindowAggregatorTests
         aggregator.Observe(Event(now.AddSeconds(-1), SystemInterruptEventKinds.Dpc, 20, "driver.sys"));
         var snapshot = aggregator.CreateSnapshot(
             now,
+            now.ToUnixTimeMilliseconds(),
             1,
-            now.AddSeconds(-9),
+            now.AddSeconds(-9).ToUnixTimeMilliseconds(),
             8,
             new SystemInterruptProviderState("test", "Running", "test"));
 
@@ -90,7 +110,7 @@ public sealed class SystemInterruptWindowAggregatorTests
         string moduleName)
     {
         return new SystemInterruptEventSample(
-            observedAt,
+            observedAt.ToUnixTimeMilliseconds(),
             kind,
             durationMilliseconds,
             0x1000,

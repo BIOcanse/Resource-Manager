@@ -48,9 +48,14 @@ public sealed class PhysicalDiskProcessFieldTests
         owner.ObserveDiskTransfer(41, 4096UL, false, 2000, 3, 199);
         owner.ObserveDiskTransfer(41, 7UL, false, 2000, 3, 201);
         tick = 3100;
-        Assert.Equal("7", owner.Read(true).ObservedTraffic!.Processes.Single().ReadBytes);
+        var valid = owner.Read(true);
+        Assert.Equal("7", valid.ObservedTraffic!.Processes.Single().ReadBytes);
+        Assert.Equal(200UL, valid.Processes[41].ProcessStartKey);
+        Assert.Equal(3.5, valid.Processes[41].ReadBytesPerSecond);
         recheck = true;
-        var unavailable = owner.Read(true).ObservedTraffic!.Processes.Single();
+        var invalid = owner.Read(true);
+        Assert.Empty(invalid.Processes);
+        var unavailable = invalid.ObservedTraffic!.Processes.Single();
         Assert.Null(unavailable.CreationWindowsFileTime100Ns); Assert.Null(unavailable.ReadBytes);
         Assert.Null(unavailable.WriteBytes);
     }

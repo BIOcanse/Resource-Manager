@@ -48,6 +48,8 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
         AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwPresentFrames}");
 
     private readonly object lifecycle = new();
+    private readonly Func<string, TraceEventSession> createSession = static name =>
+        new(name) { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
     private TraceEventSession? session;
@@ -65,16 +67,17 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     public string DisplayName => MonitoringSourceZoneIds.EtwPresentFrames;
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
+    internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
+        Func<string, TraceEventSession> createSession) : this(logger) => this.createSession = createSession;
+
     public IDisposable AcquireSubscription()
     {
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             Interlocked.Increment(ref frameLeases);
-            if (leases++ == 0 && mode != ResourceManagerComputeZoneMode.Freeze)
-            {
-                Start();
-            }
+            leases++;
+            ReconcileDemand();
 
             return new Lease(this);
         }
@@ -84,6 +87,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     {
         lock (lifecycle)
         {
+            ReconcileDemand();
             if (session is not { } current)
             {
                 return null;
@@ -102,9 +106,11 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                 {
                     observedEventsLost = lost;
                     lastLossUtcTicks = now;
+                    ledger.EventsLost();
                 }
 
-                var complete = lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks;
+                var complete = (lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks)
+                    && ledger.IsComplete(now - window.Ticks);
                 return new FrameTimingSnapshot(
                     new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window))
                 {
@@ -124,6 +130,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
 
         lock (lifecycle)
         {
+            ReconcileDemand();
             if (session is not { } current)
             {
                 return null;
@@ -141,10 +148,12 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                 {
                     observedEventsLost = lost;
                     lastLossUtcTicks = DateTime.UtcNow.Ticks;
+                    ledger.EventsLost();
                 }
 
                 return new FrameIntervalBatch(through,
-                    lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks,
+                    (lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks)
+                        && ledger.IsComplete(after.UtcTicks),
                     ledger.ReadIntervals(after.UtcTicks, through.UtcTicks));
             }
         }
@@ -159,10 +168,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
             {
                 Stop();
             }
-            else if (leases > 0 && session is null && !disposed)
-            {
-                Start();
-            }
+            else ReconcileDemand();
         }
     }
 
@@ -171,9 +177,10 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
         lock (gate)
         {
             ledger = new PresentFrameLedger(ReadProcessStartKey);
+            foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
             failed = false;
             observedEventsLost = 0;
-            lastLossUtcTicks = 0;
+            lastLossUtcTicks = DateTime.UtcNow.Ticks;
         }
 
         var name = ResourceManagerEtwSessionNames.Create(
@@ -182,7 +189,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
         {
             ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
                 ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
-            var current = new TraceEventSession(name) { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
+            var current = createSession(name);
             session = current;
             current.Source.Dynamic.All += OnEvent;
             processor = Task.Factory.StartNew(() =>
@@ -213,6 +220,17 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
             logger.LogWarning(error, "Present frame session {Session} could not start.", name);
             Stop();
         }
+    }
+
+    // Reads and subscription/mode changes are existing demand lifecycle points.
+    // Retire a dead processor before starting a replacement; lease counts stay owned here.
+    private void ReconcileDemand()
+    {
+        if (disposed || leases == 0 || mode == ResourceManagerComputeZoneMode.Freeze) return;
+        bool dead;
+        lock (gate) dead = failed || processor is { IsCompleted: true };
+        if (dead) Stop();
+        if (session is null) Start();
     }
 
     private void Flush(TraceEventSession current)

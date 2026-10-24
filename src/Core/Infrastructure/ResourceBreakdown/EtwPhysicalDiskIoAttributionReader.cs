@@ -26,6 +26,7 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         capture = new(broker, new KernelEtwDiagnostics(item =>
             logger.Log(item.Level switch { KernelEtwDiagnosticLevel.Debug => LogLevel.Debug, KernelEtwDiagnosticLevel.Information => LogLevel.Information, KernelEtwDiagnosticLevel.Warning => LogLevel.Warning, _ => LogLevel.Error }, item.Exception, item.MessageTemplate, item.Arguments.ToArray())));
     }
+    internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture) => this.capture = capture;
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwFileIoDisk;
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
@@ -52,8 +53,7 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
             try
             {
                 await Task.Delay(1000, stoppingToken);
-                if (capture.IsRunning && DateTimeOffset.UtcNow - lastRequestAt >
-                    (currentComputeMode == ResourceManagerComputeZoneMode.LowPower ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(5))) capture.Stop();
+                StopIfIdle(DateTimeOffset.UtcNow);
             }
             catch (OperationCanceledException) { break; }
         }
@@ -63,6 +63,11 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     {
         currentComputeMode = mode;
         if (mode == ResourceManagerComputeZoneMode.Freeze) capture.Stop("ETW DiskIO 物理磁盘归因已按功能区冻结停止。");
+    }
+    internal void StopIfIdle(DateTimeOffset now)
+    {
+        if (now - lastRequestAt > (currentComputeMode == ResourceManagerComputeZoneMode.LowPower
+            ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(5))) capture.Stop();
     }
     public override void Dispose() { disposed = true; try { capture.Dispose(); } finally { base.Dispose(); } }
     internal void ObserveDiskTransfer(int pid, long bytes, bool write, long tick) => capture.ObserveDiskTransfer(pid, bytes, write, tick);

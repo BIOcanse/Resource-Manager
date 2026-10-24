@@ -50,9 +50,10 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         var before = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
         RefreshBrokerState(before);
         var selected = SelectWindow(tick);
-        var legacy = selected.Complete ? AggregateLegacy(selected.Events) : new Dictionary<int, PhysicalDiskProcessAttribution>();
+        var legacy = new Dictionary<int, PhysicalDiskProcessAttribution>();
+        var verified = selected.Complete ? BuildObserved(selected.Events, now, selected.Generation, out legacy) : null;
         var scopes = selected.Disks.Select(number => new PhysicalDiskIoScope(selected.Generation, number)).ToArray();
-        var observed = !includeObservedTraffic ? null : selected.Complete ? BuildObserved(selected.Events, now, selected.Generation) with { Disks = scopes }
+        var observed = !includeObservedTraffic ? null : verified is not null ? verified with { Disks = scopes }
             : new PhysicalDiskProcessIoWindow(now, WindowMilliseconds, []) { Complete = false, Disks = scopes };
         var after = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
         lock (eventGate)
@@ -149,20 +150,21 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         }
     }
     internal (IReadOnlyDictionary<int, PhysicalDiskProcessAttribution> Processes, bool Complete) ReadWindow(long now)
-    { var selected = SelectWindow(now); return (selected.Complete ? AggregateLegacy(selected.Events) : new Dictionary<int, PhysicalDiskProcessAttribution>(), selected.Complete); }
-
-    private static Dictionary<int, PhysicalDiskProcessAttribution> AggregateLegacy(DiskEvent[] selected)
-        => selected.GroupBy(static item => item.Pid).ToDictionary(static group => group.Key, static group =>
-            new PhysicalDiskProcessAttribution(group.Key, group.Where(static item => !item.Write).Sum(static item => (double)item.Bytes) / 2,
-                group.Where(static item => item.Write).Sum(static item => (double)item.Bytes) / 2,
-                group.Count(static item => !item.Write), group.Count(static item => item.Write)));
-
-    private PhysicalDiskProcessIoWindow BuildObserved(DiskEvent[] selected, DateTimeOffset now, long session)
     {
+        var selected = SelectWindow(now);
+        var legacy = new Dictionary<int, PhysicalDiskProcessAttribution>();
+        if (selected.Complete) BuildObserved(selected.Events, DateTimeOffset.UtcNow, selected.Generation, out legacy);
+        return (legacy, selected.Complete);
+    }
+
+    private PhysicalDiskProcessIoWindow BuildObserved(DiskEvent[] selected, DateTimeOffset now, long session,
+        out Dictionary<int, PhysicalDiskProcessAttribution> legacy)
+    {
+        legacy = new();
         var rows = new List<PhysicalDiskProcessIoObservation>();
-        foreach (var process in selected.Where(static item => item.Disk is not null).GroupBy(static item => item.Pid))
+        foreach (var process in selected.GroupBy(static item => item.Pid))
         {
-            var disks = process.Select(static item => item.Disk!.Value).Distinct().Order().ToArray();
+            var disks = process.Where(static item => item.Disk is not null).Select(static item => item.Disk!.Value).Distinct().Order().ToArray();
             IWindowsNetworkEndpointProcessLease? lease = null;
             var start = rows.Count;
             foreach (var disk in disks) rows.Add(new(new(session, disk), process.Key, null, null, null));
@@ -170,6 +172,12 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
             {
                 if (process.Key <= 0 || (lease = openProcess((uint)process.Key)) is null || lease.ProcessId != (uint)process.Key
                     || !lease.TryReadCreationFileTime(out var birth) || birth == 0 || process.Any(static item => item.EventTime is null)) continue;
+                var current = process.Where(item => item.EventTime >= birth).ToArray();
+                var contribution = new PhysicalDiskProcessAttribution(process.Key,
+                    current.Where(static item => !item.Write).Sum(static item => (double)item.Bytes) / 2,
+                    current.Where(static item => item.Write).Sum(static item => (double)item.Bytes) / 2,
+                    current.Count(static item => !item.Write), current.Count(static item => item.Write))
+                    { ProcessStartKey = birth };
                 foreach (var disk in disks)
                 {
                     ulong read = 0, write = 0;
@@ -181,6 +189,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                 }
                 if (!lease.TryReadCreationFileTime(out var finalBirth) || finalBirth != birth)
                     for (var index = start; index < rows.Count; index++) rows[index] = rows[index] with { CreationWindowsFileTime100Ns = null, ReadBytes = null, WriteBytes = null };
+                else legacy[process.Key] = contribution;
             }
             catch (Exception error)
             {

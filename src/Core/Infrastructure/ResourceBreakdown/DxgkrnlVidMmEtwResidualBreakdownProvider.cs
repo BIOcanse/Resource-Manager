@@ -49,8 +49,7 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
             .Where(evidence => evidence.ValueBytes > 0
                 && now - evidence.ObservedAt <= EvidenceWindow
                 && evidence.ProcessId > 4
-                && !request.KnownProcessIds.Contains(evidence.ProcessId)
-                && IsProcessAlive(evidence.ProcessId))
+                && !request.KnownProcessIds.Contains(evidence.ProcessId))
             .GroupBy(static evidence => evidence.ProcessId)
             .Select(static group => group.OrderByDescending(evidence => evidence.ObservedAt).First())
             .OrderByDescending(static evidence => evidence.ValueBytes)
@@ -87,7 +86,7 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
                 Percent(value, request.Value),
                 null,
                 null,
-                ResourceProcessAttributionKinds.EtwResidualProcess));
+                ResourceProcessAttributionKinds.EtwResidualProcess) { ProcessStartKey = checked((long)candidate.ProcessStartKey) });
         }
 
         if (rows.Count == 0)
