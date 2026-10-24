@@ -193,50 +193,61 @@ public sealed record CompiledHostManagerMetricSnapshotHotPublishPlan(
     ImmutableArray<CompiledHostManagerMetricSnapshotSourcePolicy> SourcePolicies,
     ImmutableArray<CompiledHostManagerMetricSnapshotRuleTemplate> RuleTemplates)
 {
-    public bool IsPublished => ConfigurationGeneration > 0
-        && CatalogGenerationBase == (ConfigurationGeneration | 1UL)
-        && (ConfigurationGeneration & uint.MaxValue) == 0
-        && CatalogManifestVersion == 1
-        && IsSha256(CatalogManifestSha256)
-        && MaximumFutureSkewMilliseconds > 0
-        && ResidentByteBudget > 0
-        && !SourcePolicies.IsDefaultOrEmpty
-        && !RuleTemplates.IsDefaultOrEmpty
-        && SourcePolicies.All(static policy => policy.IsPublished)
-        && RuleTemplates.All(static template => template.IsPublished)
-        && SourcePolicies.SequenceEqual(
-            SourcePolicies.OrderBy(static policy => policy.SourceHandle))
-        && RuleTemplates.SequenceEqual(
-            RuleTemplates.OrderBy(
-                static template => template.TemplateId,
-                StringComparer.Ordinal))
-        && SourcePolicies.Select(static policy => policy.SourceId)
-            .Distinct(StringComparer.Ordinal)
-            .Count() == SourcePolicies.Length
-        && SourcePolicies.Select(static policy => policy.SourceHandle)
-            .Distinct()
-            .Count() == SourcePolicies.Length
-        && SourcePolicies.Count(static policy => policy.SourceRole == 2) == 1
-        && RuleTemplates.Select(static template => template.TemplateId)
-            .Distinct(StringComparer.Ordinal)
-            .Count() == RuleTemplates.Length
-        && RuleTemplates.All(template =>
-            SourcePolicies.Any(policy =>
-                string.Equals(
-                    policy.SourceId,
-                    template.SourceId,
-                    StringComparison.Ordinal)
-                && policy.SourceHandle == template.SourceHandle
-                && policy.Priority == template.SourcePriority
-                && policy.SourceRole == 1
-                && (template.CapabilityMask & ~policy.CapabilityMask) == 0));
+    public bool IsPublished
+    {
+        get
+        {
+            if (ConfigurationGeneration == 0
+                || CatalogGenerationBase != (ConfigurationGeneration | 1UL)
+                || (ConfigurationGeneration & uint.MaxValue) != 0
+                || CatalogManifestVersion != 1
+                || !IsSha256(CatalogManifestSha256)
+                || MaximumFutureSkewMilliseconds == 0 || ResidentByteBudget == 0
+                || SourcePolicies.IsDefaultOrEmpty || RuleTemplates.IsDefaultOrEmpty) return false;
+
+            var inventorySourceCount = 0;
+            for (var index = 0; index < SourcePolicies.Length; index++)
+            {
+                var policy = SourcePolicies[index];
+                if (!policy.IsPublished || index > 0 && SourcePolicies[index - 1].SourceHandle >= policy.SourceHandle)
+                    return false;
+                if (policy.SourceRole == 2) inventorySourceCount++;
+                for (var prior = 0; prior < index; prior++)
+                    if (string.Equals(SourcePolicies[prior].SourceId, policy.SourceId, StringComparison.Ordinal))
+                        return false;
+            }
+            if (inventorySourceCount != 1) return false;
+
+            for (var index = 0; index < RuleTemplates.Length; index++)
+            {
+                var template = RuleTemplates[index];
+                if (!template.IsPublished || index > 0 && StringComparer.Ordinal.Compare(
+                        RuleTemplates[index - 1].TemplateId, template.TemplateId) >= 0) return false;
+                var matched = false;
+                foreach (var policy in SourcePolicies)
+                {
+                    if (policy.SourceHandle != template.SourceHandle) continue;
+                    matched = string.Equals(policy.SourceId, template.SourceId, StringComparison.Ordinal)
+                        && policy.Priority == template.SourcePriority && policy.SourceRole == 1
+                        && (template.CapabilityMask & ~policy.CapabilityMask) == 0;
+                    break;
+                }
+                if (!matched) return false;
+            }
+            return true;
+        }
+    }
 
     public static CompiledHostManagerMetricSnapshotHotPublishPlan Unpublished { get; } =
         new(0, 0, 0, string.Empty, 0, 0, [], []);
 
     private static bool IsSha256(string value)
-        => value.Length == 64
-            && value.All(static character => char.IsAsciiHexDigit(character));
+    {
+        if (value.Length != 64) return false;
+        foreach (var character in value)
+            if (!char.IsAsciiHexDigit(character)) return false;
+        return true;
+    }
 }
 
 public sealed record CompiledHostManagerMetricSnapshotPlan(

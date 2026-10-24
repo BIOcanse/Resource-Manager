@@ -94,6 +94,32 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             new(processId, processStartKey, 10001, processStartKey + 1, new(0, 0), 0, 15, []),
             new(processId, processStartKey, 10002, processStartKey + 2, new(0, 0), 0, 15, [])
         ];
+        for (var index = 0; index < 4; index++)
+        {
+            var warmedDesired = createDesired(idealReads, topology, CompiledHardwareScorePlan.Default,
+                processes, hardPlacements, existing, null, 64);
+            Assert.NotEmpty(warmedDesired);
+            Assert.All(warmedDesired, static item => Assert.Null(item.Record.Metadata));
+        }
+
+        var materializedRecordCount = 0;
+        var returnedRowCount = 0;
+        var desiredBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 32; index++)
+        {
+            var rows = createDesired(idealReads, topology, CompiledHardwareScorePlan.Default,
+                processes, hardPlacements, existing, null, 64);
+            returnedRowCount += rows.Count;
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                if (rows[rowIndex].Record.Metadata is not null) materializedRecordCount++;
+            }
+        }
+        var desiredAllocated = GC.GetAllocatedBytesForCurrentThread() - desiredBefore;
+        Assert.True(returnedRowCount > 0);
+        Assert.Equal(0, materializedRecordCount);
+        Assert.InRange(desiredAllocated, 0, 16_384);
+
         var firstResult = createDesired(fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle(), topology, CompiledHardwareScorePlan.Default,
             processes, hardPlacements, existing, null, 64);
         var firstDesired = Assert.Single(firstResult);
@@ -107,7 +133,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Same(secondDesired, Assert.Single(secondResult));
         Assert.Equal(firstRecordId, firstDesired.Record.RecordId);
         Assert.Equal(firstRecordId, secondDesired.Record.RecordId);
-        Assert.Equal("1", firstDesired.Record.Metadata!["appliedProcessorNumber"]);
+        Assert.Null(firstDesired.Record.Metadata);
+        var materialized = HostManagerSmartCoordinator.CreateIdealProcessorAppliedRecord(
+            firstDesired.Record.RecordId,
+            firstDesired.IdealProcessorMetadata!.Value);
+        Assert.Equal("1", materialized.Metadata!["appliedProcessorNumber"]);
     }
 
     [Fact]

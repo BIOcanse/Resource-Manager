@@ -26,6 +26,8 @@ internal sealed record HostManagerPlacementDesired(
     HostManagerAppliedRecord Record,
     uint Priority)
 {
+    internal HostManagerIdealProcessorDesiredMetadata? IdealProcessorMetadata { get; init; }
+
     internal RunningGpuPlacementActionPlan? RuntimeGpuAction { get; init; }
     internal HostManagerCycleEffectReservation? ActionReservation { get; init; }
 }
@@ -37,8 +39,26 @@ internal sealed record HostManagerPlacementProjectedDesired(
     uint Priority,
     NativePlacementDesiredInput Input)
 {
+    internal HostManagerIdealProcessorDesiredMetadata? IdealProcessorMetadata { get; init; }
+
     internal RunningGpuPlacementActionPlan? RuntimeGpuAction { get; init; }
     internal HostManagerCycleEffectReservation? ActionReservation { get; init; }
+
+    internal HostManagerPlacementProjectedDesired MaterializeForApply()
+    {
+        if (IdealProcessorMetadata is not { } metadata)
+        {
+            return this;
+        }
+
+        var record = HostManagerSmartCoordinator.CreateIdealProcessorAppliedRecord(Record.RecordId, metadata);
+        return this with
+        {
+            Placement = Placement with { Records = [record] },
+            Record = record,
+            IdealProcessorMetadata = null
+        };
+    }
 }
 
 internal sealed class HostManagerPlacementProjection
@@ -122,6 +142,12 @@ internal static class HostManagerPlacementCoordinatorProjection
             ArgumentNullException.ThrowIfNull(row.Record);
             if (GpuActionFacts.IsActionFact(row.Record))
                 throw new InvalidDataException("A recorded GPU action cannot be a desired placement.");
+            if (row.IdealProcessorMetadata is not null
+                && (row.Record.Kind != HostManagerAppliedRecordKinds.CpuThreadIdealProcessor
+                    || row.Record.Metadata is not null))
+            {
+                throw new InvalidDataException("Typed ideal-processor desired metadata has an incompatible record.");
+            }
             var identity = CreateIdentity(row.Placement, row.Record);
             var input = CreateDesiredInput(identity, row);
             if (!records.TryAdd(
@@ -133,6 +159,7 @@ internal static class HostManagerPlacementCoordinatorProjection
                     row.Priority,
                     input)
                 {
+                    IdealProcessorMetadata = row.IdealProcessorMetadata,
                     RuntimeGpuAction = row.RuntimeGpuAction,
                     ActionReservation = row.ActionReservation
                 }))
@@ -206,7 +233,15 @@ internal static class HostManagerPlacementCoordinatorProjection
         var validMask = NativePlacementDesiredValidity.Required;
         uint processId = 0;
         ulong processStartKey = 0;
-        if (TryReadProcessIdentity(desired.Record, out processId, out processStartKey))
+        if (desired.IdealProcessorMetadata is { } idealProcessorMetadata
+            && idealProcessorMetadata.ProcessId > 0
+            && idealProcessorMetadata.ProcessStartKey != 0)
+        {
+            processId = checked((uint)idealProcessorMetadata.ProcessId);
+            processStartKey = idealProcessorMetadata.ProcessStartKey;
+            validMask |= NativePlacementDesiredValidity.ProcessIdentity;
+        }
+        else if (TryReadProcessIdentity(desired.Record, out processId, out processStartKey))
         {
             validMask |= NativePlacementDesiredValidity.ProcessIdentity;
         }
@@ -219,7 +254,7 @@ internal static class HostManagerPlacementCoordinatorProjection
             RecordKey = identity.RecordKey,
             ResourceKind = (uint)resourceKind,
             PlacementKind = (uint)placementKind,
-            DesiredDigest = CreatePayloadDigest("applied", desired.Placement, desired.Record),
+            DesiredDigest = CreatePayloadDigest("applied", desired),
             ProcessStartKey = processStartKey,
             ProcessId = processId,
             Priority = desired.Priority,
@@ -434,6 +469,125 @@ internal static class HostManagerPlacementCoordinatorProjection
             }
         }
         throw new InvalidDataException("Placement payload digest produced no nonzero lane.");
+    }
+
+    internal static ulong CreatePayloadDigest(string phase, HostManagerPlacementDesired desired)
+        => desired.IdealProcessorMetadata is { } metadata
+            ? CreateIdealProcessorPayloadDigest(phase, desired.Placement, desired.Record, metadata)
+            : CreatePayloadDigest(phase, desired.Placement, desired.Record);
+
+    private static ulong CreateIdealProcessorPayloadDigest(
+        string phase,
+        HostManagerAppliedPlacementReceipt placement,
+        HostManagerAppliedRecord record,
+        HostManagerIdealProcessorDesiredMetadata metadata)
+    {
+        var canonical = new StringBuilder();
+        AppendField(canonical, phase);
+        AppendField(canonical, placement.ResourceKind);
+        AppendField(canonical, placement.TargetId);
+        AppendField(canonical, record.Kind);
+        AppendField(canonical, record.RecordId);
+
+        // Keep the same canonical ordinal metadata order and values as the full durable record.
+        canonical.Append("13;");
+        AppendField(canonical, "appliedProcessorGroup");
+        AppendNumberField(canonical, metadata.Applied.Group);
+        AppendField(canonical, "appliedProcessorNumber");
+        AppendNumberField(canonical, metadata.Applied.Number);
+        AppendField(canonical, "executablePath");
+        AppendField(canonical, metadata.ExecutablePath);
+        AppendField(canonical, "owner");
+        AppendField(canonical, HostManagerSmartCoordinator.AutomaticPlacementOwner);
+        AppendField(canonical, "previousProcessorGroup");
+        AppendNumberField(canonical, metadata.Previous.Group);
+        AppendField(canonical, "previousProcessorNumber");
+        AppendNumberField(canonical, metadata.Previous.Number);
+        AppendField(canonical, "processId");
+        AppendNumberField(canonical, metadata.ProcessId);
+        AppendField(canonical, "processName");
+        AppendField(canonical, metadata.ProcessName);
+        AppendField(canonical, "processStartKey");
+        AppendNumberField(canonical, metadata.ProcessStartKey);
+        AppendField(canonical, "processStartedAt");
+        AppendNumberField(canonical, metadata.ProcessStartedAtUnixMilliseconds);
+        AppendField(canonical, "source");
+        AppendField(canonical, HostManagerSmartCoordinator.AutomaticIdealProcessorSource);
+        AppendField(canonical, "threadId");
+        AppendNumberField(canonical, metadata.ThreadId);
+        AppendField(canonical, "threadStartKey");
+        AppendNumberField(canonical, metadata.ThreadStartKey);
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString()));
+        for (var offset = 0; offset < hash.Length; offset += sizeof(ulong))
+        {
+            var value = BinaryPrimitives.ReadUInt64LittleEndian(hash.AsSpan(offset, sizeof(ulong)));
+            if (value != 0)
+            {
+                return value;
+            }
+        }
+        throw new InvalidDataException("Placement payload digest produced no nonzero lane.");
+    }
+
+    private static void AppendNumberField(StringBuilder builder, int value)
+    {
+        Span<char> formatted = stackalloc char[11];
+        if (!value.TryFormat(formatted, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("An ideal-processor numeric metadata value could not be formatted.");
+        }
+        AppendField(builder, formatted[..written]);
+    }
+
+    private static void AppendNumberField(StringBuilder builder, ushort value)
+    {
+        Span<char> formatted = stackalloc char[5];
+        if (!value.TryFormat(formatted, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("An ideal-processor numeric metadata value could not be formatted.");
+        }
+        AppendField(builder, formatted[..written]);
+    }
+
+    private static void AppendNumberField(StringBuilder builder, byte value)
+    {
+        Span<char> formatted = stackalloc char[3];
+        if (!value.TryFormat(formatted, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("An ideal-processor numeric metadata value could not be formatted.");
+        }
+        AppendField(builder, formatted[..written]);
+    }
+
+    private static void AppendNumberField(StringBuilder builder, ulong value)
+    {
+        Span<char> formatted = stackalloc char[20];
+        if (!value.TryFormat(formatted, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("An ideal-processor numeric metadata value could not be formatted.");
+        }
+        AppendField(builder, formatted[..written]);
+    }
+
+    private static void AppendNumberField(StringBuilder builder, long value)
+    {
+        Span<char> formatted = stackalloc char[20];
+        if (!value.TryFormat(formatted, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("An ideal-processor numeric metadata value could not be formatted.");
+        }
+        AppendField(builder, formatted[..written]);
+    }
+
+    private static void AppendField(StringBuilder builder, ReadOnlySpan<char> value)
+    {
+        Span<char> length = stackalloc char[11];
+        if (!value.Length.TryFormat(length, out var written, provider: CultureInfo.InvariantCulture))
+        {
+            throw new InvalidDataException("A placement payload field length could not be formatted.");
+        }
+        builder.Append(length[..written]).Append(':').Append(value).Append(';');
     }
 
     private static void AppendField(StringBuilder builder, string value)

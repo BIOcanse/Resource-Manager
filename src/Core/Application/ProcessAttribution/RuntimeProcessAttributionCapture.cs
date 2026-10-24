@@ -24,7 +24,11 @@ internal static class RuntimeProcessAttributionCapture
         IRuntimeProcessAttributionCatalogProvider provider,
         IReadOnlyList<RuntimeProcessIdentity> processes,
         CompiledBaseScorePlan baseScorePlan,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
+            RuntimeProcessAttributionDirectMatch?>? getCachedDirectMatch = null,
+        Action<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
+            RuntimeProcessAttributionDirectMatch>? cacheDirectMatch = null)
     {
         var catalogs = new Dictionary<string, RuntimeProcessAttributionCatalogLease>(StringComparer.Ordinal);
         var scopeByPid = new Dictionary<int, string>();
@@ -40,8 +44,36 @@ internal static class RuntimeProcessAttributionCapture
                 if (!catalogs.ContainsKey(scope))
                     catalogs.Add(scope, await provider.AcquireCatalogAsync(scope, cancellationToken));
             }
+            Dictionary<int, RuntimeProcessAttributionDirectMatch>? cachedDirectMatches = null;
+            if (getCachedDirectMatch is not null)
+            {
+                cachedDirectMatches = new Dictionary<int, RuntimeProcessAttributionDirectMatch>();
+                foreach (var process in processes)
+                {
+                    if (process.StartKey is not > 0) continue;
+                    var scope = scopeByPid[process.ProcessId];
+                    var catalog = catalogs[scope].Catalog;
+                    if (getCachedDirectMatch(process, scope, catalog) is { } match)
+                        cachedDirectMatches[process.ProcessId] = match;
+                }
+            }
             var batch = RuntimeProcessAttributionPipeline.MatchBatch(processes,
-                process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline, cancellationToken);
+                process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline,
+                cancellationToken,
+                cachedDirectMatches,
+                captureDirectMatches: cacheDirectMatch is not null);
+            if (cacheDirectMatch is not null)
+            {
+                foreach (var process in processes)
+                {
+                    if (process.StartKey is not > 0
+                        || cachedDirectMatches?.ContainsKey(process.ProcessId) == true
+                        || !batch.DirectMatchesByProcessId.TryGetValue(process.ProcessId, out var match))
+                        continue;
+                    var scope = scopeByPid[process.ProcessId];
+                    cacheDirectMatch(process, scope, catalogs[scope].Catalog, match);
+                }
+            }
             // These are scoring inputs only. Matching always uses the owner's separate catalog.
             var scores = catalogs.Values.SelectMany(lease => lease.Catalog.GetSoftwareBaseScores(baseScorePlan))
                 .DistinctBy(score => score.SoftwareId, StringComparer.OrdinalIgnoreCase).ToImmutableArray();

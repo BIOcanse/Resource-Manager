@@ -30,6 +30,7 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
     private readonly IRuntimeSystemProcessClassifier systemClassifier;
     private readonly ISoftwareIdentityCatalog softwareIdentityCatalog;
     private readonly HostManagerSoftwareIdentityOwner softwareIdentityOwner;
+    private readonly string bundledCatalogVersion;
     private bool disposed;
     private readonly ImmutableArray<(string Id, string Kind)> software;
     private readonly object baseScoreGate = new();
@@ -46,7 +47,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         IRuntimeRootIdentityResolver rootIdentityResolver,
         IRuntimeSystemProcessClassifier systemClassifier,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
-        HostManagerSoftwareIdentityOwner softwareIdentityOwner)
+        HostManagerSoftwareIdentityOwner softwareIdentityOwner,
+        string bundledCatalogVersion)
     {
         Generation = generation;
         Version = version;
@@ -61,11 +63,14 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         this.systemClassifier = systemClassifier;
         this.softwareIdentityCatalog = softwareIdentityCatalog;
         this.softwareIdentityOwner = softwareIdentityOwner;
+        this.bundledCatalogVersion = bundledCatalogVersion;
     }
 
     public long Generation { get; }
 
     public RuntimeProcessAttributionCatalogVersion Version { get; }
+
+    internal string BundledCatalogVersion => bundledCatalogVersion;
 
     public RuntimeProcessAttributionPipeline Pipeline { get; }
 
@@ -98,6 +103,7 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         IReadOnlySet<string>? windowsGamePaths = null)
     {
         using var lease = softwareIdentityOwner.Acquire();
+        var bundledCatalogVersion = softwareIdentityCatalog.Version;
         var version = RuntimeProcessAttributionCatalogVersionFactory.Create(
             softwareRecords,
             adapterRegistrations,
@@ -107,6 +113,7 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
             windowsGamePaths);
         if (current is not null
             && current.Version == version
+            && current.bundledCatalogVersion.Equals(bundledCatalogVersion, StringComparison.Ordinal)
             && current.UsesResolvers(
                 packageIdentityResolver,
                 serviceIdentityResolver,
@@ -142,7 +149,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
                 rootIdentityResolver,
                 systemClassifier,
                 softwareIdentityCatalog,
-                softwareIdentityOwner);
+                softwareIdentityOwner,
+                bundledCatalogVersion);
         }
         catch
         {

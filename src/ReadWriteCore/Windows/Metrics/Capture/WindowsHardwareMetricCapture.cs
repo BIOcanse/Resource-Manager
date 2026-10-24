@@ -14,6 +14,13 @@ internal sealed record WindowsMetricProjectionCopy(string VirtualMemoryDetail, F
 /// The host borrows SampleGate; the default owner acquires the same gate before invoking this capture.</summary>
 internal sealed partial class WindowsHardwareMetricCapture
 {
+    private static readonly IReadOnlyDictionary<string, MetricDeviceFieldBinding> EmptyFieldBindings =
+        ImmutableDictionary<string, MetricDeviceFieldBinding>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, MetricValue> EmptyMetricItems =
+        ImmutableDictionary<string, MetricValue>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, HardwareMetricDatasetObservation> EmptyDatasetObservations =
+        ImmutableDictionary<string, HardwareMetricDatasetObservation>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
+
     internal readonly SemaphoreSlim SampleGate = new(1, 1);
     private readonly WindowsHardwareMetricResources resources;
     private readonly NativeMetricSnapshotSourceRuntimeFacts sourceRuntimeFacts;
@@ -110,12 +117,27 @@ internal sealed partial class WindowsHardwareMetricCapture
         }
         cancellationToken.ThrowIfCancellationRequested();
         HardwareMetricSnapshot? prepared = null;
+        NativeMetricSnapshotCommittedFrame? preEnrichmentFrame = null;
         if (enrichBeforeCommit is not null)
         {
             // Managed settings share this original SampleGate and the same final
             // publication permission. No numeric value is committed before the permit.
-            prepared = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), resources.CpuName,
-                resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel);
+            var header = workspace.ReadHeader();
+            if (CanUseMinimalControlPreparation(request, workspace.Configuration.Generation,
+                    workspaceIdentity, header, fieldCatalog))
+            {
+                // Stable catalog metadata proves Discover cannot run for this
+                // ordinary request. ReadSelectedAsync only consumes generation
+                // metadata and the rows it creates during this operation; carrying
+                // the prior snapshot's native arrays or controls would be stale.
+                prepared = CreateMinimalControlPreparation(fieldCatalog!);
+            }
+            else
+            {
+                preEnrichmentFrame = workspace.ReadCommitted();
+                prepared = NativeMetricSnapshotCommittedProjection.Create(preEnrichmentFrame, resources.CpuName,
+                    resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel);
+            }
             if (request.IncludesCatalog) prepared = AddCatalogObservations(prepared, topology, commandAt);
             prepared = await enrichBeforeCommit(prepared, request, cancellationToken,
                 queriedMetricAddresses is null ? null : address => queriedMetricAddresses.Add(address)).ConfigureAwait(false);
@@ -140,7 +162,10 @@ internal sealed partial class WindowsHardwareMetricCapture
                         pdhGpuEngineUsage = engineUsage;
                 }
                 checkpoint?.Invoke(workspace);
-                var committed = workspace.ReadCommitted();
+                var committed = preEnrichmentFrame is not null && completions.Count == 0
+                    && CanReusePreEnrichmentFrame(preEnrichmentFrame.Header, workspace.ReadHeader())
+                        ? preEnrichmentFrame
+                        : workspace.ReadCommitted();
                 readingSources.Observe(committed, workspaceIdentity, committedCompletions);
                 var sourceSelection = readingSources.Select(committed, workspaceIdentity);
                 var snapshot = NativeMetricSnapshotCommittedProjection.Create(committed, resources.CpuName,
@@ -155,6 +180,57 @@ internal sealed partial class WindowsHardwareMetricCapture
             })) return null;
         return published;
     }
+
+    internal static bool CanUseMinimalControlPreparation(
+        MetricSampleRequest request,
+        ulong configurationGeneration,
+        ulong workspaceIdentity,
+        NativeMetricSnapshotSnapshotHeader currentHeader,
+        HardwareMetricSnapshot? fieldCatalog)
+        => !request.IsCatalogProbe
+            && !request.IncludesCatalog
+            && fieldCatalog is not null
+            && fieldCatalog.WorkspaceIdentity == workspaceIdentity
+            && fieldCatalog.ConfigurationGeneration == configurationGeneration
+            && fieldCatalog.ConfigurationGeneration == currentHeader.ConfigurationGeneration
+            && fieldCatalog.CatalogGeneration == currentHeader.CatalogGeneration
+            && fieldCatalog.CommittedGeneration <= currentHeader.CommittedGeneration;
+
+    internal static HardwareMetricSnapshot CreateMinimalControlPreparation(HardwareMetricSnapshot fieldCatalog)
+        => fieldCatalog with
+        {
+            FieldBindings = EmptyFieldBindings,
+            Items = EmptyMetricItems,
+            Datasets = EmptyDatasetObservations
+        };
+
+    internal static bool CanReusePreEnrichmentFrame(
+        NativeMetricSnapshotSnapshotHeader before,
+        NativeMetricSnapshotSnapshotHeader after)
+        // A plan can advance native state even when it produced no source
+        // completions. Reuse only when every meaningful header field is unchanged.
+        => before.AbiVersion == after.AbiVersion
+            && before.StructSize == after.StructSize
+            && before.ConfigurationGeneration == after.ConfigurationGeneration
+            && before.CatalogGeneration == after.CatalogGeneration
+            && before.CatalogFingerprint == after.CatalogFingerprint
+            && before.StateRevision == after.StateRevision
+            && before.CommittedGeneration == after.CommittedGeneration
+            && before.LastOperationEpoch == after.LastOperationEpoch
+            && before.LastPlanEpoch == after.LastPlanEpoch
+            && before.LastCommandAtMilliseconds == after.LastCommandAtMilliseconds
+            && before.CapturedAtMilliseconds == after.CapturedAtMilliseconds
+            && before.SourceCount == after.SourceCount
+            && before.MetricCount == after.MetricCount
+            && before.RuleCount == after.RuleCount
+            && before.GpuAdapterCount == after.GpuAdapterCount
+            && before.CurrentMetricCount == after.CurrentMetricCount
+            && before.UnavailableMetricCount == after.UnavailableMetricCount
+            && before.UnsupportedMetricCount == after.UnsupportedMetricCount
+            && before.SkippedMetricCount == after.SkippedMetricCount
+            && before.Flags == after.Flags
+            && before.Phase == after.Phase
+            && before.SemanticFingerprint == after.SemanticFingerprint;
 
     private NativeMetricSnapshotSourceCompletion CompleteSource(NativeMetricSnapshotWorkspace workspace,
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourceCompletion completion, DateTimeOffset completedAt)

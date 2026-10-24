@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Monitoring;
 
@@ -5,6 +6,27 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class CompiledHostManagerMetricSnapshotPlanTests
 {
+    [Fact]
+    public void HotPublishValidationDoesNotAllocateDuringRepeatedReads()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish;
+        Assert.True(plan.IsPublished);
+        for (var i = 0; i < 128; i++) _ = plan.IsPublished;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var valid = true;
+        for (var i = 0; i < 512; i++) valid &= plan.IsPublished;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(valid);
+        Assert.Equal(0, allocated);
+        Assert.False((plan with { SourcePolicies = plan.SourcePolicies.Reverse().ToImmutableArray() }).IsPublished);
+        Assert.False((plan with { RuleTemplates = plan.RuleTemplates.Add(plan.RuleTemplates[0]) }).IsPublished);
+        Assert.False((plan with
+        {
+            SourcePolicies = plan.SourcePolicies.SetItem(1,
+                plan.SourcePolicies[1] with { SourceId = plan.SourcePolicies[0].SourceId })
+        }).IsPublished);
+    }
+
     [Fact]
     public void SeparatelyCompiledEquivalentPlanRetainsThePublishedWorkspace()
     {

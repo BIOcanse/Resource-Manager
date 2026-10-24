@@ -31,6 +31,8 @@ public sealed class GpuAllocationLedger(int maximumAllocations = 262144, int max
     private readonly Dictionary<(ulong Adapter, uint Segment), bool> dedicatedSegments = [];
     private readonly Dictionary<ulong, (int Pid, uint Segment, ulong Bytes, ulong Placement)> pendingReferences = [];
     private readonly Dictionary<ulong, HashSet<(uint Segment, ulong Placement)>> pendingGlobals = [];
+    private readonly Dictionary<int, long> ownersScratch = [];
+    private readonly Dictionary<(ulong Adapter, int Pid), (double PrivateBytes, double SharedBytes)> amountsScratch = [];
 
     public void SetSegment(ulong adapter, uint segment, uint flags)
     {
@@ -166,46 +168,62 @@ public sealed class GpuAllocationLedger(int maximumAllocations = 262144, int max
 
     public GpuAllocationReading Read(IReadOnlyDictionary<int, long> currentProcesses)
     {
-        var output = new Dictionary<ulong, Dictionary<int, GpuAllocationAmount>>();
+        var output = new Dictionary<ulong, IReadOnlyDictionary<int, GpuAllocationAmount>>();
         var kernel = new Dictionary<ulong, double>();
-        if (pendingGlobals.Count != 0 || pendingReferences.Values.Any(static value => value.Pid != 4))
+        if (pendingGlobals.Count != 0)
             throw new InvalidDataException("GPU resident allocation ownership is incomplete.");
-        foreach (var (key, allocation) in allocations)
+        foreach (var pending in pendingReferences.Values)
+            if (pending.Pid != 4)
+                throw new InvalidDataException("GPU resident allocation ownership is incomplete.");
+        try
         {
-            if (!adapterLuids.TryGetValue(key.Adapter, out var luid))
-                throw new InvalidDataException("GPU allocation adapter has no LUID mapping.");
-            if (allocation.Bytes is null)
-                throw new InvalidDataException("GPU reference has no allocation size.");
-            double bytes = 0;
-            foreach (var (location, ranges) in allocation.Resident)
+            foreach (var (key, allocation) in allocations)
             {
-                if (!dedicatedSegments.TryGetValue((key.Adapter, location.Segment), out var dedicated))
-                    throw new InvalidDataException("GPU resident segment has no classification.");
-                if (dedicated) foreach (var range in ranges) bytes += range.End - range.Start;
+                if (!adapterLuids.TryGetValue(key.Adapter, out var luid))
+                    throw new InvalidDataException("GPU allocation adapter has no LUID mapping.");
+                if (allocation.Bytes is null)
+                    throw new InvalidDataException("GPU reference has no allocation size.");
+                double bytes = 0;
+                foreach (var (location, ranges) in allocation.Resident)
+                {
+                    if (!dedicatedSegments.TryGetValue((key.Adapter, location.Segment), out var dedicated))
+                        throw new InvalidDataException("GPU resident segment has no classification.");
+                    if (dedicated) foreach (var range in ranges) bytes += range.End - range.Start;
+                }
+                if (!output.ContainsKey(luid)) output.Add(luid, new Dictionary<int, GpuAllocationAmount>());
+                if (allocation.KernelMetadata)
+                {
+                    kernel[luid] = kernel.GetValueOrDefault(luid) + bytes;
+                    continue;
+                }
+                var owners = ownersScratch;
+                owners.Clear();
+                foreach (var reference in allocation.References.Values)
+                    owners[reference.Pid] = Math.Max(owners.GetValueOrDefault(reference.Pid), reference.ObservedFileTime);
+                if (owners.Count == 0) continue;
+                var share = (double)bytes / owners.Count;
+                foreach (var (pid, observedAt) in owners)
+                {
+                    // Hidden/unreadable users remain in the divisor; an old PID cannot be assigned to a new process.
+                    if (!currentProcesses.TryGetValue(pid, out var birth) || birth <= 0 || birth > observedAt) continue;
+                    var prior = amountsScratch.GetValueOrDefault((luid, pid));
+                    amountsScratch[(luid, pid)] = owners.Count == 1
+                        ? (prior.PrivateBytes + share, prior.SharedBytes)
+                        : (prior.PrivateBytes, prior.SharedBytes + share);
+                }
             }
-            if (!output.TryGetValue(luid, out var processes)) output.Add(luid, processes = []);
-            if (allocation.KernelMetadata)
-            {
-                kernel[luid] = kernel.GetValueOrDefault(luid) + bytes;
-                continue;
-            }
-            var owners = new Dictionary<int, long>();
-            foreach (var reference in allocation.References.Values)
-                owners[reference.Pid] = Math.Max(owners.GetValueOrDefault(reference.Pid), reference.ObservedFileTime);
-            if (owners.Count == 0) continue;
-            var share = (double)bytes / owners.Count;
-            foreach (var (pid, observedAt) in owners)
-            {
-                // Hidden/unreadable users remain in the divisor; an old PID cannot be assigned to a new process.
-                if (!currentProcesses.TryGetValue(pid, out var birth) || birth <= 0 || birth > observedAt) continue;
-                var prior = processes.GetValueOrDefault(pid) ?? new GpuAllocationAmount(0, 0);
-                processes[pid] = owners.Count == 1
-                    ? prior with { PrivateBytes = prior.PrivateBytes + share }
-                    : prior with { SharedBytes = prior.SharedBytes + share };
-            }
+            // Readers retain their snapshot across subsequent ETW updates and reads.
+            // Only the numeric aggregation workspace is reused, never the result.
+            foreach (var (key, amount) in amountsScratch)
+                ((Dictionary<int, GpuAllocationAmount>)output[key.Adapter]).Add(key.Pid,
+                    new GpuAllocationAmount(amount.PrivateBytes, amount.SharedBytes));
+            return new GpuAllocationReading(output) { KernelMetadataBytes = kernel };
         }
-        return new GpuAllocationReading(output.ToDictionary(item => item.Key,
-            item => (IReadOnlyDictionary<int, GpuAllocationAmount>)item.Value)) { KernelMetadataBytes = kernel };
+        finally
+        {
+            ownersScratch.Clear();
+            amountsScratch.Clear();
+        }
     }
 
     private Allocation GetAllocation((ulong Adapter, ulong Global) key)

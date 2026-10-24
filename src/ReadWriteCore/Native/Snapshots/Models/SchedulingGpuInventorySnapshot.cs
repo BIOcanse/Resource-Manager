@@ -52,20 +52,22 @@ public sealed record SchedulingGpuInventorySnapshot(
             return false;
         }
 
-        var indexes = new HashSet<int>();
-        var keys = new HashSet<ulong>();
-        foreach (var adapter in Adapters)
+        for (var index = 0; index < Adapters.Count; index++)
         {
+            var adapter = Adapters[index];
             if (adapter.Index < 0
                 || adapter.AdapterKey == 0
                 || adapter.Generation != Generation
                 || adapter.ObservedAtUtcTicks != ObservedAtUtcTicks
-                || !indexes.Add(adapter.Index)
-                || !keys.Add(adapter.AdapterKey)
                 || !IsAdapterObservationValid(adapter))
             {
                 return false;
             }
+            // The actual inventory is bounded by the published GPU profile
+            // (16 adapters by default). Checking its short prefix needs no sets.
+            for (var prior = 0; prior < index; prior++)
+                if (Adapters[prior].Index == adapter.Index || Adapters[prior].AdapterKey == adapter.AdapterKey)
+                    return false;
         }
 
         return true;
@@ -74,7 +76,7 @@ public sealed record SchedulingGpuInventorySnapshot(
     private static bool IsAdapterObservationValid(SchedulingGpuAdapterObservation adapter)
     {
         var usageCurrent = adapter.UsageStatus == SamplingObservationStatus.Current;
-        var usageValid = adapter.ValidMetricMask.HasFlag(SchedulingGpuMetricMask.Usage);
+        var usageValid = (adapter.ValidMetricMask & SchedulingGpuMetricMask.Usage) != 0;
         if (usageCurrent != usageValid
             || usageValid && (!double.IsFinite(adapter.UsagePercent)
                 || adapter.UsagePercent < 0
@@ -94,13 +96,13 @@ public sealed record SchedulingGpuInventorySnapshot(
         }
 
         if (capacityCurrent
-            && !adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.DedicatedMemory))
+            && (adapter.CapabilityMask & SchedulingGpuCapabilityMask.DedicatedMemory) == 0)
         {
             return false;
         }
 
         if (adapter.CapacityStatus == SamplingObservationStatus.Unsupported
-            && adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.DedicatedMemory))
+            && (adapter.CapabilityMask & SchedulingGpuCapabilityMask.DedicatedMemory) != 0)
         {
             return false;
         }

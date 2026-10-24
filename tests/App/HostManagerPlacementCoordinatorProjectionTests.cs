@@ -1,3 +1,4 @@
+using System.Globalization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement;
@@ -188,6 +189,123 @@ public sealed class HostManagerPlacementCoordinatorProjectionTests
         Assert.Equal(
             (ulong)(NativePlacementDesiredValidity.Required | NativePlacementDesiredValidity.ProcessIdentity),
             desiredRow.ValidMask);
+    }
+
+    [Theory]
+    [InlineData("en-US", 0, 0, 3)]
+    [InlineData("fr-FR", 1, 4, 19)]
+    [InlineData("ar-SA", 2, 7, 63)]
+    public void TypedIdealProcessorDesiredPreservesFullDigestAndDefersDurableMetadata(
+        string cultureName,
+        ushort group,
+        byte previousNumber,
+        byte appliedNumber)
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
+            const ulong processStartKey = 133_900_000_000_000_031;
+            const ulong threadStartKey = 133_900_000_000_000_117;
+            const int processId = 42_431;
+            const int threadId = 100_117;
+            const string recordId = "ideal:stable-🎮";
+            var processStartedAt = DateTimeOffset.FromFileTime(checked((long)processStartKey));
+            var previous = new ThreadIdealProcessor(group, previousNumber);
+            var applied = new ThreadIdealProcessor(group, appliedNumber);
+            var typed = new HostManagerIdealProcessorDesiredMetadata(
+                processId,
+                processStartKey,
+                processStartedAt.ToUnixTimeMilliseconds(),
+                "渲染器🎮",
+                @"C:\Games\测试\game-🎮.exe",
+                threadId,
+                threadStartKey,
+                previous,
+                applied);
+            var oldMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["owner"] = "host-manager-automatic-placement-v1",
+                ["processId"] = processId.ToString(CultureInfo.InvariantCulture),
+                ["processStartKey"] = processStartKey.ToString(CultureInfo.InvariantCulture),
+                ["processStartedAt"] = processStartedAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
+                ["processName"] = "渲染器🎮",
+                ["executablePath"] = @"C:\Games\测试\game-🎮.exe",
+                ["threadId"] = threadId.ToString(CultureInfo.InvariantCulture),
+                ["threadStartKey"] = threadStartKey.ToString(CultureInfo.InvariantCulture),
+                ["previousProcessorGroup"] = group.ToString(CultureInfo.InvariantCulture),
+                ["previousProcessorNumber"] = previousNumber.ToString(CultureInfo.InvariantCulture),
+                ["appliedProcessorGroup"] = group.ToString(CultureInfo.InvariantCulture),
+                ["appliedProcessorNumber"] = appliedNumber.ToString(CultureInfo.InvariantCulture),
+                ["source"] = HostManagerSmartCoordinator.AutomaticIdealProcessorSource
+            };
+            var oldRecord = new HostManagerAppliedRecord(
+                HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
+                recordId,
+                oldMetadata);
+            var placement = Placement(oldRecord) with
+            {
+                TargetId = "target:处理器🎮",
+                DisplayName = "目标🎮"
+            };
+            var placeholder = new HostManagerAppliedRecord(
+                HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
+                recordId);
+            var typedPlacement = placement with { Records = [placeholder] };
+            var desired = new HostManagerPlacementDesired(typedPlacement, placeholder, 73)
+            {
+                IdealProcessorMetadata = typed
+            };
+            var expectedAppliedDigest = HostManagerPlacementCoordinatorProjection.CreatePayloadDigest(
+                "applied", placement, oldRecord);
+            var expectedPreviousDigest = HostManagerPlacementCoordinatorProjection.CreatePayloadDigest(
+                "previous", placement, oldRecord);
+
+            Assert.Equal(expectedAppliedDigest,
+                HostManagerPlacementCoordinatorProjection.CreatePayloadDigest("applied", desired));
+            Assert.Equal(expectedPreviousDigest,
+                HostManagerPlacementCoordinatorProjection.CreatePayloadDigest("previous", desired));
+
+            var output = new NativePlacementDesiredInput[1];
+            var projected = HostManagerPlacementCoordinatorProjection.ProjectDesired([desired], output);
+            var row = Assert.Single(output);
+            Assert.Equal(expectedAppliedDigest, row.DesiredDigest);
+            Assert.Equal((uint)processId, row.ProcessId);
+            Assert.Equal(processStartKey, row.ProcessStartKey);
+            Assert.Equal(73U, row.Priority);
+            var projectedRow = projected.Require(new NativePlacementAction
+            {
+                TargetKey = row.TargetKey,
+                RecordKey = row.RecordKey
+            });
+            Assert.Null(projectedRow.Record.Metadata);
+
+            var unmaterializedRecordCount = 0;
+            for (var index = 0; index < 4; index++)
+            {
+                var noApplyProjection = HostManagerPlacementCoordinatorProjection.ProjectDesired([desired], output);
+                var noApplyRow = noApplyProjection.Require(new NativePlacementAction
+                {
+                    TargetKey = row.TargetKey,
+                    RecordKey = row.RecordKey
+                });
+                if (noApplyRow.Record.Metadata is null) unmaterializedRecordCount++;
+            }
+            Assert.Equal(4, unmaterializedRecordCount);
+
+            var forApply = projectedRow.MaterializeForApply();
+            Assert.Equal(
+                oldMetadata.OrderBy(static item => item.Key, StringComparer.Ordinal),
+                forApply.Record.Metadata!.OrderBy(static item => item.Key, StringComparer.Ordinal));
+            Assert.Same(forApply.Record, Assert.Single(forApply.Placement.Records));
+            Assert.Equal(expectedAppliedDigest,
+                HostManagerPlacementCoordinatorProjection.CreatePayloadDigest(
+                    "applied", forApply.Placement, forApply.Record));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Fact]
