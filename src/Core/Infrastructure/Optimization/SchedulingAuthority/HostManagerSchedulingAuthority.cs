@@ -8,7 +8,7 @@ internal enum HostManagerSchedulingAuthorityAvailability : byte
 }
 
 internal sealed record HostManagerSchedulingAuthoritySnapshot(
-    ulong AttemptGeneration,
+    ulong RoundNumber,
     HostManagerSchedulingAuthorityAvailability Availability,
     DateTimeOffset ObservedAt,
     HostManagerSchedulingPlanBinding? PlanBinding,
@@ -35,7 +35,6 @@ internal interface IHostManagerSchedulingAuthoritySource
 
 public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAuthoritySource
 {
-    private readonly object sync = new();
     private HostManagerSchedulingAuthoritySnapshot current =
         HostManagerSchedulingAuthoritySnapshot.Empty;
 
@@ -46,7 +45,7 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
         => Capture();
 
     internal void PublishUnavailable(
-        ulong attemptGeneration,
+        ulong roundNumber,
         HostManagerSchedulingPlanBinding planBinding,
         DateTimeOffset observedAt,
         string reason)
@@ -54,7 +53,7 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
         ValidatePlanBinding(planBinding);
         ValidateReason(reason);
         Publish(new(
-            attemptGeneration,
+            roundNumber,
             HostManagerSchedulingAuthorityAvailability.Unavailable,
             observedAt,
             planBinding,
@@ -75,7 +74,7 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
         ValidateCompute(compute);
         ValidateReason(reason);
         Publish(new(
-            compute.SchedulingGeneration,
+            compute.RoundNumber,
             HostManagerSchedulingAuthorityAvailability.ComputeOnly,
             observedAt,
             planBinding,
@@ -98,9 +97,6 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
         ValidatePlanBinding(planBinding);
         ValidateCompute(compute);
         if (compute.Cpu is null
-            || memoryModes.SchedulingGeneration != compute.SchedulingGeneration
-            || memoryModes.SnapshotGeneration != compute.SchedulingGeneration
-            || !memoryModes.MemorySource.IsValid
             || memoryModes.ConfigurationGeneration
                 != planBinding.MemoryModeConfigurationGeneration)
         {
@@ -116,7 +112,7 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
         }
 
         Publish(new(
-            compute.SchedulingGeneration,
+            compute.RoundNumber,
             HostManagerSchedulingAuthorityAvailability.Ready,
             observedAt,
             planBinding,
@@ -128,43 +124,21 @@ public sealed class HostManagerSchedulingAuthority : IHostManagerSchedulingAutho
 
     private void Publish(HostManagerSchedulingAuthoritySnapshot next)
     {
-        if (next.AttemptGeneration == 0 || next.ObservedAt == default)
+        if (next.ObservedAt == default)
         {
             throw new InvalidDataException(
-                "A scheduling authority publication requires nonzero attempt and observation identities.");
+                "A scheduling authority publication requires an observation time.");
         }
 
-        lock (sync)
-        {
-            if (current.PlanBinding is not null
-                && (next.PlanBinding!.HostPublicationSequence
-                        < current.PlanBinding.HostPublicationSequence
-                    || next.PlanBinding.HostPublicationSequence
-                        == current.PlanBinding.HostPublicationSequence
-                        && next.PlanBinding != current.PlanBinding))
-            {
-                throw new InvalidOperationException(
-                    "A stale or inconsistent Host publication cannot replace the scheduling authority.");
-            }
-            if (next.AttemptGeneration <= current.AttemptGeneration)
-            {
-                throw new InvalidOperationException(
-                    "Scheduling authority attempt generations must increase strictly.");
-            }
-            Volatile.Write(ref current, next);
-        }
+        Volatile.Write(ref current, next);
     }
 
     private static void ValidateCompute(HostManagerComputeScoringCycleResult compute)
     {
-        if (compute.SchedulingGeneration == 0 || compute.Cpu is null && compute.Gpu is null
-            || compute.Cpu is not null
-                && compute.Cpu.SchedulingGeneration != compute.SchedulingGeneration
-            || compute.Gpu is not null
-                && compute.Gpu.SchedulingGeneration != compute.SchedulingGeneration)
+        if (compute.RoundNumber == 0 || compute.Cpu is null && compute.Gpu is null)
         {
             throw new InvalidDataException(
-                "The compute authority result does not form one current scheduling generation.");
+                "The compute authority result does not form one current scheduling round.");
         }
     }
 

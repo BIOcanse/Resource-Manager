@@ -7,7 +7,7 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
 {
     private readonly object sync = new();
     private IntPtr handle;
-    private NativeComputeScoringCapacity capacity;
+    private readonly NativeComputeScoringCapacity capacity;
 
     public unsafe NativeComputeScoringSession(in NativeComputeScoringConfiguration configuration, ReadOnlySpan<double> cpuWeights)
     {
@@ -57,26 +57,6 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
     }
 
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
-
-    public unsafe NativeComputeScoringStatus Reconfigure(
-        in NativeComputeScoringConfiguration configuration, ReadOnlySpan<double> cpuWeights)
-    {
-        lock (sync)
-        {
-            var current = RequireHandle();
-            NativeComputeScoringStatus status;
-            fixed (double* weights = cpuWeights)
-            {
-                status = (NativeComputeScoringStatus)NativeMethods.Reconfigure(
-                    current, in configuration, weights, checked((uint)cpuWeights.Length));
-            }
-            if (status == NativeComputeScoringStatus.Ok)
-            {
-                capacity = QueryAndValidateCapacity(current, in configuration);
-            }
-            return status;
-        }
-    }
 
     public unsafe NativeComputeScoringStatus CalculateWeightedCpuUse(
         ReadOnlySpan<NativeComputeScoringCpuCoreInput> rows, Span<double> output)
@@ -232,14 +212,6 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
         [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_destroy")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial void Destroy(IntPtr handle);
-
-        [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_reconfigure")]
-        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
-        internal static unsafe partial int Reconfigure(
-            IntPtr handle,
-            in NativeComputeScoringConfiguration configuration,
-            double* weights,
-            uint weightCount);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_weighted_cpu_use")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

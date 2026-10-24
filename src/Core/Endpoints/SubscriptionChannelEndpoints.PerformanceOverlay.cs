@@ -97,7 +97,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     var processes = processLease is null ? null : processSource.ReadLatest(
                         new SchedulingProcessFactRequest(
                             SchedulingProcessMetricMask.CpuUsage,
-                            null,
                             hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
                                 SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
                     var running = PerformanceOverlayProjection.SelectTargets(enabled, processes);

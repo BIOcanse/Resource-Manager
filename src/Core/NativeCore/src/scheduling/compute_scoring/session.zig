@@ -11,9 +11,6 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     cpu_capacity_shares: []f64,
-    // The coordinator's round number for the last accepted score. Source datasets keep their own
-    // numbering; only this one round number decides whether an envelope is a new round.
-    last_scheduling_generation: u64,
 
     pub fn create(config: *const protocol.Config, raw_cpu_weights: []const f64) !*Session {
         if (!protocol.validateConfig(config)) return error.InvalidConfiguration;
@@ -26,7 +23,6 @@ pub const Session = struct {
             .allocator = allocator,
             .config = config.*,
             .cpu_capacity_shares = shares,
-            .last_scheduling_generation = 0,
         };
         return self;
     }
@@ -35,26 +31,6 @@ pub const Session = struct {
         const allocator = self.allocator;
         allocator.free(self.cpu_capacity_shares);
         allocator.destroy(self);
-    }
-
-    pub fn reconfigure(self: *Session, config: *const protocol.Config, raw_cpu_weights: []const f64) protocol.Status {
-        lock(&self.mutex);
-        defer self.mutex.unlock();
-        if (!protocol.validateConfig(config)) return .abi_mismatch;
-        if (config.maximum_process_count != self.config.maximum_process_count or
-            config.maximum_gpu_row_count != self.config.maximum_gpu_row_count or
-            config.maximum_output_count != self.config.maximum_output_count or
-            config.cpu_core_count != self.config.cpu_core_count) return .recreate_required;
-        if (config.generation <= self.config.generation) return .stale_generation;
-        const shares = cpu_weights.compile(self.allocator, raw_cpu_weights, config.cpu_core_count) catch |err| return switch (err) {
-            error.InvalidConfiguration => .invalid_argument,
-            else => .out_of_memory,
-        };
-        self.allocator.free(self.cpu_capacity_shares);
-        self.cpu_capacity_shares = shares;
-        self.config = config.*;
-        self.last_scheduling_generation = 0;
-        return .ok;
     }
 
     pub fn weightedCpuUse(self: *Session, rows: []const protocol.CpuCoreInput, output: []f64) protocol.Status {
@@ -111,8 +87,7 @@ pub fn score(
 ) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
-    if (!validateEnvelope(session, envelope)) return .abi_mismatch;
-    if (envelope.scheduling_generation <= session.last_scheduling_generation) return .stale_generation;
+    if (!validateEnvelope(envelope)) return .abi_mismatch;
     if (envelope.process_count > session.config.maximum_process_count or
         envelope.gpu_row_count > session.config.maximum_gpu_row_count or
         envelope.output_capacity > session.config.maximum_output_count) return .capacity_exceeded;
@@ -126,26 +101,11 @@ pub fn score(
     const gpu_complete = (envelope.flags & protocol.EnvelopeFlags.gpu_snapshot_complete) != 0;
     if (!cpu_complete and !gpu_complete) return .no_data;
     if (cpu_complete and session.cpu_capacity_shares.len == 0) return .no_data;
-    if ((envelope.valid_mask & (protocol.EnvelopeValidity.process_generation |
-        protocol.EnvelopeValidity.process_observed_at)) !=
-        (protocol.EnvelopeValidity.process_generation | protocol.EnvelopeValidity.process_observed_at)) return .invalid_facts;
     if ((envelope.valid_mask & protocol.EnvelopeValidity.welfare_capacity) == 0 or
         envelope.welfare_eligible_process_count > session.config.maximum_process_count)
         return .invalid_facts;
-    const gpu_validity = protocol.EnvelopeValidity.gpu_generation |
-        protocol.EnvelopeValidity.gpu_observed_at | protocol.EnvelopeValidity.gpu_topology;
-    if (gpu_complete) {
-        if ((envelope.valid_mask & gpu_validity) != gpu_validity or
-            envelope.gpu_source_generation == 0 or envelope.gpu_topology_generation == 0 or
-            envelope.gpu_topology_fingerprint == 0 or envelope.gpu_observed_at_milliseconds <= 0)
-            return .invalid_facts;
-    } else if ((envelope.valid_mask & gpu_validity) != 0 or
-        envelope.gpu_source_generation != 0 or envelope.gpu_topology_generation != 0 or
-        envelope.gpu_topology_fingerprint != 0 or envelope.gpu_observed_at_milliseconds != 0 or
-        envelope.gpu_row_count != 0 or envelope.gpu_adapter_count != 0)
-    {
+    if (!gpu_complete and (envelope.gpu_row_count != 0 or envelope.gpu_adapter_count != 0))
         return .invalid_facts;
-    }
 
     const process_count: usize = @intCast(envelope.process_count);
     const gpu_count: usize = @intCast(envelope.gpu_row_count);
@@ -164,7 +124,7 @@ pub fn score(
 
     var local_eligible_process_count: u32 = 0;
     for (process_rows, 0..) |row, index| {
-        const status = validateProcess(session, envelope, &row, cpu_complete, gpu_complete);
+        const status = validateProcess(session, &row, cpu_complete, gpu_complete);
         if (status != .ok) return status;
         if (row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running))
             local_eligible_process_count += 1;
@@ -187,7 +147,7 @@ pub fn score(
         const process_index = findProcess(&work, process_count, row.process_id, row.process_start_key) orelse
             return .conflicting_facts;
         const process = &work.processes[process_index].row;
-        const status = validateGpu(envelope, process, &row, gpu_complete);
+        const status = validateGpu(process, &row, gpu_complete);
         if (status != .ok) return status;
         const score_value = if (gpu_complete) process_scores.gpu(
             &session.config,
@@ -231,12 +191,7 @@ pub fn score(
     snapshot.* = .{
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.Snapshot),
-        .configuration_generation = session.config.generation,
-        .scheduling_generation = envelope.scheduling_generation,
-        .process_source_generation = envelope.process_source_generation,
-        .gpu_source_generation = if (gpu_complete) envelope.gpu_source_generation else 0,
-        .gpu_topology_generation = if (gpu_complete) envelope.gpu_topology_generation else 0,
-        .gpu_topology_fingerprint = if (gpu_complete) envelope.gpu_topology_fingerprint else 0,
+        .round_number = envelope.round_number,
         .flags = (if (cpu_complete) protocol.SnapshotFlags.cpu_scores_valid else 0) |
             (if (gpu_complete) protocol.SnapshotFlags.gpu_scores_valid else 0),
         .process_input_count = envelope.process_count,
@@ -266,19 +221,16 @@ pub fn score(
         .reserved0 = 0,
         .reserved = 0,
     };
-    session.last_scheduling_generation = envelope.scheduling_generation;
     return .ok;
 }
 
-fn validateEnvelope(session: *const Session, value: *const protocol.GenerationEnvelope) bool {
+fn validateEnvelope(value: *const protocol.GenerationEnvelope) bool {
     return value.abi_version == protocol.abi_version and
         value.struct_size == @sizeOf(protocol.GenerationEnvelope) and
         value.process_input_struct_size == @sizeOf(protocol.ProcessInput) and
         value.gpu_input_struct_size == @sizeOf(protocol.GpuInput) and
         value.output_struct_size == @sizeOf(protocol.ScoreOutput) and
-        value.reserved0 == 0 and value.configuration_generation == session.config.generation and
-        value.scheduling_generation != 0 and value.process_source_generation != 0 and
-        value.process_observed_at_milliseconds > 0 and
+        value.reserved0 == 0 and value.round_number != 0 and
         (value.valid_mask & ~protocol.EnvelopeValidity.known) == 0 and
         (value.flags & ~protocol.EnvelopeFlags.known) == 0 and value.output_capacity != 0 and
         value.reserved1 == 0;
@@ -286,7 +238,6 @@ fn validateEnvelope(session: *const Session, value: *const protocol.GenerationEn
 
 fn validateProcess(
     session: *const Session,
-    envelope: *const protocol.GenerationEnvelope,
     row: *const protocol.ProcessInput,
     cpu_complete: bool,
     gpu_complete: bool,
@@ -295,16 +246,15 @@ fn validateProcess(
         (row.flags & ~protocol.ProcessFlags.known) != 0 or
         (row.valid_mask & ~protocol.ProcessValidity.known) != 0 or row.target_key == 0 or
         row.software_key == 0 or row.process_id == 0 or row.process_start_key == 0 or
-        row.source_generation != envelope.process_source_generation or row.reserved != 0 or
+        row.reserved != 0 or
         row.runtime_state >= protocol.runtime_state_count or
         !protocol.finiteNonNegative(row.base_importance) or
         row.base_importance > session.config.maximum_base_importance) return .invalid_facts;
     if ((row.valid_mask & (protocol.ProcessValidity.identity |
         protocol.ProcessValidity.software_identity | protocol.ProcessValidity.runtime_state |
-        protocol.ProcessValidity.base_importance | protocol.ProcessValidity.source_generation)) !=
+        protocol.ProcessValidity.base_importance)) !=
         (protocol.ProcessValidity.identity | protocol.ProcessValidity.software_identity |
-            protocol.ProcessValidity.runtime_state | protocol.ProcessValidity.base_importance |
-            protocol.ProcessValidity.source_generation)) return .invalid_facts;
+            protocol.ProcessValidity.runtime_state | protocol.ProcessValidity.base_importance)) return .invalid_facts;
     const is_running = row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running);
     if (((row.flags & protocol.ProcessFlags.running) != 0) != is_running)
         return .invalid_facts;
@@ -318,7 +268,6 @@ fn validateProcess(
 }
 
 fn validateGpu(
-    envelope: *const protocol.GenerationEnvelope,
     process: *const protocol.ProcessInput,
     row: *const protocol.GpuInput,
     gpu_complete: bool,
@@ -327,7 +276,7 @@ fn validateGpu(
         (row.valid_mask & ~protocol.GpuValidity.known) != 0 or
         row.target_key != process.target_key or row.software_key != process.software_key or
         row.process_id != process.process_id or row.process_start_key != process.process_start_key or
-        row.adapter_key == 0 or row.source_generation != envelope.gpu_source_generation or
+        row.adapter_key == 0 or
         row.reserved[0] != 0 or row.reserved[1] != 0) return .invalid_facts;
     if (gpu_complete and (row.valid_mask & protocol.GpuValidity.required) != protocol.GpuValidity.required)
         return .invalid_facts;
@@ -538,11 +487,11 @@ fn processOutput(
         .kind = @intFromEnum(kind),
         .runtime_state = process.runtime_state,
         .reserved0 = 0,
-        .valid_mask = protocol.OutputValidity.scheduling_generation |
+        .valid_mask = protocol.OutputValidity.round_number |
             protocol.OutputValidity.software_identity | protocol.OutputValidity.process_identity |
             protocol.OutputValidity.score |
             (if (adapter_key != 0) protocol.OutputValidity.adapter_identity else 0),
-        .scheduling_generation = envelope.scheduling_generation,
+        .round_number = envelope.round_number,
         .target_key = process.target_key,
         .software_key = process.software_key,
         .process_start_key = process.process_start_key,
@@ -569,11 +518,11 @@ fn softwareOutput(
         .kind = @intFromEnum(kind),
         .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
         .reserved0 = 0,
-        .valid_mask = protocol.OutputValidity.scheduling_generation |
+        .valid_mask = protocol.OutputValidity.round_number |
             protocol.OutputValidity.software_identity | protocol.OutputValidity.score |
             protocol.OutputValidity.member_count |
             (if (adapter_key != 0) protocol.OutputValidity.adapter_identity else 0),
-        .scheduling_generation = envelope.scheduling_generation,
+        .round_number = envelope.round_number,
         .target_key = 0,
         .software_key = software_key,
         .process_start_key = 0,

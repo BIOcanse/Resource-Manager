@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0001_0000;
+pub const abi_version: u32 = 0x0002_0000;
 
 pub const ResourceKind = enum(u32) {
     unknown = 0,

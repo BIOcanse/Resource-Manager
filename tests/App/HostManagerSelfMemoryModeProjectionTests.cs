@@ -209,14 +209,10 @@ public sealed class HostManagerSelfMemoryModeProjectionTests
             Generation,
             new(
                 Generation,
-                100,
-                0,
-                0,
                 ImmutableArray.Create(score)),
             null);
         var desired = new HostManagerDesiredMemoryMode(
             SelfSoftwareKey,
-            Generation,
             Generation,
             cpuScore,
             0,
@@ -225,8 +221,6 @@ public sealed class HostManagerSelfMemoryModeProjectionTests
             30);
         var memoryModes = new HostManagerMemoryModeDesiredSnapshot(
             binding.MemoryModeConfigurationGeneration,
-            Generation,
-            new HostManagerMemorySourceStamp(100, 200),
             Generation,
             false,
             mode == NativeMemoryMode.Optimize ? 1U : 0U,

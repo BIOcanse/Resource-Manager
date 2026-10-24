@@ -7,12 +7,12 @@ const software_aggregation = @import("../compute_scoring/software_aggregation.zi
 
 const ActionBuffer = [corpus.default_action_capacity]protocol.Action;
 
-test "ABI layout is frozen for version 8" {
+test "ABI layout is frozen for version 9" {
     try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
-    try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.CycleInput));
-    try std.testing.expectEqual(@as(usize, 112), @sizeOf(protocol.InputRow));
+    try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.CycleInput));
+    try std.testing.expectEqual(@as(usize, 104), @sizeOf(protocol.InputRow));
     try std.testing.expectEqual(@as(usize, 136), @sizeOf(protocol.Action));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.Feedback));
     try std.testing.expectEqual(@as(usize, 120), @sizeOf(protocol.Snapshot));
@@ -24,22 +24,20 @@ test "ABI layout is frozen for version 8" {
     try std.testing.expectEqual(@as(usize, 80), @offsetOf(protocol.Feedback, "status"));
     try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.CycleInput, "valid_mask"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.CycleInput, "flags"));
-    try std.testing.expectEqual(@as(usize, 64), @offsetOf(protocol.CycleInput, "score_scheduling_generation"));
-    try std.testing.expectEqual(@as(usize, 72), @offsetOf(protocol.CycleInput, "cpu_score_source_fingerprint"));
-    try std.testing.expectEqual(@as(usize, 80), @offsetOf(protocol.CycleInput, "gpu_score_source_fingerprint"));
-    try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.CycleInput, "maximum_actions_this_cycle"));
-    try std.testing.expectEqual(@as(usize, 92), @offsetOf(protocol.CycleInput, "reserved"));
+    try std.testing.expectEqual(@as(usize, 64), @offsetOf(protocol.CycleInput, "round_number"));
+    try std.testing.expectEqual(@as(usize, 72), @offsetOf(protocol.CycleInput, "maximum_actions_this_cycle"));
+    try std.testing.expectEqual(@as(usize, 76), @offsetOf(protocol.CycleInput, "reserved"));
     try std.testing.expectEqual(@as(usize, 76), @offsetOf(protocol.InputRow, "score_member_count"));
-    try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.InputRow, "process_score"));
-    try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.InputRow, "software_score"));
+    try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.InputRow, "process_score"));
+    try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.InputRow, "software_score"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Snapshot, "reason_mask"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.SnapshotRow, "cpu_score"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.SnapshotRow, "cpu_occupancy_percent"));
     try std.testing.expectEqual(@as(usize, 172), @offsetOf(protocol.SnapshotRow, "desired_process_grade"));
     try std.testing.expectEqual(@as(u64, 0x8cc98a222ba80e73), corpus.layoutFingerprint(protocol.Config));
     try std.testing.expectEqual(@as(u64, 0x822e9b7b868af1e6), corpus.layoutFingerprint(protocol.Capacity));
-    try std.testing.expectEqual(@as(u64, 0x65e7ea745d6deb6f), corpus.layoutFingerprint(protocol.CycleInput));
-    try std.testing.expectEqual(@as(u64, 0xc0fb77c1361e04ff), corpus.layoutFingerprint(protocol.InputRow));
+    try std.testing.expectEqual(@as(u64, 0x2a719fac7ecace97), corpus.layoutFingerprint(protocol.CycleInput));
+    try std.testing.expectEqual(@as(u64, 0x27f12d8b9e11d1c8), corpus.layoutFingerprint(protocol.InputRow));
     try std.testing.expectEqual(@as(u64, 0x531d6c7ff4bcf206), corpus.layoutFingerprint(protocol.Action));
     try std.testing.expectEqual(@as(u64, 0x7722db7daad0835b), corpus.layoutFingerprint(protocol.Feedback));
     try std.testing.expectEqual(@as(u64, 0x8b8bdfce5d3ff18e), corpus.layoutFingerprint(protocol.Snapshot));
@@ -158,11 +156,11 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x0008_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x0009_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
     try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeatureFlags.known);
-    try std.testing.expectEqual(@as(u64, 0x7c), protocol.CycleValidity.known);
+    try std.testing.expectEqual(@as(u64, 0x0c), protocol.CycleValidity.known);
     try std.testing.expectEqual(@as(u64, 0x0c), protocol.CycleValidity.required);
     try std.testing.expectEqual(@as(u64, 0x1d), protocol.CycleFlags.known);
     try std.testing.expectEqual(@as(u64, 0xffff), protocol.InputValidity.known);
@@ -217,7 +215,6 @@ test "software only authoritative facts preserve adapter ownership" {
         .optimize,
         .normal,
         protocol.InputFlags.owns_cpu_grade,
-        41,
     )};
     var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
     var actions: ActionBuffer = undefined;
@@ -242,7 +239,7 @@ test "software only authoritative facts preserve adapter ownership" {
 }
 
 test "software only row rejects process facts" {
-    var row = corpus.softwareFact(0, 9_002, .optimize, .normal, protocol.InputFlags.owns_cpu_grade, 42);
+    var row = corpus.softwareFact(0, 9_002, .optimize, .normal, protocol.InputFlags.owns_cpu_grade);
     row.valid_mask |= protocol.InputValidity.applied_process_grade;
     try std.testing.expectEqual(protocol.Status.invalid_argument, protocol.validateInputRow(&row, 0));
 
@@ -341,9 +338,8 @@ test "standalone and process adapter facts merge in either order" {
         .optimize,
         .normal,
         protocol.InputFlags.owns_cpu_grade,
-        43,
     );
-    var process_second = corpus.processFact(
+    const process_second = corpus.processFact(
         1,
         9_103,
         9_003,
@@ -357,7 +353,6 @@ test "standalone and process adapter facts merge in either order" {
         .normal,
         protocol.InputFlags.owns_cpu_grade,
     );
-    process_second.applied_epoch = 43;
     var first_rows = [_]protocol.InputRow{ standalone_first, process_second };
     var first_input = corpus.cycle(&config, 1, 1_000, first_rows.len, true);
     try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
@@ -401,7 +396,7 @@ test "standalone and process adapter ownership conflicts reject the cycle" {
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
 
-    var process = corpus.processFact(
+    const process = corpus.processFact(
         1,
         9_104,
         9_004,
@@ -415,9 +410,8 @@ test "standalone and process adapter ownership conflicts reject the cycle" {
         .normal,
         protocol.InputFlags.owns_cpu_grade,
     );
-    process.applied_epoch = 44;
     var rows = [_]protocol.InputRow{
-        corpus.softwareFact(0, 9_004, .optimize, .normal, protocol.InputFlags.owns_cpu_grade, 44),
+        corpus.softwareFact(0, 9_004, .optimize, .normal, protocol.InputFlags.owns_cpu_grade),
         process,
     };
     var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
@@ -1722,7 +1716,7 @@ test "score-only exposes candidate grades without mutating transition state" {
     try std.testing.expect((snapshot.flags & protocol.SnapshotFlags.score_only) != 0);
 }
 
-test "replaying one canonical score snapshot does not advance hysteresis" {
+test "replaying one round does not advance hysteresis" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
@@ -1739,9 +1733,7 @@ test "replaying one canonical score snapshot does not advance hysteresis" {
             rows.len,
             sequence == 1,
         );
-        input.score_scheduling_generation = 1;
-        input.cpu_score_source_fingerprint = 0xC101;
-        input.gpu_score_source_fingerprint = 0xD101;
+        input.round_number = 1;
         try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
             session,
             &input,
@@ -1758,9 +1750,7 @@ test "replaying one canonical score snapshot does not advance hysteresis" {
     }
 
     var input = corpus.cycle(&config, 4, 4_000, rows.len, false);
-    input.score_scheduling_generation = 2;
-    input.cpu_score_source_fingerprint = 0xC102;
-    input.gpu_score_source_fingerprint = 0xD102;
+    input.round_number = 2;
     try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
         session,
         &input,
@@ -1774,9 +1764,7 @@ test "replaying one canonical score snapshot does not advance hysteresis" {
     try std.testing.expectEqual(@as(u32, 2), session.processes[slot].transition.pending_count);
 
     input = corpus.cycle(&config, 5, 5_000, rows.len, false);
-    input.score_scheduling_generation = 3;
-    input.cpu_score_source_fingerprint = 0xC103;
-    input.gpu_score_source_fingerprint = 0xD103;
+    input.round_number = 3;
     try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
         session,
         &input,
@@ -1790,6 +1778,44 @@ test "replaying one canonical score snapshot does not advance hysteresis" {
     try std.testing.expectEqual(config.required_consecutive_decisions, session.processes[slot].transition.pending_count);
     const ready = findProcessAction(actions[0..snapshot.action_count], 15_101) orelse return error.MissingProcessAction;
     try std.testing.expect((ready.flags & protocol.ActionFlags.requires_feedback) != 0);
+}
+
+test "process and adapter confirmations advance only on larger rounds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy |
+        protocol.FeatureFlags.adapter_cpu | protocol.FeatureFlags.adapter_gpu);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    const base = corpus.processFact(0, 15_201, 152_001, 153, 1_513, 20, .adapted, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    var rows = [_]protocol.InputRow{
+        base,
+        corpus.metricFact(base, 1, .cpu_usage_percent, 100, 0),
+        corpus.metricFact(base, 2, .gpu_usage_percent, 100, 7),
+        corpus.metricFact(base, 3, .vram_usage_percent, 1, 7),
+    };
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    const rounds = [_]u64{ 2, 2, 1, 2, 3, 3, 4 };
+    const counts = [_]u32{ 1, 1, 1, 1, 2, 2, 3 };
+    for (rounds, counts, 0..) |round_number, count, index| {
+        const sequence: u64 = @intCast(index + 1);
+        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, index == 0);
+        input.round_number = round_number;
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
+        const process = session.processes[
+            session.findProcess(15_201, 153, 1_513) orelse
+                return error.MissingProcessSnapshot
+        ];
+        const software = session.softwares[
+            session.findSoftware(152_001) orelse
+                return error.MissingSoftwareSnapshot
+        ];
+        try std.testing.expectEqual(count, process.transition.pending_count);
+        try std.testing.expectEqual(count, software.cpu_transition.pending_count);
+        try std.testing.expectEqual(count, software.gpu_transition.pending_count);
+        try std.testing.expectEqual(@max(@as(u64, 2), round_number), process.transition.last_round_number);
+        try std.testing.expectEqual(@max(@as(u64, 2), round_number), software.cpu_transition.last_round_number);
+        try std.testing.expectEqual(@max(@as(u64, 2), round_number), software.gpu_transition.last_round_number);
+    }
 }
 
 test "missing canonical score excludes only the corresponding candidate" {
@@ -1832,69 +1858,68 @@ test "missing canonical score excludes only the corresponding candidate" {
     try std.testing.expect(session.softwares[complete_software_slot].cpu_candidate_valid);
 }
 
-test "missing CPU metric advances owned Normal restore confirmations without a fresh score" {
-    for ([_]u64{ 0, 0xC000_0000_0000_0001 }) |fingerprint| {
-        var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
-        const session = try coordinator.create(&config);
-        defer coordinator.destroy(session);
-        var identity = corpus.processFact(0, 16_101, 161_001, 162, 1_612, 85, .general_application, 0, protocol.ProcessGrade.level3, .normal, .normal, protocol.InputFlags.owns_process_grade);
-        var rows = [_]protocol.InputRow{
-            identity,
-            corpus.metricFact(identity, 1, .cpu_usage_percent, 0, 0),
-        };
-        var actions: ActionBuffer = undefined;
-        var snapshot: protocol.Snapshot = undefined;
-        var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+test "missing CPU metric advances owned Normal restore confirmations only on larger rounds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var identity = corpus.processFact(0, 16_101, 161_001, 162, 1_612, 85, .general_application, 0, protocol.ProcessGrade.level3, .normal, .normal, protocol.InputFlags.owns_process_grade);
+    var rows = [_]protocol.InputRow{
+        identity,
+        corpus.metricFact(identity, 1, .cpu_usage_percent, 0, 0),
+    };
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+        session,
+        &input,
+        rows[0..].ptr,
+        rows.len,
+        actions[0..].ptr,
+        actions.len,
+        &snapshot,
+    ));
+    const slot = session.findProcess(16_101, 162, 1_612) orelse return error.MissingProcessSnapshot;
+    try std.testing.expectEqual(protocol.ProcessGrade.normal, session.processes[slot].transition.desired);
+    try std.testing.expectEqual(@as(u32, 1), session.processes[slot].transition.pending_count);
+
+    identity.flags &= ~protocol.InputFlags.process_cpu_metrics_complete;
+    rows[0] = identity;
+    for ([_]u32{ 1, 2, 2, 3 }, 0..) |round_number, index| {
+        const sequence: u32 = @intCast(index + 2);
+        input = corpus.cycle(&config, sequence, @as(i64, sequence) * 1_000, 1, false);
+        input.round_number = round_number;
         try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
             session,
             &input,
             rows[0..].ptr,
-            rows.len,
+            1,
             actions[0..].ptr,
             actions.len,
             &snapshot,
         ));
-        const slot = session.findProcess(16_101, 162, 1_612) orelse return error.MissingProcessSnapshot;
-        try std.testing.expectEqual(protocol.ProcessGrade.normal, session.processes[slot].transition.desired);
-        try std.testing.expectEqual(@as(u32, 1), session.processes[slot].transition.pending_count);
-
-        identity.flags &= ~protocol.InputFlags.process_cpu_metrics_complete;
-        rows[0] = identity;
-        var sequence: u32 = 2;
-        while (sequence <= config.required_consecutive_decisions) : (sequence += 1) {
-            input = corpus.cycle(&config, sequence, @as(i64, sequence) * 1_000, 1, false);
-            input.cpu_score_source_fingerprint = fingerprint;
-            if (fingerprint == 0) input.valid_mask &= ~protocol.CycleValidity.cpu_score_source_fingerprint;
-            try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
-                session,
-                &input,
-                rows[0..].ptr,
-                1,
-                actions[0..].ptr,
-                actions.len,
-                &snapshot,
-            ));
-            const process = session.processes[slot];
-            try std.testing.expect(!process.cpu_score_valid);
-            try std.testing.expectEqual(sequence, process.transition.pending_count);
-            try std.testing.expectEqual(@as(i64, 1_000), process.transition.pending_first_seen_ms);
-            try std.testing.expectEqual(@as(i64, sequence) * 1_000, process.transition.pending_last_seen_ms);
-            const action = findProcessAction(actions[0..snapshot.action_count], 16_101) orelse return error.MissingProcessAction;
-            try std.testing.expect((action.reason_mask & protocol.Reason.missing_cpu_metric) != 0);
-            if (sequence < config.required_consecutive_decisions) {
-                try std.testing.expectEqual(@as(u32, 0), action.flags & protocol.ActionFlags.requires_feedback);
-                try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
-            } else {
-                try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), action.disposition);
-                try std.testing.expectEqual(protocol.ProcessGrade.level3, action.from_process_grade);
-                try std.testing.expectEqual(protocol.ProcessGrade.normal, action.to_process_grade);
-                try std.testing.expect((action.flags & protocol.ActionFlags.requires_feedback) != 0);
-                try std.testing.expectEqual(@as(u32, 1), snapshot.inflight_count);
-            }
+        const process = session.processes[slot];
+        try std.testing.expect(!process.cpu_score_valid);
+        try std.testing.expectEqual(round_number, process.transition.pending_count);
+        try std.testing.expectEqual(@as(i64, 1_000), process.transition.pending_first_seen_ms);
+        try std.testing.expectEqual(
+            if (round_number == 1) @as(i64, 1_000) else if (round_number == 2) @as(i64, 3_000) else @as(i64, 5_000),
+            process.transition.pending_last_seen_ms,
+        );
+        const action = findProcessAction(actions[0..snapshot.action_count], 16_101) orelse return error.MissingProcessAction;
+        try std.testing.expect((action.reason_mask & protocol.Reason.missing_cpu_metric) != 0);
+        if (round_number < config.required_consecutive_decisions) {
+            try std.testing.expectEqual(@as(u32, 0), action.flags & protocol.ActionFlags.requires_feedback);
+            try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
+        } else {
+            try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), action.disposition);
+            try std.testing.expectEqual(protocol.ProcessGrade.level3, action.from_process_grade);
+            try std.testing.expectEqual(protocol.ProcessGrade.normal, action.to_process_grade);
+            try std.testing.expect((action.flags & protocol.ActionFlags.requires_feedback) != 0);
+            try std.testing.expectEqual(@as(u32, 1), snapshot.inflight_count);
         }
     }
 }
-
 test "missing CPU metric cannot emit a pending demotion from Normal" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);

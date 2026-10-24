@@ -106,8 +106,6 @@ internal sealed class SchedulingProcessFactSnapshotState
                 dataset.OverflowCount = sample.OverflowCount;
                 dataset.TopologyGeneration = observation.TopologyGeneration;
                 dataset.TopologyFingerprint = observation.TopologyFingerprint;
-                dataset.MemoryUsageDependency =
-                    observation.MemoryUsageDependency;
                 dataset.LastSuccessAt = new DateTimeOffset(
                     observation.ObservedAtUtcTicks,
                     TimeSpan.Zero);
@@ -239,8 +237,6 @@ internal sealed class SchedulingProcessFactSnapshotState
                     || dataset.FailureCode is not null
                     || dataset.SourceGeneration != observation.SourceGeneration
                     || dataset.ObservedAtUtcTicks != observation.ObservedAtUtcTicks
-                    || dataset.MemoryUsageDependency !=
-                        observation.MemoryUsageDependency
                     || dataset.LastSuccessAt is null)
                 {
                     return false;
@@ -361,7 +357,6 @@ internal sealed class SchedulingProcessFactSnapshotState
         dataset.OverflowCount = 0;
         dataset.TopologyGeneration = 0;
         dataset.TopologyFingerprint = 0;
-        dataset.MemoryUsageDependency = null;
         dataset.LastAttemptAt = attemptedAt;
         dataset.LastSuccessAt = null;
         dataset.ReadyUntil = null;
@@ -463,22 +458,12 @@ internal sealed class SchedulingProcessFactSnapshotState
                 {
                     continue;
                 }
-                var dependencyCurrent = bit !=
-                        SchedulingProcessMetricMask.MemoryUsage
-                    || request.ExpectedMemoryUsageDependency is
-                        { } expectedMemoryDependency
-                        && expectedMemoryDependency.IsWellFormed()
-                        && dataset.MemoryUsageDependency ==
-                            expectedMemoryDependency;
                 var current = dataset.Status == SamplingObservationStatus.Current
                     && dataset.FailureCode is null
-                    && dataset.LastSuccessAt is not null
-                    && dependencyCurrent;
+                    && dataset.LastSuccessAt is not null;
                 var failureCode = current || dataset.FailureCode is not null
                     ? dataset.FailureCode
-                    : !dependencyCurrent
-                        ? "scheduling-process-memory-dependency-mismatch"
-                        : "scheduling-process-dataset-not-published";
+                    : "scheduling-process-dataset-not-published";
                 observations.Add(
                     bit,
                     dataset.CreateObservation(
@@ -627,8 +612,8 @@ internal sealed class SchedulingProcessFactSnapshotState
             CpuUsagePercent = bit == SchedulingProcessMetricMask.CpuUsage
                 ? process.CpuUsagePercent
                 : 0,
-            MemoryUsagePercent = bit == SchedulingProcessMetricMask.MemoryUsage
-                ? process.MemoryUsagePercent
+            MemoryUsedBytes = bit == SchedulingProcessMetricMask.MemoryUsage
+                ? process.MemoryUsedBytes
                 : 0,
             Gpus = bit is SchedulingProcessMetricMask.GpuUsage
                 or SchedulingProcessMetricMask.GpuDedicatedMemory
@@ -693,7 +678,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             BaseScore = 0,
             ValidMetricMask = SchedulingProcessMetricMask.None,
             CpuUsagePercent = 0,
-            MemoryUsagePercent = 0,
+            MemoryUsedBytes = 0,
             Gpus = [],
             RuntimeState = HostManagerRuntimeStates.BackgroundProcess,
             ForegroundFocused = false,
@@ -708,7 +693,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         {
             ValidMetricMask = SchedulingProcessMetricMask.None,
             CpuUsagePercent = 0,
-            MemoryUsagePercent = 0,
+            MemoryUsedBytes = 0,
             Gpus = [],
             RuntimeState = HostManagerRuntimeStates.BackgroundProcess,
             ForegroundFocused = false,
@@ -769,7 +754,6 @@ internal sealed class SchedulingProcessFactSnapshotState
         public uint OverflowCount { get; set; }
         public ulong TopologyGeneration { get; set; }
         public ulong TopologyFingerprint { get; set; }
-        public SystemMemoryUsageDependency? MemoryUsageDependency { get; set; }
         public DateTimeOffset? LastAttemptAt { get; set; }
         public DateTimeOffset? LastSuccessAt { get; set; }
         public DateTimeOffset? ReadyUntil { get; set; }
@@ -794,7 +778,6 @@ internal sealed class SchedulingProcessFactSnapshotState
                 OverflowCount = OverflowCount,
                 TopologyGeneration = TopologyGeneration,
                 TopologyFingerprint = TopologyFingerprint,
-                MemoryUsageDependency = MemoryUsageDependency,
                 LastAttemptAt = LastAttemptAt,
                 LastSuccessAt = LastSuccessAt,
                 ReadyUntil = ReadyUntil,
@@ -821,8 +804,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 FailureCode = failureCode,
                 FailureMessage = FailureMessage,
                 TopologyGeneration = TopologyGeneration,
-                TopologyFingerprint = TopologyFingerprint,
-                MemoryUsageDependency = MemoryUsageDependency
+                TopologyFingerprint = TopologyFingerprint
             };
     }
 
@@ -891,7 +873,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         private readonly SchedulingProcessFact identity;
         private SchedulingProcessMetricMask validMask;
         private double cpuUsagePercent;
-        private double memoryUsagePercent;
+        private double memoryUsedBytes;
         private string runtimeState = HostManagerRuntimeStates.BackgroundProcess;
         private bool foregroundFocused;
         private bool hasVisibleWindow;
@@ -913,7 +895,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             }
             if (process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage))
             {
-                memoryUsagePercent = process.MemoryUsagePercent;
+                memoryUsedBytes = process.MemoryUsedBytes;
             }
             if (process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState))
             {
@@ -973,7 +955,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             {
                 ValidMetricMask = validMask,
                 CpuUsagePercent = cpuUsagePercent,
-                MemoryUsagePercent = memoryUsagePercent,
+                MemoryUsedBytes = memoryUsedBytes,
                 SourceGeneration = generation,
                 Gpus = gpus.Values
                     .OrderBy(static gpu => gpu.GpuIndex)

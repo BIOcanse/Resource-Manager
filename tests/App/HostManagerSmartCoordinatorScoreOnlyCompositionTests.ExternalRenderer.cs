@@ -181,7 +181,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             do
             {
                 latest = hardware.ReadLatest(request);
-                if (latest is not null) facts = processes.ReadLatest(new(mask, null, latest.GpuInventory));
+                if (latest is not null) facts = processes.ReadLatest(new(mask, latest.GpuInventory));
                 var observed = facts?.Processes.SingleOrDefault(p => p.ProcessId == identity.ProcessId && p.ProcessStartKey == identity.ProcessStartKey
                     && p.ExecutablePath == identity.ExecutablePath && p.Gpus.Any(g => g.ResidentMemoryBytes is > 0));
                 if (observed is not null)

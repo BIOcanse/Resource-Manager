@@ -104,16 +104,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
             foreach (var gpuFact in process.Gpus)
             {
-                if (gpuFact.GpuIndex < 0
-                    || gpuFact.AdapterKey == 0
-                    || gpuFact.ValidMetricMask.HasFlag(
-                            SchedulingProcessMetricMask.GpuUsage)
-                        && (gpuFact.UsageSourceGeneration == 0
-                            || gpuFact.UsageTopologyGeneration == 0)
-                    || gpuFact.HasMetric(
-                            SchedulingProcessMetricMask.GpuDedicatedMemory)
-                        && (gpuFact.DedicatedMemorySourceGeneration == 0
-                            || gpuFact.DedicatedMemoryTopologyGeneration == 0))
+                if (gpuFact.GpuIndex < 0 || gpuFact.AdapterKey == 0)
                 {
                     GpuIdentityConsistent = false;
                     continue;
@@ -222,24 +213,6 @@ public sealed partial class HostManagerSmartCoordinator
     {
         public int GpuIndex { get; } = fact.GpuIndex;
         public ulong AdapterKey { get; } = fact.AdapterKey;
-        public ulong UsageSourceGeneration { get; private set; } =
-            fact.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.GpuUsage)
-                ? fact.UsageSourceGeneration
-                : 0;
-        public ulong DedicatedMemorySourceGeneration { get; private set; } =
-            fact.HasMetric(
-                SchedulingProcessMetricMask.GpuDedicatedMemory)
-                ? fact.DedicatedMemorySourceGeneration
-                : 0;
-        public ulong UsageTopologyGeneration { get; private set; } =
-            fact.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.GpuUsage)
-                ? fact.UsageTopologyGeneration
-                : 0;
-        public ulong DedicatedMemoryTopologyGeneration { get; private set; } =
-            fact.HasMetric(
-                SchedulingProcessMetricMask.GpuDedicatedMemory)
-                ? fact.DedicatedMemoryTopologyGeneration
-                : 0;
         public double GpuUsagePercent { get; private set; }
         public double VramUsedPercent { get; private set; }
         public bool HasUsageMetric { get; private set; }
@@ -247,27 +220,11 @@ public sealed partial class HostManagerSmartCoordinator
         public double? ResidentMemoryBytes { get; set; }
 
         public bool Matches(SchedulingProcessGpuFact candidate)
-            => candidate.GpuIndex == GpuIndex
-                && candidate.AdapterKey == AdapterKey
-                && (!candidate.ValidMetricMask.HasFlag(
-                        SchedulingProcessMetricMask.GpuUsage)
-                    || UsageSourceGeneration == 0
-                    || candidate.UsageSourceGeneration == UsageSourceGeneration
-                        && candidate.UsageTopologyGeneration ==
-                            UsageTopologyGeneration)
-                && (!candidate.HasMetric(
-                        SchedulingProcessMetricMask.GpuDedicatedMemory)
-                    || DedicatedMemorySourceGeneration == 0
-                    || candidate.DedicatedMemorySourceGeneration ==
-                            DedicatedMemorySourceGeneration
-                        && candidate.DedicatedMemoryTopologyGeneration ==
-                            DedicatedMemoryTopologyGeneration);
+            => candidate.GpuIndex == GpuIndex && candidate.AdapterKey == AdapterKey;
 
         public void AddUsage(SchedulingProcessGpuFact candidate)
         {
             HasUsageMetric = true;
-            UsageSourceGeneration = candidate.UsageSourceGeneration;
-            UsageTopologyGeneration = candidate.UsageTopologyGeneration;
             GpuUsagePercent = Math.Max(
                 GpuUsagePercent,
                 candidate.UsagePercent);
@@ -276,10 +233,6 @@ public sealed partial class HostManagerSmartCoordinator
         public void AddVram(SchedulingProcessGpuFact candidate)
         {
             HasVramMetric = true;
-            DedicatedMemorySourceGeneration =
-                candidate.DedicatedMemorySourceGeneration;
-            DedicatedMemoryTopologyGeneration =
-                candidate.DedicatedMemoryTopologyGeneration;
             VramUsedPercent = Math.Max(
                 VramUsedPercent,
                 candidate.DedicatedMemoryUsedPercent);
@@ -290,10 +243,6 @@ public sealed partial class HostManagerSmartCoordinator
             return new HostManagerGpuTargetInfo(
                 GpuIndex,
                 AdapterKey,
-                UsageSourceGeneration,
-                DedicatedMemorySourceGeneration,
-                UsageTopologyGeneration,
-                DedicatedMemoryTopologyGeneration,
                 GpuUsagePercent,
                 VramUsedPercent,
                 HasUsageMetric,
@@ -337,10 +286,6 @@ public sealed partial class HostManagerSmartCoordinator
     private sealed record HostManagerGpuTargetInfo(
         int GpuIndex,
         ulong AdapterKey,
-        ulong UsageSourceGeneration,
-        ulong DedicatedMemorySourceGeneration,
-        ulong UsageTopologyGeneration,
-        ulong DedicatedMemoryTopologyGeneration,
         double GpuUsagePercent,
         double VramUsedPercent,
         bool HasUsageMetric,
@@ -348,6 +293,7 @@ public sealed partial class HostManagerSmartCoordinator
         double? ResidentMemoryBytes);
 
     private sealed record HostManagerSample(
+        ulong RoundNumber,
         HardwareMetricSnapshot Hardware,
         HostManagerIdleCapacitySnapshot IdleCapacity,
         SchedulingProcessFactSnapshot ProcessFacts,

@@ -19,7 +19,7 @@ internal readonly record struct HostManagerNonAdaptedMemoryProcessCapability(
     bool CanApplyAdaptedPolicy);
 
 internal sealed record HostManagerNonAdaptedMemoryProcessDirective(
-    ulong SchedulingGeneration,
+    ulong RoundNumber,
     ulong SoftwareKey,
     string? SoftwareId,
     int ProcessId,
@@ -31,9 +31,7 @@ internal sealed record HostManagerNonAdaptedMemoryProcessDirective(
     uint? TargetMemoryPriority);
 
 internal sealed record HostManagerNonAdaptedMemoryModeProjectionSnapshot(
-    ulong SchedulingGeneration,
-    ulong InventoryGeneration,
-    ulong CpuSourceGeneration,
+    ulong RoundNumber,
     ImmutableArray<HostManagerNonAdaptedMemoryProcessDirective> Processes);
 
 internal static class HostManagerNonAdaptedMemoryModeProjection
@@ -61,17 +59,11 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
         var cpu = compute.Cpu
             ?? throw new InvalidDataException(
                 "Non-adapted memory-mode projection requires a complete CPU score domain.");
-        if (compute.SchedulingGeneration == 0
-            || cpu.SchedulingGeneration != compute.SchedulingGeneration
-             || memoryModes.SchedulingGeneration != compute.SchedulingGeneration
-             || memoryModes.SnapshotGeneration != compute.SchedulingGeneration
-             || !memoryModes.MemorySource.IsValid
-             || cpu.SourceGeneration == 0
-            || cpu.SourceIdentity.InventoryGeneration != processFacts.Generation
+        if (compute.RoundNumber == 0
             || !processFacts.IsInventoryCurrentComplete())
         {
             throw new InvalidDataException(
-                "Non-adapted memory-mode projection requires one complete scheduling and process-source generation.");
+                "Non-adapted memory-mode projection requires a scheduling round with a complete process inventory.");
         }
 
         var processScores = cpu.Scores
@@ -149,7 +141,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
         var softwareScoresByKey = new Dictionary<ulong, HostManagerComputeScore>(softwareScores.Length);
         foreach (var score in softwareScores)
         {
-            if (!IsCanonicalSoftwareScore(score, compute.SchedulingGeneration)
+            if (!IsCanonicalSoftwareScore(score)
                 || !softwareIdsByKey.ContainsKey(score.SoftwareKey)
                 || !softwareScoresByKey.TryAdd(score.SoftwareKey, score))
             {
@@ -162,9 +154,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
             memoryModes.Software.Length);
         foreach (var desired in memoryModes.Software)
         {
-            if (desired.SchedulingGeneration != compute.SchedulingGeneration
-                || desired.SnapshotGeneration != compute.SchedulingGeneration
-                || desired.Mode is < NativeMemoryMode.Unrestricted or > NativeMemoryMode.PagedFrozen
+            if (desired.Mode is < NativeMemoryMode.Unrestricted or > NativeMemoryMode.PagedFrozen
                 || !softwareScoresByKey.TryGetValue(desired.SoftwareKey, out var softwareScore)
                 || BitConverter.DoubleToInt64Bits(desired.CpuScore)
                     != BitConverter.DoubleToInt64Bits(softwareScore.Score)
@@ -182,7 +172,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
         foreach (var score in processScores)
         {
             var identity = new ProcessIdentity(score.ProcessId, score.ProcessStartKey);
-            if (!IsCanonicalProcessScore(score, compute.SchedulingGeneration)
+            if (!IsCanonicalProcessScore(score)
                 || !factsByIdentity.TryGetValue(identity, out var fact)
                 || !capabilitiesByIdentity.TryGetValue(identity, out var capability))
             {
@@ -223,7 +213,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
             }
 
             directives.Add(new(
-                compute.SchedulingGeneration,
+                compute.RoundNumber,
                 softwareKey,
                 fact.SoftwareId,
                 fact.ProcessId,
@@ -261,26 +251,20 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
                 : left.ProcessStartKey.CompareTo(right.ProcessStartKey);
         });
         return new(
-            compute.SchedulingGeneration,
-            processFacts.Generation,
-            cpu.SourceGeneration,
+            compute.RoundNumber,
             directives.ToImmutable());
     }
 
     private static bool IsCanonicalProcessScore(
-        HostManagerComputeScore score,
-        ulong schedulingGeneration)
-        => score.SchedulingGeneration == schedulingGeneration
-            && score.ProcessId > 0
+        HostManagerComputeScore score)
+        => score.ProcessId > 0
             && score.ProcessStartKey != 0
             && score.SoftwareKey != 0
             && score.MemberCount == 1;
 
     private static bool IsCanonicalSoftwareScore(
-        HostManagerComputeScore score,
-        ulong schedulingGeneration)
-        => score.SchedulingGeneration == schedulingGeneration
-            && score.ProcessId == 0
+        HostManagerComputeScore score)
+        => score.ProcessId == 0
             && score.ProcessStartKey == 0
             && score.SoftwareKey != 0
             && score.MemberCount > 0;

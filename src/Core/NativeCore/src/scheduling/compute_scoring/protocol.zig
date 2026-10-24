@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0005_0000;
+pub const abi_version: u32 = 0x0006_0000;
 pub const runtime_state_count: usize = 7;
 
 pub const Status = enum(i32) {
@@ -9,12 +9,10 @@ pub const Status = enum(i32) {
     abi_mismatch = 2,
     no_data = 3,
     buffer_too_small = 4,
-    stale_generation = 5,
     capacity_exceeded = 6,
     conflicting_facts = 7,
     invalid_facts = 8,
     out_of_memory = 9,
-    recreate_required = 10,
 };
 
 pub const RuntimeState = enum(u8) {
@@ -37,14 +35,8 @@ pub const ConfigFields = struct {
 };
 
 pub const EnvelopeValidity = struct {
-    pub const process_generation: u64 = 1 << 0;
-    pub const process_observed_at: u64 = 1 << 1;
-    pub const gpu_generation: u64 = 1 << 2;
-    pub const gpu_observed_at: u64 = 1 << 3;
-    pub const gpu_topology: u64 = 1 << 4;
-    pub const welfare_capacity: u64 = 1 << 5;
-    pub const known: u64 = process_generation | process_observed_at | gpu_generation |
-        gpu_observed_at | gpu_topology | welfare_capacity;
+    pub const welfare_capacity: u64 = 1 << 0;
+    pub const known: u64 = welfare_capacity;
 };
 
 pub const EnvelopeFlags = struct {
@@ -60,9 +52,8 @@ pub const ProcessValidity = struct {
     pub const base_importance: u64 = 1 << 3;
     pub const cpu_policy_multiplier: u64 = 1 << 4;
     pub const cpu_occupancy: u64 = 1 << 5;
-    pub const source_generation: u64 = 1 << 6;
     pub const cpu_required: u64 = identity | software_identity | runtime_state |
-        base_importance | cpu_policy_multiplier | cpu_occupancy | source_generation;
+        base_importance | cpu_policy_multiplier | cpu_occupancy;
     pub const known: u64 = cpu_required;
 };
 
@@ -79,9 +70,8 @@ pub const GpuValidity = struct {
     pub const adapter_identity: u64 = 1 << 2;
     pub const gpu_policy_multiplier: u64 = 1 << 3;
     pub const gpu_occupancy: u64 = 1 << 4;
-    pub const source_generation: u64 = 1 << 5;
     pub const required: u64 = process_identity | software_identity | adapter_identity |
-        gpu_policy_multiplier | gpu_occupancy | source_generation;
+        gpu_policy_multiplier | gpu_occupancy;
     pub const known: u64 = required;
 };
 
@@ -94,13 +84,13 @@ pub const OutputKind = enum(u8) {
 };
 
 pub const OutputValidity = struct {
-    pub const scheduling_generation: u64 = 1 << 0;
+    pub const round_number: u64 = 1 << 0;
     pub const software_identity: u64 = 1 << 1;
     pub const process_identity: u64 = 1 << 2;
     pub const adapter_identity: u64 = 1 << 3;
     pub const score: u64 = 1 << 4;
     pub const member_count: u64 = 1 << 5;
-    pub const known: u64 = scheduling_generation | software_identity | process_identity |
+    pub const known: u64 = round_number | software_identity | process_identity |
         adapter_identity | score | member_count;
 };
 
@@ -151,14 +141,7 @@ pub const GenerationEnvelope = extern struct {
     gpu_input_struct_size: u32,
     output_struct_size: u32,
     reserved0: u32,
-    configuration_generation: u64,
-    scheduling_generation: u64,
-    process_source_generation: u64,
-    gpu_source_generation: u64,
-    gpu_topology_generation: u64,
-    gpu_topology_fingerprint: u64,
-    process_observed_at_milliseconds: i64,
-    gpu_observed_at_milliseconds: i64,
+    round_number: u64,
     valid_mask: u64,
     flags: u64,
     process_count: u32,
@@ -181,7 +164,6 @@ pub const ProcessInput = extern struct {
     target_key: u64,
     software_key: u64,
     process_start_key: u64,
-    source_generation: u64,
     base_importance: f64,
     cpu_policy_multiplier: f64,
     weighted_cpu_use_percent: f64,
@@ -199,7 +181,6 @@ pub const GpuInput = extern struct {
     target_key: u64,
     software_key: u64,
     process_start_key: u64,
-    source_generation: u64,
     adapter_key: u64,
     gpu_policy_multiplier: f64,
     gpu_occupancy_percent: f64,
@@ -220,7 +201,7 @@ pub const ScoreOutput = extern struct {
     runtime_state: u8,
     reserved0: u16,
     valid_mask: u64,
-    scheduling_generation: u64,
+    round_number: u64,
     target_key: u64,
     software_key: u64,
     process_start_key: u64,
@@ -236,12 +217,7 @@ pub const ScoreOutput = extern struct {
 pub const Snapshot = extern struct {
     abi_version: u32,
     struct_size: u32,
-    configuration_generation: u64,
-    scheduling_generation: u64,
-    process_source_generation: u64,
-    gpu_source_generation: u64,
-    gpu_topology_generation: u64,
-    gpu_topology_fingerprint: u64,
+    round_number: u64,
     flags: u64,
     process_input_count: u32,
     gpu_input_count: u32,

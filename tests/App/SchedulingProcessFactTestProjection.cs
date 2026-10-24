@@ -10,16 +10,6 @@ internal static class SchedulingProcessFactTestProjection
         SchedulingProcessFactRequest request)
     {
         var currentMask = source.CurrentMetricMask & request.RequestedMetricMask;
-        if (currentMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
-            && (!source.DatasetObservations.TryGetValue(
-                    SchedulingProcessMetricMask.MemoryUsage,
-                    out var memoryObservation)
-                || request.ExpectedMemoryUsageDependency is null
-                || memoryObservation.MemoryUsageDependency !=
-                    request.ExpectedMemoryUsageDependency))
-        {
-            currentMask &= ~SchedulingProcessMetricMask.MemoryUsage;
-        }
         if (currentMask == SchedulingProcessMetricMask.None)
         {
             return null;
@@ -59,9 +49,9 @@ internal static class SchedulingProcessFactTestProjection
                 SchedulingProcessMetricMask.CpuUsage)
                     ? process.CpuUsagePercent
                     : 0,
-            MemoryUsagePercent = validMask.HasFlag(
+            MemoryUsedBytes = validMask.HasFlag(
                 SchedulingProcessMetricMask.MemoryUsage)
-                    ? process.MemoryUsagePercent
+                    ? process.MemoryUsedBytes
                     : 0,
             RuntimeState = validMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState)

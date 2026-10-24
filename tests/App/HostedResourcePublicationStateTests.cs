@@ -81,7 +81,6 @@ public sealed class HostedResourcePublicationStateTests
         Assert.Null(state.Scheduling.ReadLatest(
             new SchedulingProcessFactRequest(
                 SchedulingProcessMetricMask.CpuUsage,
-                null,
                 new SchedulingGpuInventorySnapshot(
                     SamplingObservationStatus.Current,
                     1,
@@ -473,7 +472,6 @@ public sealed class HostedResourcePublicationStateTests
         DateTimeOffset observedAt)
         => new(
             SchedulingProcessMetricMask.CpuUsage,
-            null,
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.Current,
                 1,

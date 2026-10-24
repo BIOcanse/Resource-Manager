@@ -19,7 +19,6 @@ public sealed partial class NativeComputeScoringSessionTests
         var outputs = new NativeComputeScoringOutput[4];
         var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length,
             NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-        envelope.ConfigurationGeneration = configuration.Generation;
         var snapshot = default(NativeComputeScoringSnapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
@@ -139,7 +138,6 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
         Assert.Equal(4U, snapshot.ProcessGpuOutputCount);
         Assert.Equal(2U, snapshot.SoftwareGpuOutputCount);
-        Assert.Equal(303UL, snapshot.GpuTopologyGeneration);
         Assert.Equal(40D, outputs[0].Score);
         Assert.Equal(60D, outputs[1].Score);
         Assert.Equal(100D, outputs[2].Score);
@@ -310,7 +308,7 @@ public sealed partial class NativeComputeScoringSessionTests
 
         process = CreateProcess(1, 10, 100, 1, 50);
         process.RuntimeState = NativeComputeScoringRuntimeState.NotRunning;
-        envelope.SchedulingGeneration++;
+        envelope.RoundNumber++;
         status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
@@ -376,47 +374,7 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
     }
 
-    [Fact]
-    public void CompleteGpuScoringRejectsMissingTopologyGeneration()
-    {
-        var configuration = CreateConfiguration();
-        using var session = new NativeComputeScoringSession(in configuration, [1]);
-        var processes = new[]
-        {
-            CreateProcess(sourceIndex: 1, processId: 10, startKey: 100, softwareKey: 1, occupancy: 20)
-        };
-        var gpus = new[] { CreateGpu(processes[0], adapterKey: 11, sourceIndex: 1, occupancy: 25) };
-        var outputs = new NativeComputeScoringOutput[4];
-        var envelope = CreateEnvelope(
-            generation: 1,
-            processCount: 1,
-            gpuCount: 1,
-            gpuAdapterCount: 1,
-            outputCapacity: outputs.Length,
-            NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete);
-        envelope.GpuTopologyGeneration = 0;
-        var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.ScoreWithScratchFixture(in envelope, processes, gpus, outputs, ref snapshot);
-
-        Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
-    }
-
-    [Fact]
-    public void ReconfigureRejectsCapacityChangesWithoutMutatingSession()
-    {
-        var configuration = CreateConfiguration();
-        using var session = new NativeComputeScoringSession(in configuration, [1]);
-        var changed = configuration;
-        changed.Generation = 2;
-        changed.MaximumProcessCount++;
-        changed.MaximumOutputCount += 3;
-
-        var status = session.Reconfigure(in changed, [1]);
-
-        Assert.Equal(NativeComputeScoringStatus.RecreateRequired, status);
-        Assert.Equal(1UL, session.Capacity.ConfigurationGeneration);
-    }
 
     private static NativeComputeScoringConfiguration CreateConfiguration(
         double cpuBaselineRatio = 1, uint cpuCoreCount = 1, double welfareUtilizationBaselinePercent = 70)
@@ -444,7 +402,6 @@ public sealed partial class NativeComputeScoringSessionTests
         int outputCapacity,
         NativeComputeScoringEnvelopeFlags flags)
     {
-        var gpuComplete = flags.HasFlag(NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete);
         return new()
         {
             AbiVersion = NativeComputeScoringAbi.Version,
@@ -452,22 +409,8 @@ public sealed partial class NativeComputeScoringSessionTests
             ProcessInputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringProcessInput>(),
             GpuInputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringGpuInput>(),
             OutputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringOutput>(),
-            ConfigurationGeneration = 1,
-            SchedulingGeneration = generation,
-            ProcessSourceGeneration = 101,
-            GpuSourceGeneration = gpuComplete ? 202UL : 0,
-            GpuTopologyGeneration = gpuComplete ? 303UL : 0,
-            GpuTopologyFingerprint = gpuComplete ? 404UL : 0,
-            ProcessObservedAtMilliseconds = 1_000,
-            GpuObservedAtMilliseconds = gpuComplete ? 1_001 : 0,
-            ValidMask = NativeComputeScoringEnvelopeValidity.ProcessGeneration |
-                NativeComputeScoringEnvelopeValidity.ProcessObservedAt |
-                NativeComputeScoringEnvelopeValidity.WelfareCapacity |
-                (flags.HasFlag(NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete)
-                    ? NativeComputeScoringEnvelopeValidity.GpuGeneration |
-                        NativeComputeScoringEnvelopeValidity.GpuObservedAt |
-                        NativeComputeScoringEnvelopeValidity.GpuTopology
-                    : NativeComputeScoringEnvelopeValidity.None),
+            RoundNumber = generation,
+            ValidMask = NativeComputeScoringEnvelopeValidity.WelfareCapacity,
             Flags = flags,
             ProcessCount = checked((uint)processCount),
             GpuRowCount = checked((uint)gpuCount),
@@ -494,7 +437,6 @@ public sealed partial class NativeComputeScoringSessionTests
             TargetKey = 1_000 + sourceIndex,
             SoftwareKey = softwareKey,
             ProcessStartKey = startKey,
-            SourceGeneration = 101,
             BaseImportance = 100,
             CpuPolicyMultiplier = 1,
             WeightedCpuUsePercent = occupancy,
@@ -515,7 +457,6 @@ public sealed partial class NativeComputeScoringSessionTests
             TargetKey = process.TargetKey,
             SoftwareKey = process.SoftwareKey,
             ProcessStartKey = process.ProcessStartKey,
-            SourceGeneration = 202,
             AdapterKey = adapterKey,
             GpuPolicyMultiplier = 1,
             GpuOccupancyPercent = occupancy,

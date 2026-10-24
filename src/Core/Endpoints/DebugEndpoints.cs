@@ -24,7 +24,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var keys = hardware?.GpuInventory.Adapters.Select(adapter => adapter.AdapterKey).ToArray() ?? [];
             var facts = hardware is null ? null : processes.ReadLatest(new SchedulingProcessFactRequest(
                 SchedulingProcessMetricMask.RuntimeState | SchedulingProcessMetricMask.GpuUsage
-                    | SchedulingProcessMetricMask.GpuDedicatedMemory, null, hardware.GpuInventory));
+                    | SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
             var rows = facts?.Processes.Where(process => process.Gpus.Any(gpu =>
                 gpu.HasMetric(SchedulingProcessMetricMask.GpuUsage)
                     || gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory))).Select(process => new
@@ -68,7 +68,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var facts = hardware is null ? null : processes.ReadLatest(new SchedulingProcessFactRequest(
                 SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
                     | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState,
-                ExpectedMemoryUsageDependency: null, hardware.GpuInventory));
+                hardware.GpuInventory));
             var failures = facts?.Processes.Select(process => new
             {
                 process.ProcessId,

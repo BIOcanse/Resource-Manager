@@ -111,7 +111,7 @@ public sealed class GpuAllocationLedgerTests
                 SamplingObservationStatus.NotRequested, SamplingObservationStatus.Current, 0, 0, 8UL * 1024 * 1024 * 1024,
                 9, observedAt)]);
         var facts = WindowsResourceBreakdownSampler.CreateSchedulingGpuFacts(
-            new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, null, inventory), actual, 41, 100);
+            new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, inventory), actual, 41, 100);
         var fact = Assert.Single(facts);
         Assert.Equal(50, fact.DedicatedMemoryUsedPercent);
         Assert.Equal(0, fact.PrivateMemoryBytes);
@@ -138,7 +138,7 @@ public sealed class GpuAllocationLedgerTests
             [new SchedulingGpuAdapterObservation(1, 23, SchedulingGpuCapabilityMask.None,
                 SchedulingGpuMetricMask.None, usageStatus, SamplingObservationStatus.Unavailable,
                 0, 0, 0, 9, now)]);
-        var request = new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, null, inventory);
+        var request = new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, inventory);
         var fact = Assert.Single(WindowsResourceBreakdownSampler.CreateSchedulingGpuFacts(request, read, 41, 100));
         Assert.Equal(read.AllocationAmounts[(23, 41, 100)].TotalBytes, fact.ResidentMemoryBytes);
         Assert.Equal(SchedulingProcessMetricMask.None, fact.ValidMetricMask);

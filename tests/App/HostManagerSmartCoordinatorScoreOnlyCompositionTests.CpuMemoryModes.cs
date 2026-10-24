@@ -47,20 +47,19 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(authority.Availability == HostManagerSchedulingAuthorityAvailability.Ready,
             authority.UnavailableReason);
         var cpu = Assert.IsType<HostManagerComputeScoreDomainSnapshot>(authority.Compute!.Cpu);
-        Assert.Equal(91UL, cpu.SourceGeneration);
-        Assert.Equal(facts.Generation, cpu.SourceIdentity.InventoryGeneration);
         var processScores = cpu.Scores.Where(score =>
             score.Kind == NativeComputeScoringOutputKind.ProcessCpu).ToArray();
         Assert.Equal(partialPhysicalObservation ? 1 : 3, processScores.Length);
+        Assert.Equal(authority.RoundNumber, cpu.RoundNumber);
         var modes = Assert.IsType<HostManagerMemoryModeDesiredSnapshot>(authority.MemoryModes);
+        Assert.Equal(authority.RoundNumber, modes.RoundNumber);
         Assert.Equal(partialPhysicalObservation ? 1 : 2, modes.Software.Length);
         var softwareMode = Assert.Single(modes.Software,
             row => row.SoftwareKey == NativeStableIdentity.CreateCaseInsensitiveKey(software));
         Assert.Equal(partialPhysicalObservation ? 30 : 100, softwareMode.BaseScore);
         var projection = Assert.IsType<HostManagerNonAdaptedMemoryModeProjectionSnapshot>(
             fixture.Coordinator.NonAdaptedMemoryModeProjection);
-        Assert.Equal(facts.Generation, projection.InventoryGeneration);
-        Assert.Equal(cpu.SourceGeneration, projection.CpuSourceGeneration);
+        Assert.Equal(authority.RoundNumber, projection.RoundNumber);
         var batch = Assert.IsType<HostManagerNonAdaptedMemoryExecutionBatch>(
             HostManagerNonAdaptedMemoryModeExecutionAdmission.Admit(
                 authority, projection, authority.PlanBinding!, facts));

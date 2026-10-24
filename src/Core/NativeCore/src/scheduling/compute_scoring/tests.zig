@@ -282,7 +282,6 @@ test "per adapter GPU scores are isolated and aggregate by stable adapter key" {
     ));
     try std.testing.expectEqual(@as(u32, 4), snapshot.process_gpu_output_count);
     try std.testing.expectEqual(@as(u32, 2), snapshot.software_gpu_output_count);
-    try std.testing.expectEqual(@as(u64, 303), snapshot.gpu_topology_generation);
     const software_gpu_start = snapshot.process_cpu_output_count + snapshot.software_cpu_output_count +
         snapshot.process_gpu_output_count;
     try std.testing.expectEqual(@as(u64, 11), outputs[software_gpu_start].adapter_key);
@@ -291,32 +290,7 @@ test "per adapter GPU scores are isolated and aggregate by stable adapter key" {
     try std.testing.expectEqual(@as(f64, 40), outputs[software_gpu_start + 1].score);
 }
 
-test "complete GPU scoring rejects a missing topology generation" {
-    var config = testConfig();
-    const session = try session_module.Session.create(&config, &.{1});
-    defer session.destroy();
-    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 80, 1, 20)};
-    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 1, 25)};
-    var envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.gpu_snapshot_complete);
-    envelope.gpu_topology_generation = 0;
-    var outputs: [4]protocol.ScoreOutput = undefined;
-    envelope.output_capacity = outputs.len;
-    var snapshot = std.mem.zeroes(protocol.Snapshot);
-
-    try std.testing.expectEqual(protocol.Status.invalid_facts, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
-    ));
-}
-
-test "a new round scores its inputs whatever numbering the sources carry" {
+test "same round recomputation is deterministic and permits changed inputs" {
     var config = testConfig();
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
@@ -341,13 +315,7 @@ test "a new round scores its inputs whatever numbering the sources carry" {
 
     const first_score = outputs[0].score;
 
-    // Only the coordinator's round number orders scores; a source switch can restart its own numbering.
-    envelope.scheduling_generation = 2;
-    envelope.process_source_generation = 1;
-    processes[0].source_generation = 1;
-    envelope.gpu_source_generation = 1;
-    gpus[0].source_generation = 1;
-    envelope.gpu_topology_fingerprint = 405;
+    // Repeating a round remains a pure computation.
     try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
         session,
         &envelope,
@@ -359,21 +327,14 @@ test "a new round scores its inputs whatever numbering the sources carry" {
         outputs.len,
         &snapshot,
     ));
-    try std.testing.expectEqual(@as(u64, 1), snapshot.process_source_generation);
     try std.testing.expectEqual(first_score, outputs[0].score);
-
-    // The same round is not scored twice.
-    try std.testing.expectEqual(protocol.Status.stale_generation, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
+    try std.testing.expectEqual(@as(u64, 1), snapshot.round_number);
+    gpus[0].gpu_occupancy_percent = 50;
+    try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
+        session, &envelope, &processes, processes.len, &gpus, gpus.len,
+        &outputs, outputs.len, &snapshot,
     ));
+    try std.testing.expectEqual(first_score * 2, outputs[0].score);
 }
 
 test "sparse GPU rows accept different observed adapter sets" {
@@ -606,7 +567,6 @@ fn testEnvelope(
     adapter_count: u32,
     flags: u64,
 ) protocol.GenerationEnvelope {
-    const gpu_complete = (flags & protocol.EnvelopeFlags.gpu_snapshot_complete) != 0;
     return .{
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.GenerationEnvelope),
@@ -614,22 +574,8 @@ fn testEnvelope(
         .gpu_input_struct_size = @sizeOf(protocol.GpuInput),
         .output_struct_size = @sizeOf(protocol.ScoreOutput),
         .reserved0 = 0,
-        .configuration_generation = 1,
-        .scheduling_generation = generation,
-        .process_source_generation = 101,
-        .gpu_source_generation = if (gpu_complete) 202 else 0,
-        .gpu_topology_generation = if (gpu_complete) 303 else 0,
-        .gpu_topology_fingerprint = if (gpu_complete) 404 else 0,
-        .process_observed_at_milliseconds = 1000,
-        .gpu_observed_at_milliseconds = if (gpu_complete) 1001 else 0,
-        .valid_mask = protocol.EnvelopeValidity.process_generation |
-            protocol.EnvelopeValidity.process_observed_at |
-            protocol.EnvelopeValidity.welfare_capacity |
-            (if ((flags & protocol.EnvelopeFlags.gpu_snapshot_complete) != 0)
-                protocol.EnvelopeValidity.gpu_generation | protocol.EnvelopeValidity.gpu_observed_at |
-                    protocol.EnvelopeValidity.gpu_topology
-            else
-                0),
+        .round_number = generation,
+        .valid_mask = protocol.EnvelopeValidity.welfare_capacity,
         .flags = flags,
         .process_count = @intCast(process_count),
         .gpu_row_count = @intCast(gpu_count),
@@ -662,7 +608,6 @@ fn processRow(
         .target_key = 1000 + source_index,
         .software_key = software_key,
         .process_start_key = start_key,
-        .source_generation = 101,
         .base_importance = base_importance,
         .cpu_policy_multiplier = policy_multiplier,
         .weighted_cpu_use_percent = occupancy,
@@ -687,7 +632,6 @@ fn gpuRow(
         .target_key = process.target_key,
         .software_key = process.software_key,
         .process_start_key = process.process_start_key,
-        .source_generation = 202,
         .adapter_key = adapter_key,
         .gpu_policy_multiplier = 1,
         .gpu_occupancy_percent = occupancy,
@@ -719,7 +663,7 @@ test "scratch capacity is actual typed extent with unchanged ABI offsets" {
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
     const actual = session.capacity();
-    try std.testing.expectEqual(@as(u32, 0x00050000), actual.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x00060000), actual.abi_version);
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.Capacity, "scratch_byte_count"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.Capacity, "scratch_alignment"));
@@ -736,7 +680,7 @@ test "scratch capacity is actual typed extent with unchanged ABI offsets" {
     try std.testing.expect(scratch.Layout.init(&config).byte_count > std.math.maxInt(u32));
 }
 
-test "bad scratch rejects before writes and cannot commit a generation" {
+test "bad scratch rejects before writes" {
     var config = testConfig();
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
@@ -749,7 +693,7 @@ test "bad scratch rejects before writes and cannot commit a generation" {
     var outputs = std.mem.zeroes([4]protocol.ScoreOutput);
     outputs[0].score = 987;
     var snapshot = std.mem.zeroes(protocol.Snapshot);
-    snapshot.scheduling_generation = 999;
+    snapshot.round_number = 999;
     var envelope = testEnvelope(1, 1, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
     envelope.output_capacity = outputs.len;
     const bad = [_]struct { pointer: ?*anyopaque, length: u64, status: protocol.Status }{
@@ -762,14 +706,12 @@ test "bad scratch rejects before writes and cannot commit a generation" {
     for (bad) |item| {
         try std.testing.expectEqual(item.status, session_module.score(session, &envelope, &processes, 1,
             null, 0, &outputs, outputs.len, item.pointer, item.length, &snapshot));
-        try std.testing.expectEqual(@as(u64, 0), session.last_scheduling_generation);
         try std.testing.expectEqual(@as(f64, 987), outputs[0].score);
-        try std.testing.expectEqual(@as(u64, 999), snapshot.scheduling_generation);
+        try std.testing.expectEqual(@as(u64, 999), snapshot.round_number);
         for (bytes) |byte| try std.testing.expectEqual(@as(u8, 0xa5), byte);
     }
     try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope, &processes, 1,
         null, 0, &outputs, outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &snapshot));
-    try std.testing.expectEqual(@as(u64, 1), session.last_scheduling_generation);
     try std.testing.expectEqual(@as(f64, 50), outputs[0].score);
 }
 
@@ -786,9 +728,8 @@ test "scratch cannot alias actual input output or envelope" {
     for ([_]*anyopaque{ @ptrCast(&processes), @ptrCast(&outputs), @ptrCast(&envelope), @ptrCast(&snapshot) }) |pointer| {
         try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.score(session, &envelope, &processes, 1,
             null, 0, &outputs, outputs.len, pointer, capacity.scratch_byte_count, &snapshot));
-        try std.testing.expectEqual(@as(u64, 0), session.last_scheduling_generation);
         try std.testing.expectEqual(@as(f64, 50), processes[0].weighted_cpu_use_percent);
-        try std.testing.expectEqual(@as(u64, 0), snapshot.scheduling_generation);
+        try std.testing.expectEqual(@as(u64, 0), snapshot.round_number);
     }
 }
 
@@ -823,13 +764,10 @@ test "one poisoned region is sequentially reused by independent CPU GPU sessions
     try std.testing.expectEqual(@as(f64, 50), cpu_outputs[0].score);
     try std.testing.expectEqual(@as(f64, 25), gpu_outputs[0].score);
     try std.testing.expectEqualSlices(u8, std.mem.asBytes(&saved), std.mem.asBytes(&cpu_outputs));
-    try std.testing.expectEqual(@as(u64, 1), cpu.last_scheduling_generation);
-    try std.testing.expectEqual(@as(u64, 1), gpu.last_scheduling_generation);
-    cpu_envelope.scheduling_generation = 2;
+    cpu_envelope.round_number = 2;
     @memset(bytes, 0xff);
     try std.testing.expectEqual(protocol.Status.ok, session_module.score(cpu, &cpu_envelope, &processes, 1,
         null, 0, &cpu_outputs, cpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &cpu_snapshot));
-    try std.testing.expectEqual(@as(u64, 1), gpu.last_scheduling_generation);
-    try std.testing.expectEqual(protocol.Status.stale_generation, session_module.score(gpu, &gpu_envelope, &processes, 1,
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(gpu, &gpu_envelope, &processes, 1,
         &gpus, 1, &gpu_outputs, gpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &gpu_snapshot));
 }

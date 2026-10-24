@@ -47,18 +47,6 @@ public sealed partial class HostManagerSmartCoordinator
             : effectAdmission.NewPointOfNoReturnRemaining;
         var validMask = NativeSmartCoordinatorCycleValidity.ScoreOnlyMode |
             NativeSmartCoordinatorCycleValidity.MaximumActionsThisCycle;
-        if (projection.ScoreSchedulingGeneration != 0)
-        {
-            validMask |= NativeSmartCoordinatorCycleValidity.ScoreSchedulingGeneration;
-        }
-        if (projection.CpuScoreSourceFingerprint != 0)
-        {
-            validMask |= NativeSmartCoordinatorCycleValidity.CpuScoreSourceFingerprint;
-        }
-        if (projection.GpuScoreSourceFingerprint != 0)
-        {
-            validMask |= NativeSmartCoordinatorCycleValidity.GpuScoreSourceFingerprint;
-        }
         var flags = NativeSmartCoordinatorCycleFlags.None;
         if (scoreOnlyEnabled)
         {
@@ -103,9 +91,7 @@ public sealed partial class HostManagerSmartCoordinator
             Flags = flags,
             InputCount = projection.InputCount,
             ActionCapacity = workspace.Capacity.ActionCapacity,
-            ScoreSchedulingGeneration = projection.ScoreSchedulingGeneration,
-            CpuScoreSourceFingerprint = projection.CpuScoreSourceFingerprint,
-            GpuScoreSourceFingerprint = projection.GpuScoreSourceFingerprint,
+            RoundNumber = sample.RoundNumber,
             MaximumActionsThisCycle = nativeMaximumActionsThisCycle
         };
 

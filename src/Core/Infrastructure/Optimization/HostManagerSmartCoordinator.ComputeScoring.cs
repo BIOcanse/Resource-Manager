@@ -21,7 +21,7 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerSample sample,
         IReadOnlyDictionary<string, int> protectionLevels)
     {
-        var attemptGeneration = NextComputeScoringGeneration();
+        var capturedRound = sample.RoundNumber;
         HostManagerComputeScoringCycleResult? result;
         try
         {
@@ -34,7 +34,7 @@ public sealed partial class HostManagerSmartCoordinator
                 sample.Hardware,
                 runtimeFacts);
             result = workspace.Score(
-                attemptGeneration,
+                capturedRound,
                 sample.ProcessFacts,
                 sample.Hardware.GpuInventory,
                 runtimeFacts,
@@ -46,7 +46,7 @@ public sealed partial class HostManagerSmartCoordinator
         catch (Exception exception)
         {
             PublishSchedulingAuthorityUnavailable(
-                attemptGeneration,
+                capturedRound,
                 planBinding,
                 sample.Hardware.CapturedAt,
                 $"compute-scoring-{exception.GetType().Name}:{exception.Message}",
@@ -57,7 +57,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (result is null)
         {
             PublishSchedulingAuthorityUnavailable(
-                attemptGeneration,
+                capturedRound,
                 planBinding,
                 sample.Hardware.CapturedAt,
                 "compute-sample-incomplete");
@@ -118,16 +118,14 @@ public sealed partial class HostManagerSmartCoordinator
             ValidateMemoryModePolicy(planBinding, plan, policy);
             if (!sample.Hardware.TryGetCurrentDataset(
                     SamplingDatasetIds.SystemMemoryUsage,
-                    out var memoryDataset)
+                    out _)
                 || sample.Hardware.Memory.ObservationStatus
                     != SamplingObservationStatus.Current
                 || !sample.Hardware.Memory.IsUsageAvailable
                 || sample.Hardware.Memory.TotalBytes == 0
                 || sample.Hardware.Memory.UsedBytes
                     > sample.Hardware.Memory.TotalBytes
-                || !IsPercent(sample.Hardware.Memory.UsagePercent)
-                || memoryDataset.WorkspaceIdentity == 0
-                || memoryDataset.CommittedGeneration == 0)
+                || !IsPercent(sample.Hardware.Memory.UsagePercent))
             {
                 PublishSchedulingAuthorityComputeOnly(
                     result,
@@ -142,18 +140,13 @@ public sealed partial class HostManagerSmartCoordinator
             var workspace = memoryModeWorkspace
                 ?? throw new InvalidOperationException(
                     "The memory-mode authority workspace was not created.");
-            var memorySource = new HostManagerMemorySourceStamp(
-                memoryDataset.WorkspaceIdentity,
-                memoryDataset.CommittedGeneration);
             var desired = workspace.Plan(
                 result,
                 sample.ProcessFacts,
-                memorySource,
                 ComputeMemoryFreeRatioUnits(
                     sample.Hardware.Memory.UsedBytes,
                     sample.Hardware.Memory.TotalBytes,
                     policy.Configuration.RatioUnitsMaximum),
-                attemptGeneration,
                 policy.AllowUnrestricted);
             var nonAdaptedProjection = ProjectNonAdaptedMemoryModes(
                 result,
@@ -257,7 +250,7 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private void PublishSchedulingAuthorityUnavailable(
-        ulong attemptGeneration,
+        ulong capturedRound,
         HostManagerSchedulingPlanBinding planBinding,
         DateTimeOffset observedAt,
         string reason,
@@ -265,7 +258,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         ClearNonAdaptedMemoryModeProjection();
         schedulingAuthorityOwner.PublishUnavailable(
-            attemptGeneration,
+            capturedRound,
             planBinding,
             observedAt,
             BoundAuthorityReason(reason));
@@ -429,74 +422,7 @@ public sealed partial class HostManagerSmartCoordinator
             gpuFreeRatio,
             vramFreeRatio,
             memoryFreeRatio,
-            eligibleProcessCount,
-            CreateWelfarePublicationFingerprint(hardware));
-    }
-
-    private static ulong CreateWelfarePublicationFingerprint(
-        HardwareMetricSnapshot hardware)
-    {
-        const ulong offsetBasis = 14695981039346656037UL;
-        const ulong prime = 1099511628211UL;
-        var hash = offsetBasis;
-        AddDataset(SamplingDatasetIds.SystemCpuUsage);
-        AddDataset(SamplingDatasetIds.SystemMemoryUsage);
-        AddDataset(SamplingDatasetIds.SystemGpuInventory);
-        Add(hardware.GpuInventory.TopologyFingerprint);
-        Add(hardware.GpuInventory.ObservedCount);
-        Add(hardware.GpuInventory.SkippedCount);
-        Add(hardware.GpuInventory.OverflowCount);
-        var adapters = hardware.GpuInventory.Adapters
-            .OrderBy(static adapter => adapter.Index)
-            .ThenBy(static adapter => adapter.AdapterKey);
-        foreach (var adapter in adapters)
-        {
-            Add(checked((ulong)adapter.Index));
-            Add(adapter.AdapterKey);
-            Add((ulong)adapter.CapabilityMask);
-            if (adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.Usage))
-            {
-                AddDataset($"gpu.{adapter.Index}.usage");
-            }
-            if (adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.DedicatedMemory))
-            {
-                AddDataset($"gpu.{adapter.Index}.vram");
-            }
-        }
-        return hash == 0 ? 1 : hash;
-
-        void AddDataset(string id)
-        {
-            if (!hardware.Datasets.TryGetValue(id, out var dataset)
-                || !string.Equals(dataset.DatasetId, id, StringComparison.OrdinalIgnoreCase))
-            {
-                for (var field = 0; field < 9; field++)
-                {
-                    Add(0);
-                }
-                return;
-            }
-
-            Add(1);
-            Add((ulong)dataset.Status);
-            Add(dataset.SourceGeneration);
-            Add(checked((ulong)Math.Max(0, dataset.ObservedAtUtcTicks)));
-            Add(dataset.WorkspaceIdentity);
-            Add(dataset.ConfigurationGeneration);
-            Add(dataset.CatalogGeneration);
-            Add(dataset.CommittedGeneration);
-            Add(checked((ulong)Math.Max(0, dataset.LastAttemptAtUtcTicks)));
-        }
-
-        void Add(ulong value)
-        {
-            for (var byteIndex = 0; byteIndex < sizeof(ulong); byteIndex++)
-            {
-                hash ^= (byte)value;
-                hash = unchecked(hash * prime);
-                value >>= 8;
-            }
-        }
+            eligibleProcessCount);
     }
 
     private static (double GpuFreeRatio, double VramFreeRatio)
@@ -591,17 +517,4 @@ public sealed partial class HostManagerSmartCoordinator
                 $"Unknown compute scoring runtime state '{value}'.")
         };
 
-    private ulong NextComputeScoringGeneration()
-    {
-        computeScoringSequence = Math.Max(
-            computeScoringSequence,
-            schedulingAuthorityOwner.Capture().AttemptGeneration);
-        computeScoringSequence = unchecked(computeScoringSequence + 1);
-        if (computeScoringSequence == 0)
-        {
-            throw new InvalidOperationException(
-                "The Host Manager compute scoring sequence wrapped to zero.");
-        }
-        return computeScoringSequence;
-    }
 }

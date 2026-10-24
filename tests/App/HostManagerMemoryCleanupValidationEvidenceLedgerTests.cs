@@ -102,20 +102,10 @@ public sealed class HostManagerMemoryCleanupValidationEvidenceLedgerTests
             batch.PhysicalEmergencyFreeRatio);
         Assert.Equal(fixture.FactContext.VirtualEmergencyFreeRatio,
             batch.VirtualEmergencyFreeRatio);
-        Assert.Equal(fixture.FactContext.CapacityWorkspaceIdentity,
-            batch.CapacityWorkspaceIdentity);
-        Assert.Equal(fixture.FactContext.CapacityConfigurationGeneration,
-            batch.CapacityConfigurationGeneration);
-        Assert.Equal(fixture.FactContext.CapacityCatalogGeneration,
-            batch.CapacityCatalogGeneration);
-        Assert.Equal(fixture.FactContext.BaselineCapacityCommittedGeneration,
-            batch.BaselineCapacityCommittedGeneration);
-        Assert.Equal(fixture.FactContext.FinalCapacityCommittedGeneration,
-            batch.FinalCapacityCommittedGeneration);
-        Assert.Equal(fixture.FactContext.BaselineCapacityCapturedAtUtcTicks,
-            batch.BaselineCapacityCapturedAtUtcTicks);
-        Assert.Equal(fixture.FactContext.FinalCapacityCapturedAtUtcTicks,
-            batch.FinalCapacityCapturedAtUtcTicks);
+        Assert.Equal(fixture.FactContext.BaselineRoundNumber,
+            batch.BaselineRoundNumber);
+        Assert.Equal(fixture.FactContext.RoundNumber,
+            batch.RoundNumber);
         Assert.Equal(fixture.Request.Kind, batch.RequestKind);
         Assert.Equal(fixture.Request.OrdinaryMemoryFreeRatio,
             batch.OrdinaryMemoryFreeRatio);
@@ -241,13 +231,8 @@ public sealed class HostManagerMemoryCleanupValidationEvidenceLedgerTests
     [InlineData("guarded-threshold-not-a-number")]
     [InlineData("physical-threshold-out-of-range")]
     [InlineData("virtual-threshold-positive-infinity")]
-    [InlineData("capacity-workspace-zero")]
-    [InlineData("capacity-configuration-zero")]
-    [InlineData("capacity-catalog-zero")]
     [InlineData("baseline-capacity-generation-zero")]
     [InlineData("final-capacity-generation-not-new")]
-    [InlineData("baseline-capacity-ticks-zero")]
-    [InlineData("final-capacity-ticks-not-new")]
     [InlineData("none-request-kind")]
     [InlineData("unknown-request-kind")]
     [InlineData("ordinary-not-a-number")]
@@ -289,36 +274,17 @@ public sealed class HostManagerMemoryCleanupValidationEvidenceLedgerTests
                     VirtualEmergencyFreeRatio = double.PositiveInfinity
                 };
                 break;
-            case "capacity-workspace-zero":
-                factContext = factContext with { CapacityWorkspaceIdentity = 0 };
-                break;
-            case "capacity-configuration-zero":
-                factContext = factContext with { CapacityConfigurationGeneration = 0 };
-                break;
-            case "capacity-catalog-zero":
-                factContext = factContext with { CapacityCatalogGeneration = 0 };
-                break;
             case "baseline-capacity-generation-zero":
                 factContext = factContext with
                 {
-                    BaselineCapacityCommittedGeneration = 0
+                    BaselineRoundNumber = 0
                 };
                 break;
             case "final-capacity-generation-not-new":
                 factContext = factContext with
                 {
-                    FinalCapacityCommittedGeneration =
-                        factContext.BaselineCapacityCommittedGeneration
-                };
-                break;
-            case "baseline-capacity-ticks-zero":
-                factContext = factContext with { BaselineCapacityCapturedAtUtcTicks = 0 };
-                break;
-            case "final-capacity-ticks-not-new":
-                factContext = factContext with
-                {
-                    FinalCapacityCapturedAtUtcTicks =
-                        factContext.BaselineCapacityCapturedAtUtcTicks
+                    RoundNumber =
+                        factContext.BaselineRoundNumber
                 };
                 break;
             case "none-request-kind":
@@ -506,13 +472,8 @@ public sealed class HostManagerMemoryCleanupValidationEvidenceLedgerTests
             "guardedFreeRatio",
             "physicalEmergencyFreeRatio",
             "virtualEmergencyFreeRatio",
-            "capacityWorkspaceIdentity",
-            "capacityConfigurationGeneration",
-            "capacityCatalogGeneration",
-            "baselineCapacityCommittedGeneration",
-            "finalCapacityCommittedGeneration",
-            "baselineCapacityCapturedAtUtcTicks",
-            "finalCapacityCapturedAtUtcTicks",
+            "baselineRoundNumber",
+            "roundNumber",
             "requestKind",
             "ordinaryMemoryFreeRatio",
             "ordinaryMemoryFreeRatioCurrent",
@@ -1025,13 +986,8 @@ public sealed class HostManagerMemoryCleanupValidationEvidenceLedgerTests
             GuardedFreeRatio: 0.30,
             PhysicalEmergencyFreeRatio: 0.06,
             VirtualEmergencyFreeRatio: 0.08,
-            CapacityWorkspaceIdentity: 47,
-            CapacityConfigurationGeneration: 53,
-            CapacityCatalogGeneration: 59,
-            BaselineCapacityCommittedGeneration: 61,
-            FinalCapacityCommittedGeneration: 67,
-            BaselineCapacityCapturedAtUtcTicks: Now.AddSeconds(-1).UtcTicks,
-            FinalCapacityCapturedAtUtcTicks: Now.UtcTicks,
+            BaselineRoundNumber: 61,
+            RoundNumber: 67,
             OrdinaryMemoryFreeRatioCurrent: true,
             PhysicalMemoryFreeRatioCurrent: false,
             VirtualMemoryFreeRatioCurrent: false);

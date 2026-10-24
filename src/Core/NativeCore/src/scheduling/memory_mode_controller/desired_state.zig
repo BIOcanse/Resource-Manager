@@ -11,10 +11,6 @@ pub const Session = struct {
     allocator: std.mem.Allocator,
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
-    last_scheduling_generation: u64,
-    last_snapshot_generation: u64,
-    last_memory_source_workspace_identity: u64,
-    last_memory_source_committed_generation: u64,
     software: []SoftwareWork,
     rank_order: []u32,
 
@@ -30,10 +26,6 @@ pub const Session = struct {
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .last_scheduling_generation = 0,
-            .last_snapshot_generation = 0,
-            .last_memory_source_workspace_identity = 0,
-            .last_memory_source_committed_generation = 0,
             .software = software,
             .rank_order = rank_order,
         };
@@ -56,12 +48,7 @@ pub const Session = struct {
         {
             return .recreate_required;
         }
-        if (config.generation <= self.config.generation) return .stale_generation;
         self.config = config.*;
-        self.last_scheduling_generation = 0;
-        self.last_snapshot_generation = 0;
-        self.last_memory_source_workspace_identity = 0;
-        self.last_memory_source_committed_generation = 0;
         return .ok;
     }
 
@@ -94,8 +81,6 @@ pub fn plan(
     defer session.mutex.unlock();
 
     if (!validateEnvelope(session, envelope)) return .abi_mismatch;
-    const generation_status = validateGeneration(session, envelope);
-    if (generation_status != .ok) return generation_status;
     if (envelope.software_count > session.config.maximum_software_count or
         envelope.output_capacity > session.config.maximum_output_count)
     {
@@ -116,7 +101,7 @@ pub fn plan(
         &[_]protocol.SoftwareInput{}
     else
         software_pointer.?[0..count];
-    const fact_status = ingestFacts(session, envelope, rows);
+    const fact_status = ingestFacts(session, rows);
     if (fact_status != .ok) return fact_status;
 
     var empty_outputs: [0]protocol.DesiredSoftwareOutput = .{};
@@ -143,10 +128,7 @@ pub fn plan(
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.Snapshot),
         .configuration_generation = session.config.generation,
-        .scheduling_generation = envelope.scheduling_generation,
-        .memory_source_workspace_identity = envelope.memory_source_workspace_identity,
-        .memory_source_committed_generation = envelope.memory_source_committed_generation,
-        .snapshot_generation = envelope.snapshot_generation,
+        .round_number = envelope.round_number,
         .flags = protocol.SnapshotFlags.full_replacement |
             (if ((envelope.flags & protocol.EnvelopeFlags.allow_unrestricted) != 0)
                 protocol.SnapshotFlags.unrestricted_allowed
@@ -159,10 +141,6 @@ pub fn plan(
         .reserved = .{ 0, 0, 0 },
     };
 
-    session.last_scheduling_generation = envelope.scheduling_generation;
-    session.last_snapshot_generation = envelope.snapshot_generation;
-    session.last_memory_source_workspace_identity = envelope.memory_source_workspace_identity;
-    session.last_memory_source_committed_generation = envelope.memory_source_committed_generation;
     return .ok;
 }
 
@@ -172,10 +150,7 @@ fn validateEnvelope(session: *Session, envelope: *const protocol.GenerationEnvel
         envelope.software_input_struct_size == @sizeOf(protocol.SoftwareInput) and
         envelope.software_output_struct_size == @sizeOf(protocol.DesiredSoftwareOutput) and
         envelope.configuration_generation == session.config.generation and
-        envelope.scheduling_generation != 0 and
-        envelope.memory_source_workspace_identity != 0 and
-        envelope.memory_source_committed_generation != 0 and
-        envelope.snapshot_generation != 0 and
+        envelope.round_number != 0 and
         envelope.valid_mask == protocol.EnvelopeValidity.required and
         (envelope.flags & protocol.EnvelopeFlags.required) == protocol.EnvelopeFlags.required and
         (envelope.flags & ~protocol.EnvelopeFlags.known) == 0 and
@@ -186,27 +161,8 @@ fn validateEnvelope(session: *Session, envelope: *const protocol.GenerationEnvel
         allZero(std.mem.asBytes(&envelope.reserved));
 }
 
-fn validateGeneration(
-    session: *Session,
-    envelope: *const protocol.GenerationEnvelope,
-) protocol.Status {
-    if (envelope.scheduling_generation <= session.last_scheduling_generation or
-        envelope.snapshot_generation <= session.last_snapshot_generation or
-        envelope.memory_source_workspace_identity <
-            session.last_memory_source_workspace_identity or
-        (envelope.memory_source_workspace_identity ==
-            session.last_memory_source_workspace_identity and
-            envelope.memory_source_committed_generation <
-                session.last_memory_source_committed_generation))
-    {
-        return .stale_generation;
-    }
-    return .ok;
-}
-
 fn ingestFacts(
     session: *Session,
-    envelope: *const protocol.GenerationEnvelope,
     rows: []const protocol.SoftwareInput,
 ) protocol.Status {
     var previous_key: u64 = 0;
@@ -214,7 +170,6 @@ fn ingestFacts(
         if (row.struct_size != @sizeOf(protocol.SoftwareInput) or row.flags != 0 or
             row.valid_mask != protocol.SoftwareValidity.required or row.software_key == 0 or
             row.software_key <= previous_key or
-            row.scheduling_generation != envelope.scheduling_generation or
             !protocol.validScore(row.cpu_score) or !protocol.validScore(row.base_score) or
             row.source_index != index or row.reserved0 != 0 or row.reserved[0] != 0)
         {
@@ -251,8 +206,7 @@ fn emit(
             .reserved0 = 0,
             .valid_mask = protocol.DesiredSoftwareValidity.required,
             .software_key = row.software_key,
-            .snapshot_generation = envelope.snapshot_generation,
-            .scheduling_generation = envelope.scheduling_generation,
+            .round_number = envelope.round_number,
             .score = row.cpu_score,
             .base_score = row.base_score,
             .rank = 0,

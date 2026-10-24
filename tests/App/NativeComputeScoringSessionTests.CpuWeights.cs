@@ -35,7 +35,7 @@ public sealed partial class NativeComputeScoringSessionTests
     }
 
     [Fact]
-    public void WeightCompilationOwnsItsCopyAndReplacementIsAtomic()
+    public void WeightCompilationOwnsItsCopy()
     {
         var configuration = CreateConfiguration(cpuCoreCount: 2);
         double[] raw = [1, 3];
@@ -45,31 +45,6 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok, session.CalculateWeightedCpuUse([Core(0, 0, 100)], weighted));
         Assert.Equal(25, weighted[0]);
 
-        var replacement = configuration;
-        replacement.Generation = 2;
-        replacement.CpuBaselineRatio = 0.25;
-        Assert.Equal(NativeComputeScoringStatus.InvalidArgument, session.Reconfigure(in replacement, [3, double.NaN]));
-        Assert.Equal(1UL, session.Capacity.ConfigurationGeneration);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.CalculateWeightedCpuUse([Core(0, 0, 100)], weighted));
-        Assert.Equal(25, weighted[0]);
-
-        double[] newRaw = [3, 1];
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Reconfigure(in replacement, newRaw));
-        newRaw[0] = 0;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.CalculateWeightedCpuUse([Core(0, 0, 100)], weighted));
-        Assert.Equal(75, weighted[0]);
-        var outputs = new NativeComputeScoringOutput[3];
-        var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-        envelope.ConfigurationGeneration = 2;
-        var snapshot = default(NativeComputeScoringSnapshot);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope,
-            [CreateProcess(1, 10, 100, 1, weighted[0])], [], outputs, ref snapshot));
-        Assert.Equal(300, outputs[0].Score);
-
-        replacement.Generation = 3;
-        replacement.CpuCoreCount = 3;
-        Assert.Equal(NativeComputeScoringStatus.RecreateRequired, session.Reconfigure(in replacement, [1, 1, 1]));
-        Assert.Equal(2UL, session.Capacity.ConfigurationGeneration);
     }
 
     [Theory]

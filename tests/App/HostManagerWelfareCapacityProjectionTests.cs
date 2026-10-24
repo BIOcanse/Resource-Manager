@@ -20,7 +20,6 @@ public sealed class HostManagerWelfareCapacityProjectionTests
         Assert.Equal(0.625, capacity.VramFreeRatio, precision: 10);
         Assert.Equal(0.5, capacity.MemoryFreeRatio, precision: 10);
         Assert.Equal(2U, capacity.EligibleProcessCount);
-        Assert.NotEqual(0UL, capacity.PublicationFingerprint);
     }
 
     [Fact]
@@ -65,7 +64,7 @@ public sealed class HostManagerWelfareCapacityProjectionTests
     }
 
     [Fact]
-    public void CurrentZeroAndUnavailablePublicationHaveDifferentFingerprints()
+    public void CurrentZeroAndUnavailablePublicationBothSupplyZeroCpuCapacity()
     {
         var hardware = CreateHardware(includeCpuDataset: true);
         var currentZero = HostManagerSmartCoordinator.CreateWelfareCapacityInput(
@@ -93,13 +92,11 @@ public sealed class HostManagerWelfareCapacityProjectionTests
 
         Assert.Equal(0, currentZero.CpuFreeRatio);
         Assert.Equal(0, unavailable.CpuFreeRatio);
-        Assert.NotEqual(
-            currentZero.PublicationFingerprint,
-            unavailable.PublicationFingerprint);
+        Assert.Equal(currentZero, unavailable);
     }
 
     [Fact]
-    public void SameValuesFromANewBackendPublicationHaveANewFingerprint()
+    public void SameValuesFromANewBackendPublicationProduceTheSameCapacityInput()
     {
         var runtimeFacts = CreateRuntimeFacts();
         var first = HostManagerSmartCoordinator.CreateWelfareCapacityInput(
@@ -113,56 +110,12 @@ public sealed class HostManagerWelfareCapacityProjectionTests
         Assert.Equal(first.GpuFreeRatio, second.GpuFreeRatio);
         Assert.Equal(first.VramFreeRatio, second.VramFreeRatio);
         Assert.Equal(first.MemoryFreeRatio, second.MemoryFreeRatio);
-        Assert.NotEqual(first.PublicationFingerprint, second.PublicationFingerprint);
+        Assert.Equal(first, second);
     }
 
-    [Fact]
-    public void EveryIndependentWelfarePublicationContributesToTheFingerprint()
-    {
-        var runtimeFacts = CreateRuntimeFacts();
-        var hardware = CreateHardware(includeCpuDataset: true);
-        var baseline = HostManagerSmartCoordinator.CreateWelfareCapacityInput(
-            hardware,
-            runtimeFacts);
-        string[] datasetIds =
-        [
-            SamplingDatasetIds.SystemCpuUsage,
-            SamplingDatasetIds.SystemMemoryUsage,
-            SamplingDatasetIds.SystemGpuInventory,
-            "gpu.0.usage",
-            "gpu.0.vram",
-            "gpu.1.usage",
-            "gpu.1.vram"
-        ];
-
-        foreach (var datasetId in datasetIds)
-        {
-            var datasets = hardware.Datasets.ToDictionary(
-                static pair => pair.Key,
-                static pair => pair.Value,
-                StringComparer.OrdinalIgnoreCase);
-            var current = datasets[datasetId];
-            datasets[datasetId] = current with
-            {
-                SourceGeneration = checked(current.SourceGeneration + 1),
-                ObservedAtUtcTicks = checked(current.ObservedAtUtcTicks + 1),
-                CommittedGeneration = checked(current.CommittedGeneration + 1),
-                LastAttemptAtUtcTicks = checked(current.LastAttemptAtUtcTicks + 1)
-            };
-            var changed = HostManagerSmartCoordinator.CreateWelfareCapacityInput(
-                hardware with { Datasets = datasets },
-                runtimeFacts);
-
-            Assert.Equal(baseline.CpuFreeRatio, changed.CpuFreeRatio);
-            Assert.Equal(baseline.GpuFreeRatio, changed.GpuFreeRatio);
-            Assert.Equal(baseline.VramFreeRatio, changed.VramFreeRatio);
-            Assert.Equal(baseline.MemoryFreeRatio, changed.MemoryFreeRatio);
-            Assert.NotEqual(baseline.PublicationFingerprint, changed.PublicationFingerprint);
-        }
-    }
 
     [Fact]
-    public void PublicationFingerprintIsIndependentOfDictionaryAndAdapterEnumerationOrder()
+    public void ProjectionIsIndependentOfDictionaryAndAdapterEnumerationOrder()
     {
         var runtimeFacts = CreateRuntimeFacts();
         var hardware = CreateHardware(includeCpuDataset: true);

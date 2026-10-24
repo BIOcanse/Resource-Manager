@@ -23,15 +23,9 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerComputeScoringCycleResult? compute,
         CompiledRuntimePlan runtimePlan,
         ulong cycleSequence,
-        bool capacitySampleFresh,
         CancellationToken cancellationToken)
     {
         permit.Require(HostManagerCycleEffectKind.AutomaticMemoryCleanup);
-        if (!capacitySampleFresh)
-        {
-            return HostManagerMemoryCleanupExecutionResult.NotRun(
-                HostManagerMemoryCleanupRoundDisposition.InvalidCapacitySample);
-        }
         var cleanupPlan = runtimePlan.HostManager.HotPublish.MemoryCleanup;
         var initialCapacity = CreateMemoryCleanupCapacitySnapshot(sample.Hardware);
         if (!HasDeterministicMemoryCleanupModeInputs(initialCapacity, cleanupPlan))
@@ -50,7 +44,7 @@ public sealed partial class HostManagerSmartCoordinator
         var currentAdmissionBaseline = new MemoryCleanupHostedAdmissionBaseline(
             runtimePlan.Version,
             cleanupPlan.ConfigurationGeneration,
-            sample.Hardware);
+            sample.RoundNumber);
         var previousAdmissionBaseline = memoryCleanupHostedAdmissionBaseline;
         if (previousAdmissionBaseline is null
             || !previousAdmissionBaseline.CanAdmit(currentAdmissionBaseline))
@@ -58,13 +52,13 @@ public sealed partial class HostManagerSmartCoordinator
             memoryCleanupHostedAdmissionBaseline = currentAdmissionBaseline;
             return HostManagerMemoryCleanupExecutionResult.NotRun(
                 HostManagerMemoryCleanupRoundDisposition
-                    .AwaitingNewHostedCapacityObservation);
+                    .AwaitingNewSchedulingRound);
         }
 
         var candidateProjection = CreateMemoryCleanupCandidates(
             sample.Targets,
             compute,
-            sample.ProcessFacts.Generation);
+            sample.RoundNumber);
         if (!candidateProjection.IsComplete)
         {
             return HostManagerMemoryCleanupExecutionResult.NotRun(
@@ -84,7 +78,7 @@ public sealed partial class HostManagerSmartCoordinator
             processEffectValidationScope,
             request,
             validationFactContext: default,
-            compute?.SchedulingGeneration ?? 0,
+            sample.RoundNumber,
             cycleSequence,
             "ordinary",
             async (currentRequest, finalAdmissionCancellationToken) =>
@@ -93,8 +87,9 @@ public sealed partial class HostManagerSmartCoordinator
                     currentRequest,
                     candidateProjection.Scores,
                     sample.ProcessFacts,
-                    previousAdmissionBaseline.Hardware,
-                    currentAdmissionBaseline.Hardware,
+                    sample.Hardware,
+                    previousAdmissionBaseline.RoundNumber,
+                    sample.RoundNumber,
                     cleanupPlan,
                     candidateProjection.UnknownCandidateCount,
                     finalAdmissionCancellationToken);
@@ -122,7 +117,7 @@ public sealed partial class HostManagerSmartCoordinator
     private MemoryCleanupCandidateProjectionResult CreateMemoryCleanupCandidates(
         IReadOnlyList<HostManagerTargetInfo> targets,
         HostManagerComputeScoringCycleResult? compute,
-        ulong processInventoryGeneration)
+        ulong roundNumber)
     {
         if (compute?.Cpu is not { } cpu)
         {
@@ -139,7 +134,6 @@ public sealed partial class HostManagerSmartCoordinator
         }
         if (!HostManagerMemoryCleanupScoreIndex.TryCreate(
                 compute,
-                processInventoryGeneration,
                 factProjection.Facts,
                 out var scores))
         {
@@ -148,8 +142,8 @@ public sealed partial class HostManagerSmartCoordinator
 
         var candidates = HostManagerMemoryCleanupCandidateProjection.Create(
             factProjection.Facts,
-            scores);
-        return candidates.Count == factProjection.Facts.Count
+            scores).Select(candidate => candidate with { RoundNumber = roundNumber }).ToArray();
+        return candidates.Length == factProjection.Facts.Count
             ? new MemoryCleanupCandidateProjectionResult(
                 true,
                 candidates,
@@ -281,43 +275,17 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeScore>
             baselineScores,
         SchedulingProcessFactSnapshot initialProcessFacts,
-        HardwareMetricSnapshot initialHardware,
         HardwareMetricSnapshot hardware,
+        ulong baselineRoundNumber,
+        ulong roundNumber,
         CompiledHostManagerMemoryCleanupHotPublishPlan cleanupPlan,
         int initialUnknownCandidateCount,
         CancellationToken cancellationToken)
     {
-        if (!IsStrictlyNewerMemoryCleanupCapacity(
-                initialHardware,
-                hardware))
-        {
-            return MemoryCleanupFinalAdmissionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCapacityUnavailable);
-        }
-        if (!SystemMemoryUsageDependency.TryCreate(
-                hardware,
-                timeProvider.GetUtcNow(),
-                out var finalMemoryDependency))
-        {
-            return MemoryCleanupFinalAdmissionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCapacityUnavailable);
-        }
-
-        var processFacts = schedulingProcessFactSource.ReadLatest(
-            new SchedulingProcessFactRequest(
-                SchedulingProcessMetricMask.MemoryUsage
-                    | SchedulingProcessMetricMask.RuntimeState,
-                finalMemoryDependency,
-                hardware.GpuInventory));
-        if (processFacts is null)
-        {
-            return MemoryCleanupFinalAdmissionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete);
-        }
+        var processFacts = initialProcessFacts;
         if (!TryIndexCurrentMemoryCleanupProcessFacts(
-                initialProcessFacts,
                 processFacts,
-                finalMemoryDependency,
+                hardware.Memory.TotalBytes,
                 out var currentProcesses,
                 out var maximumBaseScores))
         {
@@ -325,14 +293,6 @@ public sealed partial class HostManagerSmartCoordinator
                 HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete);
         }
         var capacity = CreateMemoryCleanupCapacitySnapshot(hardware);
-        if (!IsMemoryCleanupPressureActionable(capacity, cleanupPlan))
-        {
-            return MemoryCleanupFinalAdmissionResult.Incomplete(
-                HasDeterministicMemoryCleanupModeInputs(capacity, cleanupPlan)
-                    ? HostManagerMemoryCleanupRoundDisposition.DeferredByCurrentCapacity
-                    : HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCapacityUnavailable);
-        }
-
         var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
         // Memory scheduling exclusion is resolved again for each candidate's current software, like
         // protection. The cycle's publication lease holds new plans back, so this is the plan the round
@@ -391,7 +351,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 currentCandidates.Add(baseline with
                 {
-                    MemoryUsedPercent = current.MemoryUsagePercent
+                    MemoryUsedPercent = Math.Clamp(current.MemoryUsedBytes * 100d / hardware.Memory.TotalBytes, 0, 100)
                 });
                 continue;
             }
@@ -420,13 +380,8 @@ public sealed partial class HostManagerSmartCoordinator
                 cleanupPlan.GuardedFreeRatio,
                 cleanupPlan.PhysicalEmergencyFreeRatio,
                 cleanupPlan.VirtualEmergencyFreeRatio,
-                hardware.WorkspaceIdentity,
-                hardware.ConfigurationGeneration,
-                hardware.CatalogGeneration,
-                initialHardware.CommittedGeneration,
-                hardware.CommittedGeneration,
-                initialHardware.CapturedAt.UtcTicks,
-                hardware.CapturedAt.UtcTicks,
+                baselineRoundNumber,
+                roundNumber,
                 OrdinaryMemoryFreeRatioCurrent:
                     capacity.PhysicalMemoryFreeRatioCurrent,
                 PhysicalMemoryFreeRatioCurrent:
@@ -438,9 +393,8 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private static bool TryIndexCurrentMemoryCleanupProcessFacts(
-        SchedulingProcessFactSnapshot initial,
         SchedulingProcessFactSnapshot current,
-        SystemMemoryUsageDependency expectedMemoryDependency,
+        ulong totalMemoryBytes,
         out IReadOnlyDictionary<HostManagerComputeProcessIdentity, SchedulingProcessFact> processes,
         out IReadOnlyDictionary<ulong, double> maximumBaseScores)
     {
@@ -449,12 +403,11 @@ public sealed partial class HostManagerSmartCoordinator
         var requiredMask = SchedulingProcessMetricMask.MemoryUsage
             | SchedulingProcessMetricMask.RuntimeState;
         if (!current.IsInventoryCurrentComplete()
-            || !current.IsMemoryCurrentComplete(expectedMemoryDependency)
+            || !current.IsMemoryCurrentComplete()
+            || totalMemoryBytes == 0
             || !current.IsRuntimeStateCurrentComplete()
-            || current.Generation < initial.Generation
-            || current.ObservedAtUtcTicks < initial.ObservedAtUtcTicks
-            || current.RequestedMetricMask != requiredMask
-            || current.CurrentMetricMask != requiredMask)
+            || (current.RequestedMetricMask & requiredMask) != requiredMask
+            || (current.CurrentMetricMask & requiredMask) != requiredMask)
         {
             return false;
         }
@@ -496,7 +449,6 @@ public sealed partial class HostManagerSmartCoordinator
             var softwareKey = NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
             if (process.ProcessId <= 0
                 || process.ProcessStartKey == 0
-                || process.SourceGeneration != current.Generation
                 || string.IsNullOrWhiteSpace(process.ProcessName)
                 || softwareKey == 0
                 || !double.IsFinite(process.BaseScore)
@@ -508,7 +460,9 @@ public sealed partial class HostManagerSmartCoordinator
                     SchedulingProcessMetricMask.MemoryUsage)
                 && process.ValidMetricMask.HasFlag(
                     SchedulingProcessMetricMask.RuntimeState);
-            if (hasFinalAdmissionFacts && !indexed.TryAdd(identity, process))
+            if (hasFinalAdmissionFacts && (!double.IsFinite(process.MemoryUsedBytes)
+                || process.MemoryUsedBytes < 0
+                || !indexed.TryAdd(identity, process)))
             {
                 return false;
             }
@@ -522,32 +476,14 @@ public sealed partial class HostManagerSmartCoordinator
     private sealed record MemoryCleanupHostedAdmissionBaseline(
         long RuntimePlanVersion,
         ulong CleanupConfigurationGeneration,
-        HardwareMetricSnapshot Hardware)
+        ulong RoundNumber)
     {
         internal bool CanAdmit(MemoryCleanupHostedAdmissionBaseline current)
             => current.RuntimePlanVersion == RuntimePlanVersion
                 && current.CleanupConfigurationGeneration ==
                     CleanupConfigurationGeneration
-                && IsStrictlyNewerMemoryCleanupCapacity(Hardware, current.Hardware);
+                && current.RoundNumber > RoundNumber;
     }
-
-    private static bool IsStrictlyNewerMemoryCleanupCapacity(
-        HardwareMetricSnapshot initial,
-        HardwareMetricSnapshot current)
-        => initial.TryGetCurrentDataset(
-                SamplingDatasetIds.SystemMemoryUsage,
-                out var initialMemory)
-            && current.TryGetCurrentDataset(
-                SamplingDatasetIds.SystemMemoryUsage,
-                out var currentMemory)
-            && currentMemory.WorkspaceIdentity == initialMemory.WorkspaceIdentity
-            && currentMemory.ConfigurationGeneration ==
-                initialMemory.ConfigurationGeneration
-            && currentMemory.CatalogGeneration == initialMemory.CatalogGeneration
-            && currentMemory.SourceGeneration > initialMemory.SourceGeneration
-            && currentMemory.CommittedGeneration >
-                initialMemory.CommittedGeneration
-            && currentMemory.ObservedAtUtcTicks > initialMemory.ObservedAtUtcTicks;
 
     private static MemoryCleanupCapacitySnapshot CreateMemoryCleanupCapacitySnapshot(
         HardwareMetricSnapshot hardware)
@@ -623,13 +559,8 @@ public sealed partial class HostManagerSmartCoordinator
                     cleanupPlan.GuardedFreeRatio,
                     cleanupPlan.PhysicalEmergencyFreeRatio,
                     cleanupPlan.VirtualEmergencyFreeRatio,
-                    CapacityWorkspaceIdentity: 1,
-                    CapacityConfigurationGeneration: 1,
-                    CapacityCatalogGeneration: 1,
-                    BaselineCapacityCommittedGeneration: 1,
-                    FinalCapacityCommittedGeneration: 2,
-                    BaselineCapacityCapturedAtUtcTicks: 1,
-                    FinalCapacityCapturedAtUtcTicks: 2,
+                    BaselineRoundNumber: 1,
+                    RoundNumber: 2,
                     OrdinaryMemoryFreeRatioCurrent: true,
                     PhysicalMemoryFreeRatioCurrent: true,
                     VirtualMemoryFreeRatioCurrent: true),
@@ -707,7 +638,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (attemptGeneration == 0)
         {
             return HostManagerMemoryCleanupExecutionResult.Incomplete(
-                HostManagerMemoryCleanupRoundDisposition.MissingSchedulingGeneration,
+                HostManagerMemoryCleanupRoundDisposition.MissingAttemptGeneration,
                 originalCandidateCount,
                 blockedCandidateCount);
         }

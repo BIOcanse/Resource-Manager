@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeComputeScoringAbi
 {
-    public const uint Version = 0x0005_0000;
+    public const uint Version = 0x0006_0000;
     public const int RuntimeStateCount = 7;
 }
 
@@ -15,12 +15,10 @@ internal enum NativeComputeScoringStatus : int
     AbiMismatch = 2,
     NoData = 3,
     BufferTooSmall = 4,
-    StaleGeneration = 5,
     CapacityExceeded = 6,
     ConflictingFacts = 7,
     InvalidFacts = 8,
     OutOfMemory = 9,
-    RecreateRequired = 10
 }
 
 internal enum NativeComputeScoringRuntimeState : byte
@@ -59,14 +57,8 @@ internal enum NativeComputeScoringConfigFields : ulong
 internal enum NativeComputeScoringEnvelopeValidity : ulong
 {
     None = 0,
-    ProcessGeneration = 1UL << 0,
-    ProcessObservedAt = 1UL << 1,
-    GpuGeneration = 1UL << 2,
-    GpuObservedAt = 1UL << 3,
-    GpuTopology = 1UL << 4,
-    WelfareCapacity = 1UL << 5,
-    Known = ProcessGeneration | ProcessObservedAt | GpuGeneration | GpuObservedAt |
-        GpuTopology | WelfareCapacity
+    WelfareCapacity = 1UL << 0,
+    Known = WelfareCapacity
 }
 
 [Flags]
@@ -88,10 +80,9 @@ internal enum NativeComputeScoringProcessValidity : ulong
     BaseImportance = 1UL << 3,
     CpuPolicyMultiplier = 1UL << 4,
     CpuOccupancy = 1UL << 5,
-    SourceGeneration = 1UL << 6,
-    BaseRequired = Identity | SoftwareIdentity | RuntimeState | BaseImportance | SourceGeneration,
+    BaseRequired = Identity | SoftwareIdentity | RuntimeState | BaseImportance,
     CpuRequired = Identity | SoftwareIdentity | RuntimeState | BaseImportance |
-        CpuPolicyMultiplier | CpuOccupancy | SourceGeneration,
+        CpuPolicyMultiplier | CpuOccupancy,
     Known = CpuRequired
 }
 
@@ -114,9 +105,8 @@ internal enum NativeComputeScoringGpuValidity : ulong
     AdapterIdentity = 1UL << 2,
     GpuPolicyMultiplier = 1UL << 3,
     GpuOccupancy = 1UL << 4,
-    SourceGeneration = 1UL << 5,
     Required = ProcessIdentity | SoftwareIdentity | AdapterIdentity |
-        GpuPolicyMultiplier | GpuOccupancy | SourceGeneration,
+        GpuPolicyMultiplier | GpuOccupancy,
     Known = Required
 }
 
@@ -124,13 +114,13 @@ internal enum NativeComputeScoringGpuValidity : ulong
 internal enum NativeComputeScoringOutputValidity : ulong
 {
     None = 0,
-    SchedulingGeneration = 1UL << 0,
+    RoundNumber = 1UL << 0,
     SoftwareIdentity = 1UL << 1,
     ProcessIdentity = 1UL << 2,
     AdapterIdentity = 1UL << 3,
     Score = 1UL << 4,
     MemberCount = 1UL << 5,
-    Known = SchedulingGeneration | SoftwareIdentity | ProcessIdentity |
+    Known = RoundNumber | SoftwareIdentity | ProcessIdentity |
         AdapterIdentity | Score | MemberCount
 }
 
@@ -181,7 +171,7 @@ internal unsafe struct NativeComputeScoringCapacity
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 168)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 112)]
 internal unsafe struct NativeComputeScoringGenerationEnvelope
 {
     public uint AbiVersion;
@@ -190,14 +180,7 @@ internal unsafe struct NativeComputeScoringGenerationEnvelope
     public uint GpuInputStructSize;
     public uint OutputStructSize;
     public uint Reserved0;
-    public ulong ConfigurationGeneration;
-    public ulong SchedulingGeneration;
-    public ulong ProcessSourceGeneration;
-    public ulong GpuSourceGeneration;
-    public ulong GpuTopologyGeneration;
-    public ulong GpuTopologyFingerprint;
-    public long ProcessObservedAtMilliseconds;
-    public long GpuObservedAtMilliseconds;
+    public ulong RoundNumber;
     public NativeComputeScoringEnvelopeValidity ValidMask;
     public NativeComputeScoringEnvelopeFlags Flags;
     public uint ProcessCount;
@@ -213,7 +196,7 @@ internal unsafe struct NativeComputeScoringGenerationEnvelope
     public double SoftwareBaseMean;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 88)]
 internal unsafe struct NativeComputeScoringProcessInput
 {
     public uint StructSize;
@@ -222,7 +205,6 @@ internal unsafe struct NativeComputeScoringProcessInput
     public ulong TargetKey;
     public ulong SoftwareKey;
     public ulong ProcessStartKey;
-    public ulong SourceGeneration;
     public double BaseImportance;
     public double CpuPolicyMultiplier;
     public double WeightedCpuUsePercent;
@@ -233,7 +215,7 @@ internal unsafe struct NativeComputeScoringProcessInput
     public ulong Reserved;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 88)]
 internal unsafe struct NativeComputeScoringGpuInput
 {
     public uint StructSize;
@@ -242,7 +224,6 @@ internal unsafe struct NativeComputeScoringGpuInput
     public ulong TargetKey;
     public ulong SoftwareKey;
     public ulong ProcessStartKey;
-    public ulong SourceGeneration;
     public ulong AdapterKey;
     public double GpuPolicyMultiplier;
     public double GpuOccupancyPercent;
@@ -267,7 +248,7 @@ internal unsafe struct NativeComputeScoringOutput
     public NativeComputeScoringRuntimeState RuntimeState;
     public ushort Reserved0;
     public NativeComputeScoringOutputValidity ValidMask;
-    public ulong SchedulingGeneration;
+    public ulong RoundNumber;
     public ulong TargetKey;
     public ulong SoftwareKey;
     public ulong ProcessStartKey;
@@ -280,17 +261,12 @@ internal unsafe struct NativeComputeScoringOutput
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 224)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 184)]
 internal unsafe struct NativeComputeScoringSnapshot
 {
     public uint AbiVersion;
     public uint StructSize;
-    public ulong ConfigurationGeneration;
-    public ulong SchedulingGeneration;
-    public ulong ProcessSourceGeneration;
-    public ulong GpuSourceGeneration;
-    public ulong GpuTopologyGeneration;
-    public ulong GpuTopologyFingerprint;
+    public ulong RoundNumber;
     public NativeComputeScoringSnapshotFlags Flags;
     public uint ProcessInputCount;
     public uint GpuInputCount;

@@ -67,7 +67,6 @@ public sealed class HostManagerMemoryModeCalibrationPolicySourceTests
                 StructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
                 ValidMask = NativeMemoryModeSoftwareValidity.Required,
                 SoftwareKey = 1,
-                SchedulingGeneration = 10,
                 CpuScore = 0,
                 BaseScore = baseScore,
                 SourceIndex = 0
@@ -82,10 +81,7 @@ public sealed class HostManagerMemoryModeCalibrationPolicySourceTests
             SoftwareInputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
             SoftwareOutputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeDesiredSoftwareOutput>(),
             ConfigurationGeneration = policy.Configuration.Generation,
-            SchedulingGeneration = 10,
-            MemorySourceWorkspaceIdentity = 1,
-            MemorySourceCommittedGeneration = 20,
-            SnapshotGeneration = 30,
+            RoundNumber = 10,
             ValidMask = NativeMemoryModeEnvelopeValidity.Required,
             Flags = NativeMemoryModeEnvelopeFlags.Required |
                 NativeMemoryModeEnvelopeFlags.AllowUnrestricted,
@@ -97,12 +93,11 @@ public sealed class HostManagerMemoryModeCalibrationPolicySourceTests
         Assert.Equal(NativeMemoryModeControllerStatus.Ok,
             session.Plan(in envelope, software, outputs, ref snapshot));
         var row = Assert.Single(outputs);
+        Assert.Equal(10UL, snapshot.RoundNumber);
         Assert.Equal((NativeMemoryMode)expectedMode, row.Mode);
         Assert.Equal(expectedMask, (byte)row.BaseScoreAllowedGrades);
         Assert.Equal(expectedMode == (int)NativeMemoryMode.Optimize ? 1U : 0U, snapshot.OptimizeCount);
         Assert.Equal(expectedMode == (int)NativeMemoryMode.PagedFrozen ? 1U : 0U, snapshot.StrongestCount);
-        Assert.Equal(1UL, snapshot.MemorySourceWorkspaceIdentity);
-        Assert.Equal(20UL, snapshot.MemorySourceCommittedGeneration);
     }
 
     [Fact]

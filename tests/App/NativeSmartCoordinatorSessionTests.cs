@@ -220,9 +220,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             Flags = NativeSmartCoordinatorCycleFlags.FullProcessSnapshot,
             InputCount = 0,
             ActionCapacity = session.Capacity.ActionCapacity,
-            ScoreSchedulingGeneration = 1,
-            CpuScoreSourceFingerprint = 0xC000_0000_0000_0001UL,
-            GpuScoreSourceFingerprint = 0xD000_0000_0000_0001UL,
+            RoundNumber = 1,
             MaximumActionsThisCycle = session.Capacity.ActionCapacity
         };
         var actions = new NativeSmartCoordinatorAction[session.Capacity.ActionCapacity];
@@ -659,7 +657,6 @@ public sealed class NativeSmartCoordinatorSessionTests
             AppliedProcessGrade = NativeSmartCoordinatorProcessGrade.Normal,
             AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
             AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedEpoch = 0
         };
 
     private static NativeSmartCoordinatorInputRow CreateMetricFact(
@@ -767,9 +764,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                     : NativeSmartCoordinatorCycleFlags.None),
             InputCount = 0,
             ActionCapacity = actionCapacity,
-            ScoreSchedulingGeneration = cycleSequence,
-            CpuScoreSourceFingerprint = 0xC000_0000_0000_0000UL | cycleSequence,
-            GpuScoreSourceFingerprint = 0xD000_0000_0000_0000UL | cycleSequence,
+            RoundNumber = cycleSequence,
             MaximumActionsThisCycle = actionCapacity
         };
 
@@ -777,11 +772,11 @@ public sealed class NativeSmartCoordinatorSessionTests
     public void SmartScratchLayoutUsesCheckedTypedExtentsWithoutAByteCountCap()
     {
         var layout = new NativeSmartScratchLayout(64, 20_000_000, 6);
-        Assert.Equal(112, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
+        Assert.Equal(104, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
         Assert.Equal(136, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorFeedback>());
-        Assert.Equal(64UL * 112, layout.Actions);
-        Assert.Equal(64UL * 112 + 20_000_000UL * 136, layout.Feedback);
+        Assert.Equal(64UL * 104, layout.Actions);
+        Assert.Equal(64UL * 104 + 20_000_000UL * 136, layout.Feedback);
         Assert.Equal(layout.Feedback + 6UL * 96, layout.Length);
         Assert.True(layout.Length > int.MaxValue); // Layout proof only: no large allocation.
         Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1));

@@ -12,7 +12,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     public void CpuExclusivityAbiSizesMatchNativeExports()
     {
         Assert.Equal(80, Unsafe.SizeOf<NativeCpuExclusivityConfiguration>());
-        Assert.Equal(72, Unsafe.SizeOf<NativeCpuExclusivityFrame>());
+        Assert.Equal(64, Unsafe.SizeOf<NativeCpuExclusivityFrame>());
         Assert.Equal(32, Unsafe.SizeOf<NativeCpuExclusivitySoftware>());
         Assert.Equal(8, Unsafe.SizeOf<NativeCpuExclusivityCore>());
         Assert.Equal(16, Unsafe.SizeOf<NativeCpuExclusivityUsage>());
@@ -20,7 +20,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     [Fact]
-    public void AutomaticCoreQualifiesOnFourthDistinctWindowAndUsesStrictExitBoundary()
+    public void AutomaticCoreQualifiesOnFourthDistinctRoundAndUsesStrictExitBoundary()
     {
         using var session = CreateExclusiveSession();
         var game = ExclusiveGame("game", 10, 100);
@@ -33,6 +33,24 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
         Assert.Equal(["core:0"], Reserve(session, [game], 5, [(game, new[] { ("core:0", 20d) })]).BySoftware["game"]);
         Assert.Empty(Reserve(session, [game], 6, [(game, new[] { ("core:0", 19.99d) })]).BySoftware);
         Assert.Empty(Reserve(session, [game], 7, [(game, new[] { ("core:0", 74.99d) })]).BySoftware);
+    }
+
+    [Fact]
+    public void NewerRoundsQualifyAcrossClockRollbackAndResidencySourceChanges()
+    {
+        using var session = CreateExclusiveSession();
+        var game = ExclusiveGame("game", 10, 100);
+        for (var round = 1; round <= 3; round++)
+            Assert.Empty(Reserve(session, [game], round, [(game, new[] { ("core:0", 80d) })],
+                observedSecond: 100 + round).BySoftware);
+        var projection = ExclusiveProjection([game], 4, [(game, new[] { ("core:0", 80d) })], source: 2, observedSecond: 10);
+        Assert.Equal(4UL, projection.Frame.RoundNumber);
+        var frame = projection.Frame;
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.PlanCpuExclusivity(ref frame, projection.Cores,
+            projection.Software, projection.Usage, projection.Manual, projection.Output));
+        Assert.True(projection.Map(frame.OutputCount).IsOwner("game"));
+        Assert.True(Reserve(session, [game], 4, [(game, new[] { ("core:0", 0d) })], observedSecond: 200).IsOwner("game"));
+        Assert.Empty(Reserve(session, [game], 5, [(game, new[] { ("core:0", 0d) })], observedSecond: 9).BySoftware);
     }
 
     [Fact]
@@ -50,18 +68,18 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     [Fact]
-    public void MissingObservationsHoldButPidReuseOwnerExitAndSourceChangesRemoveOldState()
+    public void MissingObservationsAndSourceChangesHoldButPidReuseAndOwnerExitRemoveOldState()
     {
         using var session = CreateExclusiveSession();
         var game = ExclusiveGame("game", 10, 100);
         for (var window = 1; window <= 4; window++) Reserve(session, [game], window, [(game, new[] { ("core:0", 80d) })]);
         Assert.True(Reserve(session, [game], 5, []).IsOwner("game"));
-        Assert.True(Reserve(session, [game], 0, []).IsOwner("game"));
+        Assert.True(Reserve(session, [game], 5, [], observationAvailable: false).IsOwner("game"));
         var reused = game with { ProcessStartKey = game.ProcessStartKey + 1 };
         Assert.Empty(Reserve(session, [reused], 6, [(reused, new[] { ("core:0", 80d) })]).BySoftware);
         for (var window = 7; window <= 9; window++) Reserve(session, [reused], window, [(reused, new[] { ("core:0", 80d) })]);
         Assert.True(Reserve(session, [reused], 9, [(reused, new[] { ("core:0", 80d) })]).IsOwner("game"));
-        Assert.Empty(Reserve(session, [reused], 10, [(reused, new[] { ("core:0", 80d) })], source: 2).BySoftware);
+        Assert.True(Reserve(session, [reused], 10, [(reused, new[] { ("core:0", 80d) })], source: 2).IsOwner("game"));
         Assert.Empty(Reserve(session, [], 11, []).BySoftware);
     }
 
@@ -123,7 +141,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     [Fact]
-    public void CapacityFailureAndStaleFramesDoNotAdvanceQualification()
+    public void CapacityFailureAndOlderRoundsDoNotChangeReservations()
     {
         using var session = CreateExclusiveSession(qualification: 0);
         var game = ExclusiveGame("game", 10, 100);
@@ -135,8 +153,9 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
         Assert.True(Reserve(session, [game], 3, [(game, new[] { ("core:0", 50d) })]).IsOwner("game"));
         var stale = ExclusiveProjection([game], 2, [(game, new[] { ("core:0", 0d) })]);
         var frame = stale.Frame;
-        Assert.Equal(NativePlacementCoordinatorStatus.StaleFrame, session.PlanCpuExclusivity(ref frame, stale.Cores,
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.PlanCpuExclusivity(ref frame, stale.Cores,
             stale.Software, stale.Usage, stale.Manual, stale.Output));
+        Assert.True(stale.Map(frame.OutputCount).IsOwner("game"));
         Assert.True(Reserve(session, [game], 4, []).IsOwner("game"));
     }
 
@@ -180,7 +199,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
             new[] { ("core:0", process == game ? 75d : 1d), ("core:1", 0d), ("core:2", 0d), ("core:3", 0d) })).ToArray();
         Assert.Equal(["core:0"], Reserve(session, processes, 1, facts).BySoftware["game"]);
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.ResetCpuExclusivity());
-        Assert.Empty(Reserve(session, processes, 0, []).BySoftware);
+        Assert.Empty(Reserve(session, processes, 2, [], observationAvailable: false).BySoftware);
     }
 
     private static HostManagerAutomaticPlacementPlan PlanWithReservations(HostManagerAutomaticPlacementProcess[] processes,
@@ -208,9 +227,10 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     private static HostManagerCpuReservations Reserve(NativePlacementCoordinatorSession session, HostManagerAutomaticPlacementProcess[] processes,
-        int window, (HostManagerAutomaticPlacementProcess Process, (string Core, double Usage)[] Uses)[] facts, long source = 1)
+        int round, (HostManagerAutomaticPlacementProcess Process, (string Core, double Usage)[] Uses)[] facts, long source = 1,
+        int? observedSecond = null, bool observationAvailable = true)
     {
-        var projection = ExclusiveProjection(processes, window, facts, source);
+        var projection = ExclusiveProjection(processes, round, facts, source, observedSecond, observationAvailable);
         var frame = projection.Frame;
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.PlanCpuExclusivity(ref frame, projection.Cores,
             projection.Software, projection.Usage, projection.Manual, projection.Output));
@@ -218,9 +238,10 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     private static HostManagerCpuExclusivityProjection ExclusiveProjection(HostManagerAutomaticPlacementProcess[] processes,
-        int window, (HostManagerAutomaticPlacementProcess Process, (string Core, double Usage)[] Uses)[] facts, long source = 1)
-        => HostManagerCpuExclusivityProjection.Create(CreateTwoCcdTopology(), window == 0 ? null :
-            CpuCoreResidencyTestValues.Create(source, DateTimeOffset.UnixEpoch.AddSeconds(window),
+        int round, (HostManagerAutomaticPlacementProcess Process, (string Core, double Usage)[] Uses)[] facts, long source = 1,
+        int? observedSecond = null, bool observationAvailable = true)
+        => HostManagerCpuExclusivityProjection.Create(CreateTwoCcdTopology(), !observationAvailable ? null :
+            CpuCoreResidencyTestValues.Create(source, DateTimeOffset.UnixEpoch.AddSeconds(observedSecond ?? round),
                 facts.Select(fact => CpuCoreResidencyTestValues.Process(fact.Process.ProcessId, fact.Process.ProcessStartKey, fact.Uses)).ToArray()),
-            processes, 1, CreateCapacity());
+            processes, 1, checked((ulong)round), CreateCapacity());
 }

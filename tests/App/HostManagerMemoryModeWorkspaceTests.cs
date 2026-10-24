@@ -22,9 +22,7 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         var result = workspace.Plan(
             CreateScoring(includeGpu: true),
             CreateProcessFacts(),
-            new HostManagerMemorySourceStamp(7, 20),
             memoryFreeRatioUnits: 2_000,
-            snapshotGeneration: 80,
             allowUnrestricted: true);
 
         Assert.Equal(3, result.Software.Length);
@@ -63,9 +61,7 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         var result = workspace.Plan(
             CreateScoring(includeGpu: false),
             CreateProcessFacts(),
-            new HostManagerMemorySourceStamp(7, 20),
             memoryFreeRatioUnits: 2_000,
-            snapshotGeneration: 80,
             allowUnrestricted: false);
 
         Assert.Equal(3, result.Software.Length);
@@ -74,27 +70,13 @@ public sealed class HostManagerMemoryModeWorkspaceTests
     }
 
     [Fact]
-    public void PlanRejectsMissingOrCrossGenerationCpuScores()
+    public void PlanRejectsMissingCpuScores()
     {
         var configuration = CreateConfiguration();
-        using var missingWorkspace = new HostManagerMemoryModeWorkspace(in configuration);
-        Assert.Throws<InvalidDataException>(() => missingWorkspace.Plan(
+        using var workspace = new HostManagerMemoryModeWorkspace(in configuration);
+        Assert.Throws<InvalidDataException>(() => workspace.Plan(
             new HostManagerComputeScoringCycleResult(10, null, null),
-            CreateProcessFacts(),
-            new HostManagerMemorySourceStamp(7, 20),
-            2_000,
-            80,
-            true));
-
-        using var generationWorkspace = new HostManagerMemoryModeWorkspace(in configuration);
-        var scoring = CreateScoring(includeGpu: false) with { SchedulingGeneration = 11 };
-        Assert.Throws<InvalidDataException>(() => generationWorkspace.Plan(
-            scoring,
-            CreateProcessFacts(),
-            new HostManagerMemorySourceStamp(7, 20),
-            2_000,
-            80,
-            true));
+            CreateProcessFacts(), 2_000, true));
     }
 
     [Fact]
@@ -112,16 +94,14 @@ public sealed class HostManagerMemoryModeWorkspaceTests
                 score: 0,
                 memberCount: 2));
         var scoring = new HostManagerComputeScoringCycleResult(
-            SchedulingGeneration: 10,
+            RoundNumber: 10,
             Cpu: CreateCpuDomain(cpu),
             Gpu: null);
 
         var result = workspace.Plan(
             scoring,
             CreateProcessFactsFor(("software-mixed", 10), ("software-mixed", 81)),
-            new HostManagerMemorySourceStamp(7, 20),
             memoryFreeRatioUnits: 500,
-            snapshotGeneration: 80,
             allowUnrestricted: true);
 
         var desired = Assert.Single(result.Software);
@@ -134,36 +114,19 @@ public sealed class HostManagerMemoryModeWorkspaceTests
     }
 
     [Fact]
-    public void PlanPartitionsCommittedGenerationByWorkspaceIdentity()
+    public void PlanCanRepeatTheSameRoundAndRecomputePressure()
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerMemoryModeWorkspace(in configuration);
-        var processFacts = CreateProcessFacts();
-
-        var first = workspace.Plan(
-            CreateScoring(includeGpu: false),
-            processFacts,
-            new HostManagerMemorySourceStamp(41, 44),
-            2_000,
-            80,
-            false);
-        var second = workspace.Plan(
-            WithSchedulingGeneration(CreateScoring(includeGpu: false), 11),
-            processFacts,
-            new HostManagerMemorySourceStamp(45, 1),
-            2_000,
-            81,
-            false);
-
-        Assert.Equal(new HostManagerMemorySourceStamp(41, 44), first.MemorySource);
-        Assert.Equal(new HostManagerMemorySourceStamp(45, 1), second.MemorySource);
-        Assert.Throws<InvalidOperationException>(() => workspace.Plan(
-            WithSchedulingGeneration(CreateScoring(includeGpu: false), 12),
-            processFacts,
-            new HostManagerMemorySourceStamp(41, 100),
-            2_000,
-            82,
-            false));
+        var scoring = CreateScoring(includeGpu: false);
+        var facts = CreateProcessFacts();
+        var first = workspace.Plan(scoring, facts, 2_000, false);
+        var repeated = workspace.Plan(scoring, facts, 2_000, false);
+        Assert.Equal(first.RoundNumber, repeated.RoundNumber);
+        Assert.Equal(first.Software.ToArray(), repeated.Software.ToArray());
+        var changed = workspace.Plan(scoring, facts, 8_000, false);
+        Assert.Equal(first.RoundNumber, changed.RoundNumber);
+        Assert.All(changed.Software, row => Assert.Equal(NativeMemoryMode.Normal, row.Mode));
     }
 
     [Fact]
@@ -186,7 +149,6 @@ public sealed class HostManagerMemoryModeWorkspaceTests
     }
 
     [Theory]
-    [InlineData("inventory")]
     [InlineData("process")]
     [InlineData("start")]
     [InlineData("software")]
@@ -200,10 +162,6 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         var process = cpu.Scores[0];
         var changed = changedField switch
         {
-            "inventory" => cpu with
-            {
-                SourceIdentity = cpu.SourceIdentity with { InventoryGeneration = 21 }
-            },
             "process" => cpu with { Scores = cpu.Scores.SetItem(0, process with { ProcessId = 999 }) },
             "start" => cpu with { Scores = cpu.Scores.SetItem(0, process with { ProcessStartKey = 999 }) },
             "software" => cpu with { Scores = cpu.Scores.SetItem(0, process with { SoftwareKey = LowKey }) },
@@ -212,8 +170,7 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         };
 
         Assert.Throws<InvalidDataException>(() => workspace.Plan(
-            scoring with { Cpu = changed }, CreateProcessFacts(),
-            new HostManagerMemorySourceStamp(7, 20), 2_000, 80, true));
+            scoring with { Cpu = changed }, CreateProcessFacts(), 2_000, true));
     }
 
     private static NativeMemoryModeConfiguration CreateConfiguration()
@@ -240,9 +197,6 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         HostManagerComputeScoreDomainSnapshot? gpu = includeGpu
             ? new(
                 generation,
-                30,
-                40,
-                50,
                 ImmutableArray.Create(
                     SoftwareScore(NativeComputeScoringOutputKind.SoftwareGpu, HighKey, 100, 0),
                     SoftwareScore(NativeComputeScoringOutputKind.SoftwareGpu, LowKey, 100, 100)))
@@ -255,28 +209,7 @@ public sealed class HostManagerMemoryModeWorkspaceTests
 
     private static HostManagerComputeScoreDomainSnapshot CreateCpuDomain(
         ImmutableArray<HostManagerComputeScore> scores)
-    {
-        var cpu = new HostManagerComputeScoreDomainSnapshot(10, 91, 0, 0, scores);
-        return cpu with { SourceIdentity = cpu.SourceIdentity with { InventoryGeneration = 20 } };
-    }
-
-    private static HostManagerComputeScoringCycleResult WithSchedulingGeneration(
-        HostManagerComputeScoringCycleResult source,
-        ulong generation)
-    {
-        var cpu = source.Cpu!;
-        return source with
-        {
-            SchedulingGeneration = generation,
-            Cpu = cpu with
-            {
-                SchedulingGeneration = generation,
-                Scores = cpu.Scores
-                    .Select(row => row with { SchedulingGeneration = generation })
-                    .ToImmutableArray()
-            }
-        };
-    }
+        => new(10, scores);
 
     private static HostManagerComputeScore SoftwareScore(
         NativeComputeScoringOutputKind kind,
@@ -375,7 +308,7 @@ public sealed class HostManagerMemoryModeWorkspaceTests
             baseScore,
             SchedulingProcessMetricMask.CpuUsage,
             CpuUsagePercent: 1,
-            MemoryUsagePercent: 0,
+            MemoryUsedBytes: 0,
             SourceGeneration: 20,
             Gpus: []);
 

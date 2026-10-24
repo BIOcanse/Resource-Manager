@@ -20,7 +20,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private readonly IComputeScratch scratch;
     private ImmutableArray<SoftwareBaseScore> softwareBaseScores = [];
     private double softwareBaseMean;
-    private readonly ulong configurationFingerprint;
     private bool disposed;
 
     internal HostManagerComputeScoringWorkspace(
@@ -31,7 +30,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(createScratch);
         CpuScoring = cpuScoring;
         var weights = cpuScoring.CoreWeights.Cores.Select(static core => core.ReferenceWeight).ToArray();
-        configurationFingerprint = ComputeConfigurationFingerprint(in configuration, weights);
         cpuCoreIndexes = cpuScoring.CoreWeights.Cores.Select((core, index) => (core.PhysicalCoreId, Index: checked((uint)index)))
             .ToFrozenDictionary(static core => core.PhysicalCoreId, static core => core.Index, StringComparer.OrdinalIgnoreCase);
         cpuSession = new NativeComputeScoringSession(in configuration, weights);
@@ -75,7 +73,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     internal CompiledCpuScoringPlan CpuScoring { get; }
 
     internal HostManagerComputeScoringCycleResult? Score(
-        ulong schedulingGeneration,
+        ulong roundNumber,
         SchedulingProcessFactSnapshot processFacts,
         SchedulingGpuInventorySnapshot gpuInventory,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
@@ -88,7 +86,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(gpuInventory);
         ArgumentNullException.ThrowIfNull(runtimeFacts);
-        ArgumentOutOfRangeException.ThrowIfZero(schedulingGeneration);
+        ArgumentOutOfRangeException.ThrowIfZero(roundNumber);
         if (!processFacts.IsInventoryCurrentComplete())
         {
             return null;
@@ -122,7 +120,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
 
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
-        var result = ScoreCore(view, schedulingGeneration, processFacts, gpuInventory,
+        var result = ScoreCore(view, roundNumber, processFacts, gpuInventory,
             runtimeFacts, cpuResidency, welfare, scoreCpu, scoreGpu);
         lease.Complete();
         return result;
@@ -130,7 +128,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
 
     private HostManagerComputeScoringCycleResult? ScoreCore(
         ComputeScratchView scratchView,
-        ulong schedulingGeneration,
+        ulong roundNumber,
         SchedulingProcessFactSnapshot processFacts,
         SchedulingGpuInventorySnapshot gpuInventory,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
@@ -147,32 +145,15 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             return null;
         }
 
-        var cpuSourceIdentity = cpuProjection is not { } cpuSource
-            ? default
-            : CreateScoreSourceIdentity(
-                processFacts,
-                SchedulingProcessMetricMask.CpuUsage,
-                welfare,
-                cpuSource.Source == HostManagerCpuOccupancySource.CoreResidency
-                    ? cpuResidency
-                    : null);
-        var gpuSourceIdentity = gpuFacts is null
-            ? default
-            : CreateScoreSourceIdentity(
-                processFacts,
-                SchedulingProcessMetricMask.GpuUsage,
-                welfare);
-
         var cpuResult = cpuFacts is null
             ? null
             : ScoreEnvelope(
                 scratchView,
                 cpuSession,
-                schedulingGeneration,
+                roundNumber,
                 cpuFacts,
                 gpuInventory,
                 ProjectRuntimeFacts(cpuFacts, runtimeFacts),
-                cpuSourceIdentity,
                 cpuDomain: true,
                 welfare);
         var gpuResult = gpuFacts is null
@@ -180,11 +161,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             : ScoreEnvelope(
                 scratchView,
                 gpuSession,
-                schedulingGeneration,
+                roundNumber,
                 gpuFacts,
                 gpuInventory,
                 ProjectRuntimeFacts(gpuFacts, runtimeFacts),
-                gpuSourceIdentity,
                 cpuDomain: false,
                 welfare);
         if (cpuResult is null && gpuResult is null) return null;
@@ -199,7 +179,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 "The CPU and GPU scoring domains produced different welfare snapshots.");
         }
         return new HostManagerComputeScoringCycleResult(
-            schedulingGeneration,
+            roundNumber,
             cpuResult?.Cpu,
             gpuResult?.Gpu)
         {
@@ -212,11 +192,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private HostManagerComputeScoringCycleResult? ScoreEnvelope(
         ComputeScratchView scratchView,
         NativeComputeScoringSession session,
-        ulong schedulingGeneration,
+        ulong roundNumber,
         SchedulingProcessFactSnapshot processFacts,
         SchedulingGpuInventorySnapshot gpuInventory,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
-        HostManagerComputeScoreSourceIdentity sourceIdentity,
         bool cpuDomain,
         HostManagerWelfareCapacityInput welfare)
     {
@@ -229,7 +208,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(gpuInventory);
         ArgumentNullException.ThrowIfNull(runtimeFacts);
-        ArgumentOutOfRangeException.ThrowIfZero(schedulingGeneration);
+        ArgumentOutOfRangeException.ThrowIfZero(roundNumber);
 
         if (!processFacts.IsInventoryCurrentComplete())
         {
@@ -242,23 +221,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         {
             return null;
         }
-        if (!sourceIdentity.IsWellFormed(gpuComplete))
-        {
-            throw new InvalidDataException(
-                "The compute scoring source identity is incomplete.");
-        }
-        SchedulingProcessDatasetObservation? gpuDataset = null;
-        if (gpuComplete)
-        {
-            if (!processFacts.TryGetCurrentDataset(
-                    SchedulingProcessMetricMask.GpuUsage,
-                    out var currentGpuDataset))
-            {
-                return null;
-            }
-            gpuDataset = currentGpuDataset;
-        }
-
         if (runtimeFacts.Count != processFacts.Processes.Count)
         {
             throw new InvalidDataException(
@@ -324,7 +286,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 TargetKey = targetKey,
                 SoftwareKey = softwareKey,
                 ProcessStartKey = process.ProcessStartKey,
-                SourceGeneration = sourceIdentity.MetricGeneration,
                 BaseImportance = process.BaseScore,
                 CpuPolicyMultiplier = cpuComplete
                     ? runtime.CpuPolicyMultiplier
@@ -353,10 +314,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                     continue;
                 }
                 if (gpuFact.GpuIndex != adapter.Index
-                    || gpuFact.UsageSourceGeneration !=
-                        gpuDataset!.SourceGeneration
-                    || gpuFact.UsageTopologyGeneration !=
-                        gpuDataset.TopologyGeneration
                     || !gpuFact.ValidMetricMask.HasFlag(
                         SchedulingProcessMetricMask.GpuUsage))
                 {
@@ -371,7 +328,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                     TargetKey = targetKey,
                     SoftwareKey = softwareKey,
                     ProcessStartKey = process.ProcessStartKey,
-                    SourceGeneration = gpuDataset!.SourceGeneration,
                     AdapterKey = adapter.AdapterKey,
                     GpuPolicyMultiplier = runtime.GpuPolicyMultiplier,
                     GpuOccupancyPercent = gpuFact.UsagePercent,
@@ -402,15 +358,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         {
             envelopeFlags |= NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete;
         }
-        var validMask = NativeComputeScoringEnvelopeValidity.ProcessGeneration |
-            NativeComputeScoringEnvelopeValidity.ProcessObservedAt |
-            NativeComputeScoringEnvelopeValidity.WelfareCapacity;
-        if (gpuComplete)
-        {
-            validMask |= NativeComputeScoringEnvelopeValidity.GpuGeneration |
-                NativeComputeScoringEnvelopeValidity.GpuObservedAt |
-                NativeComputeScoringEnvelopeValidity.GpuTopology;
-        }
+        var validMask = NativeComputeScoringEnvelopeValidity.WelfareCapacity;
 
         var envelope = new NativeComputeScoringGenerationEnvelope
         {
@@ -419,17 +367,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             ProcessInputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringProcessInput>(),
             GpuInputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringGpuInput>(),
             OutputStructSize = NativeComputeScoringSession.SizeOf<NativeComputeScoringOutput>(),
-            ConfigurationGeneration = ConfigurationGeneration,
-            SchedulingGeneration = schedulingGeneration,
-            ProcessSourceGeneration = sourceIdentity.MetricGeneration,
-            GpuSourceGeneration = gpuComplete ? gpuDataset!.SourceGeneration : 0,
-            GpuTopologyGeneration = gpuComplete ? gpuDataset!.TopologyGeneration : 0,
-            GpuTopologyFingerprint = gpuComplete ? gpuDataset!.TopologyFingerprint : 0,
-            ProcessObservedAtMilliseconds = ToUnixTimeMilliseconds(
-                sourceIdentity.MetricObservedAtUtcTicks),
-            GpuObservedAtMilliseconds = gpuComplete
-                ? ToUnixTimeMilliseconds(gpuDataset!.ObservedAtUtcTicks)
-                : 0,
+            RoundNumber = roundNumber,
             ValidMask = validMask,
             Flags = envelopeFlags,
             ProcessCount = checked((uint)processCount),
@@ -469,8 +407,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             outputs,
             nativeSnapshot,
             cpuComplete,
-            gpuComplete,
-            sourceIdentity);
+            gpuComplete);
     }
 
     /// <summary>
@@ -576,7 +513,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             {
                 ValidMetricMask = metric,
                 CpuUsagePercent = 0,
-                MemoryUsagePercent = 0,
+                MemoryUsedBytes = 0,
                 Gpus = process.Gpus
                         .Where(static gpu => gpu.ValidMetricMask.HasFlag(
                             SchedulingProcessMetricMask.GpuUsage))
@@ -726,15 +663,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private static bool IsValidPolicyMultiplier(double value)
         => double.IsFinite(value) && value >= 0;
 
-    private static long ToUnixTimeMilliseconds(long utcTicks)
-    {
-        if (utcTicks < DateTimeOffset.UnixEpoch.UtcTicks)
-        {
-            throw new InvalidDataException("The compute scoring observation time predates the Unix epoch.");
-        }
-        return new DateTimeOffset(utcTicks, TimeSpan.Zero).ToUnixTimeMilliseconds();
-    }
-
     private static void ValidateNativeSnapshot(
         NativeComputeScoringSnapshot snapshot,
         NativeComputeScoringGenerationEnvelope envelope,
@@ -749,12 +677,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 : NativeComputeScoringSnapshotFlags.None);
         if (snapshot.AbiVersion != NativeComputeScoringAbi.Version
             || snapshot.StructSize != NativeComputeScoringSession.SizeOf<NativeComputeScoringSnapshot>()
-            || snapshot.ConfigurationGeneration != envelope.ConfigurationGeneration
-            || snapshot.SchedulingGeneration != envelope.SchedulingGeneration
-            || snapshot.ProcessSourceGeneration != envelope.ProcessSourceGeneration
-            || snapshot.GpuSourceGeneration != (gpuComplete ? envelope.GpuSourceGeneration : 0)
-            || snapshot.GpuTopologyGeneration != (gpuComplete ? envelope.GpuTopologyGeneration : 0)
-            || snapshot.GpuTopologyFingerprint != (gpuComplete ? envelope.GpuTopologyFingerprint : 0)
             || snapshot.Flags != expectedFlags
             || snapshot.ProcessInputCount != envelope.ProcessCount
             || snapshot.GpuInputCount != envelope.GpuRowCount
@@ -808,8 +730,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         ReadOnlySpan<NativeComputeScoringOutput> outputs,
         NativeComputeScoringSnapshot snapshot,
         bool cpuComplete,
-        bool gpuComplete,
-        HostManagerComputeScoreSourceIdentity sourceIdentity)
+        bool gpuComplete)
     {
         var cpuCount = checked((int)(snapshot.ProcessCpuOutputCount + snapshot.SoftwareCpuOutputCount));
         var gpuCount = checked((int)(snapshot.ProcessGpuOutputCount + snapshot.SoftwareGpuOutputCount));
@@ -826,7 +747,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var outputCount = checked((int)snapshot.OutputCount);
         for (var index = 0; index < outputCount; index++)
         {
-            var row = ConvertOutput(outputs[index], snapshot.SchedulingGeneration);
+            var row = ConvertOutput(outputs[index]);
             switch (row.Kind)
             {
                 case NativeComputeScoringOutputKind.ProcessCpu:
@@ -865,25 +786,22 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         }
 
         return new HostManagerComputeScoringCycleResult(
-            snapshot.SchedulingGeneration,
+            snapshot.RoundNumber,
             cpu is null
                 ? null
                 : new HostManagerComputeScoreDomainSnapshot(
-                    snapshot.SchedulingGeneration,
-                    sourceIdentity,
+                    snapshot.RoundNumber,
                     cpu.MoveToImmutable()),
             gpu is null
                 ? null
                 : new HostManagerComputeScoreDomainSnapshot(
-                    snapshot.SchedulingGeneration,
-                    sourceIdentity,
+                    snapshot.RoundNumber,
                     gpu.MoveToImmutable()))
         {
             Memory = memory is null
                 ? null
                 : new HostManagerComputeScoreDomainSnapshot(
-                    snapshot.SchedulingGeneration,
-                    sourceIdentity,
+                    snapshot.RoundNumber,
                     memory.MoveToImmutable()),
             Welfare = new HostManagerWelfareScoreSnapshot(
                 snapshot.CpuFreeRatio,
@@ -905,195 +823,17 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         };
     }
 
-    private HostManagerComputeScoreSourceIdentity CreateScoreSourceIdentity(
-        SchedulingProcessFactSnapshot processFacts,
-        SchedulingProcessMetricMask metric,
-        HostManagerWelfareCapacityInput welfare,
-        CpuCoreResidencySnapshot? cpuResidency = null)
-    {
-        SchedulingProcessDatasetObservation? metricObservation = null;
-        if (cpuResidency is null && !processFacts.TryGetCurrentDataset(metric, out metricObservation))
-        {
-            throw new InvalidDataException(
-                $"The compute scoring metric {metric} has no current observation.");
-        }
-        var metricGeneration = cpuResidency is null ? metricObservation!.SourceGeneration : checked((ulong)cpuResidency.SessionGeneration);
-        var metricObservedAtUtcTicks = cpuResidency?.CapturedAt.UtcTicks ?? metricObservation!.ObservedAtUtcTicks;
-
-        ulong inventoryGeneration;
-        long inventoryObservedAtUtcTicks;
-        ulong attributionGeneration;
-        long attributionObservedAtUtcTicks;
-        ulong runtimeStateGeneration;
-        long runtimeStateObservedAtUtcTicks;
-
-        if (processFacts.HasSeparateFoundationPayloads)
-        {
-            if (!processFacts.TryGetCurrentFoundationDataset(
-                    SamplingDatasetIds.ProcessInventory,
-                    out var inventory)
-                || !processFacts.TryGetCurrentFoundationDataset(
-                    SamplingDatasetIds.ProcessAttribution,
-                    out var attribution)
-                || !processFacts.TryGetCurrentDataset(
-                    SchedulingProcessMetricMask.RuntimeState,
-                    out var runtimeState))
-            {
-                throw new InvalidDataException(
-                    "The compute scoring production snapshot is missing a current inventory, attribution, or runtime-state publication.");
-            }
-            if (inventory.SourceGeneration != processFacts.Generation
-                || inventory.ObservedAtUtcTicks != processFacts.ObservedAtUtcTicks)
-            {
-                throw new InvalidDataException(
-                    "The compute scoring production snapshot inventory does not match its composed process union.");
-            }
-
-            inventoryGeneration = inventory.SourceGeneration;
-            inventoryObservedAtUtcTicks = inventory.ObservedAtUtcTicks;
-            attributionGeneration = attribution.SourceGeneration;
-            attributionObservedAtUtcTicks = attribution.ObservedAtUtcTicks;
-            runtimeStateGeneration = runtimeState.SourceGeneration;
-            runtimeStateObservedAtUtcTicks = runtimeState.ObservedAtUtcTicks;
-        }
-        else
-        {
-            // Legacy fixtures predate separate foundation publications. Production snapshots
-            // always take the strict branch above.
-            inventoryGeneration = processFacts.Generation;
-            inventoryObservedAtUtcTicks = processFacts.ObservedAtUtcTicks;
-            attributionGeneration = processFacts.Generation;
-            attributionObservedAtUtcTicks = processFacts.ObservedAtUtcTicks;
-            if (processFacts.TryGetCurrentDataset(
-                    SchedulingProcessMetricMask.RuntimeState,
-                    out var runtimeState))
-            {
-                runtimeStateGeneration = runtimeState.SourceGeneration;
-                runtimeStateObservedAtUtcTicks = runtimeState.ObservedAtUtcTicks;
-            }
-            else
-            {
-                runtimeStateGeneration = processFacts.Generation;
-                runtimeStateObservedAtUtcTicks = processFacts.ObservedAtUtcTicks;
-            }
-        }
-
-        var gpuDomain = metric == SchedulingProcessMetricMask.GpuUsage;
-        var topologyGeneration = gpuDomain
-            ? metricObservation!.TopologyGeneration
-            : 0;
-        var topologyFingerprint = gpuDomain
-            ? metricObservation!.TopologyFingerprint
-            : 0;
-        var sourceFingerprint = ComputeSourceFingerprint(
-            gpuDomain ? 2UL : 1UL,
-            configurationFingerprint,
-            inventoryGeneration,
-            checked((ulong)inventoryObservedAtUtcTicks),
-            attributionGeneration,
-            checked((ulong)attributionObservedAtUtcTicks),
-            runtimeStateGeneration,
-            checked((ulong)runtimeStateObservedAtUtcTicks),
-            metricGeneration,
-            checked((ulong)metricObservedAtUtcTicks),
-            topologyGeneration,
-            topologyFingerprint,
-            unchecked((ulong)BitConverter.DoubleToInt64Bits(welfare.CpuFreeRatio)),
-            unchecked((ulong)BitConverter.DoubleToInt64Bits(welfare.GpuFreeRatio)),
-            unchecked((ulong)BitConverter.DoubleToInt64Bits(welfare.VramFreeRatio)),
-            unchecked((ulong)BitConverter.DoubleToInt64Bits(welfare.MemoryFreeRatio)),
-            welfare.EligibleProcessCount,
-            DoubleBits(softwareBaseMean),
-            welfare.PublicationFingerprint);
-        var result = new HostManagerComputeScoreSourceIdentity(
-            inventoryGeneration,
-            inventoryObservedAtUtcTicks,
-            attributionGeneration,
-            attributionObservedAtUtcTicks,
-            runtimeStateGeneration,
-            runtimeStateObservedAtUtcTicks,
-            metricGeneration,
-            metricObservedAtUtcTicks,
-            topologyGeneration,
-            topologyFingerprint,
-            sourceFingerprint);
-        if (!result.IsWellFormed(gpuDomain))
-        {
-            throw new InvalidDataException(
-                "The compute scoring source identity is not well formed.");
-        }
-        return result;
-    }
-
-    private static ulong ComputeConfigurationFingerprint(
-        in NativeComputeScoringConfiguration configuration,
-        ReadOnlySpan<double> coreWeights)
-    {
-        var fields = new ulong[
-            10 + (NativeComputeScoringAbi.RuntimeStateCount * 2) + coreWeights.Length];
-        var index = 0;
-        fields[index++] = configuration.AbiVersion;
-        fields[index++] = configuration.Generation;
-        fields[index++] = configuration.MaximumProcessCount;
-        fields[index++] = configuration.MaximumGpuRowCount;
-        fields[index++] = configuration.MaximumOutputCount;
-        fields[index++] = configuration.CpuCoreCount;
-        fields[index++] = DoubleBits(configuration.MaximumBaseImportance);
-        fields[index++] = DoubleBits(configuration.MaximumPolicyMultiplier);
-        fields[index++] = DoubleBits(configuration.CpuBaselineRatio);
-        fields[index++] = DoubleBits(configuration.WelfareUtilizationBaselinePercent);
-
-        var copy = configuration;
-        var source = &copy;
-        for (var state = 0; state < NativeComputeScoringAbi.RuntimeStateCount; state++)
-        {
-            fields[index++] = DoubleBits(source->CpuStateMultipliers[state]);
-        }
-        for (var state = 0; state < NativeComputeScoringAbi.RuntimeStateCount; state++)
-        {
-            fields[index++] = DoubleBits(source->GpuStateMultipliers[state]);
-        }
-        foreach (var coreWeight in coreWeights)
-        {
-            fields[index++] = DoubleBits(coreWeight);
-        }
-        return ComputeSourceFingerprint(fields);
-    }
-
-    private static ulong DoubleBits(double value)
-        => unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
-
     private static bool IsRatio(double value)
         => double.IsFinite(value) && value is >= 0 and <= 1;
 
-    private static ulong ComputeSourceFingerprint(
-        params ulong[] fields)
-    {
-        const ulong offsetBasis = 14695981039346656037UL;
-        const ulong prime = 1099511628211UL;
-        var hash = offsetBasis;
-        foreach (var field in fields)
-        {
-            var value = field;
-            for (var byteIndex = 0; byteIndex < sizeof(ulong); byteIndex++)
-            {
-                hash ^= (byte)value;
-                hash = unchecked(hash * prime);
-                value >>= 8;
-            }
-        }
-        return hash == 0 ? 1 : hash;
-    }
-
     private static HostManagerComputeScore ConvertOutput(
-        NativeComputeScoringOutput row,
-        ulong schedulingGeneration)
+        NativeComputeScoringOutput row)
     {
         var processOutput = row.Kind is NativeComputeScoringOutputKind.ProcessCpu
             or NativeComputeScoringOutputKind.ProcessGpu;
         var gpuOutput = row.Kind is NativeComputeScoringOutputKind.ProcessGpu
             or NativeComputeScoringOutputKind.SoftwareGpu;
-        var expectedValidity = NativeComputeScoringOutputValidity.SchedulingGeneration |
+        var expectedValidity = NativeComputeScoringOutputValidity.RoundNumber |
             NativeComputeScoringOutputValidity.SoftwareIdentity |
             NativeComputeScoringOutputValidity.Score |
             (processOutput
@@ -1104,7 +844,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 : NativeComputeScoringOutputValidity.None);
         if (row.StructSize != NativeComputeScoringSession.SizeOf<NativeComputeScoringOutput>()
             || row.ValidMask != expectedValidity
-            || row.SchedulingGeneration != schedulingGeneration
             || row.SoftwareKey == 0
             || !double.IsFinite(row.Score)
             || row.Score < 0
@@ -1140,7 +879,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
 
         return new HostManagerComputeScore(
             row.Kind,
-            row.SchedulingGeneration,
+            row.RoundNumber,
             row.TargetKey,
             row.SoftwareKey,
             checked((int)row.ProcessId),

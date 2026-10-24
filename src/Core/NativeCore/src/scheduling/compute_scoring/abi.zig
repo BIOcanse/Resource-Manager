@@ -28,20 +28,6 @@ pub export fn rm_compute_scoring_destroy(handle: ?*anyopaque) callconv(.c) void 
     session.destroy();
 }
 
-pub export fn rm_compute_scoring_reconfigure(
-    handle: ?*anyopaque,
-    config: ?*const protocol.Config,
-    weights: ?[*]const f64,
-    weight_count: u32,
-) callconv(.c) i32 {
-    const session: *session_module.Session = @ptrCast(@alignCast(
-        handle orelse return code(.invalid_argument),
-    ));
-    if (weight_count > 0 and weights == null) return code(.invalid_argument);
-    return code(session.reconfigure(config orelse return code(.invalid_argument),
-        if (weights) |values| values[0..weight_count] else &.{}));
-}
-
 pub export fn rm_compute_scoring_weighted_cpu_use(
     handle: ?*anyopaque,
     rows: ?[*]const protocol.CpuCoreInput,
@@ -124,10 +110,10 @@ comptime {
         @offsetOf(protocol.Capacity, "reserved0") != 52 or
         @offsetOf(protocol.Capacity, "reserved") != 56) @compileError("compute scoring scratch capacity offsets changed");
     if (@sizeOf(protocol.Capacity) != 72) @compileError("compute scoring Capacity export size changed");
-    if (@sizeOf(protocol.GenerationEnvelope) != 168) @compileError("compute scoring GenerationEnvelope export size changed");
-    if (@sizeOf(protocol.ProcessInput) != 96) @compileError("compute scoring ProcessInput export size changed");
-    if (@sizeOf(protocol.GpuInput) != 96) @compileError("compute scoring GpuInput export size changed");
+    if (@sizeOf(protocol.GenerationEnvelope) != 112) @compileError("compute scoring GenerationEnvelope export size changed");
+    if (@sizeOf(protocol.ProcessInput) != 88) @compileError("compute scoring ProcessInput export size changed");
+    if (@sizeOf(protocol.GpuInput) != 88) @compileError("compute scoring GpuInput export size changed");
     if (@sizeOf(protocol.ScoreOutput) != 96) @compileError("compute scoring ScoreOutput export size changed");
-    if (@sizeOf(protocol.Snapshot) != 224) @compileError("compute scoring Snapshot export size changed");
+    if (@sizeOf(protocol.Snapshot) != 184) @compileError("compute scoring Snapshot export size changed");
     if (@sizeOf(protocol.CpuCoreInput) != 16) @compileError("compute scoring CpuCoreInput export size changed");
 }

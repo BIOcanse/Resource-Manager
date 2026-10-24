@@ -46,7 +46,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void RealScratchReallocatesWithoutResettingNativeGenerationOrReturnedScores()
+    public void RealScratchReallocatesAndRecomputesTheSameRoundWithoutChangingReturnedScores()
     {
         using var owner = new ResourceManagerLedgerOwner();
         ResourceManagerLedgerOwner.ComputeScratch? resource = null;
@@ -69,9 +69,8 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(1UL, owner.Tick().Released);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         Assert.Equal<ResourceManager.App.Infrastructure.Optimization.HostManagerComputeScore>(saved, first.Cpu.Scores);
-        Assert.Throws<InvalidOperationException>(() => workspace.Score(1, facts, inventory,
-            CreateRuntimeFacts(), CreateCpuResidency())); // Same native session still rejects stale generation.
-        var second = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
+        var second = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
+        Assert.Equal(1UL, second!.RoundNumber);
         Assert.Equal(uid, resource.Uid);
         using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
         Assert.Equal(first.Cpu.Scores.Select(value => value.Score), second!.Cpu!.Scores.Select(value => value.Score));

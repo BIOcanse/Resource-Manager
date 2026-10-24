@@ -126,7 +126,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void Score_AddsWelfareAndBindsCapacityValuesIntoBothSourceFingerprints()
+    public void Score_RecomputesWelfareWhenCapacityChangesInTheSameRound()
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
@@ -142,7 +142,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             inventory,
             CreateRuntimeFacts(), CreateCpuResidency(), firstCapacity);
         var second = workspace.Score(
-            2,
+            1,
             facts,
             inventory,
             CreateRuntimeFacts(), CreateCpuResidency(), secondCapacity);
@@ -158,34 +158,28 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             score.Kind == NativeComputeScoringOutputKind.SoftwareCpu)).Score, precision: 10);
         Assert.Equal(50 + cpuBonus, Assert.Single(first.Memory!.Scores).Score, precision: 10);
         Assert.Equal(110, Assert.Single(second.Memory!.Scores).Score);
-        Assert.NotEqual(first.Cpu.SourceFingerprint, second.Cpu.SourceFingerprint);
-        Assert.NotEqual(first.Gpu!.SourceFingerprint, second.Gpu!.SourceFingerprint);
     }
 
     [Fact]
-    public void Score_BindsChangedSoftwareBaseMeanIntoSourceFingerprint()
+    public void Score_RecomputesChangedSoftwareBaseMean()
     {
-        var firstConfiguration = CreateConfiguration();
-        var secondConfiguration = CreateConfiguration();
+        var configuration = CreateConfiguration();
         var cpuScoring = HostManagerTestPlanFactory.CreateCpuScoring(
             HostManagerTestPlanFactory.CreateCpuTopology(1),
-            firstConfiguration.CpuBaselineRatio);
-        using var firstWorkspace = new HostManagerComputeScoringWorkspace(
-            in firstConfiguration,
-            cpuScoring, CreateScratchFixture);
-        using var secondWorkspace = new HostManagerComputeScoringWorkspace(
-            in secondConfiguration,
+            configuration.CpuBaselineRatio);
+        using var workspace = new HostManagerComputeScoringWorkspace(
+            in configuration,
             cpuScoring, CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, firstMemoryPercent: 10);
         var capacity = new HostManagerWelfareCapacityInput(0.5, 0.5, 0.5, 0.5, 2);
 
-        var first = firstWorkspace.Score(
+        var first = workspace.Score(
             1,
             facts,
             inventory,
             CreateRuntimeFacts(), CreateCpuResidency(), capacity);
-        var second = secondWorkspace.Score(
+        var second = workspace.Score(
             1,
             facts with { SoftwareBaseScores = [new("software", 30)] },
             inventory,
@@ -193,12 +187,10 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
         Assert.Equal(1.875D, first!.Welfare.Share);
         Assert.Equal(0.9375D, second!.Welfare.Share);
-        Assert.NotEqual(first.Cpu!.SourceFingerprint, second.Cpu!.SourceFingerprint);
-        Assert.NotEqual(first.Gpu!.SourceFingerprint, second.Gpu!.SourceFingerprint);
     }
 
     [Fact]
-    public void Score_BindsNewWelfarePublicationEvenWhenItsValueIsUnchanged()
+    public void Score_RecomputesTheSameRoundWithIdenticalResults()
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(
@@ -209,42 +201,19 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, firstMemoryPercent: 10);
         var firstCapacity = new HostManagerWelfareCapacityInput(
-            0.5, 0.5, 0.5, 0.5, 2, PublicationFingerprint: 101);
-        var secondCapacity = firstCapacity with { PublicationFingerprint = 102 };
+            0.5, 0.5, 0.5, 0.5, 2);
+        var secondCapacity = firstCapacity;
 
         var first = workspace.Score(
             1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), firstCapacity);
         var second = workspace.Score(
-            2, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), secondCapacity);
+            1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), secondCapacity);
 
-        Assert.Equal(first!.Cpu!.Scores.Select(static score => score.Score),
-            second!.Cpu!.Scores.Select(static score => score.Score));
-        Assert.Equal(first.Gpu!.Scores.Select(static score => score.Score),
-            second.Gpu!.Scores.Select(static score => score.Score));
-        Assert.NotEqual(first.Cpu.SourceFingerprint, second.Cpu.SourceFingerprint);
-        Assert.NotEqual(first.Gpu.SourceFingerprint, second.Gpu.SourceFingerprint);
-    }
-
-    [Fact]
-    public void Score_BindsWelfareCutoffEvenWhenCurrentScoresAreEqual()
-    {
-        var firstConfig = CreateConfiguration();
-        var secondConfig = firstConfig;
-        secondConfig.WelfareUtilizationBaselinePercent = 100;
-        var plan = HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1));
-        using var firstWorkspace = new HostManagerComputeScoringWorkspace(in firstConfig, plan, CreateScratchFixture);
-        using var secondWorkspace = new HostManagerComputeScoringWorkspace(in secondConfig, plan, CreateScratchFixture);
-        var inventory = CreateInventory();
-        var facts = CreateFacts(inventory, 10);
-        var capacity = new HostManagerWelfareCapacityInput(0, 0, 0, 0, 2);
-
-        var first = firstWorkspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), capacity)!;
-        var second = secondWorkspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), capacity)!;
-
-        Assert.Equal(first.Cpu!.Scores.Select(static row => row.Score), second.Cpu!.Scores.Select(static row => row.Score));
-        Assert.Equal(Assert.Single(first.Memory!.Scores).Score, Assert.Single(second.Memory!.Scores).Score);
-        Assert.NotEqual(first.Cpu.SourceFingerprint, second.Cpu.SourceFingerprint);
-        Assert.NotEqual(first.Memory.SourceFingerprint, second.Memory.SourceFingerprint);
+        Assert.Equal(1UL, second!.RoundNumber);
+        Assert.Equal<HostManagerComputeScore>(first!.Cpu!.Scores, second.Cpu!.Scores);
+        Assert.Equal<HostManagerComputeScore>(first.Gpu!.Scores, second.Gpu!.Scores);
+        Assert.Equal<HostManagerComputeScore>(first.Memory!.Scores, second.Memory!.Scores);
+        Assert.Equal(first.Welfare, second.Welfare);
     }
 
     [Fact]
@@ -306,7 +275,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void Score_ComposesIndependentProductionPublicationsIntoCompleteFingerprint()
+    public void Score_ComposesIndependentProductionPublicationsIntoOneRound()
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
@@ -374,18 +343,8 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             CreateRuntimeFacts(), CreateCpuResidency());
 
         var cpu = Assert.IsType<HostManagerComputeScoreDomainSnapshot>(result?.Cpu);
-        Assert.Equal(source.Generation, cpu.SourceIdentity.InventoryGeneration);
-        Assert.Equal(attributionGeneration, cpu.SourceIdentity.AttributionGeneration);
-        Assert.Equal(runtimeGeneration, cpu.SourceIdentity.RuntimeStateGeneration);
-        Assert.Equal(71UL, cpu.SourceIdentity.MetricGeneration);
-        Assert.Equal(CreateCpuResidency().CapturedAt.UtcTicks, cpu.SourceIdentity.MetricObservedAtUtcTicks);
-        Assert.NotEqual(
-            cpu.SourceIdentity.InventoryGeneration,
-            runtimeInventoryGeneration);
-        Assert.NotEqual(
-            cpu.SourceIdentity.InventoryGeneration,
-            cpuInventoryGeneration);
-        Assert.NotEqual(0UL, cpu.SourceIdentity.SourceFingerprint);
+        Assert.Equal(1UL, cpu.RoundNumber);
+        Assert.All(cpu.Scores, static score => Assert.Equal(1UL, score.RoundNumber));
         Assert.Equal(2, cpu.Scores.Count(static score =>
             score.Kind == NativeComputeScoringOutputKind.ProcessCpu));
     }
@@ -473,44 +432,6 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Null(result!.Gpu);
     }
 
-    [Fact]
-    public void ShadowMergeDoesNotCombineDomainsFromDifferentAttempts()
-    {
-        var configuration = CreateConfiguration();
-        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
-        var inventory = CreateInventory();
-        var fullFacts = CreateFacts(inventory, firstMemoryPercent: 10);
-        var full = workspace.Score(1, fullFacts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
-        Assert.NotNull(full?.Cpu);
-        Assert.NotNull(full?.Gpu);
-
-        var nextGeneration = fullFacts.Generation + 1;
-        var cpuOnlyFacts = fullFacts with
-        {
-            CurrentMetricMask = SchedulingProcessMetricMask.CpuUsage,
-            Processes = fullFacts.Processes.Select(process => process with
-            {
-                ValidMetricMask = SchedulingProcessMetricMask.CpuUsage,
-                SourceGeneration = nextGeneration,
-                Gpus = []
-            }).ToArray(),
-            Generation = nextGeneration,
-            GpuSourceGeneration = 0,
-            GpuObservedAtUtcTicks = 0,
-            GpuTopologyGeneration = 0,
-            GpuTopologyFingerprint = 0
-        };
-        var cpuOnly = workspace.Score(2, cpuOnlyFacts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
-        Assert.NotNull(cpuOnly?.Cpu);
-        Assert.Null(cpuOnly?.Gpu);
-
-        var shadow = HostManagerComputeScoringShadowSnapshot.Empty.Merge(full!);
-        shadow = shadow.Merge(cpuOnly!);
-        Assert.Equal(2UL, shadow.LastAttemptGeneration);
-        Assert.Equal(2UL, shadow.Cpu?.SchedulingGeneration);
-        Assert.Null(shadow.Gpu);
-    }
 
     private static ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot CreateCpuResidency()
         => CpuCoreResidencyTestValues.Create(71, new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
@@ -632,12 +553,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
                         101,
                         now,
                         101,
-                        now,
-                        memoryUsageDependency:
-                            TestSystemMemoryUsageDependency.Create(
-                                sourceGeneration: 101,
-                                observedAtUtcTicks: now,
-                                committedGeneration: 101)),
+                        now),
                 [SchedulingProcessMetricMask.GpuUsage] =
                     SchedulingProcessDatasetObservation.CreateCurrent(
                         SchedulingProcessMetricMask.GpuUsage,

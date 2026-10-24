@@ -33,7 +33,6 @@ public sealed partial class NativeComputeScoringSessionTests
             var input = CreateProcess(1, 10, 100, 1, 50);
             var outputs = new NativeComputeScoringOutput[4];
             var envelope = CreateEnvelope(sampleGeneration, 1, 0, 0, outputs.Length, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-            envelope.ConfigurationGeneration = generation;
             var snapshot = default(NativeComputeScoringSnapshot);
             Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [input],
                 ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));

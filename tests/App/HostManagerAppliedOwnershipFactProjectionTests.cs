@@ -94,14 +94,13 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
     }
 
     [Fact]
-    public void StandaloneAdapterUsesCurrentOwnershipAndSharedLedgerRevision()
+    public void StandaloneAdapterUsesCurrentOwnership()
     {
         var adapter = CreateAdapterRecord();
 
         var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
             SoftwareKey,
             in adapter,
-            LedgerRevision,
             sourceIndex: 7);
 
         Assert.Equal(
@@ -120,7 +119,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         Assert.Equal<ulong>(0, row.ProcessStartKey);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Optimize, row.AppliedCpuGrade);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Extreme, row.AppliedGpuGrade);
-        Assert.Equal(LedgerRevision, row.AppliedEpoch);
         Assert.Equal<uint>(7, row.SourceIndex);
     }
 
@@ -137,7 +135,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         var row = HostManagerSmartCoordinator.CreateNativeStandaloneProcessRestoreFact(
             identity,
             in process,
-            LedgerRevision,
             sourceIndex: 8);
 
         Assert.Equal(
@@ -156,7 +153,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         Assert.Equal(NativeSmartCoordinatorProcessGrade.Level2, row.AppliedProcessGrade);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedCpuGrade);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedGpuGrade);
-        Assert.Equal(LedgerRevision, row.AppliedEpoch);
         Assert.Equal<uint>(8, row.SourceIndex);
     }
 
@@ -177,13 +173,11 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
             SoftwareKey,
             in indexed,
-            index.LedgerRevision,
             sourceIndex: 3);
 
         Assert.Equal(NativeSmartCoordinatorInputFlags.OwnsCpuGrade, row.Flags);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Optimize, row.AppliedCpuGrade);
         Assert.Equal(NativeSmartCoordinatorAdapterGrade.Normal, row.AppliedGpuGrade);
-        Assert.Equal(LedgerRevision, row.AppliedEpoch);
     }
 
     [Fact]
@@ -219,7 +213,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
             SoftwareKey,
             in indexed,
-            index.LedgerRevision,
             sourceIndex: 9);
 
         Assert.Equal(
@@ -243,7 +236,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         var row = HostManagerSmartCoordinator.CreateNativeStandaloneAdapterFact(
             SoftwareKey,
             in indexed,
-            index.LedgerRevision,
             sourceIndex: 10);
 
         Assert.Equal(NativeSmartCoordinatorInputFlags.OwnsGpuGrade, row.Flags);

@@ -5,8 +5,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 internal sealed record HostManagerDesiredMemoryMode(
     ulong SoftwareKey,
-    ulong SchedulingGeneration,
-    ulong SnapshotGeneration,
+    ulong RoundNumber,
     double CpuScore,
     uint Rank,
     NativeMemoryMode Mode,
@@ -14,18 +13,9 @@ internal sealed record HostManagerDesiredMemoryMode(
     double BaseScore = 0,
     bool BaseScoreClamped = false);
 
-internal readonly record struct HostManagerMemorySourceStamp(
-    ulong WorkspaceIdentity,
-    ulong CommittedGeneration)
-{
-    internal bool IsValid => WorkspaceIdentity != 0 && CommittedGeneration != 0;
-}
-
 internal sealed record HostManagerMemoryModeDesiredSnapshot(
     ulong ConfigurationGeneration,
-    ulong SchedulingGeneration,
-    HostManagerMemorySourceStamp MemorySource,
-    ulong SnapshotGeneration,
+    ulong RoundNumber,
     bool UnrestrictedAllowed,
     uint OptimizeCount,
     uint StrongestCount,

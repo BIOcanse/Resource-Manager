@@ -180,13 +180,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var updated = fixture.Coordinator.SchedulingAuthority.Compute!;
             Assert.Equal(mean, updated.Welfare.SoftwareBaseMean);
             Assert.Equal(mean * 0.0625, updated.Welfare.Share);
-            Assert.NotEqual(before.Cpu!.SourceFingerprint, updated.Cpu!.SourceFingerprint);
-            Assert.NotEqual(before.Gpu!.SourceFingerprint, updated.Gpu!.SourceFingerprint);
-            Assert.Equal(before.Cpu.SourceIdentity.MetricGeneration, updated.Cpu.SourceIdentity.MetricGeneration);
-            Assert.Equal(before.Gpu.SourceIdentity.MetricGeneration, updated.Gpu.SourceIdentity.MetricGeneration);
-            var cpu = Assert.Single(updated.Cpu.Scores, static row =>
+            Assert.Equal(before.RoundNumber + 1, updated.RoundNumber);
+            var cpu = Assert.Single(updated.Cpu!.Scores, static row =>
                 row.Kind == NativeComputeScoringOutputKind.ProcessCpu);
-            var gpu = Assert.Single(updated.Gpu.Scores, static row =>
+            var gpu = Assert.Single(updated.Gpu!.Scores, static row =>
                 row.Kind == NativeComputeScoringOutputKind.ProcessGpu);
             Assert.Equal(mean * (1 - 50D / 70), updated.Welfare.CpuBonus, 10);
             Assert.Equal(18 + updated.Welfare.CpuBonus, cpu.Score, 10);
@@ -197,10 +194,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             AssertAdapterScores(fixture, cpu.Score, gpu.Score);
 
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            Assert.Equal(updated.Cpu.SourceFingerprint,
-                fixture.Coordinator.SchedulingAuthority.Compute!.Cpu!.SourceFingerprint);
-            Assert.Equal(updated.Gpu.SourceFingerprint,
-                fixture.Coordinator.SchedulingAuthority.Compute!.Gpu!.SourceFingerprint);
+            var repeated = fixture.Coordinator.SchedulingAuthority.Compute!;
+            Assert.Equal(updated.RoundNumber, repeated.RoundNumber);
+            Assert.Equal(cpu.Score, Assert.Single(repeated.Cpu!.Scores, static row =>
+                row.Kind == NativeComputeScoringOutputKind.ProcessCpu).Score);
+            Assert.Equal(gpu.Score, Assert.Single(repeated.Gpu!.Scores, static row =>
+                row.Kind == NativeComputeScoringOutputKind.ProcessGpu).Score);
             Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);
         }
     }
@@ -233,8 +232,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var first = GetProcessRow();
-        var firstFingerprint = fixture.Coordinator.SchedulingAuthority
-            .Compute!.Cpu!.SourceFingerprint;
+        var firstRoundNumber = fixture.Coordinator.SchedulingAuthority
+            .Compute!.RoundNumber;
         Assert.Equal(1U, first.ProcessPendingCount);
         Assert.NotEqual(
             NativeSmartCoordinatorProcessGrade.Normal,
@@ -242,25 +241,25 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var repeated = GetProcessRow();
-        var repeatedFingerprint = fixture.Coordinator.SchedulingAuthority
-            .Compute!.Cpu!.SourceFingerprint;
-        Assert.Equal(firstFingerprint, repeatedFingerprint);
+        var repeatedRoundNumber = fixture.Coordinator.SchedulingAuthority
+            .Compute!.RoundNumber;
+        Assert.Equal(firstRoundNumber, repeatedRoundNumber);
         Assert.Equal(1U, repeated.ProcessPendingCount);
 
         fixture.MetricSampler.PublishNextHostedCpuObservation();
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var republished = GetProcessRow();
-        var republishedFingerprint = fixture.Coordinator.SchedulingAuthority
-            .Compute!.Cpu!.SourceFingerprint;
-        Assert.NotEqual(firstFingerprint, republishedFingerprint);
+        var republishedRoundNumber = fixture.Coordinator.SchedulingAuthority
+            .Compute!.RoundNumber;
+        Assert.Equal(firstRoundNumber + 1, republishedRoundNumber);
         Assert.Equal(first.CpuScore, republished.CpuScore, 10);
         Assert.Equal(2U, republished.ProcessPendingCount);
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var reread = GetProcessRow();
         Assert.Equal(
-            republishedFingerprint,
-            fixture.Coordinator.SchedulingAuthority.Compute!.Cpu!.SourceFingerprint);
+            republishedRoundNumber,
+            fixture.Coordinator.SchedulingAuthority.Compute!.RoundNumber);
         Assert.Equal(2U, reread.ProcessPendingCount);
         Assert.Equal(0U, fixture.Workspace.Snapshot.InflightCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);

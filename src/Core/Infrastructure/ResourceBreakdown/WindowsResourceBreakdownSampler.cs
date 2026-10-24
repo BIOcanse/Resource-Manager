@@ -933,13 +933,6 @@ public sealed partial class WindowsResourceBreakdownSampler(
         {
             var generation = checked((ulong)Interlocked.Increment(
                 ref schedulingProcessGeneration));
-            var memoryDependency = hardwareSnapshot is not null
-                && SystemMemoryUsageDependency.TryCreate(
-                    hardwareSnapshot,
-                    DateTimeOffset.UtcNow,
-                    out var currentMemoryDependency)
-                ? currentMemoryDependency
-                : null;
             var gpuInventory = hardwareSnapshot?.GpuInventory
                 ?? new SchedulingGpuInventorySnapshot(
                     SamplingObservationStatus.NotRequested,
@@ -953,7 +946,6 @@ public sealed partial class WindowsResourceBreakdownSampler(
             schedulingSnapshot = CreateSchedulingSnapshot(
                 new SchedulingProcessFactRequest(
                     request.SchedulingMetricMask,
-                    memoryDependency,
                     gpuInventory),
                 processBatch,
                 processAttribution,

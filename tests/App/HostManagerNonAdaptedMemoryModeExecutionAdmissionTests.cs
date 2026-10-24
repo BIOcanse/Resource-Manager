@@ -12,7 +12,7 @@ namespace ResourceManager.App.Tests;
 
 public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
 {
-    private const ulong SchedulingGeneration = 20;
+    private const ulong RoundNumber = 20;
     private const ulong InventoryGeneration = 30;
     private const ulong CpuSourceGeneration = 31;
     private const ulong ProcessStartKey = 132_537_600_000_000_000;
@@ -31,9 +31,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             state.ProcessFacts);
 
         Assert.NotNull(admitted);
-        Assert.Equal(SchedulingGeneration, admitted.SchedulingGeneration);
-        Assert.Equal(InventoryGeneration, admitted.InventoryGeneration);
-        Assert.Equal(CpuSourceGeneration, admitted.CpuSourceGeneration);
+        Assert.Equal(RoundNumber, admitted.RoundNumber);
         Assert.Single(admitted.Processes);
         Assert.Same(state.Directive, admitted.Processes[0]);
     }
@@ -86,9 +84,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
                 inventoryOnly);
 
         Assert.NotNull(admitted);
-        Assert.Equal(SchedulingGeneration, admitted.SchedulingGeneration);
-        Assert.Equal(InventoryGeneration, admitted.InventoryGeneration);
-        Assert.Equal(0UL, admitted.CpuSourceGeneration);
+        Assert.Equal(RoundNumber, admitted.RoundNumber);
         Assert.Empty(admitted.Processes);
         var owner = CreateOwner(state.Directive, targetMemoryPriority: 3);
         Assert.Single(HostManagerNonAdaptedMemoryModeExecutionAdmission
@@ -132,45 +128,12 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
     }
 
     [Fact]
-    public void PlanOrProcessGenerationDrift_FailsClosed()
+    public void PlanBindingDriftFailsClosed()
     {
         var state = CreateState();
-
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerNonAdaptedMemoryModeExecutionAdmission.Admit(
-                state.Authority,
-                state.Projection,
-                state.Binding with { HostPlanEpoch = state.Binding.HostPlanEpoch + 1 },
-                state.ProcessFacts));
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerNonAdaptedMemoryModeExecutionAdmission.Admit(
-                state.Authority,
-                state.Projection with
-                {
-                    InventoryGeneration = InventoryGeneration + 1
-                },
-                state.Binding,
-                state.ProcessFacts));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ScoreInventoryOrPhysicalWindowDrift_FailsClosed(bool changePhysicalWindow)
-    {
-        var state = CreateState();
-        var compute = state.Authority.Compute!;
-        var cpu = compute.Cpu!;
-        var changed = cpu with
-        {
-            SourceIdentity = changePhysicalWindow
-                ? cpu.SourceIdentity with { MetricGeneration = CpuSourceGeneration + 1 }
-                : cpu.SourceIdentity with { InventoryGeneration = InventoryGeneration + 1 }
-        };
-
         Assert.Throws<InvalidDataException>(() => HostManagerNonAdaptedMemoryModeExecutionAdmission.Admit(
-            state.Authority with { Compute = compute with { Cpu = changed } },
-            state.Projection, state.Binding, state.ProcessFacts));
+            state.Authority, state.Projection,
+            state.Binding with { HostPlanEpoch = state.Binding.HostPlanEpoch + 1 }, state.ProcessFacts));
     }
 
     [Fact]
@@ -286,8 +249,8 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             decision.TransactionDirective.Action);
         Assert.Null(decision.TransactionDirective.TargetMemoryPriority);
         Assert.Equal(
-            state.Directive.SchedulingGeneration,
-            decision.TransactionDirective.SchedulingGeneration);
+            state.Directive.RoundNumber,
+            decision.TransactionDirective.RoundNumber);
         Assert.Equal(
             state.Directive.MemoryPolicyTargetKey,
             decision.TransactionDirective.MemoryPolicyTargetKey);
@@ -369,9 +332,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
         var state = CreateState();
         var owner = CreateOwner(state.Directive, targetMemoryPriority: 3);
         var batch = new HostManagerNonAdaptedMemoryExecutionBatch(
-            SchedulingGeneration,
-            InventoryGeneration,
-            0,
+            RoundNumber,
             []);
 
         var restore = Assert.Single(
@@ -407,9 +368,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
         };
         var currentFacts = state.ProcessFacts with { Processes = [currentFact] };
         var batch = new HostManagerNonAdaptedMemoryExecutionBatch(
-            SchedulingGeneration,
-            InventoryGeneration,
-            0,
+            RoundNumber,
             []);
 
         var restore = Assert.Single(
@@ -435,9 +394,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
         var state = CreateState();
         var owner = CreateOwner(state.Directive, targetMemoryPriority: 3);
         var batch = new HostManagerNonAdaptedMemoryExecutionBatch(
-            SchedulingGeneration,
-            InventoryGeneration,
-            CpuSourceGeneration,
+            RoundNumber,
             [state.Directive]);
 
         var restores = HostManagerNonAdaptedMemoryModeExecutionAdmission
@@ -461,9 +418,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             Processes = []
         };
         var batch = new HostManagerNonAdaptedMemoryExecutionBatch(
-            SchedulingGeneration,
-            InventoryGeneration,
-            0,
+            RoundNumber,
             []);
 
         var restore = Assert.Single(
@@ -484,22 +439,14 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
     }
 
     [Fact]
-    public void ProjectionGapRestore_ProcessGenerationDriftFailsClosed()
+    public void ProjectionGapRestoreUsesCurrentInventoryWithoutSourceStampChecks()
     {
         var state = CreateState();
         var owner = CreateOwner(state.Directive, targetMemoryPriority: 3);
-        var batch = new HostManagerNonAdaptedMemoryExecutionBatch(
-            SchedulingGeneration,
-            InventoryGeneration + 1,
-            0,
-            []);
-
-        Assert.Throws<InvalidDataException>(() =>
-            HostManagerNonAdaptedMemoryModeExecutionAdmission
-                .CreateProjectionGapRestores(
-                    batch,
-                    state.ProcessFacts,
-                    CreateMemoryOwnershipIndex(owner)));
+        var batch = new HostManagerNonAdaptedMemoryExecutionBatch(RoundNumber, []);
+        var facts = state.ProcessFacts with { Generation = InventoryGeneration + 1 };
+        Assert.Single(HostManagerNonAdaptedMemoryModeExecutionAdmission.CreateProjectionGapRestores(
+            batch, facts, CreateMemoryOwnershipIndex(owner)));
     }
 
     private static TestState CreateState(
@@ -519,7 +466,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
                 ProcessId,
                 ProcessStartKey));
         var directive = new HostManagerNonAdaptedMemoryProcessDirective(
-            SchedulingGeneration,
+            RoundNumber,
             softwareKey,
             SoftwareId,
             ProcessId,
@@ -541,7 +488,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             BaseScore: 1,
             SchedulingProcessMetricMask.CpuUsage,
             CpuUsagePercent: 2,
-            MemoryUsagePercent: 0,
+            MemoryUsedBytes: 0,
             InventoryGeneration,
             []);
         var processFacts = new SchedulingProcessFactSnapshot(
@@ -571,7 +518,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
         };
         var processScore = new HostManagerComputeScore(
             NativeComputeScoringOutputKind.ProcessCpu,
-            SchedulingGeneration,
+            RoundNumber,
             processTarget,
             softwareKey,
             ProcessId,
@@ -582,7 +529,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             NativeComputeScoringRuntimeState.BackgroundProcess);
         var softwareScore = new HostManagerComputeScore(
             NativeComputeScoringOutputKind.SoftwareCpu,
-            SchedulingGeneration,
+            RoundNumber,
             softwareKey,
             softwareKey,
             ProcessId: 0,
@@ -592,34 +539,28 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
             MemberCount: 1,
             NativeComputeScoringRuntimeState.BackgroundProcess);
         var cpu = new HostManagerComputeScoreDomainSnapshot(
-                SchedulingGeneration,
-                CpuSourceGeneration,
-                TopologyGeneration: 0,
-                TopologyFingerprint: 0,
+                RoundNumber,
                 [processScore, softwareScore]);
         var compute = new HostManagerComputeScoringCycleResult(
-            SchedulingGeneration,
-            cpu with { SourceIdentity = cpu.SourceIdentity with { InventoryGeneration = InventoryGeneration } },
+            RoundNumber,
+            cpu,
             Gpu: null);
         var desired = new HostManagerDesiredMemoryMode(
             softwareKey,
-            SchedulingGeneration,
-            SchedulingGeneration,
+            RoundNumber,
             CpuScore: 0.2,
             Rank: 1,
             mode,
             NativeMemoryGradeSet.Known);
         var memoryModes = new HostManagerMemoryModeDesiredSnapshot(
             binding.MemoryModeConfigurationGeneration,
-            SchedulingGeneration,
-            MemorySource: new HostManagerMemorySourceStamp(30, 40),
-            SnapshotGeneration: SchedulingGeneration,
+            RoundNumber,
             UnrestrictedAllowed: false,
             OptimizeCount: mode == NativeMemoryMode.Optimize ? 1U : 0U,
             StrongestCount: mode == NativeMemoryMode.PagedFrozen ? 1U : 0U,
             [desired]);
         var authority = new HostManagerSchedulingAuthoritySnapshot(
-            SchedulingGeneration,
+            RoundNumber,
             HostManagerSchedulingAuthorityAvailability.Ready,
             DateTimeOffset.UnixEpoch.AddSeconds(1),
             binding,
@@ -632,9 +573,7 @@ public sealed class HostManagerNonAdaptedMemoryModeExecutionAdmissionTests
                 allowUnrestricted: false),
             UnavailableReason: null);
         var projection = new HostManagerNonAdaptedMemoryModeProjectionSnapshot(
-            SchedulingGeneration,
-            InventoryGeneration,
-            CpuSourceGeneration,
+            RoundNumber,
             [directive]);
         return new(binding, authority, projection, processFacts, directive);
     }

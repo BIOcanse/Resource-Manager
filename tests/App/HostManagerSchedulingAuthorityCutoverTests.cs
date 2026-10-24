@@ -9,6 +9,18 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerSchedulingAuthorityCutoverTests
 {
     [Fact]
+    public void UnavailableBeforeTheFirstCaptureAllowsRoundZero()
+    {
+        var authority = new HostManagerSchedulingAuthority();
+        var binding = CreateBinding();
+        authority.PublishUnavailable(0, binding, DateTimeOffset.UtcNow, "hardware-snapshot-unavailable");
+        var current = authority.Capture();
+        Assert.Equal(0UL, current.RoundNumber);
+        Assert.Equal(HostManagerSchedulingAuthorityAvailability.Unavailable, current.Availability);
+        Assert.Equal("hardware-snapshot-unavailable", current.UnavailableReason);
+    }
+
+    [Fact]
     public void UnavailableAttemptRevokesThePreviousActionablePublication()
     {
         var authority = new HostManagerSchedulingAuthority();
@@ -28,7 +40,7 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
             "compute-sample-incomplete");
 
         var current = authority.Capture();
-        Assert.Equal(2UL, current.AttemptGeneration);
+        Assert.Equal(2UL, current.RoundNumber);
         Assert.Equal(
             HostManagerSchedulingAuthorityAvailability.Unavailable,
             current.Availability);
@@ -60,7 +72,7 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
         Assert.Equal(
             HostManagerSchedulingAuthorityAvailability.ComputeOnly,
             current.Availability);
-        Assert.Equal(2UL, current.Compute?.SchedulingGeneration);
+        Assert.Equal(2UL, current.Compute?.RoundNumber);
         Assert.Null(current.MemoryModes);
         Assert.Null(current.PolicyEvidence);
         Assert.Equal(
@@ -69,24 +81,16 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
     }
 
     [Fact]
-    public void AuthorityRejectsGenerationRegression()
+    public void AuthorityReplacesRepeatedRoundsInPublicationOrder()
     {
         var authority = new HostManagerSchedulingAuthority();
         var binding = CreateBinding();
         authority.PublishUnavailable(2, binding, DateTimeOffset.UtcNow, "first");
-
-        Assert.Throws<InvalidOperationException>(() =>
-            authority.PublishUnavailable(
-                2,
-                binding,
-                DateTimeOffset.UtcNow,
-                "duplicate"));
-        Assert.Throws<InvalidOperationException>(() =>
-            authority.PublishComputeOnly(
-                CreateCompute(1),
-                binding,
-                DateTimeOffset.UtcNow,
-                "stale"));
+        authority.PublishUnavailable(2, binding, DateTimeOffset.UtcNow, "recomputed");
+        Assert.Equal("recomputed", authority.Capture().UnavailableReason);
+        authority.PublishComputeOnly(CreateCompute(1), binding, DateTimeOffset.UtcNow, "current");
+        Assert.Equal(1UL, authority.Capture().RoundNumber);
+        Assert.Equal("current", authority.Capture().UnavailableReason);
     }
 
     [Fact]
@@ -115,36 +119,14 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
     }
 
     [Fact]
-    public void ReadyRequiresACompleteMemorySourceStamp()
+    public void AuthorityReplacesTheCurrentPlanBindingWithoutOrderingIt()
     {
         var authority = new HostManagerSchedulingAuthority();
-        var binding = CreateBinding();
-
-        Assert.Throws<InvalidDataException>(() => authority.PublishReady(
-            CreateCompute(1),
-            CreateMemoryModes(1) with { MemorySource = default },
-            DateTimeOffset.UtcNow,
-            binding,
-            CreateEvidence(binding)));
-    }
-
-    [Fact]
-    public void AuthorityRejectsStaleOrDriftedHostPublications()
-    {
-        var authority = new HostManagerSchedulingAuthority();
-        var current = CreateBinding(publicationSequence: 2);
-        authority.PublishUnavailable(1, current, DateTimeOffset.UtcNow, "current");
-
-        Assert.Throws<InvalidOperationException>(() => authority.PublishUnavailable(
-            2,
-            CreateBinding(publicationSequence: 1),
-            DateTimeOffset.UtcNow,
-            "stale-publication"));
-        Assert.Throws<InvalidOperationException>(() => authority.PublishUnavailable(
-            2,
-            current with { HostPlanSha256 = new string('F', 64) },
-            DateTimeOffset.UtcNow,
-            "same-publication-drift"));
+        authority.PublishUnavailable(1, CreateBinding(publicationSequence: 2), DateTimeOffset.UtcNow, "first");
+        var binding = CreateBinding(publicationSequence: 1);
+        authority.PublishUnavailable(1, binding, DateTimeOffset.UtcNow, "replaced");
+        Assert.Equal(binding, authority.Capture().PlanBinding);
+        Assert.Equal("replaced", authority.Capture().UnavailableReason);
     }
 
     [Fact]
@@ -313,16 +295,14 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
     private static HostManagerComputeScoringCycleResult CreateCompute(ulong generation)
         => new(
             generation,
-            new(generation, 10, 0, 0, ImmutableArray<HostManagerComputeScore>.Empty),
-            new(generation, 20, 30, 40, ImmutableArray<HostManagerComputeScore>.Empty));
+            new(generation, ImmutableArray<HostManagerComputeScore>.Empty),
+            new(generation, ImmutableArray<HostManagerComputeScore>.Empty));
 
     private static HostManagerMemoryModeDesiredSnapshot CreateMemoryModes(
         ulong generation,
         ulong configurationGeneration = 50)
         => new(
             configurationGeneration,
-            generation,
-            new HostManagerMemorySourceStamp(55, 60),
             generation,
             false,
             0,
