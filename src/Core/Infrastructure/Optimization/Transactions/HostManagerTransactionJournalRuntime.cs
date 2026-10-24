@@ -281,7 +281,9 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
         lock (sync)
         {
             ObserveJournalFaultLocked();
-            if (state != requiredState ||
+            if ((state != requiredState &&
+                    !(kind == HostManagerTransactionJournalAdmissionKind.Execution &&
+                        state == HostManagerTransactionJournalRuntimeState.RecoveryRequired)) ||
                 journalOwner is null ||
                 payloadStore is null ||
                 activeAdmissionIdentity.HasValue)
@@ -553,24 +555,6 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
     internal void ExitAdmissionOperation()
         => transactionOperationGate.Release();
 
-    internal void ValidateExecutionConfigurationGeneration(
-        ulong configurationGeneration,
-        HostManagerTransactionJournalAdmissionIdentity admissionIdentity)
-    {
-        lock (sync)
-        {
-            if (admissionIdentity.Kind != HostManagerTransactionJournalAdmissionKind.Execution ||
-                activeAdmissionIdentity is not { } active ||
-                active != admissionIdentity ||
-                configurationGeneration != admissionIdentity.ConfigurationGeneration ||
-                configurationGeneration != currentHotPublishPlan.ConfigurationGeneration)
-            {
-                throw new InvalidOperationException(
-                    "The transaction-journal action configuration generation is stale.");
-            }
-        }
-    }
-
     internal void ObserveSnapshot(NativeTransactionJournalSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -680,12 +664,6 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
                 configuration.PayloadByteBudget);
             lock (sync) { payloadStore = openedPayloadStore; }
             var snapshot = await openedOwner.ReadSnapshotAsync(cancellationToken);
-            if (snapshot.Header.Capacity != configuration.RecordCapacity)
-            {
-                throw new InvalidDataException(
-                    "The durable transaction-journal capacity does not match the compiled plan.");
-            }
-
             lock (sync)
             {
                 StartupSnapshot = snapshot;

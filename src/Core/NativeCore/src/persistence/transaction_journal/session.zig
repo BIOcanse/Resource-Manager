@@ -65,8 +65,7 @@ pub fn prepareBatch(
             input.domain_mask != protocol.DomainBits.process or
             input.process_to_grade != @intFromEnum(protocol.ProcessGrade.level_4) or
             input.now_utc_ms != first.now_utc_ms or
-            input.maximum_recovery_attempts != first.maximum_recovery_attempts or
-            input.recovery_deadline_utc_ms != first.recovery_deadline_utc_ms)
+            input.maximum_recovery_attempts != first.maximum_recovery_attempts)
         {
             return .invalid_argument;
         }
@@ -79,6 +78,14 @@ pub fn prepareBatch(
             {
                 return .duplicate_identity;
             }
+            if (sameTargetAndDomain(
+                previous.scope,
+                &previous.identity,
+                previous.domain_mask,
+                input.scope,
+                &input.identity,
+                input.domain_mask,
+            )) return .invalid_transition;
         }
     }
 
@@ -115,12 +122,8 @@ fn validatePrepareUnlocked(
     if (!protocol.validIdentityForScope(&input.identity, input.scope)) return .invalid_identity;
     if (input.expected_journal_revision != session.journal_revision) return .stale_revision;
     if (session.find(&input.identity) != null) return .duplicate_identity;
-    if (input.now_utc_ms == 0 or
-        input.maximum_recovery_attempts == 0 or
-        input.recovery_deadline_utc_ms <= input.now_utc_ms)
-    {
-        return .invalid_time;
-    }
+    if (hasUnresolvedTargetOverlap(session, input)) return .invalid_transition;
+    if (input.now_utc_ms == 0 or input.maximum_recovery_attempts == 0) return .invalid_time;
     if (!protocol.validPayload(
         input.payload_kind,
         input.payload_slot,
@@ -137,6 +140,51 @@ fn validatePrepareUnlocked(
     )) return .invalid_payload;
     const record = recordFromPrepare(input);
     return protocol.validRecord(&record);
+}
+
+fn hasUnresolvedTargetOverlap(
+    session: *const Session,
+    input: *const protocol.PrepareInput,
+) bool {
+    for (session.records[0..session.count]) |*record| {
+        if (sameTargetAndDomain(
+            record.scope,
+            &record.identity,
+            record.domain_mask,
+            input.scope,
+            &input.identity,
+            input.domain_mask,
+        )) return true;
+    }
+    return false;
+}
+
+fn sameTargetAndDomain(
+    left_scope: u32,
+    left_identity: *const protocol.Identity,
+    left_domain_mask: u32,
+    right_scope: u32,
+    right_identity: *const protocol.Identity,
+    right_domain_mask: u32,
+) bool {
+    if (left_scope != right_scope) return false;
+    return switch (left_scope) {
+        @intFromEnum(protocol.Scope.process) =>
+            left_identity.process_id == right_identity.process_id and
+            left_identity.process_start_key == right_identity.process_start_key and
+            domainsOverlap(left_domain_mask, right_domain_mask),
+        @intFromEnum(protocol.Scope.software) =>
+            left_identity.software_id == right_identity.software_id and
+            domainsOverlap(left_domain_mask, right_domain_mask),
+        @intFromEnum(protocol.Scope.resource) =>
+            left_identity.software_id == right_identity.software_id and
+            left_identity.target_id == right_identity.target_id,
+        else => false,
+    };
+}
+
+fn domainsOverlap(left: u32, right: u32) bool {
+    return left == 0 or right == 0 or (left & right) != 0;
 }
 
 fn recordFromPrepare(input: *const protocol.PrepareInput) protocol.Record {
@@ -318,6 +366,11 @@ pub fn applyRecoveryEvidence(
     if (input.expected_journal_revision != session.journal_revision) return .stale_revision;
     const record = &session.records[record_index];
     if (input.expected_entry_revision != record.entry_revision) return .stale_revision;
+    const resource_already_restored =
+        record.scope == @intFromEnum(protocol.Scope.resource) and
+        input.outcome == @intFromEnum(protocol.RecoveryOutcome.already_restored);
+    if (protocol.isQuarantinedInvalidProof(record) and !resource_already_restored)
+        return .invalid_transition;
     if (!protocol.validPhase(input.expected_phase) or input.expected_phase != record.phase)
         return .phase_mismatch;
     if (input.observed_at_utc_ms == 0 or input.observed_at_utc_ms < record.updated_at_utc_ms)
@@ -326,8 +379,12 @@ pub fn applyRecoveryEvidence(
     const classification = classifyRecovery(input.outcome) orelse return .invalid_argument;
     if (!protocol.validRecoveryOutcomeForScope(record.scope, input.outcome)) return .invalid_argument;
     const current_phase: protocol.Phase = @enumFromInt(record.phase);
-    if (!recoveryTransitionAllowed(current_phase, classification)) return .invalid_transition;
-    if (classification.terminal != (input.authoritative_facts_generation != 0))
+    if (!resource_already_restored and !recoveryTransitionAllowed(current_phase, classification))
+        return .invalid_transition;
+    if (resource_already_restored and input.authoritative_facts_generation != 0)
+        return .invalid_argument;
+    if (!resource_already_restored and
+        classification.terminal != (input.authoritative_facts_generation != 0))
         return .invalid_argument;
     if (classification.phase == .recovery_retry_pending) {
         if (input.retry_not_before_utc_ms < input.observed_at_utc_ms) return .invalid_time;
@@ -335,7 +392,7 @@ pub fn applyRecoveryEvidence(
 
     const next_journal_revision = incrementRevision(session.journal_revision) orelse
         return .revision_exhausted;
-    if (classification.terminal) {
+    if (classification.terminal or resource_already_restored) {
         if (!session.removeAt(record_index)) return .corrupt_image;
         session.journal_revision = next_journal_revision;
         return .ok;
@@ -345,7 +402,6 @@ pub fn applyRecoveryEvidence(
     const retry = applyRetryBudget(
         record,
         classification.phase,
-        input.observed_at_utc_ms,
         input.retry_not_before_utc_ms,
         classification.reason,
     );
@@ -421,7 +477,6 @@ pub fn acknowledge(session: *Session, input: *const protocol.AckInput) protocol.
     const retry = applyRetryBudget(
         record,
         result.phase,
-        input.acknowledged_at_utc_ms,
         input.retry_not_before_utc_ms,
         result.reason,
     );
@@ -666,7 +721,6 @@ const RetryBudgetDecision = struct {
 fn applyRetryBudget(
     record: *const protocol.Record,
     requested_phase: protocol.Phase,
-    observed_at_utc_ms: u64,
     requested_retry_not_before_utc_ms: u64,
     reason: u64,
 ) RetryBudgetDecision {
@@ -678,9 +732,7 @@ fn applyRetryBudget(
             .reason = reason,
         };
     }
-    const exhausted = record.retry_attempt_count >= record.maximum_recovery_attempts or
-        observed_at_utc_ms >= record.recovery_deadline_utc_ms or
-        requested_retry_not_before_utc_ms > record.recovery_deadline_utc_ms;
+    const exhausted = record.retry_attempt_count >= record.maximum_recovery_attempts;
     if (exhausted) {
         return .{
             .phase = .recovery_blocked,

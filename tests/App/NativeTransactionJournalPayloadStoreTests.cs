@@ -12,6 +12,33 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeTransactionJournalPayloadStoreTests
 {
     [Fact]
+    public async Task ConflictingProvenanceClaimDoesNotHideExactOwner()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            using var store = CreateStore(root);
+            var binding = CreateBinding(actionId: 72);
+            var payload = new byte[] { 7, 2 };
+            var reference = await store.PersistAsync(binding, payload, CancellationToken.None);
+            var provenance = NativeTransactionJournalPayloadProvenance.Create(binding);
+            var result = await store.ReconcileAsync(new[]
+            {
+                new NativeTransactionJournalPayloadLiveReference(reference,
+                    provenance with { DigestLow = provenance.DigestLow ^ 1 }),
+                new NativeTransactionJournalPayloadLiveReference(reference, provenance)
+            }, CancellationToken.None);
+            Assert.Equal(1, result.LivePayloadCount);
+            Assert.Equal(payload, await store.ReadAsync(reference, binding, CancellationToken.None));
+            Assert.Equal(0, result.DeletedPayloadCount);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task JournalInstanceMayUseEitherNonzeroHalf()
     {
         var root = CreateTempDirectory();
@@ -289,7 +316,7 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     }
 
     [Fact]
-    public async Task ReconciliationValidatesTheWholeLiveSetBeforeDeletingAnything()
+    public async Task ReconciliationQuarantinesAPayloadWhenItsLiveReferenceDoesNotMatch()
     {
         var root = CreateTempDirectory();
         try
@@ -302,22 +329,36 @@ public sealed class NativeTransactionJournalPayloadStoreTests
                 CancellationToken.None);
             var missing = existing with
             {
-                Slot = checked(existing.Slot + 1)
+                DigestLow = existing.DigestLow ^ 1
             };
 
-            await Assert.ThrowsAsync<InvalidDataException>(() =>
-                store.ReconcileAsync(
-                    new[]
-                    {
-                        new NativeTransactionJournalPayloadLiveReference(
-                            missing,
-                            NativeTransactionJournalPayloadProvenance.Create(binding))
-                    },
-                    CancellationToken.None));
+            var payloadPath = Path.Combine(
+                root,
+                $"payload-{existing.Generation:D10}-{existing.Slot:D10}.bin");
+            var payloadBytes = await File.ReadAllBytesAsync(payloadPath);
+            var result = await store.ReconcileAsync(
+                new[]
+                {
+                    new NativeTransactionJournalPayloadLiveReference(
+                        missing,
+                        NativeTransactionJournalPayloadProvenance.Create(binding))
+                },
+                CancellationToken.None);
 
-            Assert.Equal(
-                new byte[] { 1, 5 },
-                await store.ReadAsync(existing, binding, CancellationToken.None));
+            Assert.Equal(0, result.LivePayloadCount);
+            Assert.Equal(0, result.DeletedPayloadCount);
+            Assert.False(File.Exists(payloadPath));
+            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
+                Path.Combine(root, "quarantine"),
+                "*",
+                SearchOption.TopDirectoryOnly));
+            Assert.Equal(payloadBytes, await File.ReadAllBytesAsync(quarantinedPath));
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                store.ReadAsync(existing, binding, CancellationToken.None));
+            _ = await store.PersistAsync(
+                CreateBinding(actionId: 151),
+                new byte[] { 1, 5, 1 },
+                CancellationToken.None);
         }
         finally
         {
@@ -326,7 +367,7 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     }
 
     [Fact]
-    public async Task CorruptOrphanPreventsPartialCleanup()
+    public async Task CorruptOrphanIsQuarantinedAndDoesNotBlockNewPayloads()
     {
         var root = CreateTempDirectory();
         try
@@ -353,15 +394,188 @@ public sealed class NativeTransactionJournalPayloadStoreTests
             await File.WriteAllBytesAsync(corruptPath, bytes);
 
             using var reopened = CreateStore(root);
-            await Assert.ThrowsAsync<InvalidDataException>(
-                () => reopened.ReconcileAsync(
-                    ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty,
-                    CancellationToken.None));
+            var result = await reopened.ReconcileAsync(
+                ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty,
+                CancellationToken.None);
 
-            Assert.True(File.Exists(Path.Combine(
+            var firstPath = Path.Combine(
                 root,
-                $"payload-{first.Generation:D10}-{first.Slot:D10}.bin")));
-            Assert.True(File.Exists(corruptPath));
+                $"payload-{first.Generation:D10}-{first.Slot:D10}.bin");
+            Assert.Equal(0, result.LivePayloadCount);
+            Assert.Equal(0, result.LivePayloadBytes);
+            Assert.Equal(1, result.DeletedPayloadCount);
+            Assert.False(File.Exists(firstPath));
+            Assert.False(File.Exists(corruptPath));
+            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
+                Path.Combine(root, "quarantine"),
+                "*",
+                SearchOption.TopDirectoryOnly));
+            Assert.Equal(bytes, await File.ReadAllBytesAsync(quarantinedPath));
+            var nextBinding = CreateBinding(actionId: 18);
+            var next = await reopened.PersistAsync(
+                nextBinding,
+                new byte[] { 1, 8 },
+                CancellationToken.None);
+            Assert.Equal(new byte[] { 1, 8 }, await reopened.ReadAsync(
+                next,
+                nextBinding,
+                CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CorruptLivePayloadIsQuarantinedAndMissingLiveReferenceDoesNotBlockAfterRestart()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            NativeTransactionJournalPayloadReference corrupt;
+            NativeTransactionJournalPayloadReference healthy;
+            var corruptBinding = CreateBinding(actionId: 19);
+            var healthyBinding = CreateBinding(actionId: 20);
+            using (var initial = CreateStore(root))
+            {
+                corrupt = await initial.PersistAsync(
+                    corruptBinding,
+                    new byte[] { 1, 9 },
+                    CancellationToken.None);
+                healthy = await initial.PersistAsync(
+                    healthyBinding,
+                    new byte[] { 2, 0 },
+                    CancellationToken.None);
+            }
+
+            var corruptPath = Path.Combine(
+                root,
+                $"payload-{corrupt.Generation:D10}-{corrupt.Slot:D10}.bin");
+            var bytes = await File.ReadAllBytesAsync(corruptPath);
+            bytes[^1] ^= 0x40;
+            await File.WriteAllBytesAsync(corruptPath, bytes);
+
+            var liveReferences = new[]
+            {
+                new NativeTransactionJournalPayloadLiveReference(
+                    corrupt,
+                    NativeTransactionJournalPayloadProvenance.Create(corruptBinding)),
+                new NativeTransactionJournalPayloadLiveReference(
+                    healthy,
+                    NativeTransactionJournalPayloadProvenance.Create(healthyBinding))
+            };
+            using (var reopened = CreateStore(root))
+            {
+                var result = await reopened.ReconcileAsync(liveReferences, CancellationToken.None);
+
+                Assert.Equal(1, result.LivePayloadCount);
+                Assert.Equal(2, result.LivePayloadBytes);
+                Assert.Equal(0, result.DeletedPayloadCount);
+                Assert.False(File.Exists(corruptPath));
+                Assert.Equal(
+                    new byte[] { 2, 0 },
+                    await reopened.ReadAsync(healthy, healthyBinding, CancellationToken.None));
+                await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                    reopened.ReadAsync(corrupt, corruptBinding, CancellationToken.None));
+            }
+
+            using var restarted = CreateStore(root);
+            var restartedResult = await restarted.ReconcileAsync(
+                liveReferences,
+                CancellationToken.None);
+            Assert.Equal(1, restartedResult.LivePayloadCount);
+            Assert.Equal(2, restartedResult.LivePayloadBytes);
+            Assert.Equal(0, restartedResult.DeletedPayloadCount);
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                restarted.ReadAsync(corrupt, corruptBinding, CancellationToken.None));
+            var nextBinding = CreateBinding(actionId: 21);
+            _ = await restarted.PersistAsync(
+                nextBinding,
+                new byte[] { 2, 1 },
+                CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task NonCanonicalPayloadFileIsQuarantinedAndNewEffectsCanPersist()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            NativeTransactionJournalPayloadReference live;
+            var liveBinding = CreateBinding(actionId: 22);
+            using (var initial = CreateStore(root))
+            {
+                live = await initial.PersistAsync(
+                    liveBinding,
+                    new byte[] { 2, 2 },
+                    CancellationToken.None);
+            }
+
+            using var reopened = CreateStore(root);
+            var badPath = Path.Combine(root, "payload-not-canonical.bin");
+            var badBytes = new byte[] { 0xC0, 0xFF, 0xEE };
+            await File.WriteAllBytesAsync(badPath, badBytes);
+
+            var result = await reopened.ReconcileAsync(
+                new[]
+                {
+                    new NativeTransactionJournalPayloadLiveReference(
+                        live,
+                        NativeTransactionJournalPayloadProvenance.Create(liveBinding))
+                },
+                CancellationToken.None);
+
+            Assert.Equal(1, result.LivePayloadCount);
+            Assert.Equal(2, result.LivePayloadBytes);
+            Assert.Equal(0, result.DeletedPayloadCount);
+            Assert.False(File.Exists(badPath));
+            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
+                Path.Combine(root, "quarantine"),
+                "*",
+                SearchOption.TopDirectoryOnly));
+            Assert.Equal(badBytes, await File.ReadAllBytesAsync(quarantinedPath));
+
+            var nextBinding = CreateBinding(actionId: 23);
+            _ = await reopened.PersistAsync(
+                nextBinding,
+                new byte[] { 2, 3 },
+                CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QuarantinedPayloadStillPreventsSequenceReuseWhenSequenceIsMissing()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var badPath = Path.Combine(root, "payload-not-canonical.bin");
+            var badBytes = new byte[] { 1, 2, 3 };
+            await File.WriteAllBytesAsync(badPath, badBytes);
+
+            using var store = CreateStore(root);
+            Assert.False(File.Exists(badPath));
+            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
+                Path.Combine(root, "quarantine"),
+                "*",
+                SearchOption.TopDirectoryOnly));
+            Assert.Equal(badBytes, await File.ReadAllBytesAsync(quarantinedPath));
+
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                store.PersistAsync(
+                    CreateBinding(actionId: 24),
+                    new byte[] { 2, 4 },
+                    CancellationToken.None));
         }
         finally
         {

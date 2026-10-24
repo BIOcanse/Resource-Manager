@@ -96,6 +96,14 @@ test "atomic prepare batch validates every member before one revision commit" {
     try std.testing.expectEqual(@as(u32, 0), journal.count);
 
     inputs[1].group_member_index = 1;
+    const second_identity = inputs[1].identity;
+    inputs[1].identity.process_id = inputs[0].identity.process_id;
+    inputs[1].identity.process_start_key = inputs[0].identity.process_start_key;
+    try std.testing.expectEqual(
+        protocol.Status.invalid_transition,
+        session_module.prepareBatch(journal, &batch, &inputs),
+    );
+    inputs[1].identity = second_identity;
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepareBatch(journal, &batch, &inputs));
     try std.testing.expectEqual(@as(u64, 2), journal.journal_revision);
     try std.testing.expectEqual(@as(u32, 2), journal.count);
@@ -105,6 +113,8 @@ test "atomic prepare batch validates every member before one revision commit" {
     var single = inputs[0];
     single.expected_journal_revision = 2;
     single.identity.action_id = 3;
+    single.identity.process_id += 100;
+    single.identity.process_start_key += 100;
     try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.prepare(journal, &single));
     try std.testing.expectEqual(@as(u64, 2), journal.journal_revision);
 }
@@ -131,8 +141,7 @@ test "full identity controls lookup mutation and canonical tie break" {
     var mutation = corpus.mutation(altered, 2, 1, .prepared, .confirm_effect_observed, 110);
     try std.testing.expectEqual(protocol.Status.no_data, session_module.mutate(journal, &mutation));
 
-    var second = corpus.processPrepare(7, 1, 2, 100, .none_required);
-    second.identity.target_id += 10;
+    var second = corpus.processPrepare(7, 2, 2, 100, .none_required);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &second));
     var snapshot = corpus.emptySnapshot();
     var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
@@ -432,14 +441,14 @@ test "recovery evidence owns retry blocked and authoritative resync classificati
     );
 }
 
-test "recovery retry count and absolute deadline are Zig-owned hard limits" {
+test "recovery retry count is a hard limit and wall-clock deadline is ignored" {
     var config = corpus.createConfig(1);
     const journal = try state.Session.create(&config);
     defer journal.destroy();
 
     var prepare = corpus.processPrepare(7, 1, 1, 100, .durable);
-    prepare.maximum_recovery_attempts = 1;
-    prepare.recovery_deadline_utc_ms = 2_000;
+    prepare.maximum_recovery_attempts = 2;
+    prepare.recovery_deadline_utc_ms = 90;
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &prepare));
 
     var retry = corpus.recoveryEvidence(
@@ -448,30 +457,44 @@ test "recovery retry count and absolute deadline are Zig-owned hard limits" {
         1,
         .prepared,
         .retryable_failure,
-        110,
+        3_000,
     );
     try std.testing.expectEqual(protocol.Status.ok, session_module.applyRecoveryEvidence(journal, &retry));
 
     var record = std.mem.zeroes(protocol.Record);
     try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &prepare.identity, &record));
     try std.testing.expectEqual(@as(u32, 1), record.retry_attempt_count);
-    try std.testing.expectEqual(@as(u32, 1), record.maximum_recovery_attempts);
-    try std.testing.expectEqual(@as(u64, 2_000), record.recovery_deadline_utc_ms);
+    try std.testing.expectEqual(@as(u32, 2), record.maximum_recovery_attempts);
+    try std.testing.expectEqual(@as(u64, 90), record.recovery_deadline_utc_ms);
     try std.testing.expectEqual(@intFromEnum(protocol.Phase.recovery_retry_pending), record.phase);
+    try std.testing.expect(record.retry_not_before_utc_ms > record.recovery_deadline_utc_ms);
 
-    var exhausted = corpus.recoveryEvidence(
+    var second_retry = corpus.recoveryEvidence(
         prepare.identity,
         3,
         2,
         .recovery_retry_pending,
-        .unavailable,
+        .retryable_failure,
         retry.retry_not_before_utc_ms,
+    );
+    try std.testing.expectEqual(protocol.Status.ok, session_module.applyRecoveryEvidence(journal, &second_retry));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &prepare.identity, &record));
+    try std.testing.expectEqual(@intFromEnum(protocol.Phase.recovery_retry_pending), record.phase);
+    try std.testing.expectEqual(@as(u32, 2), record.retry_attempt_count);
+
+    var exhausted = corpus.recoveryEvidence(
+        prepare.identity,
+        4,
+        3,
+        .recovery_retry_pending,
+        .unavailable,
+        second_retry.retry_not_before_utc_ms,
     );
     try std.testing.expectEqual(protocol.Status.ok, session_module.applyRecoveryEvidence(journal, &exhausted));
     try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &prepare.identity, &record));
     try std.testing.expectEqual(@intFromEnum(protocol.Phase.recovery_blocked), record.phase);
     try std.testing.expectEqual(@as(u64, 0), record.retry_not_before_utc_ms);
-    try std.testing.expectEqual(@as(u32, 1), record.retry_attempt_count);
+    try std.testing.expectEqual(@as(u32, 2), record.retry_attempt_count);
     try std.testing.expect(
         (record.recovery_reason_mask & protocol.RecoveryReason.retry_budget_exhausted) != 0,
     );
@@ -657,6 +680,72 @@ test "capacity full is explicit and does not mutate revision" {
     try std.testing.expectEqual(@as(u64, 2), journal.journal_revision);
 }
 
+test "prepare protects only overlapping unresolved target domains" {
+    var config = corpus.createConfig(12);
+    const journal = try state.Session.create(&config);
+    defer journal.destroy();
+
+    var process = corpus.processPrepare(7, 1, 1, 100, .durable);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &process));
+
+    var same_process = corpus.processPrepare(7, 2, 2, 110, .durable);
+    same_process.identity.process_id = process.identity.process_id;
+    same_process.identity.process_start_key = process.identity.process_start_key;
+    same_process.identity.software_id += 100;
+    same_process.identity.target_id += 100;
+    try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_process));
+
+    var memory = corpus.processPrepare(7, 3, 2, 120, .durable);
+    memory.identity.process_id = process.identity.process_id;
+    memory.identity.process_start_key = process.identity.process_start_key;
+    memory.domain_mask = protocol.DomainBits.physical_memory;
+    memory.grade_valid_mask = protocol.GradeValid.memory;
+    memory.process_from_grade = 0;
+    memory.process_to_grade = 3;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &memory));
+
+    var same_memory = corpus.processPrepare(7, 4, 3, 130, .durable);
+    same_memory.identity.process_id = process.identity.process_id;
+    same_memory.identity.process_start_key = process.identity.process_start_key;
+    same_memory.domain_mask = protocol.DomainBits.physical_memory;
+    same_memory.grade_valid_mask = protocol.GradeValid.memory;
+    same_memory.process_from_grade = 0;
+    same_memory.process_to_grade = 4;
+    try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_memory));
+
+    var unrelated_process = corpus.processPrepare(7, 5, 3, 140, .durable);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &unrelated_process));
+
+    var cpu = corpus.softwarePrepare(7, 6, 4, 150);
+    cpu.domain_mask = protocol.DomainBits.cpu;
+    cpu.grade_valid_mask = protocol.GradeValid.cpu;
+    cpu.gpu_from_grade = 0;
+    cpu.gpu_to_grade = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &cpu));
+
+    var same_cpu = corpus.softwarePrepare(7, 7, 5, 160);
+    same_cpu.domain_mask = protocol.DomainBits.cpu;
+    same_cpu.grade_valid_mask = protocol.GradeValid.cpu;
+    same_cpu.gpu_from_grade = 0;
+    same_cpu.gpu_to_grade = 0;
+    try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_cpu));
+
+    var gpu = corpus.softwarePrepare(7, 8, 5, 170);
+    gpu.domain_mask = protocol.DomainBits.gpu;
+    gpu.grade_valid_mask = protocol.GradeValid.gpu;
+    gpu.cpu_from_grade = 0;
+    gpu.cpu_to_grade = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &gpu));
+
+    var resource = corpus.resourcePrepare(7, 9, 6, 180);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &resource));
+    var same_resource = corpus.resourcePrepare(7, 10, 7, 190);
+    same_resource.identity.target_id = resource.identity.target_id;
+    try std.testing.expectEqual(protocol.Status.invalid_transition, session_module.prepare(journal, &same_resource));
+    var other_resource = corpus.resourcePrepare(7, 11, 7, 200);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &other_resource));
+}
+
 test "resident byte budget is explicit and enforced on create and reopen" {
     var insufficient = corpus.createConfig(1);
     insufficient.maximum_resident_bytes = 1;
@@ -672,9 +761,26 @@ test "resident byte budget is explicit and enforced on create and reopen" {
     var image: [maximum_test_image]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
+    var larger_open_config = corpus.openConfig(4);
+    var opened: ?*state.Session = null;
+    try std.testing.expectEqual(
+        protocol.Status.ok,
+        session_module.openExisting(&larger_open_config, image[0..@intCast(written)], &opened),
+    );
+    try std.testing.expectEqual(@as(u32, 2), opened.?.capacity().record_capacity);
+    opened.?.destroy();
+
+    var smaller_open_config = corpus.openConfig(1);
+    opened = null;
+    try std.testing.expectEqual(
+        protocol.Status.capacity_full,
+        session_module.openExisting(&smaller_open_config, image[0..@intCast(written)], &opened),
+    );
+    try std.testing.expect(opened == null);
+
     var open_config = corpus.openConfig(2);
     open_config.maximum_resident_bytes = capacity.resident_bytes - 1;
-    var opened: ?*state.Session = null;
+    opened = null;
     try std.testing.expectEqual(
         protocol.Status.capacity_full,
         session_module.openExisting(&open_config, image[0..@intCast(written)], &opened),
@@ -741,14 +847,17 @@ test "canonical bytes are independent of insertion order" {
     );
 }
 
-test "decode rejects torn corrupt duplicate unknown phase and preserves live state" {
+test "decode isolates invalid rows while preserving image structure checks" {
     var config = corpus.createConfig(4);
     const journal = try state.Session.create(&config);
     defer journal.destroy();
-    var first = corpus.processPrepare(7, 1, 1, 100, .none_required);
+    var first = corpus.processPrepare(7, 1, 1, 100, .durable);
     var second = corpus.processPrepare(7, 2, 2, 100, .none_required);
+    var third = corpus.processPrepare(7, 3, 2, 100, .none_required);
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &first));
     try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &second));
+    third.expected_journal_revision = 3;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &third));
     var image: [maximum_test_image]u8 = undefined;
     var written: u64 = 0;
     try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
@@ -764,12 +873,55 @@ test "decode rejects torn corrupt duplicate unknown phase and preserves live sta
     const second_offset = first_offset + @sizeOf(protocol.Record);
     std.mem.copyForwards(u8, duplicate[second_offset .. second_offset + 64], duplicate[first_offset .. first_offset + 64]);
     rewriteChecksum(duplicate[0..length]);
-    try std.testing.expectEqual(protocol.Status.duplicate_identity, session_module.decode(journal, duplicate[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, duplicate[0..length]));
+    try std.testing.expectEqual(@as(u32, 2), journal.count);
+    var record = std.mem.zeroes(protocol.Record);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+    try std.testing.expectEqual(@as(u32, @intFromEnum(protocol.PayloadKind.none_required)), record.payload_kind);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &third.identity, &record));
+    try std.testing.expectEqual(@intFromEnum(protocol.Phase.prepared), record.phase);
+
+    var nonadjacent_duplicate = image;
+    const third_offset = second_offset + @sizeOf(protocol.Record);
+    std.mem.copyForwards(u8, nonadjacent_duplicate[third_offset .. third_offset + 64], nonadjacent_duplicate[first_offset .. first_offset + 64]);
+    rewriteChecksum(nonadjacent_duplicate[0..length]);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, nonadjacent_duplicate[0..length]));
+    try std.testing.expectEqual(@as(u32, 2), journal.count);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &second.identity, &record));
+    try std.testing.expectEqual(@intFromEnum(protocol.Phase.prepared), record.phase);
+
+    var invalid_identity = image;
+    codec.writeU64(invalid_identity[0..length], first_offset + 32, 0);
+    rewriteChecksum(invalid_identity[0..length]);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, invalid_identity[0..length]));
+    try std.testing.expectEqual(@as(u32, 2), journal.count);
+    try std.testing.expectEqual(protocol.Status.no_data, session_module.get(journal, &first.identity, &record));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &second.identity, &record));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &third.identity, &record));
+
+    var invalid_reserved_identity = image;
+    codec.writeU32(invalid_reserved_identity[0..length], first_offset + 60, 1);
+    rewriteChecksum(invalid_reserved_identity[0..length]);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, invalid_reserved_identity[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
 
     var unknown_phase = image;
     codec.writeU32(unknown_phase[0..length], first_offset + 76, 99);
     rewriteChecksum(unknown_phase[0..length]);
-    try std.testing.expectEqual(protocol.Status.unknown_phase, session_module.decode(journal, unknown_phase[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, unknown_phase[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+    try std.testing.expectEqual(@intFromEnum(protocol.PayloadKind.durable), record.payload_kind);
+    try std.testing.expectEqual(first.payload_slot, record.payload_slot);
+    var snapshot = corpus.emptySnapshot();
+    var snapshot_records = [_]protocol.Record{std.mem.zeroes(protocol.Record)} ** 4;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &snapshot, &snapshot_records));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.recovery_blocked_count);
+    try std.testing.expectEqual(@as(u32, 3), snapshot.entry_count);
 
     var impossible_feedback = image;
     codec.writeU32(
@@ -782,13 +934,72 @@ test "decode rejects torn corrupt duplicate unknown phase and preserves live sta
     codec.writeU64(impossible_feedback[0..length], first_offset + 216, 100);
     codec.writeI32(impossible_feedback[0..length], first_offset + 224, @intFromEnum(protocol.ProcessGrade.normal));
     rewriteChecksum(impossible_feedback[0..length]);
-    try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.decode(journal, impossible_feedback[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, impossible_feedback[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
 
     var live_recovery_reason = image;
     codec.writeU64(live_recovery_reason[0..length], first_offset + 240, protocol.RecoveryReason.restored);
     rewriteChecksum(live_recovery_reason[0..length]);
-    try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.decode(journal, live_recovery_reason[0..length]));
-    try std.testing.expectEqual(@as(u32, 2), journal.count);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, live_recovery_reason[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+
+    var bad_payload = image;
+    codec.writeU32(bad_payload[0..length], first_offset + 120, 0xffff_ffff);
+    rewriteChecksum(bad_payload[0..length]);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, bad_payload[0..length]));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &first.identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+    try std.testing.expectEqual(@intFromEnum(protocol.PayloadKind.none_required), record.payload_kind);
+
+    var invalid_identity_out_of_order = image;
+    codec.writeU64(invalid_identity_out_of_order[0..length], first_offset + 16, 99);
+    codec.writeU32(invalid_identity_out_of_order[0..length], first_offset + 76, 99);
+    rewriteChecksum(invalid_identity_out_of_order[0..length]);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(journal, invalid_identity_out_of_order[0..length]));
+    var out_of_order_identity = first.identity;
+    out_of_order_identity.action_id = 99;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(journal, &out_of_order_identity, &record));
+    try std.testing.expect(protocol.isQuarantinedInvalidProof(&record));
+
+    var noncanonical = image;
+    var temp_record: [@sizeOf(protocol.Record)]u8 = undefined;
+    @memcpy(&temp_record, noncanonical[first_offset..second_offset]);
+    std.mem.copyForwards(u8, noncanonical[first_offset..second_offset], noncanonical[second_offset..third_offset]);
+    std.mem.copyForwards(u8, noncanonical[second_offset..third_offset], &temp_record);
+    rewriteChecksum(noncanonical[0..length]);
+    try std.testing.expectEqual(protocol.Status.non_canonical_image, session_module.decode(journal, noncanonical[0..length]));
+
+    var unknown_schema = image;
+    codec.writeU32(unknown_schema[0..length], 8, protocol.image_schema_version + 1);
+    rewriteChecksum(unknown_schema[0..length]);
+    try std.testing.expectEqual(protocol.Status.abi_mismatch, session_module.decode(journal, unknown_schema[0..length]));
+
+    var wrong_record_size = image;
+    codec.writeU32(wrong_record_size[0..length], 16, @intCast(@sizeOf(protocol.Record) + 8));
+    rewriteChecksum(wrong_record_size[0..length]);
+    try std.testing.expectEqual(protocol.Status.abi_mismatch, session_module.decode(journal, wrong_record_size[0..length]));
+}
+
+test "resource recovery already restored removes only its journal row" {
+    var config = corpus.createConfig(1);
+    const journal = try state.Session.create(&config);
+    defer journal.destroy();
+
+    var prepare = corpus.resourcePrepare(7, 1, 1, 100);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &prepare));
+    var already_restored = corpus.recoveryEvidence(
+        prepare.identity,
+        2,
+        1,
+        .prepared,
+        .already_restored,
+        110,
+    );
+    try std.testing.expectEqual(protocol.Status.ok, session_module.applyRecoveryEvidence(journal, &already_restored));
+    var record = std.mem.zeroes(protocol.Record);
+    try std.testing.expectEqual(protocol.Status.no_data, session_module.get(journal, &prepare.identity, &record));
 }
 
 test "hot mutation snapshot encode decode paths do not allocate" {

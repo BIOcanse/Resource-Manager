@@ -210,7 +210,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     }
 
     [Fact]
-    public async Task RecoveryAdmissionSettlesStartupJournalBeforeExecutionAdmissionOpens()
+    public async Task RecoveryAdmissionSettlesStartupJournalWhileOtherExecutionRemainsAvailable()
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
@@ -275,7 +275,8 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                     HostManagerTransactionJournalRuntimeState.RecoveryRequired,
                     reopened.State);
                 Assert.Single(reopened.StartupSnapshot!.Records);
-                Assert.False(reopened.TryAcquireExecutionAdmission(out _));
+                Assert.True(reopened.TryAcquireExecutionAdmission(out var independentAdmission));
+                await independentAdmission!.DisposeAsync();
                 Assert.True(reopened.TryAcquireRecoveryAdmission(out var recoveryAdmission));
                 Assert.NotNull(recoveryAdmission);
                 Assert.Equal(
@@ -402,7 +403,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     }
 
     [Fact]
-    public async Task CorruptImageAndCapacityDriftFailClosed()
+    public async Task CorruptImageFailsClosedButCapacityChangeOpensPersistedCapacity()
     {
         var corruptRoot = CreateTempDirectory();
         var driftRoot = CreateTempDirectory();
@@ -425,13 +426,11 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                 Path.Combine(driftRoot, "state", "journal.bin"),
                 recordCapacity: 4,
                 residentByteBudget: (ulong)ResidentByteBudget);
-            var drifted = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                JournalRuntimeTestStorage.OpenAsync(
-                    driftRoot,
-                    recreate,
-                    hot,
-                    CancellationToken.None));
-            Assert.IsType<InvalidDataException>(drifted.InnerException);
+            await using var drifted = await JournalRuntimeTestStorage.OpenAsync(
+                driftRoot, recreate, hot, CancellationToken.None);
+            Assert.Equal(4U, drifted.StartupSnapshot!.Header.Capacity);
+            Assert.True(drifted.TryAcquireExecutionAdmission(out var admission));
+            await admission!.DisposeAsync();
         }
         finally
         {
@@ -570,7 +569,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     }
 
     [Fact]
-    public async Task PayloadBudgetIsNonFatalButPayloadCorruptionFaultsRuntime()
+    public async Task PayloadBudgetAndOneCorruptPayloadDoNotFaultRuntime()
     {
         var root = CreateTempDirectory();
         var (baseRecreate, hot) = CreatePlans();
@@ -626,9 +625,9 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                         CancellationToken.None));
             }
 
-            Assert.Equal(HostManagerTransactionJournalRuntimeState.Faulted, runtime.State);
+            Assert.Equal(HostManagerTransactionJournalRuntimeState.ReadyForExecution, runtime.State);
             Assert.Equal(
-                HostManagerTransactionJournalShutdownResult.Faulted,
+                HostManagerTransactionJournalShutdownResult.Clean,
                 await runtime.ShutdownAsync(CancellationToken.None));
         }
         finally
@@ -840,6 +839,55 @@ public sealed class HostManagerTransactionJournalRuntimeTests
         Assert.Equal(HostManagerTransactionJournalRuntimeState.Disposed, runtime.State);
         Assert.Equal(HostManagerTransactionJournalShutdownResult.Clean, runtime.LastShutdownResult);
         Directory.Delete(root, recursive: true);
+    }
+
+    [Theory]
+    [InlineData(4, 8)]
+    [InlineData(8, 4)]
+    public async Task PendingJournalOpensAfterCapacityChangeAndAcceptsIndependentActionGeneration(
+        int persistedCapacity, int desiredCapacity)
+    {
+        var root = CreateTempDirectory();
+        var (initialPlan, hot) = CreatePlans(recordCapacity: persistedCapacity);
+        try
+        {
+            await using (var first = await JournalRuntimeTestStorage.OpenAsync(
+                root, initialPlan, hot, CancellationToken.None))
+            {
+                Assert.True(first.TryAcquireExecutionAdmission(out var admission));
+                await using (admission)
+                {
+                    var prepare = CreatePrepare(hot.ConfigurationGeneration + 123,
+                        first.StartupSnapshot!.Header.JournalRevision, actionId: 101);
+                    Assert.Equal(NativeTransactionJournalStatus.Ok,
+                        await admission!.PrepareAsync(prepare, CancellationToken.None));
+                }
+            }
+            var (desired, _) = CreatePlans(recordCapacity: desiredCapacity);
+            await using var reopened = await JournalRuntimeTestStorage.OpenAsync(
+                root, desired, hot, CancellationToken.None);
+            Assert.Equal((uint)persistedCapacity, reopened.StartupSnapshot!.Header.Capacity);
+            Assert.Single(reopened.StartupSnapshot.Records);
+            Assert.True(reopened.TryAcquireExecutionAdmission(out var execution));
+            await using (execution)
+            {
+                var next = CreatePrepare(hot.ConfigurationGeneration + 456,
+                    reopened.StartupSnapshot.Header.JournalRevision, actionId: 102);
+                next.Identity.ProcessId++;
+                next.Identity.TargetId++;
+                Assert.Equal(NativeTransactionJournalStatus.Ok,
+                    await execution!.PrepareAsync(next, CancellationToken.None));
+                var conflicting = next;
+                conflicting.Identity.ActionId++;
+                conflicting.ExpectedJournalRevision++;
+                Assert.Equal(NativeTransactionJournalStatus.InvalidTransition,
+                    await execution.PrepareAsync(conflicting, CancellationToken.None));
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static (

@@ -25,7 +25,7 @@ pub fn encodeUnlocked(session: *state.Session, output: []u8, written: *u64) prot
     @memset(output[0..image_length], 0);
 
     writeU64(output, 0, protocol.image_magic);
-    writeU32(output, 8, protocol.abi_version);
+    writeU32(output, 8, protocol.image_schema_version);
     writeU32(output, 12, header_size);
     writeU32(output, 16, record_size);
     writeU32(output, 20, 0);
@@ -65,35 +65,226 @@ pub fn decodeUnlocked(session: *state.Session, image: []const u8) protocol.Statu
         return .configuration_mismatch;
     }
 
-    var index: usize = 0;
-    while (index < metadata.entry_count) : (index += 1) {
-        const record = decodeRecord(image, header_size + index * record_size);
-        const validity = protocol.validRecord(&record);
-        if (validity != .ok) return validity;
-        if (index != 0) {
-            const previous = &session.staging_records[index - 1].identity;
-            if (protocol.sameIdentity(previous, &record.identity)) return .duplicate_identity;
-            if (!protocol.identityLessThan(previous, &record.identity)) return .non_canonical_image;
+    var input_index: usize = 0;
+    var staged_count: usize = 0;
+    var previous_valid_unique_identity: ?protocol.Identity = null;
+    while (input_index < metadata.entry_count) : (input_index += 1) {
+        const decoded = decodeRecord(image, header_size + input_index * record_size);
+        const record_validity = protocol.validRecord(&decoded);
+        if (record_validity == .ok) {
+            var duplicate_identity = false;
+            if (previous_valid_unique_identity) |previous| {
+                if (!protocol.identityLessThan(&previous, &decoded.identity)) {
+                    for (session.staging_records[0..staged_count]) |*prior| {
+                        if (protocol.sameIdentity(&prior.identity, &decoded.identity)) {
+                            duplicate_identity = true;
+                            break;
+                        }
+                    }
+                    if (!duplicate_identity) return .non_canonical_image;
+                }
+            }
+            if (!duplicate_identity) previous_valid_unique_identity = decoded.identity;
         }
-        session.staging_records[index] = record;
+        const record = if (record_validity == .ok)
+            decoded
+        else
+            quarantineRecord(&decoded) orelse continue;
+        session.staging_records[staged_count] = record;
+        staged_count += 1;
     }
+
+    sortRecords(session.staging_records[0..staged_count]);
+    var unique_count: usize = 0;
+    for (session.staging_records[0..staged_count]) |record| {
+        if (unique_count != 0 and protocol.sameIdentity(
+            &session.staging_records[unique_count - 1].identity,
+            &record.identity,
+        )) {
+            session.staging_records[unique_count - 1] = quarantineDuplicate(
+                &session.staging_records[unique_count - 1],
+                &record,
+            ) orelse session.staging_records[unique_count - 1];
+            continue;
+        }
+        session.staging_records[unique_count] = record;
+        unique_count += 1;
+    }
+    staged_count = unique_count;
 
     @memset(session.records, std.mem.zeroes(protocol.Record));
     std.mem.copyForwards(
         protocol.Record,
-        session.records[0..metadata.entry_count],
-        session.staging_records[0..metadata.entry_count],
+        session.records[0..staged_count],
+        session.staging_records[0..staged_count],
     );
-    session.count = metadata.entry_count;
+    session.count = @intCast(staged_count);
     session.journal_revision = metadata.journal_revision;
     if (!session.rebuildIndex()) return .corrupt_image;
     return .ok;
 }
 
+fn sortRecords(records: []protocol.Record) void {
+    var index: usize = 1;
+    while (index < records.len) : (index += 1) {
+        const value = records[index];
+        var insertion_index = index;
+        while (insertion_index > 0 and protocol.identityLessThan(
+            &value.identity,
+            &records[insertion_index - 1].identity,
+        )) : (insertion_index -= 1) {
+            records[insertion_index] = records[insertion_index - 1];
+        }
+        records[insertion_index] = value;
+    }
+}
+
+fn quarantineDuplicate(left: *const protocol.Record, right: *const protocol.Record) ?protocol.Record {
+    var marker = quarantineRecord(left) orelse return quarantineRecord(right);
+    const right_marker = quarantineRecord(right) orelse return marker;
+    if (marker.scope != right_marker.scope) {
+        marker.scope = if (marker.identity.process_start_key != 0 and marker.identity.process_id != 0)
+            @intFromEnum(protocol.Scope.process)
+        else
+            @intFromEnum(protocol.Scope.software);
+    }
+    if (!samePayloadReference(&marker, &right_marker)) clearPayload(&marker);
+    return marker;
+}
+
+fn quarantineRecord(record: *const protocol.Record) ?protocol.Record {
+    const scope = quarantineScope(record) orelse return null;
+    var identity = record.identity;
+    identity.reserved = 0;
+    if (scope != @intFromEnum(protocol.Scope.process)) {
+        identity.process_start_key = 0;
+        identity.process_id = 0;
+    }
+    const payload_valid = protocol.validPayload(
+        record.payload_kind,
+        record.payload_slot,
+        record.payload_generation,
+        record.payload_length,
+        record.payload_digest_low,
+        record.payload_digest_high,
+        record.payload_reserved,
+    ) and protocol.validPayloadProvenance(
+        record.payload_kind,
+        record.payload_provenance_digest_low,
+        record.payload_provenance_digest_high,
+    );
+    const prepared_at = if (record.prepared_at_utc_ms != 0)
+        record.prepared_at_utc_ms
+    else if (record.updated_at_utc_ms != 0)
+        record.updated_at_utc_ms
+    else
+        1;
+    const updated_at = if (record.updated_at_utc_ms >= prepared_at)
+        record.updated_at_utc_ms
+    else
+        prepared_at;
+    const maximum_attempts = if (record.maximum_recovery_attempts != 0)
+        record.maximum_recovery_attempts
+    else
+        1;
+    const disposition = if (record.disposition == @intFromEnum(protocol.Disposition.apply) or
+        record.disposition == @intFromEnum(protocol.Disposition.restore))
+        record.disposition
+    else
+        @intFromEnum(protocol.Disposition.restore);
+    return .{
+        .identity = identity,
+        .scope = scope,
+        .disposition = disposition,
+        .domain_mask = 0,
+        .phase = @intFromEnum(protocol.Phase.recovery_blocked),
+        .grade_valid_mask = 0,
+        .grade_reserved = 0,
+        .stable_system_status = record.stable_system_status,
+        .stable_system_error = record.stable_system_error,
+        .process_from_grade = 0,
+        .process_to_grade = 0,
+        .cpu_from_grade = 0,
+        .cpu_to_grade = 0,
+        .gpu_from_grade = 0,
+        .gpu_to_grade = 0,
+        .payload_kind = if (payload_valid) record.payload_kind else @intFromEnum(protocol.PayloadKind.none_required),
+        .payload_slot = if (payload_valid) record.payload_slot else 0,
+        .payload_generation = if (payload_valid) record.payload_generation else 0,
+        .payload_reserved = 0,
+        .payload_length = if (payload_valid) record.payload_length else 0,
+        .payload_digest_low = if (payload_valid) record.payload_digest_low else 0,
+        .payload_digest_high = if (payload_valid) record.payload_digest_high else 0,
+        .prepared_at_utc_ms = prepared_at,
+        .updated_at_utc_ms = updated_at,
+        .retry_not_before_utc_ms = 0,
+        .entry_revision = if (record.entry_revision != 0) record.entry_revision else 1,
+        .feedback_valid_mask = 0,
+        .feedback_flags = 0,
+        .feedback_status = 0,
+        .feedback_system_status = 0,
+        .feedback_system_error = 0,
+        .feedback_reserved = 0,
+        .feedback_completed_at_utc_ms = 0,
+        .actual_process_grade = 0,
+        .actual_cpu_grade = 0,
+        .actual_gpu_grade = 0,
+        .actual_reserved = 0,
+        .recovery_reason_mask = protocol.RecoveryReason.invalid_proof,
+        .retry_attempt_count = 0,
+        .maximum_recovery_attempts = maximum_attempts,
+        .recovery_deadline_utc_ms = record.recovery_deadline_utc_ms,
+        .atomic_group_id = 0,
+        .group_member_index = 0,
+        .group_member_count = 0,
+        .payload_provenance_digest_low = if (payload_valid) record.payload_provenance_digest_low else 0,
+        .payload_provenance_digest_high = if (payload_valid) record.payload_provenance_digest_high else 0,
+    };
+}
+
+fn samePayloadReference(left: *const protocol.Record, right: *const protocol.Record) bool {
+    return left.payload_kind == right.payload_kind and
+        left.payload_slot == right.payload_slot and
+        left.payload_generation == right.payload_generation and
+        left.payload_length == right.payload_length and
+        left.payload_digest_low == right.payload_digest_low and
+        left.payload_digest_high == right.payload_digest_high and
+        left.payload_provenance_digest_low == right.payload_provenance_digest_low and
+        left.payload_provenance_digest_high == right.payload_provenance_digest_high;
+}
+
+fn clearPayload(record: *protocol.Record) void {
+    record.payload_kind = @intFromEnum(protocol.PayloadKind.none_required);
+    record.payload_slot = 0;
+    record.payload_generation = 0;
+    record.payload_reserved = 0;
+    record.payload_length = 0;
+    record.payload_digest_low = 0;
+    record.payload_digest_high = 0;
+    record.payload_provenance_digest_low = 0;
+    record.payload_provenance_digest_high = 0;
+}
+
+fn quarantineScope(record: *const protocol.Record) ?u32 {
+    var identity = record.identity;
+    identity.reserved = 0;
+    if (!protocol.validIdentity(&identity)) return null;
+    if (protocol.validIdentityForScope(&identity, record.scope)) return record.scope;
+    if (identity.process_start_key != 0 and identity.process_id != 0)
+        return @intFromEnum(protocol.Scope.process);
+    if (identity.software_id != 0 and
+        (record.scope == @intFromEnum(protocol.Scope.resource) or
+            record.scope == @intFromEnum(protocol.Scope.software))) return record.scope;
+    if (identity.software_id != 0) {
+        return @intFromEnum(protocol.Scope.software);
+    }
+    return null;
+}
+
 pub fn inspectImage(image: []const u8, metadata: *ImageMetadata) protocol.Status {
     if (image.len < header_size) return .truncated_image;
     if (readU64(image, 0) != protocol.image_magic) return .corrupt_image;
-    if (readU32(image, 8) != protocol.abi_version or
+    if (readU32(image, 8) != protocol.image_schema_version or
         readU32(image, 12) != header_size or
         readU32(image, 16) != record_size or
         readU32(image, 20) != 0)
