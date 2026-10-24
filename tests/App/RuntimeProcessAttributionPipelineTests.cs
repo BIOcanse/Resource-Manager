@@ -15,6 +15,68 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class RuntimeProcessAttributionPipelineTests
 {
+    [Fact]
+    public async Task SharedSessionSerializesFrameAllocationAcrossPipelinesAndParallelObservations()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var blocker = new BlockingPackageResolver(entered, release);
+        using var first = CreatePipeline([], packageResolver: blocker);
+        using var second = CreatePipeline([]);
+        var process = new RuntimeProcessIdentity(42, null, "fixture", @"D:\Fixture\tool.exe", false);
+        var slow = Task.Run(() => first.Match(process));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+        var racingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var racing = Task.Run(() => { racingStarted.SetResult(); return second.Match(process); });
+        await racingStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // Old code submits the newer frame while the first resolver builds observations.
+        try { Assert.NotSame(racing, await Task.WhenAny(racing, Task.Delay(100))); }
+        finally { release.Set(); }
+        await Task.WhenAll(slow, racing).WaitAsync(TimeSpan.FromSeconds(10));
+        await Parallel.ForEachAsync(Enumerable.Range(0, 80), new ParallelOptions { MaxDegreeOfParallelism = 4 },
+            (index, _) => { (index % 2 == 0 ? first : second).Match(process); return ValueTask.CompletedTask; });
+        using var lease = SoftwareIdentityCatalogTestData.Owner.Acquire();
+        lock (lease.ResolutionGate)
+        {
+            var newer = lease.NextFrame(DateTimeOffset.UtcNow);
+            var earlier = lease.NextFrame(DateTimeOffset.UnixEpoch.AddSeconds(1));
+            Assert.True(earlier.FrameEpoch > newer.FrameEpoch);
+            Assert.Equal(newer.CommandUtcMilliseconds, earlier.CommandUtcMilliseconds);
+        }
+    }
+
+    [Fact]
+    public void FailedCandidateLeavesOnlyItsBatchEntryAbsentAndCannotSupplyHelperOwnership()
+    {
+        using var pipeline = CreatePipeline([], packageResolver: new FailingPackageResolver());
+        RuntimeProcessIdentity[] processes = [
+            new(42, null, "failed", @"D:\Fixture\failed.exe", false, StartKey: 10),
+            new(43, 42, "msedgewebview2", @"D:\Fixture\msedgewebview2.exe", false, StartKey: 20),
+            new(44, null, "later", @"D:\Fixture\later.exe", false, StartKey: 30)];
+        var batch = pipeline.MatchBatch(processes);
+        Assert.False(batch.SoftwareByProcessId.ContainsKey(42));
+        Assert.Equal("IOException", batch.Failures[42]);
+        Assert.True(batch.SoftwareByProcessId.ContainsKey(43));
+        Assert.True(batch.SoftwareByProcessId.ContainsKey(44));
+        Assert.Empty(batch.HelperOwnerByProcessId);
+    }
+
+    private sealed class BlockingPackageResolver(ManualResetEventSlim entered, ManualResetEventSlim release) : IRuntimePackageIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("test release missing");
+            return RuntimeAttributionObservation.NoMatch;
+        }
+    }
+
+    private sealed class FailingPackageResolver : IRuntimePackageIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+            => process.ProcessId == 42 ? throw new IOException("recorded process read failure") : RuntimeAttributionObservation.NoMatch;
+    }
+
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, true)]

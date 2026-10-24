@@ -570,14 +570,24 @@ internal sealed partial class WindowsHardwareMetricCapture
         // 核显的频率/温度/电压也从这里出。核显没有自己的传感库（ADLX 服务的是独显），
         // 但那几个量一直躺在处理器的 PM table 里 —— 因为核显就是这颗处理器的一部分。
         // 哪一块是核显，由启动时认定的路由回答，不按索引猜。
-        var gpuInventory = resources.ReadGpuInventory();
-        var gpuInventoryIsCurrent = gpuInventory.Status == SamplingObservationStatus.Current
+        // CPU readings do not depend on GPU enumeration. A routing failure
+        // empties only the requested GPU fields from this shared SMU source.
+        WindowsGpuAdapterInventoryRead? gpuInventory = null;
+        if (selected.Any(binding => binding.Field?.Resource == MetricResource.Gpu))
+        {
+            try { gpuInventory = resources.ReadGpuInventory(); }
+            catch (Exception error) when (error is not (OperationCanceledException or OutOfMemoryException))
+            {
+                logFailure?.Invoke(error, NativeMetricSnapshotSources.WindowsGpuAdapterOrder);
+            }
+        }
+        var gpuInventoryIsCurrent = gpuInventory is not null && gpuInventory.Status == SamplingObservationStatus.Current
             && gpuInventory.Generation != 0
             && gpuInventory.ObservedCount == gpuInventory.Adapters.Count
             && gpuInventory.SkippedCount == 0
             && gpuInventory.OverflowCount == 0;
         IReadOnlyList<WindowsGpuAdapter> routeAdapters = gpuInventoryIsCurrent
-            ? gpuInventory.Adapters
+            ? gpuInventory!.Adapters
             : Array.Empty<WindowsGpuAdapter>();
         var integratedGpuIndex = integratedGpuSensorRoute.Resolve(routeAdapters);
         if (selected.Length > 0 && selected.All(binding => binding.Field?.Resource == MetricResource.Gpu

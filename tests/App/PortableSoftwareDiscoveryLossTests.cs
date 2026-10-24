@@ -14,6 +14,152 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class PortableSoftwareDiscoveryLossTests
 {
+    [Fact]
+    public async Task ConcurrentScanAndWorkerObserveEveryCandidateAndCancellationStopsWorker()
+    {
+        var resolver = new CandidateResolver();
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            resolver, new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var registry = new RecordingRegistry();
+        var logger = new RecordingLogger();
+        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, logger,
+            () => Enumerable.Range(0, 24).Select(_ => new PortableProcessCandidate(Environment.ProcessId, 2)).ToArray(), ReadFixtureIdentity);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await service.StartAsync(cancellation.Token);
+        await service.ScanRunningProcessesAsync(cancellation.Token);
+        while (Volatile.Read(ref registry.Observations) < 48) await Task.Delay(10, cancellation.Token);
+        cancellation.Cancel();
+        await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(Worker(service).IsCompletedSuccessfully);
+        Assert.Equal(48, resolver.Attempts);
+        Assert.Equal(48, registry.Observations);
+        Assert.Empty(logger.Warnings);
+        Assert.Empty(logger.Errors);
+    }
+
+    [Theory]
+    [InlineData(false, "native-StaleFrame")]
+    [InlineData(true, "native-StaleFrame")]
+    [InlineData(false, "ObjectDisposedException")]
+    [InlineData(true, "OperationCanceledException")]
+    public async Task FailedResolutionDoesNotStopLaterWorkerOrScanCandidates(bool scan, string failureKind)
+    {
+        var resolver = new CandidateResolver(failureKind);
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            resolver, new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var logger = new RecordingLogger();
+        var registry = new RecordingRegistry();
+        var candidates = new[] { new PortableProcessCandidate(Environment.ProcessId, 1),
+            new PortableProcessCandidate(Environment.ProcessId, 1), new PortableProcessCandidate(Environment.ProcessId, 2) };
+        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, logger, () => candidates, ReadFixtureIdentity);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        if (scan) await service.ScanRunningProcessesAsync(timeout.Token);
+        else
+        {
+            await service.StartAsync(timeout.Token);
+            await resolver.Succeeded.Task.WaitAsync(timeout.Token);
+            await service.StopAsync(timeout.Token);
+            Assert.True(Worker(service).IsCompletedSuccessfully);
+        }
+        Assert.Equal(3, resolver.Attempts);
+        Assert.Equal(1, registry.Observations);
+        Assert.Single(logger.Warnings);
+        Assert.Contains(failureKind, logger.Warnings.Single());
+        Assert.Empty(logger.Errors);
+    }
+
+    [Fact]
+    public async Task MissingResolutionSessionStopsWorkerWithVisibleError()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new MissingSessionResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var logger = new RecordingLogger();
+        using var service = new PortableSoftwareDiscoveryService(new Broker(), new CatalogProvider(catalog),
+            new MatchingCatalog(), null!, logger, () => [new(Environment.ProcessId)]);
+        await service.StartAsync(CancellationToken.None);
+        await Worker(service).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Single(logger.Errors);
+        Assert.Contains("unavailable for this service lifetime", logger.Errors.Single());
+        Assert.Empty(logger.Warnings);
+        await service.StopAsync(CancellationToken.None);
+    }
+
+    private static Task Worker(PortableSoftwareDiscoveryService service) => (Task)typeof(PortableSoftwareDiscoveryService)
+        .GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
+
+    private static RuntimeProcessIdentity ReadFixtureIdentity(PortableProcessCandidate candidate)
+        => new(candidate.ProcessId, candidate.ParentProcessId, "fixture", @"D:\Fixture\fixture.exe", false);
+
+    private sealed class CandidateResolver(string failureKind = "native-StaleFrame") : IRuntimePackageIdentityResolver
+    {
+        internal int Attempts;
+        internal TaskCompletionSource Succeeded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+        {
+            Interlocked.Increment(ref Attempts);
+            if (process.ParentProcessId == 1)
+            {
+                if (failureKind == "ObjectDisposedException") throw new ObjectDisposedException("process");
+                if (failureKind == "OperationCanceledException") throw new OperationCanceledException("provider canceled this process");
+                throw new ResourceManager.App.Infrastructure.NativeCore.NativeSoftwareIdentityException("resolution",
+                    ResourceManager.App.Infrastructure.NativeCore.NativeSoftwareIdentityStatus.StaleFrame);
+            }
+            Succeeded.TrySetResult();
+            return RuntimeAttributionObservation.Matched(new("catalog:fixture", "Fixture", "other", "other",
+                [Path.GetDirectoryName(Environment.ProcessPath!)!]));
+        }
+    }
+
+    private sealed class MissingSessionResolver : IRuntimePackageIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+            => throw new ObjectDisposedException("NativeSoftwareIdentityResolutionSession");
+    }
+
+    private sealed class MatchingCatalog : ISoftwareIdentityCatalog
+    {
+        public string Version => "fixture";
+        public IReadOnlyList<ResourceManager.App.Domain.SoftwareIdentity.SoftwareIdentityCatalogEntry> Entries => [];
+        public ResourceManager.App.Domain.SoftwareIdentity.SoftwareIdentityCatalogEntry? MatchInstalledSoftware(
+            ResourceManager.App.Domain.Software.InstalledSoftwareEntry software) => null;
+        public ResourceManager.App.Domain.SoftwareIdentity.SoftwareIdentityCatalogEntry? MatchProcess(RuntimeProcessIdentity process) => null;
+        public ResourceManager.App.Domain.SoftwareIdentity.PortableSoftwareIdentityMatch? MatchPortableProcess(RuntimeProcessIdentity process)
+            => new(new("fixture", "Fixture", "other", "fixture"),
+                ResourceManager.App.Domain.SoftwareIdentity.PortableSoftwareIdentityConfidence.Confirmed, []);
+    }
+
+    private sealed class RecordingRegistry : ResourceManager.App.Application.SoftwareDiscovery.IPortableSoftwareRegistry
+    {
+        internal int Observations;
+        public void Observe(ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareObservation observation)
+            => Interlocked.Increment(ref Observations);
+        public IReadOnlyList<ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRegistration> GetSnapshot() => [];
+        public Task<IReadOnlyList<ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRegistration>> RefreshAsync(CancellationToken token)
+            => Task.FromResult(GetSnapshot());
+        public Task<ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRootConfirmationResult> ConfirmRootPathAsync(
+            ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRootConfirmationRequest request, CancellationToken token)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger<PortableSoftwareDiscoveryService>
+    {
+        internal System.Collections.Concurrent.ConcurrentBag<string> Warnings = [];
+        internal System.Collections.Concurrent.ConcurrentBag<string> Errors = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level, Microsoft.Extensions.Logging.EventId id,
+            TState state, Exception? error, Func<TState, Exception?, string> formatter)
+        {
+            if (level == Microsoft.Extensions.Logging.LogLevel.Warning) Warnings.Add(formatter(state, error));
+            if (level == Microsoft.Extensions.Logging.LogLevel.Error) Errors.Add(formatter(state, error));
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

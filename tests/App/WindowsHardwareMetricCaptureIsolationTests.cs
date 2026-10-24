@@ -11,6 +11,48 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsHardwareMetricCaptureIsolationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GpuInventoryFailureCannotDiscardReadableSmuCpuValues(bool requestGpu)
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"smu-cpu-isolation-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(0, "AMD integrated", "gpu-amd-integrated", 0xA1, 1, 2, false)], [], [], workspace.CreateCatalogHandleMap());
+        workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
+        var cpu = Assert.Single(catalog.MetricBindings.Values, binding => binding.Field?.Name == "cpu_amd_actual_power_watts");
+        var gpu = Assert.Single(catalog.MetricBindings.Values, binding => binding.Field?.Name == "gpu_amd_apu_temperature_reported_celsius");
+        var inventoryReads = 0;
+        using var resources = RecordedResources(() => throw new Exception("unselected CPU counter"),
+            () => throw new Exception("unselected memory"),
+            () => { inventoryReads++; throw new IOException("GPU enumeration failed"); },
+            _ => new(new("recorded SMU", HardwareSensorProviderStates.Active, "recorded"), null, null, null, null,
+                ActualPowerWatts: 15, ApuTemperatureCelsius: 45));
+        var failures = new List<string>();
+        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
+            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
+        try
+        {
+            var request = MetricSampleRequest.ForIds(requestGpu ? [cpu.MetricId, gpu.MetricId] : [cpu.MetricId]);
+            var snapshot = Assert.IsType<HardwareMetricSnapshot>(await capture.CaptureUnderGateAsync(request, workspace,
+                1, null, commit => { commit(); return true; }, new("recorded"), default));
+            Assert.Equal(15d, snapshot.Items[cpu.MetricId].NumericValue);
+            Assert.Equal(SamplingObservationStatus.Current, snapshot.Datasets[cpu.MetricId].Status);
+            // The inventory dataset and SMU adapter routing are independently selected reads.
+            Assert.Equal(requestGpu ? 2 : 0, inventoryReads);
+            if (requestGpu)
+            {
+                Assert.Equal(SamplingObservationStatus.Unavailable, snapshot.Datasets[gpu.MetricId].Status);
+                Assert.Equal(2, failures.Count);
+                Assert.All(failures, source => Assert.Equal(NativeMetricSnapshotSources.WindowsGpuAdapterOrder, source));
+            }
+            else Assert.Empty(failures);
+        }
+        finally { capture.SampleGate.Dispose(); }
+    }
+
     [Fact]
     public async Task InventoryOnlyPublishesUsableProcessGpuIdentityWithoutSamplingAnyNumericSource()
     {
@@ -150,7 +192,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
 
     private static WindowsHardwareMetricResources RecordedResources(
         Func<NativeMetricSnapshotCpuCounterObservation> cpu, Func<MemoryMetrics> memory,
-        Func<WindowsGpuAdapterInventoryRead>? gpu = null) => new()
+        Func<WindowsGpuAdapterInventoryRead>? gpu = null, Func<AmdSmuCpuSensorReadRequest, CpuSensorMetrics>? smu = null) => new()
     {
         CpuName = "recorded", MemoryDescription = "recorded", ReadCpuCounters = cpu, ReadMemory = memory,
         ReadVirtualMemory = () => throw new InvalidOperationException("unselected virtual memory"),
@@ -162,7 +204,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         ReadNvmlAsync = (_, _, _) => throw new InvalidOperationException("unselected NVML"),
         ReadNvapiAsync = (_, _, _) => throw new InvalidOperationException("unselected NVAPI"),
         ReadAdlxAsync = (_, _, _) => throw new InvalidOperationException("unselected ADLX"),
-        ReadAmdSmu = _ => throw new InvalidOperationException("unselected SMU"),
+        ReadAmdSmu = smu ?? (_ => throw new InvalidOperationException("unselected SMU")),
         ReadIntelGpu = (_, _, _) => throw new InvalidOperationException("unselected IGCL"),
         ReadIntelMsr = (_, _) => throw new InvalidOperationException("unselected MSR"),
         ReadBatteryIdentities = () => throw new InvalidOperationException("unselected battery directory"),

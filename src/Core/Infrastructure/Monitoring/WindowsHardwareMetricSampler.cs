@@ -633,21 +633,7 @@ public sealed partial class WindowsHardwareMetricSampler :
             }
             completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
                 triggers, queriedAddresses, committed: true));
-            var (newlyRejected, recovered) = TrackRejectedDatasets(rejectedDatasetIds, publication);
-            if (newlyRejected.Count != 0)
-            {
-                logger.LogWarning(
-                    "Hardware sampling started rejecting {RejectedCount} datasets: {RejectedDatasets}. " +
-                    "Repeated rejections are not logged again until the dataset publishes successfully.",
-                    newlyRejected.Count,
-                    string.Join(", ", newlyRejected));
-            }
-            if (recovered.Count != 0)
-            {
-                logger.LogInformation(
-                    "Hardware sampling published previously rejected datasets again: {RecoveredDatasets}.",
-                    string.Join(", ", recovered));
-            }
+            ReportPublication(logger, rejectedDatasetIds, publication);
             if (request.IncludesCatalog)
             {
                 dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
@@ -689,6 +675,21 @@ public sealed partial class WindowsHardwareMetricSampler :
         {
             sampleGate.Release();
         }
+    }
+
+    internal static void ReportPublication(ILogger logger, ISet<string> rejectedDatasetIds,
+        HardwareMetricPublicationResult publication)
+    {
+        var (newlyRejected, recovered) = TrackRejectedDatasets(rejectedDatasetIds, publication);
+        if (newlyRejected.Count != 0)
+            logger.LogWarning(
+                "Hardware sampling started rejecting {RejectedCount} datasets: {RejectedDatasets}. " +
+                "Repeated rejections are not logged again until the dataset publishes successfully.",
+                newlyRejected.Count,
+                string.Join(", ", newlyRejected.Select(id => $"{id}[{publication.RejectionReasons[id]}]")));
+        if (recovered.Count != 0)
+            logger.LogWarning("Hardware sampling published previously rejected datasets again: {RecoveredDatasets}.",
+                string.Join(", ", recovered));
     }
 
     // 同一 dataset 持续被拒绝只在进入拒绝状态时报告一次；重新发布成功时报告恢复，之后再被拒绝会再次报告。

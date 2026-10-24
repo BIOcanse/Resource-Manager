@@ -33,7 +33,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             .Select(static value => value!)
             .ToArray());
 
-    private readonly object gate = new();
+    private readonly object gate;
     private readonly HostManagerSoftwareIdentityOwner.SessionLease lease;
     private readonly NativeRuntimeSourceCatalog adaptedCatalog;
     private readonly NativeRuntimeSourceCatalog controlledCatalog;
@@ -139,6 +139,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 knownProjection,
                 acquiredLease.CatalogPlan);
             lease = acquiredLease;
+            gate = acquiredLease.ResolutionGate;
             adaptedCatalog = acquiredAdaptedCatalog;
             controlledCatalog = acquiredControlledCatalog;
             selfCatalog = acquiredSelfCatalog;
@@ -161,9 +162,9 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     internal RuntimeSoftwareAttribution Resolve(RuntimeProcessIdentity process, out uint selectedSource)
     {
         ArgumentNullException.ThrowIfNull(process);
-        ObjectDisposedException.ThrowIf(disposed, this);
         lock (gate)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             resolutionPayloads = new NativeSoftwareIdentityPayloadCatalog();
             var frame = lease.NextFrame(DateTimeOffset.UtcNow);
             var observations = new List<NativeSoftwareIdentityObservationInput>(16);
@@ -258,8 +259,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 out var output);
             if (status != NativeSoftwareIdentityStatus.Ok)
             {
-                throw new InvalidOperationException(
-                    $"Native software identity resolution failed with {status}.");
+                throw new NativeSoftwareIdentityException("resolution", status);
             }
             var attribution = ResolveOutput(output);
             selectedSource = output.SelectedSourceId;
@@ -304,16 +304,19 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
 
     public void Dispose()
     {
-        if (disposed)
+        lock (gate)
         {
-            return;
+            if (disposed)
+            {
+                return;
+            }
+            disposed = true;
+            knownCatalog.Dispose();
+            selfCatalog.Dispose();
+            controlledCatalog.Dispose();
+            adaptedCatalog.Dispose();
+            lease.Dispose();
         }
-        disposed = true;
-        knownCatalog.Dispose();
-        selfCatalog.Dispose();
-        controlledCatalog.Dispose();
-        adaptedCatalog.Dispose();
-        lease.Dispose();
     }
 
     private RuntimeSoftwareAttribution ResolveOutput(
@@ -1027,8 +1030,7 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
             out var output);
         if (status != NativeSoftwareIdentityStatus.Ok)
         {
-            throw new InvalidOperationException(
-                $"Native runtime source exact query failed with {status}.");
+            throw new NativeSoftwareIdentityException("runtime source exact query", status);
         }
         return output.Status switch
         {
@@ -1105,8 +1107,7 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
             out var output);
         if (status != NativeSoftwareIdentityStatus.Ok)
         {
-            throw new InvalidOperationException(
-                $"Native runtime source known query failed with {status}.");
+            throw new NativeSoftwareIdentityException("runtime source known query", status);
         }
         return output.Status switch
         {

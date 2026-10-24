@@ -45,19 +45,32 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         => MatchBatch(processes, _ => this);
 
     internal static RuntimeProcessAttributionBatch MatchBatch(IReadOnlyList<RuntimeProcessIdentity> processes,
-        Func<RuntimeProcessIdentity, RuntimeProcessAttributionPipeline> selectPipeline)
+        Func<RuntimeProcessIdentity, RuntimeProcessAttributionPipeline> selectPipeline,
+        CancellationToken cancellationToken = default)
     {
         var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
         var sources = new Dictionary<int, uint>();
+        var failures = new Dictionary<int, string>();
         var byId = processes.ToDictionary(process => process.ProcessId);
         foreach (var process in processes)
         {
-            resolved[process.ProcessId] = selectPipeline(process).resolver.Resolve(process, out var source);
-            sources[process.ProcessId] = source;
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                resolved[process.ProcessId] = selectPipeline(process).resolver.Resolve(process, out var source);
+                sources[process.ProcessId] = source;
+            }
+            catch (Exception error) when (RuntimeProcessAttributionFailure.IsCandidateFailure(error)
+                || error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                var kind = RuntimeProcessAttributionFailure.Kind(error);
+                failures[process.ProcessId] = kind;
+            }
         }
         var owners = new Dictionary<int, int>();
         foreach (var process in processes.OrderBy(process => process.StartKey))
         {
+            if (failures.ContainsKey(process.ProcessId)) continue;
             if (sources[process.ProcessId] is NativeRuntimeAttributionSources.Adapted
                 or NativeRuntimeAttributionSources.Controlled
                 or NativeRuntimeAttributionSources.Service) continue;
@@ -68,6 +81,7 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
                 && byId.TryGetValue(parentId, out var parent) && parent.StartKey is > 0
                 && parent.StartKey <= current.StartKey && visited.Add(parentId))
             {
+                if (failures.ContainsKey(parentId)) break;
                 current = parent;
                 if (IsHelper(parent) && sources[parentId] is not (NativeRuntimeAttributionSources.Adapted
                     or NativeRuntimeAttributionSources.Controlled
@@ -101,7 +115,7 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             foreach (var pair in group) resolved[pair.Key] = pair.Value with
             { Kind = category.Kind, DisplayKind = category.DisplayKind, CategorySource = category.CategorySource };
         }
-        return new(resolved, owners);
+        return new(resolved, owners) { Failures = failures };
     }
 
     private static bool IsHelper(RuntimeProcessIdentity process)
@@ -125,4 +139,7 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
 
 public sealed record RuntimeProcessAttributionBatch(
     IReadOnlyDictionary<int, RuntimeSoftwareAttribution> SoftwareByProcessId,
-    IReadOnlyDictionary<int, int> HelperOwnerByProcessId);
+    IReadOnlyDictionary<int, int> HelperOwnerByProcessId)
+{
+    public IReadOnlyDictionary<int, string> Failures { get; init; } = new Dictionary<int, string>();
+}

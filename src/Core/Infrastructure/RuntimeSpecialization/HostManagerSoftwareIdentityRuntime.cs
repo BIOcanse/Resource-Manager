@@ -369,6 +369,11 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
 
         internal ulong PolicyGeneration { get; }
 
+        // Every resolver borrowing this native session must allocate and submit
+        // its frame under the same lock, including observation construction.
+        internal object ResolutionGate => (holder
+            ?? throw new ObjectDisposedException(nameof(SessionLease))).ResolutionGate;
+
         internal HostManagerSoftwareIdentityFrameStamp NextFrame(DateTimeOffset now)
             => (holder
                 ?? throw new ObjectDisposedException(nameof(SessionLease)))
@@ -385,7 +390,7 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
     {
         private int referenceCount = 1;
         private int retired;
-        private readonly object frameGate = new();
+        internal object ResolutionGate { get; } = new();
         private ulong frameEpoch;
         private long lastCommandUtcMilliseconds;
 
@@ -416,7 +421,7 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
                     nameof(now),
                     "Software identity frame time must not precede the Unix epoch.");
             }
-            lock (frameGate)
+            lock (ResolutionGate)
             {
                 if (frameEpoch == ulong.MaxValue)
                 {

@@ -41,7 +41,7 @@ internal static class RuntimeProcessAttributionCapture
                     catalogs.Add(scope, await provider.AcquireCatalogAsync(scope, cancellationToken));
             }
             var batch = RuntimeProcessAttributionPipeline.MatchBatch(processes,
-                process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline);
+                process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline, cancellationToken);
             // These are scoring inputs only. Matching always uses the owner's separate catalog.
             var scores = catalogs.Values.SelectMany(lease => lease.Catalog.GetSoftwareBaseScores(baseScorePlan))
                 .DistinctBy(score => score.SoftwareId, StringComparer.OrdinalIgnoreCase).ToImmutableArray();
