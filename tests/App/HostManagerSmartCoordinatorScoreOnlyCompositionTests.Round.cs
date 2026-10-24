@@ -130,6 +130,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var snapshot = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
         var authority = snapshot.SchedulingAuthority;
         Assert.Equal("1", authority.RoundNumber);
+        Assert.Equal("ready", authority.Availability);
+        Assert.All(authority.Cpu!.Scores, score =>
+            Assert.Contains(score.Kind, new[] { "process_cpu", "software_cpu" }));
+        Assert.All(authority.MemoryModes!.Software, row =>
+            Assert.Contains(row.Mode, new[] { "unrestricted", "normal", "optimize", "paged_frozen" }));
+        Assert.All(snapshot.NonAdaptedMemoryDecisions, row =>
+            Assert.Contains(row.Action, new[] { "restore_owned_constraints", "optimize", "paged_frozen" }));
         Assert.Equal(authority.RoundNumber, authority.Cpu!.RoundNumber);
         Assert.All(authority.Cpu.Scores, score => Assert.Equal(authority.RoundNumber, score.RoundNumber));
         Assert.Equal(authority.RoundNumber, authority.MemoryModes!.RoundNumber);

@@ -18,6 +18,9 @@ export default async function managementFeedbackJourney(page, baseUrl) {
       externalTermsUrl: "https://example.test/terms", capabilities: [] },
     installed: false, installerAvailable: true, canInstall: true, canDownload: true,
     providers: [], installerSourceKind: "direct"
+  }, {
+    definition: { id: "search-fixture", name: "Search fixture", managementRole: "dependency", capabilities: [] },
+    providers: [{ providerKind: "hardware_monitor" }]
   }] }));
   await page.route("**/api/browser-runtimes*", route => route.fulfill({ json: {
     sharedRuntime: null, browserFallback: null, candidates: [], installComponentId: runtimeId,
@@ -43,6 +46,15 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "组件与软件", exact: true }).click();
+  await page.locator("#managementTab-Dependency").click();
+  for (const query of ["HardwareMonitor", "hardware_monitor", "HARDWARE_MONITOR"]) {
+    await page.getByRole("searchbox").fill(query);
+    await page.locator(".component-item").filter({ hasText: "Search fixture" }).waitFor();
+  }
+  await page.getByRole("searchbox").fill("unmatched-provider-kind");
+  await page.locator(".component-item").filter({ hasText: "Search fixture" }).waitFor({ state: "hidden" });
+  await page.getByRole("searchbox").fill("");
   let previous = "zh-CN";
   const languages = [];
   for (const option of languageOptions.filter(option => option.id !== "system")) {
@@ -83,5 +95,5 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   }
   assert.equal(deletes, 0, "Canceled registration removals must not write");
   assert.deepEqual(errors, []);
-  return { languages, runtimeDownloadDialog: true, manualRemovalCopyAndCancel: true, metadataFailureAndRetry: true };
+  return { languages, providerKindSearch: true, runtimeDownloadDialog: true, manualRemovalCopyAndCancel: true, metadataFailureAndRetry: true };
 }

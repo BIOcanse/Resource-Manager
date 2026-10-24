@@ -4,6 +4,17 @@ using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Domain.Components;
 
+public static class ComponentProviderKinds
+{
+    public const string Runtime = "runtime";
+    public const string Cpu = "cpu";
+    public const string Fan = "fan";
+    public const string HardwareMonitor = "hardware_monitor";
+    public const string Provider = "provider";
+    public const string Gpu = "gpu";
+    public const string NotebookOem = "notebook_oem";
+}
+
 public static class ComponentStatusStates
 {
     public const string Active = "active";

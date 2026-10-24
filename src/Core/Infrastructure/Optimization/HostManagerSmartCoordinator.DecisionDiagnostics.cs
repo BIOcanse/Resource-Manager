@@ -1,6 +1,5 @@
 using System.Globalization;
-using ResourceManager.App.Domain.Optimization;
-using ResourceManager.App.Domain.Software;
+using static ResourceManager.App.Infrastructure.Optimization.HostManagerDecisionDiagnosticTokens;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -67,11 +66,11 @@ public sealed partial class HostManagerSmartCoordinator
 
         return new HostManagerSchedulingAuthorityDiagnostics(
             Exact(authority.RoundNumber),
-            authority.Availability.ToString(),
+            Token(authority.Availability),
             authority.ObservedAt == default ? null : authority.ObservedAt,
             authority.UnavailableReason,
             binding,
-            authority.Compute?.CpuOccupancySource?.ToString(),
+            authority.Compute?.CpuOccupancySource is { } source ? Token(source) : null,
             ProjectComputeDomainDiagnostics(authority.Compute?.Cpu),
             ProjectComputeDomainDiagnostics(authority.Compute?.Gpu),
             ProjectMemoryModeDiagnostics(authority.MemoryModes),
@@ -91,7 +90,7 @@ public sealed partial class HostManagerSmartCoordinator
             Exact(domain.RoundNumber),
             domain.Scores.Select(static score =>
                 new HostManagerComputeScoreDiagnostics(
-                    score.Kind.ToString(),
+                    Token(score.Kind),
                     Exact(score.RoundNumber),
                     Exact(score.TargetKey),
                     Exact(score.SoftwareKey),
@@ -100,7 +99,7 @@ public sealed partial class HostManagerSmartCoordinator
                     Exact(score.AdapterKey),
                     score.Score,
                     score.MemberCount,
-                    RuntimeStateToken(score.RuntimeState)))
+                    Token(score.RuntimeState)))
                 .ToArray());
     }
 
@@ -124,13 +123,13 @@ public sealed partial class HostManagerSmartCoordinator
                     Exact(desired.RoundNumber),
                     desired.CpuScore,
                     desired.Rank,
-                    desired.Mode.ToString(),
+                    Token(desired.Mode),
                     desired.BaseScore,
                     desired.BaseScoreClamped,
                     Enum.GetValues<NativeMemoryGradeSet>()
                         .Where(grade => grade is not (NativeMemoryGradeSet.None or NativeMemoryGradeSet.Known)
                             && (desired.BaseScoreAllowedGrades & grade) != 0)
-                        .Select(static grade => grade.ToString())
+                        .Select(static grade => Token(grade))
                         .ToArray()))
                 .ToArray());
     }
@@ -160,9 +159,9 @@ public sealed partial class HostManagerSmartCoordinator
             snapshot.PendingCount,
             snapshot.InflightCount,
             snapshot.InvalidFactCount,
-            snapshot.Flags.ToString(),
+            FlagTokens(snapshot.Flags, Token),
             Exact((uint)snapshot.Flags),
-            snapshot.ReasonMask.ToString(),
+            FlagTokens(snapshot.ReasonMask, Token),
             Exact((ulong)snapshot.ReasonMask),
             rows.Select(ProjectNativeRowDiagnostics).ToArray());
     }
@@ -170,40 +169,40 @@ public sealed partial class HostManagerSmartCoordinator
     private static HostManagerNativeCoordinatorRowDiagnostics
         ProjectNativeRowDiagnostics(NativeSmartCoordinatorSnapshotRow row)
         => new(
-            row.RowKind.ToString(),
+            Token(row.RowKind),
             Exact(row.TargetKey),
             Exact(row.SoftwareKey),
             row.ProcessId,
             Exact(row.ProcessStartKey),
             row.SourceIndex,
-            SoftwareKindToken(row.SoftwareKind),
-            RuntimeStateToken(row.RuntimeState),
+            Token(row.SoftwareKind),
+            Token(row.RuntimeState),
             row.ProtectionLevel,
             row.BaseScore,
             row.CpuScore,
             row.CpuOccupancyPercent,
             row.AdapterCpuScore,
             row.AdapterGpuScore,
-            row.DesiredProcessGrade.ToString(),
-            row.AppliedProcessGrade.ToString(),
-            row.PendingProcessGrade.ToString(),
-            row.DesiredCpuGrade.ToString(),
-            row.AppliedCpuGrade.ToString(),
-            row.PendingCpuGrade.ToString(),
-            row.DesiredGpuGrade.ToString(),
-            row.AppliedGpuGrade.ToString(),
-            row.PendingGpuGrade.ToString(),
+            Token(row.DesiredProcessGrade),
+            Token(row.AppliedProcessGrade),
+            Token(row.PendingProcessGrade),
+            Token(row.DesiredCpuGrade),
+            Token(row.AppliedCpuGrade),
+            Token(row.PendingCpuGrade),
+            Token(row.DesiredGpuGrade),
+            Token(row.AppliedGpuGrade),
+            Token(row.PendingGpuGrade),
             row.ProcessPendingCount,
             row.CpuPendingCount,
             row.GpuPendingCount,
             row.FailureCount,
             row.CpuCapabilityMask,
             row.GpuCapabilityMask,
-            row.Flags.ToString(),
+            FlagTokens(row.Flags, Token),
             Exact((uint)row.Flags),
-            row.ValidMask.ToString(),
+            FlagTokens(row.ValidMask, Token),
             Exact((ulong)row.ValidMask),
-            row.ReasonMask.ToString(),
+            FlagTokens(row.ReasonMask, Token),
             Exact((ulong)row.ReasonMask),
             Exact(row.LastSeenCycle),
             row.PendingFirstSeenMilliseconds,
@@ -229,54 +228,11 @@ public sealed partial class HostManagerSmartCoordinator
                 Exact(directive.ProcessStartKey),
                 Exact(directive.MemoryPolicyTargetKey),
                 directive.SoftwareRank,
-                directive.Mode.ToString(),
-                directive.Action.ToString(),
+                Token(directive.Mode),
+                Token(directive.Action),
                 directive.TargetMemoryPriority))
             .ToArray();
     }
-
-    private static string RuntimeStateToken(NativeSmartCoordinatorRuntimeState state)
-        => state switch
-        {
-            NativeSmartCoordinatorRuntimeState.Unknown => HostManagerRuntimeStates.Unknown,
-            NativeSmartCoordinatorRuntimeState.ForegroundFocused => HostManagerRuntimeStates.ForegroundFocused,
-            NativeSmartCoordinatorRuntimeState.ForegroundUnfocused => HostManagerRuntimeStates.ForegroundUnfocused,
-            NativeSmartCoordinatorRuntimeState.BackgroundWindow => HostManagerRuntimeStates.BackgroundWindow,
-            NativeSmartCoordinatorRuntimeState.TrayOnly => HostManagerRuntimeStates.TrayOnly,
-            NativeSmartCoordinatorRuntimeState.BackgroundProcess => HostManagerRuntimeStates.BackgroundProcess,
-            NativeSmartCoordinatorRuntimeState.NotRunning => HostManagerRuntimeStates.NotRunning,
-            _ => throw new InvalidDataException($"Unknown native runtime state '{state}'.")
-        };
-
-    private static string RuntimeStateToken(NativeComputeScoringRuntimeState state)
-        => state switch
-        {
-            NativeComputeScoringRuntimeState.Unknown => HostManagerRuntimeStates.Unknown,
-            NativeComputeScoringRuntimeState.ForegroundFocused => HostManagerRuntimeStates.ForegroundFocused,
-            NativeComputeScoringRuntimeState.ForegroundUnfocused => HostManagerRuntimeStates.ForegroundUnfocused,
-            NativeComputeScoringRuntimeState.BackgroundWindow => HostManagerRuntimeStates.BackgroundWindow,
-            NativeComputeScoringRuntimeState.TrayOnly => HostManagerRuntimeStates.TrayOnly,
-            NativeComputeScoringRuntimeState.BackgroundProcess => HostManagerRuntimeStates.BackgroundProcess,
-            NativeComputeScoringRuntimeState.NotRunning => HostManagerRuntimeStates.NotRunning,
-            _ => throw new InvalidDataException($"Unknown native compute runtime state '{state}'.")
-        };
-
-    private static string SoftwareKindToken(NativeSmartCoordinatorSoftwareKind kind)
-        => kind switch
-        {
-            NativeSmartCoordinatorSoftwareKind.Unknown => "unknown",
-            NativeSmartCoordinatorSoftwareKind.Game => SoftwareKinds.Game,
-            NativeSmartCoordinatorSoftwareKind.HighPerformance => SoftwareKinds.HighPerformance,
-            NativeSmartCoordinatorSoftwareKind.WindowsSystem => SoftwareKinds.WindowsSystem,
-            NativeSmartCoordinatorSoftwareKind.Adapted => SoftwareKinds.Adapted,
-            NativeSmartCoordinatorSoftwareKind.Dependency => SoftwareManagementRoles.Dependency,
-            NativeSmartCoordinatorSoftwareKind.Runtime => "runtime",
-            NativeSmartCoordinatorSoftwareKind.Controlled => SoftwareKinds.Controlled,
-            NativeSmartCoordinatorSoftwareKind.Managed => SoftwareKinds.Managed,
-            NativeSmartCoordinatorSoftwareKind.Unattributed => SoftwareKinds.Unattributed,
-            NativeSmartCoordinatorSoftwareKind.GeneralApplication => "general_application",
-            _ => throw new InvalidDataException($"Unknown native software kind '{kind}'.")
-        };
 
     private static string Exact(ulong value)
         => value.ToString(CultureInfo.InvariantCulture);
@@ -372,9 +328,9 @@ internal sealed record HostManagerNativeCoordinatorDiagnostics(
     uint PendingCount,
     uint InflightCount,
     uint InvalidFactCount,
-    string Flags,
+    IReadOnlyList<string> Flags,
     string FlagsValue,
-    string ReasonMask,
+    IReadOnlyList<string> ReasonMask,
     string ReasonMaskValue,
     IReadOnlyList<HostManagerNativeCoordinatorRowDiagnostics> Rows);
 
@@ -408,11 +364,11 @@ internal sealed record HostManagerNativeCoordinatorRowDiagnostics(
     uint FailureCount,
     byte CpuCapabilityMask,
     byte GpuCapabilityMask,
-    string Flags,
+    IReadOnlyList<string> Flags,
     string FlagsValue,
-    string ValidMask,
+    IReadOnlyList<string> ValidMask,
     string ValidMaskValue,
-    string ReasonMask,
+    IReadOnlyList<string> ReasonMask,
     string ReasonMaskValue,
     string LastSeenCycle,
     long PendingFirstSeenMilliseconds,

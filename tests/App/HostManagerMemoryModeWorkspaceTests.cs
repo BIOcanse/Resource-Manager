@@ -41,10 +41,10 @@ public sealed class HostManagerMemoryModeWorkspaceTests
             Find(result, MiddleKey).BaseScoreAllowedGrades);
         var diagnostics = Assert.IsType<HostManagerMemoryModeDiagnostics>(
             HostManagerSmartCoordinator.ProjectMemoryModeDiagnostics(result));
-        Assert.Equal(["Normal"], diagnostics.Software.Single(row => row.SoftwareKey == HighKey.ToString()).BaseScoreAllowedGrades);
-        Assert.Equal(["Normal", "L1", "L2", "L3"],
+        Assert.Equal(["normal"], diagnostics.Software.Single(row => row.SoftwareKey == HighKey.ToString()).BaseScoreAllowedGrades);
+        Assert.Equal(["normal", "l1", "l2", "l3"],
             diagnostics.Software.Single(row => row.SoftwareKey == MiddleKey.ToString()).BaseScoreAllowedGrades);
-        Assert.Equal(["Normal", "L1", "L2", "L3"],
+        Assert.Equal(["normal", "l1", "l2", "l3"],
             diagnostics.Software.Single(row => row.SoftwareKey == LowKey.ToString()).BaseScoreAllowedGrades);
         var wire = System.Text.Json.JsonSerializer.SerializeToElement(diagnostics,
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));

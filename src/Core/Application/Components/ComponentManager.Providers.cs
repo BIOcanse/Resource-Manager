@@ -49,7 +49,7 @@ public sealed partial class ComponentManager
                 definition.Capabilities.FirstOrDefault()?.ProviderId ?? definition.Id,
                 definition.Name,
                 definition.Vendor,
-                definition.Capabilities.FirstOrDefault()?.ProviderKind ?? "Provider",
+                definition.Capabilities.FirstOrDefault()?.ProviderKind ?? ComponentProviderKinds.Provider,
                 state,
                 message,
                 definition.Capabilities.Select(static capability => capability.Label).Distinct().ToArray())

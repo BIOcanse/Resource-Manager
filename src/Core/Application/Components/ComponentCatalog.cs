@@ -15,7 +15,7 @@ public static class ComponentCatalog
             "共享界面运行时",
             "为资源管理器和其它 WebView2 软件提供全机共享的 Chromium 界面运行时。",
             "Shared WebView2 runtime",
-            "Runtime",
+            ComponentProviderKinds.Runtime,
             ["webview2-runtime"]),
         CreateOptionalDependencyDefinition(
             "amd-smu-pawnio-provider",
@@ -24,7 +24,7 @@ public static class ComponentCatalog
             "硬件传感 Provider",
             "通过官方签名 PawnIO 驱动和 AMD SMU PM table 读取 Ryzen CPU STAPM、功耗、电压、电流、温度和每核指标。",
             "AMD SMU PM table telemetry provider",
-            "CPU",
+            ComponentProviderKinds.Cpu,
             ["smu-pm-table", "stapm", "power", "voltage", "current", "temperature", "per-core"]),
         CreateOptionalDependencyDefinition(
             "intel-msr-pawnio-provider",
@@ -32,18 +32,18 @@ public static class ComponentCatalog
             "namazso / Intel",
             "控制写入",
             "通过官方签名 IntelMSR 模块调节 PL1/PL2、时间窗和各电压域；每项写入回读验证，撤销恢复原值。",
-            "Intel CPU control", "CPU",
+            "Intel CPU control", ComponentProviderKinds.Cpu,
             ["pl1", "pl2", "time-window", "voltage-offset"]),
         CreateOptionalDependencyDefinition(
             "fan-control-core", "风扇控制核心", "Resource Manager", "控制写入",
-            "机身风扇的读取与控制经过它。", "Fan control", "Fan", ["fan-control"]),
+            "机身风扇的读取与控制经过它。", "Fan control", ComponentProviderKinds.Fan, ["fan-control"]),
         CreateOptionalDependencyDefinition(
             "hardware-bridge", "硬件写入辅助进程", "Resource Manager", "控制写入",
-            "处理器功耗上限和电压写入经过它。", "CPU control", "CPU", ["power", "voltage"]),
+            "处理器功耗上限和电压写入经过它。", "CPU control", ComponentProviderKinds.Cpu, ["power", "voltage"]),
         CreateOptionalDependencyDefinition(
             "hardware-sensors-pawnio-provider", "Hardware sensors / PawnIO", "namazso",
             "硬件传感驱动", "主板和内存核心读取共用官方签名 PawnIO 驱动。",
-            "PawnIO sensor driver", "HardwareMonitor", ["fan", "temperature", "voltage"]),
+            "PawnIO sensor driver", ComponentProviderKinds.HardwareMonitor, ["fan", "temperature", "voltage"]),
         new ComponentDefinition(
             Id: "librehardwaremonitor-provider", Name: "LibreHardwareMonitor Core",
             Vendor: "LibreHardwareMonitor", Category: "硬件传感 Provider",
@@ -54,9 +54,9 @@ public static class ComponentCatalog
             RequiresExternalTermsAcknowledgement: false, RequiresElevation: false,
             Capabilities:
             [
-                new ComponentCapability("hardware-monitor-core", "主板与内存传感", "librehardwaremonitor-provider", "HardwareMonitor"),
-                new ComponentCapability("memory-temperature", "内存温度", "librehardwaremonitor-provider", "HardwareMonitor"),
-                new ComponentCapability("fan", "主板风扇", "librehardwaremonitor-provider", "HardwareMonitor")
+                new ComponentCapability("hardware-monitor-core", "主板与内存传感", "librehardwaremonitor-provider", ComponentProviderKinds.HardwareMonitor),
+                new ComponentCapability("memory-temperature", "内存温度", "librehardwaremonitor-provider", ComponentProviderKinds.HardwareMonitor),
+                new ComponentCapability("fan", "主板风扇", "librehardwaremonitor-provider", ComponentProviderKinds.HardwareMonitor)
             ],
             InstallNote: "MPL-2.0；核心库随产品提供，需已安装的 PawnIO 驱动，未验证支持不能当作实时读数。"),
         new ComponentDefinition(
@@ -73,11 +73,11 @@ public static class ComponentCatalog
             RequiresElevation: false,
             Capabilities:
             [
-                new ComponentCapability("notebook-oem-fan.cpu-rpm", "CPU 风扇转速", "notebook-oem-fan-provider", "NotebookOEM"),
-                new ComponentCapability("notebook-oem-fan.cpu-percent", "CPU 风扇百分比", "notebook-oem-fan-provider", "NotebookOEM"),
-                new ComponentCapability("notebook-oem-fan.gpu-rpm", "GPU 风扇转速", "notebook-oem-fan-provider", "NotebookOEM"),
-                new ComponentCapability("notebook-oem-fan.gpu-percent", "GPU 风扇百分比", "notebook-oem-fan-provider", "NotebookOEM"),
-                new ComponentCapability("notebook-oem-fan.vendor-adapters", "笔记本厂商适配", "notebook-oem-fan-provider", "NotebookOEM")
+                new ComponentCapability("notebook-oem-fan.cpu-rpm", "CPU 风扇转速", "notebook-oem-fan-provider", ComponentProviderKinds.NotebookOem),
+                new ComponentCapability("notebook-oem-fan.cpu-percent", "CPU 风扇百分比", "notebook-oem-fan-provider", ComponentProviderKinds.NotebookOem),
+                new ComponentCapability("notebook-oem-fan.gpu-rpm", "GPU 风扇转速", "notebook-oem-fan-provider", ComponentProviderKinds.NotebookOem),
+                new ComponentCapability("notebook-oem-fan.gpu-percent", "GPU 风扇百分比", "notebook-oem-fan-provider", ComponentProviderKinds.NotebookOem),
+                new ComponentCapability("notebook-oem-fan.vendor-adapters", "笔记本厂商适配", "notebook-oem-fan-provider", ComponentProviderKinds.NotebookOem)
             ],
             InstallNote: "内置组件，随 Resource Manager 默认安装。当前接入 Mechrevo/Tongfang UWACPI 只读风扇路径；后续继续接入 Lenovo/ASUS/MSI/Dell/HP/Acer 等厂商。不会静默安装或分发 OEM 驱动。"),
         new ComponentDefinition(
@@ -94,10 +94,10 @@ public static class ComponentCatalog
             RequiresElevation: false,
             Capabilities:
             [
-                new ComponentCapability("nvidia-gpu-clocks", "GPU 频率", "nvidia-nvml", "GPU"),
-                new ComponentCapability("nvidia-gpu-memory", "显存", "nvidia-nvml", "GPU"),
-                new ComponentCapability("nvidia-gpu-power", "GPU 功耗", "nvidia-nvml", "GPU"),
-                new ComponentCapability("nvidia-gpu-temperature", "GPU 温度", "nvidia-nvml", "GPU")
+                new ComponentCapability("nvidia-gpu-clocks", "GPU 频率", "nvidia-nvml", ComponentProviderKinds.Gpu),
+                new ComponentCapability("nvidia-gpu-memory", "显存", "nvidia-nvml", ComponentProviderKinds.Gpu),
+                new ComponentCapability("nvidia-gpu-power", "GPU 功耗", "nvidia-nvml", ComponentProviderKinds.Gpu),
+                new ComponentCapability("nvidia-gpu-temperature", "GPU 温度", "nvidia-nvml", ComponentProviderKinds.Gpu)
             ],
             InstallNote: "NVML 由 NVIDIA 驱动提供，基础包只动态调用，不随包分发驱动 DLL。"),
         new ComponentDefinition(
@@ -114,9 +114,9 @@ public static class ComponentCatalog
             RequiresElevation: false,
             Capabilities:
             [
-                new ComponentCapability("nvidia-gpu-cooler", "GPU 风扇/冷却器", "nvidia-nvapi", "GPU"),
-                new ComponentCapability("nvidia-gpu-voltage", "GPU 电压", "nvidia-nvapi", "GPU"),
-                new ComponentCapability("nvidia-gpu-current", "GPU 电流", "nvidia-nvapi", "GPU")
+                new ComponentCapability("nvidia-gpu-cooler", "GPU 风扇/冷却器", "nvidia-nvapi", ComponentProviderKinds.Gpu),
+                new ComponentCapability("nvidia-gpu-voltage", "GPU 电压", "nvidia-nvapi", ComponentProviderKinds.Gpu),
+                new ComponentCapability("nvidia-gpu-current", "GPU 电流", "nvidia-nvapi", ComponentProviderKinds.Gpu)
             ],
             InstallNote: "NVAPI 由 NVIDIA Windows 驱动提供；基础包只做运行库探测和后续动态调用，不随包分发 nvapi64.dll。"),
         new ComponentDefinition(
@@ -133,14 +133,14 @@ public static class ComponentCatalog
             RequiresElevation: false,
             Capabilities:
             [
-                new ComponentCapability("amd-gpu-clocks", "GPU 频率", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-power", "GPU 功耗", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-board-power", "GPU 总板功耗", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-temperature", "GPU 温度", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-hotspot-temperature", "GPU 热点温度", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-intake-temperature", "GPU 进风温度", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-fan", "GPU 风扇", "amd-adlx", "GPU"),
-                new ComponentCapability("amd-gpu-voltage", "GPU 电压", "amd-adlx", "GPU")
+                new ComponentCapability("amd-gpu-clocks", "GPU 频率", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-power", "GPU 功耗", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-board-power", "GPU 总板功耗", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-temperature", "GPU 温度", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-hotspot-temperature", "GPU 热点温度", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-intake-temperature", "GPU 进风温度", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-fan", "GPU 风扇", "amd-adlx", ComponentProviderKinds.Gpu),
+                new ComponentCapability("amd-gpu-voltage", "GPU 电压", "amd-adlx", ComponentProviderKinds.Gpu)
             ],
             InstallNote: "ADLX 库通常随 AMD 显示驱动提供，基础包只包含 Resource Manager bridge，不随包分发 AMD 驱动 DLL。")
 
@@ -162,7 +162,7 @@ public static class ComponentCatalog
         string vendor,
         string category,
         string purpose,
-        string fallbackProviderKind,
+        string fallbackInstallNote,
         string providerKind,
         IReadOnlyList<string> capabilities)
     {
@@ -187,7 +187,7 @@ public static class ComponentCatalog
                 id,
                 providerKind)).ToArray(),
             string.IsNullOrWhiteSpace(dependency.InstallNote)
-                ? fallbackProviderKind
+                ? fallbackInstallNote
                 : dependency.InstallNote);
     }
 

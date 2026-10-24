@@ -46,7 +46,34 @@ const canonicalReader = await loadReader("canonical");
 canonicalReader.readManagementSnapshotCache();
 assert.equal(canonicalStorage.writes, 0, "canonical values are not rewritten");
 
+for (const [oldKind, canonicalKind] of [
+  ["Runtime", "runtime"], ["CPU", "cpu"], ["Fan", "fan"],
+  ["HardwareMonitor", "hardware_monitor"], ["Provider", "provider"],
+  ["GPU", "gpu"], ["NotebookOEM", "notebook_oem"]
+]) {
+  const cached = snapshot();
+  cached.components[0]!.definition!.capabilities = [{ providerKind: oldKind }];
+  cached.components[0]!.providers = [{ providerKind: oldKind }];
+  const storage = memoryStorage(JSON.stringify(cached));
+  setLocalStorage(storage);
+  const reader = await loadReader(`provider-kind-${oldKind}`);
+  const restored = reader.readManagementSnapshotCache();
+  assert.equal(restored?.components[0]?.definition?.capabilities?.[0]?.providerKind, canonicalKind);
+  assert.equal(restored?.components[0]?.providers?.[0]?.providerKind, canonicalKind);
+  assert.equal(storage.writes, 1);
+  const rewritten = JSON.parse(storage.values.get(storageKey)!);
+  assert.equal(rewritten.components[0].definition.capabilities[0].providerKind, canonicalKind);
+  assert.equal(rewritten.components[0].providers[0].providerKind, canonicalKind);
+  const canonicalStorage = memoryStorage(JSON.stringify(rewritten));
+  setLocalStorage(canonicalStorage);
+  const canonicalReader = await loadReader(`provider-kind-canonical-${oldKind}`);
+  canonicalReader.readManagementSnapshotCache();
+  assert.equal(canonicalStorage.writes, 0);
+}
+
 const unknownCases: Array<[string, (value: ReturnType<typeof snapshot>) => void, string]> = [
+  ["provider kind", value => { value.components[0]!.providers = [{ providerKind: "UnknownKind" }]; }, "component provider kind"],
+  ["capability provider kind", value => { value.components[0]!.definition!.capabilities = [{ providerKind: "UnknownKind" }]; }, "component provider kind"],
   ["component state", value => { value.components[0]!.state = "UnknownState"; }, "component state"],
   ["provider state", value => { value.components[0]!.providers = [{ state: "UnknownProviderState" }]; }, "component provider state"],
   ["component role", value => { value.components[0]!.definition!.managementRole = "UnknownRole" as never; }, "management role"],
