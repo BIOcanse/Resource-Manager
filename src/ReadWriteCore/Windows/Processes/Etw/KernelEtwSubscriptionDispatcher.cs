@@ -77,24 +77,6 @@ internal sealed class KernelEtwSubscriptionDispatcher
         var desiredKeywords = subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
             static (all, subscription) => all | subscription.Keywords);
         var desiredFlags = KernelEtwSessionKeywordControl.CompileSystemTraceFlags(desiredKeywords);
-        var previous = Volatile.Read(ref bindings);
-        var retained = previous.ToDictionary(static binding => binding.LeaseId);
-        var next = new BoundSubscription[subscriptions.Count];
-        var added = new List<KernelEtwEventSource>();
-        for (var index = 0; index < subscriptions.Count; index++)
-        {
-            var subscription = subscriptions[index];
-            if (retained.Remove(subscription.LeaseId, out var existing))
-            {
-                next[index] = existing;
-                continue;
-            }
-            var source = new KernelEtwEventSource();
-            subscription.Bind(source, context);
-            next[index] = new(subscription.LeaseId, source);
-            added.Add(source);
-        }
-
         try
         {
             if (updateKeywords is not null
@@ -103,29 +85,44 @@ internal sealed class KernelEtwSubscriptionDispatcher
         }
         catch (Exception failure) when (KernelEtwSessionKeywordControl.IsAccessDenied(failure))
         {
-            // The denied control call left the old flags enabled. Publish only requested
-            // callbacks covered by those flags, including newly added covered consumers.
-            var enabledFlags = KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords);
-            var available = new List<BoundSubscription>();
-            for (var index = 0; index < subscriptions.Count; index++)
-            {
-                if ((KernelEtwSessionKeywordControl.CompileSystemTraceFlags(subscriptions[index].Keywords)
-                    & ~enabledFlags) == 0)
-                {
-                    if (added.Contains(next[index].Source)) next[index].Source.Activate();
-                    available.Add(next[index]);
-                }
-                else next[index].Source.Cancel();
-            }
-            foreach (var removed in retained.Values) removed.Source.Cancel();
-            Volatile.Write(ref bindings, available.ToArray());
+            // Control denial leaves the old flags enabled. Bind only covered leases;
+            // pending leases must not initialize consumer state on each retry.
+            PublishSubscriptions(subscriptions, context,
+                KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords));
             throw;
+        }
+
+        keywords = desiredKeywords;
+        PublishSubscriptions(subscriptions, context, desiredFlags);
+    }
+
+    private void PublishSubscriptions(
+        IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
+        KernelEtwSessionContext context,
+        ulong enabledFlags)
+    {
+        var previous = Volatile.Read(ref bindings);
+        var retained = previous.ToDictionary(static binding => binding.LeaseId);
+        var next = new List<BoundSubscription>();
+        var added = new List<KernelEtwEventSource>();
+        foreach (var subscription in subscriptions)
+        {
+            if ((KernelEtwSessionKeywordControl.CompileSystemTraceFlags(subscription.Keywords) & ~enabledFlags) != 0)
+                continue;
+            if (retained.Remove(subscription.LeaseId, out var existing))
+            {
+                next.Add(existing);
+                continue;
+            }
+            var source = new KernelEtwEventSource();
+            subscription.Bind(source, context);
+            next.Add(new(subscription.LeaseId, source));
+            added.Add(source);
         }
 
         foreach (var removed in retained.Values) removed.Source.Cancel();
         foreach (var source in added) source.Activate();
-        Volatile.Write(ref bindings, next);
-        keywords = desiredKeywords;
+        Volatile.Write(ref bindings, next.ToArray());
     }
 
     internal void CancelAll()

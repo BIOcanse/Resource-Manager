@@ -388,7 +388,10 @@ public sealed class DefaultReadWriteCollectionBorrowTests
             Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.NetworkTCPIP, Acquires - Releases, 0);
         public void Dispose() => Disposed = true;
         private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
-        { private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); owner.Releases++; } } }
+        {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+            private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); owner.Releases++; } }
+        }
     }
     private static WindowsHardwareMetricResources UnusedResources(Action<bool> notebook, Func<MemoryMetrics>? memory = null) => new()
     {

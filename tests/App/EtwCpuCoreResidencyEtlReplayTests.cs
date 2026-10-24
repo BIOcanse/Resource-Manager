@@ -488,6 +488,8 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
 
         private sealed class ReplayLease(ReplayKernelEtwBroker owner) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int disposed;
 
             public void Dispose()

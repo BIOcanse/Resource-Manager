@@ -289,7 +289,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
     {
-        var snapshot = (observedSnapshot ?? kernelEtwBroker.GetSnapshot()).ForKeywords(RequiredKeywords);
+        var snapshot = (observedSnapshot ?? (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot()));
         if (snapshot.IsRunning
             && snapshot.Generation == Volatile.Read(ref sessionGeneration))
         {
@@ -321,7 +321,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
         lock (subscriptionGate)
         {
             var generation = Volatile.Read(ref sessionGeneration);
-            var brokerSnapshot = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+            var brokerSnapshot = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
             RefreshBrokerState(brokerSnapshot);
             if (kernelSubscription is null
                 || generation <= 0
@@ -352,7 +352,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
                         brokerSnapshot.EventsLost));
             }
             // Never call the broker from inside eventGate: binding may need that lock.
-            var after = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+            var after = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
             if (!after.IsRunning || after.Generation != generation
                 || after.EventsLost != brokerSnapshot.EventsLost)
             {

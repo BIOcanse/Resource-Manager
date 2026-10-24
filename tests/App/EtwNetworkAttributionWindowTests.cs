@@ -174,6 +174,8 @@ public sealed partial class EtwNetworkAttributionWindowTests
 
         private sealed class Lease(Broker owner) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private bool disposed;
             public void Dispose()
             {

@@ -366,6 +366,9 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, At, Keywords, Acquires - Releases, Volatile.Read(ref EventsLost));
         private sealed class Lease(Broker broker, KernelEtwEventSource source) : IKernelEtwSubscription
-        { private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); broker.Releases++; } } }
+        {
+            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+            private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); broker.Releases++; } }
+        }
     }
 }

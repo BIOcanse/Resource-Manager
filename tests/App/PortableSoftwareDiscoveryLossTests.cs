@@ -156,6 +156,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
         }
         private sealed class Lease(Broker broker) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+
             public void Dispose()
             {
                 broker.ReleaseCount++;

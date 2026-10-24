@@ -91,7 +91,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                 return false;
             }
 
-            var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+            var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
             return broker.IsRunning
                 && broker.Generation == session.Generation
                 && broker.EventsLost == Volatile.Read(ref session.EventsLost);
@@ -393,7 +393,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
     private void RefreshBrokerState(ResidencySessionState? expectedSession = null)
     {
-        var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+        var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
         var session = Volatile.Read(ref activeSession);
         if (session is not null) RefreshEventLoss(session, broker);
         if (session is not null
@@ -440,7 +440,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var brokerBefore = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+            var brokerBefore = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
             if (observedSession is not null) RefreshEventLoss(observedSession, brokerBefore);
             CpuCoreResidencySnapshot? snapshot;
             string nextState;
@@ -461,7 +461,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                     ?? throw new InvalidOperationException("The running ETW session state is missing.");
                 var aggregate = currentSession.Buffer.Snapshot(
                     currentSession.Plan.PhysicalCoreByLogicalProcessor.Keys);
-                var brokerAfter = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+                var brokerAfter = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
                 if (!brokerAfter.IsRunning
                     || brokerAfter.Generation != currentSession.Generation
                     || brokerAfter.EventsLost != brokerBefore.EventsLost
@@ -562,7 +562,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
                 if (expectedSession is not null)
                 {
-                    var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
+                    var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
                     if (!broker.IsRunning
                         || broker.Generation != expectedSession.Generation
                         || broker.EventsLost != expectedEventsLost

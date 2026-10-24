@@ -112,6 +112,8 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
 
         private sealed class Lease(DemandBroker owner) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int disposed;
             public void Dispose()
             {
