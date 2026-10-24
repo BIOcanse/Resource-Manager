@@ -28,9 +28,9 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         Assert.Equal(3, result.Software.Length);
         Assert.Equal(NativeMemoryMode.Normal, Find(result, HighKey).Mode);
         Assert.Equal(NativeMemoryMode.Optimize, Find(result, LowKey).Mode);
-        Assert.Equal(NativeMemoryMode.Optimize, Find(result, MiddleKey).Mode);
+        Assert.Equal(NativeMemoryMode.Normal, Find(result, MiddleKey).Mode);
         Assert.Equal(100D, Find(result, HighKey).CpuScore);
-        Assert.Equal(2U, result.OptimizeCount);
+        Assert.Equal(1U, result.OptimizeCount);
         Assert.Equal(0U, result.StrongestCount);
         Assert.Equal(NativeMemoryGradeSet.Normal, Find(result, HighKey).BaseScoreAllowedGrades);
         Assert.Equal(60D, Find(result, LowKey).BaseScore);
@@ -108,8 +108,9 @@ public sealed class HostManagerMemoryModeWorkspaceTests
         Assert.Equal(MixedKey, desired.SoftwareKey);
         Assert.Equal(81D, desired.BaseScore);
         Assert.Equal(NativeMemoryGradeSet.Normal, desired.BaseScoreAllowedGrades);
-        Assert.True(desired.BaseScoreClamped);
+        Assert.False(desired.BaseScoreClamped);
         Assert.Equal(NativeMemoryMode.Normal, desired.Mode);
+        Assert.Equal(0U, result.OptimizeCount);
         Assert.Equal(0U, result.StrongestCount);
     }
 
