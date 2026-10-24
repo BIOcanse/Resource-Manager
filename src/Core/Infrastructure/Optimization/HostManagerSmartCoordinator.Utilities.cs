@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using ResourceManager.App.Domain.Diagnostics;
@@ -54,10 +55,46 @@ public sealed partial class HostManagerSmartCoordinator
     private static double ClampRatio(double value)
         => double.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0;
 
-    private static string CreateStableId(string value)
+    internal static string CreateStableId(string value)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value.ToUpperInvariant()));
-        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+        const int StackInputCharacterLimit = 256;
+        const int StackUtf8ByteLimit = 1024;
+        const string HexDigits = "0123456789abcdef";
+
+        char[]? uppercaseBuffer = null;
+        byte[]? utf8Buffer = null;
+        try
+        {
+            Span<char> uppercase = value.Length <= StackInputCharacterLimit
+                ? stackalloc char[value.Length]
+                : (uppercaseBuffer = ArrayPool<char>.Shared.Rent(value.Length));
+            var uppercaseLength = value.AsSpan().ToUpperInvariant(uppercase);
+            var maximumUtf8Length = Encoding.UTF8.GetMaxByteCount(uppercaseLength);
+            Span<byte> utf8 = maximumUtf8Length <= StackUtf8ByteLimit
+                ? stackalloc byte[maximumUtf8Length]
+                : (utf8Buffer = ArrayPool<byte>.Shared.Rent(maximumUtf8Length));
+            var utf8Length = Encoding.UTF8.GetBytes(uppercase[..uppercaseLength], utf8);
+
+            Span<byte> hash = stackalloc byte[32];
+            if (!SHA256.TryHashData(utf8[..utf8Length], hash, out var hashLength) || hashLength != hash.Length)
+            {
+                throw new CryptographicException("Stable identity hashing did not produce a complete SHA-256 digest.");
+            }
+
+            Span<char> stableId = stackalloc char[16];
+            for (var index = 0; index < stableId.Length / 2; index++)
+            {
+                var valueByte = hash[index];
+                stableId[index * 2] = HexDigits[valueByte >> 4];
+                stableId[index * 2 + 1] = HexDigits[valueByte & 0x0F];
+            }
+            return new string(stableId);
+        }
+        finally
+        {
+            if (uppercaseBuffer is not null) ArrayPool<char>.Shared.Return(uppercaseBuffer, clearArray: true);
+            if (utf8Buffer is not null) ArrayPool<byte>.Shared.Return(utf8Buffer, clearArray: true);
+        }
     }
 
     private static string FormatBytes(double value)

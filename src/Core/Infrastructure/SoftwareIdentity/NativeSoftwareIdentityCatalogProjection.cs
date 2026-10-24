@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -84,43 +85,58 @@ internal static partial class NativeSoftwareIdentityCatalogProjector
         CompiledHostManagerSoftwareIdentityCatalogPlan plan)
     {
         ArgumentNullException.ThrowIfNull(records);
-        var payloads = new NativeSoftwareIdentityPayloadCatalog();
-        var definitions = records
-            .Select(record =>
-            {
-                var attribution = new RuntimeSoftwareAttribution(
-                    record.Id,
-                    record.Name,
-                    record.Kind,
-                    record.DisplayKind,
-                    record.RootPaths
-                        .Select(CanonicalPath)
-                        .Where(static value => value is not null)
-                        .Select(static value => value!)
-                        .ToArray());
-                return new NativeSoftwareIdentityCatalogEntryDefinition(
-                    NativeSoftwareIdentityEntryPayload.FromRuntime(attribution),
-                    attribution.Id,
-                    attribution.Name,
-                    attribution.Kind,
-                    NativeSoftwareIdentitySources.RuntimeKnown,
-                    NormalizeTextKey(attribution.Name),
-                    [
-                        new NativeSoftwareIdentityCatalogAliasDefinition(
-                            NativeSoftwareIdentityAliasKind.InstalledName,
-                            CanonicalTextKey($"runtime-known:{attribution.Id}"),
-                            0)
-                    ],
-                    attribution.RootPaths);
-            })
+        var attributions = records
+            .Select(record => new RuntimeSoftwareAttribution(
+                record.Id,
+                record.Name,
+                record.Kind,
+                record.DisplayKind,
+                record.RootPaths
+                    .Select(CanonicalPath)
+                    .Where(static value => value is not null)
+                    .Select(static value => value!)
+                    .ToArray()))
             .ToArray();
-        return Project(definitions, payloads, plan);
+        return ProjectRuntimeKnownFromCanonicalAttributions(attributions, plan);
+    }
+
+    internal static NativeSoftwareIdentityCatalogProjection ProjectRuntimeKnownFromCanonicalAttributions(
+        IReadOnlyList<RuntimeSoftwareAttribution> attributions,
+        CompiledHostManagerSoftwareIdentityCatalogPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(attributions);
+        var payloads = new NativeSoftwareIdentityPayloadCatalog();
+        var definitions = attributions
+            .Select(attribution => new NativeSoftwareIdentityCatalogEntryDefinition(
+                NativeSoftwareIdentityEntryPayload.FromRuntime(attribution),
+                attribution.Id,
+                attribution.Name,
+                attribution.Kind,
+                NativeSoftwareIdentitySources.RuntimeKnown,
+                NormalizeTextKey(attribution.Name),
+                [
+                    new NativeSoftwareIdentityCatalogAliasDefinition(
+                        NativeSoftwareIdentityAliasKind.InstalledName,
+                        CanonicalTextKey($"runtime-known:{attribution.Id}"),
+                        0)
+                ],
+                attribution.RootPaths))
+            .ToArray();
+        // Resolver-owned attributions canonicalize roots once for the catalog generation.
+        return Project(definitions, payloads, plan, rootPathsAreCanonical: true);
     }
 
     internal static NativeSoftwareIdentityCatalogProjection Project(
         IReadOnlyList<NativeSoftwareIdentityCatalogEntryDefinition> definitions,
         NativeSoftwareIdentityPayloadCatalog payloads,
         CompiledHostManagerSoftwareIdentityCatalogPlan plan)
+        => Project(definitions, payloads, plan, rootPathsAreCanonical: false);
+
+    private static NativeSoftwareIdentityCatalogProjection Project(
+        IReadOnlyList<NativeSoftwareIdentityCatalogEntryDefinition> definitions,
+        NativeSoftwareIdentityPayloadCatalog payloads,
+        CompiledHostManagerSoftwareIdentityCatalogPlan plan,
+        bool rootPathsAreCanonical)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         ArgumentNullException.ThrowIfNull(payloads);
@@ -151,13 +167,12 @@ internal static partial class NativeSoftwareIdentityCatalogProjector
             {
                 stagedAliases.Add(CreateAlias(entryHandle, alias));
             }
-            var canonicalRoots = definition.RootPaths
-                .Select(rootPath => CanonicalPath(rootPath)
+            IEnumerable<string> canonicalRoots = rootPathsAreCanonical
+                ? definition.RootPaths
+                : definition.RootPaths.Select(rootPath => CanonicalPath(rootPath)
                     ?? throw new InvalidDataException(
-                        $"Software identity '{definition.AttributionId}' contains an invalid root path."))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            foreach (var canonical in canonicalRoots)
+                        $"Software identity '{definition.AttributionId}' contains an invalid root path."));
+            foreach (var canonical in canonicalRoots.Distinct(StringComparer.Ordinal))
             {
                 stagedRoots.Add(new StagedRoot(
                     payloads.AddUniqueString(canonical),
@@ -324,14 +339,53 @@ internal static partial class NativeSoftwareIdentityCatalogProjector
         }
         try
         {
-            var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(value.Trim().Trim('"')))
-                .Replace('\\', '/')
-                .ToLowerInvariant();
-            var root = Path.GetPathRoot(path.Replace('/', Path.DirectorySeparatorChar));
-            var canonicalRoot = root?.Replace('\\', '/').ToLowerInvariant();
-            return canonicalRoot is not null && path.Equals(canonicalRoot, StringComparison.Ordinal)
-                ? path
-                : path.TrimEnd('/');
+            var input = value.Trim().Trim('"');
+            var expanded = input.AsSpan().IndexOf('%') >= 0
+                ? Environment.ExpandEnvironmentVariables(input)
+                : input;
+            var fullPath = Path.GetFullPath(expanded);
+            var rootLength = Path.GetPathRoot(fullPath.AsSpan()).Length;
+
+            const int StackBufferLength = 512;
+            char[]? rented = null;
+            scoped Span<char> canonical;
+            if (fullPath.Length <= StackBufferLength)
+            {
+                canonical = stackalloc char[fullPath.Length];
+            }
+            else
+            {
+                rented = ArrayPool<char>.Shared.Rent(fullPath.Length);
+                canonical = rented;
+            }
+
+            try
+            {
+                var canonicalLength = fullPath.AsSpan().ToLowerInvariant(canonical);
+                for (var index = 0; index < canonicalLength; index++)
+                {
+                    if (canonical[index] == '\\')
+                    {
+                        canonical[index] = '/';
+                    }
+                }
+
+                if (canonicalLength != rootLength)
+                {
+                    while (canonicalLength > 0 && canonical[canonicalLength - 1] == '/')
+                    {
+                        canonicalLength--;
+                    }
+                }
+                return new string(canonical[..canonicalLength]);
+            }
+            finally
+            {
+                if (rented is not null)
+                {
+                    ArrayPool<char>.Shared.Return(rented, clearArray: true);
+                }
+            }
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {

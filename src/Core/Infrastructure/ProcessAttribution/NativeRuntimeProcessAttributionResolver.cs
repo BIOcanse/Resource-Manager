@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -132,8 +133,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 self,
                 acquiredLease.CatalogPlan);
             var knownProjection =
-                NativeSoftwareIdentityCatalogProjector.ProjectRuntimeKnown(
-                    currentRecords,
+                NativeSoftwareIdentityCatalogProjector.ProjectRuntimeKnownFromCanonicalAttributions(
+                    software,
                     acquiredLease.CatalogPlan);
             acquiredKnownCatalog = new NativeRuntimeSourceCatalog(
                 knownProjection,
@@ -1051,101 +1052,119 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
     {
         var path = NativeSoftwareIdentityCatalogProjector.CanonicalPath(
             process.ExecutablePath);
-        var keyBytes = new List<byte>();
-        var pathKey = path is null ? default : AppendKey(keyBytes, path);
-        var signalValues = new[]
+        Span<NativeSoftwareIdentityKnownSignalInput> signals = stackalloc NativeSoftwareIdentityKnownSignalInput[6];
+        Span<byte> initialKeyBytes = stackalloc byte[512];
+        var keyBytes = new Utf8QueryKeyBuffer(initialKeyBytes);
+        try
         {
-            (NativeSoftwareIdentitySignalKind.ProcessName, process.Name),
-            (NativeSoftwareIdentitySignalKind.ProductName, process.ProductName),
-            (NativeSoftwareIdentitySignalKind.FileDescription, process.FileDescription),
-            (NativeSoftwareIdentitySignalKind.WindowApplicationUserModelId,
-                process.WindowApplicationUserModelId),
-            (NativeSoftwareIdentitySignalKind.ApplicationUserModelId,
-                process.ApplicationUserModelId),
-            (NativeSoftwareIdentitySignalKind.WindowTitle, process.WindowTitle)
-        };
-        var signals = new List<NativeSoftwareIdentityKnownSignalInput>(6);
-        foreach (var (kind, value) in signalValues)
-        {
-            var key = NativeSoftwareIdentityCatalogProjector.NormalizeTextKey(value);
-            if (key.Length == 0)
+            var pathKey = path is null ? default : keyBytes.AppendUtf8(path);
+            var signalCount = 0;
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.ProcessName, process.Name);
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.ProductName, process.ProductName);
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.FileDescription, process.FileDescription);
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.WindowApplicationUserModelId,
+                process.WindowApplicationUserModelId);
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.ApplicationUserModelId,
+                process.ApplicationUserModelId);
+            AppendKnownSignal(signals, ref signalCount, ref keyBytes,
+                NativeSoftwareIdentitySignalKind.WindowTitle, process.WindowTitle);
+
+            var input = new NativeSoftwareIdentityKnownQueryInput
             {
-                continue;
+                AbiVersion = NativeSoftwareIdentityCatalogAbi.Version,
+                StructSize = SizeOf<NativeSoftwareIdentityKnownQueryInput>(),
+                ConfigurationGeneration = workspace.Session.ConfigurationGeneration,
+                CatalogGeneration = 1,
+                QueryEpoch = NextQueryEpoch(),
+                SignalCount = checked((uint)signalCount),
+                KeyByteCount = checked((uint)keyBytes.Count),
+                ExecutablePathOffset = pathKey.Offset,
+                ExecutablePathLength = pathKey.Length,
+                ValidMask = (ulong)NativeSoftwareIdentityKnownQueryValidity.Required
+                    | (path is null
+                        ? 0
+                        : (ulong)NativeSoftwareIdentityKnownQueryValidity.ExecutablePath),
+                Flags = 0
+            };
+            var status = workspace.Session.MatchKnown(
+                in input,
+                signals[..signalCount],
+                keyBytes.WrittenSpan,
+                out var output);
+            if (status != NativeSoftwareIdentityStatus.Ok)
+            {
+                throw new NativeSoftwareIdentityException("runtime source known query", status);
             }
-            var slice = AppendKey(keyBytes, key);
-            signals.Add(new NativeSoftwareIdentityKnownSignalInput
+            return output.Status switch
             {
-                StructSize = SizeOf<NativeSoftwareIdentityKnownSignalInput>(),
-                Kind = (uint)kind,
-                KeyOffset = slice.Offset,
-                KeyLength = slice.Length,
-                Flags = 0,
-                ReservedU32 = 0
-            });
+                (uint)NativeSoftwareIdentityMatchStatus.NoMatch =>
+                    NativeSourceCatalogObservation.NoMatch,
+                (uint)NativeSoftwareIdentityMatchStatus.Conflict =>
+                    NativeSourceCatalogObservation.Conflicted,
+                (uint)NativeSoftwareIdentityMatchStatus.Matched =>
+                    NativeSourceCatalogObservation.Matched(
+                        output.Mode
+                            == (uint)NativeSoftwareIdentityKnownMatchMode.LauncherManagedChild
+                            ? CreateManagedChildAttribution(
+                                process,
+                                path,
+                                keyBytes.WrittenSpan,
+                                output)
+                            : RequireRuntimeAttribution(output.EntryHandle),
+                        output.EvidenceMask == 0 ? 1UL : output.EvidenceMask),
+                _ => throw new InvalidOperationException(
+                    $"Native runtime known catalog returned unknown status {output.Status}.")
+            };
         }
-        var input = new NativeSoftwareIdentityKnownQueryInput
+        finally
         {
-            AbiVersion = NativeSoftwareIdentityCatalogAbi.Version,
-            StructSize = SizeOf<NativeSoftwareIdentityKnownQueryInput>(),
-            ConfigurationGeneration = workspace.Session.ConfigurationGeneration,
-            CatalogGeneration = 1,
-            QueryEpoch = NextQueryEpoch(),
-            SignalCount = checked((uint)signals.Count),
-            KeyByteCount = checked((uint)keyBytes.Count),
-            ExecutablePathOffset = pathKey.Offset,
-            ExecutablePathLength = pathKey.Length,
-            ValidMask = (ulong)NativeSoftwareIdentityKnownQueryValidity.Required
-                | (path is null
-                    ? 0
-                    : (ulong)NativeSoftwareIdentityKnownQueryValidity.ExecutablePath),
-            Flags = 0
-        };
-        var status = workspace.Session.MatchKnown(
-            in input,
-            signals.ToArray(),
-            keyBytes.ToArray(),
-            out var output);
-        if (status != NativeSoftwareIdentityStatus.Ok)
-        {
-            throw new NativeSoftwareIdentityException("runtime source known query", status);
+            keyBytes.Dispose();
         }
-        return output.Status switch
+    }
+
+    private static void AppendKnownSignal(
+        Span<NativeSoftwareIdentityKnownSignalInput> signals,
+        ref int signalCount,
+        ref Utf8QueryKeyBuffer keyBytes,
+        NativeSoftwareIdentitySignalKind kind,
+        string? value)
+    {
+        var key = keyBytes.AppendNormalized(value);
+        if (key.Length == 0)
         {
-            (uint)NativeSoftwareIdentityMatchStatus.NoMatch =>
-                NativeSourceCatalogObservation.NoMatch,
-            (uint)NativeSoftwareIdentityMatchStatus.Conflict =>
-                NativeSourceCatalogObservation.Conflicted,
-            (uint)NativeSoftwareIdentityMatchStatus.Matched =>
-                NativeSourceCatalogObservation.Matched(
-                    output.Mode
-                        == (uint)NativeSoftwareIdentityKnownMatchMode.LauncherManagedChild
-                        ? CreateManagedChildAttribution(
-                            process,
-                            path,
-                            keyBytes,
-                            output)
-                        : RequireRuntimeAttribution(output.EntryHandle),
-                    output.EvidenceMask == 0 ? 1UL : output.EvidenceMask),
-            _ => throw new InvalidOperationException(
-                $"Native runtime known catalog returned unknown status {output.Status}.")
+            return;
+        }
+        signals[signalCount++] = new NativeSoftwareIdentityKnownSignalInput
+        {
+            StructSize = SizeOf<NativeSoftwareIdentityKnownSignalInput>(),
+            Kind = (uint)kind,
+            KeyOffset = key.Offset,
+            KeyLength = key.Length,
+            Flags = 0,
+            ReservedU32 = 0
         };
     }
 
     private RuntimeSoftwareAttribution CreateManagedChildAttribution(
         RuntimeProcessIdentity process,
         string? path,
-        IReadOnlyList<byte> keyBytes,
+        ReadOnlySpan<byte> keyBytes,
         NativeSoftwareIdentityKnownMatchOutput output)
     {
         if (path is null
             || output.DerivedRootByteLength == 0
-            || output.DerivedRootByteLength > keyBytes.Count)
+            || output.DerivedRootByteLength > keyBytes.Length)
         {
             throw new InvalidOperationException(
                 "Native runtime known catalog returned an invalid managed-child root.");
         }
-        var bytes = keyBytes.Take(checked((int)output.DerivedRootByteLength)).ToArray();
-        var root = Encoding.UTF8.GetString(bytes);
+        var root = Encoding.UTF8.GetString(
+            keyBytes[..checked((int)output.DerivedRootByteLength)]);
         var display = Path.GetFileName(root);
         return new RuntimeSoftwareAttribution(
             $"runtime-game:{output.DerivedIdentityFingerprintLow:x16}{output.DerivedIdentityFingerprintHigh:x16}",
@@ -1153,6 +1172,109 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
             SoftwareKinds.Game,
             SoftwareDisplayKinds.Game,
             [root]);
+    }
+
+    private ref struct Utf8QueryKeyBuffer
+    {
+        private Span<byte> initialBuffer;
+        private Span<byte> buffer;
+        private byte[]? rented;
+        private int count;
+
+        internal Utf8QueryKeyBuffer(Span<byte> initialBuffer)
+        {
+            this.initialBuffer = initialBuffer;
+            buffer = initialBuffer;
+            rented = null;
+            count = 0;
+        }
+
+        internal int Count => count;
+
+        internal ReadOnlySpan<byte> WrittenSpan => buffer[..count];
+
+        internal (uint Offset, uint Length) AppendUtf8(string value)
+        {
+            var byteCount = Encoding.UTF8.GetByteCount(value.AsSpan());
+            EnsureCapacity(checked(count + byteCount));
+            var offset = count;
+            count += Encoding.UTF8.GetBytes(value.AsSpan(), buffer[count..]);
+            return (checked((uint)offset), checked((uint)(count - offset)));
+        }
+
+        internal (uint Offset, uint Length) AppendNormalized(string? value)
+        {
+            var offset = count;
+            if (value is not null)
+            {
+                foreach (var character in value)
+                {
+                    if (char.IsLetterOrDigit(character))
+                    {
+                        AppendLowerInvariant(character);
+                    }
+                }
+            }
+            return (checked((uint)offset), checked((uint)(count - offset)));
+        }
+
+        internal void Dispose()
+        {
+            initialBuffer.Clear();
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+                rented = null;
+            }
+            buffer = default;
+            count = 0;
+        }
+
+        private void AppendLowerInvariant(char character)
+        {
+            character = char.ToLowerInvariant(character);
+            var byteCount = character <= 0x7f ? 1 : character <= 0x7ff ? 2 : 3;
+            EnsureCapacity(checked(count + byteCount));
+            if (byteCount == 1)
+            {
+                buffer[count++] = (byte)character;
+            }
+            else if (byteCount == 2)
+            {
+                buffer[count++] = (byte)(0xc0 | (character >> 6));
+                buffer[count++] = (byte)(0x80 | (character & 0x3f));
+            }
+            else
+            {
+                buffer[count++] = (byte)(0xe0 | (character >> 12));
+                buffer[count++] = (byte)(0x80 | ((character >> 6) & 0x3f));
+                buffer[count++] = (byte)(0x80 | (character & 0x3f));
+            }
+        }
+
+        private void EnsureCapacity(int required)
+        {
+            if (required <= buffer.Length)
+            {
+                return;
+            }
+
+            var doubled = buffer.Length <= int.MaxValue / 2
+                ? buffer.Length * 2
+                : int.MaxValue;
+            var replacement = ArrayPool<byte>.Shared.Rent(Math.Max(required, doubled));
+            buffer[..count].CopyTo(replacement);
+            if (rented is not null)
+            {
+                ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+            }
+            else
+            {
+                initialBuffer.Clear();
+            }
+            rented = replacement;
+            buffer = replacement;
+        }
     }
 
     private RuntimeSoftwareAttribution RequireRuntimeAttribution(ulong entryHandle)

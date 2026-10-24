@@ -196,14 +196,24 @@ public static class NativeMetricSnapshotCommittedProjection
             workspaceIdentity,
             frame,
             attemptedAtUtcTicks);
-        foreach (var binding in frame.Catalog.GpuScopeBindings.Values)
+        foreach (var scope in frame.Catalog.GpuScopeBindings.Values)
         {
-            var prefix = $"gpu.{binding.DisplayIndex}.";
+            string? valueMetricId = null;
+            string? capacityMetricId = null;
+            foreach (var binding in frame.Catalog.MetricBindings.Values)
+            {
+                if (binding.ScopeHandle != scope.ScopeHandle) continue;
+                if (binding.FieldCode == MetricFieldCode.GpuMemoryUsed)
+                    valueMetricId = binding.LegacyMetricId;
+                else if (binding.FieldCode == MetricFieldCode.GpuMemoryTotal)
+                    capacityMetricId = binding.LegacyMetricId;
+            }
+            if (string.IsNullOrEmpty(valueMetricId)) continue;
             ReplaceCompositeDatasetObservation(
                 result,
                 readings,
-                prefix + "vram",
-                prefix + "vramTotal",
+                valueMetricId,
+                capacityMetricId ?? string.Empty,
                 workspaceIdentity,
                 frame,
                 attemptedAtUtcTicks);
@@ -288,7 +298,13 @@ public static class NativeMetricSnapshotCommittedProjection
     private static string? DatasetFailureCode(NativeMetricSnapshotCommittedFrame frame, Reading reading)
     {
         if (reading.Status == NativeMetricSnapshotMetricStatus.Current) return null;
-        var source = frame.Sources.FirstOrDefault(row => row.SourceHandle == reading.Output.SourceHandle);
+        var source = default(NativeMetricSnapshotSourceOutput);
+        foreach (var row in frame.Sources)
+        {
+            if (row.SourceHandle != reading.Output.SourceHandle) continue;
+            source = row;
+            break;
+        }
         if (source.Status == (uint)NativeMetricSnapshotSourceStatus.Unavailable)
             return "hardware-source-unavailable";
         if (reading.Status == NativeMetricSnapshotMetricStatus.Skipped
@@ -495,9 +511,15 @@ public static class NativeMetricSnapshotCommittedProjection
             }
             else if (id != binding.MetricId && binding.FieldCode == MetricFieldCode.GpuMemoryUsed)
             {
-                var totalBinding = frame.Catalog.MetricBindings.Values.FirstOrDefault(row =>
-                    row.ScopeHandle == binding.ScopeHandle && row.FieldCode == MetricFieldCode.GpuMemoryTotal);
-                var total = Get(readings, totalBinding.MetricId ?? string.Empty);
+                var totalMetricId = string.Empty;
+                foreach (var row in frame.Catalog.MetricBindings.Values)
+                {
+                    if (row.ScopeHandle != binding.ScopeHandle
+                        || row.FieldCode != MetricFieldCode.GpuMemoryTotal) continue;
+                    totalMetricId = row.MetricId;
+                    break;
+                }
+                var total = Get(readings, totalMetricId);
                 presentation = new PresentationValue(
                     string.Empty,
                     ToUInt64(reading.Value),
@@ -520,12 +542,13 @@ public static class NativeMetricSnapshotCommittedProjection
                     Total = null
                 };
             }
+            var isBitmask = field?.Unit == "bitmask64";
             items[id] = new MetricValue(
                 id,
                 id == binding.MetricId ? field?.Name ?? id : legacyLabel?.Invoke(id) ?? id,
                 field?.Resource.ToString() ?? string.Empty,
-                presentation.Display,
-                presentation.Numeric,
+                isBitmask ? string.Empty : presentation.Display,
+                isBitmask ? null : presentation.Numeric,
                 presentation.Unit,
                 presentation.Percent,
                 detail,
@@ -550,8 +573,6 @@ public static class NativeMetricSnapshotCommittedProjection
                 BooleanValue = valueAvailable && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Boolean
                     ? reading.Output.ValueBits == 1 : null
             };
-            if (field?.Unit == "bitmask64")
-                items[id] = items[id] with { NumericValue = null, DisplayValue = string.Empty };
         }
         return items;
     }

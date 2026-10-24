@@ -11,6 +11,35 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsNamedPipeCallerAttesterTests
 {
     [Fact]
+    public void ProcessPathReadsReuseTheirBufferAndKeepIndependentResults()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var process = WindowsAdapterTransportNativeMethods.OpenProcess(
+            WindowsAdapterTransportNativeMethods.ProcessQueryLimitedInformation, false, (uint)Environment.ProcessId);
+        Assert.False(process.IsInvalid);
+        for (var warm = 0; warm < 32; warm++)
+            Assert.True(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out _));
+        Assert.True(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var first));
+        const int iterations = 128;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var iteration = 0; iteration < iterations; iteration++)
+        {
+            if (!WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var path)
+                || !string.Equals(first, path, StringComparison.Ordinal))
+                throw new InvalidOperationException("Current process image changed during the test.");
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // The independent exact-length result string is required; a 64 KiB
+        // StringBuilder or marshalling buffer on each read is not.
+        Assert.InRange(allocated, 0, iterations * (first.Length * 2L + 64));
+        Assert.Equal(Path.GetFullPath(Environment.ProcessPath!), first);
+        using var invalid = new Microsoft.Win32.SafeHandles.SafeProcessHandle(IntPtr.Zero, false);
+        Assert.False(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(invalid, out var missing));
+        Assert.Empty(missing);
+        Assert.Equal(Path.GetFullPath(Environment.ProcessPath!), first);
+    }
+
+    [Fact]
     public async Task ConnectedPipeProjectsOsAttestedCallerIdentity()
     {
         if (!OperatingSystem.IsWindows())

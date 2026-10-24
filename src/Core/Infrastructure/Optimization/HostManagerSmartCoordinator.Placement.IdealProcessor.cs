@@ -10,6 +10,8 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private readonly HostManagerIdealProcessorWorkspace idealProcessorWorkspace = new();
+
     private IReadOnlyList<HostManagerPlacementDesired> CreateIdealProcessorDesired(
         IThreadIdealProcessorReadCycle idealReads,
         CpuTopologySnapshot topology, CompiledHardwareScorePlan hardwareScores,
@@ -18,57 +20,94 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
         HostManagerCpuReservations? reservations, int maximumThreadCount)
     {
-        var inputs = new List<HostManagerIdealProcessorInput>();
-        foreach (var process in processes.Where(static p => p.CanApplyPhysicalPlacement
-            && !p.Policy.CpuSchedulingExcluded
-            && p.CanonicalCpuScore is >= 0 && p.Policy.CpuManualLockedPositionIds.Count == 0
-            && p.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.AllCores, StringComparison.OrdinalIgnoreCase)))
+        var workspace = idealProcessorWorkspace;
+        try
         {
-            var threads = idealReads.ReadProcessThreads(process.ProcessId, process.ProcessStartKey, maximumThreadCount);
-            if (threads.Status != RecoveryReadStatus.Found || threads.Value is null || threads.Value.Count == 0) continue;
-            var baseline = processPolicyWriter.ReadPlacementStateForRecovery(process.ProcessId,
-                OperatingSystem.IsWindowsVersionAtLeast(10) ? ProcessPlacementReadFields.DefaultCpuSets : ProcessPlacementReadFields.Affinity);
-            if (baseline.Status != RecoveryReadStatus.Found || baseline.Value is null
-                || !MatchesAutomaticProcessIdentity(process, baseline.Value)) continue;
-            inputs.Add(new(process, threads.Value, baseline.Value.DefaultCpuSetIds ?? []));
-        }
-        var plans = HostManagerAutomaticPlacementPlanner.PlanIdealProcessors(topology, hardwareScores, inputs, hardPlacements, reservations);
-        var existing = existingPlacements.SelectMany(p => p.Records.Select(r => (Placement: p, Record: r)))
-            .Where(static p => p.Record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor
-                && IsAutomaticPlacementRecord(p.Record))
-            .ToDictionary(static p => p.Record.RecordId, StringComparer.Ordinal);
-        var results = new List<HostManagerPlacementDesired>();
-        foreach (var plan in plans)
-        {
-            var thread = plan.Thread;
-            var recordId = CreateStableId($"automatic-placement|ideal|{plan.Process.TargetId}|{thread.ProcessStartKey}|{thread.ThreadId}|{thread.ThreadStartKey}");
-            var next = new ThreadIdealProcessor(checked((ushort)plan.Processor.ProcessorGroup), checked((byte)plan.Processor.GroupRelativeIndex));
-            existing.TryGetValue(recordId, out var old);
-            ThreadIdealProcessor previous;
-            if (old.Record is not null)
+            workspace.ResetCall();
+            var fields = OperatingSystem.IsWindowsVersionAtLeast(10)
+                ? ProcessPlacementReadFields.DefaultCpuSets
+                : ProcessPlacementReadFields.Affinity;
+            for (var processIndex = 0; processIndex < processes.Count; processIndex++)
             {
-                if (!ThreadIdealProcessorPlacementRecord.TryRead(old.Record, out var prior)) continue;
-                previous = prior.Previous;
+                var process = processes[processIndex];
+                if (!process.CanApplyPhysicalPlacement
+                    || process.Policy.CpuSchedulingExcluded
+                    || process.CanonicalCpuScore is not >= 0
+                    || process.Policy.CpuManualLockedPositionIds.Count != 0
+                    || !process.Policy.CpuMaximumOccupancyMode.Equals(
+                        CpuMaximumOccupancyModes.AllCores,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var threads = idealReads.ReadProcessThreads(process.ProcessId, process.ProcessStartKey, maximumThreadCount);
+                if (threads.Status != RecoveryReadStatus.Found || threads.Value is null || threads.Value.Count == 0) continue;
+                var baseline = processPolicyWriter.ReadPlacementStateForRecovery(process.ProcessId, fields);
+                if (baseline.Status != RecoveryReadStatus.Found || baseline.Value is null
+                    || !MatchesAutomaticProcessIdentity(process, baseline.Value)) continue;
+                workspace.Inputs.Add(new(process, threads.Value, baseline.Value.DefaultCpuSetIds ?? []));
             }
-            else previous = thread.IdealProcessor;
-            // Returning to the baseline is a restore, not a new receipt with identical payloads.
-            if (previous == next) continue;
-            var metadata = CreateProcessPlacementMetadata(plan.Process,
-                DateTimeOffset.FromFileTime(checked((long)thread.ProcessStartKey)), plan.Process.ProcessName, plan.Process.ExecutablePath ?? string.Empty);
-            metadata["threadId"] = thread.ThreadId.ToString(CultureInfo.InvariantCulture);
-            metadata["threadStartKey"] = thread.ThreadStartKey.ToString(CultureInfo.InvariantCulture);
-            metadata["previousProcessorGroup"] = previous.Group.ToString(CultureInfo.InvariantCulture);
-            metadata["previousProcessorNumber"] = previous.Number.ToString(CultureInfo.InvariantCulture);
-            metadata["appliedProcessorGroup"] = next.Group.ToString(CultureInfo.InvariantCulture);
-            metadata["appliedProcessorNumber"] = next.Number.ToString(CultureInfo.InvariantCulture);
-            metadata["source"] = "automatic-score-balanced-ideal-processor";
-            var record = new HostManagerAppliedRecord(HostManagerAppliedRecordKinds.CpuThreadIdealProcessor, recordId, metadata);
-            var now = durableTimeSource.NextUtc();
-            var placement = new HostManagerAppliedPlacementReceipt(plan.Process.TargetId, plan.Process.DisplayName,
-                plan.Process.SoftwareId, OptimizationResourceKinds.Cpu, [record], old.Placement?.AppliedAt ?? now, now);
-            results.Add(new(placement, record, ToPlacementPriority(plan.Process.CanonicalCpuScore!.Value)));
+
+            workspace.ReconcileStableRecordIds();
+            HostManagerAutomaticPlacementPlanner.PlanIdealProcessorsIntoWorkspace(
+                topology, hardwareScores, hardPlacements, reservations, workspace);
+            for (var placementIndex = 0; placementIndex < existingPlacements.Count; placementIndex++)
+            {
+                var placement = existingPlacements[placementIndex];
+                for (var recordIndex = 0; recordIndex < placement.Records.Count; recordIndex++)
+                {
+                    var record = placement.Records[recordIndex];
+                    if (record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor
+                        && IsAutomaticPlacementRecord(record))
+                    {
+                        workspace.ExistingRecords.Add(record.RecordId,
+                            new HostManagerIdealProcessorWorkspace.ExistingIdealRecord(placement, record));
+                    }
+                }
+            }
+
+            foreach (var plan in workspace.Plans)
+            {
+                var thread = plan.Thread;
+                if (!workspace.TryGetStableRecordId(plan.Process.TargetId, thread, out var recordId))
+                {
+                    throw new InvalidDataException("An ideal-processor plan has no current thread identity.");
+                }
+                var next = new ThreadIdealProcessor(checked((ushort)plan.Processor.ProcessorGroup), checked((byte)plan.Processor.GroupRelativeIndex));
+                workspace.ExistingRecords.TryGetValue(recordId, out var old);
+                ThreadIdealProcessor previous;
+                if (old.Record is not null)
+                {
+                    if (!ThreadIdealProcessorPlacementRecord.TryRead(old.Record, out var prior)) continue;
+                    previous = prior.Previous;
+                }
+                else previous = thread.IdealProcessor;
+                // Returning to the baseline is a restore, not a new receipt with identical payloads.
+                if (previous == next) continue;
+                var metadata = CreateProcessPlacementMetadata(plan.Process,
+                    DateTimeOffset.FromFileTime(checked((long)thread.ProcessStartKey)), plan.Process.ProcessName, plan.Process.ExecutablePath ?? string.Empty);
+                metadata["threadId"] = thread.ThreadId.ToString(CultureInfo.InvariantCulture);
+                metadata["threadStartKey"] = thread.ThreadStartKey.ToString(CultureInfo.InvariantCulture);
+                metadata["previousProcessorGroup"] = previous.Group.ToString(CultureInfo.InvariantCulture);
+                metadata["previousProcessorNumber"] = previous.Number.ToString(CultureInfo.InvariantCulture);
+                metadata["appliedProcessorGroup"] = next.Group.ToString(CultureInfo.InvariantCulture);
+                metadata["appliedProcessorNumber"] = next.Number.ToString(CultureInfo.InvariantCulture);
+                metadata["source"] = "automatic-score-balanced-ideal-processor";
+                var record = new HostManagerAppliedRecord(HostManagerAppliedRecordKinds.CpuThreadIdealProcessor, recordId, metadata);
+                var now = durableTimeSource.NextUtc();
+                var placement = new HostManagerAppliedPlacementReceipt(plan.Process.TargetId, plan.Process.DisplayName,
+                    plan.Process.SoftwareId, OptimizationResourceKinds.Cpu, [record], old.Placement?.AppliedAt ?? now, now);
+                workspace.Desired.Add(new(placement, record, ToPlacementPriority(plan.Process.CanonicalCpuScore!.Value)));
+            }
+            return workspace.Desired.Count == 0
+                ? Array.Empty<HostManagerPlacementDesired>()
+                : workspace.Desired.ToArray();
         }
-        return results;
+        finally
+        {
+            workspace.ClearEphemeralReferences();
+        }
     }
 
     private HostManagerPlacementObservation ObserveIdealProcessor(

@@ -205,17 +205,11 @@ internal sealed class WindowsNamedPipeCallerAttester : IAdapterTransportCallerAt
 
     private static string QueryProcessPath(SafeProcessHandle process)
     {
-        var path = new StringBuilder(MaximumWindowsPathLength);
-        var length = checked((uint)path.Capacity);
-        if (!WindowsAdapterTransportNativeMethods.QueryFullProcessImageNameW(
-                process,
-                flags: 0,
-                path,
-                ref length))
+        if (!WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var path))
         {
             throw LastWin32();
         }
-        return path.ToString(0, checked((int)length));
+        return path;
     }
 
     private static long QueryProcessCreatedUtcTicks(SafeProcessHandle process)

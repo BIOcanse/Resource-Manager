@@ -634,96 +634,168 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             throw new InvalidDataException("Physical-core usage requires a complete positive execution-time window.");
         }
         var physicalByLogicalId = plan.PhysicalCoreByLogicalProcessor;
-        return aggregate.Records
-            .Where(item => item.ExecutionTimeQpc > 0
-                && physicalByLogicalId.ContainsKey(item.LogicalProcessorId))
-            .GroupBy(static item => item.ProcessInstanceId)
-            .Select(group => CreateProcessResidency(
+        var processByInstance = new Dictionary<long, ProcessProjectionAccumulator>();
+        var processes = new List<ProcessProjectionAccumulator>();
+        var physicalCoreIdWorkspace = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in aggregate.Records)
+        {
+            if (item.ExecutionTimeQpc <= 0
+                || !physicalByLogicalId.TryGetValue(item.LogicalProcessorId, out var core))
+            {
+                continue;
+            }
+
+            if (!processByInstance.TryGetValue(item.ProcessInstanceId, out var process))
+            {
+                process = new ProcessProjectionAccumulator(
+                    item,
+                    processes.Count,
+                    physicalByLogicalId.Count);
+                processByInstance.Add(item.ProcessInstanceId, process);
+                processes.Add(process);
+            }
+
+            process.Add(item, core);
+        }
+
+        processes.Sort((left, right) =>
+        {
+            var byDuration = ToMilliseconds(right.TotalDurationQpc, aggregate.QpcFrequency)
+                .CompareTo(ToMilliseconds(left.TotalDurationQpc, aggregate.QpcFrequency));
+            if (byDuration != 0) return byDuration;
+            var byProcessId = left.First.ProcessId.CompareTo(right.First.ProcessId);
+            return byProcessId != 0 ? byProcessId : left.Order.CompareTo(right.Order);
+        });
+
+        var result = new CpuProcessCoreResidency[processes.Count];
+        for (var index = 0; index < result.Length; index++)
+        {
+            result[index] = CreateProcessResidency(
                 sessionGeneration,
                 aggregate.QpcFrequency,
                 windowQpc,
-                group,
-                physicalByLogicalId))
-            .OrderByDescending(static process => process.ExecutionTimeMilliseconds)
-            .ThenBy(static process => process.ProcessId)
-            .ToArray();
+                processes[index],
+                physicalByLogicalId,
+                physicalCoreIdWorkspace);
+        }
+        return result;
     }
 
     private static CpuProcessCoreResidency CreateProcessResidency(
         long sessionGeneration,
         long qpcFrequency,
         long windowQpc,
-        IGrouping<long, CpuExecutionTimeAggregate> group,
-        IReadOnlyDictionary<int, CpuResidencyCoreAccounting> physicalByLogicalId)
+        ProcessProjectionAccumulator process,
+        IReadOnlyDictionary<int, CpuResidencyCoreAccounting> physicalByLogicalId,
+        HashSet<string> physicalCoreIdWorkspace)
     {
-        var records = group.ToArray();
-        var first = records[0];
-        var totalDurationQpc = records.Sum(static item => item.ExecutionTimeQpc);
-        var totalSwitches = records.Sum(static item => item.SwitchCount);
-        var logicalProcessors = records
-            .GroupBy(static item => item.LogicalProcessorId)
-            .Select(logicalGroup =>
+        var first = process.First;
+        var logicalProcessorGroups = process.LogicalProcessors;
+        logicalProcessorGroups.Sort((left, right) =>
+        {
+            var byDuration = ToMilliseconds(right.DurationQpc, qpcFrequency)
+                .CompareTo(ToMilliseconds(left.DurationQpc, qpcFrequency));
+            if (byDuration != 0) return byDuration;
+            var byProcessorId = left.LogicalProcessorId.CompareTo(right.LogicalProcessorId);
+            return byProcessorId != 0 ? byProcessorId : left.Order.CompareTo(right.Order);
+        });
+        var logicalProcessors = new CpuLogicalProcessorResidency[logicalProcessorGroups.Count];
+        for (var index = 0; index < logicalProcessors.Length; index++)
+        {
+            var group = logicalProcessorGroups[index];
+            logicalProcessors[index] = new CpuLogicalProcessorResidency(
+                group.LogicalProcessorId,
+                group.Core.PhysicalCoreId,
+                group.Core.CcdId,
+                ToMilliseconds(group.DurationQpc, qpcFrequency),
+                group.SwitchCount,
+                Share(group.DurationQpc, process.TotalDurationQpc));
+        }
+
+        var physicalCoreGroups = process.PhysicalCores;
+        physicalCoreGroups.Sort((left, right) =>
+        {
+            var byDuration = ToMilliseconds(right.DurationQpc, qpcFrequency)
+                .CompareTo(ToMilliseconds(left.DurationQpc, qpcFrequency));
+            if (byDuration != 0) return byDuration;
+            var byCoreId = StringComparer.OrdinalIgnoreCase.Compare(
+                left.Core.PhysicalCoreId,
+                right.Core.PhysicalCoreId);
+            return byCoreId != 0 ? byCoreId : left.Order.CompareTo(right.Order);
+        });
+        var physicalCores = new CpuPhysicalCoreResidency[physicalCoreGroups.Count];
+        for (var index = 0; index < physicalCores.Length; index++)
+        {
+            var group = physicalCoreGroups[index];
+            physicalCores[index] = new CpuPhysicalCoreResidency(
+                group.Core.PhysicalCoreId,
+                group.Core.CcdId,
+                ToMilliseconds(group.DurationQpc, qpcFrequency),
+                group.SwitchCount,
+                Share(group.DurationQpc, process.TotalDurationQpc),
+                100.0 * ((double)group.DurationQpc / windowQpc) * group.Core.LogicalProcessorShare);
+        }
+
+        var ccdById = new Dictionary<string, CcdProjectionAccumulator>(StringComparer.OrdinalIgnoreCase);
+        var ccdGroups = new List<CcdProjectionAccumulator>();
+        foreach (var logicalProcessor in logicalProcessors)
+        {
+            if (string.IsNullOrWhiteSpace(logicalProcessor.CcdId)) continue;
+            if (!ccdById.TryGetValue(logicalProcessor.CcdId, out var ccd))
             {
-                var core = physicalByLogicalId[logicalGroup.Key];
-                var durationQpc = logicalGroup.Sum(static item => item.ExecutionTimeQpc);
-                return new CpuLogicalProcessorResidency(
-                    logicalGroup.Key,
-                    core.PhysicalCoreId,
-                    core.CcdId,
-                    ToMilliseconds(durationQpc, qpcFrequency),
-                    logicalGroup.Sum(static item => item.SwitchCount),
-                    Share(durationQpc, totalDurationQpc));
-            })
-            .OrderByDescending(static item => item.ExecutionTimeMilliseconds)
-            .ThenBy(static item => item.LogicalProcessorId)
-            .ToArray();
-        var physicalCores = records
-            .GroupBy(item => physicalByLogicalId[item.LogicalProcessorId])
-            .Select(coreGroup =>
-            {
-                var core = coreGroup.Key;
-                var durationQpc = coreGroup.Sum(static item => item.ExecutionTimeQpc);
-                return new CpuPhysicalCoreResidency(
-                    core.PhysicalCoreId,
-                    core.CcdId,
-                    ToMilliseconds(durationQpc, qpcFrequency),
-                    coreGroup.Sum(static item => item.SwitchCount),
-                    Share(durationQpc, totalDurationQpc),
-                    100.0 * ((double)durationQpc / windowQpc) * core.LogicalProcessorShare);
-            })
-            .OrderByDescending(static item => item.ExecutionTimeMilliseconds)
-            .ThenBy(static item => item.PhysicalCoreId, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var ccds = logicalProcessors
-            .Where(static item => !string.IsNullOrWhiteSpace(item.CcdId))
-            .GroupBy(static item => item.CcdId, StringComparer.OrdinalIgnoreCase)
-            .Select(ccdGroup => new CpuCcdResidency(
-                ccdGroup.Key,
-                Math.Round(ccdGroup.Sum(static item => item.ExecutionTimeMilliseconds), 3),
-                ccdGroup.Sum(static item => item.SwitchCount),
-                Math.Round(ccdGroup.Sum(static item => item.SharePercent), 2)))
-            .OrderByDescending(static item => item.ExecutionTimeMilliseconds)
-            .ThenBy(static item => item.CcdId, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var threadGroups = records.GroupBy(static item => item.ThreadInstanceId).ToArray();
-        var threads = threadGroups
-            .Select(threadGroup => CreateThreadResidency(
+                ccd = new CcdProjectionAccumulator(logicalProcessor.CcdId, ccdGroups.Count);
+                ccdById.Add(logicalProcessor.CcdId, ccd);
+                ccdGroups.Add(ccd);
+            }
+            ccd.Add(logicalProcessor);
+        }
+        ccdGroups.Sort(static (left, right) =>
+        {
+            var byDuration = Math.Round(right.ExecutionTimeMilliseconds, 3)
+                .CompareTo(Math.Round(left.ExecutionTimeMilliseconds, 3));
+            if (byDuration != 0) return byDuration;
+            var byCcdId = StringComparer.OrdinalIgnoreCase.Compare(left.CcdId, right.CcdId);
+            return byCcdId != 0 ? byCcdId : left.Order.CompareTo(right.Order);
+        });
+        var ccds = new CpuCcdResidency[ccdGroups.Count];
+        for (var index = 0; index < ccds.Length; index++)
+        {
+            var group = ccdGroups[index];
+            ccds[index] = new CpuCcdResidency(
+                group.CcdId,
+                Math.Round(group.ExecutionTimeMilliseconds, 3),
+                group.SwitchCount,
+                Math.Round(group.SharePercent, 2));
+        }
+
+        var threadGroups = process.Threads;
+        threadGroups.Sort((left, right) =>
+        {
+            var byDuration = ToMilliseconds(right.DurationQpc, qpcFrequency)
+                .CompareTo(ToMilliseconds(left.DurationQpc, qpcFrequency));
+            if (byDuration != 0) return byDuration;
+            var byThreadId = left.ThreadId.CompareTo(right.ThreadId);
+            return byThreadId != 0 ? byThreadId : left.Order.CompareTo(right.Order);
+        });
+        var threads = new CpuThreadCoreResidency[threadGroups.Count];
+        for (var index = 0; index < threads.Length; index++)
+        {
+            threads[index] = CreateThreadResidency(
                 sessionGeneration,
                 qpcFrequency,
-                threadGroup,
-                physicalByLogicalId))
-            .OrderByDescending(static item => item.ExecutionTimeMilliseconds)
-            .ThenBy(static item => item.ThreadId)
-            .ToArray();
+                threadGroups[index],
+                physicalByLogicalId,
+                physicalCoreIdWorkspace);
+        }
 
         return new CpuProcessCoreResidency(
             FormatInstanceId(sessionGeneration, first.ProcessInstanceId),
             first.ProcessId,
             first.ProcessStartKey?.ToString(CultureInfo.InvariantCulture),
             first.ProcessName,
-            ToMilliseconds(totalDurationQpc, qpcFrequency),
-            totalSwitches,
-            threadGroups.Length,
+            ToMilliseconds(process.TotalDurationQpc, qpcFrequency),
+            process.SwitchCount,
+            threadGroups.Count,
             ccds.FirstOrDefault()?.CcdId,
             physicalCores.FirstOrDefault()?.PhysicalCoreId,
             logicalProcessors.FirstOrDefault()?.LogicalProcessorId,
@@ -736,30 +808,189 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
     private static CpuThreadCoreResidency CreateThreadResidency(
         long sessionGeneration,
         long qpcFrequency,
-        IGrouping<long, CpuExecutionTimeAggregate> threadGroup,
-        IReadOnlyDictionary<int, CpuResidencyCoreAccounting> physicalByLogicalId)
+        ThreadProjectionAccumulator threadGroup,
+        IReadOnlyDictionary<int, CpuResidencyCoreAccounting> physicalByLogicalId,
+        HashSet<string> physicalCoreIdWorkspace)
     {
-        var records = threadGroup.ToArray();
-        var primary = records
-            .GroupBy(static item => item.LogicalProcessorId)
-            .OrderByDescending(static group => group.Sum(item => item.ExecutionTimeQpc))
-            .ThenBy(static group => group.Key)
-            .First();
-        var core = physicalByLogicalId[primary.Key];
-        var physicalCoreIds = records
-            .Select(item => physicalByLogicalId[item.LogicalProcessorId].PhysicalCoreId)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var primaryProcessorId = int.MaxValue;
+        var primaryDurationQpc = long.MinValue;
+        for (var index = 0; index < threadGroup.ProcessorCount; index++)
+        {
+            var processor = threadGroup.ProcessorDurations[index];
+            if (processor.DurationQpc > primaryDurationQpc
+                || processor.DurationQpc == primaryDurationQpc
+                    && processor.LogicalProcessorId < primaryProcessorId)
+            {
+                primaryProcessorId = processor.LogicalProcessorId;
+                primaryDurationQpc = processor.DurationQpc;
+            }
+        }
+        var core = physicalByLogicalId[primaryProcessorId];
+        physicalCoreIdWorkspace.Clear();
+        for (var index = 0; index < threadGroup.ProcessorCount; index++)
+        {
+            physicalCoreIdWorkspace.Add(threadGroup.ProcessorDurations[index].PhysicalCoreId!);
+        }
+
+        var physicalCoreIds = new string[physicalCoreIdWorkspace.Count];
+        physicalCoreIdWorkspace.CopyTo(physicalCoreIds);
+        Array.Sort(physicalCoreIds, StringComparer.OrdinalIgnoreCase);
         return new CpuThreadCoreResidency(
-            FormatInstanceId(sessionGeneration, threadGroup.Key),
-            records[0].ThreadId,
-            ToMilliseconds(records.Sum(static item => item.ExecutionTimeQpc), qpcFrequency),
-            records.Sum(static item => item.SwitchCount),
+            FormatInstanceId(sessionGeneration, threadGroup.ThreadInstanceId),
+            threadGroup.ThreadId,
+            ToMilliseconds(threadGroup.DurationQpc, qpcFrequency),
+            threadGroup.SwitchCount,
             string.IsNullOrWhiteSpace(core.CcdId) ? null : core.CcdId,
             core.PhysicalCoreId,
-            primary.Key,
+            primaryProcessorId,
             physicalCoreIds);
+    }
+
+    private sealed class ProcessProjectionAccumulator(
+        CpuExecutionTimeAggregate first,
+        int order,
+        int threadProcessorCapacity)
+    {
+        public CpuExecutionTimeAggregate First { get; } = first;
+        public int Order { get; } = order;
+        public long TotalDurationQpc;
+        public int SwitchCount;
+        private int ThreadProcessorCapacity { get; } = threadProcessorCapacity;
+        public Dictionary<int, LogicalProcessorProjectionAccumulator> LogicalProcessorById { get; } = [];
+        public List<LogicalProcessorProjectionAccumulator> LogicalProcessors { get; } = [];
+        public Dictionary<CpuResidencyCoreAccounting, PhysicalCoreProjectionAccumulator> PhysicalCoreByIdentity { get; } = [];
+        public List<PhysicalCoreProjectionAccumulator> PhysicalCores { get; } = [];
+        public Dictionary<long, ThreadProjectionAccumulator> ThreadByInstance { get; } = [];
+        public List<ThreadProjectionAccumulator> Threads { get; } = [];
+
+        public void Add(CpuExecutionTimeAggregate item, CpuResidencyCoreAccounting core)
+        {
+            TotalDurationQpc = checked(TotalDurationQpc + item.ExecutionTimeQpc);
+            SwitchCount = checked(SwitchCount + item.SwitchCount);
+
+            if (!LogicalProcessorById.TryGetValue(item.LogicalProcessorId, out var logicalProcessor))
+            {
+                logicalProcessor = new LogicalProcessorProjectionAccumulator(
+                    item.LogicalProcessorId, core, LogicalProcessors.Count);
+                LogicalProcessorById.Add(item.LogicalProcessorId, logicalProcessor);
+                LogicalProcessors.Add(logicalProcessor);
+            }
+            logicalProcessor.Add(item);
+
+            if (!PhysicalCoreByIdentity.TryGetValue(core, out var physicalCore))
+            {
+                physicalCore = new PhysicalCoreProjectionAccumulator(core, PhysicalCores.Count);
+                PhysicalCoreByIdentity.Add(core, physicalCore);
+                PhysicalCores.Add(physicalCore);
+            }
+            physicalCore.Add(item);
+
+            if (!ThreadByInstance.TryGetValue(item.ThreadInstanceId, out var thread))
+            {
+                thread = new ThreadProjectionAccumulator(item, Threads.Count, ThreadProcessorCapacity);
+                ThreadByInstance.Add(item.ThreadInstanceId, thread);
+                Threads.Add(thread);
+            }
+            thread.Add(item, core);
+        }
+    }
+
+    private sealed class LogicalProcessorProjectionAccumulator(
+        int logicalProcessorId,
+        CpuResidencyCoreAccounting core,
+        int order)
+    {
+        public int LogicalProcessorId { get; } = logicalProcessorId;
+        public CpuResidencyCoreAccounting Core { get; } = core;
+        public int Order { get; } = order;
+        public long DurationQpc;
+        public int SwitchCount;
+        public void Add(CpuExecutionTimeAggregate item)
+        {
+            DurationQpc = checked(DurationQpc + item.ExecutionTimeQpc);
+            SwitchCount = checked(SwitchCount + item.SwitchCount);
+        }
+    }
+
+    private sealed class PhysicalCoreProjectionAccumulator(CpuResidencyCoreAccounting core, int order)
+    {
+        public CpuResidencyCoreAccounting Core { get; } = core;
+        public int Order { get; } = order;
+        public long DurationQpc;
+        public int SwitchCount;
+        public void Add(CpuExecutionTimeAggregate item)
+        {
+            DurationQpc = checked(DurationQpc + item.ExecutionTimeQpc);
+            SwitchCount = checked(SwitchCount + item.SwitchCount);
+        }
+    }
+
+    private sealed class ThreadProjectionAccumulator(
+        CpuExecutionTimeAggregate first,
+        int order,
+        int processorCapacity)
+    {
+        public long ThreadInstanceId { get; } = first.ThreadInstanceId;
+        public int ThreadId { get; } = first.ThreadId;
+        public int Order { get; } = order;
+        public long DurationQpc;
+        public int SwitchCount;
+        private readonly int _processorCapacity = processorCapacity;
+        private ThreadProcessorDuration[] processorDurations
+            = new ThreadProcessorDuration[Math.Min(4, processorCapacity)];
+        public ThreadProcessorDuration[] ProcessorDurations => processorDurations;
+        public int ProcessorCount { get; private set; }
+        public void Add(CpuExecutionTimeAggregate item, CpuResidencyCoreAccounting core)
+        {
+            DurationQpc = checked(DurationQpc + item.ExecutionTimeQpc);
+            SwitchCount = checked(SwitchCount + item.SwitchCount);
+            for (var index = 0; index < ProcessorCount; index++)
+            {
+                if (ProcessorDurations[index].LogicalProcessorId != item.LogicalProcessorId) continue;
+                ProcessorDurations[index].DurationQpc = checked(
+                    ProcessorDurations[index].DurationQpc + item.ExecutionTimeQpc);
+                return;
+            }
+
+            if (ProcessorCount == ProcessorDurations.Length)
+            {
+                var nextCapacity = ProcessorDurations.Length == 0
+                    ? 1
+                    : Math.Min(_processorCapacity, ProcessorDurations.Length * 2);
+                if (nextCapacity <= ProcessorCount)
+                {
+                    throw new InvalidOperationException("A thread observed more logical processors than the capture topology contains.");
+                }
+                Array.Resize(ref processorDurations, nextCapacity);
+            }
+
+            processorDurations[ProcessorCount++] = new ThreadProcessorDuration(
+                item.LogicalProcessorId,
+                item.ExecutionTimeQpc,
+                core.PhysicalCoreId);
+        }
+    }
+
+    private struct ThreadProcessorDuration(int logicalProcessorId, long durationQpc, string physicalCoreId)
+    {
+        public int LogicalProcessorId = logicalProcessorId;
+        public long DurationQpc = durationQpc;
+        public string? PhysicalCoreId = physicalCoreId;
+    }
+
+    private sealed class CcdProjectionAccumulator(string ccdId, int order)
+    {
+        public string CcdId { get; } = ccdId;
+        public int Order { get; } = order;
+        public double ExecutionTimeMilliseconds;
+        public int SwitchCount;
+        public double SharePercent;
+        public void Add(CpuLogicalProcessorResidency item)
+        {
+            ExecutionTimeMilliseconds += item.ExecutionTimeMilliseconds;
+            SwitchCount = checked(SwitchCount + item.SwitchCount);
+            SharePercent += item.SharePercent;
+        }
     }
 
     public void Stop(string idleMessage = "ETW CPU attribution stopped after its demand was withdrawn.")

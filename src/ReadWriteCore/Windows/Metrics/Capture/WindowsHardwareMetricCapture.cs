@@ -46,7 +46,18 @@ internal sealed partial class WindowsHardwareMetricCapture
         var catalog = workspace.ReadCatalog();
         var commandAt = DateTimeOffset.UtcNow;
         var collectionRequest = CreateCollectionRequest(request, catalog, fieldCatalog);
-        collectionRequest = readingSources.ExpandLegacyRequest(collectionRequest, workspace.ReadCommitted(), workspaceIdentity);
+        (NativeMetricSnapshotSnapshotHeader Header,
+            ImmutableArray<NativeMetricSnapshotSourceOutput> Sources)? sourceFrame = null;
+        if (!collectionRequest.IsAll && !collectionRequest.IsCatalogProbe)
+        {
+            sourceFrame = workspace.ReadSources();
+            collectionRequest = readingSources.ExpandLegacyRequest(
+                collectionRequest,
+                catalog,
+                sourceFrame.Value.Header,
+                sourceFrame.Value.Sources,
+                workspaceIdentity);
+        }
         var requestedMetricHandles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(collectionRequest, catalog);
         var queriedMetricAddresses = sourceQueriesCompleted is null ? null
             : ImmutableHashSet.CreateBuilder<string>(StringComparer.OrdinalIgnoreCase);
@@ -60,10 +71,11 @@ internal sealed partial class WindowsHardwareMetricCapture
         {
             if (sourceRuntimeFacts.NeedsWorkspaceSourceSynchronization(workspaceIdentity))
             {
+                sourceFrame ??= workspace.ReadSources();
                 sourceRuntimeFacts.SynchronizeWorkspaceSources(
                     workspaceIdentity,
                     catalog,
-                    workspace.ReadCommitted().Sources);
+                    sourceFrame.Value.Sources);
             }
             var sourceModes = sourceRuntimeFacts.CaptureModesForRequest(
                 catalog, commandAt, requestedMetricHandles, includeGpuInventory);

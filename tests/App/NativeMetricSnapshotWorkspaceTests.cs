@@ -787,6 +787,120 @@ public sealed class NativeMetricSnapshotWorkspaceTests
     }
 
     [Fact]
+    public void CommittedReadsAllocateOnlyRequiredCurrentRowsAndKeepIndependentSnapshots()
+    {
+        const int iterations = 32;
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"metric-committed-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+            using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
+                compiled,
+                Path.Combine(root, "state.bin"));
+            var projection = CreateProjection(
+                compiled,
+                workspace.CreateCatalogHandleMap(),
+                [new(0, "GPU A", "gpu-a", 0xA1UL, 1, VendorNvidia, true)]);
+            _ = workspace.ReplaceCatalog(
+                projection,
+                DateTimeOffset.UtcNow);
+            CompleteGpuInventory(workspace, projection, incarnation: 2);
+            var header = workspace.ReadHeader();
+
+            // Warm native interop and the current read path before measuring.
+            _ = workspace.ReadCommitted();
+            _ = workspace.ReadCommitted();
+            _ = workspace.ReadSources();
+
+            var fullHeaders = new NativeMetricSnapshotSnapshotHeader[iterations];
+            NativeMetricSnapshotCommittedFrame? firstFullRead = null;
+            NativeMetricSnapshotCommittedFrame? lastFullRead = null;
+            var beforeFull = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < fullHeaders.Length; i++)
+            {
+                var read = workspace.ReadCommitted();
+                fullHeaders[i] = read.Header;
+                if (i == 0) firstFullRead = read;
+                if (i == fullHeaders.Length - 1) lastFullRead = read;
+            }
+            var fullAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeFull;
+
+            var sourceReads = new ImmutableArray<NativeMetricSnapshotSourceOutput>[iterations];
+            var sourceHeaders = new NativeMetricSnapshotSnapshotHeader[iterations];
+            var beforeSources = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < sourceReads.Length; i++)
+            {
+                var sourceRead = workspace.ReadSources();
+                sourceReads[i] = sourceRead.Sources;
+                sourceHeaders[i] = sourceRead.Header;
+            }
+            var sourcesAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeSources;
+            var first = firstFullRead!;
+            var sourcesOnly = sourceReads[0];
+
+            Assert.Equal((int)header.SourceCount, first.Sources.Length);
+            Assert.Equal((int)header.MetricCount, first.Metrics.Length);
+            Assert.Equal((int)header.GpuAdapterCount, first.GpuInventory.Length);
+            Assert.Equal((int)header.RuleCount, first.Rules.Length);
+            Assert.Equal(1, first.GpuInventory.Length);
+            Assert.True(first.Sources.SequenceEqual(sourcesOnly));
+            Assert.Equal(header.StateRevision, sourceHeaders[0].StateRevision);
+
+            var sourcePayload = (long)header.SourceCount
+                * Unsafe.SizeOf<NativeMetricSnapshotSourceOutput>();
+            var fullPayload = sourcePayload
+                + (long)header.MetricCount
+                    * Unsafe.SizeOf<NativeMetricSnapshotMetricOutput>()
+                + (long)header.GpuAdapterCount
+                    * Unsafe.SizeOf<NativeMetricSnapshotGpuInventoryOutput>()
+                + (long)header.RuleCount
+                    * Unsafe.SizeOf<NativeMetricSnapshotRuleStateOutput>();
+            Assert.True(fullPayload > 0);
+            Assert.InRange(fullAllocated, fullPayload * iterations,
+                (fullPayload + 4_096) * iterations);
+            Assert.InRange(sourcesAllocated, sourcePayload * iterations,
+                (sourcePayload + 1_024) * iterations);
+
+            var second = lastFullRead!;
+            Assert.All(fullHeaders, readHeader =>
+            {
+                Assert.Equal(header.StateRevision, readHeader.StateRevision);
+                Assert.Equal((int)header.SourceCount, (int)readHeader.SourceCount);
+                Assert.Equal((int)header.MetricCount, (int)readHeader.MetricCount);
+                Assert.Equal((int)header.GpuAdapterCount, (int)readHeader.GpuAdapterCount);
+                Assert.Equal((int)header.RuleCount, (int)readHeader.RuleCount);
+            });
+            for (var i = 0; i < sourceReads.Length; i++)
+            {
+                Assert.True(first.Sources.SequenceEqual(sourceReads[i]));
+                Assert.Equal(header.StateRevision, sourceHeaders[i].StateRevision);
+            }
+            Assert.NotSame(
+                ImmutableCollectionsMarshal.AsArray(first.Sources),
+                ImmutableCollectionsMarshal.AsArray(second.Sources));
+            Assert.NotSame(
+                ImmutableCollectionsMarshal.AsArray(first.Metrics),
+                ImmutableCollectionsMarshal.AsArray(second.Metrics));
+            Assert.NotSame(
+                ImmutableCollectionsMarshal.AsArray(first.GpuInventory),
+                ImmutableCollectionsMarshal.AsArray(second.GpuInventory));
+            Assert.NotSame(
+                ImmutableCollectionsMarshal.AsArray(first.Rules),
+                ImmutableCollectionsMarshal.AsArray(second.Rules));
+            Assert.NotSame(
+                ImmutableCollectionsMarshal.AsArray(sourceReads[0]),
+                ImmutableCollectionsMarshal.AsArray(sourceReads[^1]));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void InvalidObservationAbortKeepsTheNextPlanAvailable()
     {
         var root = Path.Combine(

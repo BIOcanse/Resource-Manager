@@ -1,7 +1,9 @@
+using System.Reflection;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
@@ -13,6 +15,101 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task WarmIdealProcessorDesiredReusesThreadIdentityAndPlanningScratch()
+    {
+        const int processId = 42_431;
+        const ulong processStartKey = 133_900_000_000_000_031;
+        const string softwareId = "software:ideal-allocation";
+        var topology = CreateAutomaticPlacementTopology();
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            processFactsSnapshot: CreateCompleteProcessFacts(processId, processStartKey, softwareId, 80, 50, 25),
+            policyExecutionEnabled: false,
+            automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.CpuOnly,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.Create(
+                96, DateTimeOffset.UtcNow, CpuCoreResidencyTestValues.Process(processId, processStartKey, ("core:0", 50)))),
+            cpuTopology: topology,
+            cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
+            automaticPlacementTopology: topology);
+
+        var startedAt = DateTimeOffset.FromFileTime(checked((long)processStartKey));
+        var policy = ResolvedGpuPlacementPolicy.FromSoftware(
+            GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, "Ideal allocation") with
+            {
+                CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores
+            });
+        var process = new HostManagerAutomaticPlacementProcess(
+            "target:ideal-allocation",
+            softwareId,
+            "Ideal allocation",
+            processId,
+            processStartKey,
+            "fixture",
+            @"C:\tests\ideal-allocation.exe",
+            true,
+            policy,
+            80,
+            new Dictionary<ulong, double>(),
+            new Dictionary<ulong, double>());
+        IReadOnlyList<ThreadIdealProcessorPolicySnapshot> threadSnapshots =
+        [
+            new(processId, processStartKey, 10001, processStartKey + 1, new(0, 0), 0, 15, [])
+        ];
+        var baselineRead = RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(
+            new(processId, startedAt, "fixture", @"C:\tests\ideal-allocation.exe", null, [1, 2, 3, 4], null, null));
+        fixture.ProcessPolicyWriter.IdealThreadsReadHandler = (_, _, _) =>
+            RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Found(threadSnapshots);
+        fixture.ProcessPolicyWriter.PlacementReadHandler = (_, _) => baselineRead;
+
+        var method = typeof(HostManagerSmartCoordinator).GetMethod(
+            "CreateIdealProcessorDesired", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var createDesired = (CreateIdealProcessorDesiredDelegate)method.CreateDelegate(
+            typeof(CreateIdealProcessorDesiredDelegate), fixture.Coordinator);
+        var idealReads = fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle();
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes = [process];
+        IReadOnlyList<HostManagerAutomaticCpuPlacement> hardPlacements = Array.Empty<HostManagerAutomaticCpuPlacement>();
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> existing = Array.Empty<HostManagerAppliedPlacementReceipt>();
+        for (var index = 0; index < 4; index++)
+        {
+            Assert.Empty(createDesired(idealReads, topology, CompiledHardwareScorePlan.Default,
+                processes, hardPlacements, existing, null, 64));
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 32; index++)
+        {
+            _ = createDesired(idealReads, topology, CompiledHardwareScorePlan.Default,
+                processes, hardPlacements, existing, null, 64);
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.InRange(allocated, 0, 1_024);
+
+        threadSnapshots =
+        [
+            new(processId, processStartKey, 10001, processStartKey + 1, new(0, 0), 0, 15, []),
+            new(processId, processStartKey, 10002, processStartKey + 2, new(0, 0), 0, 15, [])
+        ];
+        var firstResult = createDesired(fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle(), topology, CompiledHardwareScorePlan.Default,
+            processes, hardPlacements, existing, null, 64);
+        var firstDesired = Assert.Single(firstResult);
+        var firstRecordId = firstDesired.Record.RecordId;
+        var secondResult = createDesired(fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle(), topology, CompiledHardwareScorePlan.Default,
+            processes, hardPlacements, existing, null, 64);
+        var secondDesired = Assert.Single(secondResult);
+
+        Assert.NotSame(firstResult, secondResult);
+        Assert.Same(firstDesired, Assert.Single(firstResult));
+        Assert.Same(secondDesired, Assert.Single(secondResult));
+        Assert.Equal(firstRecordId, firstDesired.Record.RecordId);
+        Assert.Equal(firstRecordId, secondDesired.Record.RecordId);
+        Assert.Equal("1", firstDesired.Record.Metadata!["appliedProcessorNumber"]);
+    }
+
     [Fact]
     public async Task DefaultAllCoresBalancesThreadHintsWithoutRestrictingCpuSetsAndRestoresThem()
     {
@@ -558,4 +655,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             logicalProcessors,
             []);
     }
+
+    private delegate IReadOnlyList<HostManagerPlacementDesired> CreateIdealProcessorDesiredDelegate(
+        IThreadIdealProcessorReadCycle idealReads,
+        CpuTopologySnapshot topology,
+        CompiledHardwareScorePlan hardwareScores,
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
+        IReadOnlyList<HostManagerAutomaticCpuPlacement> hardPlacements,
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
+        HostManagerCpuReservations? reservations,
+        int maximumThreadCount);
 }

@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace ResourceManager.App.Infrastructure.Adaptation.Transport;
 
-internal static class WindowsAdapterTransportNativeMethods
+internal static partial class WindowsAdapterTransportNativeMethods
 {
     internal const uint ErrorInsufficientBuffer = 122;
     internal const uint TokenQuery = 0x0008;
@@ -141,10 +141,10 @@ internal static class WindowsAdapterTransportNativeMethods
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool QueryFullProcessImageNameW(
+    private static extern unsafe bool QueryFullProcessImageNameW(
         SafeProcessHandle process,
         uint flags,
-        StringBuilder executablePath,
+        char* executablePath,
         ref uint size);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

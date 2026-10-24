@@ -241,30 +241,40 @@ pub fn readSnapshot(
     defer state.unlock(&session.mutex);
     if (!validRead(session, input)) return .stale_frame;
     const gpu_count = inventory.activeCount(session);
-    if (sources.len < session.active.source_count or metrics.len < session.active.metric_count or
-        gpu_inventory.len < gpu_count or rules.len < session.active.rule_count)
+    if ((sources.len != 0 and sources.len < session.active.source_count) or
+        (metrics.len != 0 and metrics.len < session.active.metric_count) or
+        (gpu_inventory.len != 0 and gpu_inventory.len < gpu_count) or
+        (rules.len != 0 and rules.len < session.active.rule_count))
     {
         return .buffer_too_small;
     }
-    @memset(sources, std.mem.zeroes(protocol.SourceOutput));
-    @memset(metrics, std.mem.zeroes(protocol.MetricOutput));
-    @memset(gpu_inventory, std.mem.zeroes(protocol.GpuInventoryOutput));
-    @memset(rules, std.mem.zeroes(protocol.RuleStateOutput));
+    if (sources.len != 0) @memset(sources, std.mem.zeroes(protocol.SourceOutput));
+    if (metrics.len != 0) @memset(metrics, std.mem.zeroes(protocol.MetricOutput));
+    if (gpu_inventory.len != 0) @memset(gpu_inventory, std.mem.zeroes(protocol.GpuInventoryOutput));
+    if (rules.len != 0) @memset(rules, std.mem.zeroes(protocol.RuleStateOutput));
 
-    for (session.active.sources[0..session.active.source_count], 0..) |source, ordinal| {
-        sources[ordinal] = observation.sourceOutput(source);
+    if (sources.len != 0) {
+        for (session.active.sources[0..session.active.source_count], 0..) |source, ordinal| {
+            sources[ordinal] = observation.sourceOutput(source);
+        }
     }
-    for (session.active.metrics[0..session.active.metric_count], 0..) |metric, ordinal| {
-        metrics[ordinal] = metric.output;
+    if (metrics.len != 0) {
+        for (session.active.metrics[0..session.active.metric_count], 0..) |metric, ordinal| {
+            metrics[ordinal] = metric.output;
+        }
     }
-    var gpu_ordinal: usize = 0;
-    for (session.gpu_active) |gpu| {
-        if (!gpu.active) continue;
-        gpu_inventory[gpu_ordinal] = gpu.output;
-        gpu_ordinal += 1;
+    if (gpu_inventory.len != 0) {
+        var gpu_ordinal: usize = 0;
+        for (session.gpu_active) |gpu| {
+            if (!gpu.active) continue;
+            gpu_inventory[gpu_ordinal] = gpu.output;
+            gpu_ordinal += 1;
+        }
     }
-    for (session.active.rules[0..session.active.rule_count], 0..) |rule, ordinal| {
-        rules[ordinal] = ruleOutput(rule);
+    if (rules.len != 0) {
+        for (session.active.rules[0..session.active.rule_count], 0..) |rule, ordinal| {
+            rules[ordinal] = ruleOutput(rule);
+        }
     }
     return .ok;
 }
