@@ -251,7 +251,7 @@ if($Stage -eq 'ProductBackend') {
     Save-Json @(Get-TreeManifest (Join-Path $artifacts 'freedom-point-generated')) (Join-Path $RunDirectory 'freedom-point-generated-output.json')
     Save-Json @{accepted=$true;backendRun=$RunDirectory;artifacts=$artifacts;candidate=$candidate;backendDirectory=$backend;nativeContext=$nativeContextPath;frontendContext=(Join-Path $TaskRoot 'frontend-product-context.json')} (Join-Path $TaskRoot 'product-publish-context.json')
 } elseif($Stage -eq 'ProductShell') {
-    $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @('-p:PublishSingleFile=true')
+    $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @('-p:PublishSingleFile=false')
     $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @('-p:PublishSingleFile=true')
     [void](Capture-ResolvedInputs $evidence)
     $product|Add-Member -NotePropertyName shellRun -NotePropertyValue $RunDirectory -Force

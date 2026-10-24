@@ -29,12 +29,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Frontend publication build failed: $LASTEXITCODE" }
 }
 finally { Pop-Location }
-# The backend service publishes as a folder (user decision 2026-10-24): every assembly is mapped from
-# its own file, so the long-running service does not keep a private decompressed copy of each
-# assembly beside the mapped bundle. The other programs stay single-file.
+# The backend service and the native UI publish as folders (user decisions 2026-10-24): every assembly
+# is mapped from its own file, so the two long-running processes do not keep a private decompressed
+# copy of each assembly beside the mapped bundle. The short-lived programs stay single-file.
 $projects = @(
     @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend'; SingleFile = $false },
-    @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui'; SingleFile = $true },
+    @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui'; SingleFile = $false },
     @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher'; SingleFile = $true },
     @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer'; SingleFile = $true }
     @{ Project = (Join-Path $repo 'src\Uninstaller\ResourceManager.Uninstaller.csproj'); Directory = 'uninstaller'; SingleFile = $true }

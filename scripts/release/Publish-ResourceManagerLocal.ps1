@@ -185,7 +185,7 @@ if ($publishBackend) {
 
 if ($publishNativeUi) {
     Clear-PublishDirectory $NativeUiOutput
-    Write-Step "发布 win-x64 单文件 Native UI。"
+    Write-Step "发布 win-x64 文件夹形式 Native UI。"
     Invoke-CheckedCommand `
         "dotnet" `
         @(
@@ -193,7 +193,7 @@ if ($publishNativeUi) {
             "-c", "Release",
             "-r", "win-x64",
             "--self-contained", "true",
-            "-p:PublishSingleFile=true",
+            "-p:PublishSingleFile=false",
             "-p:PublishReadyToRun=true",
             "-p:PublishDir=$NativeUiOutput",
             "--nologo",
