@@ -614,7 +614,7 @@ function operationObservation(
   if (snapshot.status === "ready") {
     return readyObservation(snapshot.capturedAt ?? undefined);
   }
-  if (snapshot.status === "disposed") {
+  if (snapshot.status === "disposed" || snapshot.status === "error" || snapshot.status === "unavailable") {
     return failedObservation(
       loadingObservation(),
       uiText.stores.operationStateStopped);

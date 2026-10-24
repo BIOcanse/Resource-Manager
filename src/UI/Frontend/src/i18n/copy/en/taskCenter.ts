@@ -36,6 +36,8 @@ export const enTaskCenterCopy: Pick<AppCopy, "taskCenter"> = {
       dependencyDownload: "Download dependency",
       dependencyLaunchInstaller: "Install dependency",
       softwareUninstall: "Uninstall software",
+      diskUsageScan: "Scan disk usage",
+      generic: "Operation",
       migrationExecute: "Migrate software data",
       migrationRestore: "Restore software data",
       discoveryStart: "Discover migratable data",

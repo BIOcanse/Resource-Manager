@@ -1,37 +1,38 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { uiText } from "../../text.ts";
-import { listRecordings, startRecording, stopRecording, type RecordingHeader } from "./targetedRecordingApi.ts";
+import { startRecording, stopRecording } from "./targetedRecordingApi.ts";
+
+const activeRecordingRefreshIntervalMs = 2_000;
 
 export function TargetedRecordingControl(props: { softwareId: string }) {
-  const client = useFrontendRuntime().requestClient;
+  const runtime = useFrontendRuntime();
+  const work = useFrontendWork();
+  const [refreshIntervalMs, setRefreshIntervalMs] = createSignal<number | null>(null);
+  const recordingsSource = useSource(runtime.sources.targetedRecordings, () => ({
+    active: work.frontendVisible(),
+    refreshIntervalMs: refreshIntervalMs()
+  }));
   const [maximumSeconds, setMaximumSeconds] = createSignal(600);
-  const [active, setActive] = createSignal<RecordingHeader | null>(null);
+  const active = createMemo(() => recordingsSource.snapshot().data
+    ?.find((item) => item.softwareId === props.softwareId && item.status === "recording")
+    ?? null);
   const [busy, setBusy] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
 
-  const refresh = async (softwareId: string, signal?: AbortSignal) => {
-    const records = await listRecordings(client, signal);
-    setActive(records.find((item) => item.softwareId === softwareId && item.status === "recording") ?? null);
-  };
-
   createEffect(() => {
-    const softwareId = props.softwareId;
-    setActive(null);
-    setFailed(false);
-    const cancellation = new AbortController();
-    void refresh(softwareId, cancellation.signal).catch(() => {
-      if (!cancellation.signal.aborted) setFailed(true);
-    });
-    onCleanup(() => cancellation.abort());
-  });
-
-  createEffect(() => {
-    if (!active()) return;
-    const timer = window.setInterval(() => {
-      void refresh(props.softwareId).catch(() => setFailed(true));
-    }, 2000);
-    onCleanup(() => window.clearInterval(timer));
+    const snapshot = recordingsSource.snapshot();
+    setRefreshIntervalMs(active()
+      ? activeRecordingRefreshIntervalMs
+      : null);
+    if (snapshot.status === "error" || snapshot.status === "unavailable") {
+      setFailed(true);
+    } else if (sourceCanRender(snapshot)) {
+      setFailed(false);
+    }
   });
 
   const start = async () => {
@@ -44,7 +45,11 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
         setFailed(true);
         return;
       }
-      setActive(await startRecording(client, props.softwareId, seconds));
+      const recording = await startRecording(runtime.requestClient, props.softwareId, seconds);
+      recordingsSource.acceptAuthoritative(upsertRecording(
+        recordingsSource.snapshot().data ?? [],
+        recording));
+      await recordingsSource.refresh();
     } catch {
       setFailed(true);
     } finally {
@@ -58,8 +63,11 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
     setBusy(true);
     setFailed(false);
     try {
-      await stopRecording(client, recording.id);
-      setActive(null);
+      const completed = await stopRecording(runtime.requestClient, recording.id);
+      recordingsSource.acceptAuthoritative(upsertRecording(
+        recordingsSource.snapshot().data ?? [],
+        completed));
+      await recordingsSource.refresh();
     } catch {
       setFailed(true);
     } finally {
@@ -68,7 +76,9 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
   };
 
   return (
-    <section class="software-detail-section targeted-recording-control">
+    <section
+      class="software-detail-section targeted-recording-control"
+    >
       <h3>{uiText.targetedReport.title}</h3>
       <p>{uiText.targetedReport.intro}</p>
       <Show when={active()} fallback={
@@ -78,7 +88,7 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
             <input type="number" min="1" max="3600" step="1" value={maximumSeconds()}
               onInput={(event) => setMaximumSeconds(Number(event.currentTarget.value))} />
           </label>
-          <button type="button" disabled={busy()} onClick={() => void start()}>{uiText.targetedReport.start}</button>
+          <button type="button" disabled={busy() || !sourceCanRender(recordingsSource.snapshot())} onClick={() => void start()}>{uiText.targetedReport.start}</button>
         </div>
       }>
         {(recording) => (
@@ -91,4 +101,10 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
       <Show when={failed()}><p role="alert">{uiText.targetedReport.failed}</p></Show>
     </section>
   );
+}
+
+function upsertRecording<T extends { id: string }>(items: T[], incoming: T): T[] {
+  const index = items.findIndex((item) => item.id === incoming.id);
+  if (index < 0) return [incoming, ...items];
+  return items.map((item, itemIndex) => itemIndex === index ? incoming : item);
 }

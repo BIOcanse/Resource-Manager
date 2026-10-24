@@ -115,11 +115,12 @@ const flush = async () => {
     buildUrl: () => `/api/${key}/subscribe`,
     decoder
   });
+  const failures: { status: string; data: unknown }[] = [];
   const first: string[] = [];
   const second: string[] = [];
   const releases = [
-    makeSource("first").subscribe(1_000, (value) => first.push(value)),
-    makeSource("second").subscribe(1_000, (value) => second.push(value))
+    makeSource("first").subscribeSnapshot(1_000, (value) => { failures.push(value); if (value.data !== null) first.push(value.data); }),
+    makeSource("second").subscribeSnapshot(1_000, (value) => value.data !== null ? second.push(value.data) : undefined)
   ];
   try {
     await flush();
@@ -136,6 +137,8 @@ const flush = async () => {
     await flush();
     assert.deepEqual(second, ["old", "-"], "A decoder failure must not discard a sibling's empty value");
     assert.deepEqual(first, []);
+    assert.equal(failures.at(-1)?.status, "error");
+    assert.equal(failures.at(-1)?.data, null, "A decoder failure replaces the affected current value");
     assert.equal(stream.signal.aborted, false);
     assert.equal(harness.streams.length, 1, "A logical decoder must not reconnect the shared stream");
     publish(stream, firstId, { displayValue: "recovered" });
@@ -175,8 +178,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   });
   const first: number[] = [];
   const second: number[] = [];
-  const releaseFirst = source.subscribe(5_000, (value) => first.push(value));
-  const releaseSecond = source.subscribe(5_000, (value) => second.push(value));
+  const releaseFirst = source.subscribeSnapshot(5_000, (value) => value.data !== null ? first.push(value.data) : undefined);
+  const releaseSecond = source.subscribeSnapshot(5_000, (value) => value.data !== null ? second.push(value.data) : undefined);
   await flush();
   assert.equal(harness.streams.length, 1);
   assert.equal(harness.streams[0].url, "/api/subscriptions/stream");
@@ -240,7 +243,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
       "test.bodyless-number",
       (value) => Number(value))
   });
-  const release = source.subscribe(1_000, (value) => received.push(value));
+  const release = source.subscribeSnapshot(1_000, (value) => value.data !== null ? received.push(value.data) : undefined);
 
   await waitFor(() => fetchCount >= 2 && received.length === 1);
   assert.deepEqual(received, [11]);
@@ -305,9 +308,9 @@ async function waitFor(predicate: () => boolean): Promise<void> {
       "test.serialized-number",
       (value) => Number(value))
   });
-  const releaseSlow = family.subscribe({ id: "cpu" }, 1_000, () => undefined);
+  const releaseSlow = family.subscribeSnapshot({ id: "cpu" }, 1_000, () => undefined);
   await waitFor(() => fetchCount === 1 && releaseFirstTransport !== null);
-  const releaseFast = family.subscribe({ id: "cpu" }, 200, () => undefined);
+  const releaseFast = family.subscribeSnapshot({ id: "cpu" }, 200, () => undefined);
   await waitFor(() => signals[0]?.aborted === true);
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(
@@ -349,8 +352,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   });
   const cpuValues: number[] = [];
   const memoryValues: number[] = [];
-  const releaseCpu = cpu.subscribe(1_000, (value) => cpuValues.push(value));
-  const releaseMemory = memory.subscribe(5_000, (value) => memoryValues.push(value));
+  const releaseCpu = cpu.subscribeSnapshot(1_000, (value) => value.data !== null ? cpuValues.push(value.data) : undefined);
+  const releaseMemory = memory.subscribeSnapshot(5_000, (value) => value.data !== null ? memoryValues.push(value.data) : undefined);
   await flush();
   assert.equal(
     harness.streams.length,
@@ -414,16 +417,16 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   });
   const first: number[] = [];
   const second: number[] = [];
-  const releaseFirst = family.subscribe(
+  const releaseFirst = family.subscribeSnapshot(
     { id: "cpu" },
     1_000,
-    (value) => first.push(value));
-  const releaseSecond = family.subscribe(
+    (value) => value.data !== null ? first.push(value.data) : undefined);
+  const releaseSecond = family.subscribeSnapshot(
     { id: "CPU" },
     1_000,
     (value) => {
-      second.push(value);
-      throw new Error("listener failure must remain local");
+      value.data !== null ? second.push(value.data) : undefined;
+      if (value.data !== null) throw new Error("listener failure must remain local");
     });
   await flush();
   assert.equal(harness.streams.length, 1);
@@ -436,7 +439,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   assert.deepEqual(first, [3]);
   assert.deepEqual(second, [3]);
 
-  const releaseFast = family.subscribe({ id: "cpu" }, 200, () => undefined);
+  const releaseFast = family.subscribeSnapshot({ id: "cpu" }, 200, () => undefined);
   await waitFor(() => harness.streams.length === 2);
   assert.equal(harness.streams.length, 2);
   assert.match(harness.streams[1].subscriptions[0].path, /intervalMs=200$/);
@@ -484,10 +487,92 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     buildUrl: () => "/api/metrics/subscribe",
     decoder: defineResponseDecoder("test.terminal-number", (value) => Number(value))
   });
-  const release = family.subscribe({ id: "cpu" }, 1_000, () => undefined);
+  const release = family.subscribeSnapshot({ id: "cpu" }, 1_000, () => undefined);
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(fetchCount, 1, "a nonretryable response must not reconnect in a loop");
   release();
   channel.dispose();
   owner.dispose();
+}
+
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  const channel = new BackendSubscriptionChannel({ backendSession: owner });
+  const source = new BackendPushValueSource<number>({
+    key: "test.waiting-session", channel, buildUrl: () => "/api/current",
+    decoder: defineResponseDecoder("test.waiting-number", value => Number(value))
+  });
+  let status = "";
+  const release = source.subscribeSnapshot(1000, snapshot => { status = snapshot.status; });
+  assert.equal(status, "loading", "Waiting for the host session is pending, not a failed current read");
+  release(); channel.dispose(); owner.dispose();
+}
+
+// A source exposes exactly its current response, including disconnection and epoch changes.
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "state-a"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch, reconnectDelayMs: 1 });
+  const source = new BackendPushValueSource<number>({
+    key: "test.failure-publication", channel, buildUrl: () => "/api/current",
+    decoder: defineResponseDecoder("test.number", (value) => {
+      if (typeof value !== "number") throw new Error("Expected a number");
+      return value;
+    })
+  });
+  const states: import("../src/frontendRuntime/source/SourceSnapshot.ts").SourceSnapshot<number>[] = [];
+  let release = source.subscribeSnapshot(1000, (state) => states.push(state));
+  try {
+    await waitFor(() => harness.streams.length === 1);
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 42);
+    await flush();
+    assert.equal(states.at(-1)?.data, 42);
+    const unchangedPublicationCount = states.length;
+    host.publish(readyMessage("2", "state-a"));
+    await flush();
+    assert.equal(states.length, unchangedPublicationCount,
+      "A repeated ready publication for the same session must not invalidate its current value");
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, "invalid");
+    await flush();
+    assert.equal(states.at(-1)?.status, "error");
+    assert.equal(states.at(-1)?.data, null);
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 43);
+    await flush();
+    harness.streams[0].controller.close();
+    await waitFor(() => harness.streams.length === 2);
+    assert.equal(states.at(-1)?.status, "error");
+    assert.equal(states.at(-1)?.data, null, "Disconnect cannot keep an old healthy value");
+    publish(harness.streams[1], harness.streams[1].subscriptions[0].id, 44);
+    await flush();
+    host.publish(readyMessage("3", "state-b"));
+    assert.equal(states.at(-1)?.status, "loading");
+    assert.equal(states.at(-1)?.data, null);
+    assert.equal(states.at(-1)?.backendEpoch, "state-b");
+    await waitFor(() => harness.streams.length === 3);
+    host.publish({ type: "host.backend-session", schemaVersion: 1, publicationRevision: "4", state: "unavailable", reasonCode: "connection-lost" });
+    assert.equal(states.at(-1)?.status, "unavailable");
+    assert.equal(states.at(-1)?.data, null);
+    await flush();
+    release();
+    host.publish(readyMessage("5", "state-c"));
+    release = source.subscribeSnapshot(1000, (state) => states.push(state));
+    assert.equal(states.at(-1)?.status, "loading");
+    assert.equal(states.at(-1)?.data, null, "Zero demand removes the current source entry");
+    await waitFor(() => harness.streams.length === 4);
+    publish(harness.streams[3], harness.streams[3].subscriptions[0].id, 45);
+    await flush();
+    assert.equal(states.at(-1)?.data, 45);
+    release();
+    await flush();
+    const beforeReacquire = states.length;
+    release = source.subscribeSnapshot(1000, (state) => states.push(state));
+    assert.equal(states.length, beforeReacquire + 1);
+    assert.equal(states.at(-1)?.status, "loading");
+    assert.equal(states.at(-1)?.data, null, "A successful payload is also discarded at zero demand");
+  } finally {
+    release(); channel.dispose(); owner.dispose();
+  }
 }

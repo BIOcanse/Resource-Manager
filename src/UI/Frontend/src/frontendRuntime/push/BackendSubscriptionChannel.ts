@@ -1,3 +1,4 @@
+import type { SourceSnapshot, SourceStatus } from "../source/SourceSnapshot.ts";
 import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
 import type { BackendSessionOwner } from "../session/BackendSessionOwner.ts";
 
@@ -17,7 +18,9 @@ interface SubscriptionEntry {
   readonly id: string;
   path: string;
   readonly decode: (value: unknown) => unknown;
-  readonly publish: (value: unknown) => void;
+  readonly key: string;
+  revision: number;
+  readonly publish: (value: SourceSnapshot<unknown>) => void;
 }
 
 interface ActiveSubscription {
@@ -33,6 +36,7 @@ interface SubscriptionRequestItem {
 interface ConsumeOutcome {
   readonly terminal: boolean;
   readonly delivered: boolean;
+  readonly failure?: unknown;
 }
 
 interface SubscriptionFrame {
@@ -63,24 +67,36 @@ export class BackendSubscriptionChannel {
     this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.reconnectDelayMs = Math.max(1, options.reconnectDelayMs ?? 1_000);
     this.unsubscribeSession = this.backendSession.subscribe(
-      () => this.scheduleSynchronization());
+      () => {
+        const sameSession = this.backendSession.snapshot.status === "ready"
+          && this.activeSessionSignal === this.backendSession.capture().signal;
+        if (!sameSession) {
+          for (const entry of this.entries.values()) {
+            this.publishSessionState(entry);
+          }
+        }
+        this.scheduleSynchronization();
+      });
   }
 
   subscribe<TValue>(
     key: string,
     path: string,
     decoder: ResponseDecoder<TValue>,
-    listener: (value: TValue) => void
+    listener: (value: SourceSnapshot<TValue>) => void
   ): BackendSubscriptionChannelLease {
     this.throwIfDisposed();
     const id = `${normalizeKey(key)}:${++this.nextSubscriptionId}`;
     const entry: SubscriptionEntry = {
       id,
+      key,
+      revision: 0,
       path,
       decode: (value) => decoder.decode(value),
-      publish: (value) => listener(value as TValue)
+      publish: (value) => listener(value as SourceSnapshot<TValue>)
     };
     this.entries.set(id, entry);
+    this.publishSessionState(entry);
     this.scheduleSynchronization();
 
     let disposed = false;
@@ -115,6 +131,9 @@ export class BackendSubscriptionChannel {
     }
     this.disposed = true;
     this.unsubscribeSession();
+    for (const entry of this.entries.values()) {
+      this.publishState(entry, "disposed");
+    }
     this.entries.clear();
     this.stopActiveStream();
   }
@@ -242,6 +261,9 @@ export class BackendSubscriptionChannel {
     while (!controller.signal.aborted) {
       try {
         const outcome = await this.consume(items, active, controller);
+        if (!controller.signal.aborted) {
+          this.publishFailure(active, controller, outcome.failure ?? new Error("The backend subscription stream ended."));
+        }
         if (outcome.terminal) {
           await waitUntilAborted(controller.signal);
           return;
@@ -249,7 +271,10 @@ export class BackendSubscriptionChannel {
         if (outcome.delivered) {
           retryDelayMs = this.reconnectDelayMs;
         }
-      } catch {
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          this.publishFailure(active, controller, error);
+        }
         if (controller.signal.aborted) {
           return;
         }
@@ -286,7 +311,8 @@ export class BackendSubscriptionChannel {
       await response.body?.cancel().catch(() => undefined);
       return {
         terminal: !isRetryableStatus(response.status),
-        delivered: false
+        delivered: false,
+        failure: new Error(`The backend subscription request failed with HTTP ${response.status}.`)
       };
     }
     if (!response.body) {
@@ -359,13 +385,55 @@ export class BackendSubscriptionChannel {
       }
       try {
         const value = subscription.entry.decode(frame.value);
-        subscription.entry.publish(value);
+        this.publishState(subscription.entry, "ready", value);
         delivered = true;
-      } catch {
-        // One item's decoder or listener cannot discard another item's value.
+      } catch (error) {
+        this.publishState(subscription.entry, "error", null, error);
       }
     }
     return delivered;
+  }
+
+  private publishSessionState(entry: SubscriptionEntry): void {
+    const session = this.backendSession.snapshot;
+    this.publishState(entry, session.status === "ready" || session.status === "waiting" ? "loading" : "unavailable",
+      null, session.reason ? new Error(session.reason) : null);
+  }
+
+  private publishFailure(
+    active: ReadonlyMap<string, ActiveSubscription>,
+    controller: AbortController,
+    error: unknown
+  ): void {
+    for (const subscription of active.values()) {
+      if (this.activeController === controller
+        && this.entries.get(subscription.entry.id) === subscription.entry
+        && subscription.entry.path === subscription.path) {
+        this.publishState(subscription.entry, "error", null, error);
+      }
+    }
+  }
+
+  private publishState(
+    entry: SubscriptionEntry,
+    status: SourceStatus,
+    data: unknown = null,
+    error: unknown = null
+  ): void {
+    const snapshot: SourceSnapshot<unknown> = {
+      key: entry.key, status, data, error,
+      backendEpoch: this.backendSession.snapshot.session?.epoch ?? null,
+      revision: ++entry.revision,
+      acceptedAttempt: null, domainRevision: null,
+      capturedAt: typeof data === "object" && data !== null
+        && "capturedAt" in data && typeof data.capturedAt === "string"
+        ? data.capturedAt : null
+    };
+    try {
+      entry.publish(snapshot);
+    } catch {
+      // A listener cannot change the source result or interrupt sibling sources.
+    }
   }
 
   private throwIfDisposed(): void {

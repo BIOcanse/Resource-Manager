@@ -40,7 +40,7 @@ assert.match(taskCenter, /<DialogRoot/);
 assert.match(taskCenter, /<TabsRoot/);
 assert.match(taskCenter, /props\.items\.map\(\(item\) => item\.id\)/);
 assert.match(taskCenter, /data-task-center-id=\{itemId\}/);
-assert.match(taskCenter, /<strong>\{item\(\)\.title\}<\/strong>/);
+assert.match(taskCenter, /<strong>\{taskTitle\(item\(\)\)\}<\/strong>/);
 assert.match(taskCenter, /taskCancelLabel\(item\(\)\)/);
 assert.doesNotMatch(taskCenter, /setInterval|setTimeout|fetch\(/);
 assert.doesNotMatch(

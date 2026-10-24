@@ -116,9 +116,18 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     if (!options.enabled() || !options.statusActive()) {
       return;
     }
-    const unsubscribe = options.statusSource.subscribe(
+    const unsubscribe = options.statusSource.subscribeSnapshot(
       smartStatusSubscriptionIntervalMs,
-      acceptHostManagerStatus);
+      (snapshot) => {
+        if (snapshot.data) {
+          acceptHostManagerStatus(snapshot.data);
+        } else {
+          setHostManagerStatus(null);
+          setHostManagerObservation(snapshot.status === "loading"
+            ? loadingObservation()
+            : { status: "error", source: "none" });
+        }
+      });
     onCleanup(unsubscribe);
   });
 

@@ -5,12 +5,15 @@ import {
 } from "../../data/operations/operationsStateDecoder.ts";
 import type { RequestClient } from "../request/RequestClient.ts";
 import type { CurrentValueSource } from "../push/PushValueSourceFamily.ts";
+import type { SourceSnapshot } from "../source/SourceSnapshot.ts";
 import { isTerminalOperation } from "./operationMerge.ts";
 import { uiText } from "../../text.ts";
 
 export type OperationRegistryStatus =
   | "loading"
   | "ready"
+  | "error"
+  | "unavailable"
   | "disposed";
 
 export interface OperationRegistrySnapshot {
@@ -26,6 +29,7 @@ export interface OperationRegistrySnapshot {
 export type OperationInvalidationTarget =
   | "components"
   | "dependencies"
+  | "diskUsage"
   | "software";
 
 export interface OperationInvalidation {
@@ -44,6 +48,7 @@ export interface OperationCommandDescriptor {
 }
 
 export interface OperationRegistryOptions {
+  readonly active?: boolean;
   readonly onListenerError?: (error: unknown, source: string) => void;
 }
 
@@ -66,7 +71,7 @@ export class OperationRegistry {
   private readonly entries = new Map<string, OperationSnapshot>();
   private readonly terminalInvalidations = new Set<string>();
   private readonly onListenerError: (error: unknown, source: string) => void;
-  private readonly unsubscribeSource: () => void;
+  private unsubscribeSource: (() => void) | null = null;
   private hasCurrentValue = false;
   private sourcePublicationRevision: string | null = null;
   private capturedAt: string | null = null;
@@ -93,8 +98,28 @@ export class OperationRegistry {
       error: null,
       revision: 0
     });
-    this.unsubscribeSource = this.source.subscribe(
-      (value) => this.handleCurrentValue(value));
+    this.setActive(options.active ?? true);
+  }
+
+  setActive(active: boolean): void {
+    if (this.disposed || active === (this.unsubscribeSource !== null)) return;
+    if (active) {
+      this.unsubscribeSource = this.source.subscribeSnapshot((snapshot) => {
+        if (snapshot.status === "ready" && snapshot.data) {
+          this.handleCurrentValue(snapshot.data);
+        } else {
+          this.entries.clear();
+          this.sourcePublicationRevision = null;
+          this.capturedAt = null;
+          this.publishSnapshot(snapshot.status === "error" ? "error"
+            : snapshot.status === "unavailable" ? "unavailable" : "loading", snapshot.error);
+        }
+      });
+    } else {
+      this.unsubscribeSource?.();
+      this.unsubscribeSource = null;
+      this.publishSnapshot("loading");
+    }
   }
 
   get snapshot(): OperationRegistrySnapshot {
@@ -206,7 +231,7 @@ export class OperationRegistry {
       return;
     }
     this.disposed = true;
-    this.unsubscribeSource();
+    this.unsubscribeSource?.();
     this.publishSnapshot("disposed");
     this.entries.clear();
     this.terminalInvalidations.clear();
@@ -231,6 +256,9 @@ export class OperationRegistry {
     this.publishSnapshot("ready");
 
     if (!hadCurrentValue) {
+      for (const operation of value.operations) {
+        if (isTerminalOperation(operation)) this.terminalInvalidations.add(operation.id);
+      }
       return;
     }
     for (const operation of value.operations) {
@@ -241,7 +269,7 @@ export class OperationRegistry {
     }
   }
 
-  private publishSnapshot(status: OperationRegistryStatus): void {
+  private publishSnapshot(status: OperationRegistryStatus, error: SourceSnapshot<HostManagerOperationsState>["error"] = null): void {
     const operations = Object.freeze([...this.entries.values()]
       .sort((left, right) =>
         Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
@@ -252,7 +280,7 @@ export class OperationRegistry {
       capturedAt: this.capturedAt,
       operations,
       actionsEnabled: status === "ready" && this.hasCurrentValue,
-      error: null,
+      error,
       revision: this.snapshotValue.revision + 1
     });
     this.enqueuePublication({ kind: "snapshot", snapshot: this.snapshotValue });
@@ -341,6 +369,9 @@ function abortReason(signal: AbortSignal): Error {
 function invalidationTargets(
   kind: string
 ): readonly OperationInvalidationTarget[] {
+  if (kind === "disk-usage.scan") {
+    return Object.freeze(["diskUsage"]);
+  }
   if (kind === "component.download" || kind === "component.install") {
     return Object.freeze(["components"]);
   }

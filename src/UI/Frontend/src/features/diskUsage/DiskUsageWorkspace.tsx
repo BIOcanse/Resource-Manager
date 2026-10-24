@@ -1,6 +1,8 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { openPath, openProperties } from "../../api";
 import { diskUsageScanCommand } from "../../data/operations/operationCommands.ts";
+import { isTerminalOperation } from "../../frontendRuntime/operations/operationMerge.ts";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { DiskUsageContextMenu } from "./DiskUsageContextMenu";
 import { DiskUsagePage } from "./DiskUsagePage";
 import { DiskUsageResultPanel } from "./DiskUsageResultPanel";
@@ -39,9 +41,14 @@ import { uiText } from "../../text.ts";
  */
 export function DiskUsageWorkspace() {
   const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
   const [volumes, setVolumes] = createSignal<DiskUsageVolume[]>([]);
-  const [scanning, setScanning] = createSignal(false);
+  const [operationSnapshot, setOperationSnapshot] =
+    createSignal(runtime.operationRegistry.snapshot);
+  const scanning = createMemo(() => operationSnapshot().operations.some((operation) =>
+    operation.kind === "disk-usage.scan" && !isTerminalOperation(operation)));
   const [scanFailed, setScanFailed] = createSignal(false);
+  const [refreshOnResume, setRefreshOnResume] = createSignal(false);
   const [summary, setSummary] = createSignal<DiskUsageScanSummary | null>(null);
   const [layout, setLayout] = createSignal<DiskUsageLayout | null>(null);
   const [selectedRootIndex, setSelectedRootIndex] = createSignal(0);
@@ -49,17 +56,43 @@ export function DiskUsageWorkspace() {
   const [menu, setMenu] = createSignal<
     { node: DiskUsageNode; x: number; y: number } | null>(null);
   const [drillStack, setDrillStack] = createSignal<number[]>([]);
-
+  let workspaceController: AbortController | null = null;
+  let workspaceGeneration = 0;
+  let layoutToken = 0;
 
   onMount(() => {
     const controller = new AbortController();
+    const generation = ++workspaceGeneration;
+    workspaceController = controller;
+    const isCurrent = () => generation === workspaceGeneration
+      && !controller.signal.aborted;
     const readVolumes = (signal?: AbortSignal) =>
       void getDiskUsageVolumes(runtime.requestClient, signal)
-        .then(setVolumes)
-        .catch(() => setVolumes([]));
+        .then((value) => { if (isCurrent()) setVolumes(value); })
+        .catch(() => { if (isCurrent()) setVolumes([]); });
 
     readVolumes(controller.signal);
     void refreshResult(controller.signal);
+
+    const unsubscribeOperations = runtime.operationRegistry.subscribe(setOperationSnapshot);
+    const unsubscribeInvalidations = runtime.operationRegistry.subscribeInvalidations((invalidation) => {
+      if (invalidation.kind !== "disk-usage.scan"
+          || !invalidation.targets.includes("diskUsage")) {
+        return;
+      }
+      const operation = runtime.operationRegistry.get(invalidation.operationId);
+      if (operation?.state !== "succeeded") {
+        setScanFailed(true);
+        return;
+      }
+      setScanFailed(false);
+      setDrillStack([]);
+      if (frontendWork.frontendVisible()) {
+        void refreshResult(controller.signal, undefined, 0);
+      } else {
+        setRefreshOnResume(true);
+      }
+    });
 
     // 盘符是会变的：U 盘插上、BitLocker 解锁、虚拟盘挂载，随时会多一个。
     // 每次打开这一页都会重读（这个组件是随页面挂载的），
@@ -68,15 +101,32 @@ export function DiskUsageWorkspace() {
     window.addEventListener("focus", refreshVolumes);
 
     onCleanup(() => {
+      workspaceGeneration++;
+      layoutToken++;
+      workspaceController = null;
+      unsubscribeInvalidations();
+      unsubscribeOperations();
       window.removeEventListener("focus", refreshVolumes);
       controller.abort();
     });
   });
 
+  let wasFrontendVisible = frontendWork.frontendVisible();
+  createEffect(() => {
+    const visible = frontendWork.frontendVisible();
+    if (visible && !wasFrontendVisible && refreshOnResume()) {
+      setRefreshOnResume(false);
+      void refreshResult(workspaceController?.signal, undefined, 0);
+      void getDiskUsageVolumes(runtime.requestClient, workspaceController?.signal)
+        .then(setVolumes)
+        .catch(() => setVolumes([]));
+    }
+    wasFrontendVisible = visible;
+  });
+
   // 当前这一份布局是按哪个视图算出来的。用来判断新视图值不值得再要一份。
   let shownView: DiskUsageViewWindow | null = null;
   // 每次换布局都加一号，回来的响应对不上号就丢掉 —— 慢的那个不能盖住快的那个。
-  let layoutToken = 0;
   // 这个数一变，方格图就把视口拨回整图。
   const [resetNonce, setResetNonce] = createSignal(0);
 
@@ -139,6 +189,7 @@ export function DiskUsageWorkspace() {
     nodeId?: number,
     rootIndex = selectedRootIndex()
   ) {
+    const generation = workspaceGeneration;
     const token = ++layoutToken;
     try {
       const [nextSummary, nextLayout] = await Promise.all([
@@ -150,7 +201,9 @@ export function DiskUsageWorkspace() {
           undefined,
           nodeId === undefined ? rootIndex : undefined)
       ]);
-      if (token !== layoutToken) return;
+      if (token !== layoutToken
+          || generation !== workspaceGeneration
+          || signal?.aborted) return;
       // 换了根就不能再拿旧根的视图做比较，清掉让它重新细化一次。
       shownView = null;
       setSummary(nextSummary);
@@ -185,21 +238,10 @@ export function DiskUsageWorkspace() {
     target: string
   ) {
     setScanFailed(false);
-    setScanning(true);
     try {
-      const operation = await runtime.operationRegistry.submit(
-        diskUsageScanCommand({ scope, mode, target }));
-      const completed = await runtime.operationRegistry.waitForTerminal(operation.id);
-      if (completed.state !== "succeeded") {
-        setScanFailed(true);
-        return;
-      }
-      setDrillStack([]);
-      await refreshResult(undefined, undefined, 0);
+      await runtime.operationRegistry.submit(diskUsageScanCommand({ scope, mode, target }));
     } catch {
       setScanFailed(true);
-    } finally {
-      setScanning(false);
     }
   }
 

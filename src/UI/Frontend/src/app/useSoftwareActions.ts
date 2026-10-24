@@ -93,6 +93,7 @@ interface UseSoftwareActionsOptions {
   showErrorToast: (error: unknown, fallback: string) => void;
   mutablePersistenceEnabled: Accessor<boolean>;
   gpuPlacementEnabled: Accessor<boolean>;
+  frontendVisible: Accessor<boolean>;
   runtimeEffectsEnabled: Accessor<boolean>;
   operations: Pick<OperationRegistry, "submit" | "waitForTerminal">;
   softwareMetadataSource: SourceFamily<
@@ -112,7 +113,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   const [contextMenu, setContextMenu] = createSignal<StandardContextMenuModel | null>(null);
   const [highlightedSoftwareId, setHighlightedSoftwareId] = createSignal<string | null>(null);
   let highlightClearTimer: number | undefined;
-  let softwareDetailRequestId = 0;
   const softwareMetadataBinding = new SoftwareMetadataLeaseBinding(
     options.softwareMetadataSource,
     projectSoftwareMetadataSnapshot);
@@ -380,12 +380,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     setSoftwareDetail(model);
     setSoftwareDetailNotice(null);
     setGpuPlacementSettings(null);
-    const requestId = ++softwareDetailRequestId;
-    if (options.gpuPlacementEnabled() && model.type === "software" && model.id) {
-      void loadGpuPlacementSettingsForDetail(model, requestId);
-    } else {
-      setGpuPlacementLoading(false);
-    }
     if (model.type === "software" && model.softwareIdentityId) {
       bindSoftwareMetadataForDetail(
         model,
@@ -400,7 +394,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     setSoftwareDetailNotice(null);
     setGpuPlacementSettings(null);
     setGpuPlacementLoading(false);
-    softwareDetailRequestId += 1;
     softwareMetadataBinding.release();
   }
 
@@ -428,7 +421,24 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       projectSoftwareMetadataDetail(current, query, snapshot));
   }
 
-  async function loadGpuPlacementSettingsForDetail(model: SoftwareDetailModel, requestId: number) {
+  const gpuPlacementReadKey = createMemo(() => JSON.stringify([
+    options.frontendVisible(), options.gpuPlacementEnabled(),
+    softwareDetail()?.type, softwareDetail()?.id
+  ]));
+  createEffect(on(gpuPlacementReadKey, () => {
+    const model = softwareDetail();
+    if (!options.frontendVisible()) return;
+    if (!options.gpuPlacementEnabled() || model?.type !== "software" || !model.id) {
+      setGpuPlacementSettings(null);
+      setGpuPlacementLoading(false);
+      return;
+    }
+    const cancellation = new AbortController();
+    void loadGpuPlacementSettingsForDetail(model, cancellation.signal);
+    onCleanup(() => cancellation.abort());
+  }));
+
+  async function loadGpuPlacementSettingsForDetail(model: SoftwareDetailModel, signal: AbortSignal) {
     if (!options.gpuPlacementEnabled()) {
       setGpuPlacementSettings(null);
       setGpuPlacementLoading(false);
@@ -444,9 +454,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
             softwareId: model.id,
             softwareName: model.name,
             processes: observations
-          });
+          }, signal);
         } catch (error) {
-          if (isCurrentSoftwareDetailRequest(model, requestId)) {
+          if (!signal.aborted) {
             setSoftwareDetailNotice({
               message: uiText.softwareActions.processHistoryFailed,
               tone: "warning",
@@ -456,12 +466,13 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         }
       }
 
-      const settingsSnapshot = await getGpuPlacementSoftwareSettings(model.id, model.name, model.kind);
-      if (isCurrentSoftwareDetailRequest(model, requestId)) {
+      signal.throwIfAborted();
+      const settingsSnapshot = await getGpuPlacementSoftwareSettings(model.id, model.name, model.kind, signal);
+      if (!signal.aborted) {
         setGpuPlacementSettings(settingsSnapshot);
       }
     } catch (error) {
-      if (isCurrentSoftwareDetailRequest(model, requestId)) {
+      if (!signal.aborted) {
         setSoftwareDetailNotice({
           message: uiText.softwareActions.policyReadFailed,
           tone: "error",
@@ -469,17 +480,10 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         });
       }
     } finally {
-      if (isCurrentSoftwareDetailRequest(model, requestId)) {
+      if (!signal.aborted) {
         setGpuPlacementLoading(false);
       }
     }
-  }
-
-  function isCurrentSoftwareDetailRequest(model: SoftwareDetailModel, requestId: number) {
-    const current = softwareDetail();
-    return requestId === softwareDetailRequestId
-      && current?.type === model.type
-      && current?.id === model.id;
   }
 
   function collectGpuPlacementProcessObservations(model: SoftwareDetailModel): GpuPlacementObservedProcessInput[] {

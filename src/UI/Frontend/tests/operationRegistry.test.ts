@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 import type { OperationSnapshot } from "../src/types.ts";
 import type {
   HostManagerOperationsState
@@ -20,11 +21,17 @@ import {
 class FakeCurrentValueSource
 implements CurrentValueSource<HostManagerOperationsState> {
   readonly key = "host-manager.operations.state";
-  private readonly listeners = new Set<(value: HostManagerOperationsState) => void>();
+  private readonly listeners = new Set<(value: SourceSnapshot<HostManagerOperationsState>) => void>();
   subscribeCount = 0;
   unsubscribeCount = 0;
 
   subscribe(listener: (value: HostManagerOperationsState) => void): () => void {
+    return this.subscribeSnapshot((snapshot) => {
+      if (snapshot.data) listener(snapshot.data);
+    });
+  }
+
+  subscribeSnapshot(listener: (value: SourceSnapshot<HostManagerOperationsState>) => void): () => void {
     this.subscribeCount += 1;
     this.listeners.add(listener);
     let disposed = false;
@@ -39,8 +46,13 @@ implements CurrentValueSource<HostManagerOperationsState> {
   }
 
   publish(value: HostManagerOperationsState): void {
+    this.publishSnapshot({ key: this.key, status: "ready", data: value, error: null,
+      backendEpoch: "test", revision: 1, acceptedAttempt: null, domainRevision: null, capturedAt: value.capturedAt });
+  }
+
+  publishSnapshot(snapshot: SourceSnapshot<HostManagerOperationsState>): void {
     for (const listener of [...this.listeners]) {
-      listener(value);
+      listener(snapshot);
     }
   }
 }
@@ -61,6 +73,36 @@ class FakeRequestClient {
     }
     return await outcome as RequestOutcome<T>;
   }
+}
+
+{
+  const fixture = createFixture();
+  fixture.source.publish(state("1", [operation()]));
+  fixture.source.publishSnapshot({ key: fixture.source.key, status: "error", data: null,
+    error: new Error("Disconnected"), backendEpoch: "test", revision: 2,
+    acceptedAttempt: null, domainRevision: null, capturedAt: null });
+  assert.equal(fixture.registry.snapshot.status, "error");
+  assert.equal(fixture.registry.snapshot.actionsEnabled, false);
+  assert.deepEqual(fixture.registry.list(), []);
+  fixture.registry.setActive(false);
+  assert.equal(fixture.source.unsubscribeCount, 1);
+  assert.equal(fixture.registry.snapshot.actionsEnabled, false);
+  fixture.registry.setActive(true);
+  assert.equal(fixture.source.subscribeCount, 2);
+  fixture.source.publish(state("2", [operation()]));
+  assert.equal(fixture.registry.snapshot.actionsEnabled, true);
+  const invalidations: string[] = [];
+  fixture.registry.subscribeInvalidations(value => invalidations.push(value.operationId));
+  fixture.registry.setActive(false);
+  fixture.registry.setActive(true);
+  fixture.source.publishSnapshot({ key: fixture.source.key, status: "loading", data: null,
+    error: null, backendEpoch: "test", revision: 3,
+    acceptedAttempt: null, domainRevision: null, capturedAt: null });
+  fixture.source.publish(state("3", [operation({ state: "succeeded" })]));
+  fixture.source.publish(state("3", [operation({ state: "succeeded" })]));
+  assert.deepEqual(invalidations, [operation().id],
+    "An operation finishing while hidden invalidates its result once on the next current read");
+  fixture.registry.dispose();
 }
 
 {

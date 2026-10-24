@@ -23,8 +23,6 @@ export interface TaskCenterProgress {
   readonly percent: number | null;
   readonly completed: number | string | null;
   readonly total: number | string | null;
-  readonly stage: string | null;
-  readonly message: string | null;
 }
 
 export interface TaskCenterItem {
@@ -43,8 +41,6 @@ export interface TaskCenterItem {
   readonly updatedAt: string;
   readonly completedAt: string | null;
   readonly progress: TaskCenterProgress | null;
-  readonly resultSummary: string | null;
-  readonly errorSummary: string | null;
   readonly cancelable: boolean;
   readonly actionBlockedReason: string | null;
   readonly backendDisconnected: boolean;
@@ -233,9 +229,7 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     ? Object.freeze({
       percent: progressPercent(snapshot.progress.completed, snapshot.progress.total),
       completed: snapshot.progress.completed ?? null,
-      total: snapshot.progress.total ?? null,
-      stage: snapshot.progress.phase ?? null,
-      message: snapshot.progress.message ?? null
+      total: snapshot.progress.total ?? null
     })
     : null;
   return Object.freeze({
@@ -254,8 +248,6 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     updatedAt: snapshot.completedAt ?? snapshot.startedAt ?? snapshot.createdAt,
     completedAt: snapshot.completedAt,
     progress,
-    resultSummary: null,
-    errorSummary: unknownSummary(snapshot.error ?? snapshot.reason),
     cancelable: active,
     actionBlockedReason: active ? null : uiText.taskCenter.blocked.taskFinished,
     backendDisconnected: false,
@@ -277,7 +269,7 @@ function projectOperation(
     id: `operation:${operation.id}`,
     ownerId: operation.id,
     source: "operation",
-    title: operation.title?.trim() || operation.kind,
+    title: operationTitleForKind(operation.kind),
     kind: operation.kind,
     domainKey: operation.domainKey,
     status: operation.state,
@@ -292,13 +284,9 @@ function projectOperation(
       ? Object.freeze({
         percent: operation.progress.percent,
         completed: operation.progress.bytesDone,
-        total: operation.progress.bytesTotal,
-        stage: operation.progress.stage,
-        message: operation.progress.message
+        total: operation.progress.bytesTotal
       })
       : null,
-    resultSummary: operation.result,
-    errorSummary: operation.error,
     cancelable,
     actionBlockedReason: cancelable
       ? null
@@ -314,6 +302,18 @@ function projectOperation(
   });
 }
 
+export function operationTitleForKind(kind: string): string {
+  const titles: Record<string, string> = {
+    "component.download": uiText.taskCenter.operation.componentDownload,
+    "component.install": uiText.taskCenter.operation.componentInstall,
+    "dependency.download": uiText.taskCenter.operation.dependencyDownload,
+    "dependency.launch-installer": uiText.taskCenter.operation.dependencyLaunchInstaller,
+    "software.uninstall": uiText.taskCenter.operation.softwareUninstall,
+    "disk-usage.scan": uiText.taskCenter.operation.diskUsageScan
+  };
+  return titles[kind] ?? uiText.taskCenter.operation.generic;
+}
+
 function operationBackendDisconnected(snapshot: OperationRegistrySnapshot): boolean {
   const state = projectOperationState(snapshot);
   return state === "disconnected" || state === "error";
@@ -322,8 +322,11 @@ function operationBackendDisconnected(snapshot: OperationRegistrySnapshot): bool
 function projectOperationState(
   snapshot: OperationRegistrySnapshot
 ): TaskCenterOperationState {
-  if (snapshot.status === "disposed") {
+  if (snapshot.status === "disposed" || snapshot.status === "unavailable") {
     return "disconnected";
+  }
+  if (snapshot.status === "error") {
+    return "error";
   }
   if (snapshot.status === "ready") {
     return "available";
@@ -347,16 +350,6 @@ function progressPercent(
     return null;
   }
   return Math.max(0, Math.min(100, completed / total * 100));
-}
-
-function unknownSummary(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (value instanceof Error) {
-    return value.message || value.name;
-  }
-  return typeof value === "string" ? value : String(value);
 }
 
 /** 新建的在前，同一时刻按 id。每项的时间只解析一次，不在比较里反复解析（每次发布都要排一百多项）。 */

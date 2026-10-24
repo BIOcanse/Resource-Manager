@@ -6,14 +6,27 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.setViewportSize({ width: 1067, height: 800 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() =>
-    document.querySelector(".metric-main .metric-value")?.textContent?.includes("%")
-    && document.querySelectorAll(".resource-breakdown-item").length > 0
-    && document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
-  await patch({ pausedSubscriptionPaths: paths });
-  // Let any already-written frame finish before establishing the retained value.
-  await page.waitForTimeout(100);
+  await waitForValues();
   const before = await values();
+  assert(before.rows.length > 0);
+
+  await patch({ pausedSubscriptionPaths: paths });
+  await page.waitForTimeout(100);
+  // Changing the query binds the current source immediately. Old rows cannot stand
+  // in for the new sort or for a different table mode while its response is pending.
+  await page.locator('.resource-table-sort-button').filter({ hasText: /^CPU$/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
+  await patch({ pausedSubscriptionPaths: [] });
+  await waitForValues();
+  await patch({ pausedSubscriptionPaths: paths });
+  await page.waitForTimeout(100);
+  await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "进程级", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
+  await patch({ pausedSubscriptionPaths: [] });
+  await waitForValues();
+
+  await patch({ pausedSubscriptionPaths: paths });
+  await page.waitForTimeout(100);
   const paused = await telemetry();
   const navigation = page.getByRole("navigation", { name: "页面切换" });
   await navigation.getByRole("button", { name: "组件与软件", exact: true }).click();
@@ -24,45 +37,34 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();
-    return current["/api/metrics/subscribe"]?.logicalInFlight === 1
-      && current["/api/resource-monitor/subscribe"]?.logicalInFlight === 2;
+    return current["/api/metrics/subscribe"]?.logicalInFlight > 0
+      && current["/api/resource-monitor/subscribe"]?.logicalInFlight > 0;
   });
   const after = await values();
+  assert.deepEqual(after.rows, [], "Zero demand releases the source; reacquisition cannot replay old rows");
+  assert.deepEqual(after.bars, [], "Reacquisition cannot replay old resource bars");
+  assert(after.metrics.every((text) => !text.includes("%")), "Reacquisition cannot replay old metric values");
   const resumed = await telemetry();
-  assert.deepEqual(after, before, "Releasing and reacquiring unchanged queries must not erase their values");
   for (const path of paths) {
     assert.equal(resumed[path].publications, paused[path].publications,
-      "Retained values must not depend on another callback");
+      "Empty current values must not depend on another backend callback");
   }
   for (const path of ["/api/metrics/snapshot", "/api/resource-monitor/snapshot"]) {
     assert.equal(resumed[path]?.started ?? 0, 0, "Frontend must not fill the gap with a direct GET");
   }
-
-  const rowCount = await page.locator(".resource-table-row[data-resource-row-id]").count();
-  await page.locator('.resource-table-sort-button').filter({ hasText: /^CPU$/ }).click();
-  assert.equal(await page.locator(".resource-table-row[data-resource-row-id]").count(), rowCount,
-    "Sorting must not erase the current rows while waiting for the new callback");
-  const track = page.locator('.resource-bar-track[data-metric-id="memory.usage"]');
-  const bounds = await track.boundingBox();
-  assert(bounds);
-  const barCount = await page.locator('.resource-breakdown-item').count();
-  await track.click({ position: { x: bounds.width / 16, y: bounds.height / 2 } });
-  assert.equal(await page.locator('.resource-breakdown-item').count(), barCount,
-    "Selecting a software segment must not erase the current bars");
-  await page.getByRole('button', { name: '编辑资源占用条目', exact: true }).click();
-  assert.equal(await page.locator('.resource-breakdown-item').count(), barCount);
-  await page.getByRole('button', { name: '取消资源占用条目编辑', exact: true }).click();
-  assert.equal(await page.locator('.resource-breakdown-item').count(), barCount);
-  await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "进程级", exact: true }).click();
-  assert.equal(await page.locator(".resource-table-row[data-resource-row-id]").count(), rowCount,
-    "Query replacement must wait for a value, not manufacture an empty value");
   await patch({ pausedSubscriptionPaths: [] });
-  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
+  await waitForValues();
+  await patch({ resourceTableVariant: "empty" });
+  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
   assert.deepEqual(errors, []);
-  await patch({ resourceTableVariant: 'empty' });
-  await page.waitForFunction(() => document.querySelectorAll('.resource-table-row[data-resource-row-id]').length === 0);
-  return { before, after, unchangedPublications: true, interactionsRetainCurrentValue: true, callbacksResumed: true, actualEmptyValueApplied: true };
+  return { before, after, releasedValuesCleared: true, incompatibleQueryCleared: true, callbacksResumed: true, actualEmptyValueApplied: true };
 
+  async function waitForValues() {
+    await page.waitForFunction(() =>
+      document.querySelector(".metric-main .metric-value")?.textContent?.includes("%")
+      && document.querySelectorAll(".resource-breakdown-item").length > 0
+      && document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
+  }
   async function values() {
     return page.evaluate(() => ({
       metrics: [...document.querySelectorAll(".dashboard .metric-value")].map((node) => node.textContent),

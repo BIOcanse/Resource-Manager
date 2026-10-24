@@ -1,24 +1,129 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
+import type { SourceLease } from "../../frontendRuntime/source/SourceDescriptor.ts";
+import { SourceLeaseBinding } from "../../frontendRuntime/source/SourceLeaseBinding.ts";
+import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
 import { formatBytes, formatBytesPerSecond } from "../../presentation/byteUnits.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { uiText } from "../../text.ts";
 import {
-  deleteRecording, exportRecording, getRecording, listRecordings,
+  deleteRecording, exportRecording,
   type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
 import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
+const activeRecordingRefreshIntervalMs = 2_000;
+
 export function TargetedReportsPage() {
-  const client = useFrontendRuntime().requestClient;
-  const [recordings, setRecordings] = createSignal<RecordingHeader[]>([]);
-  const [report, setReport] = createSignal<RecordingReport | null>(null);
-  const [loading, setLoading] = createSignal(false);
-  const [failed, setFailed] = createSignal(false);
+  const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  const demandId = "targeted-reports.page";
+  useFrontendVisibilityDemand(demandId, [frontendWorkIds.targetedReportsPage]);
+  const [recordingRefreshIntervalMs, setRecordingRefreshIntervalMs] =
+    createSignal<number | null>(null);
+  const recordingsSource = useSource(runtime.sources.targetedRecordings, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.targetedReportsPage),
+    refreshIntervalMs: recordingRefreshIntervalMs()
+  }));
+  const recordings = createMemo<RecordingHeader[]>(() =>
+    recordingsSource.snapshot().data ?? []);
+  const [reportSource, setReportSource] =
+    createSignal<SourceSnapshot<RecordingReport> | null>(null);
+  const report = createMemo(() => reportSource()?.data ?? null);
+  const [listLoading, setListLoading] = createSignal(false);
+  const [reportLoading, setReportLoading] = createSignal(false);
+  const loading = createMemo(() => listLoading() || reportLoading());
+  const [listFailed, setListFailed] = createSignal(false);
+  const [reportFailed, setReportFailed] = createSignal(false);
+  const [actionFailed, setActionFailed] = createSignal(false);
+  const failed = createMemo(() => listFailed() || reportFailed() || actionFailed());
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
-  let selectionVersion = 0;
+  const reportBinding = new SourceLeaseBinding<RecordingReport>(setReportSource);
+  let reportLease: SourceLease<RecordingReport> | null = null;
+  let finalReportRefreshId: string | null = null;
+  onCleanup(() => reportBinding.release());
+
+  createEffect(() => {
+    const snapshot = recordingsSource.snapshot();
+    setRecordingRefreshIntervalMs(snapshot.data?.some((item) => item.status === "recording")
+      ? activeRecordingRefreshIntervalMs
+      : null);
+    if (snapshot.status === "error" || snapshot.status === "unavailable") {
+      setListFailed(true);
+      setListLoading(false);
+    } else if (snapshot.status === "ready") {
+      setListFailed(false);
+      setListLoading(false);
+    } else if (!snapshot.data) {
+      setListLoading(true);
+    }
+  });
+
+  createEffect(() => {
+    const id = selectedId();
+    const active = frontendWork.isNeeded(frontendWorkIds.targetedReportsPage);
+    reportSource();
+    const header = recordings().find((item) => item.id === id);
+
+    if (!id) {
+      reportBinding.release();
+      reportLease = null;
+      setReportSource(null);
+      setReportLoading(false);
+      setReportFailed(false);
+      finalReportRefreshId = null;
+      return;
+    }
+
+    if (!active) {
+      reportBinding.release();
+      reportLease = null;
+      setReportSource(null);
+      setReportLoading(false);
+      setReportFailed(false);
+      finalReportRefreshId = null;
+      return;
+    }
+
+    reportLease = reportBinding.switch(id, () =>
+      runtime.sources.targetedRecordingReport.acquire(
+        { recordingId: id },
+        { active: false, refreshIntervalMs: null }));
+    const currentSnapshot = reportLease.snapshot;
+    const activeRecording = header
+      ? header.status === "recording"
+      : currentSnapshot.data?.recording.status === "recording";
+    const refreshIntervalMs = active && activeRecording
+      ? activeRecordingRefreshIntervalMs
+      : null;
+    reportLease.setDemand({ active, refreshIntervalMs });
+
+    if (!currentSnapshot.data) {
+      setReportLoading(active);
+      setReportFailed(currentSnapshot.status === "error"
+        || currentSnapshot.status === "unavailable");
+    } else {
+      setReportLoading(false);
+      setReportFailed(false);
+    }
+
+    if (header?.status === "completed"
+        && currentSnapshot.data?.recording.status === "recording"
+        && finalReportRefreshId !== id) {
+      finalReportRefreshId = id;
+      void reportLease.refresh().catch(() => setReportFailed(true));
+    } else if (header?.status === "recording" && finalReportRefreshId === id) {
+      finalReportRefreshId = null;
+    }
+  });
+
   const framePoints = createMemo<ChartPoint[]>(() =>
     report()?.frameIntervals.map((frame) => ({ x: Date.parse(frame.endedAt), y: frame.durationMs })) ?? []);
   const distributionPoints = createMemo<ChartPoint[]>(() =>
@@ -40,52 +145,46 @@ export function TargetedReportsPage() {
     || Date.parse(report()?.resourceSamples.at(-1)?.capturedAt ?? "") || start() + 1000;
 
   const refresh = async () => {
-    setFailed(false);
+    setActionFailed(false);
+    setListLoading(true);
     try {
-      setRecordings(await listRecordings(client));
+      await Promise.all([
+        recordingsSource.refresh(),
+        reportLease?.refresh() ?? Promise.resolve(null)
+      ]);
     } catch {
-      setFailed(true);
+      setActionFailed(true);
+    } finally {
+      setListLoading(false);
     }
   };
-  onMount(() => { void refresh(); });
 
-  const select = async (id: string) => {
-    const version = ++selectionVersion;
+  const select = (id: string) => {
     setSelectedId(id);
-    setReport(null);
-    setLoading(true);
-    setFailed(false);
-    try {
-      const next = await getRecording(client, id);
-      if (version === selectionVersion) setReport(next);
-    } catch {
-      if (version === selectionVersion) setFailed(true);
-    } finally {
-      if (version === selectionVersion) setLoading(false);
-    }
+    setReportLoading(true);
+    setReportFailed(false);
   };
 
   const remove = async (id: string) => {
     if (!window.confirm(uiText.targetedReport.confirmDelete)) return;
-    setFailed(false);
+    setActionFailed(false);
     try {
-      await deleteRecording(client, id);
+      await deleteRecording(runtime.requestClient, id);
       if (selectedId() === id) {
-        selectionVersion++;
         setSelectedId(null);
-        setReport(null);
-        setLoading(false);
+        setReportLoading(false);
       }
-      await refresh();
+      recordingsSource.acceptAuthoritative(recordings().filter((item) => item.id !== id));
+      await recordingsSource.refresh();
     } catch {
-      setFailed(true);
+      setActionFailed(true);
     }
   };
 
   const download = async (id: string, format: "json" | "csv") => {
-    setFailed(false);
+    setActionFailed(false);
     try {
-      const bytes = await exportRecording(client, id, format);
+      const bytes = await exportRecording(runtime.requestClient, id, format);
       const url = URL.createObjectURL(new Blob([bytes], { type: format === "csv" ? "text/csv" : "application/json" }));
       const link = document.createElement("a");
       link.href = url;
@@ -93,12 +192,16 @@ export function TargetedReportsPage() {
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
-      setFailed(true);
+      setActionFailed(true);
     }
   };
 
   return (
-    <section class="targeted-reports-page" aria-label={uiText.targetedReport.title}>
+    <section
+      class="targeted-reports-page"
+      aria-label={uiText.targetedReport.title}
+      {...frontendVisibilitySurface("visible.targeted-reports.page", [demandId])}
+    >
       <div class="panel-header targeted-report-header">
         <div class="optimization-heading">
           <h2>{uiText.targetedReport.title}</h2>
@@ -106,7 +209,7 @@ export function TargetedReportsPage() {
         <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
       </div>
       <Show when={failed()}><p class="targeted-report-note error" role="alert">{uiText.targetedReport.failed}</p></Show>
-      <Show when={recordings().length > 0} fallback={<div class="optimization-empty">{uiText.targetedReport.empty}</div>}>
+      <Show when={recordings().length > 0} fallback={<div class="optimization-empty">{loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}</div>}>
         <div class="targeted-report-list" role="list">
           <For each={recordings()}>
             {(item) => (

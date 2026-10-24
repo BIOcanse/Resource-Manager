@@ -100,6 +100,12 @@ import {
   hostManagerSmartStatusDecoder
 } from "../../data/optimization/hostManagerSmartStatusSource.ts";
 import type { OptimizationReportOverview } from "../../types.ts";
+import {
+  getRecording,
+  listRecordings,
+  type RecordingHeader,
+  type RecordingReport
+} from "../../features/targetedReport/targetedRecordingApi.ts";
 import type {
   HostManagerRollbackStateDocument,
   HostManagerSmartCoordinatorStatus
@@ -148,6 +154,11 @@ export interface FrontendSources {
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
+  readonly targetedRecordings: SourceHandle<RecordingHeader[]>;
+  readonly targetedRecordingReport: SourceFamily<
+    { readonly recordingId: string },
+    RecordingReport
+  >;
   readonly gpuPerformanceScores: SourceHandle<GpuPerformanceScoreSnapshot>;
   readonly metricSnapshot: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
   /** 规范字段的设备目录：每台设备是谁、绑定了哪些字段。 */
@@ -264,6 +275,27 @@ export function createFrontendSources(
       retainLastGood: true,
       selectCapturedAt: (value) =>
         value.status.lastEvaluationAt ?? value.capturedAt
+    }),
+    targetedRecordings: sourceRegistry.define<RecordingHeader[]>({
+      key: "targeted-recordings.list",
+      load: (signal) => listRecordings(requestClient, signal),
+      retainLastGood: false
+    }),
+    targetedRecordingReport: sourceRegistry.defineFamily<
+      { readonly recordingId: string },
+      RecordingReport
+    >({
+      key: "targeted-recordings.report",
+      canonicalizeQuery: (query) => {
+        const recordingId = query.recordingId.trim();
+        if (!recordingId) {
+          throw new Error("A recording ID is required.");
+        }
+        const value = Object.freeze({ recordingId });
+        return { key: canonicalizeSourceQuery(value).key, value };
+      },
+      load: (query, signal) => getRecording(requestClient, query.recordingId, signal),
+      retainLastGood: false
     }),
     gpuPerformanceScores: sourceRegistry.define<GpuPerformanceScoreSnapshot>({
       key: "gpu.performance-scores",

@@ -18,7 +18,7 @@ import { publishCommittedDocumentAppearance } from "./presentation/documentAppea
 import { normalizeUiAppearance } from "./presentation/uiStyles";
 import { resolveResourceBarFrameRate } from "./presentation/resourceBarFrameRate.ts";
 import { createManagementStore } from "./stores/managementStore";
-import { createMonitorStore } from "./stores/monitorStore";
+import { createMonitorStore, type MonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
@@ -49,6 +49,8 @@ export default function App() {
   const unsubscribeTaskCenter = frontendRuntime.taskCenter.subscribe(
     setTaskCenterSnapshot);
   const frontendWork = useFrontendWorkController();
+  createEffect(() => frontendRuntime.operationRegistry.setActive(frontendWork.frontendVisible()));
+  onCleanup(() => frontendRuntime.operationRegistry.setActive(false));
   const {
     confirmQueue,
     toasts,
@@ -83,6 +85,7 @@ export default function App() {
   // 刷新间隔的“自动调度”要看本程序的 CPU 档位和窗口是否在前台，这两样由刷新调度器持有，
   // 所以它先于监控存储创建，监控按它算好的间隔订阅。
   const pageRefresh = usePageRefreshScheduler({
+    operations: frontendRuntime.operationRegistry,
     activePage,
     localSystemSource: frontendRuntime.sources.localSystemStatus,
     selfSchedulingSource: frontendRuntime.sources.selfScheduling,
@@ -97,6 +100,8 @@ export default function App() {
     management: {
       activeSubpage: management.activeSubpage,
       refreshState: management.refreshState,
+      refreshComponents: management.refreshComponents,
+      refreshSoftware: management.refreshSoftware,
       refreshBrowserRuntimes: management.refreshBrowserRuntimes
     },
     optimization: {
@@ -108,7 +113,7 @@ export default function App() {
     pageRefresh.cpuRuntimePlan().refreshIntervalMs.monitor);
   const resourceTableIntervalMs = createMemo(() =>
     pageRefresh.cpuRuntimePlan().refreshIntervalMs.resourceTable);
-  const monitor = createMonitorStore({
+  const monitor: MonitorStore = createMonitorStore({
     smartMonitoringEnabled: () => settings.settings().performance?.smartMonitoringMode === "enabled",
     onMetricDependenciesRequested: () => void management.refreshComponents(),
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
@@ -118,11 +123,11 @@ export default function App() {
     metricFieldsSource: frontendRuntime.sources.metricFields,
     resourceMonitorSource: frontendRuntime.sources.resourceMonitor,
     metricSnapshotActive: () =>
-      activePage() === "monitor" && frontendWork.frontendVisible(),
+      frontendWork.isNeeded(frontendWorkIds.monitorMetrics),
     resourceBarsActive: () =>
-      activePage() === "monitor" && frontendWork.frontendVisible(),
+      frontendWork.isNeeded(frontendWorkIds.monitorBars),
     resourceTableActive: () =>
-      activePage() === "monitor" && frontendWork.frontendVisible(),
+      frontendWork.isNeeded(frontendWorkIds.monitorTable),
     metricSnapshotIntervalMs,
     resourceBarsIntervalMs: metricSnapshotIntervalMs,
     resourceTableIntervalMs
@@ -147,6 +152,7 @@ export default function App() {
     showErrorToast,
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled,
     gpuPlacementEnabled: runtimeCapabilities.gpuPlacementEnabled,
+    frontendVisible: frontendWork.frontendVisible,
     runtimeEffectsEnabled: runtimeCapabilities.runtimeEffectsEnabled,
     operations: frontendRuntime.operationRegistry,
     softwareMetadataSource: frontendRuntime.sources.softwareMetadata,

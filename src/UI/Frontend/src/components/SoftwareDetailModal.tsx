@@ -1,7 +1,8 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { AlertTriangle, FolderOpen } from "lucide-solid";
 import { getDefaultGpuPlacementSoftwarePolicy } from "../api";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendWork } from "../frontendWork/FrontendWorkContext";
 import {
   DialogActions,
   DialogHeader,
@@ -378,8 +379,20 @@ function GpuPlacementPolicySection(props: {
   onSave: (policy: GpuPlacementSoftwarePolicy) => Promise<void> | void;
 }) {
   const frontendRuntime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
   const [cpuTopology, setCpuTopology] = createSignal<CpuTopologySnapshot | null>(null);
-  onCleanup(frontendRuntime.sources.cpuTopology.subscribe(60_000, setCpuTopology));
+  createEffect(() => {
+    if (!frontendWork.frontendVisible()) {
+      setCpuTopology(null);
+      return;
+    }
+    const unsubscribe = frontendRuntime.sources.cpuTopology.subscribeSnapshot(60_000,
+      (snapshot) => setCpuTopology(snapshot.data));
+    onCleanup(() => {
+      unsubscribe();
+      setCpuTopology(null);
+    });
+  });
   const [draft, setDraft] = createSignal<GpuPlacementSoftwarePolicy | null>(null);
   const [actionInProgress, setActionInProgress] = createSignal(false);
   const [localError, setLocalError] = createSignal<string | null>(null);
@@ -444,11 +457,15 @@ function GpuPlacementPolicySection(props: {
     }
   };
 
-  createEffect(() => {
+  const savedPolicyKey = createMemo(() => {
+    const saved = savedPolicy();
+    return saved ? policyComparableKey(saved) : null;
+  });
+  createEffect(on(savedPolicyKey, () => {
     const saved = savedPolicy();
     setDraft(saved ? cloneSoftwarePolicy(saved) : null);
     setLocalError(null);
-  });
+  }));
 
   return (
     <section class="software-detail-section">

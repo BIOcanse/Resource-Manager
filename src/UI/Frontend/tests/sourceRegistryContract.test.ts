@@ -76,7 +76,7 @@ assert.doesNotMatch(specializedGpuSource, /retainLastGood|retryPolicy|refreshInt
 assert.doesNotMatch(optimizationStore, /reportSource\.acceptAuthoritative/);
 // 优化页的调度状态跟随后端推送；可见时订阅，刷新按钮同时重新读取调度状态。
 assert.match(sources, /smartCoordinatorStatus:\s*new BackendPushValueSource/);
-assert.match(optimizationStore, /options\.statusSource\.subscribe\(/);
+assert.match(optimizationStore, /options\.statusSource\.subscribeSnapshot\(/);
 assert.match(app, /statusSource:\s*frontendRuntime\.sources\.smartCoordinatorStatus/);
 assert.match(
   app,
