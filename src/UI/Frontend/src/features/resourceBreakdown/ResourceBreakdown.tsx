@@ -9,6 +9,7 @@ import type {
   ResourceBarSettings,
   ResourceBreakdownBar,
   ResourceProcessSegment,
+  ResourceProcessDetailsSnapshot,
   ResourceSoftwareSegment
 } from "../../types";
 import {
@@ -44,6 +45,8 @@ import {
 } from "./resourceTrackInteraction.ts";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { formatResourceBarValue } from "./resourceBreakdownValue";
+import { ObservationStateNotice } from "../../components/ObservationStateNotice";
+import type { ObservationState } from "../../observation/observationState";
 
 export interface ResourcePrecisionSelection {
   metricId: string;
@@ -59,6 +62,8 @@ interface ResourceBreakdownProps {
   saveState: "idle" | "saving" | "error";
   bars: ResourceBarSettings[];
   snapshotBars: ResourceBreakdownBar[];
+  processDetails: ResourceProcessDetailsSnapshot | null;
+  processDetailsObservation: ObservationState;
   selection: ResourcePrecisionSelection | null;
   expanded: Record<string, string>;
   onToggleEdit: () => void;
@@ -177,6 +182,8 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                     <ResourceBreakdownItem
                       animationMode={props.animationMode}
                       bar={currentBar()}
+                      processDetails={props.processDetails}
+                      processDetailsObservation={props.processDetailsObservation}
                       editMode={props.editMode}
                       dragging={dragBarId() === metricId}
                       dragOver={overBarId() === metricId && dragBarId() !== null && dragBarId() !== metricId}
@@ -266,6 +273,8 @@ function ResourceBarEditor(props: {
 function ResourceBreakdownItem(props: {
   animationMode: Exclude<AppAnimationMode, "auto">;
   bar: ResourceBreakdownBar;
+  processDetails: ResourceProcessDetailsSnapshot | null;
+  processDetailsObservation: ObservationState;
   editMode: boolean;
   dragging: boolean;
   dragOver: boolean;
@@ -536,7 +545,11 @@ function ResourceBreakdownItem(props: {
       <Show when={props.expandedSoftwareId} keyed>
         {(_expandedId) => (
           <Show when={expanded()}>
-            {(software) => <ResourceProcessPanel bar={props.bar} software={software()} />}
+            {(software) => <ResourceProcessPanel bar={props.bar} software={software()}
+              processes={props.processDetails === null ? null : props.processDetails.metrics
+                .find(metric => metric.metricId === props.bar.metricId)?.software
+                .find(item => item.softwareId === software().softwareId)?.processes ?? []}
+              observation={props.processDetailsObservation} />}
           </Show>
         )}
       </Show>
@@ -547,8 +560,10 @@ function ResourceBreakdownItem(props: {
 function ResourceProcessPanel(props: {
   bar: ResourceBreakdownBar;
   software: ResourceSoftwareSegment;
+  processes: ResourceProcessSegment[] | null;
+  observation: ObservationState;
 }) {
-  const layout = createMemo(() => resourceSegmentLayout(props.software.processes ?? [], props.software.value > 0 ? props.software.value : 1, { fill: true }));
+  const layout = createMemo(() => resourceSegmentLayout(props.processes ?? [], props.software.value > 0 ? props.software.value : 1, { fill: true }));
   const layoutIndex = createMemo(() => {
     const map = new Map<string, ReturnType<typeof layout>[number]>();
     for (const item of layout()) {
@@ -591,14 +606,14 @@ function ResourceProcessPanel(props: {
       return true;
     }
 
-    const processes = props.software.processes ?? [];
+    const processes = props.processes ?? [];
     return processes.length > 0 && processes.every((process) => isSystemResidualProcess(process));
   };
   return (
-    <div class="resource-process-panel" data-resource-tooltip-boundary>
+    <div class="resource-process-panel" aria-busy={props.observation.status === "loading"} data-resource-tooltip-boundary>
       <div class="resource-process-header">
         <strong>{softwareDisplayName(props.software)}</strong>
-        <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.software.processes.length) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>
+        <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.processes?.length ?? 0) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>
       </div>
       <div
         class="resource-process-track"
@@ -629,7 +644,10 @@ function ResourceProcessPanel(props: {
       >
         <Show
           when={hasProcesses()}
-          fallback={<div class="resource-process-empty">{uiText.resourceBreakdown.noAttributableProcess}</div>}
+          fallback={<Show when={props.processes !== null} fallback={<ObservationStateNotice
+            state={props.observation} label={uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software))} />}>
+            <div class="resource-process-empty">{uiText.resourceBreakdown.noAttributableProcess}</div>
+          </Show>}
         >
           <ResourceSegmentPaintPlane
             segments={resourceProcessPaintSegments(layout())}

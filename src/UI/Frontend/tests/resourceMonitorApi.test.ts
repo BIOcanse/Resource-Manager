@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
   getResourceMonitorState,
+  buildResourceProcessDetailsSubscriptionUrl,
+  normalizeResourceBreakdownQuery,
   normalizeResourceMonitorQuery
 } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
@@ -15,6 +17,17 @@ const owner = new BackendSessionOwner({
   standaloneEpochFactory: () => "standalone:resource-monitor-test"
 });
 const client = new RequestClient(owner);
+
+{
+  const query = normalizeResourceBreakdownQuery({ bars: [{ metricId: "memory.usage", scaleMode: "capacity" }],
+    processDetailSoftwareIds: [" software:b ", "software:a", "software:b"] });
+  const url = new URL(buildResourceProcessDetailsSubscriptionUrl(query, 1700), "http://localhost");
+  assert.equal(url.pathname, "/api/resource-monitor/subscribe");
+  assert.equal(url.searchParams.get("scope"), "details");
+  assert.equal(url.searchParams.get("intervalMs"), "1700");
+  assert.deepEqual(url.searchParams.getAll("processDetails"), ["software:a", "software:b"]);
+  for (const key of ["columns", "sort", "mode", "sampleIds", "includeProcesses"]) assert.equal(url.searchParams.has(key), false);
+}
 
 try {
   let observedUrl = "";

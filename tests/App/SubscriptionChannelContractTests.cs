@@ -1,6 +1,23 @@
+using System.Collections.Concurrent;
+using System.Net.Http.Json;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using ResourceManager.App.Domain.Monitoring;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.ResourceBreakdown;
+using ResourceManager.App.Application.ResourceTable;
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Endpoints;
 
 namespace ResourceManager.App.Tests;
@@ -158,5 +175,281 @@ public sealed class SubscriptionChannelContractTests
             subscription, writer, cancellation, NullLogger.Instance, "fixture").WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(cancellation.IsCancellationRequested);
+    }
+}
+
+public sealed class ResourceMonitorDetailsSubscriptionTests
+{
+    [Fact]
+    public async Task DetailsScopeUsesTheExistingPushSourceAndReturnsOnlyRequestedCurrentProcesses()
+    {
+        var capturedAt = DateTimeOffset.Parse("2026-10-24T12:00:00Z");
+        var source = new ResourceMonitorSource(CreateSnapshot(capturedAt));
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+
+        using var direct = JsonDocument.Parse(await client.GetStringAsync(
+            "/api/resource-monitor/snapshot?scope=details&ids=memory.usage,cpu.usage&modes=memory.usage:capacity&processDetails=software:b"));
+        AssertDetailsPayload(direct.RootElement, capturedAt);
+        var directRequest = Assert.Single(source.SnapshotRequests);
+        Assert.Equal(
+            ["memory.usage", "cpu.usage"],
+            directRequest.MetricIds);
+        Assert.Equal(
+            ProcessSampleDetailLevel.ResourceTableBasic,
+            directRequest.ProcessDetailLevel);
+        Assert.Equal(
+            "capacity",
+            directRequest.ScaleModes["memory.usage"]);
+
+        using var bars = JsonDocument.Parse(await client.GetStringAsync(
+            "/api/resource-monitor/snapshot?scope=bars&ids=memory.usage"));
+        Assert.Empty(bars.RootElement.GetProperty("table").GetProperty("rows").EnumerateArray());
+        Assert.Equal(2, source.SnapshotRequests.Count);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        {
+            Content = JsonContent.Create(new
+            {
+                version = 1,
+                subscriptions = new[]
+                {
+                    new
+                    {
+                        id = "resource-details",
+                        path = "/api/resource-monitor/subscribe?scope=details&intervalMs=1000&ids=memory.usage,cpu.usage&modes=memory.usage:capacity&processDetails=software:b"
+                    }
+                }
+            })
+        };
+        using var response = await client.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        var line = await reader.ReadLineAsync(timeout.Token);
+        Assert.NotNull(line);
+        using var frame = JsonDocument.Parse(line!);
+        var value = frame.RootElement.GetProperty("value");
+        AssertDetailsPayload(value, capturedAt);
+
+        var pushed = Assert.Single(source.PushRequests);
+        Assert.Equal("frontend-channel:resource-details", pushed.ChannelKey);
+        Assert.Equal(TimeSpan.FromSeconds(1), pushed.Interval);
+        Assert.Equal(
+            ["memory.usage", "cpu.usage"],
+            pushed.Request.MetricIds);
+        Assert.Equal(
+            ProcessSampleDetailLevel.ResourceTableBasic,
+            pushed.Request.ProcessDetailLevel);
+        Assert.Equal(
+            "capacity",
+            pushed.Request.ScaleModes["memory.usage"]);
+
+        await timeout.CancelAsync();
+        response.Dispose();
+        await app.StopAsync();
+    }
+
+    private static void AssertDetailsPayload(JsonElement root, DateTimeOffset capturedAt)
+    {
+        Assert.Equal(
+            ["version", "capturedAt", "metrics"],
+            root.EnumerateObject().Select(static property => property.Name).ToArray());
+        Assert.Equal(1, root.GetProperty("version").GetInt32());
+        Assert.Equal(capturedAt, root.GetProperty("capturedAt").GetDateTimeOffset());
+        var metric = Assert.Single(root.GetProperty("metrics").EnumerateArray());
+        Assert.Equal("memory.usage", metric.GetProperty("metricId").GetString());
+        var software = Assert.Single(metric.GetProperty("software").EnumerateArray());
+        Assert.Equal("software:b", software.GetProperty("softwareId").GetString());
+        var process = Assert.Single(software.GetProperty("processes").EnumerateArray());
+        Assert.Equal(11, process.GetArrayLength());
+        Assert.Equal(2002, process[0].GetInt32());
+        Assert.Equal("worker-b.exe", process[1].GetString());
+        Assert.DoesNotContain("worker-a.exe", root.GetRawText(), StringComparison.Ordinal);
+        Assert.False(root.TryGetProperty("bars", out _));
+        Assert.False(root.TryGetProperty("table", out _));
+        Assert.False(root.TryGetProperty("softwareCatalog", out _));
+    }
+
+    private static ResourceBreakdownSnapshot CreateSnapshot(DateTimeOffset capturedAt)
+    {
+        var softwareA = Software("software:a", 1001, "worker-a.exe");
+        var softwareB = Software("software:b", 2002, "worker-b.exe");
+        return new ResourceBreakdownSnapshot(
+            capturedAt,
+            [
+                new ResourceBreakdownBar(
+                    ResourceBreakdownMetricIds.MemoryUsage,
+                    "Memory",
+                    "B",
+                    ResourceBreakdownScaleModes.Capacity,
+                    3,
+                    100,
+                    3,
+                    [softwareA, softwareB]),
+                new ResourceBreakdownBar(
+                    ResourceBreakdownMetricIds.CpuUsage,
+                    "CPU",
+                    "%",
+                    ResourceBreakdownScaleModes.Capacity,
+                    5,
+                    100,
+                    5,
+                    [softwareA])
+            ])
+        {
+            Datasets =
+            [
+                CurrentDataset(ResourceBreakdownMetricIds.MemoryUsage, capturedAt),
+                new ResourceBreakdownDatasetSamplingState(
+                    SamplingDatasetIds.ForProcessMetric(ResourceBreakdownMetricIds.CpuUsage),
+                    ResourceBreakdownSamplingStatuses.Ready,
+                    1,
+                    1,
+                    null,
+                    capturedAt,
+                    null,
+                    null,
+                    null,
+                    null)
+            ]
+        };
+    }
+
+    private static ResourceSoftwareSegment Software(string id, int processId, string processName)
+    {
+        var process = new ResourceProcessSegment(
+            processId,
+            processName,
+            $@"C:\Apps\{processName}",
+            1,
+            1,
+            100)
+        {
+            ProcessStartKey = checked(processId * 1000L)
+        };
+        return new ResourceSoftwareSegment(id, processName, "other", "general", 1, 1, 1, [process]);
+    }
+
+    private static ResourceBreakdownDatasetSamplingState CurrentDataset(
+        string metricId,
+        DateTimeOffset capturedAt)
+        => new(
+            SamplingDatasetIds.ForProcessMetric(metricId),
+            ResourceBreakdownSamplingStatuses.Ready,
+            1,
+            1,
+            capturedAt,
+            capturedAt,
+            capturedAt,
+            null,
+            null,
+            null);
+
+    private static async Task<WebApplication> StartAsync(ResourceMonitorSource source)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddSingleton<IResourceBreakdownSampler>(source);
+        builder.Services.AddSingleton<IResourceBreakdownPushSource>(source);
+        builder.Services.AddSingleton<IResourceTableProjector>(new ThrowingTableProjector());
+        builder.Services.AddSingleton<IRuntimePlanProvider>(new DefaultRuntimePlanProvider());
+        var app = builder.Build();
+        foreach (var method in new[]
+        {
+            "MapResourceMonitorEndpoints",
+            "MapSubscriptionChannelEndpoints"
+        })
+        {
+            typeof(ResourceManagerEndpointRouteBuilderExtensions)
+                .GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [app]);
+        }
+
+        await app.StartAsync();
+        return app;
+    }
+
+    private static HttpClient Client(WebApplication app)
+        => new()
+        {
+            BaseAddress = new Uri(Assert.Single(app.Services
+                .GetRequiredService<IServer>()
+                .Features
+                .Get<IServerAddressesFeature>()!
+                .Addresses)),
+            Timeout = TimeSpan.FromSeconds(15)
+        };
+
+    private sealed class DefaultRuntimePlanProvider : IRuntimePlanProvider
+    {
+        public CompiledRuntimePlan Current => CompiledRuntimePlan.Default;
+
+        public RuntimePlanPublicationLease AcquirePublicationLease()
+            => RuntimePlanPublicationLease.CreateUntracked(Current, 0);
+
+        public RuntimePlanPublicationResult Publish(CompiledRuntimePlan plan)
+            => new(plan, 0, []);
+    }
+
+    private sealed class ResourceMonitorSource(ResourceBreakdownSnapshot snapshot)
+        : IResourceBreakdownSampler, IResourceBreakdownPushSource
+    {
+        public ConcurrentQueue<ResourceBreakdownSampleRequest> SnapshotRequests { get; } = new();
+
+        public ConcurrentQueue<PushRequest> PushRequests { get; } = new();
+
+        public Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
+            ResourceBreakdownSampleRequest request,
+            CancellationToken cancellationToken)
+        {
+            SnapshotRequests.Enqueue(request);
+            return Task.FromResult(snapshot);
+        }
+
+        public Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
+            IReadOnlyList<string> metricIds,
+            IReadOnlyDictionary<string, string> scaleModes,
+            CancellationToken cancellationToken)
+            => GetSnapshotAsync(
+                new ResourceBreakdownSampleRequest(
+                    metricIds,
+                    scaleModes,
+                    ProcessSampleDetailLevel.ResourceTableBasic),
+                cancellationToken);
+
+        public Task<ResourceBreakdownSnapshot> CaptureSnapshotAsync(
+            ResourceBreakdownSampleRequest request,
+            CancellationToken cancellationToken)
+            => GetSnapshotAsync(request, cancellationToken);
+
+        public async IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(
+            string subscriptionId,
+            ResourceBreakdownSampleRequest request,
+            TimeSpan interval,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            PushRequests.Enqueue(new PushRequest(subscriptionId, request, interval));
+            await Task.Yield();
+            yield return snapshot;
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+    }
+
+    private sealed record PushRequest(
+        string ChannelKey,
+        ResourceBreakdownSampleRequest Request,
+        TimeSpan Interval);
+
+    private sealed class ThrowingTableProjector : IResourceTableProjector
+    {
+        public ResourceTableSnapshot Project(
+            ResourceBreakdownSnapshot breakdown,
+            ResourceTableRequest request)
+            => throw new InvalidOperationException("This test host must not project a resource table.");
     }
 }

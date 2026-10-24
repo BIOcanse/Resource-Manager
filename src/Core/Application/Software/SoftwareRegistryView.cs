@@ -87,9 +87,14 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         var installedSoftware = refreshPortableRegistrations
             ? await installedSoftwareInventory.RefreshInstalledSoftwareAsync(windowsSid, cancellationToken)
             : await installedSoftwareInventory.GetInstalledSoftwareAsync(windowsSid, cancellationToken);
-        records.AddRange(installedSoftware
+        var nativeInventoryRecords = installedSoftware
             .Where(item => !HasKnownSoftwareMatch(item, reservedSoftware))
-            .Select(ToInstalledSoftwareRecord));
+            .Select(ToInstalledSoftwareRecord)
+            .ToArray();
+        records.AddRange(nativeInventoryRecords);
+        var nativeInventoryIds = nativeInventoryRecords
+            .Select(static record => record.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var portableSoftware = refreshPortableRegistrations
             ? await portableSoftwareRegistry.RefreshAsync(cancellationToken)
@@ -97,7 +102,9 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         records.AddRange(portableSoftware.Select(ToPortableSoftwareRecord));
 
         ApplyPolicyProfile(records, policyProfile);
-        var revisionRecords = records.ToList();
+        var revisionRecords = records
+            .Where(record => !nativeInventoryIds.Contains(record.Id))
+            .ToList();
 
         IncludeRuntimeSoftware(records, runtimeSoftware ?? []);
 

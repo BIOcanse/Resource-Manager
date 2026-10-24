@@ -2,7 +2,7 @@ export default async function resourceBarColorModesJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   const setup = await page.request.post(`${baseUrl}/__test/scenario`, {
-    data: { resourceSegmentCount: 8, settingsTheme: "light" }
+    data: { resourceSegmentCount: 8, settingsTheme: "light", resourceDetailsDelayMs: 650 }
   });
   assert(setup.ok(), `Fixture setup failed: ${setup.status()}`);
   await page.setViewportSize({ width: 1100, height: 760 });
@@ -35,12 +35,23 @@ export default async function resourceBarColorModesJourney(page, baseUrl) {
   assert(beforeClick > 0, "Segment interaction must be tested below the top of the page");
   const bounds = await track.boundingBox();
   assert(bounds !== null, "Memory bar bounds are missing");
+  await startSelectionFrameCheck(page);
   await track.click({ position: { x: bounds.width / 64, y: bounds.height / 2 } });
-  await page.locator('.resource-breakdown-item:has(.resource-bar-track[data-metric-id="memory.usage"]) .resource-process-panel')
+  const processPanel = page.locator('.resource-breakdown-item:has(.resource-bar-track[data-metric-id="memory.usage"]) .resource-process-panel');
+  await processPanel
     .waitFor({ state: "visible", timeout: 5000 });
   const afterClick = await page.locator("main.app-shell").evaluate((element) => element.scrollTop);
   assert(Math.abs(afterClick - beforeClick) <= 1,
     `Selecting a resource segment moved the page: ${beforeClick} -> ${afterClick}`);
+  await processPanel.locator('.resource-process-track[role="listbox"]').waitFor({ state: "visible" });
+  await track.click({ position: { x: bounds.width * 3 / 64, y: bounds.height / 2 } });
+  await processPanel.getByText("示例软件 1", { exact: true }).waitFor();
+  await processPanel.locator('.resource-process-track[role="listbox"]').waitFor({ state: "visible" });
+  const selectionFrames = await finishSelectionFrameCheck(page);
+  assert(selectionFrames.emptyFrames === 0 && selectionFrames.replacedCanvases === 0,
+    `Selecting another software blanked or replaced the bars: ${JSON.stringify(selectionFrames)}`);
+  assert(selectionFrames.frames > 5 && selectionFrames.pendingFrames > 0,
+    `Selection check did not cover pending process-detail frames: ${JSON.stringify(selectionFrames)}`);
 
   await selectMode(page, "类型固定色", "type");
   const typeAfter = await readMemoryBar(page);
@@ -49,7 +60,37 @@ export default async function resourceBarColorModesJourney(page, baseUrl) {
     && JSON.stringify(typeAfter.colors) === JSON.stringify(typeBefore.colors),
   `Switching back did not restore fixed-type rendering: ${JSON.stringify(typeAfter)}`);
   assert(errors.length === 0, `Page errors: ${JSON.stringify(errors)}`);
-  return { typeBefore, distinct, distinctReloaded, typeAfter, unchangedCallbacks, beforeClick, afterClick, errors };
+  return { typeBefore, distinct, distinctReloaded, typeAfter, unchangedCallbacks, selectionFrames, beforeClick, afterClick, errors };
+}
+
+async function startSelectionFrameCheck(page) {
+  await page.evaluate(() => {
+    const selector = '.resource-bar-track[data-metric-id="memory.usage"] canvas';
+    const canvas = document.querySelector(selector);
+    const result = { frames: 0, emptyFrames: 0, replacedCanvases: 0, pendingFrames: 0, running: true };
+    window.__selectionFrames = result;
+    const deadline = performance.now() + 12_000;
+    const sample = () => {
+      if (!result.running || performance.now() > deadline) return;
+      const current = document.querySelector(selector);
+      result.frames++;
+      if (!current || current.width <= 0 || Number(current.dataset.resourceSegmentCount) !== 8
+        || document.querySelector('.resource-breakdown-panel .content-state')) result.emptyFrames++;
+      if (current !== canvas) result.replacedCanvases++;
+      if (document.querySelector('.resource-process-panel[aria-busy="true"]')) result.pendingFrames++;
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+}
+
+async function finishSelectionFrameCheck(page) {
+  return page.evaluate(async () => {
+    await new Promise(requestAnimationFrame);
+    const result = window.__selectionFrames;
+    result.running = false;
+    return result;
+  });
 }
 
 async function selectMode(page, label, value) {

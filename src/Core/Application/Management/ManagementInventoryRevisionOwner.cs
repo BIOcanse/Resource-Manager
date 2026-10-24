@@ -62,6 +62,16 @@ public sealed class ManagementInventoryRevisionOwner : IManagementInventoryRevis
         }
     }
 
+    public void ObserveSoftwareInventoryContentChanged()
+    {
+        lock (gate)
+        {
+            softwareRevision = checked(softwareRevision + 1);
+        }
+
+        publicationSignal.Publish();
+    }
+
     public void ObserveComponents(string? windowsSid, IReadOnlyList<ComponentStatus> components)
     {
         ArgumentNullException.ThrowIfNull(components);

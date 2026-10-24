@@ -63,7 +63,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpRequest request,
             HttpResponse response,
             IResourceBreakdownSampler breakdownSampler,
-            IResourceTableProjector tableProjector,
+            IServiceProvider services,
             IRuntimePlanProvider runtimePlanProvider,
             CancellationToken cancellationToken) =>
         {
@@ -73,10 +73,24 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var metricIds = scope == ResourceMonitorScope.Table
                 ? []
                 : ParseResourceMetricIds(request, monitoringPlan);
-            var requestedSampleMetricIds = ParseResourceSampleMetricIds(request);
             var scaleModes = ParseResourceScaleModes(request, monitoringPlan);
-            var tableRequest = ParseResourceTableRequest(request, monitoringPlan);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
+            if (scope == ResourceMonitorScope.Details)
+            {
+                var details = await breakdownSampler.GetSnapshotAsync(
+                    new ResourceBreakdownSampleRequest(
+                        metricIds,
+                        scaleModes,
+                        ProcessSampleDetailLevel.ResourceTableBasic),
+                    cancellationToken);
+                return Results.Ok(ResourceProcessDetailsWireSnapshot.Create(
+                    details,
+                    metricIds,
+                    processDetailSoftwareIds));
+            }
+
+            var requestedSampleMetricIds = ParseResourceSampleMetricIds(request);
+            var tableRequest = ParseResourceTableRequest(request, monitoringPlan);
             var sampleMetricIds = AddTableRequiredMetricIds(
                 requestedSampleMetricIds.Count > 0 ? requestedSampleMetricIds : metricIds,
                 scope == ResourceMonitorScope.Bars ? [] : tableRequest.ColumnIds);
@@ -86,18 +100,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     scaleModes,
                     ResolveProcessSampleDetailLevel(request, tableRequest)),
                 cancellationToken);
-            var table = tableProjector.Project(sampledBreakdown, tableRequest);
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
                 processDetailSoftwareIds);
+            var table = scope == ResourceMonitorScope.Bars
+                ? ResourceTableWireSnapshot.Empty
+                : ResourceTableWireSnapshot.Create(services
+                    .GetRequiredService<IResourceTableProjector>()
+                    .Project(sampledBreakdown, tableRequest));
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
                 MaxTimestamp(
                     breakdownWire.CapturedAt,
                     table.CapturedAt),
                 breakdownWire,
-                ResourceTableWireSnapshot.Create(table)));
+                table));
         }).AllowAnonymous();
 
         app.MapGet("/api/resource-table/snapshot", async (
@@ -150,6 +168,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             "bars" => ResourceMonitorScope.Bars,
             "table" => ResourceMonitorScope.Table,
+            "details" => ResourceMonitorScope.Details,
             _ => ResourceMonitorScope.Combined
         };
     }
@@ -158,6 +177,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         Combined = 0,
         Bars = 1,
-        Table = 2
+        Table = 2,
+        Details = 3
     }
 }

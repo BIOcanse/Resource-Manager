@@ -12,6 +12,8 @@ public interface IManagementInventoryRevisionOwner
         string? windowsSid,
         IReadOnlyList<SoftwareRecord> records);
 
+    void ObserveSoftwareInventoryContentChanged();
+
     void ObserveComponents(string? windowsSid, IReadOnlyList<ComponentStatus> components);
 
     void ObserveComponent(string? windowsSid, ComponentStatus component);

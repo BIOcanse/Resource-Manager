@@ -54,7 +54,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ISoftwareRegistryView, SoftwareRegistryView>();
         services.AddSingleton<IManualSoftwareRegistry, JsonManualSoftwareRegistry>();
         services.AddSingleton<ISoftwarePolicyProfileProvider, JsonSoftwarePolicyProfileProvider>();
-        services.AddSingleton<WindowsInstalledSoftwareInventory>();
+        services.AddSingleton<WindowsInstalledSoftwareInventory>(static provider =>
+            new WindowsInstalledSoftwareInventory(onSoftwareContentChanged: provider
+                .GetRequiredService<IManagementInventoryRevisionOwner>()
+                .ObserveSoftwareInventoryContentChanged));
         services.AddSingleton<IInstalledSoftwareInventory>(static provider => provider.GetRequiredService<WindowsInstalledSoftwareInventory>());
         services.AddSingleton<IRuntimeProcessAttributionCatalogProvider, RuntimeProcessAttributionCatalogProvider>();
         services.AddSingleton<IWindowsGameListSource, WindowsGameListSource>();

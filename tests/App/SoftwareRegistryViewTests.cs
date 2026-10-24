@@ -12,6 +12,7 @@ using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.SoftwareIdentity;
 using ResourceManager.App.Domain.SoftwareDiscovery;
+using ResourceManager.App.Infrastructure.Software;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -19,7 +20,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SoftwareRegistryViewTests
 {
     [Fact]
-    public async Task RefreshSoftwareAsync_PublishesAcceptedInventoryChangesButNotEqualReads()
+    public async Task RefreshSoftwareAsync_PublishesNativeInventoryChangesOnceAndNotEqualReads()
     {
         var entries = new List<InstalledSoftwareEntry>
         {
@@ -34,7 +35,9 @@ public sealed class SoftwareRegistryViewTests
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(),
                 new Dictionary<string, SoftwarePolicyAssignment>())),
-            new StaticInstalledSoftwareInventory(entries),
+            new WindowsInstalledSoftwareInventory(
+                _ => entries,
+                onSoftwareContentChanged: revisions.ObserveSoftwareInventoryContentChanged),
             SoftwareIdentityCatalogTestData.Empty,
             new StaticPortableSoftwareRegistry([]),
             revisions);

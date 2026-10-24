@@ -148,6 +148,8 @@ export function MonitorPage(props: MonitorPageProps) {
                 editingAvailable={dashboardAvailable()}
                 bars={monitor.activeResourceBars()}
                 snapshotBars={monitor.orderedSnapshotBars()}
+                processDetails={monitor.resourceProcessDetails()}
+                processDetailsObservation={monitor.resourceProcessDetailsObservation()}
                 selection={monitor.resourceSelection()}
                 expanded={monitor.expandedResourceSegments()}
                 saveState={monitor.resourceBarSaveState()}

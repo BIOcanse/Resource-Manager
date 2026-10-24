@@ -9,6 +9,13 @@ internal sealed record ResourceTableWireSnapshot(
     ResourceTableSort Sort,
     string ViewMode)
 {
+    internal static ResourceTableWireSnapshot Empty { get; } = new(
+        null,
+        [],
+        [],
+        new ResourceTableSort(ResourceTableSortIds.Impact, "desc"),
+        ResourceTableViewModes.Software);
+
     internal static ResourceTableWireSnapshot Create(
         ResourceTableSnapshot source)
     {

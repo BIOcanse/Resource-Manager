@@ -15,6 +15,7 @@ import type {
   ResourceBreakdownBar,
   ResourceBreakdownSnapshot,
   ResourceMonitorSnapshot,
+  ResourceProcessDetailsSnapshot,
   ResourceTableColumnSettings,
   ResourceTableSnapshot,
   ResourceTableViewMode
@@ -32,6 +33,7 @@ import {
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
   normalizeResourceMonitorQuery,
+  type ResourceBreakdownQuery,
   type ResourceMonitorQuery
 } from "../data/resourceMonitor/resourceMonitorApi";
 import {
@@ -73,6 +75,7 @@ import {
   writeDashboardSlot
 } from "./monitorConfig";
 import { uiText } from "../text.ts";
+import { createResourceBreakdownBindings } from "./resourceBreakdownBindings.ts";
 
 export interface MetricModalTarget {
   cardId: string;
@@ -98,6 +101,7 @@ export interface MonitorStoreOptions {
     ResourceMonitorQuery,
     ResourceMonitorSnapshot
   >;
+  resourceProcessDetailsSource: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   metricSnapshotActive: Accessor<boolean>;
   resourceBarsActive: Accessor<boolean>;
   resourceTableActive: Accessor<boolean>;
@@ -132,6 +136,8 @@ export interface MonitorStore {
   resourceTableMode: Accessor<ResourceTableViewMode>;
   activeResourceTableColumns: Accessor<ResourceTableColumnSettings[]>;
   resourceBreakdownSnapshot: Accessor<ResourceBreakdownSnapshot | null>;
+  resourceProcessDetails: Accessor<ResourceProcessDetailsSnapshot | null>;
+  resourceProcessDetailsObservation: Accessor<ObservationState>;
   resourceBarsObservation: Accessor<ObservationState>;
   resourceTableSnapshot: Accessor<ResourceTableSnapshot | null>;
   resourceTableObservation: Accessor<ObservationState>;
@@ -197,7 +203,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceTableMode, setResourceTableMode] = createSignal<ResourceTableViewMode>("software");
   const [resourceTableEditMode, setResourceTableEditMode] = createSignal(false);
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
-  const [barsSourceSnapshot, setBarsSourceSnapshot] = createSignal<MonitorSourceBinding<ResourceMonitorSnapshot> | null>(null);
   const [tableSourceSnapshot, setTableSourceSnapshot] = createSignal<MonitorSourceBinding<ResourceMonitorSnapshot> | null>(null);
   const [resourceTableSort, setResourceTableSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "impact", direction: "desc" });
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
@@ -293,11 +298,15 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     query: normalizeMetricSnapshotQuery(createMetricSnapshotQuery()),
     intervalMs: options.metricSnapshotIntervalMs()
   }));
-  const resourceBarsSubscriptionKey = createMemo(() => JSON.stringify({
-    active: options.resourceBarsActive(),
-    query: normalizeResourceMonitorQuery(createResourceBarsQuery()),
-    intervalMs: options.resourceBarsIntervalMs()
-  }));
+  const breakdownBindings = createResourceBreakdownBindings({
+    active: options.resourceBarsActive,
+    intervalMs: options.resourceBarsIntervalMs,
+    bars: requestedResourceBars,
+    detailSoftwareIds: resourceBreakdownProcessDetailSoftwareIds,
+    barsSource: options.resourceMonitorSource,
+    detailsSource: options.resourceProcessDetailsSource,
+    onBars: value => pruneResourceSelection(value.breakdown.bars ?? [])
+  });
   const resourceTableSubscriptionKey = createMemo(() => JSON.stringify({
     active: resourceTableNeeded(),
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
@@ -308,14 +317,13 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     ? metricSourceSnapshot()?.source.data ?? null : null);
   const snapshotObservation = createMemo(() => metricSnapshotNeeded() && metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
-  const resourceBreakdownSnapshot = createMemo(() => options.resourceBarsActive()
-    && barsSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceBarsQuery()))
-    ? barsSourceSnapshot()?.source.data?.breakdown ?? null : null);
+  const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
+  const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
+  const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
   const resourceTableSnapshot = createMemo(() => resourceTableNeeded()
     && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
     ? tableSourceSnapshot()?.source.data?.table ?? null : null);
-  const resourceBarsObservation = createMemo(() => options.resourceBarsActive() && barsSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceBarsQuery()))
-    ? pushObservation(barsSourceSnapshot()?.source ?? null) : loadingObservation());
+  const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
   const resourceTableObservation = createMemo(() => resourceTableNeeded() && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
     ? pushObservation(tableSourceSnapshot()?.source ?? null) : loadingObservation());
   const orderedSnapshotBars = createMemo(() => {
@@ -411,35 +419,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     });
   });
   createEffect(() => {
-    const binding = JSON.parse(resourceBarsSubscriptionKey()) as {
-      active: boolean;
-      query: ResourceMonitorQuery;
-      intervalMs: number | null;
-    };
-    const queryKey = JSON.stringify(binding.query);
-    if (!binding.active || binding.intervalMs === null) {
-      return;
-    }
-    let accepting = true;
-    const unsubscribe = options.resourceMonitorSource.subscribeSnapshot(
-      binding.query,
-      binding.intervalMs,
-      (value) => {
-        if (accepting) {
-          setBarsSourceSnapshot({ queryKey, source: value });
-          // 只有状态没有数据的快照（新订阅待数据、失败）说明不了哪些软件还在，不据此清掉选中。
-          if (value.data) {
-            pruneResourceSelection(value.data.breakdown.bars ?? []);
-          }
-        }
-      });
-    onCleanup(() => {
-      accepting = false;
-      unsubscribe();
-      setBarsSourceSnapshot(null);
-    });
-  });
-  createEffect(() => {
     const binding = JSON.parse(resourceTableSubscriptionKey()) as {
       active: boolean;
       query: ResourceMonitorQuery;
@@ -484,24 +463,13 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return { ids: ids.length === 0 ? null : ids };
   }
 
-  function createResourceBarsQuery(): ResourceMonitorQuery {
+  function requestedResourceBars(): ResourceBreakdownQuery["bars"] {
     const useCompiledBars = options.smartMonitoringEnabled()
       && !resourceBarEditing();
-    return {
-      scope: "bars",
-      bars: useCompiledBars
-        ? null
-        : activeResourceBars().map((bar) => ({
-          metricId: bar.metricId,
-          scaleMode: bar.scaleMode
-        })),
-      sampleMetricIds: null,
-      visibleColumnIds: [],
-      sortColumnId: "impact",
-      sortDirection: "desc",
-      processDetailSoftwareIds: resourceBreakdownProcessDetailSoftwareIds(),
-      tableMode: "software"
-    };
+    return useCompiledBars ? null : activeResourceBars().map((bar) => ({
+      metricId: bar.metricId,
+      scaleMode: bar.scaleMode
+    }));
   }
 
   function createResourceTableQuery(): ResourceMonitorQuery {
@@ -1138,6 +1106,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     resourceTableMode,
     activeResourceTableColumns,
     resourceBreakdownSnapshot,
+    resourceProcessDetails,
+    resourceProcessDetailsObservation,
     resourceBarsObservation,
     resourceTableSnapshot,
     resourceTableObservation,
