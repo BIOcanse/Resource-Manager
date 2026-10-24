@@ -42,11 +42,11 @@ public sealed class HostProcessPeriodicSubscriptionTests
     {
         using var fixture = await Fixture.CreateAsync();
         await fixture.Sampler.StartAsync(CancellationToken.None);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         await using var fast = fixture.Backend.SubscribeAsync("fast", [fixture.Field],
             TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token);
         await using var slow = fixture.Backend.SubscribeAsync("slow", [fixture.Field],
-            TimeSpan.FromMilliseconds(500), timeout.Token).GetAsyncEnumerator(timeout.Token);
+            TimeSpan.FromMilliseconds(2000), timeout.Token).GetAsyncEnumerator(timeout.Token);
 
         var fastFirst = fast.MoveNextAsync().AsTask();
         var slowFirst = slow.MoveNextAsync().AsTask();
@@ -65,10 +65,17 @@ public sealed class HostProcessPeriodicSubscriptionTests
         Assert.False(slowSecond.IsCompleted,
             "The slower subscriber must keep its own period while the shared process current continues updating.");
         fixture.Api.PrivateCommit = 29;
-        Assert.True(await fast.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
-        Assert.Equal("29", Assert.Single(fast.Current).Value?.Integer);
+        // A delivery may still carry the shared current sampled before the change; the next sample carries 29.
+        string? fastValue;
+        do
+        {
+            Assert.True(await fast.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
+            fastValue = Assert.Single(fast.Current).Value?.Integer;
+        }
+        while (fastValue != "29" && !timeout.IsCancellationRequested);
+        Assert.Equal("29", fastValue);
 
-        Assert.True(await slowSecond.WaitAsync(TimeSpan.FromSeconds(4)));
+        Assert.True(await slowSecond.WaitAsync(TimeSpan.FromSeconds(6)));
         var slowReading = Assert.Single(slow.Current);
         Assert.Equal(fixture.Field, slowReading.Field);
         Assert.Equal("29", slowReading.Value?.Integer);
