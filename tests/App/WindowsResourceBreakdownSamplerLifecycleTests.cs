@@ -586,7 +586,9 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(1, metricSampler.ActiveSubscriptions);
         Assert.NotNull(metricSampler.LastSubscriptionRequest);
         Assert.True(metricSampler.LastSubscriptionRequest!.Includes("memory.usage"));
-        Assert.True(metricSampler.LastSubscriptionRequest.IncludesAllGpuCoreMetrics);
+        Assert.True(metricSampler.LastSubscriptionRequest.Includes(SamplingDatasetIds.SystemGpuInventory));
+        Assert.False(metricSampler.LastSubscriptionRequest.IncludesAllGpuCoreMetrics);
+        Assert.False(metricSampler.LastSubscriptionRequest.IncludesPrefix("gpu."));
 
         lease.Dispose();
         Assert.Equal(0, metricSampler.ActiveSubscriptions);

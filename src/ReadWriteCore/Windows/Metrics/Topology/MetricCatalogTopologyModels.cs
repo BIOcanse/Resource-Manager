@@ -16,6 +16,9 @@ public sealed record NativeMetricSnapshotCatalogTopologySnapshot(
     NativeMetricSnapshotCatalogTopologyStatus FanStatus,
     IReadOnlyList<NativeMetricSnapshotOrdinalCatalogIdentity> SystemFans)
 {
+    // Last topology publication that changed each ordinal identity list, including an empty list.
+    public ulong StorageGeneration { get; init; } = Generation;
+    public ulong FanGeneration { get; init; } = Generation;
     public string? GpuFailureCode { get; init; }
     public NativeMetricSnapshotCatalogTopologyStatus AmdCcdStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
     public IReadOnlyList<AmdCcdCatalogIdentity> AmdCcdIdentities { get; init; } = [];

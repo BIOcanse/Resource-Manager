@@ -150,7 +150,9 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Contains(address, plan.DueItemIds);
             Assert.Contains(SamplingDatasetIds.SystemGpuInventory, plan.DueItemIds);
             Assert.Equal(2, plan.Schedule.ActiveItemCount);
-            Assert.DoesNotContain(SamplingDatasetIds.SystemGpuInventory, sampler.GetPublicationItemIds(plan.Request!));
+            Assert.Contains(SamplingDatasetIds.SystemGpuInventory, sampler.GetPublicationItemIds(plan.Request!));
+            Assert.DoesNotContain(SamplingDatasetIds.SystemGpuInventory,
+                sampler.GetPublicationItemIds(MetricSampleRequest.ForIds([address])));
             Assert.Null(sampler.CaptureSamplingWorkerTask());
         }
         finally

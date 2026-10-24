@@ -201,7 +201,7 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
             var metricHandles = requestedMetricHandles
                 .Order()
                 .ToArray();
-            if (metricHandles.Length == 0
+            if (metricHandles.Length == 0 && !includeGpuInventory
                 || metricHandles.Length
                     > session.Capacity.PlanMetricCapacity
                 || metricHandles.Distinct().Count()

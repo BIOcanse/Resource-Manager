@@ -180,7 +180,7 @@ public sealed class NpuEngineOwnerIntegrationTests
     }
 
     [Fact]
-    public async Task ObservableInvalidationRejectsTheWholeFrameBeforeCompletionAndCancellationKeepsCurrent()
+    public async Task ObservableInvalidationEmptiesNpuWhileOtherSourcesCommitAndCancellationKeepsCurrent()
     {
         var recording = new NpuEngineRecordedResources();
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.Default, recording.Create(), new(), unavailableCooldown: TimeSpan.Zero);
@@ -188,8 +188,25 @@ public sealed class NpuEngineOwnerIntegrationTests
         var fields = Fields(await core.DiscoverAsync()); await core.CollectAsync(fields); await core.CollectAsync(fields);
         var before = owner.ReadCachedSnapshot()!;
         recording.InvalidateDuringRead = true;
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await core.CollectAsync(fields));
-        Assert.Same(before, owner.ReadCachedSnapshot());
+        recording.ReadMemory = () => new(128, 256, 50, true, "recorded");
+        var request = MetricSampleRequest.ForIds([
+            "memory.usage",
+            .. before.FieldBindings.Values.Where(binding => fields.Any(field =>
+                field.DeviceIdentity == binding.DeviceIdentity && field.FieldName == binding.Field.Name))
+                .Select(static binding => binding.RequestAddress)]);
+        var invalidated = await owner.CaptureAsync(request);
+        Assert.NotSame(before, owner.ReadCachedSnapshot());
+        var npuValues = invalidated.Items.Values.Where(static value => value.FieldName is
+            NpuEngineRecordedResources.Raw or NpuEngineRecordedResources.Ratio).ToArray();
+        Assert.Equal(fields.Length, npuValues.Length);
+        Assert.All(npuValues, value =>
+        {
+            Assert.Null(value.NumericValue);
+            Assert.Null(value.IntegerValue);
+        });
+        Assert.Equal(128UL, invalidated.Memory.UsedBytes);
+        Assert.Equal(SamplingObservationStatus.Current,
+            invalidated.Datasets["memory.usage"].Status);
         recording.InvalidateDuringRead = false;
         fields = Fields(await core.DiscoverAsync()); AssertRatios(await core.CollectAsync(fields), null);
         var current = owner.ReadCachedSnapshot();

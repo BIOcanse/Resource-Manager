@@ -69,6 +69,28 @@ test "floating counters commit fractional SDK deltas atomically for ratio and pe
     }
 }
 
+test "inventory-only plan selects its owner without any numeric metric source" {
+    var config = testConfig(1);
+    const bytes = try testScratch(&config);
+    defer std.testing.allocator.free(bytes);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    const sources = testSources();
+    const rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.abi_mismatch, runPlan(session, bytes, 2, 1, 200, 0, &.{}, &modes, &output, &source_plans, &metric_plans));
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, bytes, 2, 1, 200, protocol.PlanFlags.include_gpu_inventory, &.{}, &modes, &output, &source_plans, &metric_plans));
+    try std.testing.expectEqual(@as(u32, 1), output.source_plan_count);
+    try std.testing.expectEqual(@as(u32, 0), output.metric_plan_count);
+    try std.testing.expectEqual(protocol.PlanOutputFlags.gpu_inventory_selected, output.flags);
+    try std.testing.expectEqual(@as(u64, 30), source_plans[0].source_handle);
+    try std.testing.expectEqual(@as(u32, 0), source_plans[0].requested_rule_count);
+}
+
 test "catalog semantic fingerprint is field-ordered and stable" {
     const sources = testSources();
     const rules = testRules();

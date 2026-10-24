@@ -371,7 +371,7 @@ fn validInput(
     {
         return false;
     }
-    if (requested_metrics.len == 0 or
+    if ((requested_metrics.len == 0 and (input.flags & protocol.PlanFlags.include_gpu_inventory) == 0) or
         requested_metrics.len > session.config.maximum_plan_metric_count or
         source_modes.len != session.active.source_count or
         source_modes.len > session.config.maximum_source_mode_count)

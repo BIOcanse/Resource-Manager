@@ -52,10 +52,12 @@ internal sealed partial class WindowsHardwareMetricCapture
             : ImmutableHashSet.CreateBuilder<string>(StringComparer.OrdinalIgnoreCase);
         PdhGpuEngineUsageRead? pdhGpuEngineUsage = null;
         var completions = new List<(NativeMetricSnapshotCollectionPlan Plan, NativeMetricSnapshotSourceCompletion Completion)>();
-        if (requestedMetricHandles.Length != 0)
-        {
-            var includeGpuInventory = collectionRequest.IsAll || requestedMetricHandles.Any(handle =>
+        var includeGpuInventory = collectionRequest.Includes(MetricDatasetIds.SystemGpuInventory)
+            || collectionRequest.IncludesAllGpuCoreMetrics
+            || requestedMetricHandles.Any(handle =>
                 catalog.MetricBindings.GetValueOrDefault(handle).Field?.Resource == MetricResource.Gpu);
+        if (requestedMetricHandles.Length != 0 || includeGpuInventory)
+        {
             if (sourceRuntimeFacts.NeedsWorkspaceSourceSynchronization(workspaceIdentity))
             {
                 sourceRuntimeFacts.SynchronizeWorkspaceSources(
@@ -80,13 +82,18 @@ internal sealed partial class WindowsHardwareMetricCapture
             }
 
             if (completedQuerySources is not null)
-            foreach (var metricPlan in plan.Metrics)
             {
-                if ((metricPlan.Flags & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) == 0
-                    || !completedQuerySources.Contains(metricPlan.SourceHandle))
-                    continue;
-                if (plan.Catalog.MetricIds.TryGetValue(metricPlan.MetricHandle, out var metricAddress))
-                    queriedMetricAddresses!.Add(metricAddress);
+                if (completedQuerySources.Any(handle => catalog.SourceIds[handle]
+                        == NativeMetricSnapshotSources.WindowsGpuAdapterOrder))
+                    queriedMetricAddresses!.Add(MetricDatasetIds.SystemGpuInventory);
+                foreach (var metricPlan in plan.Metrics)
+                {
+                    if ((metricPlan.Flags & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) == 0
+                        || !completedQuerySources.Contains(metricPlan.SourceHandle))
+                        continue;
+                    if (plan.Catalog.MetricIds.TryGetValue(metricPlan.MetricHandle, out var metricAddress))
+                        queriedMetricAddresses!.Add(metricAddress);
+                }
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
@@ -355,22 +362,23 @@ internal sealed partial class WindowsHardwareMetricCapture
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(snapshot.Datasets,
             StringComparer.OrdinalIgnoreCase);
         Add(MetricDatasetIds.SystemMetricCatalog, topology?.GpuStatus);
-        Add(MetricDatasetIds.StorageInventory, topology?.StorageStatus);
+        Add(MetricDatasetIds.StorageInventory, topology?.StorageStatus, topology?.StorageGeneration);
         Add(MetricDatasetIds.FanInventory, topology is null ? null
             : topology.FanStatus == NativeMetricSnapshotCatalogTopologyStatus.Complete
                 && topology.NvmlFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Complete
                 && topology.IgclFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Complete
                 && topology.NotebookOemFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Complete
-                    ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable);
+                    ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+            topology?.FanGeneration);
         Add(MetricDatasetIds.BatteryInventory, topology?.BatteryStatus);
         Add(MetricDatasetIds.NumaInventory, topology?.NumaStatus);
         return snapshot with { CapturedAt = observedAt, Datasets = datasets };
 
-        void Add(string id, NativeMetricSnapshotCatalogTopologyStatus? status)
+        void Add(string id, NativeMetricSnapshotCatalogTopologyStatus? status, ulong? generation = null)
         {
             var current = status == NativeMetricSnapshotCatalogTopologyStatus.Complete;
             datasets[id] = new(id, current ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable,
-                topology?.Generation ?? 0, current ? observedAt.UtcTicks : 0, snapshot.WorkspaceIdentity,
+                generation ?? topology?.Generation ?? 0, current ? observedAt.UtcTicks : 0, snapshot.WorkspaceIdentity,
                 snapshot.ConfigurationGeneration, snapshot.CatalogGeneration, snapshot.CommittedGeneration)
             {
                 LastAttemptAtUtcTicks = observedAt.UtcTicks,

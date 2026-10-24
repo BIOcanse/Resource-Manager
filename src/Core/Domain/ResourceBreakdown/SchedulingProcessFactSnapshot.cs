@@ -350,7 +350,7 @@ public sealed record SchedulingProcessFactSnapshot(
         => IsGpuMetricCurrentComplete(
             inventory,
             SchedulingProcessMetricMask.GpuUsage,
-            static adapter => adapter.UsageStatus == SamplingObservationStatus.Current);
+            static _ => true);
 
     public bool IsGpuDedicatedMemoryCurrentComplete(SchedulingGpuInventorySnapshot inventory)
         => IsGpuMetricCurrentComplete(

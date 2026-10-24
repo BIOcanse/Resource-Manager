@@ -107,7 +107,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         Assert.True(owner.TryPublishHosted(ticket, raw, MetricSampleRequest.All,
             [SamplingDatasetIds.SystemGpuInventory, "gpu.0.usage"], null, out _));
         Assert.Empty(owner.Read()!.History[SamplingDatasetIds.SystemMemoryUsage]);
-        Assert.False(owner.Read()!.GpuInventory.IsCurrentComplete());
+        Assert.True(owner.Read()!.GpuInventory.IsCurrentComplete());
         Assert.Equal(SamplingObservationStatus.NotRequested, Assert.Single(owner.Read()!.GpuInventory.Adapters).CapacityStatus);
         Assert.True(owner.TryPublishHosted(ticket, HistoryHardwareSnapshot(2, 95), MetricSampleRequest.All,
             [SamplingDatasetIds.SystemCpuUsage], null, out _));

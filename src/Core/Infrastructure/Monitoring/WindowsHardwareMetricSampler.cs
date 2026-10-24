@@ -793,10 +793,11 @@ public sealed partial class WindowsHardwareMetricSampler :
         MetricSampleRequest request)
         => request.IsAll
             ? GetSubscriptionItemIds(request)
-            : GetSubscriptionItemIds(request).Where(static itemId =>
+            : GetSubscriptionItemIds(request).Where(itemId =>
                 !itemId.Equals(
                     SamplingDatasetIds.SystemGpuInventory,
-                    StringComparison.OrdinalIgnoreCase));
+                    StringComparison.OrdinalIgnoreCase)
+                || request.Includes(SamplingDatasetIds.SystemGpuInventory));
 
     internal void PublishCompletedDatasets(IEnumerable<string> datasetIds)
     {
@@ -813,33 +814,9 @@ public sealed partial class WindowsHardwareMetricSampler :
             NativeItemSamplingSubscriptionSourceView<MetricSampleRequest>> sources)
     {
         var dueItems = itemIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var relevantSources = sources
-            .Where(source => source.ItemIds.Any(dueItems.Contains))
-            .ToArray();
         var metricIds = dueItems
-            .Where(static itemId => !itemId.Equals(SamplingDatasetIds.SystemMetricCatalog, StringComparison.OrdinalIgnoreCase)
-                && !itemId.Equals(
-                SamplingDatasetIds.SystemGpuInventory,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(static itemId => !itemId.Equals(SamplingDatasetIds.SystemMetricCatalog, StringComparison.OrdinalIgnoreCase))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var dueGpuInventory = dueItems.Contains(
-            SamplingDatasetIds.SystemGpuInventory);
-        if (dueGpuInventory)
-        {
-            metricIds.UnionWith(relevantSources
-                .SelectMany(static source => source.Request.Ids)
-                .Where(itemId => IsGpuMetric(itemId) || IsManagedGpuMetric(itemId)));
-            if (!metricIds.Any(IsGpuMetric))
-            {
-                var inventoryProbeMetric =
-                    (dashboardMonitoringCatalog.Current?.Items.Keys ?? [])
-                    .FirstOrDefault(IsGpuMetric);
-                if (inventoryProbeMetric is not null)
-                {
-                    metricIds.Add(inventoryProbeMetric);
-                }
-            }
-        }
         var dueCatalog = dueItems.Contains(SamplingDatasetIds.SystemMetricCatalog);
         if (metricIds.Count == 0 && !dueCatalog)
         {
@@ -886,6 +863,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         var pageFileRequested = request.IsAll
             || request.IncludesPrefix("virtualMemory.");
         var gpuRequested = request.IsAll
+            || request.Includes(SamplingDatasetIds.SystemGpuInventory)
             || request.IncludesAllGpuCoreMetrics
             || RequestIncludesResource(request, MetricResource.Gpu);
         return new HardwareMetricSnapshot(

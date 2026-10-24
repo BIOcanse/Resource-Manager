@@ -69,10 +69,22 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.Coordinator.TransitionProbe = shutdownProbe;
         fixture.DebugLogWriter.PrepareRecordCapacity(
             HostedScoreOnlyWarmupCycleCount + HostedScoreOnlyMeasuredCycleCount);
+        IHost? host = null;
+        Task? hostedStopTask = null;
+        long stopStarted = 0;
+        using var corpusStopCancellation = new CancellationTokenSource();
         var nativeIdentityCapture = new HostedNativeProcessedIdentityCapture(
             fixture.Workspace,
             HostedScoreOnlyLastMeasuredSequence,
-            HostedScoreOnlyMaximumProcessCount);
+            HostedScoreOnlyMaximumProcessCount,
+            () =>
+            {
+                // Close admission at the corpus boundary, even if the test continuation
+                // runs after the next scheduled deadline. Join outside the worker.
+                stopStarted = Stopwatch.GetTimestamp();
+                corpusStopCancellation.CancelAfter(TimeSpan.FromSeconds(10));
+                hostedStopTask = host!.StopAsync(corpusStopCancellation.Token);
+            });
         fixture.DebugLogWriter.AttachRecordObserver(nativeIdentityCapture);
 
         var durableBefore = CaptureDurableFiles(fixture.Root);
@@ -89,7 +101,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(default, deadline.Snapshot);
 
         JsonDebugDiagnosticLogWriter? evidenceWriter = null;
-        IHost? host = null;
         var forwardingWriterAttached = false;
         var recordObserverAttached = true;
         var hostStopped = false;
@@ -162,6 +173,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     TimeSpan.FromSeconds(5));
             }
             var measuredElapsed = Stopwatch.GetElapsedTime(measuredStarted);
+            var plannedStop = hostedStopTask
+                ?? throw new InvalidDataException(
+                    "The final hosted corpus readback did not request shutdown.");
+            await plannedStop;
+            stopElapsed = Stopwatch.GetElapsedTime(stopStarted);
+            hostStopped = true;
             Assert.InRange(
                 measuredElapsed,
                 TimeSpan.Zero,
@@ -184,13 +201,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     fixture.Coordinator,
                     "hostPublicResourceNormalReleaseEvidence"));
 
-            var stopStarted = Stopwatch.GetTimestamp();
-            using (var stopCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
-            {
-                await host.StopAsync(stopCancellation.Token);
-            }
-            stopElapsed = Stopwatch.GetElapsedTime(stopStarted);
-            hostStopped = true;
             Assert.InRange(stopElapsed, TimeSpan.Zero, TimeSpan.FromSeconds(10));
             Assert.Equal(
                 HostManagerSmartCoordinatorLifecycleState.Closed,
@@ -630,7 +640,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private sealed class HostedNativeProcessedIdentityCapture(
         NativeSmartCoordinatorWorkspace workspace,
         int maximumSequence,
-        int maximumProcessCount) : IScoreOnlyDiagnosticRecordObserver
+        int maximumProcessCount,
+        Action onCorpusCompleted) : IScoreOnlyDiagnosticRecordObserver
     {
         private readonly object sync = new();
         private readonly HostedNativeProcessIdentity[] identities =
@@ -669,7 +680,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 || sequence > maximumSequence)
             {
                 throw new InvalidDataException(
-                    "A hosted native readback has an invalid producer sequence.");
+                    $"A hosted native readback has an invalid producer sequence: value={sequenceValue ?? "<missing>"}, type={sequenceValue?.GetType().FullName ?? "<null>"}, expected=1..{maximumSequence}, trigger={record.Properties.GetValueOrDefault("trigger")}, outcome={record.Properties.GetValueOrDefault("outcome")}, wakeAfterMilliseconds={workspace.Snapshot.WakeAfterMilliseconds}.");
             }
             var slot = checked((int)sequence - 1);
             if (Volatile.Read(ref written[slot]) != 0)
@@ -727,6 +738,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             snapshotRowCounts[slot] = snapshot.SnapshotRowCount;
             nativeCycleSequences[slot] = snapshot.CycleSequence;
             Volatile.Write(ref written[slot], 1);
+            if (sequence == maximumSequence)
+            {
+                onCorpusCompleted();
+            }
         }
 
         internal HostedScoreOnlyNativeReadback[] AssertCompleteAndExact(

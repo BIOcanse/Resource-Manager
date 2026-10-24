@@ -60,7 +60,7 @@ public static class WindowsIntelFanTopology
             foreach (var fan in identities.OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
             {
                 var displayIndex = index++;
-                fans.Add(new(displayIndex, fan.ExactIdentityKey, topology.Generation)
+                fans.Add(new(displayIndex, fan.ExactIdentityKey, topology.FanGeneration)
                 {
                     IgclFan = fan,
                     Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, displayIndex)

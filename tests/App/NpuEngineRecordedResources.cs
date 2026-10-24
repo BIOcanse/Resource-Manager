@@ -24,6 +24,7 @@ internal sealed class NpuEngineRecordedResources
     internal readonly Dictionary<uint, ulong> EngineTickOffsets = [];
     private readonly Dictionary<uint, ulong> engineCounters = [];
     internal Action? AfterRead;
+    internal Func<MemoryMetrics>? ReadMemory;
     internal readonly List<Directory> Opened = [];
     internal IReadOnlySet<string> LastRequested = new HashSet<string>();
     internal uint LastMaximum;
@@ -75,7 +76,7 @@ internal sealed class NpuEngineRecordedResources
         ReadBatteryIdentities = static () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
         ReadNetworkIdentities = static () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
         ReadNumaIdentities = static () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
-        ReadCpuCounters = () => throw Unexpected(), ReadMemory = () => throw Unexpected(), ReadVirtualMemory = () => throw Unexpected(),
+        ReadCpuCounters = () => throw Unexpected(), ReadMemory = () => ReadMemory?.Invoke() ?? throw Unexpected(), ReadVirtualMemory = () => throw Unexpected(),
         ReadNumaAvailable = (_, _) => new Dictionary<string, ulong>(), ReadCpuFrequency = () => throw Unexpected(),
         ReadGpuUsage = _ => PdhGpuEngineUsageRead.NotRequested,
         ReadNvmlAsync = (_, _, _) => throw Unexpected(), ReadNvapiAsync = (_, _, _) => throw Unexpected(), ReadAdlxAsync = (_, _, _) => throw Unexpected(),

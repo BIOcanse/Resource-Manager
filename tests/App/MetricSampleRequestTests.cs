@@ -5,6 +5,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MetricSampleRequestTests
 {
     [Fact]
+    public void InventoryIsAnIndependentRequestAndSurvivesMerging()
+    {
+        var inventory = MetricSampleRequest.ForIds(["system.gpu.inventory"]);
+        Assert.False(inventory.IsEmpty);
+        Assert.False(inventory.IncludesAllGpuCoreMetrics);
+        Assert.False(inventory.IncludesPrefix("gpu."));
+        var merged = MetricSampleRequest.Merge([inventory, MetricSampleRequest.ForIds(["cpu.usage"])]);
+        Assert.True(merged.Includes("system.gpu.inventory"));
+        Assert.True(merged.Includes("cpu.usage"));
+        Assert.False(merged.Includes("gpu.0.usage"));
+    }
+
+    [Fact]
     public void GpuWildcardWithoutExplicitIdsIsStillARequest()
     {
         var gpu = MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([]);

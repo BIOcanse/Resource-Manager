@@ -11,16 +11,14 @@ public sealed class ExternalGpuResidentObservation(
     IMetricSnapshotObservationSource hardware, ISchedulingProcessFactObservationSource processes)
 {
     internal IReadOnlyList<ulong> ReadAdapterKeys()
-        => hardware.ReadLatest(MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([
-            SamplingDatasetIds.SystemCpuUsage, SamplingDatasetIds.SystemMemoryUsage,
-            SamplingDatasetIds.SystemVirtualMemoryUsage]))?.GpuInventory?.Adapters
+        => hardware.ReadLatest(MetricSampleRequest.ForIds([
+            SamplingDatasetIds.SystemGpuInventory]))?.GpuInventory?.Adapters
             .Select(adapter => adapter.AdapterKey).Where(key => key != 0).Distinct().ToArray() ?? [];
 
     internal ExternalResidentSample? Read(GpuPlacementProcessInstance identity)
     {
-        var inventory = hardware.ReadLatest(MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([
-            SamplingDatasetIds.SystemCpuUsage, SamplingDatasetIds.SystemMemoryUsage,
-            SamplingDatasetIds.SystemVirtualMemoryUsage]))?.GpuInventory;
+        var inventory = hardware.ReadLatest(MetricSampleRequest.ForIds([
+            SamplingDatasetIds.SystemGpuInventory]))?.GpuInventory;
         if (inventory is null) return null;
         var snapshot = processes.ReadLatest(new(SchedulingProcessMetricMask.GpuDedicatedMemory
             | SchedulingProcessMetricMask.GpuUsage, inventory));
