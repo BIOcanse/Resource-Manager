@@ -107,7 +107,8 @@ public sealed partial class IntelGpuInformationCollectorTests
         await owner.StartAsync(CancellationToken.None); var dashboard = PublishClockCatalog(owner);
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => PciCapabilityCodes.Contains(binding.Field.Code)).ToArray();
         Assert.Equal(4, bound.Length); Assert.All(bound, binding => { Assert.Equal("intel.igcl", binding.SourceId); Assert.Equal(MetricVendor.Intel, binding.Field.Vendor); });
-        var device = bound.Single(binding => binding.Field.Code == PciCapabilityCodes[0] && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+        var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
+        var device = bound.Single(binding => binding.Field.Code == PciCapabilityCodes[0] && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sdk = new Sdk(); var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No system memory demand"), () => throw new InvalidOperationException("No system memory demand"));

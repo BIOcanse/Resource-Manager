@@ -46,8 +46,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         var root = Path.Combine(Path.GetTempPath(), $"igcl-worker-{Guid.NewGuid():N}");
         using var owner = new HostManagerMetricSnapshotOwner(slots.Provider, new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => new(1, NativeMetricSnapshotCatalogTopologyStatus.Complete,
-                [new(9, "same-name", "gpu-a", LuidA, 1, 4, true),
-                 new(3, "same-name", "gpu-b", LuidB, 1, 4, true)],
+                RecordedGpuIdentities(),
                 NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new TestEnvironment(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
@@ -56,7 +55,8 @@ public sealed partial class IntelGpuInformationCollectorTests
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => binding.Field.Vendor == MetricVendor.Intel && IntelGclReader.IsRawTelemetryField(binding.Field.Code)).ToArray();
         Assert.Equal(36, bound.Length); Assert.All(bound, binding => Assert.Equal("intel.igcl", binding.SourceId));
-        var device = bound.Single(binding => binding.Field.Code == MetricFieldCode.IgclGpuEnergy && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+        var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
+        var device = bound.Single(binding => binding.Field.Code == MetricFieldCode.IgclGpuEnergy && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sdk = new Sdk(); var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds
             .Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());

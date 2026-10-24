@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Intel;
+using ResourceManager.ReadWrite.Windows.Metrics.Topology;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -241,8 +242,21 @@ public sealed partial class IntelGpuInformationCollectorTests
         GraphicsClock = Number(1222.5, IntelGclUnit.Megahertz), MemoryClock = Number(900.75, IntelGclUnit.Megahertz) };
     private static Dictionary<int, IReadOnlySet<MetricFieldCode>> Request(int index)
         => new() { [index] = Codes.ToHashSet() };
-    private static WindowsGpuAdapterInventoryRead Inventory() => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 1,
-        [Adapter(9, LuidA), Adapter(3, LuidB)]);
+    private static WindowsGpuAdapterInventoryRead Inventory() => Inventory(secondHasDedicatedMemory: true);
+    private static WindowsGpuAdapterInventoryRead Inventory(bool secondHasDedicatedMemory) => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 1,
+        [Adapter(9, LuidA), Adapter(3, LuidB) with
+        {
+            Kind = secondHasDedicatedMemory ? WindowsGpuAdapterKind.Dedicated : WindowsGpuAdapterKind.Integrated,
+            DedicatedVideoMemoryBytes = secondHasDedicatedMemory ? 8UL << 30 : 0
+        }]);
+
+    // The catalog and live inventory must use the topology owner's same physical identity projection.
+    private static IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> RecordedGpuIdentities(bool secondHasDedicatedMemory = true)
+    {
+        var captured = WindowsHardwareMetricTopologySource.CaptureGpuIdentities(Inventory(secondHasDedicatedMemory));
+        Assert.Null(captured.FailureCode);
+        return captured.Rows;
+    }
     private static WindowsGpuAdapter Adapter(int index, ulong luid, uint vendor = 0x8086) => new(index, "same-name", vendor, 0x56A0, 0,
         new AdapterLuid { LowPart = (uint)luid, HighPart = unchecked((int)(luid >> 32)) }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)
     { PhysicalIdentityStatus = SamplingObservationStatus.Current,

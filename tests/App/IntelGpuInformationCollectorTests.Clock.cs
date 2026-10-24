@@ -71,9 +71,10 @@ public sealed partial class IntelGpuInformationCollectorTests
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => ClockCodes.Contains(binding.Field.Code) && binding.SourceId == "intel.igcl").ToArray();
         Assert.Equal(3, bound.Length);
         Assert.All(bound, binding => { Assert.Equal(MetricVendor.All, binding.Field.Vendor); Assert.Equal("MHz", binding.Field.Unit); });
-        Assert.Contains(bound, binding => binding.Field.Code == MetricFieldCode.GpuMemoryClock && binding.DeviceIdentity.Contains("gpu-a"));
-        Assert.Contains(bound, binding => binding.Field.Code == MetricFieldCode.GpuGraphicsClock && binding.DeviceIdentity.Contains("gpu-b"));
-        Assert.DoesNotContain(bound, binding => binding.Field.Code == MetricFieldCode.GpuMemoryClock && binding.DeviceIdentity.Contains("gpu-b"));
+        var identities = RecordedGpuIdentities(secondHasDedicatedMemory: false).ToDictionary(static gpu => gpu.DisplayIndex);
+        Assert.Contains(bound, binding => binding.Field.Code == MetricFieldCode.GpuMemoryClock && binding.DeviceIdentity == identities[9].ExactIdentityKey);
+        Assert.Contains(bound, binding => binding.Field.Code == MetricFieldCode.GpuGraphicsClock && binding.DeviceIdentity == identities[3].ExactIdentityKey);
+        Assert.DoesNotContain(bound, binding => binding.Field.Code == MetricFieldCode.GpuMemoryClock && binding.DeviceIdentity == identities[3].ExactIdentityKey);
     }
 
     [Fact]
@@ -83,8 +84,9 @@ public sealed partial class IntelGpuInformationCollectorTests
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
         await owner.StartAsync(CancellationToken.None);
         var dashboard = PublishClockCatalog(owner);
+        var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.SourceId == "intel.igcl" &&
-            binding.Field.Code == MetricFieldCode.GpuGraphicsClock && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+            binding.Field.Code == MetricFieldCode.GpuGraphicsClock && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sdk = new Sdk(); var zone = new IntelGclMonitoringZone(new IntelGclReader(sdk.Open));
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds
             .Select(id => id == zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
@@ -147,7 +149,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     private static HostManagerMetricSnapshotOwner CreateClockOwner(HostManagerSamplingSubscriptionTestFixture slots, bool secondHasDedicatedMemory)
         => new(slots.Provider, new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => new(1, NativeMetricSnapshotCatalogTopologyStatus.Complete,
-                [new(9, "same-name", "gpu-a", LuidA, 1, 4, true), new(3, "same-name", "gpu-b", LuidB, 1, 4, secondHasDedicatedMemory)],
+                RecordedGpuIdentities(secondHasDedicatedMemory),
                 NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new TestEnvironment(Path.Combine(Path.GetTempPath(), $"igcl-clock-worker-{Guid.NewGuid():N}")), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
 

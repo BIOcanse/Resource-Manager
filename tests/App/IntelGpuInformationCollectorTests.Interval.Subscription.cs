@@ -22,7 +22,8 @@ public sealed partial class IntelGpuInformationCollectorTests
         await owner.StartAsync(CancellationToken.None); var dashboard = PublishClockCatalog(owner);
         var bindings = dashboard.Current!.FieldBindings.Values.Where(binding => IntervalCodes.Contains(binding.Field.Code)).ToArray();
         Assert.Equal(12, bindings.Length); Assert.All(bindings, binding => Assert.Equal("intel.igcl", binding.SourceId));
-        var device = bindings.Single(binding => binding.Field.Code == IntervalCodes[0] && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+        var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
+        var device = bindings.Single(binding => binding.Field.Code == IntervalCodes[0] && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sequence = 0; var badGpuEnergy = 0;
         var sdk = new Sdk { SampleFactory = () =>
         {
