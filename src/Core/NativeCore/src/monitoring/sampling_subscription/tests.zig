@@ -40,10 +40,8 @@ test "external scratch really writes five columns and preserves issued authoriza
     try std.testing.expectEqual(ResultCode.ok, session.bindScratch(&second));
     var forged = issued.result.triggers;
     forged[0].sequence += 1;
-    try std.testing.expectEqual(ResultCode.stale_frame,
-        completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, forged[0..1]).code);
-    try std.testing.expectEqual(ResultCode.ok,
-        completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, issued.result.triggers[0..1]).code);
+    try std.testing.expectEqual(ResultCode.stale_frame, completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, forged[0..1]).code);
+    try std.testing.expectEqual(ResultCode.ok, completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, issued.result.triggers[0..1]).code);
     try std.testing.expectEqual(@as(u64, 10), session.scratch_item_handles[0]);
     try std.testing.expectEqual(@as(u32, 1), session.scratch_source_counts[item_index]);
     try std.testing.expectEqual(@as(u64, std.math.maxInt(u64)), session.scratch_effective_intervals[item_index]);
@@ -56,16 +54,12 @@ test "external scratch really writes five columns and preserves issued authoriza
 test "external scratch ABI rejects missing storage and never transfers its ownership" {
     var config = testConfig();
     var handle: ?*anyopaque = null;
-    try std.testing.expectEqual(@intFromEnum(ResultCode.ok),
-        abi.rm_sampling_subscription_create_external_scratch(&config, &handle));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_create_external_scratch(&config, &handle));
     defer abi.rm_sampling_subscription_destroy(handle);
-    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument),
-        abi.rm_sampling_subscription_bind_scratch(handle, null, 0));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_sampling_subscription_bind_scratch(handle, null, 0));
     var bytes: [32 * output_capacity + 8]u8 align(8) = @splat(0xBC);
-    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument),
-        abi.rm_sampling_subscription_bind_scratch(handle, bytes[1..].ptr, bytes.len - 1));
-    try std.testing.expectEqual(@intFromEnum(ResultCode.ok),
-        abi.rm_sampling_subscription_bind_scratch(handle, &bytes, bytes.len));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_sampling_subscription_bind_scratch(handle, bytes[1..].ptr, bytes.len - 1));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_bind_scratch(handle, &bytes, bytes.len));
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_unbind_scratch(handle));
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_unbind_scratch(handle));
     const ordinary = try session_module.Session.create(&config);
@@ -430,7 +424,7 @@ test "source update atomically replaces its item membership" {
 
     const snapshot_result = runSnapshot(session);
     try std.testing.expectEqual(ResultCode.ok, snapshot_result.code);
-    try std.testing.expectEqual(@as(u32, 3), snapshot_result.header.known_item_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot_result.header.known_item_count);
     try std.testing.expectEqual(@as(u32, 1), snapshot_result.header.membership_count);
 }
 
@@ -1586,4 +1580,66 @@ fn testConfig() protocol.Config {
 
 fn lessThanU64(_: void, left: u64, right: u64) bool {
     return left < right;
+}
+
+test "released expired and replaced demands reuse bounded item slots" {
+    for (0..3) |mode| {
+        var config = testConfig();
+        config.maximum_item_count = 1;
+        config.maximum_due_item_count = 1;
+        const session = try session_module.Session.create(&config);
+        defer session.destroy();
+        var operation: u64 = 1;
+        var now: u64 = 1_000;
+        var handle: u64 = 10;
+        while (handle < 30) : (handle += 1) {
+            try std.testing.expectEqual(ResultCode.ok, track(session, operation, now, now, 1, 0, 0, &.{handle}));
+            operation += 1;
+            if (mode == 0) {
+                try std.testing.expectEqual(ResultCode.ok, remove(session, operation, now, 1));
+                operation += 1;
+                try std.testing.expectEqual(@as(?u32, null), session.findItem(handle));
+            } else if (mode == 1) {
+                now += 5_001;
+                const expired = runPlan(session, operation, operation, now);
+                operation += 1;
+                try std.testing.expectEqual(ResultCode.ok, expired.code);
+                try std.testing.expectEqual(@as(u32, 1), expired.result.header.expired_source_count);
+                try std.testing.expectEqual(@as(?u32, null), session.findItem(handle));
+            } else if (handle > 10) {
+                try std.testing.expectEqual(@as(?u32, null), session.findItem(handle - 1));
+            }
+        }
+    }
+}
+
+test "removed items stay reserved until query or trigger-only plans settle" {
+    for (0..2) |mode| {
+        var config = testConfig();
+        config.maximum_item_count = 1;
+        config.maximum_due_item_count = 1;
+        const session = try session_module.Session.create(&config);
+        defer session.destroy();
+        try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 1, protocol.SourceFlags.persistent | protocol.SourceFlags.periodic_triggers, 0, &.{10}));
+        var pending = runPlan(session, 2, 1, 1_000);
+        var operation: u64 = 3;
+        var now: u64 = 1_000;
+        if (mode == 1) {
+            try std.testing.expectEqual(ResultCode.ok, complete(session, 3, 1, 1_900, 1_900, .sampled, &.{10}).code);
+            pending = runPlan(session, 4, 2, 2_000);
+            try std.testing.expectEqual(@as(u32, 0), pending.result.header.due_item_count);
+            try std.testing.expectEqual(@as(u32, 1), pending.result.header.trigger_count);
+            operation = 5;
+            now = 2_000;
+        }
+        try std.testing.expectEqual(ResultCode.ok, pending.code);
+        try std.testing.expectEqual(ResultCode.ok, remove(session, operation, now, 1));
+        operation += 1;
+        try std.testing.expectEqual(ResultCode.out_of_memory, track(session, operation, now, now, 2, 0, 0, &.{20}));
+        const handles: []const u64 = if (mode == 0) &.{10} else &.{};
+        const settled = completeWithTriggers(session, operation, pending.result.header.plan_epoch, now, now, .skipped, handles, pending.result.triggers[0..pending.result.header.trigger_count]);
+        try std.testing.expectEqual(ResultCode.ok, settled.code);
+        try std.testing.expectEqual(@as(?u32, null), session.findItem(10));
+        try std.testing.expectEqual(ResultCode.ok, track(session, operation + 1, now, now, 2, 0, 0, &.{20}));
+    }
 }

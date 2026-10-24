@@ -448,6 +448,7 @@ public sealed partial class WindowsHardwareMetricSampler :
             }
             if (samplingTask is null)
             {
+                subscriptions.Clear(DateTimeOffset.UtcNow);
                 samplingRunId = null;
                 return;
             }
@@ -541,6 +542,7 @@ public sealed partial class WindowsHardwareMetricSampler :
             {
                 if (ReferenceEquals(samplingTask, task))
                 {
+                    subscriptions.Clear(DateTimeOffset.UtcNow);
                     samplingTask = null;
                     samplingCts = null;
                     if (samplingRunId == runId)
@@ -630,7 +632,7 @@ public sealed partial class WindowsHardwareMetricSampler :
                 return SubscriptionSampleCompletion.Skipped;
             }
             completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
-                triggers, queriedAddresses, publication.IsSuccessful));
+                triggers, queriedAddresses, committed: true));
             var (newlyRejected, recovered) = TrackRejectedDatasets(rejectedDatasetIds, publication);
             if (newlyRejected.Count != 0)
             {

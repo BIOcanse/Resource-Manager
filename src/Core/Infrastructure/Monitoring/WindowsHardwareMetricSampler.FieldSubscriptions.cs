@@ -100,7 +100,7 @@ public sealed partial class WindowsHardwareMetricSampler
             var request = MetricSampleRequest.ForIds([selection.Binding.RequestAddress]);
             return new FieldCollectionBinding(fields[index],
                 [.. subscriptions.GetDeliveryItemIds(request)],
-                [selection.Binding.RequestAddress],
+                [selection.Binding.EffectiveSampleRequestAddress],
                 FieldCollectionSourceKind.SourceQuery);
         })];
 

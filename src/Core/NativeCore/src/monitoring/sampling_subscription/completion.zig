@@ -102,6 +102,11 @@ pub fn complete(
     }
 
     for (trigger_references) |reference| {
+        // A delivery-only plan also holds its item until settlement, even when
+        // its source/membership was removed while the plan was in flight.
+        if (session.findItem(reference.item_handle)) |item_index| {
+            session.items[item_index].last_planned_epoch = 0;
+        }
         if (!activeMembershipMatches(session, &reference, input.plan_epoch)) continue;
         const membership_index = session.findMembership(reference.source_handle, reference.item_handle) orelse unreachable;
         const membership = &session.memberships[membership_index];

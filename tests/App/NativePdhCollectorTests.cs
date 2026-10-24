@@ -599,7 +599,7 @@ public sealed class NativePdhCollectorTests
     }
 
     [Fact]
-    public void ProviderLastGoodKeepsOriginalObservationTimeAndStatus()
+    public void ProviderLastGoodDiagnosticsRetainTimeButProcessReadingIsEmpty()
     {
         var capturedAt = new DateTimeOffset(
             2026,
@@ -662,8 +662,10 @@ public sealed class NativePdhCollectorTests
             NativePdhProviderAvailability.LastGood,
             gpu.ProviderAvailability);
         Assert.Equal(
-            SamplingObservationStatus.RetainedLastGood,
+            SamplingObservationStatus.Unavailable,
             processGpu.Status);
+        Assert.Empty(processGpu.GetUsagePercentByProcess(0));
+        Assert.Empty(processGpu.GetDedicatedMemoryBytesByProcess(0));
         Assert.Equal(capturedAt, gpu.ObservedAt);
         Assert.Equal(
             NativePdhProviderAvailability.LastGood,
