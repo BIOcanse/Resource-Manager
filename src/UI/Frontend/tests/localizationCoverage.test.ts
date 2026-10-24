@@ -198,7 +198,8 @@ try {
   else Reflect.deleteProperty(globalThis, "window");
 }
 
-const reportPath = fileURLToPath(new URL("../../../../.local/test-results/localization-coverage.json", import.meta.url));
+const reportPath = process.env.RM_LOCALIZATION_REPORT_PATH
+  ?? fileURLToPath(new URL("../../../../.local/test-results/localization-coverage.json", import.meta.url));
 mkdirSync(dirname(reportPath), { recursive: true });
 writeFileSync(reportPath, JSON.stringify({
   scope: "Selectable frontend languages: production loaders, active stores, host/document language, representative function outputs and control display helpers. Does not certify linguistic quality, rendered UI or other EXEs.",

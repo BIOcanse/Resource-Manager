@@ -44,6 +44,7 @@ import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibility
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
 import { deviceMetricFieldNames } from "./deviceMetricFields.ts";
 import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
@@ -68,14 +69,18 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
   const topology = useDeviceTopologyState();
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
-  const [metricFieldDevices, setMetricFieldDevices] = createSignal<readonly MetricFieldDevice[] | null>(null);
+  const [metricFieldSource, setMetricFieldSource] = createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
+  const metricFieldDevices = () => metricFieldSource()?.data ?? null;
   // NPU／AMD NPU 实时数值和设备拓扑同一生命周期订阅：所有订阅共用一条推送流，
   // 跟着弹窗开关订阅会让整条流（含设备拓扑）反复重连。
   createEffect(() => {
     if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology)) {
+      setMetricFieldSource(null);
       return;
     }
-    onCleanup(runtime.sources.metricFields.subscribe({ fields: deviceMetricFieldNames }, 1_000, setMetricFieldDevices));
+    const unsubscribe = runtime.sources.metricFields.subscribeSnapshot(
+      { fields: deviceMetricFieldNames }, 1_000, setMetricFieldSource);
+    onCleanup(() => { unsubscribe(); setMetricFieldSource(null); });
   });
   const snapshot = createMemo(() => topology.state().snapshot ?? null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
@@ -199,7 +204,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         when={snapshot()}
         fallback={
           <div class="device-topology-loading">
-            {topology.state().state === "failed" ? uiText.deviceTopology.unavailable : uiText.deviceTopology.loading}
+            {topology.observation().status === "error" ? uiText.deviceTopology.unavailable : uiText.deviceTopology.loading}
           </div>
         }
       >

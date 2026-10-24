@@ -354,3 +354,26 @@ twoDisplays.snapshot.ports.push(otherPort);
 const exactPaths = deviceTopologyStateDecoder.decode(twoDisplays).snapshot!.ports;
 assert.equal(exactPaths[0].display!.modeCapabilityDeclared!.modes.length, 7); assert.equal(exactPaths[1].display!.modeCapabilityDeclared, null);
 assert.notEqual(exactPaths[0].display!.monitorDevicePath, exactPaths[1].display!.monitorDevicePath);
+
+// A nullable port protocol must not invalidate its siblings or the snapshot.
+const nullableProtocolWire = structuredClone(twoDisplays);
+nullableProtocolWire.snapshot.ports[0].protocol = null;
+const nullableProtocol = deviceTopologyStateDecoder.decode(nullableProtocolWire);
+assert.equal(nullableProtocol.snapshot!.ports[0].protocol, null);
+assert.deepEqual(nullableProtocol.snapshot!.ports[0], { ...exactPaths[0], protocol: null });
+assert.deepEqual(nullableProtocol.snapshot!.ports[1], exactPaths[1]);
+assert.deepEqual({ ...nullableProtocol, snapshot: null }, {
+  ...deviceTopologyStateDecoder.decode(twoDisplays), snapshot: null
+});
+for (const invalidProtocol of [undefined, 42, {}, []]) {
+  nullableProtocolWire.snapshot.ports[0].protocol = invalidProtocol;
+  assert.throws(() => deviceTopologyStateDecoder.decode(nullableProtocolWire),
+    (error: unknown) => error instanceof ResponseDecodeError
+      && error.path === "$.snapshot.ports[0].protocol");
+}
+
+nullableProtocolWire.snapshot.ports[0].protocol = null;
+nullableProtocolWire.snapshot.ports[0].connectorKind = null;
+assert.throws(() => deviceTopologyStateDecoder.decode(nullableProtocolWire),
+  (error: unknown) => error instanceof ResponseDecodeError
+    && error.path === "$.snapshot.ports[0].connectorKind");

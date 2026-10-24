@@ -925,7 +925,7 @@ export interface DeviceTopologyPort {
   connectorKind: string;
   busKind: string;
   hardwareKind: string | null;
-  protocol: string;
+  protocol: string | null;
   speed: string | null;
   physicalMaximumSpeed?: string | null;
   deviceId: string;

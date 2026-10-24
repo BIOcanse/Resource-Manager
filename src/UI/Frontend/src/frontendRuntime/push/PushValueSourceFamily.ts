@@ -7,9 +7,6 @@ import {
 
 export interface PushValueSourceFamily<TQuery, TValue> {
   readonly key: string;
-  /** Value-only adapter retained for the control/device topology owner boundary.
-   * Other consumers must use subscribeSnapshot so failures clear their current value. */
-  subscribe(query: TQuery, intervalMs: number, listener: (value: TValue) => void): () => void;
   subscribeSnapshot(
     query: TQuery,
     intervalMs: number,
@@ -19,7 +16,6 @@ export interface PushValueSourceFamily<TQuery, TValue> {
 
 export interface PushValueSource<TValue> {
   readonly key: string;
-  subscribe(intervalMs: number, listener: (value: TValue) => void): () => void;
   subscribeSnapshot(
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
@@ -84,14 +80,6 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.canonicalizeQuery = options.canonicalizeQuery
       ?? ((query) => JSON.stringify(query));
     this.decoder = options.decoder;
-  }
-
-  /** Value-only adapter retained for the control/device topology owner boundary.
-   * Other consumers must use subscribeSnapshot so failures clear their current value. */
-  subscribe(query: TQuery, intervalMs: number, listener: (value: TValue) => void): () => void {
-    return this.subscribeSnapshot(query, intervalMs, (snapshot) => {
-      if (snapshot.status === "ready") listener(snapshot.data as TValue);
-    });
   }
 
   subscribeSnapshot(
@@ -208,12 +196,6 @@ implements PushValueSource<TValue> {
       buildUrl: (_query, intervalMs) => options.buildUrl(intervalMs),
       canonicalizeQuery: () => "current",
       decoder: options.decoder
-    });
-  }
-
-  subscribe(intervalMs: number, listener: (value: TValue) => void): () => void {
-    return this.subscribeSnapshot(intervalMs, (snapshot) => {
-      if (snapshot.status === "ready") listener(snapshot.data as TValue);
     });
   }
 

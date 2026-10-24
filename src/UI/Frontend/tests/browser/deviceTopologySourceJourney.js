@@ -1,3 +1,4 @@
+import { metricFieldDevices } from "./metricFieldsProbe.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
 import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
@@ -14,7 +15,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const initialScenario = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ capabilities: "ready", settings: "ready", deviceTopologyDelayMs: 0 })
+    body: JSON.stringify({ capabilities: "ready", settings: "ready", deviceTopologyDelayMs: 0, metricFieldDevices })
   });
   assert(initialScenario.ok, `Unable to configure initial topology scenario: ${initialScenario.status}`);
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
@@ -184,6 +185,49 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     && active.logicalMaxInFlight === 1,
   `Device topology created duplicate logical subscriptions: ${JSON.stringify(active)}`);
 
+  await topology.locator(".device-port-item.nested.device-node").first().click();
+  await topology.locator(".device-details-button").click();
+  const metricDialog = page.locator(".user-details-modal:visible");
+  await metricDialog.getByText("137.5%", { exact: true }).waitFor();
+  await setScenario(page, { invalidMetricFields: true });
+  await metricDialog.getByText("137.5%", { exact: true }).waitFor({ state: "detached" });
+  assert(await topologyHeader.locator("span").textContent() === "Frontend Harness", "Metric failure affects only its own data");
+  await setScenario(page, { invalidMetricFields: false });
+  await metricDialog.getByText("137.5%", { exact: true }).waitFor();
+  await page.keyboard.press("Escape");
+  await metricDialog.waitFor({ state: "hidden" });
+  await setScenario(page, { deviceTopologyNullProtocol: true });
+  await page.waitForFunction(() => document.querySelectorAll(".device-topology-panel .device-port-item:not(.nested)").length === 2);
+  assert(await topology.locator(".observation-state.error").count() === 0, "One nullable protocol must not reject the snapshot");
+  await topology.locator(".device-port-item.nested.device-node").nth(1).click();
+  await topology.locator(".device-details-button").click();
+  const protocolDialog = page.locator(".user-details-modal:visible");
+  await protocolDialog.waitFor();
+  const protocolRow = protocolDialog.locator(".user-details-row").filter({ has: page.getByText(app.deviceTopology.label.protocol, { exact: true }) });
+  assert((await protocolRow.locator("dd").textContent()) === app.deviceTopology.deviceCategory.unknown, "Only the nullable port protocol shows localized unknown");
+  await page.keyboard.press("Escape");
+  await protocolDialog.waitFor({ state: "hidden" });
+  await setScenario(page, { deviceTopologyInvalid: true });
+  await topology.locator(".observation-state.error").waitFor();
+  assert(await topology.locator(".device-port-item").count() === 0, "Decode failure clears the current topology");
+  await setScenario(page, { deviceTopologyInvalid: false, deviceTopologyNullProtocol: false });
+  await topologyHeader.locator("span").filter({ hasText: "Frontend Harness" }).waitFor();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await waitForTelemetry(page, subscriptionPath, value => value.logicalInFlight === 0);
+  assert(await topology.locator(".device-port-item").count() === 0, "Hidden topology drops its current data");
+  await setScenario(page, { deviceTopologyInvalid: true });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await topology.locator(".observation-state.error").waitFor();
+  assert(await topology.locator(".device-port-item").count() === 0, "Resuming cannot replay last-good topology");
+  await setScenario(page, { deviceTopologyInvalid: false });
+  await topologyHeader.locator("span").filter({ hasText: "Frontend Harness" }).waitFor();
+
   await pageNavigation.getByRole("button", { name: "监视控制台", exact: true }).click();
   await topology.waitFor({ state: "detached", timeout: 3_000 });
   await page.locator('body[data-page="monitor"]').waitFor({ state: "attached", timeout: 3_000 });
@@ -212,6 +256,9 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
 
   return {
     dom,
+    nullableProtocolAccepted: true,
+    metricFailureClearsOnlyItsOwnData: true,
+    failedAndHiddenCurrentCleared: true,
     edidDetails,
     type3Details,
     typeXDetails,

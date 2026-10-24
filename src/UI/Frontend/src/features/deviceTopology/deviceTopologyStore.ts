@@ -9,9 +9,12 @@ import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import {
+  failedObservation,
   loadingObservation,
   type ObservationState
 } from "../../observation/observationState";
+import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { uiText } from "../../text.ts";
 import type { DeviceTopologySnapshotState } from "../../types";
 import { projectDeviceTopologyObservation } from "./deviceTopologyObservation";
 import {
@@ -22,7 +25,7 @@ import {
 
 const subscriptionIntervalMilliseconds = 1_000;
 const initialDeviceTopologyState: DeviceTopologySnapshotState = {
-  schemaVersion: "3.0.0",
+  schemaVersion: "4.0.0",
   state: "warming",
   snapshot: null,
   contentGeneration: 0,
@@ -45,20 +48,26 @@ export interface DeviceTopologyStoreView {
 export function useDeviceTopologyState(): DeviceTopologyStoreView {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
-  const [state, setState] = createSignal<DeviceTopologySnapshotState>(
-    initialDeviceTopologyState);
+  const [source, setSource] = createSignal<SourceSnapshot<DeviceTopologySnapshotState> | null>(null);
+  const state = () => source()?.data ?? initialDeviceTopologyState;
 
   createEffect(() => {
     if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology)) {
+      setSource(null);
       return;
     }
-    const unsubscribe = runtime.sources.deviceTopology.subscribe(
+    const unsubscribe = runtime.sources.deviceTopology.subscribeSnapshot(
       subscriptionIntervalMilliseconds,
-      setState);
-    onCleanup(unsubscribe);
+      setSource);
+    onCleanup(() => { unsubscribe(); setSource(null); });
   });
-  const observation = createMemo<ObservationState>(() =>
-    projectDeviceTopologyObservation(loadingObservation(), state()));
+  const observation = createMemo<ObservationState>(() => {
+    const current = source();
+    if (current?.status === "error" || current?.status === "unavailable") {
+      return failedObservation(loadingObservation(), uiText.deviceTopologyState.collectionFailed);
+    }
+    return projectDeviceTopologyObservation(loadingObservation(), state());
+  });
 
   return {
     state,
