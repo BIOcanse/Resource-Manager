@@ -14,7 +14,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   const runtimeId = "shared-webview2-runtime";
   await page.route("**/api/components", route => route.fulfill({ json: [{
     definition: { id: runtimeId, name: "Runtime fixture", vendor: "Microsoft", category: "runtime",
-      managementRole: "Dependency", requiresExternalTermsAcknowledgement: true,
+      managementRole: "dependency", requiresExternalTermsAcknowledgement: true,
       externalTermsUrl: "https://example.test/terms", capabilities: [] },
     installed: false, installerAvailable: true, canInstall: true, canDownload: true,
     providers: [], installerSourceKind: "direct"
