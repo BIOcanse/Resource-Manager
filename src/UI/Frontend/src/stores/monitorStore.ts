@@ -101,9 +101,9 @@ export interface MonitorStoreOptions {
   metricSnapshotActive: Accessor<boolean>;
   resourceBarsActive: Accessor<boolean>;
   resourceTableActive: Accessor<boolean>;
-  metricSnapshotIntervalMs: Accessor<number>;
-  resourceBarsIntervalMs: Accessor<number>;
-  resourceTableIntervalMs: Accessor<number>;
+  metricSnapshotIntervalMs: Accessor<number | null>;
+  resourceBarsIntervalMs: Accessor<number | null>;
+  resourceTableIntervalMs: Accessor<number | null>;
 }
 
 export type DashboardSettingsLoadState = "loading" | "ready" | "recovered" | "error";
@@ -352,10 +352,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const binding = JSON.parse(metricSubscriptionKey()) as {
       active: boolean;
       query: MetricSnapshotQuery;
-      intervalMs: number;
+      intervalMs: number | null;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (!binding.active) {
+    if (!binding.active || binding.intervalMs === null) {
       return;
     }
     let accepting = true;
@@ -377,21 +377,22 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       setMetricSourceSnapshot(null);
     });
   });
-  // 设备目录变化很慢，监视页可见时 5 秒推一次就够。
+  // 字段目录和监视读数共用后端发布的间隔。
   createEffect(() => {
-    if (!options.metricSnapshotActive()) {
+    const intervalMs = options.metricSnapshotIntervalMs();
+    if (!options.metricSnapshotActive() || intervalMs === null) {
       return;
     }
-    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(5_000, setFieldCatalogSnapshot);
+    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(intervalMs, setFieldCatalogSnapshot);
     onCleanup(() => { unsubscribe(); setFieldCatalogSnapshot(null); });
   });
   createEffect(() => {
     const binding = JSON.parse(fieldSubscriptionKey()) as {
       active: boolean;
       fields: string[];
-      intervalMs: number;
+      intervalMs: number | null;
     };
-    if (!binding.active || binding.fields.length === 0) {
+    if (!binding.active || binding.intervalMs === null || binding.fields.length === 0) {
       return;
     }
     let accepting = true;
@@ -413,10 +414,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const binding = JSON.parse(resourceBarsSubscriptionKey()) as {
       active: boolean;
       query: ResourceMonitorQuery;
-      intervalMs: number;
+      intervalMs: number | null;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (!binding.active) {
+    if (!binding.active || binding.intervalMs === null) {
       return;
     }
     let accepting = true;
@@ -442,10 +443,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const binding = JSON.parse(resourceTableSubscriptionKey()) as {
       active: boolean;
       query: ResourceMonitorQuery;
-      intervalMs: number;
+      intervalMs: number | null;
     };
     const queryKey = JSON.stringify(binding.query);
-    if (!binding.active) {
+    if (!binding.active || binding.intervalMs === null) {
       return;
     }
     let accepting = true;

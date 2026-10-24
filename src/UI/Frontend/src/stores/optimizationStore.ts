@@ -38,7 +38,6 @@ import type {
 } from "../types";
 
 const optimizationModeApplyDelayMs = 3000;
-const smartStatusSubscriptionIntervalMs = 3_000;
 
 export interface OptimizationStoreOptions {
   showToast: (input: ToastInput) => void;
@@ -47,6 +46,7 @@ export interface OptimizationStoreOptions {
   /** 调度状态的后端推送：页面上的状态区可见时订阅，显示随后端变化。 */
   statusSource: PushValueSource<HostManagerSmartCoordinatorStatus>;
   statusActive: Accessor<boolean>;
+  statusIntervalMs: Accessor<number | null>;
   /** 报告列表在页面上可见。 */
   reportsActive: Accessor<boolean>;
   requestClient: Pick<RequestClient, "request">;
@@ -113,11 +113,12 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
 
   // 调度状态由后端协调器持有：循环里的模式、运行、故障关闭和计数随时会变，只靠进页读取一次会停在旧值。
   createEffect(() => {
-    if (!options.enabled() || !options.statusActive()) {
+    const intervalMs = options.statusIntervalMs();
+    if (!options.enabled() || !options.statusActive() || intervalMs === null) {
       return;
     }
     const unsubscribe = options.statusSource.subscribeSnapshot(
-      smartStatusSubscriptionIntervalMs,
+      intervalMs,
       (snapshot) => {
         if (snapshot.data) {
           acceptHostManagerStatus(snapshot.data);

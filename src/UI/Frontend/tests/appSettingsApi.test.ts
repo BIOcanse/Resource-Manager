@@ -1,3 +1,4 @@
+import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 import assert from "node:assert/strict";
 import {
   AppSettingsRevisionConflictError,
@@ -59,6 +60,7 @@ try {
 
 function settingsResult(revision: string) {
   return {
+    frontendRefreshIntervals,
     settings: {
       version: "1.0.23",
       appearance: { theme: "system" }

@@ -1,8 +1,8 @@
-import { For, Match, Switch } from "solid-js";
+import { useFrontendReadIntervals } from "../../../app/FrontendReadIntervalsContext.tsx";
+import { For, Match, Show, Switch } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect";
 import {
   defaultAppSettings,
-  formatLogicRefreshIntervalPresetMs,
   logicRefreshIntervalKeys,
   normalizeLogicRefreshIntervalSetting
 } from "../../../stores/settingsStore";
@@ -36,6 +36,9 @@ interface PerformanceSettingsSectionProps {
 }
 
 export function PerformanceSettingsSection(props: PerformanceSettingsSectionProps) {
+  const publishedIntervals = useFrontendReadIntervals();
+  const presetInterval = (key: AppLogicRefreshIntervalKey, preset: AppLogicRefreshIntervalPreset) =>
+    publishedIntervals.configuration()!.presets[key][preset];
   // 占位值与「恢复为默认」同源，不另写一份默认值。
   const performance = (): AppPerformanceSettings => props.settings ?? defaultAppSettings().performance!;
   const gpuSchedulingMode = (): GpuSchedulingMode => performance().preciseGpuPlacementEnabled ? "precise" : "basic";
@@ -87,7 +90,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     updateLogicRefreshInterval(key, {
       mode,
       customValue: mode === "preset"
-        ? formatLogicRefreshIntervalPresetMs(key, setting.preset)
+        ? presetInterval(key, setting.preset)
         : setting.customValue
     });
   };
@@ -95,7 +98,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     updateLogicRefreshInterval(key, {
       mode: "preset",
       preset,
-      customValue: formatLogicRefreshIntervalPresetMs(key, preset)
+      customValue: presetInterval(key, preset)
     });
   };
   const updateLogicRefreshCustomValue = (key: AppLogicRefreshIntervalKey, customValue: number) => {
@@ -103,7 +106,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
   };
   const presetOptionLabel = (key: AppLogicRefreshIntervalKey, preset: AppLogicRefreshIntervalPreset) => {
     const option = props.text.performance.refreshCadencePresetOptions.find((item) => item.id === preset);
-    return `${option?.label ?? preset} · ${formatMilliseconds(formatLogicRefreshIntervalPresetMs(key, preset))}`;
+    return `${option?.label ?? preset} · ${formatMilliseconds(presetInterval(key, preset))}`;
   };
 
   return (
@@ -223,6 +226,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           </label>
         </div>
       </div>
+      <Show when={publishedIntervals.configuration()}>
       <div class="settings-row settings-row-block">
         <div class="settings-row-copy">
           <strong>{props.text.performance.refreshCadenceTitle}</strong>
@@ -280,6 +284,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
         </div>
       </div>
 
+      </Show>
       {/*
         调节权限档位。放在性能这一节，因为它管的就是控制页里那些调频调压的项。
         它不走这一页的草稿-保存：值存在控制面那边，选完就生效（见组件自己的说明）。

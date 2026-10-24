@@ -1,25 +1,14 @@
-import { resolveLogicRefreshIntervalMs } from "../../stores/settingsStore";
-import type {
-  AppLogicRefreshIntervalKey,
-  AppPerformanceSettings,
-  ResourceManagerSelfCpuGrade
-} from "../../types";
+import type { FrontendReadIntervals, FrontendRefreshIntervals, ResourceManagerSelfCpuGrade } from "../../types.ts";
 
-// 窗口隐藏时一律暂停，不再由设置决定；各数据源各自按 frontendVisible() 停止订阅。
-export interface ResourceManagerSelfCpuRuntimePlan {
-  refreshIntervalMs: Record<AppLogicRefreshIntervalKey, number>;
-}
-
+// The backend expands both contexts from the committed settings. Selecting a
+// context here preserves local foreground ownership without repeating presets.
 export function resolveSelfCpuRuntimePlan(
-  performance: AppPerformanceSettings | undefined,
+  publication: FrontendRefreshIntervals | null,
   cpuGrade: ResourceManagerSelfCpuGrade,
   foregroundInteractive: boolean
-): ResourceManagerSelfCpuRuntimePlan {
-  return {
-    refreshIntervalMs: {
-      monitor: resolveLogicRefreshIntervalMs("monitor", performance?.monitorRefreshIntervalMs, cpuGrade, foregroundInteractive),
-      resourceTable: resolveLogicRefreshIntervalMs("resourceTable", performance?.resourceTableRefreshIntervalMs, cpuGrade, foregroundInteractive),
-      localSystem: resolveLogicRefreshIntervalMs("localSystem", performance?.localSystemRefreshIntervalMs, cpuGrade, foregroundInteractive)
-    }
-  };
+): FrontendReadIntervals | null {
+  if (!publication) return null;
+  return cpuGrade === "optimize" && !foregroundInteractive
+    ? publication.backgroundOptimized
+    : publication.foreground;
 }

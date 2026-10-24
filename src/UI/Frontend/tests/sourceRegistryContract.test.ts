@@ -27,7 +27,9 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 14);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 15);
+assert.match(sources, /managementInventoryRevision:\s*new BackendCurrentValueSource/);
+assert.match(sources, /key:\s*"management\.inventory-revision"/);
 assert.match(pushValueSources, /this\.channel\.subscribe\(/);
 assert.doesNotMatch(pushValueSources, /BackendSessionOwner|\bfetch\s*\(/);
 assert.match(subscriptionChannel, /const subscriptionEndpoint = "\/api\/subscriptions\/stream"/);

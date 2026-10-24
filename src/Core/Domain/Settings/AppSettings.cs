@@ -308,6 +308,9 @@ public sealed record AppSettingsUpdateResult(
 {
     public string Revision => Source.EffectiveSha256;
 
+    public AppFrontendRefreshIntervals FrontendRefreshIntervals =>
+        AppFrontendRefreshIntervalPolicy.Expand(Settings.Performance);
+
     public string RuntimeApplicationDisposition { get; init; } = "notRequested";
 
     public long? RuntimePlanVersion { get; init; }

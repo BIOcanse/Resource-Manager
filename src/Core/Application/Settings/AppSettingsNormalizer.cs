@@ -217,50 +217,18 @@ public static class AppSettingsNormalizer
         AppPresetNumericSetting? setting,
         string fallbackPreset,
         int fallbackCustomValue)
-    {
-        return new AppPresetNumericSetting(
-            NormalizePresetNumericMode(setting?.Mode),
-            NormalizeLogicRefreshIntervalPreset(setting?.Preset, fallbackPreset),
-            NormalizeLogicRefreshIntervalMs(setting?.CustomValue, fallbackCustomValue));
-    }
+        => AppFrontendRefreshIntervalPolicy.Normalize(
+            setting,
+            fallbackPreset,
+            fallbackCustomValue);
 
     public static string NormalizePresetNumericMode(string? mode)
-    {
-        return mode switch
-        {
-            AppPresetNumericSettingModes.Preset => AppPresetNumericSettingModes.Preset,
-            AppPresetNumericSettingModes.Custom => AppPresetNumericSettingModes.Custom,
-            _ => AppPresetNumericSettingModes.Aotu
-        };
-    }
+        => AppFrontendRefreshIntervalPolicy.NormalizePresetNumericMode(mode);
 
     public static string NormalizeLogicRefreshIntervalPreset(string? preset, string fallbackPreset)
-    {
-        var normalized = preset?.Trim();
-        if (string.Equals(normalized, AppLogicRefreshIntervalPresets.Responsive, StringComparison.OrdinalIgnoreCase))
-        {
-            return AppLogicRefreshIntervalPresets.Responsive;
-        }
-
-        if (string.Equals(normalized, AppLogicRefreshIntervalPresets.Balanced, StringComparison.OrdinalIgnoreCase))
-        {
-            return AppLogicRefreshIntervalPresets.Balanced;
-        }
-
-        if (string.Equals(normalized, AppLogicRefreshIntervalPresets.LowPower, StringComparison.OrdinalIgnoreCase))
-        {
-            return AppLogicRefreshIntervalPresets.LowPower;
-        }
-
-        if (string.Equals(normalized, AppLogicRefreshIntervalPresets.Quiet, StringComparison.OrdinalIgnoreCase))
-        {
-            return AppLogicRefreshIntervalPresets.Quiet;
-        }
-
-        return AppLogicRefreshIntervalPresets.Supported.Contains(fallbackPreset)
-            ? fallbackPreset
-            : AppLogicRefreshIntervalPresets.Balanced;
-    }
+        => AppFrontendRefreshIntervalPolicy.NormalizeLogicRefreshIntervalPreset(
+            preset,
+            fallbackPreset);
 
     private static string NormalizeResourceBarFrameRateMode(string? mode)
     {
@@ -370,11 +338,4 @@ public static class AppSettingsNormalizer
             95);
     }
 
-    private static int NormalizeLogicRefreshIntervalMs(int? milliseconds, int fallback)
-    {
-        return Math.Clamp(
-            milliseconds ?? fallback,
-            AppSettingsDefaults.MinLogicRefreshIntervalMs,
-            AppSettingsDefaults.MaxLogicRefreshIntervalMs);
-    }
 }

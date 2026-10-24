@@ -1,3 +1,5 @@
+import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
+import { resolveSelfCpuRuntimePlan } from "../src/app/selfScheduling/resolveSelfCpuRuntimePlan.ts";
 import { updateReportRuleField } from "../src/features/settings/reportRuleSettingsModel.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import assert from "node:assert/strict";
@@ -13,9 +15,7 @@ import {
   createSettingsStore,
   defaultAppSettings,
   logicRefreshIntervalKeys,
-  logicRefreshIntervalPresetValues,
-  normalizeAppSettings,
-  resolveLogicRefreshIntervalMs
+  normalizeAppSettings
 } from "../src/stores/settingsStore.ts";
 import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
@@ -398,17 +398,11 @@ await new Promise<void>((resolve, reject) => {
   });
 });
 
-// 监控和资源表的“自动调度”：本程序处在节能档且窗口不在前台时放慢到低功耗间隔，否则按响应优先。
-// App.tsx 经刷新调度器把这两个条件传进来（frontendWorkContract 检查这条接线）。
-{
-  const auto = canonicalDefaults.performance!.monitorRefreshIntervalMs;
-  assert.equal(resolveLogicRefreshIntervalMs("monitor", auto, "optimize", false),
-    logicRefreshIntervalPresetValues.monitor.lowPower);
-  assert.equal(resolveLogicRefreshIntervalMs("resourceTable", auto, "optimize", false),
-    logicRefreshIntervalPresetValues.resourceTable.lowPower);
-  assert.equal(resolveLogicRefreshIntervalMs("monitor", auto, "optimize", true),
-    logicRefreshIntervalPresetValues.monitor.responsive);
-}
+// The frontend selects a fully expanded context; it never expands settings.
+assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "optimize", false), frontendRefreshIntervals.backgroundOptimized);
+assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "optimize", true), frontendRefreshIntervals.foreground);
+assert.equal(resolveSelfCpuRuntimePlan(frontendRefreshIntervals, "normal", false), frontendRefreshIntervals.foreground);
+assert.equal(resolveSelfCpuRuntimePlan(null, "normal", true), null);
 
 function result(
   revision: string,
@@ -421,6 +415,7 @@ function result(
   return {
     settings,
     revision,
+    frontendRefreshIntervals,
     runtimeApplicationDisposition: "notRequested"
   };
 }
@@ -461,7 +456,7 @@ await new Promise<void>((resolve, reject) => {
             attempt: { id: "1", sequence: 1, key: "app.settings.patch", decoderId: "app.settings.result.v1",
               method: "PATCH", backendEpoch: null, startedAt: 0, finishedAt: 1, durationMs: 1 }
           });
-          return { settings: applySettingsPatch(store.settings(), patch.changes), revision: "r2",
+          return { frontendRefreshIntervals, settings: applySettingsPatch(store.settings(), patch.changes), revision: "r2",
             runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
         }
       } as never });
@@ -491,6 +486,32 @@ await new Promise<void>((resolve, reject) => {
       assert.deepEqual(store.draftSettings().reports!.ruleOverrides[0].executableNames, []);
       store.resetDraftToDefaults();
       assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});
+
+// New authoritative interval values take effect independently of unsaved choices.
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      const store = createSettingsStore({ source, requestClient: { request: async () => { throw new Error("No write expected"); } } });
+      source.publishReady(result("intervals-a", "normal", "system"));
+      await Promise.resolve();
+      assert.deepEqual(store.frontendRefreshIntervals(), frontendRefreshIntervals);
+      store.updateLogicRefreshInterval("monitor", { mode: "custom", preset: "balanced", customValue: 1750 });
+      const next = { ...result("intervals-b", "normal", "system"), frontendRefreshIntervals: { ...frontendRefreshIntervals,
+        foreground: { monitor: 2345, resourceTable: 3456, localSystem: 4567 },
+        backgroundOptimized: { monitor: 5678, resourceTable: 6789, localSystem: 7890 } } };
+      source.publishReady(next);
+      await Promise.resolve();
+      assert.equal(store.frontendRefreshIntervals()!.foreground.monitor, 2345);
+      assert.equal(resolveSelfCpuRuntimePlan(store.frontendRefreshIntervals(), "optimize", false)!.monitor, 5678);
+      assert.equal(store.draftSettings().performance!.monitorRefreshIntervalMs.customValue, 1750);
+      assert.equal(store.isDirty(), true);
+      store.resetDraftToDefaults();
+      assert.deepEqual(store.draftSettings().performance!.monitorRefreshIntervalMs, frontendRefreshIntervals.defaults.monitor);
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

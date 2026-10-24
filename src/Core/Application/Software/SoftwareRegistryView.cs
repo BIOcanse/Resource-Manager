@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Domain.Software;
@@ -18,6 +19,7 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
     private readonly IInstalledSoftwareInventory installedSoftwareInventory;
     private readonly ISoftwareIdentityCatalog softwareIdentityCatalog;
     private readonly IPortableSoftwareRegistry portableSoftwareRegistry;
+    private readonly IManagementInventoryRevisionOwner? inventoryRevisionOwner;
 
     public SoftwareRegistryView(
         IAdapterSoftwareRegistry adapterRegistry,
@@ -27,7 +29,8 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         ISoftwarePolicyProfileProvider policyProfileProvider,
         IInstalledSoftwareInventory installedSoftwareInventory,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
-        IPortableSoftwareRegistry portableSoftwareRegistry)
+        IPortableSoftwareRegistry portableSoftwareRegistry,
+        IManagementInventoryRevisionOwner? inventoryRevisionOwner = null)
     {
         this.adapterRegistry = adapterRegistry;
         this.controlledRegistry = controlledRegistry;
@@ -37,6 +40,7 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         this.installedSoftwareInventory = installedSoftwareInventory;
         this.softwareIdentityCatalog = softwareIdentityCatalog;
         this.portableSoftwareRegistry = portableSoftwareRegistry;
+        this.inventoryRevisionOwner = inventoryRevisionOwner;
     }
 
     public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
@@ -93,17 +97,27 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         records.AddRange(portableSoftware.Select(ToPortableSoftwareRecord));
 
         ApplyPolicyProfile(records, policyProfile);
+        var revisionRecords = records.ToList();
 
         IncludeRuntimeSoftware(records, runtimeSoftware ?? []);
 
         var manualRecords = await manualSoftwareRegistry.GetAllAsync(cancellationToken);
         ApplyManualRecords(records, manualRecords);
+        ApplyManualRecords(revisionRecords, manualRecords);
 
-        return records
+        var revisionContent = revisionRecords
             .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .Select(static group => MergeRecords(group.ToArray()))
             .OrderBy(static record => KindSort(record.Kind))
             .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var result = records
+            .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => MergeRecords(group.ToArray()))
+            .OrderBy(static record => KindSort(record.Kind))
+            .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        inventoryRevisionOwner?.ObserveSoftwareContent(windowsSid, revisionContent);
+        return result;
     }
 }

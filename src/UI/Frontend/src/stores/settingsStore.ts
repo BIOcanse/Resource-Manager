@@ -33,6 +33,7 @@ import type {
   AppBarColorMode,
   ByteUnitMode,
   AppFontSmoothing,
+  FrontendRefreshIntervals,
   AppGpuPerformanceUseCase,
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
@@ -41,7 +42,6 @@ import type {
   AppOptimizationMode,
   AppPerformanceSettings,
   AppPresetNumericSetting,
-  ResourceManagerSelfCpuGrade,
   ResourceManagerSelfGpuGrade,
   AppPresetNumericSettingMode,
   AppSettings,
@@ -72,11 +72,6 @@ export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
   "resourceTable",
   "localSystem"
 ];
-export const logicRefreshIntervalPresetValues: Record<AppLogicRefreshIntervalKey, Record<AppLogicRefreshIntervalPreset, number>> = {
-  monitor: { responsive: 1000, balanced: 2000, lowPower: 3000, quiet: 5000 },
-  resourceTable: { responsive: 1000, balanced: 2000, lowPower: 3000, quiet: 5000 },
-  localSystem: { responsive: 30000, balanced: 60000, lowPower: 120000, quiet: 300000 }
-};
 const defaultLogicRefreshIntervalPreset: Record<AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset> = {
   monitor: "responsive",
   resourceTable: "responsive",
@@ -87,6 +82,7 @@ const maxLogicRefreshIntervalMs = 300000;
 
 export interface SettingsStore {
   settings: Accessor<AppSettings>;
+  frontendRefreshIntervals: Accessor<FrontendRefreshIntervals | null>;
   draftSettings: Accessor<AppSettings>;
   isDirty: Accessor<boolean>;
   loadState: Accessor<"loading" | "refreshing" | "ready" | "stale" | "error">;
@@ -145,6 +141,7 @@ type SourceProjectionMode = "replace-draft" | "preserve-draft";
 export function createSettingsStore(options: SettingsStoreOptions): SettingsStore {
   const [settings, setSettings] = createSignal<AppSettings>(defaultAppSettings());
   const [draftSettings, setDraftSettings] = createSignal<AppSettings>(defaultAppSettings());
+  const [frontendRefreshIntervals, setFrontendRefreshIntervals] = createSignal<FrontendRefreshIntervals | null>(null);
   const [revision, setRevision] = createSignal<string | null>(null);
   const [loadState, setLoadState] = createSignal<"loading" | "refreshing" | "ready" | "stale" | "error">("loading");
   const [saveState, setSaveState] = createSignal<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">("idle");
@@ -312,6 +309,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     if (snapshot.status !== "ready"
       || !snapshot.data
       || snapshot.revision === lastProjectedSourceRevision) {
+      if (!snapshot.data) setFrontendRefreshIntervals(null);
       setLoadState(nextLoadState);
       return;
     }
@@ -327,6 +325,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       : alignRuntimeOwnedSettings(applySettingsPatch(loaded, createSettingsPatch(
           settings() as unknown as Record<string, unknown>,
           draftSettings() as unknown as Record<string, unknown>)), loaded);
+    setFrontendRefreshIntervals(snapshot.data.frontendRefreshIntervals);
     setSettings(loaded);
     setDraftSettings(nextDraft);
     setRevision(snapshot.data.revision);
@@ -341,7 +340,13 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     if (loadState() !== "ready" || saveState() === "conflict") {
       return;
     }
-    setDraftSettings(defaultAppSettings());
+    const defaults = defaultAppSettings();
+    const published = frontendRefreshIntervals();
+    if (!published) return;
+    defaults.performance!.monitorRefreshIntervalMs = structuredClone(published.defaults.monitor);
+    defaults.performance!.resourceTableRefreshIntervalMs = structuredClone(published.defaults.resourceTable);
+    defaults.performance!.localSystemRefreshIntervalMs = structuredClone(published.defaults.localSystem);
+    setDraftSettings(defaults);
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
     setRuntimeFailureCode(null);
@@ -396,6 +401,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
   return {
     settings,
+    frontendRefreshIntervals,
     draftSettings,
     isDirty,
     loadState,
@@ -735,7 +741,7 @@ export function defaultLogicRefreshIntervalSetting(key: AppLogicRefreshIntervalK
   return {
     mode: "aotu",
     preset,
-    customValue: logicRefreshIntervalPresetValues[key][preset]
+    customValue: 0 // Unloaded editable placeholder; never used as a read interval.
   };
 }
 
@@ -751,27 +757,6 @@ export function normalizeLogicRefreshIntervalSetting(
   };
 }
 
-export function resolveLogicRefreshIntervalMs(
-  key: AppLogicRefreshIntervalKey,
-  setting?: AppPresetNumericSetting | null,
-  selfCpuGrade?: ResourceManagerSelfCpuGrade | null,
-  foregroundInteractive = true
-) {
-  const normalized = normalizeLogicRefreshIntervalSetting(key, setting);
-  if (normalized.mode === "custom") {
-    return normalized.customValue;
-  }
-
-  if (normalized.mode === "preset") {
-    return logicRefreshIntervalPresetValues[key][normalized.preset];
-  }
-
-  const preset = selfCpuGrade === "optimize" && !foregroundInteractive
-    ? "lowPower"
-    : "responsive";
-  return logicRefreshIntervalPresetValues[key][preset];
-}
-
 export function normalizePresetNumericSettingMode(mode?: string | null): AppPresetNumericSettingMode {
   if (mode === "preset" || mode === "custom") {
     return mode;
@@ -785,19 +770,11 @@ export function normalizeLogicRefreshIntervalPreset(
   preset?: string | null,
   fallback: AppLogicRefreshIntervalPreset = defaultLogicRefreshIntervalPreset[key]
 ): AppLogicRefreshIntervalPreset {
-  const supported = logicRefreshIntervalPresetValues[key];
   if (preset === "responsive" || preset === "balanced" || preset === "lowPower" || preset === "quiet") {
-    return preset in supported ? preset : fallback;
+    return preset;
   }
 
   return fallback;
-}
-
-export function formatLogicRefreshIntervalPresetMs(
-  key: AppLogicRefreshIntervalKey,
-  preset: AppLogicRefreshIntervalPreset
-) {
-  return logicRefreshIntervalPresetValues[key][preset];
 }
 
 export function normalizeDebugSettings(settings?: AppSettings["debug"] | null) {

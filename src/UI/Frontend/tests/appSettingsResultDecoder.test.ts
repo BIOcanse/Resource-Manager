@@ -1,3 +1,4 @@
+import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 import assert from "node:assert/strict";
 import {
   appSettingsResultDecoder
@@ -7,6 +8,7 @@ import {
 } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 
 const source = {
+  frontendRefreshIntervals,
   settings: {
     version: "1.0.23",
     appearance: {
@@ -55,3 +57,11 @@ for (const [value, expectedPath] of [
 assert.deepEqual(appSettingsResultDecoder.decode({ ...source, settings: { ...source.settings,
   control: { reassertionIntervalSeconds: 337 } } }).settings.control,
   { reassertionIntervalSeconds: 337 });
+
+assert.deepEqual(decoded.frontendRefreshIntervals, frontendRefreshIntervals);
+assert.equal(Object.isFrozen(decoded.frontendRefreshIntervals.foreground), true);
+for (const [value, path] of [
+  [{ ...source, frontendRefreshIntervals: undefined }, "$.frontendRefreshIntervals"],
+  [{ ...source, frontendRefreshIntervals: { ...frontendRefreshIntervals, foreground: { ...frontendRefreshIntervals.foreground, monitor: 0 } } }, "$.frontendRefreshIntervals.foreground.monitor"]
+] as const) assert.throws(() => appSettingsResultDecoder.decode(value),
+  (error: unknown) => error instanceof ResponseDecodeError && error.path === path);

@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
@@ -11,7 +12,6 @@ import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from 
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
 
-const smartStateSubscriptionIntervalMilliseconds = 3_000;
 
 interface DetailRecord {
   target: string;
@@ -25,6 +25,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsSmartReport]);
   const frontendWork = useFrontendWork();
   const frontendRuntime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
   const [selectedRecord, setSelectedRecord] = createSignal<DetailRecord | null>(null);
   const [stateSource, setStateSource] =
     createSignal<SourceSnapshot<HostManagerRollbackStateDocument> | null>(null);
@@ -43,12 +44,13 @@ export function HostManagerSmartCoordinatorDetailsReport() {
   const records = createMemo(() => collectDetailRecords(state()));
 
   createEffect(() => {
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsSmartReport)) {
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!frontendWork.isNeeded(frontendWorkIds.detailsSmartReport) || intervalMs === undefined) {
       setStateSource(null);
       return;
     }
     const unsubscribe = frontendRuntime.sources.smartCoordinatorState.subscribeSnapshot(
-      smartStateSubscriptionIntervalMilliseconds,
+      intervalMs,
       setStateSource);
     onCleanup(unsubscribe);
   });

@@ -11,13 +11,12 @@ import {
   type ManagementSubpageId
 } from "../features/management/managementNavigation";
 import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan";
-import type { AppPerformanceSettings, PageId } from "../types";
+import type { FrontendRefreshIntervals, PageId } from "../types";
 import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils";
 import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry";
 
 type RefreshAction = () => void | Promise<unknown>;
 type RefreshActionWithForce = (force: boolean) => void | Promise<unknown>;
-const selfSchedulingSubscriptionIntervalMs = 5_000;
 
 interface PageRefreshSchedulerOptions {
   operations: Pick<OperationRegistry, "subscribeInvalidations">;
@@ -26,7 +25,7 @@ interface PageRefreshSchedulerOptions {
   selfSchedulingSource: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
   frontendWork: Pick<FrontendWorkController, "frontendVisible" | "activeWorkIds" | "isNeeded">;
   runtimeCapabilities: Pick<RuntimeCapabilitiesStore, "runtimeEffectsEnabled" | "optimizationEnabled">;
-  performanceSettings: Accessor<AppPerformanceSettings | undefined>;
+  refreshIntervals: Accessor<FrontendRefreshIntervals | null>;
   management: {
     activeSubpage: Accessor<ManagementSubpageId>;
     refreshState: RefreshActionWithForce;
@@ -47,14 +46,15 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   const [localSystemStatus, setLocalSystemStatus] =
     createSignal<LocalSystemStatus | null>(null);
   const frontendVisible = options.frontendWork.frontendVisible;
-  const performanceSettingsAvailable = createMemo(() => options.performanceSettings() !== undefined);
+  const performanceSettingsAvailable = createMemo(() => options.refreshIntervals() !== null);
   const foregroundInteractive = createMemo(() => frontendVisible() && frontendFocused());
   const cpuRuntimePlan = createMemo(() => resolveSelfCpuRuntimePlan(
-    options.performanceSettings(),
+    options.refreshIntervals(),
     selfScheduling()?.cpuGrade ?? "normal",
-    foregroundInteractive()));
+    foregroundInteractive()), null, { equals: (left, right) => left?.monitor === right?.monitor
+      && left?.resourceTable === right?.resourceTable && left?.localSystem === right?.localSystem });
   const currentLocalSystemRefreshIntervalMs = createMemo(
-    () => cpuRuntimePlan().refreshIntervalMs.localSystem);
+    () => cpuRuntimePlan()?.localSystem ?? null);
   const systemUptime = createMemo(() => {
     const status = localSystemStatus();
     return status ? formatUptimeSeconds(status.uptimeSeconds) : "--";
@@ -85,11 +85,14 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   });
 
   createEffect(() => {
-    if (!frontendVisible()) {
+    // The scheduling observation cannot derive its own demand from its value:
+    // releasing that value to change cadence would change the selected profile.
+    const intervalMs = options.refreshIntervals()?.foreground.monitor;
+    if (!frontendVisible() || intervalMs == null) {
       return;
     }
     const unsubscribe = options.selfSchedulingSource.subscribeSnapshot(
-      selfSchedulingSubscriptionIntervalMs,
+      intervalMs,
       (snapshot) => setSelfScheduling(snapshot.data));
     onCleanup(() => { unsubscribe(); setSelfScheduling(null); });
   });
@@ -100,7 +103,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
       return;
     }
     const intervalMs = currentLocalSystemRefreshIntervalMs();
-    if (!frontendVisible()) {
+    if (!frontendVisible() || intervalMs === null) {
       return;
     }
     const unsubscribe = options.localSystemSource.subscribeSnapshot(

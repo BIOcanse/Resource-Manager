@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import {
   resetGpuPerformanceScoreOverrides,
@@ -87,7 +88,6 @@ interface GpuSpecializedUsage {
   engineName?: string | null;
 }
 
-const gpuSamplingIntervalMs = 1_000;
 
 interface GpuSchedulingModelProps {
   runtimeEffectsEnabled: boolean;
@@ -98,6 +98,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsGpuModel]);
   const frontendWork = useFrontendWork();
   const runtime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
   const appSettingsSource = useSource(runtime.sources.appSettings, () => ({
     active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel),
     refreshIntervalMs: null
@@ -165,6 +166,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   });
 
   createEffect(() => {
+    const intervalMs = readIntervals.current()?.monitor;
     const indexes = gpuIndexes();
     const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
     setMetricSnapshot(null);
@@ -181,9 +183,10 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       `gpu.${index}.graphicsClock`,
       `gpu.${index}.memoryClock`
     ]);
+    if (intervalMs === undefined) return;
     const stopMetric = runtime.sources.metricSnapshot.subscribeSnapshot(
       { ids: metricIds },
-      gpuSamplingIntervalMs,
+      intervalMs,
       setMetricSnapshot);
     const stopResource = runtime.sources.resourceMonitor.subscribeSnapshot(
       {
@@ -199,11 +202,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         tableMode: "software",
         processDetailSoftwareIds: []
       },
-      gpuSamplingIntervalMs,
+      intervalMs,
       setResourceSnapshot);
     const stopSpecialized = runtime.sources.gpuSpecializedTelemetry.subscribeSnapshot(
       { counterIds: buildGpuSpecializedCounterIds(indexes) },
-      gpuSamplingIntervalMs,
+      intervalMs,
       setSpecializedTelemetry);
     onCleanup(() => {
       stopMetric();

@@ -72,6 +72,11 @@ import type {
   CommittedAppSettingsResult
 } from "../../data/appSettings/appSettingsResultDecoder.ts";
 import type { RequestClient } from "../request/RequestClient.ts";
+import {
+  buildManagementInventoryRevisionSubscriptionUrl,
+  managementInventoryRevisionDecoder,
+  type ManagementInventoryRevisionSnapshot
+} from "../../data/managementInventoryRevision.ts";
 import type { BackendSubscriptionChannel } from
   "../push/BackendSubscriptionChannel.ts";
 import {
@@ -145,6 +150,7 @@ export interface FrontendSources {
   readonly controlActualState: PushValueSource<ControlActualState>;
   readonly deviceTopology: PushValueSource<DeviceTopologySnapshotState>;
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
+  readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
@@ -229,6 +235,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildOperationsSubscriptionUrl,
       decoder: operationsStateDecoder
+    }),
+    managementInventoryRevision: new BackendCurrentValueSource<ManagementInventoryRevisionSnapshot>({
+      key: "management.inventory-revision",
+      channel: subscriptionChannel,
+      buildUrl: buildManagementInventoryRevisionSubscriptionUrl,
+      decoder: managementInventoryRevisionDecoder
     }),
     cpuTopology: new BackendPushValueSource<CpuTopologySnapshot | null>({
       key: "cpu.topology",

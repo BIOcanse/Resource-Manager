@@ -1,13 +1,16 @@
 using ResourceManager.App.Application.BrowserRuntimes;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.BrowserRuntimes;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.Shared.BrowserRuntimes;
 
 namespace ResourceManager.App.Infrastructure.BrowserRuntimes;
 
-public sealed class WindowsBrowserRuntimeCatalog(IHostEnvironment environment) : IBrowserRuntimeCatalog
+public sealed class WindowsBrowserRuntimeCatalog(
+    IHostEnvironment environment,
+    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null) : IBrowserRuntimeCatalog
 {
-    public const string InstallComponentId = "shared-webview2-runtime";
+    public const string InstallComponentId = BrowserRuntimeCatalogIds.InstallComponentId;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(5);
     private readonly object sync = new();
     private readonly string packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
@@ -34,6 +37,7 @@ public sealed class WindowsBrowserRuntimeCatalog(IHostEnvironment environment) :
                 discovery.Candidates.Select(MapRequired).ToArray(),
                 InstallComponentId,
                 discovery.CapturedAt);
+            inventoryRevisionOwner?.ObserveBrowserRuntimeSnapshot(cached);
             return Task.FromResult(cached);
         }
     }

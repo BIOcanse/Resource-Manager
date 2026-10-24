@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Controlled;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Application.SoftwareIdentity;
@@ -42,6 +43,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
     private static IServiceCollection AddResourceManagerSoftware(this IServiceCollection services)
     {
+        services.AddSingleton<ManagementInventoryRevisionOwner>();
+        services.AddSingleton<IManagementInventoryRevisionOwner>(static provider =>
+            provider.GetRequiredService<ManagementInventoryRevisionOwner>());
         services.AddSingleton<ISoftwareIdentityCatalog, BundledSoftwareIdentityCatalog>();
         services.AddSingleton<ISoftwareMetadataCatalog, BundledSoftwareMetadataCatalog>();
         services.AddSingleton<ISoftwareIssueCatalog, BundledSoftwareIssueCatalog>();

@@ -26,6 +26,7 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/optimization/smart/state/subscribe")]
     [InlineData("/api/optimization/smart/status/subscribe")]
     [InlineData("/api/operations/subscribe")]
+    [InlineData("/api/management/inventory-revisions/subscribe")]
     public void ExactLogicalSelectorsAreAccepted(string path)
     {
         var accepted = ResourceManagerEndpointRouteBuilderExtensions

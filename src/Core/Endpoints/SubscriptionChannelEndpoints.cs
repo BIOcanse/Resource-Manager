@@ -7,6 +7,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Application.LocalSystem;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.Operations;
@@ -310,7 +311,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ["/api/operations/subscribe"] = new((subscription, services, _) =>
                 CompileOperationSubscription(
                     subscription,
-                    services.GetService<IHostManagerOperationQueryService>()))
+                    services.GetService<IHostManagerOperationQueryService>())),
+            ["/api/management/inventory-revisions/subscribe"] = new((subscription, services, _) =>
+                CompileManagementInventoryRevisionSubscription(
+                    subscription,
+                    services.GetRequiredService<IManagementInventoryRevisionOwner>()))
         };
 
     /// <summary>
@@ -489,6 +494,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
     }
+
+    private static CompiledFrontendSubscription CompileManagementInventoryRevisionSubscription(
+        ParsedFrontendSubscription subscription,
+        IManagementInventoryRevisionOwner inventoryRevisions)
+        => subscription.Compile(async (writer, cancellationToken) =>
+        {
+            await foreach (var snapshot in inventoryRevisions.SubscribeAsync(cancellationToken))
+            {
+                await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
+            }
+        });
 
     private static CompiledFrontendSubscription CompileCpuTopologySubscription(
         ParsedFrontendSubscription subscription,

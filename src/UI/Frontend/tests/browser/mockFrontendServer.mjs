@@ -1,3 +1,5 @@
+import { mockFrontendRefreshIntervals } from "../fixtures/frontendRefreshIntervalFixture.ts";
+import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
@@ -42,6 +44,7 @@ const defaultScenario = {
   displayEdid: "off",
   animations: "normal",
   gpuGrade: "normal",
+  cpuGrade: "normal",
   resourceBreakdownGeneration: 0,
   resourceSegmentCount: 1,
   resourceCpuValue: null,
@@ -57,6 +60,11 @@ const defaultScenario = {
   softwareIssues: true,
   operations: "empty",
   operationCanceled: false,
+  managementInventoryRevisions: {
+    softwareRevision: "0",
+    componentRevision: "0",
+    browserRuntimeRevision: "0"
+  },
   cpuTopologyEmpty: false,
   // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
   // 字段目录（/api/metrics/fields/catalog/subscribe）由同一份设备值生成。
@@ -114,6 +122,7 @@ const diskUsageLayouts = new Map([
 const requestTelemetry = Object.create(null);
 const ndjsonPublishers = new Map();
 const operationSubscribers = new Set();
+const managementInventoryRevisionSubscribers = new Set();
 let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
@@ -160,6 +169,7 @@ const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied"
   }
   return {
     settings,
+    frontendRefreshIntervals: mockFrontendRefreshIntervals(settings.performance),
     revision: scenario.settingsRevision,
     runtimeApplicationDisposition
   };
@@ -255,6 +265,22 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === "/__test/requests") {
       return json(response, 200, requestTelemetry);
+    }
+    if (url.pathname === "/__test/management-inventory-revisions/publish"
+      && request.method === "POST") {
+      const patch = JSON.parse(await readBody(request));
+      const next = { ...scenario.managementInventoryRevisions };
+      for (const key of ["softwareRevision", "componentRevision", "browserRuntimeRevision"]) {
+        if (Object.hasOwn(patch, key)) {
+          if (typeof patch[key] !== "string" || !/^(0|[1-9][0-9]*)$/.test(patch[key])) {
+            return json(response, 400, { error: `invalid ${key}` });
+          }
+          next[key] = patch[key];
+        }
+      }
+      scenario.managementInventoryRevisions = next;
+      publishManagementInventoryRevisions();
+      return json(response, 200, next);
     }
     if (url.pathname.startsWith("/api/")) {
       trackRequest(response, url.pathname, url.search);
@@ -468,6 +494,9 @@ async function handleApi(request, response, url) {
     }, Math.max(0, Math.min(5000, Math.floor(Number(scenario.diskUsageScanCompletionDelayMs) || 900))));
     return json(response, 200, diskScanOperation);
   }
+  if (path === "/api/settings/report-rules" && request.method === "GET") {
+    return json(response, 200, { rules: reportRules });
+  }
   if (path === "/api/settings/app") {
     if (scenario.settings === "error" && request.method === "GET") {
       return text(response, 503, "settings unavailable");
@@ -660,7 +689,7 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/adapters/resource-manager/scheduling") {
     return json(response, 200, {
-      cpuGrade: "normal",
+      cpuGrade: scenario.cpuGrade,
       gpuGrade: scenario.gpuGrade,
       cpuUpdatedAt: now(),
       gpuUpdatedAt: now(),
@@ -715,6 +744,26 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/components" || path === "/api/controlled") {
     return json(response, 200, []);
+  }
+  if (path === "/api/browser-runtimes") {
+    const runtime = {
+      id: "webview2:fixture",
+      name: "Fixture WebView2 Runtime",
+      kind: "WebView2Runtime",
+      version: "1.0.0",
+      executablePath: "C:/Fixture/WebView2/msedgewebview2.exe",
+      runtimeDirectory: "C:/Fixture/WebView2",
+      source: "Managed",
+      nativeWebView2Compatible: true,
+      selected: true
+    };
+    return json(response, 200, {
+      sharedRuntime: runtime,
+      browserFallback: null,
+      candidates: [runtime],
+      installComponentId: "shared-webview2-runtime",
+      capturedAt: now()
+    });
   }
   if (path === "/api/software") {
     return json(response, 200, [{
@@ -1730,6 +1779,19 @@ function publishOperationValue(subscriber, value) {
   recordLogicalPublication(requestUrl);
 }
 
+function publishManagementInventoryRevisions() {
+  for (const subscriber of [...managementInventoryRevisionSubscribers]) {
+    publishManagementInventoryRevisionValue(subscriber);
+  }
+}
+
+function publishManagementInventoryRevisionValue(subscriber) {
+  const { response, requestUrl, write } = subscriber;
+  if (response.destroyed || response.writableEnded) return;
+  write(structuredClone(scenario.managementInventoryRevisions));
+  recordLogicalPublication(requestUrl);
+}
+
 async function subscriptionChannelStream(request, response) {
   const body = JSON.parse(await readBody(request));
   if (body?.version !== 1
@@ -1756,14 +1818,17 @@ async function subscriptionChannelStream(request, response) {
       return json(response, 400, { error: "unsupported subscription path" });
     }
     const operation = requestUrl.pathname === "/api/operations/subscribe";
-    const createPayload = operation ? null : subscriptionPayloadFactory(requestUrl);
-    if (!operation && createPayload === null) {
+    const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
+    const eventOnly = operation || managementInventoryRevision;
+    const createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl);
+    if (!eventOnly && createPayload === null) {
       return json(response, 400, { error: "unsupported subscription path" });
     }
     subscriptions.push({
       id: item.id,
       requestUrl,
       operation,
+      managementInventoryRevision,
       createPayload
     });
   }
@@ -1789,6 +1854,24 @@ async function subscriptionChannelStream(request, response) {
       publishOperationValue(subscriber, currentOperationsValue());
       releases.push(() => {
         operationSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.managementInventoryRevision) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(
+          response,
+          subscription.id,
+          value)
+      };
+      managementInventoryRevisionSubscribers.add(subscriber);
+      publishManagementInventoryRevisionValue(subscriber);
+      releases.push(() => {
+        managementInventoryRevisionSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -1846,7 +1929,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/cpu/residency/subscribe",
   "/api/optimization/smart/state/subscribe",
   "/api/optimization/smart/status/subscribe",
-  "/api/operations/subscribe"
+  "/api/operations/subscribe",
+  "/api/management/inventory-revisions/subscribe"
 ]);
 
 function smartCoordinatorStatus() {
@@ -1947,7 +2031,7 @@ function subscriptionPayloadFactory(url) {
       });
     case "/api/adapters/resource-manager/scheduling/subscribe":
       return (publishedAt) => ({
-        cpuGrade: "normal",
+        cpuGrade: scenario.cpuGrade,
         gpuGrade: scenario.gpuGrade,
         cpuUpdatedAt: publishedAt,
         gpuUpdatedAt: publishedAt,

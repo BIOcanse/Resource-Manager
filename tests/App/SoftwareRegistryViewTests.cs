@@ -4,6 +4,7 @@ using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Application.SoftwareDiscovery;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Operations;
@@ -17,6 +18,42 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class SoftwareRegistryViewTests
 {
+    [Fact]
+    public async Task RefreshSoftwareAsync_PublishesAcceptedInventoryChangesButNotEqualReads()
+    {
+        var entries = new List<InstalledSoftwareEntry>
+        {
+            new("windows-installed:one", "One", "1.0", "Vendor", @"C:\Apps\One", [@"C:\Apps\One"], null, "registry:one")
+        };
+        var revisions = new ManagementInventoryRevisionOwner();
+        var view = new SoftwareRegistryView(
+            new StaticAdapterSoftwareRegistry([]),
+            new InMemoryControlledSoftwareRegistry(),
+            new EmptyDependencyManager(),
+            new EmptyManualSoftwareRegistry(),
+            new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
+                new Dictionary<string, SoftwarePolicyGroup>(),
+                new Dictionary<string, SoftwarePolicyAssignment>())),
+            new StaticInstalledSoftwareInventory(entries),
+            SoftwareIdentityCatalogTestData.Empty,
+            new StaticPortableSoftwareRegistry([]),
+            revisions);
+
+        _ = await view.GetSoftwareAsync(CancellationToken.None);
+        var initial = revisions.Current;
+        _ = await view.RefreshSoftwareAsync(CancellationToken.None);
+
+        Assert.Equal(initial, revisions.Current);
+
+        entries.Add(new InstalledSoftwareEntry(
+            "windows-installed:two", "Two", "2.0", "Vendor", @"C:\Apps\Two", [@"C:\Apps\Two"], null, "registry:two"));
+        _ = await view.RefreshSoftwareAsync(CancellationToken.None);
+
+        Assert.Equal("1", revisions.Current.SoftwareRevision);
+        Assert.Equal("0", revisions.Current.ComponentRevision);
+        Assert.Equal("0", revisions.Current.BrowserRuntimeRevision);
+    }
+
     [Fact]
     public async Task UserInstalledListClassificationAndScoreOverrideReachTheOwnersProcess()
     {

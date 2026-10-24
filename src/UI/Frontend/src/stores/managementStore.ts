@@ -15,7 +15,10 @@ import {
 import type { ComponentAcquisitionRequest } from "../features/management/components/ComponentAcquisitionDialog";
 import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
 import { managementActionKey, managementActionKeyFromOperation } from "../features/management/components/ManagementPage";
-import type { ManagementSubpageId } from "../features/management/managementNavigation";
+import {
+  browserRuntimeManagementSubpageId,
+  type ManagementSubpageId
+} from "../features/management/managementNavigation";
 import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../features/management/managementSnapshotCache";
 import { uiText } from "../text.ts";
 import {
@@ -41,6 +44,9 @@ import type {
   OperationRegistry,
   OperationRegistrySnapshot
 } from "../frontendRuntime/operations/OperationRegistry";
+import type { CurrentValueSource } from "../frontendRuntime/push/PushValueSourceFamily.ts";
+import type { ManagementInventoryRevisionSnapshot } from "../data/managementInventoryRevision.ts";
+import { bindManagementInventoryRevisions } from "./managementInventoryRevisionBinding.ts";
 import { isTerminalOperation } from "../frontendRuntime/operations/operationMerge";
 import type {
   ManagedComponent,
@@ -50,9 +56,14 @@ import type {
   OperationSnapshot,
   SoftwareRecord
 } from "../types";
+import type { PageId } from "../types";
 import { textOrEmpty } from "../utils";
 
 export interface ManagementStoreOptions {
+  activePage: Accessor<PageId>;
+  inventoryRevisionSource: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
+  inventoryActive: Accessor<boolean>;
+  browserRuntimesActive: Accessor<boolean>;
   confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
   showToast: (input: ToastInput) => void;
   mutablePersistenceEnabled: Accessor<boolean>;
@@ -125,6 +136,18 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
   const [manualSoftwareSource, setManualSoftwareSource] = createSignal<SoftwareRecord | null>(null);
   const [manualSoftwareKind, setManualSoftwareKind] = createSignal<ManualSoftwareKind | null>(null);
   const [manualSoftwareActionInProgress, setManualSoftwareActionInProgress] = createSignal(false);
+  let componentRefreshPromise: Promise<void> | null = null;
+  let componentRefreshPending: { readonly visibleOnly: boolean } | null = null;
+  let softwareRefreshPromise: Promise<void> | null = null;
+  let softwareRefreshPending: {
+    readonly visibleOnly: boolean;
+    readonly portable: boolean;
+  } | null = null;
+  let browserRuntimeRefreshPromise: Promise<void> | null = null;
+  let browserRuntimeRefreshPending: {
+    readonly visibleOnly: boolean;
+    readonly force: boolean;
+  } | null = null;
   const operationsObservation = createMemo<ObservationState>(() =>
     operationObservation(
       operationProjection(),
@@ -146,6 +169,18 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     return labels;
   });
   const unsubscribeOperations = options.operations.subscribe(setOperationProjection);
+
+  bindManagementInventoryRevisions({
+    activePage: options.activePage,
+    activeSubpage,
+    inventoryRevisionSource: options.inventoryRevisionSource,
+    inventoryActive: options.inventoryActive,
+    browserRuntimesActive: options.browserRuntimesActive,
+    mutablePersistenceEnabled: options.mutablePersistenceEnabled,
+    refreshComponents: refreshComponentsForRevision,
+    refreshSoftware: () => requestSoftwareRefresh(false, true),
+    refreshBrowserRuntimes: () => requestBrowserRuntimeRefresh(false, true)
+  });
 
   function openManualSoftwareModal(kind: ManagementKind) {
     if (!options.mutablePersistenceEnabled() || !isManualSoftwareKind(kind)) {
@@ -186,7 +221,53 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
-  async function refreshComponents() {
+  function refreshComponents(): Promise<void> {
+    return requestComponentRefresh(false);
+  }
+
+  function refreshComponentsForRevision(): Promise<void> {
+    return requestComponentRefresh(true);
+  }
+
+  function requestComponentRefresh(visibleOnly: boolean): Promise<void> {
+    if (componentRefreshPromise) {
+      componentRefreshPending = {
+        visibleOnly: (componentRefreshPending?.visibleOnly ?? true) && visibleOnly
+      };
+      return componentRefreshPromise;
+    }
+
+    let tracked: Promise<void>;
+    componentRefreshPending = null;
+    tracked = Promise.resolve().then(async () => {
+      try {
+        await refreshComponentsCore();
+        while (componentRefreshPending) {
+          const pending = componentRefreshPending;
+          componentRefreshPending = null;
+          if (pending.visibleOnly && !componentListIsDemanded()) {
+            continue;
+          }
+          await refreshComponentsCore();
+        }
+      } finally {
+        if (componentRefreshPromise === tracked) {
+          componentRefreshPromise = null;
+        }
+      }
+    });
+    componentRefreshPromise = tracked;
+    return tracked;
+  }
+
+  function componentListIsDemanded(): boolean {
+    const subpage = activeSubpage();
+    return options.activePage() === "components"
+      && options.inventoryActive()
+      && (subpage === "Dependency" || subpage === "Support");
+  }
+
+  async function refreshComponentsCore() {
     setComponentsObservation(refreshingObservation);
     try {
       const next = await getComponents();
@@ -200,7 +281,69 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
-  async function refreshSoftware(refreshPortableRegistrations = false) {
+  function refreshSoftware(refreshPortableRegistrations = false): Promise<void> {
+    return requestSoftwareRefresh(refreshPortableRegistrations, false);
+  }
+
+  function requestSoftwareRefresh(
+    refreshPortableRegistrations: boolean,
+    visibleOnly: boolean
+  ): Promise<void> {
+    if (softwareRefreshPromise) {
+      softwareRefreshPending = {
+        visibleOnly: (softwareRefreshPending?.visibleOnly ?? true) && visibleOnly,
+        portable: (softwareRefreshPending?.portable ?? false) || refreshPortableRegistrations
+      };
+      return softwareRefreshPromise;
+    }
+
+    softwareRefreshPending = null;
+    let tracked: Promise<void>;
+    tracked = Promise.resolve().then(async () => {
+      let firstError: unknown;
+      let hasError = false;
+      const refreshAndCaptureError = async (portable: boolean) => {
+        try {
+          await refreshSoftwareCore(portable);
+        } catch (error) {
+          if (!hasError) {
+            firstError = error;
+            hasError = true;
+          }
+        }
+      };
+
+      try {
+        await refreshAndCaptureError(refreshPortableRegistrations);
+        while (softwareRefreshPending) {
+          const pending = softwareRefreshPending;
+          softwareRefreshPending = null;
+          if (pending.visibleOnly && !softwareListIsDemanded()) {
+            continue;
+          }
+          await refreshAndCaptureError(pending.portable);
+        }
+        if (hasError) {
+          throw firstError;
+        }
+      } finally {
+        if (softwareRefreshPromise === tracked) {
+          softwareRefreshPromise = null;
+        }
+      }
+    });
+    softwareRefreshPromise = tracked;
+    return tracked;
+  }
+
+  function softwareListIsDemanded(): boolean {
+    return options.activePage() === "components"
+      && options.inventoryActive()
+      && activeSubpage() !== browserRuntimeManagementSubpageId
+      && options.mutablePersistenceEnabled();
+  }
+
+  async function refreshSoftwareCore(refreshPortableRegistrations: boolean) {
     if (!options.mutablePersistenceEnabled()) {
       setSoftwareObservation(profileDisabledObservation(
         uiText.stores.writableRegistryDisabled));
@@ -223,24 +366,62 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
-  async function refreshBrowserRuntimes(forceRefresh = false) {
-    if (browserRuntimeRefreshInProgress()) {
-      return;
+  function refreshBrowserRuntimes(forceRefresh = false): Promise<void> {
+    return requestBrowserRuntimeRefresh(forceRefresh, false);
+  }
+
+  function requestBrowserRuntimeRefresh(
+    forceRefresh: boolean,
+    visibleOnly: boolean
+  ): Promise<void> {
+    if (browserRuntimeRefreshPromise) {
+      browserRuntimeRefreshPending = {
+        visibleOnly: (browserRuntimeRefreshPending?.visibleOnly ?? true) && visibleOnly,
+        force: (browserRuntimeRefreshPending?.force ?? false) || forceRefresh
+      };
+      return browserRuntimeRefreshPromise;
     }
 
-    setBrowserRuntimeRefreshInProgress(true);
-    setBrowserRuntimesObservation(refreshingObservation);
-    try {
-      const next = await getBrowserRuntimeSnapshot(forceRefresh);
-      setBrowserRuntimes(next);
-      setBrowserRuntimesObservation(readyObservation(next.capturedAt));
-    } catch (error) {
-      setBrowserRuntimesObservation((previous) => failedObservation(
-        previous,
-        userFacingErrorMessage(error, uiText.stores.browserRuntimeRefreshFailed)));
-    } finally {
-      setBrowserRuntimeRefreshInProgress(false);
-    }
+    browserRuntimeRefreshPending = null;
+    let tracked: Promise<void>;
+    tracked = Promise.resolve().then(async () => {
+      setBrowserRuntimeRefreshInProgress(true);
+      try {
+        let nextForceRefresh = forceRefresh;
+        while (true) {
+          setBrowserRuntimesObservation(refreshingObservation);
+          try {
+            const next = await getBrowserRuntimeSnapshot(nextForceRefresh);
+            setBrowserRuntimes(next);
+            setBrowserRuntimesObservation(readyObservation(next.capturedAt));
+          } catch (error) {
+            setBrowserRuntimesObservation((previous) => failedObservation(
+              previous,
+              userFacingErrorMessage(error, uiText.stores.browserRuntimeRefreshFailed)));
+          }
+
+          const pending = browserRuntimeRefreshPending;
+          browserRuntimeRefreshPending = null;
+          if (!pending || (pending.visibleOnly && !browserRuntimeListIsDemanded())) {
+            break;
+          }
+          nextForceRefresh = pending.force;
+        }
+      } finally {
+        setBrowserRuntimeRefreshInProgress(false);
+        if (browserRuntimeRefreshPromise === tracked) {
+          browserRuntimeRefreshPromise = null;
+        }
+      }
+    });
+    browserRuntimeRefreshPromise = tracked;
+    return tracked;
+  }
+
+  function browserRuntimeListIsDemanded(): boolean {
+    return options.activePage() === "components"
+      && options.browserRuntimesActive()
+      && activeSubpage() === browserRuntimeManagementSubpageId;
   }
 
   async function refreshState(userInitiated: boolean) {
