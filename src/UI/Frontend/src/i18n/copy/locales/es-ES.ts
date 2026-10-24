@@ -919,6 +919,14 @@ const esEsAppCopy: AppCopy = {
       occurrences: "Veces visto",
       occurrenceTimes: (count: number) => `${count} veces`
     },
+    strayProcess: {
+      title: (name: string) => `Posible proceso residual: ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} retiene ${memory} sin actividad observada de CPU ni GPU durante ${duration}. Revise su línea de comandos para decidir si aún es necesario.`,
+      pid: "Identificador del proceso",
+      startKey: "Clave de inicio del proceso",
+      idleDuration: "Tiempo inactivo",
+      commandLine: "Línea de comandos",
+    },
     duration: {
       days: (value: number) => `${value} d`,
       hours: (value: number) => `${value} h`,

@@ -189,6 +189,45 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "移出信任", exact: true }).click();
   await page.locator(".optimization-trusted-targets").getByText("Editor", { exact: true }).waitFor({ state: "detached" });
   assert(deleteCount === 1, "Inactive trust was not removed exactly once");
+  await page.unroute("**/api/optimization/reports", fulfillOverview);
+  await page.unroute("**/api/optimization/reports/refresh", fulfillOverview);
+  let strayTrusted = false;
+  const strayTarget = { targetType: "process_instance", targetKey: "process:424242:134000000000000000", displayName: "pwsh",
+    softwareId: "tool", softwareName: "PowerShell", softwareKind: "other", displayKind: "other", processNames: ["pwsh"], processIds: [424242], driveLetter: null };
+  const strayTrust = { ...identity, id: "hm-trust-stray", ...strayTarget, reportType: "suspected_stray_process", createdFromReportId: "stray-report" };
+  const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "Active", severity: "Info", confidence: "High",
+    createdAt: overview.capturedAt, updatedAt: overview.capturedAt, firstObservedAt: overview.capturedAt, lastObservedAt: overview.capturedAt,
+    title: "BACKEND_PROSE", message: "BACKEND_PROSE", target: strayTarget, suggestedActions: [],
+    context: { contextKind: "Normal", foregroundProcessId: null, foregroundProcessName: null, foregroundExecutablePath: null,
+      foregroundSoftwareId: null, foregroundSoftwareName: null, confidence: "High", evidence: [] },
+    evidence: { resourceKind: "Memory", averageValue: 52428800, peakValue: 52428800, currentValue: 52428800, valueUnit: "B",
+      activeSampleCount: 1, sampleCount: 2, durationSeconds: 0, details: [],
+      process: { processId: 424242, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
+        idleDurationSeconds: 900, commandLine: 'pwsh -File "stray-check.ps1"' } } };
+  const fulfillStray = route => route.fulfill({ json: { ...overview,
+    reports: [{ ...strayReport, state: strayTrusted ? "TrustedSuppressed" : "Active" }], trustedTargets: strayTrusted ? [strayTrust] : [],
+    status: { ...overview.status, activeReportCount: 1, trustedCount: strayTrusted ? 1 : 0 } } });
+  await page.route("**/api/optimization/reports", fulfillStray);
+  await page.route("**/api/optimization/reports/refresh", fulfillStray);
+  await page.route("**/api/optimization/reports/stray-report/dismiss", async route => {
+    assert(route.request().method() === "POST", "Stray trust must use report dismiss");
+    strayTrusted = true; await route.fulfill({ json: strayTrust });
+  });
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByRole("radio", { name: /未信任.*1/ }).click();
+  const strayCard = page.locator(".optimization-report").filter({ hasText: "疑似游离程序：pwsh" });
+  await strayCard.waitFor({ state: "visible", timeout: 5000 });
+  assert((await strayCard.textContent()).includes("15") && !(await strayCard.textContent()).includes("BACKEND_PROSE"),
+    "Stray report must render localized structured evidence");
+  await strayCard.getByRole("button", { name: "详细信息", exact: true }).click();
+  const detail = page.getByRole("dialog");
+  await detail.getByText('pwsh -File "stray-check.ps1"', { exact: true }).waitFor();
+  await detail.getByText("424242", { exact: true }).waitFor();
+  await detail.getByRole("button", { name: "关闭", exact: true }).last().click();
+  await strayCard.getByRole("button", { name: "忽略", exact: true }).click();
+  await page.getByRole("radio", { name: /已信任.*1/ }).click();
+  await page.locator(".optimization-trusted-targets").getByText("pwsh", { exact: true }).waitFor();
+  assert(strayTrusted, "Stray process target was not trusted");
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {
@@ -199,6 +238,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     refreshReadsSchedulingStatus: true,
     failedRefreshPreservedLastGood: true,
     retiredRecorderStateAbsent: true,
+    strayStructuredEvidenceAndInstanceTrust: true,
     pageErrors: failures
   };
 }

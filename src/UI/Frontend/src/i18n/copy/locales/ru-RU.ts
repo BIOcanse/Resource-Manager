@@ -919,6 +919,14 @@ const ruRuAppCopy: AppCopy = {
       occurrences: "Число обнаружений",
       occurrenceTimes: (count: number) => `${count} раз`
     },
+    strayProcess: {
+      title: (name: string) => `Возможно оставшийся процесс: ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} удерживает ${memory}; активность CPU и GPU не наблюдалась в течение ${duration}. Проверьте командную строку и решите, нужен ли процесс.`,
+      pid: "Идентификатор процесса",
+      startKey: "Ключ запуска процесса",
+      idleDuration: "Время бездействия",
+      commandLine: "Командная строка",
+    },
     duration: {
       days: (value: number) => `${value} дн.`,
       hours: (value: number) => `${value} ч`,

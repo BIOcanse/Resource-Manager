@@ -919,6 +919,14 @@ const deDeAppCopy: AppCopy = {
       occurrences: "Beobachtungen",
       occurrenceTimes: (count: number) => `${count} Mal`
     },
+    strayProcess: {
+      title: (name: string) => `Möglicherweise übrig gebliebener Prozess: ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} belegt ${memory}; seit ${duration} wurde keine CPU- oder GPU-Aktivität beobachtet. Prüfen Sie die Befehlszeile, um zu entscheiden, ob er noch benötigt wird.`,
+      pid: "Prozesskennung",
+      startKey: "Prozessstartkennung",
+      idleDuration: "Leerlaufdauer",
+      commandLine: "Befehlszeile",
+    },
     duration: {
       days: (value: number) => `${value} T`,
       hours: (value: number) => `${value} Std.`,

@@ -113,6 +113,14 @@ export const zhOptimizationCopy = {
       occurrences: "发现次数",
       occurrenceTimes: (count: number) => `${count} 次`
     },
+    strayProcess: {
+      title: (name: string) => `疑似游离程序：${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} 占用 ${memory}，已持续 ${duration} 未观测到 CPU 或 GPU 活动。可查看命令行，自行判断是否仍需运行。`,
+      pid: "进程 ID",
+      startKey: "进程启动标识",
+      idleDuration: "空闲时长",
+      commandLine: "命令行",
+    },
     duration: {
       days: (value: number) => `${value} 天`,
       hours: (value: number) => `${value} 小时`,

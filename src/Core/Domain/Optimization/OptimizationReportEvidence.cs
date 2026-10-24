@@ -50,4 +50,15 @@ public sealed record OptimizationReportEvidence(
     int ActiveSampleCount,
     int SampleCount,
     double DurationSeconds,
-    IReadOnlyList<string> Details);
+    IReadOnlyList<string> Details)
+{
+    public OptimizationProcessEvidence? Process { get; init; }
+}
+
+public sealed record OptimizationProcessEvidence(
+    int ProcessId,
+    string ProcessStartKey,
+    string Name,
+    double? MemoryBytes,
+    double? IdleDurationSeconds,
+    string? CommandLine);

@@ -147,7 +147,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 (uint)NativeReportPersistenceKind.Metadata,
                 metadata.OperationKind);
             Assert.True(metadata.MutationVersion > 0);
-            Assert.Equal(7, owner.GetStatus().ConfiguredRuleCount);
+            Assert.Equal(9, owner.GetStatus().ConfiguredRuleCount);
             Assert.Equal(1, metrics.ActiveSubscriptions);
             Assert.Equal(1, resources.ActiveSubscriptions);
             Assert.Equal(1, interrupts.ActiveSubscriptions);
@@ -387,7 +387,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             // 内存有两条规则（百分比与绝对字节），但它们共用一个 family，
             // 所以同一个软件只出一条报告 —— 任一越线即可，不是各报各的。
             var report = Assert.Single(activated.Reports);
-            Assert.Equal(2, activated.Status.AvailableRuleCount);
+            Assert.Equal(4, activated.Status.AvailableRuleCount);
             Assert.Equal("software:editor", report.Target.SoftwareId);
             Assert.Equal(OptimizationReportTargetTypes.Software, report.Target.TargetType);
             Assert.Equal(OptimizationResourceKinds.Memory, report.Evidence.ResourceKind);

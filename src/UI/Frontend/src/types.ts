@@ -1547,6 +1547,14 @@ export interface OptimizationReportTarget {
 }
 
 export interface OptimizationReportEvidence {
+  process?: {
+    processId: number;
+    processStartKey: string;
+    name: string;
+    memoryBytes: number | null;
+    idleDurationSeconds: number | null;
+    commandLine: string | null;
+  } | null;
   resourceKind: string;
   averageValue: number;
   peakValue: number;

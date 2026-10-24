@@ -37,7 +37,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 {
     private const int SampleIntervalSeconds = 10;
     private static readonly MetricSampleRequest ReportMetricRequest =
-        MetricSampleRequest.ForIds(
+        MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(
         [
             "cpu.temperature",
             "cpu.usage",
@@ -45,7 +45,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         ]);
     private static readonly ResourceBreakdownSampleRequest ReportResourceRequest =
         ResourceBreakdownSampleRequest.ForResourceTable(
-            [ResourceBreakdownMetricIds.MemoryUsage],
+            [ResourceBreakdownMetricIds.MemoryUsage, "process_all_command_line_actual"],
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 [ResourceBreakdownMetricIds.MemoryUsage] =
@@ -55,6 +55,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         TimeSpan.FromSeconds(SampleIntervalSeconds);
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
+    private readonly HostManagerStrayProcessReportFactProjector strayProjector = new();
+    private const SchedulingProcessMetricMask ReportProcessMetrics = SchedulingProcessMetricMask.RuntimeState
+        | SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage;
     private readonly SemaphoreSlim planSignal = new(0, 1);
     private NativeReportCoordinatorWorkspace? workspace;
     private NativeReportCoordinatorWorkspace? pendingWorkspaceClose;
@@ -373,7 +376,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             var resources = resourceSource.ReadLatest(ReportResourceRequest);
             var interrupts = interruptSource.Read();
             var processFacts = processSource.ReadLatest(new SchedulingProcessFactRequest(
-                SchedulingProcessMetricMask.RuntimeState, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
+                ReportProcessMetrics, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
                     SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
             var backgroundIds = BackgroundSoftwareIds(processFacts);
             var protectedIds = (await protectionService.GetProtectedTargetsAsync(cancellationToken))
@@ -384,7 +387,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                 plan,
                 hardware,
                 interrupts,
-                resources, backgroundIds, protectedIds);
+                resources, backgroundIds, protectedIds, strayProjector, processFacts);
             foreach (var target in batch.Targets)
             {
                 targetCatalog[target.Key] = target.Value;
@@ -448,7 +451,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         {
             processSubscription = processSource.AcquireSubscription(
                 "host-manager.reports.runtime-state",
-                SchedulingProcessMetricMask.RuntimeState, SampleInterval);
+                ReportProcessMetrics, SampleInterval);
             metricSubscription = metricSource.AcquireSubscription(
                 "host-manager.reports.hardware",
                 ReportMetricRequest,

@@ -2,6 +2,7 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class OptimizationReportTypes
 {
+    public const string SuspectedStrayProcess = "suspected_stray_process";
     public const string GameBackgroundResourceUsage = "GameBackgroundResourceUsage";
     public const string BackgroundHighUsage = "BackgroundHighUsage";
     public const string BackgroundPersistentMicroUsage = "BackgroundPersistentMicroUsage";

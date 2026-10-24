@@ -269,6 +269,23 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
         Assert.Empty(await store.LoadTargetsAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ProcessInstanceEvidenceSurvivesRestartWithItsSoftwareDescriptor()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var evidence = new ResourceManager.App.Domain.Optimization.OptimizationProcessEvidence(42, "123456789123456789",
+            "pwsh", 50 * 1024 * 1024, 900, "pwsh -File \"任务.ps1\"");
+        var target = new HostManagerReportTargetDescriptor(123, "tool", "PowerShell", "other", "other", ["pwsh"], [42], evidence);
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with { TargetHandle = 123 };
+        await store.PersistAsync(new[] { row }, CancellationToken.None, new Dictionary<ulong, HostManagerReportTargetDescriptor> { [123] = target });
+        var restored = Assert.Single(await new NativeReportCoordinatorPersistenceStore(database).LoadTargetsAsync(CancellationToken.None));
+        Assert.Equal(evidence, restored.Process);
+        Assert.Equal(target.SoftwareName, restored.SoftwareName);
+        Assert.Equal(target.ProcessIds, restored.ProcessIds);
+        Assert.Equal(target.ProcessNames, restored.ProcessNames);
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

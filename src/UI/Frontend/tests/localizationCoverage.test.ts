@@ -27,6 +27,8 @@ interface FunctionCase<T> {
   requiresTranslation: boolean;
 }
 const appCases: FunctionCase<AppCopy>[] = [
+  { path: "optimizationReport.strayProcess.title", render: copy => copy.optimizationReport.strayProcess.title("Tool-A"), parameters: ["Tool-A"], requiresTranslation: true },
+  { path: "optimizationReport.strayProcess.summary", render: copy => copy.optimizationReport.strayProcess.summary("Tool-A", "51 MiB", "17 min"), parameters: ["Tool-A", "51 MiB", "17 min"], requiresTranslation: true },
   { path: "softwareActions.processActionResult", render: copy => copy.softwareActions.processActionResult(7, 19), parameters: ["7", "19"], requiresTranslation: true },
   { path: "control.needsComponent", render: copy => copy.control.needsComponent("NVAPI"), parameters: ["NVAPI"], requiresTranslation: true },
   { path: "control.instances.firstSeen", render: copy => copy.control.instances.firstSeen("2030-01-02"), parameters: ["2030-01-02"], requiresTranslation: true },

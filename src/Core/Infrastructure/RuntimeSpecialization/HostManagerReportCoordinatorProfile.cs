@@ -68,6 +68,14 @@ internal sealed class HostManagerReportCoordinatorRecreateProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerReportCoordinatorRuleProfile
 {
+    [JsonPropertyName("executable_names")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? ExecutableNames { get; init; }
+
+    [JsonPropertyName("zero_activity_threshold")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? ZeroActivityThreshold { get; init; }
+
     [JsonPropertyName("fact_kind")]
     public required HostManagerReportFactKind FactKind { get; init; }
 

@@ -919,6 +919,14 @@ const frFrAppCopy: AppCopy = {
       occurrences: "Occurrences",
       occurrenceTimes: (count: number) => `${count} fois`
     },
+    strayProcess: {
+      title: (name: string) => `Processus résiduel suspecté : ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} conserve ${memory} sans activité CPU ni GPU observée depuis ${duration}. Vérifiez sa ligne de commande pour décider s’il est encore nécessaire.`,
+      pid: "Identifiant du processus",
+      startKey: "Clé de démarrage du processus",
+      idleDuration: "Durée d’inactivité",
+      commandLine: "Ligne de commande",
+    },
     duration: {
       days: (value: number) => `${value} j`,
       hours: (value: number) => `${value} h`,

@@ -31,7 +31,9 @@ internal static class HostManagerReportFactProjector
         SystemInterruptSnapshot interrupts,
         ResourceBreakdownSnapshot resources,
         IReadOnlySet<string>? backgroundSoftwareIds = null,
-        IReadOnlySet<string>? protectedSoftwareIds = null)
+        IReadOnlySet<string>? protectedSoftwareIds = null,
+        HostManagerStrayProcessReportFactProjector? strayProjector = null,
+        SchedulingProcessFactSnapshot? processes = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(interrupts);
@@ -41,7 +43,7 @@ internal static class HostManagerReportFactProjector
             hardware,
             interrupts,
             resources,
-            includeSoftware: true, backgroundSoftwareIds, protectedSoftwareIds);
+            includeSoftware: true, backgroundSoftwareIds, protectedSoftwareIds, strayProjector, processes);
     }
 
     private static HostManagerReportObservationBatch ProjectCore(
@@ -51,7 +53,9 @@ internal static class HostManagerReportFactProjector
         ResourceBreakdownSnapshot? resources,
         bool includeSoftware,
         IReadOnlySet<string>? backgroundSoftwareIds = null,
-        IReadOnlySet<string>? protectedSoftwareIds = null)
+        IReadOnlySet<string>? protectedSoftwareIds = null,
+        HostManagerStrayProcessReportFactProjector? strayProjector = null,
+        SchedulingProcessFactSnapshot? processes = null)
     {
         var targets = new Dictionary<ulong, HostManagerReportTargetDescriptor>();
         var sources = plan.Recreate.Rules
@@ -67,7 +71,7 @@ internal static class HostManagerReportFactProjector
                 hardware,
                 interrupts,
                 resources,
-                targets, backgroundSoftwareIds, protectedSoftwareIds))
+                targets, backgroundSoftwareIds, protectedSoftwareIds, strayProjector, processes))
             .Where(static source => source is not null)
             .Select(static source => source!)
             .ToArray();
@@ -83,8 +87,12 @@ internal static class HostManagerReportFactProjector
         ResourceBreakdownSnapshot? resources,
         IDictionary<ulong, HostManagerReportTargetDescriptor> targets,
         IReadOnlySet<string>? backgroundSoftwareIds,
-        IReadOnlySet<string>? protectedSoftwareIds)
+        IReadOnlySet<string>? protectedSoftwareIds,
+        HostManagerStrayProcessReportFactProjector? strayProjector,
+        SchedulingProcessFactSnapshot? processes)
     {
+        if (rules.All(static rule => HostManagerStrayProcessReportFactProjector.Supports(rule.FactKind)))
+            return resources is null ? null : strayProjector?.Project(rules, resources, processes, targets, protectedSoftwareIds);
         if (rules.All(static rule =>
             HostManagerCpuReportFactProjector.Supports(rule.FactKind)))
         {
@@ -133,7 +141,8 @@ internal sealed record HostManagerReportTargetDescriptor(
     string SoftwareKind,
     string DisplayKind,
     IReadOnlyList<string> ProcessNames,
-    IReadOnlyList<int> ProcessIds);
+    IReadOnlyList<int> ProcessIds,
+    ResourceManager.App.Domain.Optimization.OptimizationProcessEvidence? Process = null);
 
 internal sealed record HostManagerReportSourceObservation(
     ulong SourceHandle,
@@ -147,5 +156,5 @@ internal sealed record HostManagerReportSourceObservation(
 internal sealed record HostManagerReportFactValue(
     CompiledHostManagerReportCoordinatorRulePlan Rule,
     ulong TargetHandle,
-    double CurrentValue,
+    double? CurrentValue,
     ulong? EventCount);

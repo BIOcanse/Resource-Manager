@@ -919,6 +919,14 @@ const jaJpAppCopy: AppCopy = {
       occurrences: "検出回数",
       occurrenceTimes: (count: number) => `${count} 回`
     },
+    strayProcess: {
+      title: (name: string) => `残留の疑いがあるプロセス：${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} は ${memory} を保持し、${duration} にわたり CPU と GPU の動作が観測されていません。コマンドラインを確認して必要か判断してください。`,
+      pid: "プロセス ID",
+      startKey: "プロセス開始識別子",
+      idleDuration: "アイドル時間",
+      commandLine: "コマンドライン",
+    },
     duration: {
       days: (value: number) => `${value} 日`,
       hours: (value: number) => `${value} 時間`,
