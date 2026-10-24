@@ -31,10 +31,11 @@ internal sealed class WindowsGpuWindowActionExecutor : IAsyncDisposable
     private readonly ulong deadlineMilliseconds;
     private readonly string executable;
     private readonly string? desktop;
+    private readonly ILogger? logger;
     private int started;
 
     internal WindowsGpuWindowActionExecutor(string executable, GpuWindowActionProcessLimits limits,
-        CancellationToken cancellationToken, string? desktop = null, ulong? deadlineMilliseconds = null)
+        CancellationToken cancellationToken, string? desktop = null, ulong? deadlineMilliseconds = null, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
@@ -43,6 +44,7 @@ internal sealed class WindowsGpuWindowActionExecutor : IAsyncDisposable
             throw new ArgumentOutOfRangeException(nameof(limits), "The frame bound cannot truncate the fixed window protocol.");
         this.executable = Path.GetFullPath(executable);
         this.desktop = desktop;
+        this.logger = logger;
         this.limits = limits;
         this.cancellationToken = cancellationToken;
         var maximumDeadline = checked((ulong)Environment.TickCount64 + (ulong)limits.TotalBudget.TotalMilliseconds);
@@ -70,7 +72,7 @@ internal sealed class WindowsGpuWindowActionExecutor : IAsyncDisposable
         try
         {
             process = WindowsGpuWindowActionProcess.CreateForTarget(request, limits, cancellationToken, deadlineMilliseconds);
-            process.StartSuspended(executable, [], desktop);
+            process.StartSuspended(executable, [], desktop, logger);
             var parentHandle = process.TransferParentReadHandle();
             process.Resume();
             await process.ConnectAsync().ConfigureAwait(false);

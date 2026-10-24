@@ -127,7 +127,8 @@ internal sealed partial class WindowsGpuWindowActionProcess : IAsyncDisposable
     }
 
     // Only the local execution owner supplies this executable/argv; they are not wire request fields.
-    internal void StartSuspended(string executablePath, IReadOnlyList<string> arguments, string? desktopName = null)
+    internal void StartSuspended(string executablePath, IReadOnlyList<string> arguments, string? desktopName = null,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         if (desktopName is not null && (string.IsNullOrWhiteSpace(desktopName) || desktopName.Contains('\0')))
@@ -138,12 +139,15 @@ internal sealed partial class WindowsGpuWindowActionProcess : IAsyncDisposable
             CheckOpen();
             if (startAttempted) throw new InvalidOperationException("A window execution is single-use.");
             startAttempted = true;
-            var errorMode = Native.GetErrorMode();
-            if ((errorMode & Native.RequiredErrorMode) != Native.RequiredErrorMode)
+            var errorMode = Hosting.WindowsNativeLaunchErrorPolicy.EstablishForLaunch();
+            if ((errorMode.Before & Native.RequiredErrorMode) != Native.RequiredErrorMode)
+                logger?.LogWarning("Native window-helper launch policy required repair: process={ProcessId}, before=0x{BeforeMode:X8}.",
+                    Environment.ProcessId, errorMode.Before);
+            if ((errorMode.After & Native.RequiredErrorMode) != Native.RequiredErrorMode)
                 throw new InvalidOperationException(
                     $"Native window-helper launch policy mismatch: process={Environment.ProcessId}, " +
-                    $"actual=0x{errorMode:X8}, required=0x{Native.RequiredErrorMode:X8}, " +
-                    $"missing=0x{Native.RequiredErrorMode & ~errorMode:X8}.");
+                    $"actual=0x{errorMode.After:X8}, required=0x{Native.RequiredErrorMode:X8}, " +
+                    $"missing=0x{Native.RequiredErrorMode & ~errorMode.After:X8}.");
             var command = new StringBuilder();
             AppendArgument(command, executable);
             AppendArgument(command, PipeName);

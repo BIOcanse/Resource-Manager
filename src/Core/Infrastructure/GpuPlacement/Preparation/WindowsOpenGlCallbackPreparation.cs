@@ -20,11 +20,12 @@ internal sealed class WindowsOpenGlCallbackPreparation : IAsyncDisposable
     private readonly GpuWindowActionProcessLimits limits;
     private readonly CancellationToken cancellationToken;
     private readonly ulong deadlineMilliseconds;
+    private readonly ILogger? logger;
     private WindowsGpuWindowActionProcess? process;
     private int started;
 
     internal WindowsOpenGlCallbackPreparation(string executable, GpuWindowActionProcessLimits limits,
-        CancellationToken cancellationToken, ulong deadlineMilliseconds)
+        CancellationToken cancellationToken, ulong deadlineMilliseconds, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(limits);
         limits.Validate();
@@ -36,6 +37,7 @@ internal sealed class WindowsOpenGlCallbackPreparation : IAsyncDisposable
         this.limits = limits;
         this.cancellationToken = cancellationToken;
         this.deadlineMilliseconds = deadlineMilliseconds;
+        this.logger = logger;
     }
 
     internal GpuWindowActionProcessIdentity? Worker => process?.Identity;
@@ -55,7 +57,7 @@ internal sealed class WindowsOpenGlCallbackPreparation : IAsyncDisposable
         {
             process = WindowsGpuWindowActionProcess.CreateForTarget(targetProcessId, targetCreationFileTimeUtc,
                 limits, cancellationToken, deadlineMilliseconds);
-            process.StartSuspended(executable, []);
+            process.StartSuspended(executable, [], logger: logger);
             var parentHandle = process.TransferParentReadHandle();
             process.Resume();
             await process.ConnectAsync().ConfigureAwait(false);
