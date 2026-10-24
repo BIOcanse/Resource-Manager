@@ -30,4 +30,24 @@ assert.match(resultPanel, /uiText\.diskUsage\.rootSelectorLabel/);
 assert.match(resultPanel, /props\.summary\.fileCount/);
 assert.match(resultPanel, /props\.layout\.rootSizeBytes/);
 
+
+// Failure is independent of data: retain old results, label them stale and retry the failed selection.
+assert.match(workspace, /kind: "layout", retry: \(\) => requestLayout\(rootNodeId, view\)/);
+assert.match(workspace, /refreshResult\(workspaceController\?\.signal, nodeId, rootIndex\)/);
+assert.match(workspace, /cancelled\(cause, signal\)/);
+assert.match(workspace, /cause instanceof Error && cause.name === "AbortError"/);
+assert.match(workspace, /setResultReadFailure\(null\)/);
+assert.match(workspace, /uiText\.diskUsage\.retainedResultStale/);
+assert.match(workspace, /onClick=\{\(\) => failure\(\)\.retry\(\)\}/);
+assert.doesNotMatch(workspace, /catch\([^)]*\) =>[^;]*setVolumes\(\[\]\)/);
+const page = readFileSync(new URL("../src/features/diskUsage/DiskUsagePage.tsx", import.meta.url), "utf8");
+assert.match(page, /props\.volumesReadState === "error"/);
+assert.match(page, /props\.volumesReadState === "ready"/);
+assert.match(page, /uiText\.diskUsage\.volumesReadFailed/);
+assert.match(page, /uiText\.diskUsage\.retainedVolumesStale/);
+assert.match(page, /onClick=\{props\.onRetryVolumes\}/);
+
+assert.match(workspace, /if \(!current \|\| resultReadFailure\(\)\) \{/);
+assert.match(workspace, /failure\?\.kind === "result" \? failure : null/);
+
 console.log("diskUsageWorkspaceContract: ok");

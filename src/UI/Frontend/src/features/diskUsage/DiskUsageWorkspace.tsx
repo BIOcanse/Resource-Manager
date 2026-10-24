@@ -47,6 +47,8 @@ export function DiskUsageWorkspace() {
     createSignal(runtime.operationRegistry.snapshot);
   const scanning = createMemo(() => operationSnapshot().operations.some((operation) =>
     operation.kind === "disk-usage.scan" && !isTerminalOperation(operation)));
+  const [volumesReadState, setVolumesReadState] = createSignal<"loading" | "ready" | "error">("loading");
+  const [resultReadFailure, setResultReadFailure] = createSignal<{ kind: "result" | "layout"; retry: () => void } | null>(null);
   const [scanFailed, setScanFailed] = createSignal(false);
   const [refreshOnResume, setRefreshOnResume] = createSignal(false);
   const [summary, setSummary] = createSignal<DiskUsageScanSummary | null>(null);
@@ -59,19 +61,32 @@ export function DiskUsageWorkspace() {
   let workspaceController: AbortController | null = null;
   let workspaceGeneration = 0;
   let layoutToken = 0;
+  let volumesToken = 0;
+
+  function cancelled(cause: unknown, signal?: AbortSignal) {
+    return signal?.aborted || (cause instanceof Error && cause.name === "AbortError");
+  }
+
+  async function readVolumes() {
+    const signal = workspaceController?.signal;
+    const generation = workspaceGeneration;
+    const token = ++volumesToken;
+    try {
+      const value = await getDiskUsageVolumes(runtime.requestClient, signal);
+      if (token !== volumesToken || generation !== workspaceGeneration || signal?.aborted) return;
+      setVolumes(value);
+      setVolumesReadState("ready");
+    } catch (cause) {
+      if (token !== volumesToken || generation !== workspaceGeneration || cancelled(cause, signal)) return;
+      setVolumesReadState("error");
+    }
+  }
 
   onMount(() => {
     const controller = new AbortController();
-    const generation = ++workspaceGeneration;
+    workspaceGeneration++;
     workspaceController = controller;
-    const isCurrent = () => generation === workspaceGeneration
-      && !controller.signal.aborted;
-    const readVolumes = (signal?: AbortSignal) =>
-      void getDiskUsageVolumes(runtime.requestClient, signal)
-        .then((value) => { if (isCurrent()) setVolumes(value); })
-        .catch(() => { if (isCurrent()) setVolumes([]); });
-
-    readVolumes(controller.signal);
+    void readVolumes();
     void refreshResult(controller.signal);
 
     const unsubscribeOperations = runtime.operationRegistry.subscribe(setOperationSnapshot);
@@ -97,7 +112,7 @@ export function DiskUsageWorkspace() {
     // 盘符是会变的：U 盘插上、BitLocker 解锁、虚拟盘挂载，随时会多一个。
     // 每次打开这一页都会重读（这个组件是随页面挂载的），
     // 但页面一直开着的时候也得能发现 —— 窗口重新拿到焦点时再读一次。
-    const refreshVolumes = () => readVolumes();
+    const refreshVolumes = () => void readVolumes();
     window.addEventListener("focus", refreshVolumes);
 
     onCleanup(() => {
@@ -117,9 +132,7 @@ export function DiskUsageWorkspace() {
     if (visible && !wasFrontendVisible && refreshOnResume()) {
       setRefreshOnResume(false);
       void refreshResult(workspaceController?.signal, undefined, 0);
-      void getDiskUsageVolumes(runtime.requestClient, workspaceController?.signal)
-        .then(setVolumes)
-        .catch(() => setVolumes([]));
+      void readVolumes();
     }
     wasFrontendVisible = visible;
   });
@@ -138,7 +151,7 @@ export function DiskUsageWorkspace() {
    */
   function onViewChanged(view: DiskUsageViewWindow) {
     const current = layout();
-    if (!current) {
+    if (!current || resultReadFailure()) {
       return;
     }
     // 视图被推出图外时看得见的那块是空的，没什么可要的。
@@ -155,16 +168,22 @@ export function DiskUsageWorkspace() {
   /** 取一份布局换上去。以后端回给我们的那个视图为准记下来。 */
   function requestLayout(rootNodeId: number, view?: DiskUsageViewWindow) {
     const token = ++layoutToken;
-    void getDiskUsageLayout(runtime.requestClient, rootNodeId, undefined, view)
+    const signal = workspaceController?.signal;
+    void getDiskUsageLayout(runtime.requestClient, rootNodeId, signal, view)
       .then((next) => {
-        if (token !== layoutToken || !next || next.rootNodeId !== rootNodeId) {
+        if (token !== layoutToken || signal?.aborted || (next && next.rootNodeId !== rootNodeId)) {
           return;
         }
         // 记后端实际用的那份，不是我们请求的那份。
-        shownView = next.view;
+        shownView = next?.view ?? null;
         setLayout(next);
+        setResultReadFailure((failure) => failure?.kind === "result" ? failure : null);
       })
-      .catch(() => undefined);
+      .catch((cause: unknown) => {
+        if (token !== layoutToken || cancelled(cause, signal)) return;
+        setResultReadFailure((failure) => failure?.kind === "result" ? failure
+          : { kind: "layout", retry: () => requestLayout(rootNodeId, view) });
+      });
   }
 
   /**
@@ -185,7 +204,7 @@ export function DiskUsageWorkspace() {
   }
 
   async function refreshResult(
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined = workspaceController?.signal,
     nodeId?: number,
     rootIndex = selectedRootIndex()
   ) {
@@ -211,8 +230,10 @@ export function DiskUsageWorkspace() {
       if (rootIndex !== selectedRootIndex()) setDrillStack([]);
       setSelectedRootIndex(rootIndex);
       setSelected(-1);
-    } catch {
-      // 还没扫过或请求被取消：保持空态，不弹错误。
+      setResultReadFailure(null);
+    } catch (cause) {
+      if (token !== layoutToken || generation !== workspaceGeneration || cancelled(cause, signal)) return;
+      setResultReadFailure({ kind: "result", retry: () => void refreshResult(workspaceController?.signal, nodeId, rootIndex) });
     }
   }
 
@@ -278,10 +299,19 @@ export function DiskUsageWorkspace() {
       <DiskUsagePage
         volumes={volumes()}
         scanning={scanning()}
+        volumesReadState={volumesReadState()}
+        onRetryVolumes={() => void readVolumes()}
         onScan={(scope, mode, target) => void startScan(scope, mode, target)}
       >
         <Show when={scanFailed()}>
           <p role="alert">{uiText.diskUsage.scanFailed}</p>
+        </Show>
+        <Show when={resultReadFailure()}>
+          {(failure) => <div class="disk-usage-read-error" role="alert">
+            <p>{uiText.diskUsage.resultReadFailed}</p>
+            <Show when={layout() && summary()}><p>{uiText.diskUsage.retainedResultStale}</p></Show>
+            <button type="button" onClick={() => failure().retry()}>{uiText.diskUsage.retryRead}</button>
+          </div>}
         </Show>
         <Show when={layout() && summary()}>
           <DiskUsageResultPanel

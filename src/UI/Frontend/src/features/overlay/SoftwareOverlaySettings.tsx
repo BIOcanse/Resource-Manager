@@ -42,14 +42,14 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   });
 
   const update = (patch: Partial<PerformanceOverlaySettings>) =>
-    setDraft((current) => current ? { ...current, ...patch } : current);
+    setDraft((current) => current && !saving() ? { ...current, ...patch } : current);
   const numberValue = (text: string, previous: number) => {
     const value = Number(text);
     return Number.isFinite(value) ? value : previous;
   };
   const save = async () => {
     const current = draft();
-    if (!current) return;
+    if (!current || saving()) return;
     setSaving(true);
     setError("");
     try {
@@ -82,11 +82,11 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
       <Show when={!loading() && draft()} fallback={<p class="software-detail-empty">{uiText.softwareDetail.loadingPolicy}</p>}>
         {(current) => <div class="overlay-settings-fields">
           <label class="overlay-settings-check">
-            <input type="checkbox" checked={current().enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />
+            <input disabled={saving()} type="checkbox" checked={current().enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />
             {uiText.performanceOverlay.enabled}
           </label>
           <label>{uiText.performanceOverlay.mode}</label>
-          <StandardSelect value={current().mode} ariaLabel={uiText.performanceOverlay.mode}
+          <StandardSelect disabled={saving()} value={current().mode} ariaLabel={uiText.performanceOverlay.mode}
             options={[
               { value: "external", label: uiText.performanceOverlay.external },
               { value: "injected", label: uiText.performanceOverlay.injected }
@@ -97,7 +97,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
           </Show>
           <div class="software-policy-section-header">
             <h4>{uiText.performanceOverlay.metrics}</h4>
-            <button class="secondary" type="button" onClick={() => {
+            <button class="secondary" type="button" disabled={saving()} onClick={() => {
               setPickerMetrics([...current().metrics]);
               setPickerOpen(true);
             }}>{uiText.performanceOverlay.chooseMetrics}</button>
@@ -106,17 +106,17 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             <For each={current().metrics}>
               {(id, index) => <li>
                 <span>{localizedMetricLabel(id, catalog().find((item) => item.id === id)?.label)}</span>
-                <button class="secondary" type="button" disabled={index() === 0}
+                <button class="secondary" type="button" disabled={saving() || index() === 0}
                   aria-label={uiText.performanceOverlay.moveUp} onClick={() => moveMetric(index(), -1)}>↑</button>
-                <button class="secondary" type="button" disabled={index() === current().metrics.length - 1}
+                <button class="secondary" type="button" disabled={saving() || index() === current().metrics.length - 1}
                   aria-label={uiText.performanceOverlay.moveDown} onClick={() => moveMetric(index(), 1)}>↓</button>
-                <button class="secondary" type="button" aria-label={uiText.performanceOverlay.removeMetric}
+                <button class="secondary" type="button" disabled={saving()} aria-label={uiText.performanceOverlay.removeMetric}
                   onClick={() => update({ metrics: current().metrics.filter((metric) => metric !== id) })}>×</button>
               </li>}
             </For>
           </ol>
           <label>{uiText.performanceOverlay.sizeMode}</label>
-          <StandardSelect value={current().sizeMode} ariaLabel={uiText.performanceOverlay.sizeMode}
+          <StandardSelect disabled={saving()} value={current().sizeMode} ariaLabel={uiText.performanceOverlay.sizeMode}
             options={[
               { value: "absolutePixels", label: uiText.performanceOverlay.absolutePixels },
               { value: "windowRatio", label: uiText.performanceOverlay.windowRatio }
@@ -124,22 +124,22 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             onChange={(sizeMode) => update({ sizeMode })} />
           <Show when={current().sizeMode === "absolutePixels"}>
             <label>{uiText.performanceOverlay.fontSizePx}
-              <input type="number" min="8" max="72" value={current().fontSizePx}
+              <input disabled={saving()} type="number" min="8" max="72" value={current().fontSizePx}
                 onInput={(event) => update({ fontSizePx: numberValue(event.currentTarget.value, current().fontSizePx) })} />
             </label>
           </Show>
           <Show when={current().sizeMode === "windowRatio"}>
             <label>{uiText.performanceOverlay.regionWidthRatio}
-              <input type="number" min="0.05" max="1" step="0.01" value={current().regionWidthRatio}
+              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" value={current().regionWidthRatio}
                 onInput={(event) => update({ regionWidthRatio: numberValue(event.currentTarget.value, current().regionWidthRatio) })} />
             </label>
             <label>{uiText.performanceOverlay.regionHeightRatio}
-              <input type="number" min="0.05" max="1" step="0.01" value={current().regionHeightRatio}
+              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" value={current().regionHeightRatio}
                 onInput={(event) => update({ regionHeightRatio: numberValue(event.currentTarget.value, current().regionHeightRatio) })} />
             </label>
           </Show>
           <label>{uiText.performanceOverlay.anchor}</label>
-          <StandardSelect value={current().anchor} ariaLabel={uiText.performanceOverlay.anchor}
+          <StandardSelect disabled={saving()} value={current().anchor} ariaLabel={uiText.performanceOverlay.anchor}
             options={[
               { value: "topLeft", label: uiText.performanceOverlay.topLeft },
               { value: "topRight", label: uiText.performanceOverlay.topRight },
@@ -148,12 +148,12 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             ]}
             onChange={(anchor) => update({ anchor })} />
           <label>{uiText.performanceOverlay.marginPx}
-            <input type="number" min="0" max="256" value={current().marginPx}
+            <input disabled={saving()} type="number" min="0" max="256" value={current().marginPx}
               onInput={(event) => update({ marginPx: numberValue(event.currentTarget.value, current().marginPx) })} />
           </label>
         </div>}
       </Show>
-      <MetricModal open={pickerOpen()} catalog={catalog()} components={components()}
+      <MetricModal open={pickerOpen() && !saving()} catalog={catalog()} components={components()}
         selectedMetricId={pickerMetrics()[0] ?? null} selectedMetricIds={pickerMetrics()} multiSelect
         onSelect={(id) => setPickerMetrics((current) => current.includes(id)
           ? current.filter((item) => item !== id) : [...current, id])}

@@ -35,3 +35,17 @@ test("software detail uses the shared metric picker as a multi select", () => {
   assert.match(overlay, /performanceOverlay\.injectionWarning/);
   assert.match(overlay, /savePerformanceOverlaySettings\(current\)/);
 });
+
+
+test("overlay editors and the picker cannot mutate the draft during a save", () => {
+  const overlay = readFileSync(new URL("../src/features/overlay/SoftwareOverlaySettings.tsx", import.meta.url), "utf8");
+  for (const control of overlay.matchAll(/<(input|StandardSelect)\b[^>]*>/gs)) {
+    assert.match(control[0], /disabled=\{saving\(\)\}/, control[0]);
+  }
+  for (const button of overlay.matchAll(/<button\b[^>]*>/gs)) {
+    assert.match(button[0], /disabled=\{[^}]*saving\(\)/, button[0]);
+  }
+  assert.match(overlay, /current && !saving\(\) \?/);
+  assert.match(overlay, /if \(!current \|\| saving\(\)\) return/);
+  assert.match(overlay, /open=\{pickerOpen\(\) && !saving\(\)\}/);
+});
