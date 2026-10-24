@@ -245,7 +245,7 @@ public sealed class DiskUsageSnapshotLedgerEntryTests
                 readers.Add(store.TryAcquire()!);
             }
             var treeBytes = owner.ReadTable().RegisteredBytes;
-            for (var index = 0; index < 162; index++)
+            for (var index = 0; index < 164; index++)
             {
                 var resource = owner.CreateScratch(8192);
                 resources.Add(resource);
@@ -254,7 +254,7 @@ public sealed class DiskUsageSnapshotLedgerEntryTests
                 use.GetMemoryChunk(0, 1).Span[0] = checked((byte)(index + 20));
                 use.Complete();
             }
-            Assert.Equal(treeBytes + 162UL * 8192, owner.ReadTable().RegisteredBytes);
+            Assert.Equal(treeBytes + 164UL * 8192, owner.ReadTable().RegisteredBytes);
             using var excess = owner.CreateScratch(8192);
             var blocked = Assert.Throws<LedgerException>(() => { using var unexpected = excess.Acquire(); });
             Assert.Equal(ResourceManager.Ledger.LedgerStatus.Blocked, blocked.Status);

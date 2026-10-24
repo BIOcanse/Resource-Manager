@@ -1,10 +1,15 @@
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
 
 namespace ResourceManager.App.Application.GpuPlacement;
 
 public interface IRunningGpuPlacementActionService
 {
     bool HasUnreleasedExternalControl => false;
+    void ReconcileExitedProcessInstances(
+        SchedulingProcessFactSnapshot processFacts,
+        Func<int, RecoveryReadResult<ProcessInstanceRecoverySnapshot>> readProcessInstance) { }
     Task RecoverExternalControlAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken);

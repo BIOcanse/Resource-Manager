@@ -1,4 +1,6 @@
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization.Scoring;
@@ -18,6 +20,11 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
     WindowsExternalGpuPlacementRuntime? externalRuntime = null) : IRunningGpuPlacementActionService
 {
     public bool HasUnreleasedExternalControl => externalRuntime?.HasUnreleasedControl == true;
+
+    public void ReconcileExitedProcessInstances(
+        SchedulingProcessFactSnapshot processFacts,
+        Func<int, RecoveryReadResult<ProcessInstanceRecoverySnapshot>> readProcessInstance)
+        => gpuPlacementInjector.ReconcileExitedProcessInstances(processFacts, readProcessInstance);
 
     public async Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken)

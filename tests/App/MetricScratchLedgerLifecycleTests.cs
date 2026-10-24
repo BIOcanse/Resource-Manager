@@ -109,8 +109,7 @@ public sealed class MetricScratchLedgerLifecycleTests
         using var smartOperation = smart.BeginOperation();
         smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 67 });
         Assert.Equal(67UL, smart.GetFeedback(0).ActionId);
-        var smartLayout = new NativeSmartScratchLayout(smart.Capacity.InputRowCapacity,
-            smart.Capacity.ActionCapacity, smart.Capacity.FeedbackCapacity);
+        var smartLayout = smart.ScratchLayout;
         registered += smartLayout.Length;
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         var ownershipCapacity = new NativeAppliedOwnershipCapacity
@@ -175,8 +174,9 @@ public sealed class MetricScratchLedgerLifecycleTests
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
             // Preserve the original 28 real workspace uses, and occupy current
             // plus pending query pools (2 * 64), model workspaces (2),
-            // and portable registry output workspaces (2) and display normalization workspaces (2).
-            for (var index = 0; index < 134; index++)
+            // portable registry output workspaces (2), display normalization workspaces (2),
+            // and current plus pending placement workspaces (2).
+            for (var index = 0; index < 136; index++)
             {
                 var resource = owner.CreateScratch(8192);
                 additionalResources.Add(resource);

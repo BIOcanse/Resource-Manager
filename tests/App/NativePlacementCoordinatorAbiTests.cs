@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -17,10 +18,13 @@ public sealed class NativePlacementCoordinatorAbiTests
         changed.Generation++;
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Reconfigure(in changed));
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Reconfigure(in original));
-        var workspace = new NativePlacementCoordinatorWorkspace(in original, session.Capacity);
+        using var owner = new ResourceManagerLedgerOwner();
+        using var workspace = new NativePlacementCoordinatorWorkspace(in original, session.Capacity, owner.CreateScratch);
+        using var operation = workspace.BeginOperation();
+        using var view = workspace.CreateScratchView();
         var cycle = CreateCycle(original.Generation, 1, 1000, 0, 0, original.MaximumActionCount);
         Assert.Equal(NativePlacementCoordinatorStatus.Ok,
-            session.Plan(ref cycle, [], [], workspace.Actions));
+            session.Plan(ref cycle, [], [], view.Actions));
     }
 
     [Fact]
@@ -65,19 +69,22 @@ public sealed class NativePlacementCoordinatorAbiTests
     {
         var configuration = CreateConfiguration(0x0000_0011_0000_0000);
         using var session = new NativePlacementCoordinatorSession(in configuration);
-        var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity);
-        workspace.Desired[0] = CreateDesired(101, 201, 301);
+        using var owner = new ResourceManagerLedgerOwner();
+        using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
+        using var operation = workspace.BeginOperation();
+        using var view = workspace.CreateScratchView();
+        view.Desired[0] = CreateDesired(101, 201, 301);
         var cycle = CreateCycle(configuration.Generation, 1, 1_000, 1, 0, configuration.MaximumActionCount);
 
         var result = session.Plan(
             ref cycle,
-            workspace.Desired.AsSpan(0, 1),
+            view.Desired.Slice(0, 1),
             ReadOnlySpan<NativePlacementAppliedInput>.Empty,
-            workspace.Actions);
+            view.Actions);
 
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
         Assert.Equal(1U, cycle.ActionCount);
-        var action = workspace.Actions[0];
+        var action = view.Actions[0];
         Assert.Equal(NativePlacementActionDisposition.Apply, (NativePlacementActionDisposition)action.Disposition);
         Assert.NotEqual(0UL, action.ActionId);
 
@@ -115,8 +122,11 @@ public sealed class NativePlacementCoordinatorAbiTests
     {
         var configuration = CreateConfiguration(0x0000_0012_0000_0000);
         using var session = new NativePlacementCoordinatorSession(in configuration);
-        var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity);
-        workspace.Applied[0] = new NativePlacementAppliedInput
+        using var owner = new ResourceManagerLedgerOwner();
+        using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
+        using var operation = workspace.BeginOperation();
+        using var view = workspace.CreateScratchView();
+        view.Applied[0] = new NativePlacementAppliedInput
         {
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementAppliedInput>(),
             Flags = (uint)NativePlacementAppliedFlags.PayloadValid,
@@ -134,17 +144,17 @@ public sealed class NativePlacementCoordinatorAbiTests
         var result = session.Plan(
             ref cycle,
             ReadOnlySpan<NativePlacementDesiredInput>.Empty,
-            workspace.Applied.AsSpan(0, 1),
-            workspace.Actions);
+            view.Applied.Slice(0, 1),
+            view.Actions);
 
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
-        var action = Assert.Single(workspace.Actions.AsSpan(0, checked((int)cycle.ActionCount)).ToArray());
+        var action = Assert.Single(view.Actions.Slice(0, checked((int)cycle.ActionCount)).ToArray());
         Assert.Equal(NativePlacementActionDisposition.Restore, (NativePlacementActionDisposition)action.Disposition);
         Assert.Equal(placementKind, action.PlacementKind);
         Assert.Equal(NativePlacementActionReason.DesiredMissing, (NativePlacementActionReason)action.ReasonMask);
         Assert.Equal(0U, action.Priority);
 
-        workspace.Feedback[0] = new NativePlacementFeedback
+        view.Feedback[0] = new NativePlacementFeedback
         {
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementFeedback>(),
             Status = (uint)NativePlacementFeedbackStatus.AlreadySatisfied,
@@ -153,7 +163,7 @@ public sealed class NativePlacementCoordinatorAbiTests
             RecordKey = action.RecordKey,
             CompletedAtMilliseconds = 2_010
         };
-        result = session.ApplyFeedback(workspace.Feedback.AsSpan(0, 1));
+        result = session.ApplyFeedback(view.Feedback.Slice(0, 1));
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
 
         var header = new NativePlacementSnapshotHeader
@@ -175,16 +185,19 @@ public sealed class NativePlacementCoordinatorAbiTests
     {
         var configuration = CreateConfiguration(0x0000_0013_0000_0000);
         using var session = new NativePlacementCoordinatorSession(in configuration);
-        var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity);
+        using var owner = new ResourceManagerLedgerOwner();
+        using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity, owner.CreateScratch);
+        using var operation = workspace.BeginOperation();
+        using var view = workspace.CreateScratchView();
         for (var index = 0; index < 3; index++)
-            workspace.Desired[index] = CreateDesired((ulong)(101 + index), (ulong)(201 + index), (ulong)(301 + index));
+            view.Desired[index] = CreateDesired((ulong)(101 + index), (ulong)(201 + index), (ulong)(301 + index));
         var cycle = CreateCycle(configuration.Generation, 1, 1000, 3, 0, configuration.MaximumActionCount);
-        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Plan(ref cycle, workspace.Desired.AsSpan(0, 3), [], workspace.Actions));
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.Plan(ref cycle, view.Desired.Slice(0, 3), [], view.Actions));
         Assert.Equal(3U, cycle.ActionCount);
         for (var index = 0; index < count; index++)
         {
-            var action = workspace.Actions[index];
-            workspace.Feedback[index] = new()
+            var action = view.Actions[index];
+            view.Feedback[index] = new()
             {
                 StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementFeedback>(),
                 Status = (uint)NativePlacementFeedbackStatus.Applied, ActionId = action.ActionId,
@@ -192,7 +205,7 @@ public sealed class NativePlacementCoordinatorAbiTests
                 ObservedDigest = action.DesiredDigest, ValidMask = (ulong)NativePlacementFeedbackValidity.ObservedDigest
             };
         }
-        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.ApplyFeedback(workspace.Feedback.AsSpan(0, count)));
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.ApplyFeedback(view.Feedback.Slice(0, count)));
         var header = new NativePlacementSnapshotHeader
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,
@@ -204,7 +217,7 @@ public sealed class NativePlacementCoordinatorAbiTests
         var states = snapshotStates.AsSpan(0, 3).ToArray();
         for (var index = 0; index < 3; index++)
         {
-            var action = workspace.Actions[index];
+            var action = view.Actions[index];
             var state = Assert.Single(states, item => item.TargetKey == action.TargetKey && item.RecordKey == action.RecordKey);
             Assert.Equal(index < count ? NativePlacementSlotState.Applied : NativePlacementSlotState.PendingApply, (NativePlacementSlotState)state.State);
             Assert.Equal(index < count ? 0UL : action.ActionId, state.PendingActionId);

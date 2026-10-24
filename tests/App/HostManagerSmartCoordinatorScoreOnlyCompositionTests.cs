@@ -5097,9 +5097,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ActionCapacity = configuration.MaximumActionCount,
             SnapshotStateCapacity = configuration.MaximumStateCount
         };
-        var workspace = new NativePlacementCoordinatorWorkspace(
+        using var owner = new ResourceManagerLedgerOwner();
+        using var workspace = new NativePlacementCoordinatorWorkspace(
             in configuration,
-            in capacity);
+            in capacity, owner.CreateScratch);
         const ulong observedAt = 100;
         var abiActionCapacity = capacity.ActionCapacity;
         var cycle = new NativePlacementCoordinatorCycleInput
@@ -5126,7 +5127,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             [cycle, observedAt, 0U, 0U, abiActionCapacity, plan, workspace]));
 
         Assert.Null(exception);
-        Assert.Equal(checked((uint)workspace.Actions.Length), abiActionCapacity);
+        Assert.Equal(checked((uint)workspace.ActionCapacity), abiActionCapacity);
     }
 
     private static HostManagerAppliedPlacementReceipt CreateLegacyPlacementReceipt()

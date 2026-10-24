@@ -398,29 +398,12 @@ pub const Session = struct {
         const gpus = try allocator.alloc(GpuState, gpu_count);
         errdefer allocator.free(gpus);
 
-        const staged_processes = try allocator.alloc(StagedProcess, process_count);
-        errdefer allocator.free(staged_processes);
-        const staged_softwares = try allocator.alloc(StagedSoftware, software_count);
-        errdefer allocator.free(staged_softwares);
-        const staged_gpus = try allocator.alloc(StagedGpu, gpu_count);
-        errdefer allocator.free(staged_gpus);
-        const staged_software_gpus = try allocator.alloc(StagedSoftwareGpu, gpu_count);
-        errdefer allocator.free(staged_software_gpus);
-
         const process_index = try allocator.alloc(u32, process_index_count);
         errdefer allocator.free(process_index);
         const software_index = try allocator.alloc(u32, software_index_count);
         errdefer allocator.free(software_index);
         const gpu_index = try allocator.alloc(u32, gpu_index_count);
         errdefer allocator.free(gpu_index);
-        const staged_process_index = try allocator.alloc(u32, process_index_count);
-        errdefer allocator.free(staged_process_index);
-        const staged_software_index = try allocator.alloc(u32, software_index_count);
-        errdefer allocator.free(staged_software_index);
-        const staged_gpu_index = try allocator.alloc(u32, gpu_index_count);
-        errdefer allocator.free(staged_gpu_index);
-        const staged_software_gpu_index = try allocator.alloc(u32, gpu_index_count);
-        errdefer allocator.free(staged_software_gpu_index);
 
         const reservations = try allocator.alloc(Reservation, @intCast(config.max_reservations));
         errdefer allocator.free(reservations);
@@ -434,17 +417,9 @@ pub const Session = struct {
         for (processes) |*item| item.* = ProcessState.empty();
         for (softwares) |*item| item.* = SoftwareState.empty();
         @memset(gpus, std.mem.zeroes(GpuState));
-        @memset(staged_processes, std.mem.zeroes(StagedProcess));
-        @memset(staged_softwares, std.mem.zeroes(StagedSoftware));
-        @memset(staged_gpus, std.mem.zeroes(StagedGpu));
-        @memset(staged_software_gpus, std.mem.zeroes(StagedSoftwareGpu));
         @memset(process_index, 0);
         @memset(software_index, 0);
         @memset(gpu_index, 0);
-        @memset(staged_process_index, 0);
-        @memset(staged_software_index, 0);
-        @memset(staged_gpu_index, 0);
-        @memset(staged_software_gpu_index, 0);
         @memset(reservations, std.mem.zeroes(Reservation));
         @memset(atomic_groups, std.mem.zeroes(AtomicGroup));
         @memset(reservation_index, 0);
@@ -472,10 +447,10 @@ pub const Session = struct {
             .processes = processes,
             .softwares = softwares,
             .gpus = gpus,
-            .staged_processes = staged_processes,
-            .staged_softwares = staged_softwares,
-            .staged_gpus = staged_gpus,
-            .staged_software_gpus = staged_software_gpus,
+            .staged_processes = &.{},
+            .staged_softwares = &.{},
+            .staged_gpus = &.{},
+            .staged_software_gpus = &.{},
             .staged_process_count = 0,
             .staged_software_count = 0,
             .staged_gpu_count = 0,
@@ -488,10 +463,10 @@ pub const Session = struct {
             .process_index = process_index,
             .software_index = software_index,
             .gpu_index = gpu_index,
-            .staged_process_index = staged_process_index,
-            .staged_software_index = staged_software_index,
-            .staged_gpu_index = staged_gpu_index,
-            .staged_software_gpu_index = staged_software_gpu_index,
+            .staged_process_index = &.{},
+            .staged_software_index = &.{},
+            .staged_gpu_index = &.{},
+            .staged_software_gpu_index = &.{},
             .reservations = reservations,
             .atomic_groups = atomic_groups,
             .reservation_index = reservation_index,
@@ -506,17 +481,9 @@ pub const Session = struct {
         allocator.free(self.reservation_index);
         allocator.free(self.atomic_groups);
         allocator.free(self.reservations);
-        allocator.free(self.staged_software_gpu_index);
-        allocator.free(self.staged_gpu_index);
-        allocator.free(self.staged_software_index);
-        allocator.free(self.staged_process_index);
         allocator.free(self.gpu_index);
         allocator.free(self.software_index);
         allocator.free(self.process_index);
-        allocator.free(self.staged_software_gpus);
-        allocator.free(self.staged_gpus);
-        allocator.free(self.staged_softwares);
-        allocator.free(self.staged_processes);
         allocator.free(self.gpus);
         allocator.free(self.softwares);
         allocator.free(self.processes);
@@ -879,7 +846,7 @@ fn nextSlot(slot: u32, length: usize) u32 {
     return if (next == length) 0 else @intCast(next);
 }
 
-fn hashIndexCapacity(maximum: u32) !usize {
+pub fn hashIndexCapacity(maximum: u32) !usize {
     const doubled = std.math.mul(u64, maximum, 2) catch return error.OutOfMemory;
     var capacity: u64 = 2;
     while (capacity < doubled) {

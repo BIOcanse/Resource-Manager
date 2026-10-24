@@ -1,7 +1,7 @@
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x0009_0000;
+pub const abi_version: u32 = 0x000a_0000;
 pub const runtime_state_count: usize = 7;
 pub const adapter_grade_count: u8 = 4;
 

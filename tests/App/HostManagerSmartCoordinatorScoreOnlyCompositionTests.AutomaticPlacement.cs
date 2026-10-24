@@ -60,14 +60,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             threads[expected.ThreadId] = expected with { IdealProcessor = desired };
             return new(true, "recorded hint only");
         };
+        var placementCapture = CapturePlacementOperations(fixture.Coordinator);
         _ = await fixture.RunRealtimeCycleAsync();
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
         Assert.Equal(2, threads.Values.Select(static t => t.IdealProcessor).Distinct().Count());
         Assert.All(threads.Values, static t => Assert.Equal(15UL, t.AllowedMask));
-        var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(fixture.Coordinator, "placementCoordinatorWorkspace")!;
-        Assert.Equal((uint)NativePlacementKind.ThreadIdealProcessor, workspace.Desired[0].PlacementKind);
+        Assert.Equal((uint)NativePlacementKind.ThreadIdealProcessor, placementCapture.Desired[0].PlacementKind);
         _ = await fixture.RunRealtimeCycleAsync();
         Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = fixture.RuntimePlan.Version + 1,
@@ -118,6 +118,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuScoring: cpuScoring,
             automaticPlacementTopology: topology,
             singleCcdSoftwareIds: ["software:automatic-placement"]);
+        var placementCapture = CapturePlacementOperations(fixture.Coordinator);
         var placementScope = ReadPrivateField<HostManagerProcessEffectValidationScopeAuthority>(
             fixture.Coordinator,
             "processEffectValidationScopeAuthorityOwner");
@@ -182,11 +183,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 "placementCoordinatorWorkspace"));
         Assert.Equal(
             checked((uint)Math.Round(canonicalScore.Score, MidpointRounding.AwayFromZero)),
-            placementWorkspace.Desired[0].Priority);
-        Assert.Equal((uint)NativePlacementResourceKind.Cpu, placementWorkspace.Desired[0].ResourceKind);
-        Assert.Equal((uint)NativePlacementKind.CpuSets, placementWorkspace.Desired[0].PlacementKind);
-        Assert.Equal(checked((uint)processId), placementWorkspace.Desired[0].ProcessId);
-        Assert.Equal(processStartKey, placementWorkspace.Desired[0].ProcessStartKey);
+            placementCapture.Desired[0].Priority);
+        Assert.Equal((uint)NativePlacementResourceKind.Cpu, placementCapture.Desired[0].ResourceKind);
+        Assert.Equal((uint)NativePlacementKind.CpuSets, placementCapture.Desired[0].PlacementKind);
+        Assert.Equal(checked((uint)processId), placementCapture.Desired[0].ProcessId);
+        Assert.Equal(processStartKey, placementCapture.Desired[0].ProcessStartKey);
         Assert.Equal([1U, 2U], currentCpuSetIds);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(1, fixture.StateStore.SaveCalls);
@@ -219,8 +220,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal([1U, 2U, 3U, 4U], currentCpuSetIds);
         Assert.Equal(
             (uint)NativePlacementActionDisposition.Restore,
-            placementWorkspace.Actions[0].Disposition);
-        Assert.NotEqual(0UL, placementWorkspace.Actions[0].DesiredDigest);
+            placementCapture.Actions[0].Disposition);
+        Assert.NotEqual(0UL, placementCapture.Actions[0].DesiredDigest);
         Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
@@ -276,6 +277,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             automaticPlacementTopology: topology,
             singleCcdSoftwareIds: ["software:validation-job-candidate"],
             processEffectValidationScopeAuthority: validation.Authority);
+        var placementCapture = CapturePlacementOperations(fixture.Coordinator);
         fixture.ProcessPolicyWriter.PlacementReadHandler = (actualProcessId, fields) =>
         {
             Assert.Equal(processId, actualProcessId);
@@ -298,7 +300,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ReadPrivateField<NativePlacementCoordinatorWorkspace>(
                 fixture.Coordinator,
                 "placementCoordinatorWorkspace"));
-        Assert.All(placementWorkspace.Desired, row => Assert.Equal(0UL, row.TargetKey));
+        Assert.Equal(0, placementCapture.PlanCalls);
+        Assert.Empty(placementCapture.Desired);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.StateStore.SaveCalls);
         Assert.Empty(fixture.StateStore.Current.AppliedPlacements);

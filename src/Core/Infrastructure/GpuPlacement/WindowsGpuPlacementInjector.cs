@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
 
@@ -47,6 +49,32 @@ public sealed partial class WindowsGpuPlacementInjector(
     internal RuntimeGpuProviderInjectionResult? GetKnownProcessFailure(GpuPlacementProcessInstance target)
         => failuresByProcessId.TryGetValue(target.ProcessId, out var failure)
             && failure.ProcessStartKey == target.ProcessStartKey ? failure.Result : null;
+
+    internal void ReconcileExitedProcessInstances(
+        SchedulingProcessFactSnapshot processFacts,
+        Func<int, RecoveryReadResult<ProcessInstanceRecoverySnapshot>> readProcessInstance)
+    {
+        if (failuresByProcessId.IsEmpty) return;
+        if (!processFacts.IsInventoryCurrentComplete()) return;
+        var currentProcessStartKeys = new Dictionary<int, ulong>();
+        foreach (var process in processFacts.CurrentInventoryProcesses)
+        {
+            // Conflicting incarnations cannot prove a complete current PID inventory.
+            if (!currentProcessStartKeys.TryAdd(process.ProcessId, process.ProcessStartKey)) return;
+        }
+        foreach (var cached in failuresByProcessId)
+        {
+            if (currentProcessStartKeys.TryGetValue(cached.Key, out var currentStartKey)
+                && currentStartKey == cached.Value.ProcessStartKey)
+                continue;
+            if (ProcessInstanceRecovery.IsConfirmedExited(
+                    readProcessInstance(cached.Key), checked((uint)cached.Key), cached.Value.ProcessStartKey))
+            {
+                // Remove only the observed failure: a concurrent attempt may have cached a newer incarnation.
+                ((ICollection<KeyValuePair<int, CachedInjectionFailure>>)failuresByProcessId).Remove(cached);
+            }
+        }
+    }
 
     internal Task<ProviderProcess> OpenAndConfigureAsync(
         GpuPlacementProcessInstance target,

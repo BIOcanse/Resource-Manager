@@ -164,16 +164,18 @@ public sealed partial class HostManagerSmartCoordinator
             return true;
         }
 
-        var desiredProjection = HostManagerPlacementCoordinatorProjection.ProjectDesired(
-            bounded.Desired,
-            workspace.Desired);
-        var appliedProjection = HostManagerPlacementCoordinatorProjection.ProjectApplied(
-            bounded.Applied,
-            workspace.Applied);
-        ApplyPlacementObservations(appliedProjection, observations, workspace.Applied);
+        using var operation = workspace.BeginOperation();
+        HostManagerPlacementDesiredProjection desiredProjection;
+        HostManagerPlacementProjection appliedProjection;
+        {
+            using var view = workspace.CreateScratchView();
+            desiredProjection = HostManagerPlacementCoordinatorProjection.ProjectDesired(bounded.Desired, view.Desired);
+            appliedProjection = HostManagerPlacementCoordinatorProjection.ProjectApplied(bounded.Applied, view.Applied);
+            ApplyPlacementObservations(appliedProjection, observations, view.Applied);
+        }
 
         var observedAt = MonotonicMilliseconds();
-        var actionCapacity = checked((uint)workspace.Actions.Length);
+        var actionCapacity = checked((uint)workspace.ActionCapacity);
         var cycle = new NativePlacementCoordinatorCycleInput
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,
@@ -187,11 +189,7 @@ public sealed partial class HostManagerSmartCoordinator
             ActionCapacity = actionCapacity
         };
         RequirePlacementStatus(
-            session.Plan(
-                ref cycle,
-                workspace.Desired.AsSpan(0, checked((int)desiredProjection.RowCount)),
-                workspace.Applied.AsSpan(0, checked((int)appliedProjection.RowCount)),
-                workspace.Actions),
+            workspace.Plan(session, ref cycle),
             NativePlacementCoordinatorStatus.Ok,
             "automatic-plan");
         ValidatePlacementCycle(
@@ -202,6 +200,7 @@ public sealed partial class HostManagerSmartCoordinator
             actionCapacity,
             appliedPlan,
             workspace);
+        ObservePlacementPlan(workspace, in cycle);
 
         var actionIds = new HashSet<ulong>();
         var feedbackCount = 0;
@@ -209,7 +208,7 @@ public sealed partial class HostManagerSmartCoordinator
         for (var index = 0; index < cycle.ActionCount; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var action = workspace.Actions[index];
+            var action = workspace.GetAction(index);
             ValidateAutomaticPlacementAction(
                 action,
                 desiredProjection,
@@ -238,7 +237,7 @@ public sealed partial class HostManagerSmartCoordinator
                             "Host Manager settled an automatic placement restore.",
                             CancellationToken.None);
                     }
-                    workspace.Feedback[index] = CreatePlacementFeedback(action, settlement);
+                    workspace.SetFeedback(index, CreatePlacementFeedback(action, settlement));
                 }
             }
             else
@@ -251,7 +250,7 @@ public sealed partial class HostManagerSmartCoordinator
                     projected,
                     cancellationToken);
                 state = applied.State;
-                workspace.Feedback[index] = applied.Feedback;
+                workspace.SetFeedback(index, applied.Feedback);
                 canContinue = applied.CanContinue;
             }
             feedbackCount++;
@@ -261,10 +260,12 @@ public sealed partial class HostManagerSmartCoordinator
         if (feedbackCount != 0)
         {
             RequirePlacementStatus(
-                session.ApplyFeedback(workspace.Feedback.AsSpan(0, feedbackCount)),
+                workspace.ApplyFeedback(session, feedbackCount),
                 NativePlacementCoordinatorStatus.Ok,
                 "automatic-feedback");
+            ObservePlacementFeedback(workspace, feedbackCount);
         }
+        operation.Complete();
         return canContinue;
     }
 
@@ -924,7 +925,7 @@ public sealed partial class HostManagerSmartCoordinator
     private static void ApplyPlacementObservations(
         HostManagerPlacementProjection projection,
         IReadOnlyDictionary<HostManagerPlacementNativeIdentity, HostManagerPlacementObservation> observations,
-        NativePlacementAppliedInput[] destination)
+        Span<NativePlacementAppliedInput> destination)
     {
         foreach (var projected in projection.Records)
         {

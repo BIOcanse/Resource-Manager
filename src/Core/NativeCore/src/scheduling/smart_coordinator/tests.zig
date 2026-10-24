@@ -22,7 +22,7 @@ test "reconfigure applies changed content at the same generation and accepts rol
     try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
 }
 
-test "ABI layout is frozen for version 9" {
+test "ABI layout is frozen for version 10" {
     try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
@@ -171,7 +171,7 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x0009_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000a_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
     try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeatureFlags.known);
@@ -2622,4 +2622,8 @@ test "missing current CPU score never applies an already confirmed nonnormal des
             try std.testing.expectEqual(@as(u32, 1), snapshot.inflight_count);
         }
     }
+}
+
+test {
+    _ = @import("scratch_tests.zig");
 }

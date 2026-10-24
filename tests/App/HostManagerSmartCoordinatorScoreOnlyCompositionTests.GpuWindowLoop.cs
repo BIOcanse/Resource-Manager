@@ -92,6 +92,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             return new([], "fixture no device/window operation", RunningGpuPlacementActionStatuses.Skipped);
         };
+        var capturedPlacement = CapturePlacementOperations(coordinator);
         var running = (Task<bool>)typeof(HostManagerSmartCoordinator).GetMethod("RunAutomaticPlacementCycleAsync",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(coordinator,
                 [admission, HostManagerProcessEffectValidationCycleSnapshot.ProductionUnscoped,
@@ -99,9 +100,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(!expireWindowWork, await running.WaitAsync(TimeSpan.FromSeconds(40)));
         Assert.Equal(4, actions.PrepareCalls); // Route admission, then exact destination preparation.
         Assert.Equal(expireWindowWork ? 1 : 2, actions.ApplyCalls);
-        var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(coordinator, "placementCoordinatorWorkspace")!;
         var session = ReadPrivateField<NativePlacementCoordinatorSession>(coordinator, "placementCoordinatorSession")!;
-        var planned = workspace.Actions.Take(2).ToArray();
+        var planned = capturedPlacement.Actions.Take(2).ToArray();
         Assert.All(planned, action =>
         {
             Assert.NotEqual(0UL, action.ActionId);
@@ -127,21 +127,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 (NativePlacementSlotState)state.State);
             Assert.Equal(applied ? 0UL : action.ActionId, state.PendingActionId);
             if (applied)
-                Assert.True(state.RetryAtMilliseconds > workspace.Feedback[index].CompletedAtMilliseconds);
+                Assert.True(state.RetryAtMilliseconds > capturedPlacement.Feedback[index].CompletedAtMilliseconds);
             else
                 Assert.Equal(action.DeadlineMilliseconds, state.RetryAtMilliseconds);
         }
         var receipts = fixture.StateStore.Current.AppliedPlacements;
         Assert.Empty(receipts);
-        Assert.Equal((uint)NativePlacementFeedbackStatus.RetryableFailure, workspace.Feedback[0].Status);
-        Assert.Equal(planned[0].ActionId, workspace.Feedback[0].ActionId);
-        Assert.True(workspace.Feedback[0].CompletedAtMilliseconds < planned[0].DeadlineMilliseconds);
+        Assert.Equal((uint)NativePlacementFeedbackStatus.RetryableFailure, capturedPlacement.Feedback[0].Status);
+        Assert.Equal(planned[0].ActionId, capturedPlacement.Feedback[0].ActionId);
+        Assert.True(capturedPlacement.Feedback[0].CompletedAtMilliseconds < planned[0].DeadlineMilliseconds);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.GraphicsPreferenceStore.TotalCalls);
         output.WriteLine("originalGpuWindowLoop=" + JsonSerializer.Serialize(new
         {
             expireWindowWork, actions.PrepareCalls, actions.ApplyCalls, planned, states, batch,
-            receipts, targets, feedback = workspace.Feedback.Take(actions.ApplyCalls).ToArray(),
+            receipts, targets, feedback = capturedPlacement.Feedback.Take(actions.ApplyCalls).ToArray(),
             actualNativeSession = true, originalManagedLoop = true, windowOperationStarted = false
         }, new JsonSerializerOptions { IncludeFields = true }));
     }

@@ -62,13 +62,25 @@ pub export fn rm_smart_coordinator_reset(handle: ?*anyopaque) callconv(.c) i32 {
     return code(coordinator.reset(session));
 }
 
-pub export fn rm_smart_coordinator_plan(
+pub export fn rm_smart_coordinator_query_scratch_layout(
+    handle: ?*anyopaque,
+    requirements: ?*@import("scratch.zig").Requirements,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(@import("scratch.zig").Requirements)) return code(.abi_mismatch);
+    const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(coordinator.queryScratchLayout(session, requirements orelse return code(.invalid_argument)));
+}
+
+pub export fn rm_smart_coordinator_plan_with_scratch(
     handle: ?*anyopaque,
     input: ?*const protocol.CycleInput,
     input_rows: ?[*]const protocol.InputRow,
     input_row_capacity: u32,
     actions: ?[*]protocol.Action,
     action_capacity: u32,
+    scratch_pointer: ?*anyopaque,
+    scratch_length: u64,
     snapshot: ?*protocol.Snapshot,
 ) callconv(.c) i32 {
     const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
@@ -79,6 +91,8 @@ pub export fn rm_smart_coordinator_plan(
         input_row_capacity,
         actions,
         action_capacity,
+        scratch_pointer,
+        scratch_length,
         snapshot orelse return code(.invalid_argument),
     ));
 }

@@ -39,6 +39,9 @@ internal interface IHostManagerSmartCoordinatorTransitionProbe
     void Reach(HostManagerSmartCoordinatorTransitionPoint point);
     void ObserveShutdown(HostManagerSmartCoordinatorShutdownPoint point);
     void ObserveNativeInputs(ReadOnlySpan<NativeSmartCoordinatorInputRow> inputs) { }
+    void ObservePlacementPlan(ReadOnlySpan<NativePlacementDesiredInput> desired,
+        ReadOnlySpan<NativePlacementAppliedInput> applied, ReadOnlySpan<NativePlacementAction> actions) { }
+    void ObservePlacementFeedback(ReadOnlySpan<NativePlacementFeedback> feedback) { }
 }
 
 public sealed partial class HostManagerSmartCoordinator
@@ -256,11 +259,14 @@ public sealed partial class HostManagerSmartCoordinator
         DisposeOwnedResource(ref computeScoringWorkspace, ref failure);
         DisposeOwnedResource(ref pendingNativeWorkspaceClose, ref failure);
         DisposeOwnedResource(ref nativeWorkspace, ref failure);
-        DisposeOwnedResource(ref placementCoordinatorSession, ref failure);
-        if (placementCoordinatorSession is null)
+        try { ClosePendingPlacementCoordinator(); }
+        catch (Exception exception) { failure = CombineFailures(failure, exception); }
+        DisposeOwnedResource(ref placementCoordinatorWorkspace, ref failure);
+        if (placementCoordinatorWorkspace is null)
         {
-            placementCoordinatorWorkspace = null;
-            appliedPlacementCoordinatorPlan = null;
+            DisposeOwnedResource(ref placementCoordinatorSession, ref failure);
+            if (placementCoordinatorSession is null)
+                appliedPlacementCoordinatorPlan = null;
         }
         if (memoryModeWorkspace is null && computeScoringWorkspace is null
             && nativeWorkspace is null && pendingNativeWorkspaceClose is null)

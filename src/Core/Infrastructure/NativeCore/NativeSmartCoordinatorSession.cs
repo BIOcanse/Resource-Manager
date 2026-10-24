@@ -53,6 +53,30 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         }
     }
 
+    internal NativeSmartCoordinatorScratchRequirements ScratchRequirements
+    {
+        get
+        {
+            lock (sync)
+            {
+                var status = (NativeSmartCoordinatorStatus)NativeMethods.QueryScratchLayout(RequireHandle(),
+                    out var result, SizeOf<NativeSmartCoordinatorScratchRequirements>());
+                if (status != NativeSmartCoordinatorStatus.Ok ||
+                    result.AbiVersion != NativeSmartCoordinatorAbi.Version ||
+                    result.StructSize != SizeOf<NativeSmartCoordinatorScratchRequirements>() ||
+                    result.ByteCount == 0 || result.Alignment == 0 ||
+                    (result.Alignment & (result.Alignment - 1)) != 0 || result.Reserved != 0 || result.Reserved1 != 0 ||
+                    result.ProcessCount != capacity.ProcessCapacity ||
+                    result.SoftwareCount != capacity.SoftwareCapacity ||
+                    result.GpuCount != capacity.GpuStateCapacity ||
+                    result.ProcessSize == 0 || result.SoftwareSize == 0 || result.GpuSize == 0 || result.SoftwareGpuSize == 0 ||
+                    result.ProcessIndexCount == 0 || result.SoftwareIndexCount == 0 || result.GpuIndexCount == 0)
+                    throw new InvalidOperationException("Native smart scratch layout contract mismatch.");
+                return result;
+            }
+        }
+    }
+
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
     public static NativeSmartCoordinatorStatus CapacityForConfiguration(
@@ -98,6 +122,8 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         in NativeSmartCoordinatorCycleInput input,
         ReadOnlySpan<NativeSmartCoordinatorInputRow> inputRows,
         Span<NativeSmartCoordinatorAction> actions,
+        IntPtr scratchPointer,
+        ulong scratchLength,
         ref NativeSmartCoordinatorSnapshot snapshot)
     {
         lock (sync)
@@ -112,6 +138,8 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
                     checked((uint)inputRows.Length),
                     actionPointer,
                     checked((uint)actions.Length),
+                    (void*)scratchPointer,
+                    scratchLength,
                     ref snapshot);
             }
         }
@@ -268,6 +296,11 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
             IntPtr handle,
             out NativeSmartCoordinatorCapacity capacity);
 
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_query_scratch_layout")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int QueryScratchLayout(IntPtr handle,
+            out NativeSmartCoordinatorScratchRequirements requirements, uint outputSize);
+
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_reconfigure")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial int Reconfigure(
@@ -278,7 +311,7 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial int Reset(IntPtr handle);
 
-        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_plan")]
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_plan_with_scratch")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static unsafe partial int Plan(
             IntPtr handle,
@@ -287,6 +320,8 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
             uint inputRowCapacity,
             NativeSmartCoordinatorAction* actions,
             uint actionCapacity,
+            void* scratchPointer,
+            ulong scratchLength,
             ref NativeSmartCoordinatorSnapshot snapshot);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_feedback")]

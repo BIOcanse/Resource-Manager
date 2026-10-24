@@ -11,9 +11,13 @@ internal sealed class NativeSmartScratchLayout
     internal ulong Inputs { get; }
     internal ulong Actions { get; }
     internal ulong Feedback { get; }
+    internal ulong NativeScratch { get; }
+    internal ulong NativeScratchByteCount { get; }
+    internal uint NativeScratchAlignment { get; }
     internal ulong Length { get; }
 
-    internal NativeSmartScratchLayout(uint inputs, uint actions, uint feedback)
+    internal NativeSmartScratchLayout(uint inputs, uint actions, uint feedback,
+        ulong nativeScratchByteCount, uint nativeScratchAlignment)
     {
         ArgumentOutOfRangeException.ThrowIfZero(inputs);
         ArgumentOutOfRangeException.ThrowIfZero(actions);
@@ -31,6 +35,12 @@ internal sealed class NativeSmartScratchLayout
         Inputs = Column(Unsafe.SizeOf<NativeSmartCoordinatorInputRow>(), InputCapacity);
         Actions = Column(Unsafe.SizeOf<NativeSmartCoordinatorAction>(), ActionCapacity);
         Feedback = Column(Unsafe.SizeOf<NativeSmartCoordinatorFeedback>(), FeedbackCapacity);
+        if (nativeScratchAlignment == 0 || (nativeScratchAlignment & (nativeScratchAlignment - 1)) != 0)
+            throw new ArgumentOutOfRangeException(nameof(nativeScratchAlignment));
+        NativeScratch = end;
+        NativeScratchByteCount = nativeScratchByteCount;
+        NativeScratchAlignment = nativeScratchAlignment;
+        end = checked(end + nativeScratchAlignment - 1 + nativeScratchByteCount);
         Length = checked((end + 7) / 8 * 8);
     }
 }
@@ -58,6 +68,11 @@ internal ref struct NativeSmartScratchView
 
     internal Span<NativeSmartCoordinatorFeedback> Feedback
         => view.Column<NativeSmartCoordinatorFeedback>(layout.Feedback, layout.FeedbackCapacity);
+
+    internal IntPtr NativeScratchPointer
+        => view.AlignedRegion(layout.NativeScratch, layout.NativeScratchByteCount, layout.NativeScratchAlignment);
+
+    internal ulong NativeScratchLength => layout.NativeScratchByteCount;
 
     public void Dispose() => view.Dispose();
 }
