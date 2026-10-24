@@ -47,6 +47,8 @@ export interface OptimizationStoreOptions {
   /** 调度状态的后端推送：页面上的状态区可见时订阅，显示随后端变化。 */
   statusSource: PushValueSource<HostManagerSmartCoordinatorStatus>;
   statusActive: Accessor<boolean>;
+  /** 报告列表在页面上可见。 */
+  reportsActive: Accessor<boolean>;
   requestClient: Pick<RequestClient, "request">;
 }
 
@@ -98,10 +100,14 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
   let optimizationModeApplyTimer: number | undefined;
   let optimizationModeCountdownTimer: number | undefined;
 
+  // 报告由后端按固定周期评估，随时会出现或消失；列表可见时按同一周期重读，只靠进页读取一次会停在旧值。
   createEffect(() => {
+    const evaluationSeconds = overview()?.status.sampleIntervalSeconds;
     reportSource.setDemand({
       active: options.enabled(),
-      refreshIntervalMs: null
+      refreshIntervalMs: options.reportsActive() && evaluationSeconds !== undefined
+        ? evaluationSeconds * 1000
+        : null
     });
   });
 

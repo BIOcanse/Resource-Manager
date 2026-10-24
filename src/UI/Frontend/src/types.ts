@@ -614,7 +614,7 @@ export interface ManagedComponent {
 export interface SoftwareRecord {
   id: string;
   name: string;
-  kind?: string;
+  kind: string;
   displayKind?: string;
   managementRole?: ManagementRole | null;
   state?: string;

@@ -81,6 +81,11 @@ assert.match(app, /statusSource:\s*frontendRuntime\.sources\.smartCoordinatorSta
 assert.match(
   app,
   /statusActive:\s*\(\)\s*=>\s*frontendWork\.isNeeded\(frontendWorkIds\.optimizationSmartStatus\)/);
+// 报告列表可见时按后端评估周期重读，不停在进页时的值。
+assert.match(
+  app,
+  /reportsActive:\s*\(\)\s*=>\s*frontendWork\.isNeeded\(frontendWorkIds\.optimizationReports\)/);
+assert.match(optimizationStore, /sampleIntervalSeconds[\s\S]*?refreshIntervalMs:\s*options\.reportsActive\(\)/);
 assert.match(
   readSource("features/optimization/OptimizationWorkspace.tsx"),
   /onRefresh=\{\(\) => \{[\s\S]*refreshReports\(true\)[\s\S]*refreshHostManagerStatus\(\)/);
