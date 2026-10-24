@@ -25,4 +25,5 @@ internal static class BackendFreedomPointPositions
     public const ulong CorePerformanceWeights = 0x00010002001F0001UL;
     public const ulong CpuInputAlgorithm = 0x00010002001F0002UL;
     public const ulong ScoreAlgorithm = 0x00010002001F0003UL;
+    public const ulong CrashCounterResetSeconds = 0x0001000200200000UL;
 }

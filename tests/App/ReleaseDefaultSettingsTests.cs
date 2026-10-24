@@ -14,7 +14,7 @@ public sealed class ReleaseDefaultSettingsTests
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(defaults, JsonSerializerOptions.Web));
         var performance = document.RootElement.GetProperty("performance");
 
-        Assert.Equal("1.0.30", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal("1.0.31", document.RootElement.GetProperty("version").GetString());
         Assert.Equal(AppRealtimeActionBudgetModes.Fixed, performance.GetProperty("realtimeActionBudgetMode").GetString());
         Assert.Equal(32, performance.GetProperty("realtimeActionBudgetCount").GetInt32());
         Assert.Equal(5, performance.GetProperty("realtimeActionBudgetPercent").GetInt32());

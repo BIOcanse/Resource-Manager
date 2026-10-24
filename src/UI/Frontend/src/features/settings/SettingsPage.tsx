@@ -66,6 +66,8 @@ interface SettingsPageProps {
   onLanguageChange: (language: AppLanguageMode) => void;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
+  onServiceRecoveryChange: (enabled: boolean, delay: number, count: number) => void;
+  serviceRecovery?: import("../../types").ServiceRecoveryDiagnostics;
   onAutoUpdateChange: (enabled: boolean) => void;
   onCheckIntervalChange: (hours: number) => void;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
@@ -286,6 +288,8 @@ export function SettingsPage(props: SettingsPageProps) {
               publicServicesAvailable={props.publicServicesAvailable}
               onTaskManagerShortcutReplacementChange={props.onTaskManagerShortcutReplacementChange}
               onAutoStartChange={props.onAutoStartChange}
+              onServiceRecoveryChange={props.onServiceRecoveryChange}
+              serviceRecovery={props.serviceRecovery}
               onEditableHotkeyChange={props.onEditableHotkeyChange}
               onLocalPublicServiceChange={props.onLocalPublicServiceChange}
               onPublicFileIndexChange={props.onPublicFileIndexChange}

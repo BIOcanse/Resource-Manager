@@ -19,6 +19,8 @@ public sealed record CompiledRuntimePlan(
 
     public bool AutoStartEnabled { get; init; }
 
+    public Settings.AppSystemIntegrationSettings ServiceRecovery { get; init; } = new(false, []);
+
     public CpuBaselineRatioSettings? CpuBaseline { get; init; }
 
     public CpuTopologySnapshot? CpuPlacementTopology { get; init; }

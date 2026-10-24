@@ -6,7 +6,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.30";
+    public const string CurrentVersion = "1.0.31";
     public const int RealtimeActionBudgetCount = 32;
     public const int MinRealtimeActionBudgetCount = 1;
     public const int MaxRealtimeActionBudgetCount = 8192;

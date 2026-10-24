@@ -21,7 +21,7 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.30", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.31", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -85,7 +85,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.30", `${label}: version`);
+    assert.equal(settings.version, "1.0.31", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }

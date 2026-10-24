@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "C04C7A18857583E4F650A705A5047B56B5901DA7CF69E7C3DA1CCBCCD078C7F8",
+  "contractFingerprint": "3EB3A6FA528D2922F9D4049AF55C6B5DBF62D0E14B344DACACE1B30406414B91",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -62,8 +62,7 @@
         "0001000200140000",
         "0001000200150000",
         "0001000200160000",
-        "0001000200170000",
-        "0001000200170001"
+        "0001000200170000"
       ]
     },
     {
@@ -93,6 +92,14 @@
         "00010002001F0002",
         "00010002001F0003"
       ]
+    },
+    {
+      "key": "resource-manager/backend/service_recovery",
+      "parent": "resource-manager/backend",
+      "name": "service_recovery",
+      "description": "Background service crash recovery.",
+      "order": 3,
+      "points": ["0001000200200000"]
     }
   ]
 }

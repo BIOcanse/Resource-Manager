@@ -42,6 +42,9 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SubscriptionIntervalMs)]
     public TimeSpan SchedulerSamplingInterval { get; init; }
 
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
+    public int ServiceRecoveryResetPeriodSeconds { get; init; }
+
     public const int CurrentSchemaVersion = 42;
 
     public bool IsPublished => SchemaVersion == CurrentSchemaVersion

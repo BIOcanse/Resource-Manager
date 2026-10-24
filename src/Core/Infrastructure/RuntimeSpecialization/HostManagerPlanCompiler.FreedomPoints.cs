@@ -8,6 +8,10 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed partial class HostManagerPlanCompiler
 {
+    private static int CompileServiceRecovery(FreedomPointCompilation freedom)
+        => freedom.Consume<int>(BackendFreedomPointPaths.ServiceRecoveryCounterReset,
+            "HostManagerPlanCompiler.CompileServiceRecovery");
+
     private static CompiledCpuScoringPlan CompileCpuScoring(FreedomPointCompilation freedom)
     {
         const string consumer = $"{nameof(HostManagerPlanCompiler)}.{nameof(CompileCpuScoring)}";

@@ -45,6 +45,7 @@ import type {
   AppPresetNumericSettingMode,
   AppSettings,
   AppSystemIntegrationSettings,
+  ServiceRecoveryDiagnostics,
   AppPalette,
   AppReadingSourceMode,
   AppResourceBarFrameRateMode,
@@ -88,6 +89,7 @@ export interface SettingsStore {
   saveState: Accessor<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">;
   runtimeCapabilityConstrainedPaths: Accessor<readonly string[]>;
   runtimeFailureCode: Accessor<string | null>;
+  serviceRecovery: Accessor<ServiceRecoveryDiagnostics | undefined>;
   activeSection: Accessor<SettingsSection>;
   setActiveSection: Setter<SettingsSection>;
   refresh: () => Promise<void>;
@@ -116,6 +118,7 @@ export interface SettingsStore {
   updateLanguage: (language: AppLanguageMode) => void;
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
   updateAutoStart: (enabled: boolean) => void;
+  updateServiceRecovery: (enabled: boolean, delay: number, count: number) => void;
   updateAutoUpdate: (enabled: boolean) => void;
   updateCheckInterval: (hours: number) => void;
   updateEditableHotkey: (hotkey: AppEditableHotkeySettings) => void;
@@ -147,6 +150,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   const [saveState, setSaveState] = createSignal<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">("idle");
   const [runtimeCapabilityConstrainedPaths, setRuntimeCapabilityConstrainedPaths] = createSignal<readonly string[]>([]);
   const [runtimeFailureCode, setRuntimeFailureCode] = createSignal<string | null>(null);
+  const [serviceRecovery, setServiceRecovery] = createSignal<ServiceRecoveryDiagnostics>();
   const [activeSection, setActiveSection] = createSignal<SettingsSection>("performance");
   const isDirty = createMemo(() => revision() !== null
     && !areSettingsEqual(settings(), draftSettings()));
@@ -334,6 +338,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       : outcome === "persisted-pending" ? "partial" : "idle");
     setRuntimeCapabilityConstrainedPaths(snapshot.data.runtimeCapabilityConstrainedPaths ?? []);
     setRuntimeFailureCode(snapshot.data.runtimeFailureCode ?? null);
+    setServiceRecovery(snapshot.data.serviceRecovery);
     setLoadState(nextLoadState);
   }
 
@@ -409,6 +414,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     saveState,
     runtimeCapabilityConstrainedPaths,
     runtimeFailureCode,
+    serviceRecovery,
     activeSection,
     setActiveSection,
     refresh,
@@ -540,6 +546,12 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         }
       }));
     },
+    updateServiceRecovery: (enabled, delay, count) => updateSystemIntegration((current) => ({
+      ...current,
+      restartAfterCrashEnabled: enabled,
+      crashRestartDelaySeconds: normalizeInteger(delay, 1, 3600, current.crashRestartDelaySeconds ?? 10),
+      crashRestartCount: normalizeInteger(count, 1, 10, current.crashRestartCount ?? 3)
+    })),
     updateAutoStart: (enabled) => updateSystemIntegration((systemIntegration) => ({
       ...systemIntegration,
       autoStartEnabled: enabled
@@ -628,7 +640,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.30",
+    version: "1.0.31",
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -660,6 +672,9 @@ export function defaultAppSettings(): AppSettings {
       readingSourceMode: "preferred"
     },
     systemIntegration: {
+      restartAfterCrashEnabled: true,
+      crashRestartDelaySeconds: 10,
+      crashRestartCount: 3,
       autoStartEnabled: false,
       taskManagerShortcutReplacementEnabled: false,
       hotkeys: normalizeEditableHotkeys([])
@@ -688,7 +703,7 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.30",
+    version: "1.0.31",
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
@@ -713,6 +728,9 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
     },
     appearance: normalizeAppearanceSettings(settings?.appearance),
     systemIntegration: {
+      restartAfterCrashEnabled: settings?.systemIntegration?.restartAfterCrashEnabled !== false,
+      crashRestartDelaySeconds: normalizeInteger(settings?.systemIntegration?.crashRestartDelaySeconds, 1, 3600, 10),
+      crashRestartCount: normalizeInteger(settings?.systemIntegration?.crashRestartCount, 1, 10, 3),
       autoStartEnabled: settings?.systemIntegration?.autoStartEnabled === true,
       taskManagerShortcutReplacementEnabled: settings?.systemIntegration?.taskManagerShortcutReplacementEnabled === true,
       hotkeys: normalizeEditableHotkeys(settings?.systemIntegration?.hotkeys)

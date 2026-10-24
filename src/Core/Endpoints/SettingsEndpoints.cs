@@ -27,6 +27,7 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
 using ResourceManager.App.Infrastructure.ResourceTable;
+using ResourceManager.App.Infrastructure.ServiceHosting;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -37,10 +38,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/settings/app", async (
             IAppSettingsStore settingsStore,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
+            ServiceRecoverySettings recovery,
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(runtimeSpecialization.ProjectAppSettingsRuntimeState(
-                await settingsStore.LoadReadOnlyAsync(cancellationToken)));
+                await settingsStore.LoadReadOnlyAsync(cancellationToken)) with { ServiceRecovery = recovery.Diagnostics });
         }).AllowAnonymous();
 
         // What the 「报告判定」 settings section may edit, from the current runtime plan.
@@ -51,12 +53,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapPut("/api/settings/app", async (
             AppSettings settings,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
+            ServiceRecoverySettings recovery,
             CancellationToken cancellationToken) =>
         {
             var result = await runtimeSpecialization.ApplyAppSettingsAsync(
                 settings,
                 "app-settings-saved",
                 cancellationToken);
+            result = result with { ServiceRecovery = recovery.Diagnostics };
             return result.RuntimeApplicationDisposition switch
             {
                 "committedAndApplied" => Results.Ok(result),
@@ -77,6 +81,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapPatch("/api/settings/app", async (
             AppSettingsPatchRequest patch,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
+            ServiceRecoverySettings recovery,
             CancellationToken cancellationToken) =>
         {
             AppSettingsUpdateResult result;
@@ -95,6 +100,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     detail: exception.Message);
             }
 
+            result = result with { ServiceRecovery = recovery.Diagnostics };
             return result.RuntimeApplicationDisposition switch
             {
                 "committedAndApplied" => Results.Ok(result),
@@ -115,6 +121,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapPost("/api/settings/app/reapply", async (
             IAppSettingsStore settingsStore,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
+            ServiceRecoverySettings recovery,
             CancellationToken cancellationToken) =>
         {
             var publication = await runtimeSpecialization.RebuildAsync(
@@ -129,6 +136,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         publication.Plan.RuntimeCapabilityConstrainedPaths),
                 RuntimePlanVersion = publication.Plan.Version,
                 RuntimePublicationSequence = publication.PublicationSequence,
+                ServiceRecovery = recovery.Diagnostics,
                 RuntimeDeliveryFailureCount = publication.DeliveryFailures.Count,
                 RuntimeCapabilityConstrainedPaths =
                     publication.Plan.RuntimeCapabilityConstrainedPaths

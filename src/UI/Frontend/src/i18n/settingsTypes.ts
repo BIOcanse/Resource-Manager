@@ -133,6 +133,21 @@ export interface SettingsCopy {
     fontSmoothingOptions: Record<AppFontSmoothing, { label: string; description: string }>;
   };
   systemIntegration: {
+    crashRecoveryTitle: string;
+    crashRecoveryDescription: string;
+    crashRestartDelayTitle: string;
+    crashRestartCountTitle: string;
+    crashCounterResetDescription: string;
+    crashCounterResetTitle: string;
+    crashRecoveryActualTitle: string;
+    crashRecoveryUnavailable: string;
+    crashRecoveryApplied: string;
+    crashRecoverySkipped: string;
+    crashRecoveryFailed: string;
+    crashRecoveryMismatch: string;
+    crashRecoveryNonCrashWarning: string;
+    crashRecoveryWriteFailed: string;
+    crashRecoveryReadFailed: string;
     autoStartTitle: string;
     autoStartDescription: string;
     taskManagerTitle: string;

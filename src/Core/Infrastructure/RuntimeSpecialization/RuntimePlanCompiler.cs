@@ -133,6 +133,7 @@ public sealed class RuntimePlanCompiler(
         {
             RuntimeCapabilityConstrainedPaths = runtimeProjection.ConstrainedPaths,
             AutoStartEnabled = settings.SystemIntegration.AutoStartEnabled,
+            ServiceRecovery = settings.SystemIntegration,
             CpuBaseline = cpuBaseline,
             CpuPlacementTopology = cpuTopology
         };

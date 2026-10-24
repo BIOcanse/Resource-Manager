@@ -239,7 +239,10 @@ public sealed record AppAppearanceSettings(
 public sealed record AppSystemIntegrationSettings(
     bool TaskManagerShortcutReplacementEnabled,
     IReadOnlyList<AppEditableHotkeySettings> Hotkeys,
-    bool AutoStartEnabled = false);
+    bool AutoStartEnabled = false,
+    bool RestartAfterCrashEnabled = true,
+    int CrashRestartDelaySeconds = 10,
+    int CrashRestartCount = 3);
 
 public sealed record AppEditableHotkeySettings(
     string ActionId,
@@ -310,6 +313,8 @@ public sealed record AppSettingsUpdateResult(
     public IReadOnlyList<string> RuntimeCapabilityConstrainedPaths { get; init; } = [];
 
     public string? RuntimeFailureCode { get; init; }
+
+    public ServiceRecoveryDiagnostics? ServiceRecovery { get; init; }
 }
 
 public static class AppSettingsRuntimeApplicationDisposition

@@ -84,7 +84,10 @@ public static class AppSettingsNormalizer
         return new AppSystemIntegrationSettings(
             systemIntegration?.TaskManagerShortcutReplacementEnabled ?? false,
             NormalizeEditableHotkeys(systemIntegration?.Hotkeys),
-            systemIntegration?.AutoStartEnabled ?? false);
+            systemIntegration?.AutoStartEnabled ?? false,
+            systemIntegration?.RestartAfterCrashEnabled ?? true,
+            Math.Clamp(systemIntegration?.CrashRestartDelaySeconds ?? 10, 1, 3600),
+            Math.Clamp(systemIntegration?.CrashRestartCount ?? 3, 1, 10));
     }
 
     private static AppLocalPublicServiceSettings NormalizePublicService(

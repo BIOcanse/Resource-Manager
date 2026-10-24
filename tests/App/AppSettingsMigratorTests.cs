@@ -23,7 +23,7 @@ public sealed class AppSettingsMigratorTests
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-        Assert.Equal("1.0.30", migrated.Version);
+        Assert.Equal("1.0.31", migrated.Version);
         Assert.Equal(AppOptimizationModes.Smart, migrated.Performance.OptimizationMode);
         Assert.Equal(AppRealtimeActionBudgetModes.Fixed, migrated.Performance.RealtimeActionBudgetMode);
         Assert.Equal(32, migrated.Performance.RealtimeActionBudgetCount);
@@ -154,7 +154,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.28", true)]
     [InlineData("1.0.29", true)]
     [InlineData("1.0.30", true)]
-    [InlineData("1.0.31", false)]
+    [InlineData("1.0.31", true)]
+    [InlineData("1.0.32", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -689,7 +690,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.30",
+          "version": "1.0.31",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
@@ -715,6 +716,9 @@ public sealed class AppSettingsMigratorTests
             "readingSourceMode": "preferred"
           },
           "systemIntegration": {
+            "restartAfterCrashEnabled": true,
+            "crashRestartDelaySeconds": 10,
+            "crashRestartCount": 3,
             "autoStartEnabled": false,
             "taskManagerShortcutReplacementEnabled": false
           },

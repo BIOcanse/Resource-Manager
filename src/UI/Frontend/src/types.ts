@@ -348,6 +348,9 @@ export interface AppAppearanceSettings {
 }
 
 export interface AppSystemIntegrationSettings {
+  restartAfterCrashEnabled?: boolean;
+  crashRestartDelaySeconds?: number;
+  crashRestartCount?: number;
   autoStartEnabled: boolean;
   taskManagerShortcutReplacementEnabled: boolean;
   hotkeys: AppEditableHotkeySettings[];
@@ -374,7 +377,21 @@ export interface FrontendRefreshIntervals {
   readonly defaults: Readonly<Record<AppLogicRefreshIntervalKey, AppPresetNumericSetting>>;
 }
 
+export interface ServiceRecoveryDiagnostics {
+  state: "notApplied" | "applied" | "skipped" | "failed" | "mismatch";
+  configuredResetPeriodSeconds: number;
+  actual: {
+    resetPeriodSeconds: number;
+    actions: readonly { type: number; delayMilliseconds: number }[];
+    failureActionsOnNonCrashFailures: boolean;
+  } | null;
+  skipReason: string | null;
+  writeError: string | null;
+  readError: string | null;
+}
+
 export interface AppSettingsResult {
+  serviceRecovery?: ServiceRecoveryDiagnostics;
   frontendRefreshIntervals?: FrontendRefreshIntervals;
   settings?: AppSettings;
   revision?: string;

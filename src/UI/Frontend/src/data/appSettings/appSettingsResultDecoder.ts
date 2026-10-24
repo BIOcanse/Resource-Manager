@@ -17,6 +17,7 @@ import {
   ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
+import { decodeServiceRecovery } from "./serviceRecoveryDecoder.ts";
 import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
 
 export type AppSettingsApplicationDisposition = NonNullable<
@@ -74,6 +75,7 @@ export const appSettingsResultDecoder =
       }
 
       const result: AppSettingsResult = {
+        serviceRecovery: record.serviceRecovery === undefined ? undefined : decodeServiceRecovery(record.serviceRecovery),
         settings: deepFreezeClone(settingsRecord) as AppSettings,
         frontendRefreshIntervals: decodeFrontendRefreshIntervals(record.frontendRefreshIntervals),
         revision: requireNonEmptyString(record.revision, "$.revision"),

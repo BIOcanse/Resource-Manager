@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import { ServiceRecoverySetting } from "./ServiceRecoverySetting";
 import { AiGatewayKeyManager } from "./AiGatewayKeyManager";
 import {
   defaultForceTerminateHotkey,
@@ -22,6 +23,8 @@ interface SystemIntegrationSettingsSectionProps {
   publicServicesAvailable: boolean;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
+  onServiceRecoveryChange: (enabled: boolean, delay: number, count: number) => void;
+  serviceRecovery?: import("../../../types").ServiceRecoveryDiagnostics;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
   onLocalPublicServiceChange: (enabled: boolean) => void;
   onPublicFileIndexChange: (enabled: boolean) => void;
@@ -54,6 +57,8 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
 
   return (
     <div class="settings-section-panel">
+      <ServiceRecoverySetting settings={systemIntegration()} diagnostics={props.serviceRecovery}
+        text={props.text.systemIntegration} onChange={props.onServiceRecoveryChange} />
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.autoStartTitle}</strong>

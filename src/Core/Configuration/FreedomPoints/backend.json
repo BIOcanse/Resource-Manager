@@ -322,6 +322,25 @@
               }
             }
           ]
+        },
+        {
+          "id": "service_recovery",
+          "description": "Background service crash recovery.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "crash_counter_reset_seconds",
+                "description": "Reset the service crash counter after this many seconds without a crash.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 86400,
+                "consumers": ["HostManagerPlanCompiler.CompileServiceRecovery"]
+              }
+            ]
+          }
         }
       ]
     }

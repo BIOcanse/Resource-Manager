@@ -49,6 +49,8 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onLanguageChange={settings.updateLanguage}
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}
         onAutoStartChange={settings.updateAutoStart}
+        onServiceRecoveryChange={settings.updateServiceRecovery}
+        serviceRecovery={settings.serviceRecovery()}
         onAutoUpdateChange={settings.updateAutoUpdate}
         onCheckIntervalChange={settings.updateCheckInterval}
         onEditableHotkeyChange={settings.updateEditableHotkey}

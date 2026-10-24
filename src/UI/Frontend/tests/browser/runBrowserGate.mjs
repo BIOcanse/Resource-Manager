@@ -45,6 +45,7 @@ import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJ
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
 import realtimeActionBudgetSettingsJourney from "./realtimeActionBudgetSettingsJourney.js";
+import serviceRecoverySettingsJourney from "./serviceRecoverySettingsJourney.js";
 import softwareIssueJourney from "./softwareIssueJourney.js";
 import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
@@ -56,6 +57,7 @@ import localizationJourney from "./localizationJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
+  ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],
   ["language-load-failure", async (...args) => (await import("./languageLoadFailureJourney.js")).default(...args)],
   ["frontend-refresh-intervals", frontendRefreshIntervalsJourney],

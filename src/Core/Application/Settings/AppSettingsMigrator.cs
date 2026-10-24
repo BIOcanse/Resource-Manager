@@ -95,7 +95,10 @@ public static class AppSettingsMigrator
             new AppSystemIntegrationSettings(
                 ReadBoolean(root, "systemIntegration", "taskManagerShortcutReplacementEnabled", defaults.SystemIntegration.TaskManagerShortcutReplacementEnabled),
                 ReadEditableHotkeys(root, defaults.SystemIntegration.Hotkeys),
-                ReadBoolean(root, "systemIntegration", "autoStartEnabled", false)),
+                ReadBoolean(root, "systemIntegration", "autoStartEnabled", false),
+                ReadBoolean(root, "systemIntegration", "restartAfterCrashEnabled", true),
+                ReadInt32(root, "systemIntegration", "crashRestartDelaySeconds", 10),
+                ReadInt32(root, "systemIntegration", "crashRestartCount", 3)),
             new AppDebugSettings(
                 ReadBoolean(root, "debug", "debugModeEnabled", defaults.Debug.DebugModeEnabled),
                 ReadBoolean(root, "debug", "debugLogEnabled", defaults.Debug.DebugLogEnabled),
@@ -131,6 +134,16 @@ public static class AppSettingsMigrator
 
     public static bool RequiresRewrite(JsonElement root)
     {
+        if (!root.TryGetProperty("systemIntegration", out var integration)
+            || integration.ValueKind != JsonValueKind.Object
+            || !integration.TryGetProperty("restartAfterCrashEnabled", out var enabled)
+            || enabled.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+            || !integration.TryGetProperty("crashRestartDelaySeconds", out var delay)
+            || delay.ValueKind != JsonValueKind.Number
+            || !delay.TryGetInt32(out var delaySeconds) || delaySeconds is < 1 or > 3600
+            || !integration.TryGetProperty("crashRestartCount", out var count)
+            || count.ValueKind != JsonValueKind.Number
+            || !count.TryGetInt32(out var restarts) || restarts is < 1 or > 10) return true;
         if (!root.TryGetProperty("control", out var control) || control.ValueKind != JsonValueKind.Object
             || !control.TryGetProperty("reassertionIntervalSeconds", out var interval)
             || interval.ValueKind != JsonValueKind.Number || !interval.TryGetInt32(out var seconds) || seconds is < 1 or > 86400) return true;
