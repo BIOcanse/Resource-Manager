@@ -83,7 +83,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                         nameof(alias));
                 }
 
-                var payloads = holder.Models.Capture();
+                var payloads = holder.Workspace.CaptureModels();
                 if (!payloads.ByPayloadHandle.TryGetValue(
                         resolved.PayloadHandle,
                         out var descriptor))

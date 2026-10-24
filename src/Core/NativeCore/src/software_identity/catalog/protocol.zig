@@ -393,7 +393,7 @@ pub fn validConfig(config: *const Config) bool {
 }
 
 fn validIndexCapacity(index_capacity: u32, item_capacity: u32) bool {
-    return index_capacity != 0 and index_capacity >= item_capacity and std.math.isPowerOfTwo(index_capacity);
+    return index_capacity != 0 and @as(u64, index_capacity) >= @as(u64, item_capacity) * 2 and std.math.isPowerOfTwo(index_capacity);
 }
 
 fn validScoreBounds(config: *const Config) bool {

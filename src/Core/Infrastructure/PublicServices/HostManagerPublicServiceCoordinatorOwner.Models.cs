@@ -27,7 +27,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                     throw new AiModelRuntimeUnavailableException(
                         "The native local-model catalog has no usable provider snapshot.");
                 }
-                var payloads = holder.Models.Capture();
+                var payloads = holder.Workspace.CaptureModels();
                 if (payloads.Descriptors.Count != state.ModelCount)
                 {
                     throw new InvalidOperationException(
@@ -153,11 +153,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 holder.Workspace.PublishModels(
                     plan.AttemptHandle,
                     plan.ModelGenerationAtStart + 1,
-                    projection.Models,
-                    projection.Aliases,
-                    projection.Text);
-                holder.Models.Commit(projection.Payloads);
+                    projection);
             }
+        }
+        catch (Exception ex) when (
+            holder.Workspace.ReadSnapshot().ModelGeneration > plan.ModelGenerationAtStart)
+        {
+            logger.LogError(ex,
+                "The local-model catalog was accepted, but returning its work area failed; the next model operation will retry the return.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

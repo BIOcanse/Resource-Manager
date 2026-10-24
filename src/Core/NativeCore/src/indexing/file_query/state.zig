@@ -103,13 +103,7 @@ pub const Session = struct {
         self.ordinals = column(OrdinalSlot, bytes, &offset, self.config.maximum_submitted_candidate_count);
         self.ordinal_index = column(u32, bytes, &offset, self.config.ordinal_index_capacity);
         self.rank_order = column(u32, bytes, &offset, self.config.maximum_unique_candidate_count);
-        @memset(self.query_bytes, 0);
-        @memset(self.plan_bytes, 0);
-        @memset(self.source_plans, std.mem.zeroes(protocol.SourcePlanOutput));
-        @memset(self.candidates, .{});
-        @memset(self.candidate_text_bytes, 0);
         @memset(self.entry_index, no_index);
-        @memset(self.ordinals, .{});
         @memset(self.ordinal_index, no_index);
         @memset(self.rank_order, no_index);
         self.scratch_bound = true;

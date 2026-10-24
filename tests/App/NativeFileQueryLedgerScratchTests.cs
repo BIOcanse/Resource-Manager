@@ -6,6 +6,8 @@ using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.Ledger;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -131,7 +133,7 @@ public sealed class NativeFileQueryLedgerScratchTests
     }
 
     [Fact]
-    public async Task FailedSessionCloseKeepsTheQueryLeaseCallbackUntilItsRetrySucceeds()
+    public async Task FailedSessionCloseStaysOwnedByThePoolForAnExplicitDisposeRetry()
     {
         using var owner = new ResourceManagerLedgerOwner();
         FaultingScratch? scratch = null;
@@ -142,9 +144,216 @@ public sealed class NativeFileQueryLedgerScratchTests
         Assert.Throws<InvalidOperationException>(() => query.Dispose());
         Assert.Equal(1, scratch.Returns); // The use ended; only resource close remains.
         query.Dispose();
+        Assert.False(scratch.Closed); // The lease callback transferred ownership once.
+        workspace.Dispose();
         Assert.True(scratch.Closed);
         Assert.Equal(1, scratch.Returns);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedQueryReturnRestoresThePermitAndTheNextBorrowRetriesWithoutTheOldLease(bool failComplete)
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        FaultingScratch? scratch = null;
+        using var workspace = NativeFileQueryTestWorkspaceFactory.Create((length, alignment) =>
+            scratch = new FaultingScratch(FileQueryScratch.Create(owner.CreateScratch, length, alignment)));
+        var first = await workspace.AcquireAsync(CancellationToken.None);
+        first.MarkReusable();
+        if (failComplete) scratch!.FailComplete = true;
+        else scratch!.FailReturn = true;
+        Assert.Throws<InvalidOperationException>(() => first.Dispose());
+        Assert.Equal(0, scratch.Returns);
+        owner.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(0UL, owner.Tick().Released); // The failed use is still counted.
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using (var next = await workspace.AcquireAsync(timeout.Token))
+        {
+            Assert.Same(first.Session, next.Session);
+            Assert.Equal(1, scratch.Returns);
+            first.Dispose(); // Must not detach or return the new borrow.
+            Assert.Equal(1, scratch.Returns);
+            using var cancelledWait = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            {
+                using var unexpected = await workspace.AcquireAsync(cancelledWait.Token);
+            });
+            Assert.Equal("recovered", Begin(workspace, next.Session, "recovered"));
+            Reset(workspace, next.Session);
+            next.MarkReusable();
+        }
+        Assert.Equal(2, scratch.Returns);
+        workspace.Dispose();
+        Assert.True(scratch.Closed);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedReturnAfterWorkspaceShutdownStaysOwnedForTheNextDispose(bool failComplete)
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        FaultingScratch? scratch = null;
+        using var workspace = NativeFileQueryTestWorkspaceFactory.Create((length, alignment) =>
+            scratch = new FaultingScratch(FileQueryScratch.Create(owner.CreateScratch, length, alignment)));
+        var query = await workspace.AcquireAsync(CancellationToken.None);
+        query.MarkReusable();
+        workspace.Dispose();
+        if (failComplete) scratch!.FailComplete = true;
+        else scratch!.FailReturn = true;
+        Assert.Throws<InvalidOperationException>(() => query.Dispose());
+        Assert.Equal(0, scratch.Returns);
+        Assert.False(scratch.Closed);
+        query.Dispose();
+        workspace.Dispose();
+        Assert.Equal(1, scratch.Returns);
+        Assert.True(scratch.Closed);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OwnerReleasesItsHolderEvenWhenTheInnerLeaseReturnFails(bool failComplete)
+    {
+        using var memoryOwner = new ResourceManagerLedgerOwner();
+        var resources = new List<FaultingScratch>();
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        Publish(1);
+        using var owner = new HostManagerFileQueryOwner(provider,
+            new HostManagerFileQueryRuntime(provider, deployment),
+            NullLogger<HostManagerFileQueryOwner>.Instance,
+            (length, alignment) =>
+            {
+                var scratch = new FaultingScratch(FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment));
+                resources.Add(scratch);
+                return scratch;
+            });
+        await owner.StartAsync(CancellationToken.None);
+        var query = await owner.AcquireAsync(CancellationToken.None);
+        query.MarkReusable();
+        if (failComplete) resources[0].FailComplete = true;
+        else resources[0].FailReturn = true;
+        Assert.Throws<InvalidOperationException>(() => query.Dispose());
+        Publish(2); // Retirement retries the session return and closes its scratch.
+        Assert.True(resources[0].Closed);
+        Assert.Equal(1, resources[0].Returns);
+        query.Dispose();
+        Assert.Equal(1, resources[0].Returns);
+        owner.Dispose();
+        Assert.All(resources, scratch => Assert.True(scratch.Closed));
+        Assert.Equal(0UL, memoryOwner.ReadTable().RegisteredBytes);
+
+        void Publish(int revision) => provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = revision,
+            HostManager = HostManagerTestPlanFactory.CreatePlan(root =>
+            {
+                root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + revision;
+                root["host_recreate"]!["file_query"]!["query_session_count"] = 1;
+            })
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetiredPoolCloseFailureFromTheLastLeaseIsRetriedByItsOwner(bool disposeOwnerFirst)
+    {
+        using var memoryOwner = new ResourceManagerLedgerOwner();
+        var resources = new List<FaultingScratch>();
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        Publish(1);
+        using var owner = new HostManagerFileQueryOwner(provider,
+            new HostManagerFileQueryRuntime(provider, deployment),
+            NullLogger<HostManagerFileQueryOwner>.Instance,
+            (length, alignment) =>
+            {
+                var scratch = new FaultingScratch(FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment));
+                resources.Add(scratch);
+                return scratch;
+            });
+        await owner.StartAsync(CancellationToken.None);
+        var query = await owner.AcquireAsync(CancellationToken.None);
+        query.MarkReusable();
+        if (disposeOwnerFirst) owner.Dispose();
+        else Publish(2);
+        resources[0].FailClose = true;
+        Assert.Throws<InvalidOperationException>(() => query.Dispose());
+        Assert.Equal(1, resources[0].Returns);
+        Assert.False(resources[0].Closed);
+        query.Dispose(); // No second holder release or session return.
+        Assert.False(resources[0].Closed);
+        if (disposeOwnerFirst) owner.Dispose();
+        else Publish(3);
+        Assert.True(resources[0].Closed);
+        owner.Dispose();
+        Assert.All(resources, scratch => Assert.True(scratch.Closed));
+        Assert.Equal(0UL, memoryOwner.ReadTable().RegisteredBytes);
+
+        void Publish(int revision) => provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = revision,
+            HostManager = HostManagerTestPlanFactory.CreatePlan(root =>
+            {
+                root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + revision;
+                root["host_recreate"]!["file_query"]!["query_session_count"] = 1;
+            })
+        });
+    }
+
+    [Fact]
+    public async Task AStillLeasedRetiredPoolBlocksFurtherReplacementAndKeepsBothHoldersOwned()
+    {
+        using var memoryOwner = new ResourceManagerLedgerOwner();
+        var resources = new List<FaultingScratch>();
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        Publish(1);
+        using var owner = new HostManagerFileQueryOwner(provider,
+            new HostManagerFileQueryRuntime(provider, deployment),
+            NullLogger<HostManagerFileQueryOwner>.Instance,
+            (length, alignment) =>
+            {
+                var scratch = new FaultingScratch(FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment));
+                resources.Add(scratch);
+                return scratch;
+            });
+        await owner.StartAsync(CancellationToken.None);
+        var first = await owner.AcquireAsync(CancellationToken.None);
+        first.MarkReusable();
+        Publish(2);
+        var current = await owner.AcquireAsync(CancellationToken.None);
+        current.MarkReusable();
+        Publish(3);
+        Assert.Equal(2, resources.Count); // Current plus one pending; no third pool.
+        Assert.False(resources[0].Closed);
+        first.Dispose();
+        Assert.True(resources[0].Closed);
+        Publish(4);
+        Assert.Equal(3, resources.Count);
+        owner.Dispose(); // The prior current is still leased.
+        Assert.False(resources[1].Closed);
+        current.Dispose();
+        owner.Dispose();
+        Assert.All(resources, scratch => Assert.True(scratch.Closed));
+        Assert.Equal(0UL, memoryOwner.ReadTable().RegisteredBytes);
+
+        void Publish(int revision) => provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = revision,
+            HostManager = HostManagerTestPlanFactory.CreatePlan(root =>
+            {
+                root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + revision;
+                root["host_recreate"]!["file_query"]!["query_session_count"] = 1;
+            })
+        });
     }
 
     [Fact]
@@ -163,7 +372,7 @@ public sealed class NativeFileQueryLedgerScratchTests
 
     private sealed class FaultingScratch(INativeFileQueryScratch inner) : INativeFileQueryScratch
     {
-        internal bool FailPin, FailReturn, FailClose, Closed;
+        internal bool FailPin, FailReturn, FailComplete, FailClose, Closed;
         internal int Returns;
         public ulong Length => inner.Length;
         public NativeFileQueryScratchLease Acquire() => new Lease(this, inner.Acquire());
@@ -182,7 +391,11 @@ public sealed class NativeFileQueryLedgerScratchTests
                 if (owner.FailPin) { owner.FailPin = false; throw new InvalidOperationException("injected pin failure"); }
                 return inner.Pin();
             }
-            internal override void Complete() => inner.Complete();
+            internal override void Complete()
+            {
+                if (owner.FailComplete) { owner.FailComplete = false; throw new InvalidOperationException("injected complete failure"); }
+                inner.Complete();
+            }
             public override void Dispose()
             {
                 if (disposed) return;

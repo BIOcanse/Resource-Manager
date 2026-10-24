@@ -22,7 +22,16 @@ pub const Session = struct {
     pub fn create(config: *const protocol.Config) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
         const resident_byte_count = @sizeOf(Session);
-        if (resident_byte_count > config.resident_byte_budget) return error.InvalidConfiguration;
+        const maximum_input = std.mem.zeroInit(protocol.ReplaceInput, .{
+            .entry_count = config.maximum_entry_count,
+            .alias_count = config.maximum_alias_count,
+            .root_count = config.maximum_root_count,
+            .key_byte_count = config.maximum_catalog_key_byte_count,
+        });
+        const maximum_bank_bytes = bank_module.Requirements.fromInput(&maximum_input, config).byteCount();
+        const maximum_marks_bytes = @as(u64, config.maximum_entry_count) * @sizeOf(u64);
+        if (resident_byte_count + 2 * maximum_bank_bytes + 2 * maximum_marks_bytes > config.resident_byte_budget)
+            return error.InvalidConfiguration;
         const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
@@ -103,7 +112,7 @@ pub const Session = struct {
         if (input.catalog_generation <= self.catalog_generation or input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
-        const requirements = bank_module.Requirements.fromInput(input);
+        const requirements = bank_module.Requirements.fromInput(input, &self.config);
         const candidate_byte_count = requirements.byteCount() + @as(u64, input.entry_count) * @sizeOf(u64);
         // The old catalog remains live until its complete replacement passes validation.
         if (self.resident_byte_count + candidate_byte_count > self.config.resident_byte_budget) {

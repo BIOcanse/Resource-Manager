@@ -18,11 +18,10 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper output)
 {
     [Fact]
-    public void EmptySessionUsesActualStorageWithinSmallBudget()
+    public void EmptySessionUsesActualStorageAndRejectsInsufficientMaximumBudget()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().SoftwareIdentityCatalog;
         var configuration = NativeSoftwareIdentityCatalogWorkspace.CreateConfiguration(plan);
-        configuration.ResidentByteBudget = 4096;
         using var session = new NativeSoftwareIdentityCatalogSession(in configuration);
 
         Assert.InRange(session.Capacity.ResidentByteCount, 1UL, configuration.ResidentByteBudget);
@@ -32,12 +31,15 @@ public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper
         Assert.Equal(NativeSoftwareIdentityStatus.Ok, session.Snapshot(out var summary));
         Assert.Equal(0U, summary.KeyByteCount);
         Assert.Equal(session.Capacity.ResidentByteCount, summary.ResidentByteCount);
+        configuration.ResidentByteBudget = 4096;
+        Assert.Throws<InvalidOperationException>(() => new NativeSoftwareIdentityCatalogSession(in configuration));
     }
 
     [Fact]
     public void BundledProjectionReportsActualResidentBytes()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().SoftwareIdentityCatalog;
+        var configuration = NativeSoftwareIdentityCatalogWorkspace.CreateConfiguration(plan);
         var path = Path.Combine(AppContext.BaseDirectory, "Infrastructure", "Resources",
             "SoftwareIdentity", "software-identities.v1.json");
         using var stream = File.OpenRead(path);
@@ -55,7 +57,7 @@ public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper
         Assert.Equal((uint)projection.Roots.Length, summary.RootCount);
         Assert.Equal((uint)projection.KeyBytes.Length, summary.KeyByteCount);
         Assert.Equal(summary.ResidentByteCount, workspace.Session.Capacity.ResidentByteCount);
-        Assert.Equal(ExpectedResidentBytes(emptyBytes, projection), summary.ResidentByteCount);
+        Assert.Equal(ExpectedResidentBytes(emptyBytes, projection, configuration), summary.ResidentByteCount);
         var capacity = plan.Recreate.Capacity;
         // Native slot sizes are asserted by the catalog's native capacity test.
         // The former Session also retained a second 176-byte Bank value.
@@ -85,7 +87,7 @@ public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper
             using var runtimeWorkspace = new NativeSoftwareIdentityCatalogWorkspace(plan);
             runtimeProjection.Load(runtimeWorkspace.Session);
             var residentBytes = runtimeWorkspace.Session.Capacity.ResidentByteCount;
-            Assert.Equal(ExpectedResidentBytes(emptyBytes, runtimeProjection), residentBytes);
+            Assert.Equal(ExpectedResidentBytes(emptyBytes, runtimeProjection, configuration), residentBytes);
             totalResidentBytes += residentBytes;
             output.WriteLine($"Runtime {name}: entries={runtimeProjection.Entries.Length}, "
                 + $"aliases={runtimeProjection.Aliases.Length}, roots={runtimeProjection.Roots.Length}, "
@@ -125,11 +127,11 @@ public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper
 
         Assert.Equal(NativeSoftwareIdentityStatus.Ok, Replace(session, small, 1));
         var smallBytes = session.Capacity.ResidentByteCount;
-        Assert.Equal(ExpectedResidentBytes(emptyBytes, small), smallBytes);
+        Assert.Equal(ExpectedResidentBytes(emptyBytes, small, configuration), smallBytes);
         Assert.True(smallBytes > emptyBytes);
         Assert.Equal(NativeSoftwareIdentityStatus.Ok, Replace(session, large, 2));
         var largeBytes = session.Capacity.ResidentByteCount;
-        Assert.Equal(ExpectedResidentBytes(emptyBytes, large), largeBytes);
+        Assert.Equal(ExpectedResidentBytes(emptyBytes, large, configuration), largeBytes);
         Assert.True(largeBytes > smallBytes);
 
         configuration.Generation++;
@@ -155,15 +157,21 @@ public sealed class NativeSoftwareIdentityCatalogCapacityTests(ITestOutputHelper
     private static SoftwareIdentityCatalogEntry Entry(string name)
         => new(name, name, SoftwareKinds.Other, "test", ExecutableNames: [name]);
 
-    private static ulong ExpectedResidentBytes(ulong emptyBytes, NativeSoftwareIdentityCatalogProjection projection)
+    private static ulong ExpectedResidentBytes(ulong emptyBytes, NativeSoftwareIdentityCatalogProjection projection,
+        NativeSoftwareIdentityCatalogConfiguration configuration)
         => emptyBytes
             + (ulong)projection.Entries.Length * (56UL + 8UL)
             + (ulong)projection.Aliases.Length * 32UL
             + (ulong)projection.Roots.Length * 24UL
             + (ulong)projection.KeyBytes.Length
-            + BitOperations.RoundUpToPowerOf2((uint)projection.Entries.Length) * 8UL
-            + BitOperations.RoundUpToPowerOf2((uint)projection.Aliases.Length) * 4UL
-            + BitOperations.RoundUpToPowerOf2((uint)projection.Roots.Length) * 4UL;
+            + IndexCapacity(projection.Entries.Length, configuration.MaximumEntryCount, configuration.EntryIndexCapacity) * 4UL
+            + IndexCapacity(projection.Entries.Length, configuration.MaximumEntryCount, configuration.IdentityIndexCapacity) * 4UL
+            + IndexCapacity(projection.Aliases.Length, configuration.MaximumAliasCount, configuration.AliasIndexCapacity) * 4UL
+            + IndexCapacity(projection.Roots.Length, configuration.MaximumRootCount, configuration.RootIndexCapacity) * 4UL;
+
+    private static uint IndexCapacity(int count, uint maximum, uint configured)
+        => count == 0 ? 0 : Math.Min(configured,
+            BitOperations.RoundUpToPowerOf2((uint)count) * (configured / BitOperations.RoundUpToPowerOf2(maximum)));
 
     private static NativeSoftwareIdentityStatus Replace(
         NativeSoftwareIdentityCatalogSession session,

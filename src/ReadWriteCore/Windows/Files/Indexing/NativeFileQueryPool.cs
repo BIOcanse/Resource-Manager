@@ -33,8 +33,11 @@ public sealed class NativeFileQueryLease : IDisposable
     {
         lock (releaseGate)
         {
-            release?.Invoke(Session, reusable);
+            var callback = release;
             release = null;
+            // The callback transfers ownership back to the pool even if cleanup
+            // fails. A later Dispose must not return a session borrowed again.
+            callback?.Invoke(Session, reusable);
         }
     }
 }
@@ -146,14 +149,26 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
     {
         lock (lifecycleGate)
         {
-            session.EndQuery(reusable);
-            if (reusable && Volatile.Read(ref disposed) == 0)
+            try
             {
-                available.Enqueue(session);
-                signal.Release();
-                return;
+                session.EndQuery(reusable);
+                if (reusable && Volatile.Read(ref disposed) == 0)
+                {
+                    available.Enqueue(session);
+                    signal.Release();
+                    return;
+                }
+                session.Dispose();
             }
-            session.Dispose();
+            catch
+            {
+                // Acquisition retries EndQuery; pool disposal retries closing.
+                // Both paths must retain this session after a failed return.
+                available.Enqueue(session);
+                if (Volatile.Read(ref disposed) == 0) signal.Release();
+                else Volatile.Write(ref disposed, 1);
+                throw;
+            }
         }
     }
 }

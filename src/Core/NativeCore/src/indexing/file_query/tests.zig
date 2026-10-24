@@ -1093,7 +1093,6 @@ fn candidate(entry: u64, ordinal: u32, offset: u32, length: u32) protocol.Candid
     };
 }
 
-
 test "file query construction has no columns and explicit scratch release permits poisoned refill" {
     try std.testing.expectEqual(@as(usize, 456), @sizeOf(session_module.Session));
     var actual_config = config();
@@ -1123,6 +1122,10 @@ test "file query construction has no columns and explicit scratch release permit
     try std.testing.expectEqual(@as(u32, 0), session.unique_candidate_count);
     try std.testing.expectEqual(@as(u32, 0), session.candidate_text_byte_count);
     try std.testing.expectEqual(@import("state.zig").no_index, session.entry_index[0]);
+    try std.testing.expectEqual(@import("state.zig").no_index, session.ordinal_index[0]);
+    try std.testing.expectEqual(@import("state.zig").no_index, session.rank_order[0]);
+    try std.testing.expectEqual(@as(u8, 0xa5), session.query_bytes[0]);
+    try std.testing.expectEqual(@as(u8, 0xa5), session.candidate_text_bytes[session.candidate_text_bytes.len - 1]);
     output = std.mem.zeroes(protocol.PlanOutput);
     @memset(&sources, std.mem.zeroes(protocol.SourcePlanOutput));
     @memset(&plan_bytes, 0);

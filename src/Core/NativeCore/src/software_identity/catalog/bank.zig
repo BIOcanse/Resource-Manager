@@ -48,18 +48,20 @@ pub const Requirements = struct {
     root_count: u32,
     key_byte_count: u32,
     entry_index_capacity: u32,
+    identity_index_capacity: u32,
     alias_index_capacity: u32,
     root_index_capacity: u32,
 
-    pub fn fromInput(input: *const protocol.ReplaceInput) Requirements {
+    pub fn fromInput(input: *const protocol.ReplaceInput, config: *const protocol.Config) Requirements {
         return .{
             .entry_count = input.entry_count,
             .alias_count = input.alias_count,
             .root_count = input.root_count,
             .key_byte_count = input.key_byte_count,
-            .entry_index_capacity = indexCapacity(input.entry_count),
-            .alias_index_capacity = indexCapacity(input.alias_count),
-            .root_index_capacity = indexCapacity(input.root_count),
+            .entry_index_capacity = indexCapacity(input.entry_count, config.maximum_entry_count, config.entry_index_capacity),
+            .identity_index_capacity = indexCapacity(input.entry_count, config.maximum_entry_count, config.identity_index_capacity),
+            .alias_index_capacity = indexCapacity(input.alias_count, config.maximum_alias_count, config.alias_index_capacity),
+            .root_index_capacity = indexCapacity(input.root_count, config.maximum_root_count, config.root_index_capacity),
         };
     }
 
@@ -68,15 +70,18 @@ pub const Requirements = struct {
             @as(u64, self.alias_count) * @sizeOf(AliasSlot) +
             @as(u64, self.root_count) * @sizeOf(RootSlot) +
             self.key_byte_count +
-            @as(u64, self.entry_index_capacity) * @sizeOf(u32) * 2 +
+            (@as(u64, self.entry_index_capacity) + self.identity_index_capacity) * @sizeOf(u32) +
             @as(u64, self.alias_index_capacity) * @sizeOf(u32) +
             @as(u64, self.root_index_capacity) * @sizeOf(u32);
     }
 };
 
-fn indexCapacity(count: u32) u32 {
+fn indexCapacity(count: u32, maximum_count: u32, configured_capacity: u32) u32 {
     // Validated configured index ceilings guarantee this cannot overflow.
-    return if (count == 0) 0 else std.math.ceilPowerOfTwo(u32, count) catch unreachable;
+    if (count == 0) return 0;
+    const rounded_count = std.math.ceilPowerOfTwo(u32, count) catch unreachable;
+    const rounded_maximum = std.math.ceilPowerOfTwo(u32, maximum_count) catch unreachable;
+    return @min(configured_capacity, rounded_count * (configured_capacity / rounded_maximum));
 }
 
 pub const Bank = struct {
@@ -108,7 +113,7 @@ pub const Bank = struct {
         errdefer allocator.free(key_bytes);
         const entry_index = try allocator.alloc(u32, requirements.entry_index_capacity);
         errdefer allocator.free(entry_index);
-        const identity_index = try allocator.alloc(u32, requirements.entry_index_capacity);
+        const identity_index = try allocator.alloc(u32, requirements.identity_index_capacity);
         errdefer allocator.free(identity_index);
         const alias_index = try allocator.alloc(u32, requirements.alias_index_capacity);
         errdefer allocator.free(alias_index);

@@ -27,7 +27,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private readonly HostManagerRuntimeIdentity runtimeIdentity;
     private readonly IAiModelRuntimeProvider runtimeProvider;
     private readonly ILogger<HostManagerPublicServiceCoordinatorOwner> logger;
-    private readonly ResourceManagerLedgerOwner ledger;
+    private readonly Func<ulong, IComputeScratch> createScratch;
     private CancellationTokenSource? workerCancellation;
     private Task? modelWorker;
     private Task? taskWorker;
@@ -47,13 +47,23 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         IAiModelRuntimeProvider runtimeProvider,
         ILogger<HostManagerPublicServiceCoordinatorOwner> logger,
         ResourceManagerLedgerOwner ledger)
+        : this(planProvider, deployment, runtimeIdentity, runtimeProvider, logger,
+            length => ledger.CreateScratch(length)) { }
+
+    internal HostManagerPublicServiceCoordinatorOwner(
+        RuntimePlanProvider planProvider,
+        HostManagerPublicServiceCoordinatorRuntime deployment,
+        HostManagerRuntimeIdentity runtimeIdentity,
+        IAiModelRuntimeProvider runtimeProvider,
+        ILogger<HostManagerPublicServiceCoordinatorOwner> logger,
+        Func<ulong, IComputeScratch> createScratch)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.runtimeIdentity = runtimeIdentity;
         this.runtimeProvider = runtimeProvider;
         this.logger = logger;
-        this.ledger = ledger;
+        this.createScratch = createScratch;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -155,10 +165,11 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
-            pendingRetirement?.Retire();
-            pendingRetirement = null;
-            current?.Retire();
-            current = null;
+            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
+            if (current?.Retire() == true) current = null;
+            if (pendingRetirement is not null || current is not null)
+                throw new InvalidOperationException(
+                    "Public-service workspaces are still in use; disposal must be retried after their retirement.");
             appliedPlan = null;
             disposed = true;
         }
@@ -180,12 +191,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
-            pendingRetirement?.Retire();
-            pendingRetirement = null;
+            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256)
             {
                 return;
             }
+            if (pendingRetirement is not null)
+                throw new InvalidOperationException(
+                    "The previous public-service workspace is still in use; replacement must wait for its retirement.");
             if (current is not null)
             {
                 RequireReplaceable(current.Workspace.ReadSnapshot());
@@ -207,7 +220,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                         ref nextSessionIncarnation,
                         "public-service session incarnation"),
                     desired.HotPublish.ConfigurationGeneration,
-                    length => ledger.CreateScratch(length), models);
+                    createScratch);
                 next = new WorkspaceHolder(replacement, desired, models);
                 replacement = null;
                 var previous = current;
@@ -250,8 +263,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             }
             // Publication succeeded; retirement failures retain the old holder
             // without changing the already settled deployment attempt.
-            pendingRetirement?.Retire();
-            pendingRetirement = null;
+            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
         }
         catch (Exception ex) when (!throwOnFailure)
         {
@@ -446,6 +458,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         CompiledHostManagerPublicServiceCoordinatorPlan plan,
         NativePublicServiceModelProjection models)
     {
+        private readonly object lifecycleGate = new();
         private int referenceCount = 1;
         private int retired;
 
@@ -459,28 +472,42 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
 
         internal void AddReference()
         {
-            if (Volatile.Read(ref retired) != 0)
+            lock (lifecycleGate)
             {
-                throw new ObjectDisposedException(nameof(NativePublicServiceCoordinatorWorkspace));
+                if (retired != 0)
+                    throw new ObjectDisposedException(nameof(NativePublicServiceCoordinatorWorkspace));
+                referenceCount++;
             }
-            Interlocked.Increment(ref referenceCount);
         }
 
-        internal void Retire()
+        internal bool Retire()
         {
-            if (Interlocked.Exchange(ref retired, 1) == 0)
+            lock (lifecycleGate)
             {
-                try { Release(); }
-                catch { Volatile.Write(ref retired, 0); throw; }
+                if (retired == 0)
+                {
+                    retired = 1;
+                    try { Release(); }
+                    catch { retired = 0; throw; }
+                }
+                return referenceCount == 0;
             }
         }
 
         internal void Release()
         {
-            if (Interlocked.Decrement(ref referenceCount) == 0)
+            lock (lifecycleGate)
             {
-                try { Workspace.Dispose(); }
-                catch { Interlocked.Increment(ref referenceCount); throw; }
+                if (--referenceCount == 0)
+                {
+                    try { Workspace.Dispose(); }
+                    catch
+                    {
+                        referenceCount++;
+                        retired = 0;
+                        throw;
+                    }
+                }
             }
         }
     }

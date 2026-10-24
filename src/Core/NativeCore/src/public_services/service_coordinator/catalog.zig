@@ -222,11 +222,7 @@ pub const ModelBank = struct {
         const text = try allocator.alloc(u8, config.maximum_model_text_bytes);
         errdefer allocator.free(text);
 
-        @memset(models, .{});
-        @memset(aliases, .{});
-        index.clear(index.HandleEntry, model_index);
-        index.clear(index.HashEntry, alias_index);
-        @memset(text, 0);
+        // stage initializes the active bank; staging is initialized only on replacement.
         return .{
             .models = models,
             .aliases = aliases,
@@ -246,11 +242,9 @@ pub const ModelBank = struct {
     }
 
     pub fn reset(self: *ModelBank) void {
-        @memset(self.models, .{});
-        @memset(self.aliases, .{});
+        // Rows and text are completely assigned by stage and read only below their counts.
         index.clear(index.HandleEntry, self.model_index);
         index.clear(index.HashEntry, self.alias_index);
-        @memset(self.text, 0);
         self.model_count = 0;
         self.alias_count = 0;
         self.text_count = 0;
