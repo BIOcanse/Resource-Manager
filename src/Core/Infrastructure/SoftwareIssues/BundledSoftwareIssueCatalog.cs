@@ -7,6 +7,10 @@ namespace ResourceManager.App.Infrastructure.SoftwareIssues;
 
 public sealed class BundledSoftwareIssueCatalog : ISoftwareIssueCatalog
 {
+    internal static JsonSerializerOptions CreateSerializerOptions() => new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+    };
     private const string RelativeCatalogPath =
         "Infrastructure/Resources/SoftwareIssues/software-issues.v1.json";
     private readonly SoftwareIssueCatalogDocument document;
@@ -24,7 +28,7 @@ public sealed class BundledSoftwareIssueCatalog : ISoftwareIssueCatalog
         using var stream = File.OpenRead(path);
         document = JsonSerializer.Deserialize<SoftwareIssueCatalogDocument>(
             stream,
-            JsonSerializerOptions.Web)
+            CreateSerializerOptions())
             ?? throw new InvalidDataException(
                 $"Software issue catalog '{path}' is empty.");
         compiler = new SoftwareIssueCatalogCompiler(

@@ -57,11 +57,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 var separator = value.LastIndexOf(':');
                 return separator > 0
-                    ? new
-                    {
-                        MetricId = value[..separator],
-                        ScaleMode = value[(separator + 1)..]
-                    }
+                    ? new DashboardMetricScalePayload(value[..separator], value[(separator + 1)..])
                     : null;
             })
             .Where(static item => item is not null

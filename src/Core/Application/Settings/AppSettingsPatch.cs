@@ -12,7 +12,7 @@ public sealed class AppSettingsPatchException(string message) : IOException(mess
 
 public static class AppSettingsPatchApplier
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
 
     public static AppSettings Apply(AppSettings current, JsonElement changes)
     {

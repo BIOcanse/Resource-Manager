@@ -8,13 +8,14 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed class StrictHostManagerProfileLoader(HostManagerProfileSource source)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    internal static JsonSerializerOptions CreateSerializerOptions() => new()
     {
         AllowTrailingCommas = false,
         PropertyNameCaseInsensitive = false,
         ReadCommentHandling = JsonCommentHandling.Disallow,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        NumberHandling = JsonNumberHandling.Strict
+        NumberHandling = JsonNumberHandling.Strict,
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
     };
 
     internal LoadedHostManagerProfile Load()
@@ -112,16 +113,17 @@ public sealed class StrictHostManagerProfileLoader(HostManagerProfileSource sour
 
         try
         {
+            var serializerOptions = CreateSerializerOptions();
             ValidateNoDuplicateProperties(bytes);
             var profile = JsonSerializer.Deserialize<HostManagerConfigurationProfile>(
                     bytes,
-                    SerializerOptions)
+                    serializerOptions)
                 ?? throw new JsonException("The profile root cannot be null.");
             return new LoadedHostManagerProfile(
                 profile,
                 sourceDisplayName,
                 Convert.ToHexString(SHA256.HashData(
-                    JsonSerializer.SerializeToUtf8Bytes(profile, SerializerOptions))));
+                    JsonSerializer.SerializeToUtf8Bytes(profile, serializerOptions))));
         }
         catch (JsonException exception)
         {

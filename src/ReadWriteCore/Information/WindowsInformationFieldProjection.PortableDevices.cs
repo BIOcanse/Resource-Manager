@@ -8,7 +8,7 @@ namespace ResourceManager.ReadWrite.Information;
 
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions WpdJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WpdJsonOptions = InformationJsonContext.Default.Options;
 
     internal static DeviceInformationSnapshot WpdCurrent(DeviceInformationSnapshot current,
         WindowsWpdInformationScope scope)

@@ -64,7 +64,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var validation = AdapterRegistrationValidator.Validate(request);
             if (validation is not null)
             {
-                return Results.BadRequest(new { error = validation });
+                return Results.BadRequest(new EndpointErrorPayload(validation));
             }
 
             if (!WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller))
@@ -73,11 +73,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 new AdapterRegistrationCaller(caller.WindowsSid, caller.IsAdministrator), cancellationToken);
             if (probeResult.State != AdapterResourceMarkerStates.Online)
             {
-                return Results.BadRequest(new
-                {
-                    error = "Resource marker endpoint is not reachable.",
-                    markerProbe = probeResult
-                });
+                return Results.BadRequest(new MarkerProbeErrorPayload("Resource marker endpoint is not reachable.", probeResult));
             }
 
             AdapterRegistrationResult result;
@@ -87,7 +83,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (AdapterRegistrationConflictException conflict)
             {
-                return Results.Conflict(new { error = conflict.Message });
+                return Results.Conflict(new EndpointErrorPayload(conflict.Message));
             }
             await runtimeSpecialization.RebuildAsync("adapter-registered", CancellationToken.None);
             return result.Created
@@ -115,7 +111,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var validation = ControlledRegistrationValidator.Validate(request);
             if (validation is not null)
             {
-                return Results.BadRequest(new { error = validation });
+                return Results.BadRequest(new EndpointErrorPayload(validation));
             }
 
             var registration = registry.Register(request);

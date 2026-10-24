@@ -7,6 +7,10 @@ namespace ResourceManager.App.Infrastructure.SoftwareMetadata;
 
 public sealed class BundledSoftwareMetadataCatalog : ISoftwareMetadataCatalog
 {
+    internal static JsonSerializerOptions CreateSerializerOptions() => new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+    };
     private const string RelativeCatalogPath =
         "Infrastructure/Resources/SoftwareMetadata/software-metadata.v1.json";
     private readonly SoftwareMetadataCatalogCompiler compiled;
@@ -23,7 +27,7 @@ public sealed class BundledSoftwareMetadataCatalog : ISoftwareMetadataCatalog
         using var stream = File.OpenRead(path);
         var document = JsonSerializer.Deserialize<SoftwareMetadataCatalogDocument>(
             stream,
-            JsonSerializerOptions.Web)
+            CreateSerializerOptions())
             ?? throw new InvalidDataException($"Software metadata catalog '{path}' is empty.");
         compiled = new SoftwareMetadataCatalogCompiler(document, identityCatalog.Entries);
     }

@@ -69,12 +69,7 @@ public sealed partial class HostManagerPlanCompiler
         CompiledHostManagerPortableSoftwareRegistryRecreatePlan recreate,
         CompiledHostManagerPortableSoftwareRegistryHotPublishPlan hotPublish)
     {
-        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            build.AbiVersion,
-            recreate,
-            hotPublish
-        });
+        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new PortableSoftwareRegistryConfigurationDigestInput(build.AbiVersion, recreate, hotPublish));
         return new CompiledHostManagerPortableSoftwareRegistryPlan(
             build,
             recreate,

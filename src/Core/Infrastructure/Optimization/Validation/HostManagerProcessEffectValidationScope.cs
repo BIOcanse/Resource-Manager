@@ -152,7 +152,7 @@ internal interface IWindowsJobMembershipProbe
         HostManagerComputeProcessIdentity identity);
 }
 
-public sealed class HostManagerProcessEffectValidationScopeAuthority
+public sealed partial class HostManagerProcessEffectValidationScopeAuthority
 {
     internal const int SchemaVersion = 1;
     internal const string Contract = "host-manager-process-effect-validation-scope-v1";
@@ -165,10 +165,10 @@ public sealed class HostManagerProcessEffectValidationScopeAuthority
     private const string ClosingPendingFault = "effect-scope-close-pending";
     private static readonly TimeSpan MinimumLease = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan MaximumLease = TimeSpan.FromHours(2);
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new HostManagerProcessEffectValidationScopeAuthorityJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly object gate = new();
     private readonly string statePath;

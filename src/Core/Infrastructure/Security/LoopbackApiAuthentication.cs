@@ -136,7 +136,7 @@ public sealed class LoopbackApiAuthenticationMiddleware(
         if (!LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, context.Connection.LocalPort))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { error = "loopback-origin-required" });
+            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorPayload("loopback-origin-required"));
             return;
         }
         if (context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is null
@@ -144,11 +144,7 @@ public sealed class LoopbackApiAuthenticationMiddleware(
             && !administratorReader.IsAdministrator(context))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                error = "frontend-or-administrator-required",
-                message = "This API requires the corresponding frontend or an administrator caller."
-            });
+            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorMessagePayload("frontend-or-administrator-required", "This API requires the corresponding frontend or an administrator caller."));
             return;
         }
         if (!context.Request.Path.StartsWithSegments("/api/public/v1"))
@@ -161,10 +157,13 @@ public sealed class LoopbackApiAuthenticationMiddleware(
         if (!decision.Allowed)
         {
             context.Response.StatusCode = decision.StatusCode;
-            await context.Response.WriteAsJsonAsync(new { error = decision.Reason }, context.RequestAborted);
+            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorPayload(decision.Reason), context.RequestAborted);
             return;
         }
         try { await next(context); }
         finally { await policy.CompleteAsync(decision.CompletionHandle, CancellationToken.None); }
     }
 }
+
+internal sealed record LoopbackApiErrorPayload(string error);
+internal sealed record LoopbackApiErrorMessagePayload(string error, string message);

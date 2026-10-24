@@ -15,7 +15,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/performance-overlay/default", (string softwareId) =>
         {
             try { return Results.Ok(PerformanceOverlaySettings.Normalize(null, softwareId)); }
-            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+            catch (ArgumentException exception) { return Results.BadRequest(new EndpointErrorPayload(exception.Message)); }
         }).AllowAnonymous();
 
         app.MapGet("/api/performance-overlay/metrics/catalog", async (
@@ -33,7 +33,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             try { return Results.Ok(await store.GetSoftwareAsync(softwareId, cancellationToken)); }
-            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+            catch (ArgumentException exception) { return Results.BadRequest(new EndpointErrorPayload(exception.Message)); }
         }).AllowAnonymous();
 
         app.MapPut("/api/performance-overlay/software/{softwareId}", async (
@@ -50,7 +50,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 await launchInterceptionReconciler.ReconcileAsync(CancellationToken.None);
                 return Results.Ok(saved);
             }
-            catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
+            catch (ArgumentException exception) { return Results.BadRequest(new EndpointErrorPayload(exception.Message)); }
         });
         return app;
     }

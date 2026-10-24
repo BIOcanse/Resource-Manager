@@ -8,7 +8,7 @@ namespace ResourceManager.ReadWrite.Information;
 /// <summary>Original canonical conversion shared by native Windows collectors and the product publication.</summary>
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = InformationJsonContext.Default.Options;
 
     public static DeviceInformationSnapshot PageFiles(IReadOnlyList<DeviceTopologyPageFileInformation>? files, DateTimeOffset? observedAt)
         => Frame((files ?? []).Where(static row => !string.IsNullOrWhiteSpace(row.DeviceIdentity))

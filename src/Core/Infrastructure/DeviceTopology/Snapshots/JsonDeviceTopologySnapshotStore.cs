@@ -7,9 +7,9 @@ using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
-public sealed class JsonDeviceTopologySnapshotStore : IDeviceTopologySnapshotStore
+public sealed partial class JsonDeviceTopologySnapshotStore : IDeviceTopologySnapshotStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new JsonDeviceTopologySnapshotStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)).Options;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ILogger<JsonDeviceTopologySnapshotStore> logger;
     private readonly string snapshotPath;

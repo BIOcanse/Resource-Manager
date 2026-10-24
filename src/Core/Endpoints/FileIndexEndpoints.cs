@@ -18,7 +18,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             using var callerToken = token;
             if (string.IsNullOrWhiteSpace(query))
             {
-                return Results.BadRequest(new { error = "搜索内容不能为空。" });
+                return Results.BadRequest(new EndpointErrorPayload("搜索内容不能为空。"));
             }
 
             return Results.Ok(await fileIndex.SearchAsync(query, Math.Clamp(limit ?? 50, 1, 200), cancellationToken,

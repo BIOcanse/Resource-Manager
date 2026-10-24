@@ -12,6 +12,10 @@ public sealed class BundledSoftwareIdentityCatalog :
     INativeSoftwareIdentityProcessObserver,
     IDisposable
 {
+    internal static JsonSerializerOptions CreateSerializerOptions() => new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+    };
     private const string RelativeCatalogPath = "Infrastructure/Resources/SoftwareIdentity/software-identities.v1.json";
     private readonly object gate = new();
     private readonly SoftwareIdentityCatalogDocument document;
@@ -27,7 +31,7 @@ public sealed class BundledSoftwareIdentityCatalog :
             ?? throw new FileNotFoundException(
                 $"Required software identity catalog '{RelativeCatalogPath}' was not found.");
         using var stream = File.OpenRead(path);
-        document = JsonSerializer.Deserialize<SoftwareIdentityCatalogDocument>(stream, JsonSerializerOptions.Web)
+        document = JsonSerializer.Deserialize<SoftwareIdentityCatalogDocument>(stream, CreateSerializerOptions())
             ?? throw new InvalidDataException($"Software identity catalog '{path}' is empty.");
         this.owner = owner;
     }

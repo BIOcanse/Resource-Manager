@@ -27,13 +27,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     | SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
             var rows = facts?.Processes.Where(process => process.Gpus.Any(gpu =>
                 gpu.HasMetric(SchedulingProcessMetricMask.GpuUsage)
-                    || gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory))).Select(process => new
-            {
-                process.ProcessId, process.ProcessStartKey, process.ProcessName,
-                adapters = WindowsGpuRendererConfirmation.Read(new(process.ProcessId, process.ProcessStartKey,
-                    process.ProcessName, process.ExecutablePath ?? string.Empty), keys)
-            }).ToArray();
-            return Results.Ok(new { source = "graphics-kernel-client", processes = rows });
+                    || gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory))).Select(process => new GpuRendererProcessPayload(process.ProcessId, process.ProcessStartKey, process.ProcessName, WindowsGpuRendererConfirmation.Read(new(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty), keys))).ToArray();
+            return Results.Ok(new GpuRendererConfirmationPayload("graphics-kernel-client", rows));
         });
 
         // 订阅 N 秒（默认 5，允许 1–30）后返回各进程的帧统计，用来在真实程序上核对帧率。
@@ -43,14 +38,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             response.Headers.CacheControl = "no-store";
             if (seconds is < 1 or > 30)
             {
-                return Results.BadRequest(new { error = "seconds must be between 1 and 30." });
+                return Results.BadRequest(new EndpointErrorPayload("seconds must be between 1 and 30."));
             }
 
             var window = TimeSpan.FromSeconds(seconds ?? 5);
             using var lease = frames.AcquireSubscription();
             await Task.Delay(window, cancellation);
             var snapshot = frames.Read(window);
-            return snapshot is null ? Results.Ok(new { running = false }) : Results.Ok(new { running = true, snapshot });
+            return snapshot is null ? Results.Ok(new RunningStatePayload(false)) : Results.Ok(new FrameTimingStatePayload(true, snapshot));
         });
 
         app.MapGet("/api/debug/cpu-residency", (HttpResponse response, EtwCpuCoreResidencyReader reader) =>
@@ -69,15 +64,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
                     | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState,
                 hardware.GpuInventory));
-            var failures = facts?.Processes.Select(process => new
-            {
-                process.ProcessId,
-                process.ProcessStartKey,
-                failure = gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(
-                    process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty))
-            }).Where(process => process.failure is not null).ToArray();
-            return Results.Ok(new { gpuInventory = hardware?.GpuInventory, processFacts = facts,
-                gpuPlacementFailures = failures });
+            var failures = facts?.Processes.Select(process => new GpuPlacementFailurePayload(process.ProcessId, process.ProcessStartKey, gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty)))).Where(process => process.failure is not null).ToArray();
+            return Results.Ok(new DebugSchedulingPayload(hardware?.GpuInventory, facts, failures));
         });
 
         app.MapGet("/api/debug/freedom-points", (
@@ -94,11 +82,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IDebugDiagnosticLogReader logReader) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(new
-            {
-                ok = true,
-                lines = logReader.ReadTail(tail ?? 100)
-            });
+            return Results.Ok(new DiagnosticLinesPayload(true, logReader.ReadTail(tail ?? 100)));
         });
 
         app.MapGet("/api/debug/history/requirements", (
@@ -107,18 +91,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             response.Headers.CacheControl = "no-store";
             var plan = runtimePlanProvider.Current.HostManager;
-            return Results.Ok(new
-            {
-                requirements = plan.DataHistory.Requirements,
-                consumers = new[]
-                {
-                    new
-                    {
-                        module = plan.SmartCoordinator.Build.NativeModule,
-                        requirements = plan.SmartCoordinator.DataHistory.Requirements
-                    }
-                }
-            });
+            return Results.Ok(new HistoryRequirementsPayload(plan.DataHistory.Requirements, new[] { new ModuleHistoryRequirementsPayload(plan.SmartCoordinator.Build.NativeModule, plan.SmartCoordinator.DataHistory.Requirements) }));
         });
 
         app.MapGet("/api/debug/metrics/capture", async (

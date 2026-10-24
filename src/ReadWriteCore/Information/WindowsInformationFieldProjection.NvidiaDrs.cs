@@ -39,19 +39,7 @@ public static partial class WindowsInformationFieldProjection
                 token.ThrowIfCancellationRequested();
                 if (setting is null || !expectedIds.Contains(setting.SettingId) || !ids.Add(setting.SettingId))
                     throw new InvalidDataException("DRS source returned an unexpected or duplicate setting.");
-                var value = setting.TypeRaw is null ? (JsonElement?)null : JsonSerializer.SerializeToElement(new
-                {
-                    profileName = profile.ProfileName,
-                    settingId = setting.SettingId,
-                    settingName = SafeDrsText(setting.NameDeclared),
-                    settingTypeRaw = setting.TypeRaw,
-                    settingLocationRaw = setting.LocationRaw,
-                    isCurrentPredefinedRaw = setting.IsCurrentPredefinedRaw,
-                    isPredefinedValidRaw = setting.IsPredefinedValidRaw,
-                    profileGpuSupportRaw = profile.GpuSupportRaw,
-                    profileIsPredefinedRaw = profile.IsPredefinedRaw,
-                    currentValue = DrsValue(setting.TypeRaw.Value, setting.CurrentValue)
-                });
+                var value = setting.TypeRaw is null ? (JsonElement?)null : JsonSerializer.SerializeToElement(new NvidiaDrsSettingValue(profile.ProfileName, setting.SettingId, SafeDrsText(setting.NameDeclared), setting.TypeRaw, setting.LocationRaw, setting.IsCurrentPredefinedRaw, setting.IsPredefinedValidRaw, profile.GpuSupportRaw, profile.IsPredefinedRaw, DrsValue(setting.TypeRaw.Value, setting.CurrentValue)), InformationJsonOptions);
                 objects.Add(new(NvidiaDrsInformationRequest.Identity(profile.ProfileName, setting.SettingId), DrsObjectType,
                     [new DeviceInformationField(DeviceInformationFieldRegistry.GpuNvidiaDriverProfileSettingValue, value)
                         { ObservedAt = value is null ? null : observedAt }]));
@@ -62,11 +50,11 @@ public static partial class WindowsInformationFieldProjection
 
     private static object? DrsValue(uint type, NvidiaDrsCurrentValue? value) => (type, value) switch
     {
-        (0, NvidiaDrsDwordValue number) => new { kind = "dword", value = number.Value },
-        (4, NvidiaDrsQwordValue number) => new { kind = "qword", value = number.Value.ToString(CultureInfo.InvariantCulture) },
-        (3, NvidiaDrsUnicodeValue text) when SafeDrsText(text.Value) is { } valid => new { kind = "unicode", value = valid },
+        (0, NvidiaDrsDwordValue number) => new NvidiaDrsDwordPayload("dword", number.Value),
+        (4, NvidiaDrsQwordValue number) => new NvidiaDrsStringPayload("qword", number.Value.ToString(CultureInfo.InvariantCulture)),
+        (3, NvidiaDrsUnicodeValue text) when SafeDrsText(text.Value) is { } valid => new NvidiaDrsStringPayload("unicode", valid),
         (1, NvidiaDrsBinaryValue bytes) when !bytes.Value.IsDefault && bytes.Value.Length <= 4096
-            => new { kind = "binary", length = bytes.Value.Length, base64 = Convert.ToBase64String(bytes.Value.AsSpan()) },
+            => new NvidiaDrsBinaryPayload("binary", bytes.Value.Length, Convert.ToBase64String(bytes.Value.AsSpan())),
         _ => null
     };
 

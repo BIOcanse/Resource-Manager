@@ -61,11 +61,8 @@ public static partial class WindowsInformationFieldProjection
                 {
                     var result = byDescriptor[descriptor];
                     JsonElement? value = result.Complete == true
-                        ? JsonSerializer.SerializeToElement(new
-                        {
-                            contentDescriptor = ContentDescriptorValue(descriptor),
-                            caps = result.Caps
-                        }, D3dJsonOptions)
+                        ? JsonSerializer.SerializeToElement(new D3dProcessorCapabilitiesValue(ContentDescriptorValue(descriptor),result.Caps
+), D3dJsonOptions)
                         : null;
                     SetStructuredField(objects, D3dVideoProcessorIdentity(adapter, descriptor),
                         "gpu_adapter_video_processor", DeviceInformationFieldRegistry.GpuAllVideoProcessorCaps,
@@ -95,16 +92,9 @@ public static partial class WindowsInformationFieldProjection
                     var rateCaps = result.RateConversionCaps.IsDefault
                         ? ImmutableArray<WindowsD3dIndexedRateConversionCapsRead>.Empty : result.RateConversionCaps;
                     JsonElement? value = result.Complete == true
-                        ? JsonSerializer.SerializeToElement(new
-                        {
-                            contentDescriptor = ContentDescriptorValue(descriptor),
-                            rateConversionCapsCount = result.RateConversionCapsCount!.Value,
-                            rateConversionCaps = rateCaps.Select(static indexed => new
-                            {
-                                index = indexed.Index,
-                                caps = indexed.Caps
-                            }).ToArray()
-                        }, D3dJsonOptions)
+                        ? JsonSerializer.SerializeToElement(new D3dRateConversionsValue(ContentDescriptorValue(descriptor),result.RateConversionCapsCount!.Value,rateCaps.Select(static indexed => new D3dRateConversionValue(indexed.Index,indexed.Caps
+)).ToArray()
+), D3dJsonOptions)
                         : null;
                     SetStructuredField(objects, D3dVideoProcessorIdentity(adapter, descriptor),
                         "gpu_adapter_video_processor", DeviceInformationFieldRegistry.GpuAllVideoProcessorRateConversionCaps,
@@ -158,15 +148,6 @@ public static partial class WindowsInformationFieldProjection
         }
     }
 
-    private static object ContentDescriptorValue(WindowsD3dVideoProcessorDescriptor descriptor) => new
-    {
-        inputFrameFormat = (uint)descriptor.InputFrameFormat,
-        inputFrameRate = new { numerator = descriptor.InputFrameRate.Numerator, denominator = descriptor.InputFrameRate.Denominator },
-        inputWidth = descriptor.InputWidth,
-        inputHeight = descriptor.InputHeight,
-        outputFrameRate = new { numerator = descriptor.OutputFrameRate.Numerator, denominator = descriptor.OutputFrameRate.Denominator },
-        outputWidth = descriptor.OutputWidth,
-        outputHeight = descriptor.OutputHeight,
-        usage = (uint)descriptor.Usage
-    };
+    private static object ContentDescriptorValue(WindowsD3dVideoProcessorDescriptor descriptor) => new D3dContentDescriptorValue((uint)descriptor.InputFrameFormat,new D3dFrameRateValue(descriptor.InputFrameRate.Numerator,descriptor.InputFrameRate.Denominator ),descriptor.InputWidth,descriptor.InputHeight,new D3dFrameRateValue(descriptor.OutputFrameRate.Numerator,descriptor.OutputFrameRate.Denominator ),descriptor.OutputWidth,descriptor.OutputHeight,(uint)descriptor.Usage
+);
 }

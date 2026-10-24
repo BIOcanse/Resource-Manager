@@ -179,12 +179,7 @@ public sealed partial class HostManagerPlanCompiler
             CompiledHostManagerPublicServiceCoordinatorRecreatePlan recreate,
             CompiledHostManagerPublicServiceCoordinatorHotPublishPlan hotPublish)
     {
-        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            build,
-            recreate,
-            hotPublish
-        });
+        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new PublicServiceCoordinatorConfigurationDigestInput(build, recreate, hotPublish));
         return new CompiledHostManagerPublicServiceCoordinatorPlan(
             build,
             recreate,

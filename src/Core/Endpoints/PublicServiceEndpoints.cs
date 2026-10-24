@@ -33,7 +33,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             using var callerToken = token;
             if (string.IsNullOrWhiteSpace(query))
             {
-                return Results.BadRequest(new { error = "query-required" });
+                return Results.BadRequest(new EndpointErrorPayload("query-required"));
             }
 
             return Results.Ok(await fileIndex.SearchAsync(

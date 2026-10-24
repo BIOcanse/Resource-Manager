@@ -43,7 +43,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
             return Results.Ok(await dependencyManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 

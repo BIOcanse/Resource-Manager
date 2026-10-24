@@ -103,7 +103,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
 
@@ -120,7 +120,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
         }
@@ -210,18 +210,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ILocalPathOpener pathOpener) =>
             {
                 if (!TryReadInteractiveCaller(context, out var interactiveCaller))
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
                     return Results.Ok(pathOpener.Open(request, interactiveCaller));
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
 
@@ -231,18 +231,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ISystemProcessActionService processActions) =>
             {
                 if (!TryReadInteractiveCaller(context, out var caller))
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
                     return Results.Ok(processActions.OpenProperties(request, caller));
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
 
@@ -252,18 +252,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ISystemProcessActionService processActions) =>
             {
                 if (!TryReadInteractiveCaller(context, out var caller))
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
                     return Results.Ok(processActions.SearchOnline(request, caller));
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
 
@@ -273,21 +273,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ISystemProcessActionService processActions) =>
             {
                 if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out var token))
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 using var callerToken = token;
                 if (caller.ProcessId == Environment.ProcessId || !caller.IsAdministrator)
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
                     return Results.Ok(processActions.TerminateProcesses(request, callerToken));
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
 
@@ -297,21 +297,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ISystemProcessActionService processActions) =>
             {
                 if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out var token))
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 using var callerToken = token;
                 if (caller.ProcessId == Environment.ProcessId || !caller.IsAdministrator)
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
                     return Results.Ok(processActions.CreateProcessDumps(request, callerToken));
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                    return Results.Json(new EndpointCodePayload("ProcessActionRequiresElevation"), statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return Results.BadRequest(new { error = ex.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(ex.Message));
                 }
             });
         }

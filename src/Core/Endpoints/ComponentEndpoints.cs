@@ -43,7 +43,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
             return Results.Ok(await componentManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 
@@ -60,7 +60,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.NotFound(new { error = ex.Message });
+                return Results.NotFound(new EndpointErrorPayload(ex.Message));
             }
         }).AllowAnonymous();
 
@@ -85,7 +85,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
             });
 
@@ -100,7 +100,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
             });
         }

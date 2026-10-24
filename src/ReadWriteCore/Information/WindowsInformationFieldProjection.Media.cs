@@ -8,7 +8,7 @@ namespace ResourceManager.ReadWrite.Information;
 
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions MediaJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions MediaJsonOptions = InformationJsonContext.Default.Options;
 
     internal static string AudioIdentityPrefix(WindowsAudioDataFlow direction)
         => $"windows-audio-endpoint|{WindowsMediaInformationScope.DirectionCode(direction)}|";

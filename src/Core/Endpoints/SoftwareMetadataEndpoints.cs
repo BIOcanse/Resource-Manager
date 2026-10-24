@@ -15,10 +15,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             if (string.IsNullOrWhiteSpace(language))
             {
-                return Results.BadRequest(new
-                {
-                    message = "A resolved language tag is required."
-                });
+                return Results.BadRequest(new EndpointMessagePayload("A resolved language tag is required."));
             }
 
             try
@@ -33,7 +30,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException ex)
             {
-                return Results.BadRequest(new { message = ex.Message });
+                return Results.BadRequest(new EndpointMessagePayload(ex.Message));
             }
         }).AllowAnonymous();
 

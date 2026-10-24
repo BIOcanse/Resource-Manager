@@ -77,24 +77,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     };
                 }).ToArray();
                 var capabilityInputs = processHistory.Processes
-                    .Select(process => new
-                    {
-                        process.ProcessKey,
-                        process.ExecutablePath,
-                        process.Architecture,
-                        process.GraphicsApi
-                    })
+                    .Select(process => new GpuApplicationIdentityPayload(process.ProcessKey, process.ExecutablePath, process.Architecture, process.GraphicsApi))
                     .Concat(processPolicies
                         .Where(policy => processHistory.Processes.All(process => !process.ProcessKey.Equals(
                             policy.ProcessKey,
                             StringComparison.OrdinalIgnoreCase)))
-                        .Select(policy => new
-                        {
-                            policy.ProcessKey,
-                            policy.ExecutablePath,
-                            Architecture = (string?)null,
-                            GraphicsApi = (GpuGraphicsApi?)null
-                        }))
+                        .Select(policy => new GpuApplicationIdentityPayload(policy.ProcessKey, policy.ExecutablePath, (string? )null, (GpuGraphicsApi? )null)))
                     .Select(input => capabilityReader.Evaluate(
                         input.ProcessKey,
                         input.ExecutablePath,
@@ -128,7 +116,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
         }).AllowAnonymous();
 
@@ -160,7 +148,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
         });
 
@@ -179,7 +167,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
 
             RuntimePlanPublicationResult publication;
@@ -256,7 +244,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
         });
 

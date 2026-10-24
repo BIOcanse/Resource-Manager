@@ -106,7 +106,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new { error = error.Message });
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
         });
 
@@ -131,7 +131,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new { error = error.Message });
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
         });
 
@@ -146,10 +146,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(new
-            {
-                accepted = await consent.IsAcceptedAsync(cancellationToken)
-            });
+            return Results.Ok(new AcceptancePayload(await consent.IsAcceptedAsync(cancellationToken)));
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
@@ -159,10 +156,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             await consent.SetAcceptedAsync(request?.Accepted == true, cancellationToken);
-            return Results.Ok(new
-            {
-                accepted = await consent.IsAcceptedAsync(cancellationToken)
-            });
+            return Results.Ok(new AcceptancePayload(await consent.IsAcceptedAsync(cancellationToken)));
         });
 
         /*
@@ -198,10 +192,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(new
-            {
-                acknowledged = await notice.IsAcknowledgedAsync(cancellationToken)
-            });
+            return Results.Ok(new AcknowledgementPayload(await notice.IsAcknowledgedAsync(cancellationToken)));
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
@@ -210,7 +201,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             await notice.AcknowledgeAsync(cancellationToken);
-            return Results.Ok(new { acknowledged = true });
+            return Results.Ok(new AcknowledgementPayload(true));
         });
 
         /*
@@ -227,11 +218,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IControlAccessLevel accessLevel) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(new
-            {
-                level = accessLevel.Current,
-                levels = ControlAccessLevels.All
-            });
+            return Results.Ok(new ComponentLevelsPayload(accessLevel.Current, ControlAccessLevels.All));
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
@@ -243,7 +230,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             await accessLevel.SetAsync(
                 request?.Level ?? ControlAccessLevels.Normal,
                 cancellationToken);
-            return Results.Ok(new { level = accessLevel.Current });
+            return Results.Ok(new ComponentLevelPayload(accessLevel.Current));
         });
 
         // 配置：**绑定实例**的几套方案。选中一个实例就能看到为它存过的那几份。
@@ -280,7 +267,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
             {
-                return Results.BadRequest(new { error = error.Message });
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
         });
 
@@ -296,7 +283,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new { error = error.Message });
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
         });
 
@@ -332,7 +319,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (InvalidOperationException error)
             {
                 // 设备还在场：说清楚为什么删不了，而不是点了没反应。
-                return Results.BadRequest(new { error = error.Message });
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
         });
 

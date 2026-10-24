@@ -8,7 +8,7 @@ namespace ResourceManager.ReadWrite.Information;
 
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions OpenClJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions OpenClJsonOptions = InformationJsonContext.Default.Options;
     private static readonly UTF8Encoding OpenClStrictUtf8 = new(false, true);
 
     internal static string OpenClDeviceIdentity(WindowsOpenClDeviceIdentity identity)

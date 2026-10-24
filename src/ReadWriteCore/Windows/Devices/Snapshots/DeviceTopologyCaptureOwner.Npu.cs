@@ -23,7 +23,8 @@ public sealed partial class DeviceTopologyCaptureOwner
             static snapshot => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
                 snapshot.NpuInformation?.Select(static row => row with {
                     LocationPathsDeclared = row.LocationPathsDeclared?.Order(StringComparer.Ordinal).ToArray()
-                }).OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray()))),
+                }).OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+                DeviceFingerprintJsonContext.Default.DeviceTopologyNpuInformationArray))),
             static (snapshot, observedAt) => WindowsInformationFieldProjection.Npus(snapshot?.NpuInformation, observedAt),
             static (_, _) => Task.CompletedTask,
             static _ => new("npu-directory-unavailable", []),

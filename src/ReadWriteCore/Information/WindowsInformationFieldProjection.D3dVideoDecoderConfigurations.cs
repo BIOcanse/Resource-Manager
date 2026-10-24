@@ -64,22 +64,10 @@ public static partial class WindowsInformationFieldProjection
                     var configurations = result.Configurations.IsDefault
                         ? ImmutableArray<WindowsD3dVideoDecoderIndexedConfigurationRead>.Empty
                         : result.Configurations;
-                    value = JsonSerializer.SerializeToElement(new
-                    {
-                        descriptor = new
-                        {
-                            profileGuid = descriptor.ProfileGuid.ToString("D"),
-                            sampleWidth = descriptor.SampleWidth,
-                            sampleHeight = descriptor.SampleHeight,
-                            outputFormat = (uint)descriptor.OutputFormat
-                        },
-                        configurationCount = result.ConfigurationCount!.Value,
-                        configurations = configurations.Select(static indexed => new
-                        {
-                            index = indexed.Index,
-                            configuration = indexed.Configuration
-                        }).ToArray()
-                    }, D3dJsonOptions);
+                    value = JsonSerializer.SerializeToElement(new D3dDecoderConfigurationsValue(new D3dDecoderDescriptorValue(descriptor.ProfileGuid.ToString("D"),descriptor.SampleWidth,descriptor.SampleHeight,(uint)descriptor.OutputFormat
+),result.ConfigurationCount!.Value,configurations.Select(static indexed => new D3dDecoderConfigurationValue(indexed.Index,indexed.Configuration
+)).ToArray()
+), D3dJsonOptions);
                 }
                 SetStructuredField(objects, D3dVideoDecoderConfigurationIdentity(adapter, descriptor),
                     "gpu_adapter_decoder_configuration", DeviceInformationFieldRegistry.GpuAllVideoDecoderConfiguration,

@@ -49,7 +49,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 httpContext.Response.StatusCode = statusCode;
                 await httpContext.Response.WriteAsJsonAsync(
-                    new { error },
+                    new EndpointErrorPayload(error),
                     jsonOptions.Value.SerializerOptions,
                     cancellationToken);
                 return;

@@ -117,12 +117,7 @@ public sealed partial class HostManagerPlanCompiler
                 "host_recreate.report_coordinator.capacity.maximum_bucket_count cannot cover every rolling observation window.");
         }
 
-        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            build.AbiVersion,
-            recreate,
-            hotPublish
-        });
+        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new ReportCoordinatorConfigurationDigestInput(build.AbiVersion, recreate, hotPublish));
         return new CompiledHostManagerReportCoordinatorPlan(
             build,
             recreate,

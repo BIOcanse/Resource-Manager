@@ -45,7 +45,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             var operation = operations.Get(id);
             return operation is null
-                ? Results.NotFound(new { error = $"操作不存在或已经失效：{id}" })
+                ? Results.NotFound(new EndpointErrorPayload($"操作不存在或已经失效：{id}"))
                 : Results.Ok(HostManagerOperationWireProjection.Project(operation));
         }).AllowAnonymous();
 
@@ -56,7 +56,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             var operation = await operations.CancelAsync(id, cancellationToken);
             return operation is null
-                ? Results.NotFound(new { error = $"操作不存在或已经失效：{id}" })
+                ? Results.NotFound(new EndpointErrorPayload($"操作不存在或已经失效：{id}"))
                 : Results.Ok(HostManagerOperationWireProjection.Project(operation));
         });
 

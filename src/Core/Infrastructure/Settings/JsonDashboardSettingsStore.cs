@@ -7,12 +7,12 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Settings;
 
-public sealed class JsonDashboardSettingsStore : IDashboardSettingsStore
+public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new JsonDashboardSettingsStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ILogger<JsonDashboardSettingsStore>? logger;

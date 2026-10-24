@@ -5,6 +5,10 @@ namespace ResourceManager.App.Infrastructure.NetworkTelemetry;
 
 public sealed class KnownNetworkProxyCatalog : IKnownNetworkProxyCatalog
 {
+    internal static JsonSerializerOptions CreateSerializerOptions() => new(JsonSerializerDefaults.Web)
+    {
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+    };
     private const string RelativeSignaturePath = "Infrastructure/Resources/NetworkProxySignatures/proxy-signatures.v1.json";
 
     private readonly HashSet<string> processNames;
@@ -41,7 +45,7 @@ public sealed class KnownNetworkProxyCatalog : IKnownNetworkProxyCatalog
             try
             {
                 using var stream = File.OpenRead(path);
-                var document = JsonSerializer.Deserialize<ProxySignatureDocument>(stream, JsonSerializerOptions.Web);
+                var document = JsonSerializer.Deserialize<ProxySignatureDocument>(stream, CreateSerializerOptions());
                 if (document?.Proxies is { Count: > 0 })
                 {
                     return CreateSnapshot(document.Proxies);

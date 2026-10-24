@@ -50,7 +50,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
                 if (!File.Exists(path)) continue;
                 try
                 {
-                    var identity = JsonSerializer.Deserialize<GpuPlacementProcessInstance>(File.ReadAllText(path));
+                    var identity = JsonSerializer.Deserialize(File.ReadAllText(path), ExternalGpuPlacementJsonContext.Default.GpuPlacementProcessInstance);
                     if (identity is null) return true;
                     if (IsAttemptProcessAlive(directory, false, identity, isAlive ?? IsAlive)) return true;
                 }
@@ -246,7 +246,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
             {
                 var controller = new GpuPlacementProcessInstance(process.Id,
                     checked((ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc()), process.ProcessName, controllerImage);
-                WriteNew(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(controller));
+                WriteNew(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(controller, ExternalGpuPlacementJsonContext.Default.GpuPlacementProcessInstance));
                 WriteNew(Path.Combine(directory, "request.json"), JsonSerializer.Serialize(new { plan.Request, expected, before, controlBuildId = ControlBuildId }));
             }
             catch
@@ -338,7 +338,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
                 ? "Renderer recreated; target residency, full source release and controller cleanup recorded. Presentation was not verified."
                 : "Renderer recreated; target residency, partial source release and controller cleanup recorded. Presentation was not verified."
                 : "External GPU action was not confirmed; this attempt is recorded without a fallback or in-action retry.", status);
-        WriteNew(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(result));
+        WriteNew(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(result, ExternalGpuPlacementJsonContext.Default.RunningGpuPlacementActionResult));
         return result;
     }
 

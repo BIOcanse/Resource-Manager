@@ -39,7 +39,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         if (overrideRatio.HasValue && !CpuBaselineRatio.IsValid(overrideRatio.Value))
         {
-            return Results.BadRequest(new { error = "CPU baseline ratio must be greater than zero and at most one, with a finite reciprocal." });
+            return Results.BadRequest(new EndpointErrorPayload("CPU baseline ratio must be greater than zero and at most one, with a finite reciprocal."));
         }
         var result = await coordinator.ApplyCpuBaselineRatioAsync(overrideRatio, cancellationToken);
         return result.RuntimeApplicationDisposition == "applied"

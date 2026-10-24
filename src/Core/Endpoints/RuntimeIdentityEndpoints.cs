@@ -17,7 +17,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapPost(InteractiveDesktopObservation.EndpointPath, (
             InteractiveDesktopObservation observation,
             ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore desktops) =>
-            desktops.Publish(observation) ? Results.Ok() : Results.BadRequest(new { error = "invalid-desktop-observation" }))
+            desktops.Publish(observation) ? Results.Ok() : Results.BadRequest(new EndpointErrorPayload("invalid-desktop-observation")))
             .WithMetadata(new RequestSizeLimitAttribute(InteractiveDesktopObservation.MaximumRequestBytes));
         app.MapGet(LoopbackSessionProofContract.EndpointPath, (
             string? challenge,
@@ -26,10 +26,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             if (!LoopbackSessionProofContract.IsValidChallenge(challenge))
             {
-                return Results.BadRequest(new
-                {
-                    error = "invalid-loopback-session-challenge"
-                });
+                return Results.BadRequest(new EndpointErrorPayload("invalid-loopback-session-challenge"));
             }
 
             var token = context.Request.Headers[LoopbackApiAccessToken.HeaderName].FirstOrDefault();
@@ -49,10 +46,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             if (!BackendRuntimeIdentityContract.IsValidChallenge(challenge))
             {
-                return Results.BadRequest(new
-                {
-                    error = "invalid-runtime-identity-challenge"
-                });
+                return Results.BadRequest(new EndpointErrorPayload("invalid-runtime-identity-challenge"));
             }
 
             return Results.Ok(new BackendRuntimeIdentityResponse(

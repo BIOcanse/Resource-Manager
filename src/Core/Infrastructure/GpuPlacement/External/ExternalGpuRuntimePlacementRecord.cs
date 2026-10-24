@@ -18,7 +18,8 @@ internal static class ExternalGpuRuntimePlacementRecord
         metadata[VersionKey] = "1";
         metadata[SettledKey] = "false";
         metadata[ResultKey] = JsonSerializer.Serialize(new RunningGpuPlacementActionResult(
-            [], "External action has not settled.", RunningGpuPlacementActionStatuses.Unresolved));
+            [], "External action has not settled.", RunningGpuPlacementActionStatuses.Unresolved),
+            ExternalGpuPlacementJsonContext.Default.RunningGpuPlacementActionResult);
         return new(HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger,
             string.Create(CultureInfo.InvariantCulture, $"{IdPrefix}{processId}:{processStartKey}"), metadata);
     }
@@ -42,7 +43,7 @@ internal static class ExternalGpuRuntimePlacementRecord
             || !record.Metadata.TryGetValue(ResultKey, out var json)) return false;
         try
         {
-            result = JsonSerializer.Deserialize<RunningGpuPlacementActionResult>(json);
+            result = JsonSerializer.Deserialize(json, ExternalGpuPlacementJsonContext.Default.RunningGpuPlacementActionResult);
             return result is not null;
         }
         catch (JsonException) { return false; }

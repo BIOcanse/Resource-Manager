@@ -70,17 +70,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         catch (ArgumentException exception)
         {
-            return Results.BadRequest(new { error = "invalid-sqlite-request", message = exception.Message });
+            return Results.BadRequest(new EndpointErrorMessagePayload("invalid-sqlite-request", exception.Message));
         }
         catch (SqliteException exception)
         {
-            return Results.BadRequest(new
-            {
-                error = "sqlite-error",
-                code = exception.SqliteErrorCode,
-                extendedCode = exception.SqliteExtendedErrorCode,
-                message = exception.Message
-            });
+            return Results.BadRequest(new SqliteErrorPayload("sqlite-error", exception.SqliteErrorCode, exception.SqliteExtendedErrorCode, exception.Message));
         }
     }
 }

@@ -1,0 +1,325 @@
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
+using ResourceManager.ReadWrite.Windows.Metrics.Configuration;
+using ResourceManager.App.Endpoints;
+using ResourceManager.App.Endpoints.Transport;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.Metrics;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed class JsonMetadataContractTests
+{
+    private static readonly Assembly App = typeof(HostManagerPlanCompiler).Assembly;
+    private static readonly Assembly ReadWrite = typeof(WindowsMetricConfiguration).Assembly;
+
+    public static IEnumerable<object[]> Owners()
+    {
+        foreach (var (assembly, name, field) in new[]
+        {
+            (App, "ResourceManager.App.Infrastructure.Settings.JsonAppSettingsStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Settings.JsonDashboardSettingsStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Optimization.JsonOptimizationProtectionStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.GpuPlacement.JsonGpuPlacementProcessHistoryStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerMemoryCleanupAttemptJournal", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerProcessEffectValidationScopeAuthority", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerRollbackStateEnvelopeCodec", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfSchedulingControl", "SchedulingPayloadJson"),
+            (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.JsonDeviceTopologySnapshotStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySemanticComparer", "JsonOptions"),
+            (App, "ResourceManager.App.Application.Settings.AppSettingsMigrator", "WebJsonOptions"),
+            (App, "ResourceManager.App.Application.Settings.AppSettingsPatchApplier", "JsonOptions"),
+            (ReadWrite, "ResourceManager.App.Infrastructure.DeviceTopology.NativeDisplayCoordinatorPayloadCatalog", "JsonOptions"),
+        }) yield return [name, (JsonSerializerOptions)assembly.GetType(name, true)!.GetField(field, BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!];
+        yield return ["host-profile", StrictHostManagerProfileLoader.CreateSerializerOptions()];
+        yield return ["plan-identity", HostManagerPlanIdentity.CreateSerializerOptions()];
+        yield return ["metric-profile", WindowsMetricConfiguration.CreateSerializerOptions()];
+        yield return ["freedom-point", FreedomPointRegistry.CreateSerializerOptions()];
+        yield return ["freedom-declarations", FreedomPointRegistry.CreateDeclarationSerializerOptions()];
+        var software = App.GetType("ResourceManager.App.Infrastructure.Software.JsonSoftwarePolicyProfileProvider", true)!;
+        yield return ["software-profile", (JsonSerializerOptions)software.GetMethod("CreateSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!];
+        yield return ["information", ResourceManager.ReadWrite.Information.WindowsInformationFieldProjection.InformationJsonOptions];
+        foreach (var assembly in new[] { App, ReadWrite, typeof(ResourceManager.Shared.Runtime.FrontendSessionCredentialContract).Assembly })
+        foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "SessionCredentialJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
+        {
+            var type = assembly.GetTypes().FirstOrDefault(t => t.Name == name);
+            if (type is null) continue;
+            var context = (JsonSerializerContext)type.GetProperty("Default", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+            yield return [name, name == "MetricCatalogJsonContext"
+                ? ((JsonSerializerContext)Activator.CreateInstance(type, new JsonSerializerOptions
+                    { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!).Options
+                : context.Options];
+        }
+        foreach (var name in new[] { "ResourceManager.App.Infrastructure.SoftwareIdentity.BundledSoftwareIdentityCatalog", "ResourceManager.App.Infrastructure.SoftwareIssues.BundledSoftwareIssueCatalog", "ResourceManager.App.Infrastructure.SoftwareMetadata.BundledSoftwareMetadataCatalog", "ResourceManager.App.Infrastructure.NetworkTelemetry.KnownNetworkProxyCatalog" })
+            yield return [name, (JsonSerializerOptions)App.GetType(name, true)!.GetMethod("CreateSerializerOptions", BindingFlags.NonPublic | BindingFlags.Static)!.Invoke(null, null)!];
+        var http = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(http);
+        yield return ["http-subscription", http];
+    }
+
+    [Theory]
+    [MemberData(nameof(Owners))]
+    public void OwnerKeepsLegacyBytesAndRoundTrips(string owner, JsonSerializerOptions options)
+    {
+        IEnumerable<Type> roots = options.TypeInfoResolver is JsonSerializerContext context
+            ? RootTypes(context.GetType())
+            : ColdRootTypes(owner);
+        var legacy = LegacyOptions(owner);
+        Assert.Equal(legacy.PropertyNamingPolicy, options.PropertyNamingPolicy);
+        Assert.Equal(legacy.PropertyNameCaseInsensitive, options.PropertyNameCaseInsensitive);
+        Assert.Equal(legacy.NumberHandling, options.NumberHandling);
+        Assert.Equal(legacy.WriteIndented, options.WriteIndented);
+        Assert.Equal(legacy.MaxDepth, options.MaxDepth);
+        Assert.Equal(legacy.ReadCommentHandling, options.ReadCommentHandling);
+        Assert.Equal(legacy.AllowTrailingCommas, options.AllowTrailingCommas);
+        Assert.Equal(legacy.UnmappedMemberHandling, options.UnmappedMemberHandling);
+        Assert.Equal(legacy.RespectRequiredConstructorParameters, options.RespectRequiredConstructorParameters);
+        foreach (var root in roots)
+        {
+            var fixture = Fixture(root, legacy);
+            object? value;
+            try { value = JsonSerializer.Deserialize(fixture, root, legacy); }
+            catch (NotSupportedException)
+            {
+                // Response-only converters deliberately reject reads in both contracts.
+                Assert.Throws<NotSupportedException>(() => { _ = JsonSerializer.Deserialize(fixture, root, options); });
+                continue;
+            }
+            var expected = JsonSerializer.SerializeToUtf8Bytes(value, root, legacy);
+            var actual = JsonSerializer.SerializeToUtf8Bytes(value, root, options);
+            Assert.True(expected.AsSpan().SequenceEqual(actual), $"{owner}: {root} changed bytes.\nOld: {Encoding.UTF8.GetString(expected)}\nNew: {Encoding.UTF8.GetString(actual)}");
+            try
+            {
+                var readback = JsonSerializer.Deserialize(expected, root, options);
+                Assert.Equal(expected, JsonSerializer.SerializeToUtf8Bytes(readback, root, options));
+            }
+            catch (NotSupportedException)
+            {
+                Assert.Throws<NotSupportedException>(() => { _ = JsonSerializer.Deserialize(expected, root, legacy); });
+            }
+        }
+    }
+
+    // These are the pre-change owner settings, independent of the generated options under test.
+    private static JsonSerializerOptions LegacyOptions(string owner)
+    {
+        var plain = owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations" or "software-profile"
+            or "plan-identity" or "MetricCatalogJsonContext" or "ManagementInventoryJsonContext"
+            or "SoftwareContentJsonContext" or "SessionCredentialJsonContext" or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"
+            || owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal);
+        var options = new JsonSerializerOptions(plain ? JsonSerializerDefaults.General : JsonSerializerDefaults.Web)
+        { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        if (owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations")
+            options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+        if (owner is "plan-identity" or "MetricCatalogJsonContext") options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        if (owner == "software-profile") options.PropertyNameCaseInsensitive = true;
+        if (owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal))
+        {
+            options.MaxDepth = 8;
+            options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+            options.RespectRequiredConstructorParameters = true;
+        }
+        if (owner.EndsWith("HostManagerRollbackStateEnvelopeCodec", StringComparison.Ordinal)) options.MaxDepth = 32;
+        if (owner.EndsWith("JsonAppSettingsStore", StringComparison.Ordinal)
+            || owner.EndsWith("JsonDashboardSettingsStore", StringComparison.Ordinal)
+            || owner.EndsWith("JsonOptimizationProtectionStore", StringComparison.Ordinal)
+            || owner.EndsWith("JsonGpuPlacementProcessHistoryStore", StringComparison.Ordinal)
+            || owner.EndsWith("HostManagerMemoryCleanupAttemptJournal", StringComparison.Ordinal)
+            || owner.EndsWith("HostManagerProcessEffectValidationScopeAuthority", StringComparison.Ordinal)) options.WriteIndented = true;
+        if (owner == "http-subscription")
+            options = new(new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions)
+            { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        return options;
+    }
+
+    [Fact]
+    public void WriteOnlySnapshotConvertersKeepLegacyBytes()
+    {
+        var capturedAt = DateTimeOffset.Parse("2026-10-24T12:34:56Z");
+        var process = new ResourceProcessSegment(4242, "中文<&>.exe", @"C:\Apps\中文.exe", 12, 12, 100)
+            { ProcessStartKey = long.MaxValue, SharedValue = 4 };
+        var software = new ResourceSoftwareSegment("software:test", "中文<&>", "other", "other", 12, 12, 1, [process])
+            { SharedValue = 4 };
+        var source = new ResourceBreakdownSnapshot(capturedAt,
+            [new ResourceBreakdownBar(ResourceBreakdownMetricIds.CpuUsage, "CPU", "%", ResourceBreakdownScaleModes.Capacity,
+                12, 100, 12, [software], SamplingObservationStatus.Current, SamplingObservationStatus.Current)])
+        {
+            Sampling = ResourceBreakdownSamplingState.Ready(capturedAt),
+            Datasets = [new ResourceBreakdownDatasetSamplingState("process.cpu.usage", ResourceBreakdownSamplingStatuses.Ready,
+                ulong.MaxValue, 9_007_199_254_740_991, capturedAt, capturedAt, capturedAt, capturedAt.AddSeconds(5), null, null)]
+        };
+        var requested = new HashSet<string>(["software:test"], StringComparer.OrdinalIgnoreCase);
+        object[] snapshots =
+        [
+            ResourceBreakdownWireSnapshot.Create(source, [ResourceBreakdownMetricIds.CpuUsage], requested),
+            ResourceProcessDetailsWireSnapshot.Create(source, [ResourceBreakdownMetricIds.CpuUsage], requested)
+        ];
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        foreach (var snapshot in snapshots)
+        {
+            var expected = JsonSerializer.SerializeToUtf8Bytes(snapshot, snapshot.GetType(), LegacyOptions("http-subscription"));
+            Assert.Equal(expected, JsonSerializer.SerializeToUtf8Bytes(snapshot, snapshot.GetType(), options));
+            Assert.Throws<NotSupportedException>(() => JsonSerializer.Deserialize(expected, snapshot.GetType(), options));
+        }
+    }
+
+    public static IEnumerable<object[]> SteadyOwners() => Owners()
+        .Where(o => ((JsonSerializerOptions)o[1]).TypeInfoResolver is JsonSerializerContext);
+
+    [Theory]
+    [MemberData(nameof(SteadyOwners))]
+    public void OwnedMetadataUsesNoReflectionEmitAccessors(string owner, JsonSerializerOptions options)
+    {
+        var context = Assert.IsAssignableFrom<JsonSerializerContext>(options.TypeInfoResolver);
+        var pending = new Queue<Type>(RootTypes(context.GetType()));
+        var visited = new HashSet<Type>();
+        while (pending.TryDequeue(out var type))
+        {
+            if (!visited.Add(type)) continue;
+            Assert.True(visited.Count <= 10000, "Metadata inspection exceeded its type bound.");
+            var metadata = options.GetTypeInfo(type);
+            Check(metadata.CreateObject);
+            foreach (var property in metadata.Properties)
+            {
+                Check(property.Get); Check(property.Set);
+                if (property.Get is not null || property.Set is not null) pending.Enqueue(property.PropertyType);
+            }
+            if (metadata.Kind is JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary)
+            {
+                if (type.IsArray) pending.Enqueue(type.GetElementType()!);
+                else if (type.IsGenericType) foreach (var argument in type.GenericTypeArguments) pending.Enqueue(argument);
+            }
+        }
+        void Check(Delegate? accessor)
+        {
+            if (accessor is null) return;
+            Assert.False(accessor.Method is DynamicMethod || accessor.Method.DeclaringType is null,
+                $"{owner}: emitted accessor {accessor.Method}");
+        }
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("number-string")]
+    [InlineData("case")]
+    [InlineData("comment")]
+    [InlineData("trailing-comma")]
+    [InlineData("duplicate")]
+    public void StrictProfileErrorsMatchLegacy(string mutation)
+    {
+        var root = JsonNode.Parse(StrictHostManagerProfileLoader.ReadExpandedDefaultBytes())!.AsObject();
+        if (mutation == "unknown") root["unexpected"] = true;
+        if (mutation == "number-string") root["profile_revision"] = "68";
+        if (mutation == "case") { root["Profile_revision"] = root["profile_revision"]!.DeepClone(); root.Remove("profile_revision"); }
+        var json = root.ToJsonString();
+        if (mutation == "comment") json = "/*comment*/" + json;
+        if (mutation == "trailing-comma") json = json[..^1] + ",}";
+        if (mutation == "duplicate") json = "{\"profile_revision\":68," + json[1..];
+        var bytes = Encoding.UTF8.GetBytes(json);
+        var options = new JsonSerializerOptions(StrictHostManagerProfileLoader.CreateSerializerOptions()) { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };
+        var old = Assert.ThrowsAny<JsonException>(() =>
+        {
+            StrictHostManagerProfileLoader.ValidateNoDuplicateProperties(bytes);
+            JsonSerializer.Deserialize<HostManagerConfigurationProfile>(bytes, options);
+        });
+        var actual = Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(bytes, "strict.json"));
+        Assert.Equal(old.Message, actual.InnerException!.Message);
+    }
+
+    [Fact]
+    public void OneShotContextsAreNotRootedAfterUse()
+    {
+        var references = CreateColdMetadata();
+        GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+        Assert.All(references, reference => Assert.False(reference.IsAlive));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] CreateColdMetadata()
+    {
+        var cold = Owners().Where(owner => (string)owner[0] is "host-profile" or "metric-profile" or "plan-identity"
+            or "freedom-point" or "freedom-declarations" or "software-profile"
+            || ((string)owner[0]).Contains("BundledSoftware", StringComparison.Ordinal)
+            || ((string)owner[0]).EndsWith("KnownNetworkProxyCatalog", StringComparison.Ordinal)).ToArray();
+        foreach (var owner in cold)
+        {
+            var item = (JsonSerializerOptions)owner[1];
+            item.MakeReadOnly();
+            foreach (var root in item.TypeInfoResolver is JsonSerializerContext context ? RootTypes(context.GetType()) : ColdRootTypes((string)owner[0]))
+                _ = item.GetTypeInfo(root);
+        }
+        return cold.Select(owner => new WeakReference(owner[1])).ToArray();
+    }
+
+    private static IEnumerable<Type> ColdRootTypes(string owner)
+    {
+        var name = owner switch
+        {
+            "host-profile" => "HostManagerConfigurationProfile",
+            "metric-profile" => "MetricSnapshotConfigurationProfile",
+            "freedom-declarations" => "FreedomPointRegistryDeclaration",
+            "ResourceManager.App.Infrastructure.SoftwareIdentity.BundledSoftwareIdentityCatalog" => "SoftwareIdentityCatalogDocument",
+            "ResourceManager.App.Infrastructure.SoftwareIssues.BundledSoftwareIssueCatalog" => "SoftwareIssueCatalogDocument",
+            "ResourceManager.App.Infrastructure.SoftwareMetadata.BundledSoftwareMetadataCatalog" => "SoftwareMetadataCatalogDocument",
+            "ResourceManager.App.Infrastructure.NetworkTelemetry.KnownNetworkProxyCatalog" => "ProxySignatureDocument",
+            _ => throw new InvalidOperationException(owner)
+        };
+        return App.GetTypes().Concat(ReadWrite.GetTypes()).Where(t => t.Name == name).Take(1);
+    }
+    private static IEnumerable<Type> RootTypes(Type context) => context.GetCustomAttributesData()
+        .Where(a => a.AttributeType == typeof(JsonSerializableAttribute)).Select(a => (Type)a.ConstructorArguments[0].Value!).Distinct();
+
+    // Bounded breadth-first fixture generation exercises every declared field using the old serializer.
+    private static string Fixture(Type rootType, JsonSerializerOptions legacy)
+    {
+        JsonNode? root = null;
+        var pending = new Queue<(Type Type, int Depth, Action<JsonNode?> Set)>();
+        pending.Enqueue((rootType, 0, node => root = node));
+        var count = 0;
+        while (pending.TryDequeue(out var work))
+        {
+            Assert.True(++count <= 20000, "Fixture exceeded its node bound.");
+            var type = Nullable.GetUnderlyingType(work.Type) ?? work.Type;
+            if (type == typeof(string) || type == typeof(object)) { work.Set(JsonValue.Create("中文<&>\\\"\nBIOcanse")); continue; }
+            if (type.FullName == "FreedomPoint.PointPath") { work.Set(JsonSerializer.SerializeToNode(new FreedomPoint.PointPath(FreedomPoint.PointPath.MainProgramPackage, 1, 0, FreedomPoint.PointFamily.Build, FreedomPoint.PointKind.Simple, 0), legacy)); continue; }
+            if (type == typeof(JsonElement) || typeof(JsonNode).IsAssignableFrom(type)) { work.Set(JsonNode.Parse("{\"kind\":\"中文<&>\",\"n\":1}")); continue; }
+            if (type == typeof(bool)) { work.Set(JsonValue.Create(true)); continue; }
+            if (type.IsEnum) { work.Set(JsonSerializer.SerializeToNode(Enum.GetValues(type).GetValue(0), type, legacy)); continue; }
+            if (type == typeof(DateTimeOffset)) { work.Set(JsonValue.Create("2026-10-24T12:34:56+00:00")); continue; }
+            if (type == typeof(DateTime)) { work.Set(JsonValue.Create("2026-10-24T12:34:56Z")); continue; }
+            if (type == typeof(TimeSpan)) { work.Set(JsonValue.Create("00:00:01")); continue; }
+            if (type == typeof(Guid)) { work.Set(JsonValue.Create("11111111-2222-3333-4444-555555555555")); continue; }
+            if (type == typeof(byte[])) { work.Set(JsonValue.Create("AQID")); continue; }
+            if (type == typeof(char)) { work.Set(JsonValue.Create("字")); continue; }
+            if (type.IsPrimitive || type == typeof(decimal)) { work.Set(JsonValue.Create(1)); continue; }
+            var metadata = legacy.GetTypeInfo(type);
+            if (metadata.Kind == JsonTypeInfoKind.Dictionary) { work.Set(new JsonObject()); continue; }
+            if (metadata.Kind == JsonTypeInfoKind.Enumerable)
+            {
+                var array = new JsonArray(); work.Set(array);
+                var element = type.IsArray ? type.GetElementType() : type.GetInterfaces().Append(type).FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))?.GetGenericArguments()[0];
+                if (element is not null && work.Depth < 8) { array.Add((JsonNode?)null); pending.Enqueue((element, work.Depth + 1, node => array[0] = node)); }
+                continue;
+            }
+            if (metadata.Kind == JsonTypeInfoKind.None) { work.Set(JsonValue.Create(1)); continue; }
+            var obj = new JsonObject(); work.Set(obj);
+            foreach (var property in metadata.Properties)
+            {
+                if (property.IsExtensionData || property.Get is null && property.Set is null) continue;
+                if (work.Depth >= 8 && !property.PropertyType.IsValueType) { obj[property.Name] = null; continue; }
+                pending.Enqueue((property.PropertyType, work.Depth + 1, node => obj[property.Name] = node));
+            }
+        }
+        return root?.ToJsonString() ?? "null";
+    }
+}

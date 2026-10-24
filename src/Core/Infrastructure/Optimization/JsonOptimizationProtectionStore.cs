@@ -7,12 +7,12 @@ using ResourceManager.App.Infrastructure.Persistence;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
-public sealed class JsonOptimizationProtectionStore(IHostEnvironment environment) : IOptimizationProtectionStore
+public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment environment) : IOptimizationProtectionStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new JsonOptimizationProtectionStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string protectionPath = Path.Combine(

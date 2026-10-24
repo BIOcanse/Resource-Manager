@@ -127,7 +127,7 @@ public static class AppSettingsMigrator
                 ? new AppReportSettings(overrides.Deserialize<AppReportRuleOverride[]>(WebJsonOptions) ?? [])
                 : new AppReportSettings([]);
 
-    private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WebJsonOptions = new AppSettingsJsonContext(new(JsonSerializerDefaults.Web)).Options;
 
     public static bool RequiresRewrite(JsonElement root)
     {

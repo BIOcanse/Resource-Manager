@@ -8,7 +8,7 @@ namespace ResourceManager.ReadWrite.Information;
 
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions PrinterJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions PrinterJsonOptions = InformationJsonContext.Default.Options;
 
     internal static string PrinterIdentityPrefix(WindowsPrinterInformationScope scope)
         => $"windows-printer|{scope.EnumerationCode}|";

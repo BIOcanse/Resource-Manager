@@ -7,6 +7,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
 
 internal sealed class FreedomPointCompilation
 {
+    private readonly JsonSerializerOptions jsonOptions;
     private readonly CompiledFreedomPointTree declarations;
     private readonly FreedomPointSdkAdapter sdk;
     internal ResolvedFacts Facts { get; }
@@ -14,8 +15,9 @@ internal sealed class FreedomPointCompilation
     private readonly Dictionary<string, HashSet<string>> consumers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonElement> values = new(StringComparer.Ordinal);
 
-    internal FreedomPointCompilation(FreedomPointSdkAdapter sdk, JsonElement profile, JsonElement cpuConfiguration)
+    internal FreedomPointCompilation(FreedomPointSdkAdapter sdk, JsonElement profile, JsonElement cpuConfiguration, JsonSerializerOptions jsonOptions)
     {
+        this.jsonOptions = jsonOptions;
         this.sdk = sdk;
         declarations = sdk.Declarations;
         Facts = sdk.Resolve(profile, cpuConfiguration);
@@ -36,7 +38,7 @@ internal sealed class FreedomPointCompilation
         T result;
         try
         {
-            result = value.Deserialize<T>(FreedomPointRegistry.JsonOptions)
+            result = value.Deserialize<T>(jsonOptions)
                 ?? throw new JsonException("A compiled freedom point cannot be null.");
         }
         catch (JsonException exception)

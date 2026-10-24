@@ -8,8 +8,9 @@ namespace ResourceManager.ReadWrite.Windows.Metrics.Configuration;
 
 public static class WindowsMetricConfigurationCompiler
 {
-    private static readonly JsonSerializerOptions IdentityOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = false };
-    private static string ComputeDigest<T>(T value) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value, IdentityOptions)));
+    private static string ComputeDigest(MetricCatalogDigestInput value) => Convert.ToHexString(SHA256.HashData(
+        JsonSerializer.SerializeToUtf8Bytes(value, new MetricCatalogJsonContext(new JsonSerializerOptions
+        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = false }).MetricCatalogDigestInput)));
     private static bool IsPowerOfTwo(uint value) => value != 0 && (value & (value - 1)) == 0;
     private static InvalidDataException Missing(string path) => new($"{path} is required.");
 
@@ -458,12 +459,7 @@ public static class WindowsMetricConfigurationCompiler
             templates,
             recreate.Capacity);
         var configurationGeneration = checked((ulong)profileRevision << 32);
-        var manifestSha256 = ComputeDigest(new
-        {
-            source.CatalogManifestVersion,
-            SourcePolicies = policies,
-            RuleTemplates = templates
-        });
+        var manifestSha256 = ComputeDigest(new MetricCatalogDigestInput(source.CatalogManifestVersion, policies, templates));
         var result = new MetricSnapshotPolicyConfiguration(
             configurationGeneration,
             configurationGeneration | 1UL,

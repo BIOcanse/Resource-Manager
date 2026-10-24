@@ -7,7 +7,7 @@ namespace ResourceManager.ReadWrite.Information;
 
 public static partial class WindowsInformationFieldProjection
 {
-    private static readonly JsonSerializerOptions D3dJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions D3dJsonOptions = InformationJsonContext.Default.Options;
 
     internal static string D3dAdapterIdentity(WindowsD3dAdapterIdentity adapter, WindowsD3dApiVersion apiVersion)
         => $"windows-d3d-adapter|{WindowsD3dCapabilityScope.ApiCode(apiVersion)}|luid:{adapter.Luid:X16}"

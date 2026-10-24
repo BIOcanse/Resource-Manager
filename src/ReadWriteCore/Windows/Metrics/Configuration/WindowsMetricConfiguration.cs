@@ -10,9 +10,15 @@ public sealed record WindowsMetricConfiguration(NativeMetricSnapshotConfiguratio
 {
     public const string DefaultResourceName = "ResourceManager.ReadWrite.Windows.Metrics.Configuration.Default";
     public static WindowsMetricConfiguration Default => CreateDefault();
-    private static readonly JsonSerializerOptions SerializerOptions = new() {
-        AllowTrailingCommas = false, PropertyNameCaseInsensitive = false, ReadCommentHandling = JsonCommentHandling.Disallow,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow, NumberHandling = JsonNumberHandling.Strict };
+    internal static JsonSerializerOptions CreateSerializerOptions() => new()
+    {
+        AllowTrailingCommas = false,
+        PropertyNameCaseInsensitive = false,
+        ReadCommentHandling = JsonCommentHandling.Disallow,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        NumberHandling = JsonNumberHandling.Strict,
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
+    };
 
     public static byte[] ReadDefaultProfileBytes()
     {
@@ -26,7 +32,7 @@ public sealed record WindowsMetricConfiguration(NativeMetricSnapshotConfiguratio
         if (bytes.IsEmpty) throw new InvalidDataException("Metric configuration cannot be empty.");
         try {
             ValidateNoDuplicateProperties(bytes);
-            var profile = JsonSerializer.Deserialize<MetricSnapshotConfigurationProfile>(bytes, SerializerOptions)
+            var profile = JsonSerializer.Deserialize<MetricSnapshotConfigurationProfile>(bytes, CreateSerializerOptions())
                 ?? throw new JsonException("Metric configuration root cannot be null.");
             return Compile(profile);
         }

@@ -11,12 +11,12 @@ namespace ResourceManager.App.Infrastructure.Adaptation;
 public sealed partial class ResourceManagerSelfSchedulingControl
 {
     private const uint SchedulingPayloadVersion = 1;
-    private static readonly JsonSerializerOptions SchedulingPayloadJson = new()
+    private static readonly JsonSerializerOptions SchedulingPayloadJson = new ResourceManagerSelfSchedulingControlJsonContext(new JsonSerializerOptions()
     {
         MaxDepth = 8,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         RespectRequiredConstructorParameters = true
-    };
+    }).Options;
     private readonly AdapterSchedulingStateIdentity schedulingIdentity = CreateSchedulingIdentity();
 
     public AdapterSchedulingStateExportResult ExportCoordinatorSchedulingState(

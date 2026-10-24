@@ -35,6 +35,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(startupCapabilities);
         ArgumentNullException.ThrowIfNull(hostEnvironment);
+        services.ConfigureHttpJsonOptions(options =>
+            ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
         services.AddSingleton(startupCapabilities);
         services.AddSingleton(hostEnvironment);
         services.AddSingleton(new RuntimeExecutionCapabilityPolicy(

@@ -33,11 +33,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException exception)
             {
-                return Results.BadRequest(new
-                {
-                    error = "invalid-ai-gateway-credential",
-                    message = exception.Message
-                });
+                return Results.BadRequest(new EndpointErrorMessagePayload("invalid-ai-gateway-credential", exception.Message));
             }
         });
 
@@ -46,8 +42,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IAiGatewayCredentialService credentialService,
             CancellationToken cancellationToken) =>
             await credentialService.RevokeAsync(credentialId, cancellationToken)
-                ? Results.Ok(new { revoked = true })
-                : Results.NotFound(new { error = "ai-gateway-credential-not-found" }));
+                ? Results.Ok(new CredentialRevocationPayload(true))
+                : Results.NotFound(new EndpointErrorPayload("ai-gateway-credential-not-found")));
 
         return app;
     }

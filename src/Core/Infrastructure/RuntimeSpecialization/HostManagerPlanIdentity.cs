@@ -6,21 +6,21 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 internal static class HostManagerPlanIdentity
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    internal static JsonSerializerOptions CreateSerializerOptions() => new HostManagerPlanJsonContext(new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
-    };
+    }).Options;
 
     public static string ComputeDigest<T>(T value)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, SerializerOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, CreateSerializerOptions());
         return Convert.ToHexString(SHA256.HashData(bytes));
     }
 
     public static ulong CreateGeneration<T>(T value)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, SerializerOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, CreateSerializerOptions());
         var hash = SHA256.HashData(bytes);
         var generation = BinaryPrimitives.ReadUInt64LittleEndian(hash);
         return generation == 0 ? 1UL : generation;

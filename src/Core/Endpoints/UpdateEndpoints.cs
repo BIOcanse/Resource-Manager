@@ -22,7 +22,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ProductUpdateFailure exception)
             {
-                return Results.Json(new { errorCode = exception.Code }, statusCode: exception.Code == "update.busy" ? 409 : 400);
+                return Results.Json(new EndpointErrorCodePayload(exception.Code), statusCode: exception.Code == "update.busy" ? 409 : 400);
             }
         });
         app.MapPost("/api/updates/product/apply", async (ProductUpdateCoordinator coordinator, CancellationToken token) =>
@@ -30,7 +30,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             try { return Results.Accepted("/api/updates/product/status", await coordinator.ApplyAsync(token)); }
             catch (ProductUpdateFailure exception)
             {
-                return Results.Json(new { errorCode = exception.Code }, statusCode: exception.Code == "update.busy" ? 409 : 400);
+                return Results.Json(new EndpointErrorCodePayload(exception.Code), statusCode: exception.Code == "update.busy" ? 409 : 400);
             }
         });
         return app;

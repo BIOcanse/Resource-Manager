@@ -7,12 +7,12 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Settings;
 
-public sealed class JsonAppSettingsStore : IAppSettingsStore
+public sealed partial class JsonAppSettingsStore : IAppSettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new JsonAppSettingsStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly ILogger<JsonAppSettingsStore>? logger;

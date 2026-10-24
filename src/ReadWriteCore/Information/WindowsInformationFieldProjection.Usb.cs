@@ -24,11 +24,11 @@ public static partial class WindowsInformationFieldProjection
             var modes = usb.CameraModes.Where(mode => mode.Width > 0 && mode.Height > 0
                 && double.IsFinite(mode.MaximumFrameRate) && mode.MaximumFrameRate > 0).ToArray();
             fields.Add(Value(F.CameraAllUvcModeCapability, modes.Length == 0 ? null : modes.Select(static mode =>
-                new { mode.Width, mode.Height, mode.MaximumFrameRate, mode.PixelFormat }).ToArray()));
+                new CameraModeValue(mode.Width, mode.Height, mode.MaximumFrameRate, mode.PixelFormat)).ToArray()));
             // A legacy or invalid row must not be silently filtered out of a "complete" interval directory.
             var complete = modes.Length == usb.CameraModes.Count && modes.Length > 0;
             var identities = new HashSet<(byte Configuration, byte Interface, byte Alternate, byte Format, byte Frame)>();
-            var copied = new List<object>();
+            var copied = new List<CameraFrameIntervalValue>();
             foreach (var mode in modes)
             {
                 if (mode.FrameIntervalsDeclared is not { } intervals || !intervals.IsComplete()
@@ -41,8 +41,7 @@ public static partial class WindowsInformationFieldProjection
                 var copy = intervals with { DiscreteIntervals100Nanoseconds = intervals.DiscreteIntervals100Nanoseconds?.ToArray() };
                 // Recheck the copy which is serialized; caller-owned collections are never retained.
                 if (!copy.IsComplete()) { complete = false; break; }
-                copied.Add(new { UsbDeviceIdentity = usb.DeviceIdentity, mode.Width, mode.Height,
-                    mode.PixelFormat, FrameIntervalsDeclared = copy });
+                copied.Add(new CameraFrameIntervalValue(usb.DeviceIdentity, mode.Width, mode.Height, mode.PixelFormat, copy));
             }
             fields.Add(Value(F.CameraAllFrameIntervalCapability, complete ? copied.ToArray() : null));
         }
@@ -52,4 +51,7 @@ public static partial class WindowsInformationFieldProjection
     public static DeviceInformationSnapshot UsbDevices(IEnumerable<DeviceTopologyUsbInformation> devices, DateTimeOffset? observedAt)
         => Frame(devices.Where(device => !string.IsNullOrWhiteSpace(device.DeviceIdentity))
             .Select(device => new DeviceInformationObject(device.DeviceIdentity, "usb_device", UsbFields(device))), observedAt);
+    private sealed record CameraModeValue(uint Width, uint Height, double MaximumFrameRate, string PixelFormat);
+    private sealed record CameraFrameIntervalValue(string UsbDeviceIdentity, uint Width, uint Height, string PixelFormat,
+        ResourceManager.ReadWrite.Windows.Devices.Usb.DeviceTopologyUsbCameraFrameIntervals FrameIntervalsDeclared);
 }

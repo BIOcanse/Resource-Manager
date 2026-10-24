@@ -72,12 +72,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var tree = current.Tree;
             if (node is not null && rootIndex is not null)
             {
-                return Results.BadRequest(new { error = "Select a tree node or a scan root, not both." });
+                return Results.BadRequest(new EndpointErrorPayload("Select a tree node or a scan root, not both."));
             }
             if (node is null && rootIndex is { } selectedRoot
                 && (selectedRoot < 0 || selectedRoot >= tree.Roots.Count))
             {
-                return Results.BadRequest(new { error = "The requested disk-usage root is unavailable." });
+                return Results.BadRequest(new EndpointErrorPayload("The requested disk-usage root is unavailable."));
             }
             var rootNode = node is { } requested && requested >= 0 && requested < tree.Count
                 ? requested
@@ -146,11 +146,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 }
                 catch (ArgumentException error)
                 {
-                    return Results.BadRequest(new { error = error.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(error.Message));
                 }
                 catch (InvalidOperationException error)
                 {
-                    return Results.BadRequest(new { error = error.Message });
+                    return Results.BadRequest(new EndpointErrorPayload(error.Message));
                 }
             });
         }

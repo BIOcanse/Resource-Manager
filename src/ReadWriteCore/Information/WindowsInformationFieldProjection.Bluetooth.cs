@@ -9,7 +9,7 @@ public static partial class WindowsInformationFieldProjection
 {
     private const string BluetoothControllerPrefix = "windows-bluetooth-controller|";
     private const string BluetoothDevicePrefix = "windows-bluetooth-device|";
-    private static readonly JsonSerializerOptions BluetoothJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions BluetoothJsonOptions = InformationJsonContext.Default.Options;
 
     internal static string BluetoothControllerIdentity(string controllerAddress)
         => BluetoothControllerPrefix + controllerAddress;

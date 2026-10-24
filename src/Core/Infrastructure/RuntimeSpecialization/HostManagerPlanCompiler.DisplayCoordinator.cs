@@ -103,12 +103,7 @@ public sealed partial class HostManagerPlanCompiler
         var result = new CompiledHostManagerDisplayCoordinatorPlan(
             build,
             recreate,
-            HostManagerPlanIdentity.ComputeDigest(new
-            {
-                Module = "display_coordinator",
-                Build = build,
-                Recreate = recreate
-            }));
+            HostManagerPlanIdentity.ComputeDigest(new DisplayCoordinatorRecreateDigestInput("display_coordinator", build, recreate)));
         if (!result.IsPublished)
         {
             throw new InvalidDataException(

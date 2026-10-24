@@ -27,7 +27,8 @@ public sealed partial class DeviceTopologyCaptureOwner
         => new(new WindowsAcpiFirmwareTableReader(), new DeviceTopologyCapturePolicy(
             new DriverTopologyReader(read),
             static snapshot => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
-                snapshot.DriverInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray()))),
+                snapshot.DriverInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+                DeviceFingerprintJsonContext.Default.DeviceTopologyDriverInformationArray))),
             static (snapshot, observedAt) => WindowsInformationFieldProjection.Drivers(snapshot?.DriverInformation, observedAt),
             static (_, _) => Task.CompletedTask,
             static _ => new("driver-directory-unavailable", []),

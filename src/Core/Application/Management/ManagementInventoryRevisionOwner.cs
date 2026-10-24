@@ -6,7 +6,7 @@ using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Management;
 
-public sealed class ManagementInventoryRevisionOwner : IManagementInventoryRevisionOwner
+public sealed partial class ManagementInventoryRevisionOwner : IManagementInventoryRevisionOwner
 {
     private const string DefaultSoftwareScope = "<default>";
     private readonly object gate = new();
@@ -147,15 +147,9 @@ public sealed class ManagementInventoryRevisionOwner : IManagementInventoryRevis
     public void ObserveBrowserRuntimeSnapshot(BrowserRuntimeSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var fingerprint = Fingerprint(new
-        {
-            snapshot.InstallComponentId,
-            snapshot.SharedRuntime,
-            snapshot.BrowserFallback,
-            Candidates = snapshot.Candidates
-                .OrderBy(static candidate => candidate.Id, StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-        });
+        var fingerprint = Fingerprint(new BrowserRuntimeDigestInput(snapshot.InstallComponentId,
+            snapshot.SharedRuntime, snapshot.BrowserFallback,
+            snapshot.Candidates.OrderBy(static candidate => candidate.Id, StringComparer.OrdinalIgnoreCase).ToArray()));
         var publish = false;
         lock (gate)
         {
@@ -213,5 +207,5 @@ public sealed class ManagementInventoryRevisionOwner : IManagementInventoryRevis
                 && string.Equals(pair.Value, value, StringComparison.Ordinal));
 
     private static string Fingerprint<T>(T value)
-        => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value)));
+        => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(value, ManagementInventoryJsonContext.Default.Options)));
 }

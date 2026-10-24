@@ -66,7 +66,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime
                     RequireFlatDirectory(directory);
                     var controllerPath = Path.Combine(directory, "controller.json");
                     if (!File.Exists(controllerPath)) continue; // No identity cannot prove control is released.
-                    var controller = JsonSerializer.Deserialize<GpuPlacementProcessInstance>(File.ReadAllText(controllerPath));
+                    var controller = JsonSerializer.Deserialize(File.ReadAllText(controllerPath), ExternalGpuPlacementJsonContext.Default.GpuPlacementProcessInstance);
                     if (controller is null || IsAttemptProcessAlive(directory, false, controller, probe)) continue;
                     var failed = HasFailedAttemptForDirectory(directory);
                     var root = failed ? ReadAttemptRoot(directory) : null;
@@ -126,7 +126,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime
         var expected = request.RootElement.GetProperty("expected");
         // Retained Chromium attempts predate the renderer-neutral Root field.
         return (expected.TryGetProperty("Root", out var root) ? root : expected.GetProperty("Browser"))
-            .Deserialize<GpuPlacementProcessInstance>()
+            .Deserialize(ExternalGpuPlacementJsonContext.Default.GpuPlacementProcessInstance)
             ?? throw new InvalidDataException("External GPU attempt root is unresolved.");
     }
 
@@ -136,7 +136,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime
         {
             var resultPath = Path.Combine(directory, "result.json");
             return !File.Exists(resultPath)
-                || JsonSerializer.Deserialize<RunningGpuPlacementActionResult>(File.ReadAllText(resultPath))?.Status
+                || JsonSerializer.Deserialize(File.ReadAllText(resultPath), ExternalGpuPlacementJsonContext.Default.RunningGpuPlacementActionResult)?.Status
                     != RunningGpuPlacementActionStatuses.RecreateRequested;
         }
         catch (Exception error) when (IsRetirementError(error)) { return true; }

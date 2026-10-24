@@ -89,7 +89,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (!await credentials.ValidateAsync(profile, key, cancellationToken))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "ai-gateway-key-required" }, cancellationToken);
+                await context.Response.WriteAsJsonAsync(new EndpointErrorPayload("ai-gateway-key-required"), cancellationToken);
                 return;
             }
             await ForwardAiGatewayAsync(
@@ -130,7 +130,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 {
                     context.Response.StatusCode = StatusCodes.Status400BadRequest;
                     await context.Response.WriteAsJsonAsync(
-                        new { error = "local-model-required", message = "The request must select a local model." },
+                        new EndpointErrorMessagePayload("local-model-required", "The request must select a local model."),
                         cancellationToken);
                     return;
                 }
@@ -139,7 +139,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 {
                     context.Response.StatusCode = StatusCodes.Status400BadRequest;
                     await context.Response.WriteAsJsonAsync(
-                        new { error = "unknown-local-model", message = "The selected model is not in the local LM Studio catalog." },
+                        new EndpointErrorMessagePayload("unknown-local-model", "The selected model is not in the local LM Studio catalog."),
                         cancellationToken);
                     return;
                 }
@@ -151,28 +151,28 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             context.Response.StatusCode = exception.StatusCode;
             await context.Response.WriteAsJsonAsync(
-                new { error = "invalid-ai-gateway-request", message = exception.Message },
+                new EndpointErrorMessagePayload("invalid-ai-gateway-request", exception.Message),
                 cancellationToken);
         }
         catch (JsonException exception) when (!context.Response.HasStarted)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             await context.Response.WriteAsJsonAsync(
-                new { error = "invalid-json", message = exception.Message },
+                new EndpointErrorMessagePayload("invalid-json", exception.Message),
                 cancellationToken);
         }
         catch (AiModelRuntimeUnavailableException exception) when (!context.Response.HasStarted)
         {
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsJsonAsync(
-                new { error = "ai-model-runtime-unavailable", message = exception.Message },
+                new EndpointErrorMessagePayload("ai-model-runtime-unavailable", exception.Message),
                 cancellationToken);
         }
         catch (HttpRequestException exception) when (!context.Response.HasStarted)
         {
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             await context.Response.WriteAsJsonAsync(
-                new { error = "ai-model-provider-error", message = exception.Message },
+                new EndpointErrorMessagePayload("ai-model-provider-error", exception.Message),
                 cancellationToken);
         }
     }
@@ -223,18 +223,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         catch (ArgumentException exception)
         {
-            return Results.BadRequest(new { error = "invalid-ai-model-request", message = exception.Message });
+            return Results.BadRequest(new EndpointErrorMessagePayload("invalid-ai-model-request", exception.Message));
         }
         catch (AiModelRuntimeUnavailableException exception)
         {
             return Results.Json(
-                new { error = "ai-model-runtime-unavailable", message = exception.Message },
+                new EndpointErrorMessagePayload("ai-model-runtime-unavailable", exception.Message),
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
         catch (HttpRequestException exception)
         {
             return Results.Json(
-                new { error = "ai-model-provider-error", message = exception.Message },
+                new EndpointErrorMessagePayload("ai-model-provider-error", exception.Message),
                 statusCode: StatusCodes.Status502BadGateway);
         }
     }

@@ -20,7 +20,7 @@ internal static class ExternalGpuControllerRecovery
             var record = Path.Combine(directory, "controller.json");
             if (!File.Exists(record)) continue;
             RejectLink(record);
-            var identity = JsonSerializer.Deserialize<GpuPlacementProcessInstance>(File.ReadAllText(record));
+            var identity = JsonSerializer.Deserialize(File.ReadAllText(record), ExternalGpuPlacementJsonContext.Default.GpuPlacementProcessInstance);
             if (identity is null || !controllerImages.Any(image => StringComparer.OrdinalIgnoreCase.Equals(
                 Path.GetFullPath(image), Path.GetFullPath(identity.ExecutablePath))))
                 throw new InvalidDataException("The recovery controller is not an owned product image.");

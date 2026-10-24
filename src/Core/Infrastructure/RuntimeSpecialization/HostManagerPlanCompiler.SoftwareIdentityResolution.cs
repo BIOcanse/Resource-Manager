@@ -102,12 +102,7 @@ public sealed partial class HostManagerPlanCompiler
             CompiledHostManagerSoftwareIdentityResolutionRecreatePlan recreate,
             CompiledHostManagerSoftwareIdentityResolutionHotPublishPlan hotPublish)
     {
-        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            build.AbiVersion,
-            recreate,
-            hotPublish
-        });
+        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new SoftwareIdentityResolutionConfigurationDigestInput(build.AbiVersion, recreate, hotPublish));
         return new CompiledHostManagerSoftwareIdentityResolutionPlan(
             build,
             recreate,

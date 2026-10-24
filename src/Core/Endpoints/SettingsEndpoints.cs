@@ -45,24 +45,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         // What the 「报告判定」 settings section may edit, from the current runtime plan.
         app.MapGet("/api/settings/report-rules", (IRuntimePlanProvider plans) =>
-            Results.Ok(new
-            {
-                Rules = plans.Current.HostManager.ReportCoordinator.RuleSettings.Select(static rule => new
-                {
-                    rule.Name,
-                    ReportType = HostManagerReportPresentation.ReportType(rule.FactKind),
-                    Comparison = rule.Comparison == 1 ? "atOrAbove" : "atOrBelow",
-                    rule.DisplayUnit,
-                    rule.Scale,
-                    rule.Step,
-                    rule.ThresholdMinimum,
-                    rule.ThresholdMaximum,
-                    rule.CountMaximum,
-                    rule.ZeroActivityMaximum,
-                    rule.EditableFields,
-                    rule.Defaults
-                })
-            })).AllowAnonymous();
+            Results.Ok(new EditableReportRulesPayload(plans.Current.HostManager.ReportCoordinator.RuleSettings.Select(static rule => new EditableReportRulePayload(rule.Name, HostManagerReportPresentation.ReportType(rule.FactKind), rule.Comparison == 1 ? "atOrAbove" : "atOrBelow", rule.DisplayUnit, rule.Scale, rule.Step, rule.ThresholdMinimum, rule.ThresholdMaximum, rule.CountMaximum, rule.ZeroActivityMaximum, rule.EditableFields, rule.Defaults))))).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPut("/api/settings/app", async (

@@ -13,7 +13,7 @@ using ResourceManager.ReadWrite.Publications;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
-public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInventory
+public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwareInventory
 {
     private const string UninstallSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
     private const string DefaultSoftwareScope = "<default>";
@@ -221,20 +221,10 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
         var content = entries
             .OrderBy(static entry => entry.Id, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static entry => entry.RegistryPath, StringComparer.OrdinalIgnoreCase)
-            .Select(static entry => new
-            {
-                entry.Id,
-                entry.Name,
-                entry.Version,
-                entry.Publisher,
-                entry.InstallLocation,
-                RootPaths = entry.RootPaths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
-                entry.UninstallString,
-                entry.RegistryPath,
-                entry.ReportedSizeBytes
-            })
+            .Select(static entry => new SoftwareContentDigestInput(entry.Id, entry.Name, entry.Version, entry.Publisher, entry.InstallLocation,
+                entry.RootPaths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase).ToArray(), entry.UninstallString, entry.RegistryPath, entry.ReportedSizeBytes))
             .ToArray();
-        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(content)));
+        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(content, SoftwareContentJsonContext.Default.SoftwareContentDigestInputArray)));
     }
 
     private static IReadOnlyList<InstalledSoftwareEntry> ScanInstalledSoftware(

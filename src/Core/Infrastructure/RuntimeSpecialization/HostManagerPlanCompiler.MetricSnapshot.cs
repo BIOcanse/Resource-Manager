@@ -38,17 +38,8 @@ public sealed partial class HostManagerPlanCompiler
             build,
             recreate,
             hotPublish,
-            HostManagerPlanIdentity.ComputeDigest(new
-            {
-                Module = "metric_snapshot",
-                Build = build,
-                Recreate = recreate
-            }),
-            HostManagerPlanIdentity.ComputeDigest(new
-            {
-                Module = "metric_snapshot",
-                HotPublish = hotPublish
-            }));
+            HostManagerPlanIdentity.ComputeDigest(new MetricSnapshotRecreateDigestInput("metric_snapshot", build, recreate)),
+            HostManagerPlanIdentity.ComputeDigest(new MetricSnapshotHotPublishDigestInput("metric_snapshot", hotPublish)));
         if (!result.IsPublished)
         {
             throw new InvalidDataException(

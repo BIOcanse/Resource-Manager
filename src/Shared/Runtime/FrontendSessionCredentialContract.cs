@@ -13,7 +13,7 @@ public static class FrontendSessionCredentialContract
 
     public static async Task WriteAsync(Stream stream, FrontendSessionCredentialReply reply, CancellationToken cancellationToken)
     {
-        var data = JsonSerializer.SerializeToUtf8Bytes(reply);
+        var data = JsonSerializer.SerializeToUtf8Bytes(reply, SessionCredentialJsonContext.Default.FrontendSessionCredentialReply);
         if (data.Length > MaximumReplyBytes) throw new InvalidDataException("Session reply exceeds its bound.");
         var length = new byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(length, data.Length);
@@ -30,7 +30,7 @@ public static class FrontendSessionCredentialContract
         if (count is <= 0 or > MaximumReplyBytes) throw new InvalidDataException("Invalid session reply size.");
         var data = new byte[count];
         await stream.ReadExactlyAsync(data, cancellationToken);
-        return JsonSerializer.Deserialize<FrontendSessionCredentialReply>(data)
+        return JsonSerializer.Deserialize(data, SessionCredentialJsonContext.Default.FrontendSessionCredentialReply)
             ?? throw new InvalidDataException("Missing session reply.");
     }
 }

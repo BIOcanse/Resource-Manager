@@ -140,12 +140,7 @@ public sealed partial class HostManagerPlanCompiler
         CompiledHostManagerFileQueryRecreatePlan recreate,
         CompiledHostManagerFileQueryHotPublishPlan hotPublish)
     {
-        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            build.AbiVersion,
-            recreate,
-            hotPublish
-        });
+        var configurationSha256 = HostManagerPlanIdentity.ComputeDigest(new FileQueryConfigurationDigestInput(build.AbiVersion, recreate, hotPublish));
         return new CompiledHostManagerFileQueryPlan(
             build,
             recreate,

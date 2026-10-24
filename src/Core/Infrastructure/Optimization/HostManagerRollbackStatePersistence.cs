@@ -132,17 +132,17 @@ internal sealed class WindowsHostManagerRollbackStateFileCommitter
     }
 }
 
-internal static class HostManagerRollbackStateEnvelopeCodec
+internal static partial class HostManagerRollbackStateEnvelopeCodec
 {
     internal const string Magic = "RMROLLBACK01";
     internal const uint SchemaVersion = 1;
     internal const int MaximumCanonicalBytes = 4 * 1024 * 1024;
     internal const int MaximumJsonDepth = 32;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new HostManagerRollbackStateEnvelopeCodecJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         MaxDepth = MaximumJsonDepth
-    };
+    }).Options;
 
     internal static byte[] Encode(
         HostManagerRollbackStateDocument state,

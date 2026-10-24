@@ -48,7 +48,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new EndpointCodePayload("InteractiveUserSessionRequired"), statusCode: StatusCodes.Status403Forbidden);
             if (refresh == true)
             {
                 await portableSoftwareDiscovery.ScanRunningProcessesAsync(cancellationToken);
@@ -74,11 +74,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException ex)
             {
-                return Results.BadRequest(new { message = ex.Message });
+                return Results.BadRequest(new EndpointMessagePayload(ex.Message));
             }
             catch (KeyNotFoundException ex)
             {
-                return Results.NotFound(new { message = ex.Message });
+                return Results.NotFound(new EndpointMessagePayload(ex.Message));
             }
         });
 
@@ -103,7 +103,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
         });
 
@@ -115,7 +115,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             if (!await manualSoftwareRegistry.RemoveAsync(id, cancellationToken))
             {
-                return Results.NotFound(new { error = "手动软件记录不存在。" });
+                return Results.NotFound(new EndpointErrorPayload("手动软件记录不存在。"));
             }
 
             await processAttributionCatalogProvider.InvalidateSoftwareSnapshotAsync();
@@ -147,7 +147,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.BadRequest(new EndpointErrorPayload(ex.Message));
             }
         });
 

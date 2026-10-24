@@ -10,11 +10,19 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
 internal sealed class FreedomPointRegistry
 {
     internal const string ManifestResourceName = "ResourceManager.Configuration.FreedomPoints.backend.json";
-    internal static readonly JsonSerializerOptions JsonOptions = new()
+    internal static JsonSerializerOptions CreateSerializerOptions() => HostManagerPlanCompiler.CreateFreedomPointSerializerOptions(new()
     {
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         NumberHandling = JsonNumberHandling.Strict
+    });
+
+    internal static JsonSerializerOptions CreateDeclarationSerializerOptions() => new()
+    {
+        PropertyNameCaseInsensitive = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        NumberHandling = JsonNumberHandling.Strict,
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver()
     };
 
     private readonly CompiledFreedomPointTree declarations;
@@ -43,7 +51,7 @@ internal sealed class FreedomPointRegistry
         try
         {
             StrictHostManagerProfileLoader.ValidateNoDuplicateProperties(bytes);
-            var document = JsonSerializer.Deserialize<FreedomPointRegistryDeclaration>(bytes, JsonOptions)
+            var document = JsonSerializer.Deserialize<FreedomPointRegistryDeclaration>(bytes, CreateDeclarationSerializerOptions())
                 ?? throw new JsonException("Freedom point root cannot be null.");
             RequireIdentifier(document.Namespace);
             RequireChildren(document.Children);
@@ -90,13 +98,14 @@ internal sealed class FreedomPointRegistry
     public FreedomPointCompilation BeginCompilation(
         HostManagerConfigurationProfile profile,
         CompiledCpuScoringPlan? cpuScoring = null)
-        => new(Sdk, JsonSerializer.SerializeToElement(profile, JsonOptions),
-            cpuScoring is null ? default : JsonSerializer.SerializeToElement(new
-            {
-                baseline_ratio = cpuScoring.BaselineRatio,
-                core_performance_weights = cpuScoring.CoreWeights
-            }, JsonOptions));
+    {
+        var options = CreateSerializerOptions();
+        return new(Sdk, JsonSerializer.SerializeToElement(profile, options),
+            cpuScoring is null ? default : JsonSerializer.SerializeToElement(
+                new CpuScoringInput(cpuScoring.BaselineRatio, cpuScoring.CoreWeights), options), options);
+    }
 
+    internal sealed record CpuScoringInput(double baseline_ratio, CompiledCpuCoreWeights core_performance_weights);
     private static CompiledFreedomPointFamily CompileFamily(
         FreedomPointFamilyDeclaration? family, string ownerPath, string familyName)
     {

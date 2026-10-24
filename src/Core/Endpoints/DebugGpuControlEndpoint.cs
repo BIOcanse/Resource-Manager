@@ -22,29 +22,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .Select(entry =>
                 {
                     var handle = bridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value);
-                    return new
-                    {
-                        entry.Id,
-                        entry.DisplayName,
-                        entry.AdapterIndex,
-                        HandleFound = handle is not null,
-                        Range = handle is null ? null : bridge.ReadPowerLimitRange(handle.Value),
-                        CoreOffsetMhz = handle is null
-                            ? null
-                            : bridge.ReadClockOffsetMhz(
-                                handle.Value,
-                                NvidiaNvapiControlBridge.GraphicsClockDomain),
-                        MemoryOffsetMhz = handle is null
-                            ? null
-                            : bridge.ReadClockOffsetMhz(
-                                handle.Value,
-                                NvidiaNvapiControlBridge.MemoryClockDomain),
-                        Dump = handle is null ? null : bridge.DumpPowerPolicyVariants(handle.Value),
-                        PowerLimit = powerBridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value)
-                            is { } readDevice
-                                ? powerBridge.ReadPowerLimit(readDevice)
-                                : null
-                    };
+                    return new NvidiaControlDiagnosticPayload(entry.Id, entry.DisplayName, entry.AdapterIndex, handle is not null, handle is null ? null : bridge.ReadPowerLimitRange(handle.Value), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.GraphicsClockDomain), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.MemoryClockDomain), handle is null ? null : bridge.DumpPowerPolicyVariants(handle.Value), powerBridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value)is { } readDevice ? powerBridge.ReadPowerLimit(readDevice) : null);
                 })
                 .ToArray();
             return Results.Ok(rows);

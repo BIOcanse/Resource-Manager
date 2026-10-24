@@ -19,9 +19,9 @@ public sealed record NativeDisplayPayloadEntry(
     NativeDisplayPayloadKind Kind,
     byte[] Payload);
 
-internal sealed class NativeDisplayCoordinatorPayloadCatalog
+internal sealed partial class NativeDisplayCoordinatorPayloadCatalog
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new DisplayPayloadJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)).Options;
     private readonly Dictionary<NativeDisplayHandle128, NativeDisplayPayloadEntry> entries = [];
 
     internal NativeDisplayHandle128 AddDisplayPath(DeviceTopologyDisplayPath value)

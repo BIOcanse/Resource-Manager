@@ -18,7 +18,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var access = provider.CreateNvidiaDrsInformation(scope);
                 return Results.Ok(scope.Fields.Select(access.Backend.ReadCached).ToImmutableArray());
             }
-            catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
+            catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             catch (InvalidOperationException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SubscriptionChannelMaximumBodyLength));
 
@@ -27,7 +27,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             DisableResponseCache(response);
             try { return Results.Ok(await provider.ReadNvidiaDrsInformationAsync(DrsScope(request), token)); }
-            catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
+            catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             catch (InvalidOperationException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SubscriptionChannelMaximumBodyLength));
 
@@ -41,7 +41,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var observed = await provider.DiscoverNvidiaDrsInformationAsync(limits, token);
                 return observed is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(observed);
             }
-            catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
+            catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             catch (InvalidOperationException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SubscriptionChannelMaximumBodyLength));
     }

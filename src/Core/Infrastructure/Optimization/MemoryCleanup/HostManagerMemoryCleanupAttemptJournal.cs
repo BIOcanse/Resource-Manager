@@ -13,16 +13,16 @@ internal readonly record struct HostManagerMemoryCleanupAttemptBatch(
     IReadOnlySet<HostManagerComputeProcessIdentity> Processes,
     ulong AttemptGeneration = 0);
 
-public sealed class HostManagerMemoryCleanupAttemptJournal : IDisposable
+public sealed partial class HostManagerMemoryCleanupAttemptJournal : IDisposable
 {
     private const uint SchemaVersion = 1;
     private const long MaximumDocumentBytes = 4L * 1024 * 1024;
     private const string CanonicalFileName = "host-manager-memory-cleanup-attempts.json";
     private const string DurableStoreKind = "memory-cleanup-attempt-journal";
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new HostManagerMemoryCleanupAttemptJournalJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly object gate = new();
     private readonly string statePath;

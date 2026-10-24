@@ -17,15 +17,15 @@ namespace ResourceManager.App.Infrastructure.Software;
 /// <c>softwareId</c> 是产品级的卸载注册表键（装在哪台机器上都一样），
 /// 所以带得走。各机器的安装路径不带 —— 那个在本机发现时自己查。
 /// </summary>
-public sealed class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyProfileProvider
+public sealed partial class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyProfileProvider
 {
     private const string ProfileResourceName =
         "ResourceManager.Configuration.SoftwareProfiles.official.json";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    internal static JsonSerializerOptions CreateSerializerOptions() => new JsonSoftwarePolicyProfileProviderJsonContext(new JsonSerializerOptions()
     {
         PropertyNameCaseInsensitive = true
-    };
+    }).Options;
 
     /// <summary>
     /// 读一次就够：它是随程序集发出来的，运行期间不会变。
@@ -49,7 +49,7 @@ public sealed class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyProfilePr
         {
             var document = JsonSerializer.Deserialize<SoftwarePolicyProfileDocument>(
                 stream,
-                JsonOptions);
+                CreateSerializerOptions());
             return document is null ? SoftwarePolicyProfile.Empty : ToProfile(document);
         }
         catch (JsonException)

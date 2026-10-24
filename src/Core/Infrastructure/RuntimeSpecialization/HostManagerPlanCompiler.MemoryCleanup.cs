@@ -37,22 +37,7 @@ public sealed partial class HostManagerPlanCompiler
 
         ValidateMaximum(source.CriticalBatchCount, stateCapacity, "hot_publish.memory_cleanup.critical_batch_count");
         ValidateMaximum(source.EmergencyBatchCount, stateCapacity, "hot_publish.memory_cleanup.emergency_batch_count");
-        var generation = HostManagerPlanIdentity.CreateGeneration(new
-        {
-            source.CriticalFreeRatio,
-            source.VeryLowFreeRatio,
-            source.LowFreeRatio,
-            source.GuardedFreeRatio,
-            PhysicalEmergencyFreeRatio = performance.PhysicalMemoryAutomaticCleanupPercent / 100d,
-            VirtualEmergencyFreeRatio = performance.VirtualMemoryAutomaticCleanupPercent / 100d,
-            HighTierMinimumBaseScore =
-                smartCoordinator.BaseScoreTiers.HighMinimumBaseScore,
-            source.CriticalBatchCount,
-            source.VeryLowBatchCount,
-            source.LowBatchCount,
-            source.GuardedBatchCount,
-            source.EmergencyBatchCount
-        });
+        var generation = HostManagerPlanIdentity.CreateGeneration(new MemoryCleanupGenerationInput(source.CriticalFreeRatio, source.VeryLowFreeRatio, source.LowFreeRatio, source.GuardedFreeRatio, performance.PhysicalMemoryAutomaticCleanupPercent / 100d, performance.VirtualMemoryAutomaticCleanupPercent / 100d, smartCoordinator.BaseScoreTiers.HighMinimumBaseScore, source.CriticalBatchCount, source.VeryLowBatchCount, source.LowBatchCount, source.GuardedBatchCount, source.EmergencyBatchCount));
         return new CompiledHostManagerMemoryCleanupHotPublishPlan(
             generation,
             source.CriticalFreeRatio,

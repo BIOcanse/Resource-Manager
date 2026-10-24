@@ -378,13 +378,7 @@ public sealed partial class HostManagerPlanCompiler
         var pdhCollector = CompilePdhCollectorHotPublish(
             hotPublish.PdhCollector
             ?? throw Missing("hot_publish.pdh_collector"));
-        var resourceSchedulerConfigurationGeneration = HostManagerPlanIdentity.CreateGeneration(new
-        {
-            loaded.SourceSha256,
-            profile.ProfileRevision,
-            performance.PhysicalMemoryOptimizationTargetUsagePercent,
-            performance.VirtualMemoryOptimizationTargetUsagePercent
-        });
+        var resourceSchedulerConfigurationGeneration = HostManagerPlanIdentity.CreateGeneration(new ResourceSchedulerGenerationInput(loaded.SourceSha256, profile.ProfileRevision, performance.PhysicalMemoryOptimizationTargetUsagePercent, performance.VirtualMemoryOptimizationTargetUsagePercent));
         var resourceSchedulerConfiguration = CompileResourceSchedulerConfiguration(
             hotResourceScheduler.Configuration
             ?? throw Missing("hot_publish.resource_scheduler.configuration"),
@@ -482,21 +476,9 @@ public sealed partial class HostManagerPlanCompiler
             .Where(static point => point.Status == "active"
                 && point.UpdateClass == "rebuild_backend")
             .OrderBy(static point => point.Address, StringComparer.Ordinal)
-            .Select(static point => new
-            {
-                point.Address,
-                Value = point.Value!.Value
-            })
+            .Select(static point => new FreedomPointDigestInput(point.Address, point.Value!.Value))
             .ToArray();
-        var buildDigest = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            Plan = buildSpecialize,
-            FreedomPoints = buildFreedomPoints,
-            CpuCoreMapping = cpuCoreResidency.PhysicalCoreByLogicalProcessor
-                .OrderBy(static pair => pair.Key)
-                .Select(static pair => new { LogicalProcessorId = pair.Key, PhysicalCore = pair.Value })
-                .ToArray()
-        });
+        var buildDigest = HostManagerPlanIdentity.ComputeDigest(new HostManagerBuildDigestInput(buildSpecialize, buildFreedomPoints, cpuCoreResidency.PhysicalCoreByLogicalProcessor.OrderBy(static pair => pair.Key).Select(static pair => new CpuCoreMappingDigestInput(pair.Key, pair.Value)).ToArray()));
         var deploymentDigests = new CompiledHostManagerDeploymentDigests(
             new CompiledHostManagerModuleDigests(
                 HostManagerPlanIdentity.ComputeDigest(recreatePlan.SharedResources),
@@ -505,218 +487,62 @@ public sealed partial class HostManagerPlanCompiler
                 HostManagerPlanIdentity.ComputeDigest(recreatePlan.ResourceScheduler),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.ResourceScheduler)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "adapter_private_resource_ledger",
-                    buildSpecialize.AdapterPrivateResourceLedgerAbiVersion,
-                    recreatePlan.AdapterPrivateResourceLedger
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new AdapterPrivateResourceRecreateDigestInput("adapter_private_resource_ledger", buildSpecialize.AdapterPrivateResourceLedgerAbiVersion, recreatePlan.AdapterPrivateResourceLedger)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.AdapterPrivateResourceLedger)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "smart_coordinator",
-                    Build = buildSpecialize.SmartCoordinator,
-                    Recreate = recreatePlan.SmartCoordinator
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    smartCoordinator.ConfigurationGeneration,
-                    smartCoordinator.ConfigurationSha256,
-                    hotPublishPlan.SmartCoordinator
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new SmartCoordinatorRecreateDigestInput("smart_coordinator", buildSpecialize.SmartCoordinator, recreatePlan.SmartCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new SmartCoordinatorHotPublishDigestInput(smartCoordinator.ConfigurationGeneration, smartCoordinator.ConfigurationSha256, hotPublishPlan.SmartCoordinator))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "memory_cleanup_planner",
-                    buildSpecialize.MemoryCleanupAbiVersion,
-                    recreatePlan.MemoryCleanup
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new MemoryCleanupRecreateDigestInput("memory_cleanup_planner", buildSpecialize.MemoryCleanupAbiVersion, recreatePlan.MemoryCleanup)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.MemoryCleanup)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "placement_coordinator",
-                    buildSpecialize.PlacementCoordinatorAbiVersion,
-                    recreatePlan.PlacementCoordinator
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new PlacementCoordinatorRecreateDigestInput("placement_coordinator", buildSpecialize.PlacementCoordinatorAbiVersion, recreatePlan.PlacementCoordinator)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.PlacementCoordinator)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "applied_ownership",
-                    buildSpecialize.AppliedOwnershipAbiVersion,
-                    BuildLimits = new
-                    {
-                        buildSpecialize.CapacityLimits.AppliedOwnershipRecordCapacity,
-                        buildSpecialize.CapacityLimits.AppliedOwnershipPrimaryIndexCapacity,
-                        buildSpecialize.CapacityLimits.AppliedOwnershipPayloadIndexCapacity,
-                        buildSpecialize.CapacityLimits.AppliedOwnershipResidentByteBudget,
-                        buildSpecialize.CapacityLimits.AppliedOwnershipImageByteBudget
-                    },
-                    recreatePlan.AppliedOwnership
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new AppliedOwnershipRecreateDigestInput("applied_ownership", buildSpecialize.AppliedOwnershipAbiVersion, new AppliedOwnershipBuildDigestInput(buildSpecialize.CapacityLimits.AppliedOwnershipRecordCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPrimaryIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipPayloadIndexCapacity, buildSpecialize.CapacityLimits.AppliedOwnershipResidentByteBudget, buildSpecialize.CapacityLimits.AppliedOwnershipImageByteBudget), recreatePlan.AppliedOwnership)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.AppliedOwnership)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "transaction_journal",
-                    buildSpecialize.TransactionJournalAbiVersion,
-                    BuildLimits = new
-                    {
-                        buildSpecialize.CapacityLimits.TransactionJournalRecordCapacity,
-                        buildSpecialize.CapacityLimits.TransactionJournalResidentByteBudget,
-                        buildSpecialize.CapacityLimits.TransactionJournalPayloadCount,
-                        buildSpecialize.CapacityLimits.TransactionJournalPayloadByteBudget
-                    },
-                    recreatePlan.TransactionJournal
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new TransactionJournalRecreateDigestInput("transaction_journal", buildSpecialize.TransactionJournalAbiVersion, new TransactionJournalBuildDigestInput(buildSpecialize.CapacityLimits.TransactionJournalRecordCapacity, buildSpecialize.CapacityLimits.TransactionJournalResidentByteBudget, buildSpecialize.CapacityLimits.TransactionJournalPayloadCount, buildSpecialize.CapacityLimits.TransactionJournalPayloadByteBudget), recreatePlan.TransactionJournal)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.TransactionJournal)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "sampling_subscription",
-                    Build = buildSpecialize.SamplingSubscription,
-                    Recreate = recreatePlan.SamplingSubscription
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    samplingSubscription.ConfigurationGeneration,
-                    samplingSubscription.ConfigurationSha256,
-                    hotPublishPlan.SamplingSubscription
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new SamplingSubscriptionRecreateDigestInput("sampling_subscription", buildSpecialize.SamplingSubscription, recreatePlan.SamplingSubscription)),
+                HostManagerPlanIdentity.ComputeDigest(new SamplingSubscriptionHotPublishDigestInput(samplingSubscription.ConfigurationGeneration, samplingSubscription.ConfigurationSha256, hotPublishPlan.SamplingSubscription))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "software_identity_portable_registry",
-                    Build = buildSpecialize.PortableSoftwareRegistry,
-                    Recreate = recreatePlan.PortableSoftwareRegistry
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    portableSoftwareRegistry.ConfigurationGeneration,
-                    portableSoftwareRegistry.ConfigurationSha256,
-                    hotPublishPlan.PortableSoftwareRegistry
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new PortableSoftwareRegistryRecreateDigestInput("software_identity_portable_registry", buildSpecialize.PortableSoftwareRegistry, recreatePlan.PortableSoftwareRegistry)),
+                HostManagerPlanIdentity.ComputeDigest(new PortableSoftwareRegistryHotPublishDigestInput(portableSoftwareRegistry.ConfigurationGeneration, portableSoftwareRegistry.ConfigurationSha256, hotPublishPlan.PortableSoftwareRegistry))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "software_identity_catalog",
-                    Build = buildSpecialize.SoftwareIdentityCatalog,
-                    Recreate = recreatePlan.SoftwareIdentityCatalog
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    softwareIdentityCatalog.ConfigurationGeneration,
-                    softwareIdentityCatalog.ConfigurationSha256,
-                    hotPublishPlan.SoftwareIdentityCatalog
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new SoftwareIdentityCatalogRecreateDigestInput("software_identity_catalog", buildSpecialize.SoftwareIdentityCatalog, recreatePlan.SoftwareIdentityCatalog)),
+                HostManagerPlanIdentity.ComputeDigest(new SoftwareIdentityCatalogHotPublishDigestInput(softwareIdentityCatalog.ConfigurationGeneration, softwareIdentityCatalog.ConfigurationSha256, hotPublishPlan.SoftwareIdentityCatalog))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "software_identity_resolution",
-                    Build = buildSpecialize.SoftwareIdentityResolution,
-                    Recreate = recreatePlan.SoftwareIdentityResolution
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    softwareIdentityResolution.ConfigurationGeneration,
-                    softwareIdentityResolution.ConfigurationSha256,
-                    hotPublishPlan.SoftwareIdentityResolution
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new SoftwareIdentityResolutionRecreateDigestInput("software_identity_resolution", buildSpecialize.SoftwareIdentityResolution, recreatePlan.SoftwareIdentityResolution)),
+                HostManagerPlanIdentity.ComputeDigest(new SoftwareIdentityResolutionHotPublishDigestInput(softwareIdentityResolution.ConfigurationGeneration, softwareIdentityResolution.ConfigurationSha256, hotPublishPlan.SoftwareIdentityResolution))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "report_coordinator",
-                    Build = buildSpecialize.ReportCoordinator,
-                    Recreate = recreatePlan.ReportCoordinator
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    reportCoordinator.ConfigurationGeneration,
-                    reportCoordinator.ConfigurationSha256,
-                    hotPublishPlan.ReportCoordinator
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new ReportCoordinatorRecreateDigestInput("report_coordinator", buildSpecialize.ReportCoordinator, recreatePlan.ReportCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new ReportCoordinatorHotPublishDigestInput(reportCoordinator.ConfigurationGeneration, reportCoordinator.ConfigurationSha256, hotPublishPlan.ReportCoordinator))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "file_query",
-                    Build = buildSpecialize.FileQuery,
-                    Recreate = recreatePlan.FileQuery
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    fileQuery.ConfigurationGeneration,
-                    fileQuery.ConfigurationSha256,
-                    hotPublishPlan.FileQuery
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new FileQueryRecreateDigestInput("file_query", buildSpecialize.FileQuery, recreatePlan.FileQuery)),
+                HostManagerPlanIdentity.ComputeDigest(new FileQueryHotPublishDigestInput(fileQuery.ConfigurationGeneration, fileQuery.ConfigurationSha256, hotPublishPlan.FileQuery))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "public_service_coordinator",
-                    Build = buildSpecialize.PublicServiceCoordinator,
-                    Recreate = recreatePlan.PublicServiceCoordinator
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    publicServiceCoordinator.ConfigurationSha256,
-                    hotPublishPlan.PublicServiceCoordinator
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new PublicServiceCoordinatorRecreateDigestInput("public_service_coordinator", buildSpecialize.PublicServiceCoordinator, recreatePlan.PublicServiceCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new PublicServiceCoordinatorHotPublishDigestInput(publicServiceCoordinator.ConfigurationSha256, hotPublishPlan.PublicServiceCoordinator))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "display_coordinator",
-                    Build = buildSpecialize.DisplayCoordinator,
-                    Recreate = recreatePlan.DisplayCoordinator
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "display_coordinator",
-                    HotPublishCapability = "not_supported"
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new DisplayCoordinatorRecreateDigestInput("display_coordinator", buildSpecialize.DisplayCoordinator, recreatePlan.DisplayCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new ModuleCapabilityDigestInput("display_coordinator", "not_supported"))),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "operation_coordinator",
-                    Build = buildSpecialize.OperationCoordinator,
-                    Recreate = recreatePlan.OperationCoordinator
-                }),
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    operationCoordinator.ConfigurationSha256,
-                    hotPublishPlan.OperationCoordinator
-                })),
+                HostManagerPlanIdentity.ComputeDigest(new OperationCoordinatorRecreateDigestInput("operation_coordinator", buildSpecialize.OperationCoordinator, recreatePlan.OperationCoordinator)),
+                HostManagerPlanIdentity.ComputeDigest(new OperationCoordinatorHotPublishDigestInput(operationCoordinator.ConfigurationSha256, hotPublishPlan.OperationCoordinator))),
             new CompiledHostManagerModuleDigests(
                 metricSnapshot.RecreateSha256,
                 metricSnapshot.HotPublishSha256),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "process_policy_executor",
-                    buildSpecialize.ProcessPolicyExecutorAbiVersion
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new ProcessPolicyExecutorDigestInput("process_policy_executor", buildSpecialize.ProcessPolicyExecutorAbiVersion)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.ProcessPolicyExecutor)),
             new CompiledHostManagerModuleDigests(
-                HostManagerPlanIdentity.ComputeDigest(new
-                {
-                    Module = "pdh_collector",
-                    buildSpecialize.PdhCollectorAbiVersion,
-                    recreatePlan.PdhCollector
-                }),
+                HostManagerPlanIdentity.ComputeDigest(new PdhCollectorRecreateDigestInput("pdh_collector", buildSpecialize.PdhCollectorAbiVersion, recreatePlan.PdhCollector)),
                 HostManagerPlanIdentity.ComputeDigest(hotPublishPlan.PdhCollector)));
         var recreateDigest = HostManagerPlanIdentity.ComputeDigest(recreatePlan);
-        var hotPublishDigest = HostManagerPlanIdentity.ComputeDigest(new { Plan = hotPublishPlan, CpuScoring = compiledCpuScoring });
-        var planDigest = HostManagerPlanIdentity.ComputeDigest(new
-        {
-            profile.SchemaVersion,
-            profile.ProfileRevision,
-            ProfileSha256 = loaded.SourceSha256,
-            BuildSha256 = buildDigest,
-            RecreateSha256 = recreateDigest,
-            HotPublishSha256 = hotPublishDigest,
-            DataHistory = dataHistory.Requirements,
-            FreedomPoints = freedomPoints
-        });
+        var hotPublishDigest = HostManagerPlanIdentity.ComputeDigest(new HostManagerHotPublishDigestInput(hotPublishPlan, compiledCpuScoring));
+        var planDigest = HostManagerPlanIdentity.ComputeDigest(new HostManagerPlanDigestInput(profile.SchemaVersion, profile.ProfileRevision, loaded.SourceSha256, buildDigest, recreateDigest, hotPublishDigest, dataHistory.Requirements, freedomPoints));
 
         return new CompiledHostManagerPlan(
             profile.SchemaVersion,

@@ -7,14 +7,14 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
-public sealed class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environment) : IGpuPlacementProcessHistoryStore
+public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environment) : IGpuPlacementProcessHistoryStore
 {
     private const int MaxProcessesPerSoftware = 64;
     private static readonly TimeSpan MinimumLastSeenPersistInterval = TimeSpan.FromMinutes(10);
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new JsonGpuPlacementProcessHistoryStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
-    };
+    }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string storagePath = Path.Combine(

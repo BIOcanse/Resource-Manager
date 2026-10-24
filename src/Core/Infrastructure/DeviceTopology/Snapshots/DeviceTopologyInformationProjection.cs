@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 /// <summary>Explicit typed projection, performed only when the existing owner publishes.</summary>
 public static partial class DeviceTopologyInformationProjection
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = WindowsInformationFieldProjection.InformationJsonOptions;
 
     public static DeviceInformationSnapshot Create(DeviceTopologySnapshot? snapshot, DateTimeOffset? observedAt)
     {

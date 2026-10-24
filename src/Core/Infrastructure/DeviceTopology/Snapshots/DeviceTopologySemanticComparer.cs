@@ -6,9 +6,9 @@ using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
-public sealed class DeviceTopologySemanticComparer
+public sealed partial class DeviceTopologySemanticComparer
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new DeviceTopologySemanticComparerJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)).Options;
 
     public string ComputeHash(DeviceTopologySnapshot snapshot)
     {

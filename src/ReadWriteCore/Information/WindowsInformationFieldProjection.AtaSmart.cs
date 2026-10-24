@@ -27,44 +27,19 @@ public static partial class WindowsInformationFieldProjection
             thresholds = WindowsAtaSmartReader.ParseAttributeThresholdPage(thresholdBytes);
 
         JsonElement? normalized = (selectedFields & AtaSmartAttributeInformationFields.Normalized) != 0 && data is not null
-            ? JsonSerializer.SerializeToElement(new
-            {
-                revision = data.Revision,
-                slots = data.Slots.Select(static slot => new
-                {
-                    slotIndex = slot.SlotIndex,
-                    attributeId = slot.AttributeId,
-                    flags = slot.Flags,
-                    currentNormalized = slot.CurrentNormalized,
-                    worstNormalized = slot.WorstNormalized,
-                    reservedByte = slot.ReservedByte
-                }).ToArray()
-            }, JsonOptions)
+            ? JsonSerializer.SerializeToElement(new AtaSmartNormalizedPageValue(data.Revision,data.Slots.Select(static slot => new AtaSmartNormalizedSlotValue(slot.SlotIndex,slot.AttributeId,slot.Flags,slot.CurrentNormalized,slot.WorstNormalized,slot.ReservedByte
+)).ToArray()
+), JsonOptions)
             : null;
         JsonElement? raw = (selectedFields & AtaSmartAttributeInformationFields.Raw) != 0 && data is not null
-            ? JsonSerializer.SerializeToElement(new
-            {
-                revision = data.Revision,
-                slots = data.Slots.Select(static slot => new
-                {
-                    slotIndex = slot.SlotIndex,
-                    attributeId = slot.AttributeId,
-                    rawSixBytes = slot.RawSixBytes
-                }).ToArray()
-            }, JsonOptions)
+            ? JsonSerializer.SerializeToElement(new AtaSmartRawPageValue(data.Revision,data.Slots.Select(static slot => new AtaSmartRawSlotValue(slot.SlotIndex,slot.AttributeId,slot.RawSixBytes
+)).ToArray()
+), JsonOptions)
             : null;
         JsonElement? threshold = (selectedFields & AtaSmartAttributeInformationFields.Threshold) != 0 && thresholds is not null
-            ? JsonSerializer.SerializeToElement(new
-            {
-                revision = thresholds.Revision,
-                slots = thresholds.Slots.Select(static slot => new
-                {
-                    slotIndex = slot.SlotIndex,
-                    attributeId = slot.AttributeId,
-                    threshold = slot.Threshold,
-                    reservedTenBytes = slot.ReservedTenBytes
-                }).ToArray()
-            }, JsonOptions)
+            ? JsonSerializer.SerializeToElement(new AtaSmartThresholdPageValue(thresholds.Revision,thresholds.Slots.Select(static slot => new AtaSmartThresholdSlotValue(slot.SlotIndex,slot.AttributeId,slot.Threshold,slot.ReservedTenBytes
+)).ToArray()
+), JsonOptions)
             : null;
 
         return [
