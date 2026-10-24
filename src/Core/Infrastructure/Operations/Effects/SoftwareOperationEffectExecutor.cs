@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Software;
 
@@ -29,19 +30,19 @@ internal sealed class SoftwareOperationEffectExecutor(
             var result = await softwareOperationManager.UninstallAsync(
                 request, caller,
                 cancellationToken).ConfigureAwait(false);
-            return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
+            return new(HostManagerOperationEffectOutcome.Succeeded, HostManagerOperationFeedback.Result(result.State, result.Message));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new(HostManagerOperationEffectOutcome.Canceled, "操作已取消。");
+            return new(HostManagerOperationEffectOutcome.Canceled, string.Empty);
         }
         catch (IOException error)
         {
-            return new(HostManagerOperationEffectOutcome.RetryableFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.RetryableFailure, HostManagerOperationFeedback.Failure(error));
         }
         catch (Exception error)
         {
-            return new(HostManagerOperationEffectOutcome.TerminalFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.TerminalFailure, HostManagerOperationFeedback.Failure(error));
         }
     }
 
@@ -55,9 +56,9 @@ internal sealed class SoftwareOperationEffectExecutor(
         return ValueTask.FromResult(receipt.State == HostManagerOperationEffectReceiptState.Prepared
             ? new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.RetryableFailure,
-                "尚无卸载动作执行证据，可重新排队。")
+                HostManagerOperationFeedback.Reason(BackendMessageCodes.Operation.NoExecutionEvidence))
             : new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.Uncertain,
-                "卸载进程可能已启动，无法安全重复执行。"));
+                HostManagerOperationFeedback.Reason(BackendMessageCodes.Operation.OutcomeUncertain)));
     }
 }

@@ -900,8 +900,16 @@ function fixtureOperations() {
       completedAt: "2026-08-22T11:50:03.000Z",
       cancelRequested: false,
       progress: null,
-      result: "卸载完成",
+      result: null,
+      resultCode: "RemovedManagedRoot",
+      resultMessage: { domain: 4, code: 13, args: [] },
+      errorMessage: null,
       error: null
+    },
+    {
+      ...active, id: "000000000000000000000000000000a3", domainKey: "component:failed-runtime",
+      state: "failed", completedAt: active.updatedAt, cancelRequested: false, progress: null,
+      result: null, error: "fixture connection refused", errorMessage: { domain: 6, code: 1, args: [] }
     }
   ];
 }

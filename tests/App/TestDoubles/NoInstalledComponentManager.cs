@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Software;
@@ -14,10 +15,10 @@ internal sealed class NoInstalledComponentManager : IComponentManager
         => Task.FromResult<ComponentStatus?>(null);
 
     public Task<ComponentActionResult> DownloadAsync(string id, bool acknowledgeExternalTerms, string? versionChoice,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
+        CancellationToken cancellationToken, IProgress<DependencyDownloadProgress>? progress = null) => throw new NotSupportedException();
 
     public Task<ComponentActionResult> InstallAsync(string id, bool acknowledgeExternalTerms, string? versionChoice,
-        CancellationToken cancellationToken, SoftwareOperationCaller? caller = null) => throw new NotSupportedException();
+        CancellationToken cancellationToken, SoftwareOperationCaller? caller = null, IProgress<DependencyDownloadProgress>? progress = null) => throw new NotSupportedException();
 
     public Task<ComponentActionResult> VerifyAsync(string id, CancellationToken cancellationToken)
         => throw new NotSupportedException();

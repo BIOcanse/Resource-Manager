@@ -4,6 +4,27 @@ import { targetedReport } from "./fr-FR-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./fr-FR-fieldLabels.ts";
 
 const frFrAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "Code du résultat",
+    removeManual: "Supprimer l’enregistrement manuel",
+    confirmManual: "Supprimer cet enregistrement manuel et sa catégorie ? Les fichiers du logiciel seront conservés.",
+    manualRemoved: "Enregistrement manuel supprimé.",
+    manualRemoveFailed: "Impossible de supprimer l’enregistrement manuel.",
+    metadataFailed: "Impossible de charger les métadonnées du logiciel.",
+    metadataStale: "Échec de l’actualisation. Les données affichées peuvent être anciennes ou dans la langue précédente.",
+    metadataLoading: "Chargement des métadonnées du logiciel…",
+    retry: "Réessayer",
+    networkFailure: "Échec du téléchargement. Vérifiez le réseau et réessayez.",
+    fileUnavailable: "Un fichier requis est indisponible.",
+    accessDenied: "Accès refusé. Vérifiez les autorisations.",
+    requestRejected: "La demande a été refusée. Consultez les détails de l’opération.",
+    ioFailure: "Échec de l’accès aux fichiers. Vérifiez le chemin et l’espace disponible.",
+    unexpectedFailure: "Une erreur inattendue est survenue.",
+    noExecutionEvidence: "Aucune preuve d’exécution enregistrée. Vous pouvez réessayer.",
+    outcomeUncertain: "L’action a peut-être été exécutée. Actualisez et vérifiez avant de réessayer.",
+    managedRootRemoved: "Le dossier d’installation géré a été supprimé. Les composants des pilotes et du système sont conservés.",
+    uninstallerLaunchRequested: "Le programme de désinstallation Windows a été demandé. Actualisez la liste une fois terminé."
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

@@ -389,6 +389,22 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
   }
 
+  async function removeManualRegistrationFromDetail() {
+    const current = softwareDetail();
+    const record = management.software().find((item) => item.id === current?.id);
+    if (record && await management.removeManualRegistration(record) && softwareDetail()?.id === record.id) {
+      closeSoftwareDetail();
+    }
+  }
+
+  async function retrySoftwareMetadata() {
+    try {
+      await softwareMetadataBinding.refresh();
+    } catch (error) {
+      showErrorToast(error, uiText.managementFeedback.metadataFailed);
+    }
+  }
+
   function closeSoftwareDetail() {
     setSoftwareDetail(null);
     setSoftwareDetailNotice(null);
@@ -669,6 +685,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     return {
       type: "software",
+      manualRegistration: record.id.startsWith("manual:"),
       id: textOrEmpty(record.id),
       name,
       kind: record.kind,
@@ -793,6 +810,8 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     openManagementSoftwareContextMenu,
     openSoftwareDetail,
     closeSoftwareDetail,
+    removeManualRegistrationFromDetail,
+    retrySoftwareMetadata,
     openLocalPath,
     confirmPortableRootFromDetail,
     saveGpuPlacementSoftwarePolicyFromDetail,

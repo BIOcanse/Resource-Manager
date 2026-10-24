@@ -15,12 +15,15 @@ test("loading and failed refreshes preserve the last renderable metadata", () =>
   const model = detailModel("app-test", [["软件简介", "last good"]]);
   const query = metadataQuery("app-test", "zh-CN");
 
-  assert.equal(
-    projectSoftwareMetadataDetail(model, query, snapshot("loading", null)),
-    model);
-  assert.equal(
-    projectSoftwareMetadataDetail(model, query, snapshot("error", null)),
-    model);
+  const loading = projectSoftwareMetadataDetail(model, query, snapshot("loading", null));
+  assert.deepEqual(loading?.metadataRows, model.metadataRows);
+  assert.equal(loading?.metadataStatus, "loading");
+  const failed = projectSoftwareMetadataDetail(model, query, snapshot("error", null));
+  assert.deepEqual(failed?.metadataRows, model.metadataRows);
+  assert.equal(failed?.metadataStatus, "error");
+  const initial = projectSoftwareMetadataDetail(detailModel("app-test"), query, snapshot("error", null));
+  assert.deepEqual(initial?.metadataRows, []);
+  assert.equal(initial?.metadataStatus, "error");
 });
 
 test("a ready language switch replaces metadata without touching another identity", () => {
@@ -35,6 +38,10 @@ test("a ready language switch replaces metadata without touching another identit
     metadataQuery("app-test", "en-US"),
     readySnapshot("en-US", "English summary"));
   assert.equal(englishModel?.metadataRows[0]?.[1], "English summary");
+  assert.equal(englishModel?.metadataStatus, "ready");
+  const switchFailure = projectSoftwareMetadataDetail(chineseModel, metadataQuery("app-test", "en-US"), snapshot("error", null));
+  assert.equal(switchFailure?.metadataStatus, "error");
+  assert.equal(switchFailure?.metadataRows[0]?.[1], "中文说明");
 
   const other = detailModel("app-other", [["软件简介", "other"]]);
   assert.equal(

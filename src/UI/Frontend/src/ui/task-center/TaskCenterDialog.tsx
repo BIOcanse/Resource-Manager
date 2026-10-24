@@ -1,3 +1,4 @@
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import {
   For,
   Show,
@@ -225,24 +226,39 @@ function TaskCenterList(props: {
                     </Show>
                   )}
                 </Show>
+                <Show when={item().domainKey}>
+                  <p class="task-center-target">{item().domainKey}</p>
+                </Show>
                 <Show when={item().stateUncertain}>
-                  <p class="task-center-inline-warning">{uiText.taskCenter.needsResync}</p>
+                  <p class="task-center-inline-warning">{renderBackendMessage(item().errorMessage, uiText.taskCenter.needsResync)}</p>
                 </Show>
                 <Show when={item().status === "failed"}>
-                  <p class="task-center-error" role="alert">{uiText.taskCenter.taskFailed}</p>
+                  <p class="task-center-error" role="alert">{renderBackendMessage(item().errorMessage, uiText.taskCenter.taskFailed)}</p>
                 </Show>
                 <Show when={item().status === "succeeded" || item().status === "completed"}>
-                  <p class="task-center-result">{uiText.taskCenter.taskCompleted}</p>
+                  <p class="task-center-result">{renderBackendMessage(item().resultMessage, uiText.taskCenter.taskCompleted)}</p>
                 </Show>
                 <details class="task-center-details">
                   <summary>{uiText.taskCenter.detailsSummary}</summary>
                   <dl>
                     <div><dt>{uiText.taskCenter.kind}</dt><dd>{taskKindLabel(item())}</dd></div>
-                    <Show when={item().source !== "operation" && item().domainKey}>
+                    <Show when={item().domainKey}>
                       {(domainKey) => <div><dt>{uiText.taskCenter.target}</dt><dd>{domainKey()}</dd></div>}
                     </Show>
                     <div><dt>{uiText.taskCenter.createdAt}</dt><dd>{userFacingDateTime(item().createdAt)}</dd></div>
                     <div><dt>{uiText.taskCenter.updatedAt}</dt><dd>{userFacingDateTime(item().updatedAt)}</dd></div>
+                    <Show when={item().resultCode}>
+                      <div><dt>{uiText.managementFeedback.resultCode}</dt><dd>{item().resultCode}</dd></div>
+                    </Show>
+                    <Show when={item().progressMessage}>
+                      <div><dt>{uiText.taskCenter.progressLabel(taskTitle(item()))}</dt><dd>{item().progressMessage}</dd></div>
+                    </Show>
+                    <Show when={item().result}>
+                      <div><dt>{uiText.taskCenter.taskCompleted}</dt><dd>{item().result}</dd></div>
+                    </Show>
+                    <Show when={item().error}>
+                      <div><dt>{uiText.taskCenter.taskFailed}</dt><dd>{item().error}</dd></div>
+                    </Show>
                     <div><dt>{uiText.taskCenter.identity}</dt><dd>{item().ownerId}</dd></div>
                   </dl>
                 </details>

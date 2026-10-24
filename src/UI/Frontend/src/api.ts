@@ -316,6 +316,12 @@ export async function getSoftware(refresh = false) {
   return getJson<SoftwareRecord[]>(refresh ? "/api/software?refresh=true" : "/api/software");
 }
 
+export async function removeManualSoftware(id: string) {
+  return requestNoContent(`/api/software/manual/${encodeURIComponent(id)}`, {
+    method: "DELETE", fallbackError: uiText.managementFeedback.manualRemoveFailed
+  });
+}
+
 export async function addManualSoftware(request: ManualSoftwareRequest) {
   return postJson<unknown>("/api/software/manual", request, uiText.apiError.addSoftwareFailed);
 }

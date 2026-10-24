@@ -40,6 +40,28 @@ class FakeOperationSource {
   }
 }
 
+{
+  const tasks = new TaskRegistry();
+  const source = new FakeOperationSource();
+  const resultMessage = { domain: 1, code: 22, args: [] };
+  const errorMessage = { domain: 6, code: 1, args: [] };
+  source.snapshot = operationRegistrySnapshot(1, [operation({
+    title: "Install runtime", domainKey: "component:runtime", resultCode: "InstallerLaunched",
+    resultMessage, errorMessage, error: "network diagnostic", result: null,
+    progress: { sequence: "1", percent: 50, bytesDone: "5", bytesTotal: "10", speedBytesPerSecond: null, stage: "download", message: "transfer" }
+  })]);
+  const projection = new TaskCenterProjection(tasks, source);
+  const item = projection.snapshot.items[0];
+  assert.equal(item.resultCode, "InstallerLaunched");
+  assert.deepEqual(item.resultMessage, resultMessage);
+  assert.deepEqual(item.errorMessage, errorMessage);
+  assert.equal(item.error, "network diagnostic");
+  assert.equal(item.domainKey, "component:runtime");
+  assert.equal(item.progressMessage, "transfer");
+  projection.dispose();
+  tasks.dispose();
+}
+
 const userTaskKey = defineTaskKey<void>("frontend.user-action");
 const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
 
@@ -258,9 +280,9 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
     error: "Backend error prose"
   })]));
   const failedOperation = projection.snapshot.items.find((item) => item.source === "operation")!;
-  assert.equal(JSON.stringify(failedOperation).includes("Backend progress prose"), false);
-  assert.equal(JSON.stringify(failedOperation).includes("Backend result prose"), false);
-  assert.equal(JSON.stringify(failedOperation).includes("Backend error prose"), false);
+  assert.equal(failedOperation.progressMessage, "Backend progress prose");
+  assert.equal(failedOperation.result, "Backend result prose");
+  assert.equal(failedOperation.error, "Backend error prose");
   assert.equal("resultSummary" in failedOperation, false);
   assert.equal("errorSummary" in failedOperation, false);
   assert.equal("message" in failedOperation.progress!, false);

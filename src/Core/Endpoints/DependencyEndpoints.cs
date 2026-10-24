@@ -47,63 +47,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await dependencyManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 
-        app.MapGet("/api/dependencies/{id}", async (
-            string id,
-            HttpContext context,
-            IOptionalDependencyManager dependencyManager,
-            CancellationToken cancellationToken) =>
-        {
-            if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
-            var status = await dependencyManager.GetStatusAsync(id, caller.WindowsSid, cancellationToken);
-            return status is null ? Results.NotFound() : Results.Ok(status);
-        }).AllowAnonymous();
-
-        if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
-        {
-            app.MapPost("/api/dependencies/{id}/download", async (
-            string id,
-            OptionalDependencyDownloadRequest request,
-            IHostManagerOperationCommandService operationService,
-            CancellationToken cancellationToken) =>
-        {
-            try
-            {
-                return Results.Ok(HostManagerOperationWireProjection.Project(
-                    await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.DependencyDownload(id, request),
-                    cancellationToken)));
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-            });
-
-            app.MapPost("/api/dependencies/{id}/launch-installer", async (
-            string id,
-            OptionalDependencyInstallRequest request,
-            HttpContext context,
-            IHostManagerOperationCommandService operationService,
-            CancellationToken cancellationToken) =>
-        {
-            if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
-            try
-            {
-                return Results.Ok(HostManagerOperationWireProjection.Project(
-                    await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.DependencyInstaller(id, request,
-                        caller),
-                    cancellationToken)));
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-            });
-        }
-
         return app;
     }
 }

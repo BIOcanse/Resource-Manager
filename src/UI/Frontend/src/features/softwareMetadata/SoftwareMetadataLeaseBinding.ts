@@ -82,6 +82,10 @@ export class SoftwareMetadataLeaseBinding {
     this.releaseOwned(previous);
   }
 
+  async refresh(): Promise<void> {
+    await this.current?.lease.refresh();
+  }
+
   release(): void {
     const current = this.current;
     this.current = null;

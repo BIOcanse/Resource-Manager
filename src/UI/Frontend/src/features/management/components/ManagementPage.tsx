@@ -62,6 +62,7 @@ interface ManagementPageProps {
   onRefresh: () => void;
   onInstallComponent: (component: ManagedComponent) => void;
   onVerifyComponent: (component: ManagedComponent) => void;
+  onRemoveManual: (software: SoftwareRecord) => void;
   onUninstallSoftware: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
@@ -217,6 +218,7 @@ export function ManagementPage(props: ManagementPageProps) {
                       mutablePersistenceEnabled={props.mutablePersistenceEnabled}
                       onOpenDetail={(software) => props.onOpenDetail("software", software)}
                       onContextMenu={(event, software) => props.onSoftwareContextMenu(event, softwareContextTargetFromSoftware(software))}
+                      onRemoveManual={props.onRemoveManual}
                     />}
               </For>
             </Show>
@@ -310,6 +312,7 @@ function SoftwareCard(props: {
   onClassify: (software: SoftwareRecord) => void;
   actionLabels: Record<string, string>;
   runtimeEffectsEnabled: boolean;
+  onRemoveManual: (software: SoftwareRecord) => void;
   onUninstall: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (software: SoftwareRecord) => void;
   onContextMenu: (event: MouseEvent, software: SoftwareRecord) => void;
@@ -371,6 +374,11 @@ function SoftwareCard(props: {
         </Show>
       </div>
       <div class="software-actions">
+        <Show when={props.mutablePersistenceEnabled && props.software.id.startsWith("manual:")}>
+          <button class="management-action-button" type="button" disabled={Boolean(activeLabel())} onClick={() => props.onRemoveManual(props.software)}>
+            {uiText.managementFeedback.removeManual}
+          </button>
+        </Show>
         <Show when={props.mutablePersistenceEnabled && isUnclassifiedSoftware(props.software)}>
           <button class="management-action-button" type="button" onClick={() => props.onClassify(props.software)}>
             {uiText.management.classifySoftware}

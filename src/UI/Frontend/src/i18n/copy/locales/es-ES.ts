@@ -4,6 +4,27 @@ import { targetedReport } from "./es-ES-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./es-ES-fieldLabels.ts";
 
 const esEsAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "Código de resultado",
+    removeManual: "Eliminar registro manual",
+    confirmManual: "¿Eliminar este registro manual y su clasificación? Los archivos del programa se conservarán.",
+    manualRemoved: "Registro manual eliminado.",
+    manualRemoveFailed: "No se pudo eliminar el registro manual.",
+    metadataFailed: "No se pudieron cargar los metadatos del programa.",
+    metadataStale: "Error al actualizar. Los datos mostrados pueden estar desactualizados o en el idioma anterior.",
+    metadataLoading: "Cargando metadatos del programa…",
+    retry: "Reintentar",
+    networkFailure: "Error de descarga. Compruebe la red y reintente.",
+    fileUnavailable: "Un archivo necesario no está disponible.",
+    accessDenied: "Acceso denegado. Compruebe los permisos.",
+    requestRejected: "Se rechazó la solicitud. Consulte los detalles de la operación.",
+    ioFailure: "Error al acceder a los archivos. Compruebe la ruta y el espacio disponible.",
+    unexpectedFailure: "Se produjo un error inesperado.",
+    noExecutionEvidence: "No se registró evidencia de ejecución. Puede reintentar.",
+    outcomeUncertain: "La acción puede haberse ejecutado. Actualice y compruebe antes de reintentar.",
+    managedRootRemoved: "Se eliminó el directorio de instalación administrado. Se conservan los componentes de controladores y del sistema.",
+    uninstallerLaunchRequested: "Se solicitó el desinstalador de Windows. Actualice la lista cuando termine."
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

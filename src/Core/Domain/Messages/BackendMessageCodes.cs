@@ -22,6 +22,9 @@ public static class BackendMessageDomains
 
     /// <summary>设备拓扑快照（说明、数据源失败、端口可信度与来源）。</summary>
     public const byte DeviceTopology = 5;
+
+    /// <summary>操作失败与恢复原因；无参数，原始异常仅作为独立诊断。</summary>
+    public const byte Operation = 6;
 }
 
 /// <summary>
@@ -29,6 +32,18 @@ public static class BackendMessageDomains
 /// </summary>
 public static class BackendMessageCodes
 {
+    public static class Operation
+    {
+        public const byte NetworkFailure = 1;
+        public const byte FileUnavailable = 2;
+        public const byte AccessDenied = 3;
+        public const byte RequestRejected = 4;
+        public const byte IoFailure = 5;
+        public const byte UnexpectedFailure = 6;
+        public const byte NoExecutionEvidence = 7;
+        public const byte OutcomeUncertain = 8;
+    }
+
     public static class Dependency
     {
         /// <summary>该依赖装在我们自己的受管 Dependencies 根目录里，可以清理。参数：无。</summary>
@@ -141,6 +156,12 @@ public static class BackendMessageCodes
 
         /// <summary>便携软件没有卸载器，删除原文件后刷新会移除记录。参数：无。</summary>
         public const byte PortableNoUninstall = 12;
+
+        /// <summary>已移除受管安装根目录；系统与驱动运行库保留。参数：无。</summary>
+        public const byte ManagedRootRemoved = 13;
+
+        /// <summary>已请求启动用户会话中的 Windows 卸载器。参数：无。</summary>
+        public const byte UninstallerLaunchRequested = 14;
     }
 
     public static class Metric

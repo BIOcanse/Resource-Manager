@@ -7,6 +7,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
   let classified = false;
+  let removed = false;
+  const removals = [];
   const writes = [];
   const issue = { id: "classification:unclassified", kind: "Unclassified", severity: "Info",
     source: "RuntimeAttribution", label: "", message: "", dynamic: false, references: [], reportIds: [] };
@@ -19,7 +21,13 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   software.push({ ...software[0], id: "runtime:game", name: "Windows Game", kind: "game", displayKind: "game",
     categorySource: "Windows GameConfigStore\\Children\\MatchedExeFullPath", issues: [] });
   await page.route("**/api/software", route => route.fulfill({ json: software.map((item, index) =>
-    classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item) }));
+    classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item).filter((_, index) => !removed || index !== 0) }));
+  await page.route("**/api/software/manual/*", async route => {
+    assert.equal(route.request().method(), "DELETE");
+    removals.push(new URL(route.request().url()).pathname);
+    removed = true;
+    await route.fulfill({ status: 204 });
+  });
   await page.route("**/api/software/manual", async route => {
     writes.push(route.request().postDataJSON());
     classified = true;
@@ -55,6 +63,18 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   await page.locator(".software-item").filter({ hasText: "Runtime App 0" }).waitFor();
   assert.equal(await page.locator(".software-item .software-issue-tag").count(), 0);
 
+  const manualCard = page.locator(".software-item").filter({ hasText: "Runtime App 0" });
+  await manualCard.getByRole("button", { name: "移除手动登记", exact: true }).click();
+  await page.getByRole("dialog").filter({ hasText: "仅移除此手动登记及分类" }).getByRole("button", { name: "取消", exact: true }).click();
+  assert.equal(removals.length, 0, "Cancel must preserve the manual record");
+  await manualCard.getByRole("button", { name: "软件设置", exact: true }).click();
+  const manualDetails = page.getByRole("dialog", { name: "Runtime App 0", exact: true });
+  await manualDetails.getByRole("button", { name: "移除手动登记", exact: true }).click();
+  await page.getByRole("dialog").filter({ hasText: "仅移除此手动登记及分类" }).getByRole("button", { name: "确认", exact: true }).click();
+  await manualDetails.waitFor({ state: "hidden" });
+  await manualCard.waitFor({ state: "hidden" });
+  assert.deepEqual(removals, ["/api/software/manual/manual%3A0"]);
+
   const sourceLanguages = [];
   let previous = "zh-CN";
   for (const option of languageOptions.filter(option => option.id !== "system")) {
@@ -82,5 +102,5 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   }
   assert.deepEqual(errors, []);
   return { runtimeSources: 3, leaveWithoutWrite: true, categorySelection: true, sourceIdPreserved: true,
-    reminderCleared: true, sourceLanguages };
+    reminderCleared: true, manualRemovalConfirmed: true, sourceLanguages };
 }

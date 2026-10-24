@@ -1,4 +1,5 @@
-﻿using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Application.BrowserRuntimes;
 
@@ -12,10 +13,11 @@ public sealed partial class ComponentManager
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DependencyDownloadProgress>? progress = null)
     {
         EnsureOptionalDependency(id);
-        var result = await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
+        var result = await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, progress);
         var status = await GetStatusAsync(id, cancellationToken);
         return new ComponentActionResult(
             id,
@@ -32,7 +34,8 @@ public sealed partial class ComponentManager
         bool acknowledgeExternalTerms,
         string? versionChoice,
         CancellationToken cancellationToken,
-        ResourceManager.App.Domain.Software.SoftwareOperationCaller? caller = null)
+        ResourceManager.App.Domain.Software.SoftwareOperationCaller? caller = null,
+        IProgress<DependencyDownloadProgress>? progress = null)
     {
         EnsureOptionalDependency(id);
         var statusBeforeInstall = await dependencyManager.GetStatusAsync(id, caller?.WindowsSid, cancellationToken)
@@ -58,7 +61,7 @@ public sealed partial class ComponentManager
                 throw new FileNotFoundException("托管依赖目录中没有可用安装器，且该组件没有稳定官方下载地址。", statusBeforeInstall.InstallerPath);
             }
 
-            await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
+            await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, progress);
         }
 
         var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);

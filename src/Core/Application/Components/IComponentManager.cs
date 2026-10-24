@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Software;
 
@@ -24,14 +25,16 @@ public interface IComponentManager
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IProgress<DependencyDownloadProgress>? progress = null);
 
     Task<ComponentActionResult> InstallAsync(
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
         CancellationToken cancellationToken,
-        SoftwareOperationCaller? caller = null);
+        SoftwareOperationCaller? caller = null,
+        IProgress<DependencyDownloadProgress>? progress = null);
 
     Task<ComponentActionResult> VerifyAsync(
         string id,

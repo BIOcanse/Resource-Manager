@@ -1,0 +1,21 @@
+export const managementFeedback = {
+  "resultCode": "Result code",
+  "removeManual": "Remove manual registration",
+  "confirmManual": "Remove this manual registration and classification? Software files will remain installed and unchanged.",
+  "manualRemoved": "Manual registration removed.",
+  "manualRemoveFailed": "Could not remove the manual registration.",
+  "metadataFailed": "Could not load software metadata.",
+  "metadataStale": "Metadata refresh failed. The displayed content may be outdated or in the previous language.",
+  "metadataLoading": "Loading software metadata…",
+  "retry": "Retry",
+  "networkFailure": "Download request failed. Check the network and retry.",
+  "fileUnavailable": "A required file is unavailable.",
+  "accessDenied": "Access denied. Check permissions.",
+  "requestRejected": "The operation request was rejected. Check the operation details.",
+  "ioFailure": "File access failed. Check the path and available space.",
+  "unexpectedFailure": "The operation encountered an unexpected error.",
+  "noExecutionEvidence": "No execution evidence was recorded. You can retry.",
+  "outcomeUncertain": "The action may have run. Refresh and verify before trying again.",
+  "managedRootRemoved": "Removed the managed installation directory. Driver and system-wide runtimes remain installed.",
+  "uninstallerLaunchRequested": "Requested the Windows uninstaller. Refresh the software list when it finishes."
+};

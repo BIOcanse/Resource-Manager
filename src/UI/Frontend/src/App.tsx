@@ -368,6 +368,8 @@ export default function App() {
         gpuPlacementSettings={softwareActions.gpuPlacementSettings()}
         gpuPlacementLoading={softwareActions.gpuPlacementLoading()}
         onClose={softwareActions.closeSoftwareDetail}
+        onRemoveManual={() => void softwareActions.removeManualRegistrationFromDetail()}
+        onRetryMetadata={() => void softwareActions.retrySoftwareMetadata()}
         onOpenPath={(path) => void softwareActions.openLocalPath(path)}
         onConfirmPortableRoot={() => void softwareActions.confirmPortableRootFromDetail()}
         onSaveGpuPlacementSoftwarePolicy={(policy) => softwareActions.saveGpuPlacementSoftwarePolicyFromDetail(policy)}

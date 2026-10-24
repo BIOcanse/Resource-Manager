@@ -47,18 +47,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await componentManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 
-        app.MapGet("/api/components/{id}", async (
-            string id,
-            HttpContext context,
-            IComponentManager componentManager,
-            CancellationToken cancellationToken) =>
-        {
-            if (!TryReadInteractiveCaller(context, out var caller))
-                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
-            var status = await componentManager.GetStatusAsync(id, caller.WindowsSid, cancellationToken);
-            return status is null ? Results.NotFound() : Results.Ok(status);
-        }).AllowAnonymous();
-
         // 版本对话框的数据源：已验证版本 + 最新版本。最新版本解析失败时该项带原因返回，
         // 不会让整个请求失败，界面仍然可以选已验证版本。
         app.MapGet("/api/components/{id}/versions", async (
@@ -78,25 +66,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
-            app.MapPost("/api/components/{id}/download", async (
-            string id,
-            ComponentActionRequest request,
-            IHostManagerOperationCommandService operationService,
-            CancellationToken cancellationToken) =>
-        {
-            try
-            {
-                return Results.Ok(HostManagerOperationWireProjection.Project(
-                    await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.ComponentDownload(id, request),
-                    cancellationToken)));
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.BadRequest(new { error = ex.Message });
-            }
-            });
-
             app.MapPost("/api/components/{id}/install", async (
             string id,
             ComponentActionRequest request,

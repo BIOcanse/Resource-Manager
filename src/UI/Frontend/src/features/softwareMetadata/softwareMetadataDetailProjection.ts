@@ -17,15 +17,17 @@ export function projectSoftwareMetadataDetail(
 ): SoftwareDetailModel | null {
   if (!current
     || current.type !== "software"
-    || current.softwareIdentityId !== query.softwareIdentityId
-    || !sourceCanRender(snapshot)
-    || !snapshot.data) {
+    || current.softwareIdentityId !== query.softwareIdentityId) {
     return current;
   }
 
+  if (!sourceCanRender(snapshot) || !snapshot.data) {
+    return { ...current, metadataStatus: snapshot.status };
+  }
   const metadata = snapshot.data.metadata;
   return {
     ...current,
+    metadataStatus: snapshot.status,
     metadataRows: snapshot.data.found && metadata
       ? createSoftwareMetadataRows(metadata)
       : []

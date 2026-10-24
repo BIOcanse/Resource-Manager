@@ -1,4 +1,4 @@
-import type { OperationSnapshot } from "../../types.ts";
+import type { BackendMessage, OperationSnapshot } from "../../types.ts";
 import type {
   OperationRegistrySnapshot
 } from "../operations/OperationRegistry.ts";
@@ -45,6 +45,12 @@ export interface TaskCenterItem {
   readonly actionBlockedReason: string | null;
   readonly backendDisconnected: boolean;
   readonly stateUncertain: boolean;
+  readonly resultCode: string | null;
+  readonly resultMessage: BackendMessage | null;
+  readonly errorMessage: BackendMessage | null;
+  readonly result: string | null;
+  readonly error: string | null;
+  readonly progressMessage: string | null;
 }
 
 export interface TaskCenterSnapshot {
@@ -251,6 +257,8 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     cancelable: active,
     actionBlockedReason: active ? null : uiText.taskCenter.blocked.taskFinished,
     backendDisconnected: false,
+    resultCode: null, resultMessage: null, errorMessage: null,
+    result: null, error: null, progressMessage: null,
     stateUncertain: false
   });
 }
@@ -298,6 +306,12 @@ function projectOperation(
             ? uiText.taskCenter.blocked.operationCannotCancel
             : uiText.taskCenter.blocked.operationFinished,
     backendDisconnected: disconnected,
+    resultCode: operation.resultCode ?? null,
+    resultMessage: operation.resultMessage ?? null,
+    errorMessage: operation.errorMessage ?? null,
+    result: operation.result,
+    error: operation.error,
+    progressMessage: operation.progress?.message ?? null,
     stateUncertain: operation.state === "stateUncertain"
   });
 }

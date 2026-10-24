@@ -17,7 +17,8 @@ export const backendMessageDomains = {
   gpuPlacement: 2,
   metric: 3,
   software: 4,
-  deviceTopology: 5
+  deviceTopology: 5,
+  operation: 6
 } as const;
 
 type Renderer = (args: readonly string[]) => string;
@@ -75,6 +76,20 @@ export function isSettledDependencyMessage(
   return [5, 7, 8, 10, 11, 16, 18].includes(message.code);
 }
 
+function operationRenderers(): Record<number, Renderer> {
+  const copy = uiText.managementFeedback;
+  return {
+    1: () => copy.networkFailure,
+    2: () => copy.fileUnavailable,
+    3: () => copy.accessDenied,
+    4: () => copy.requestRejected,
+    5: () => copy.ioFailure,
+    6: () => copy.unexpectedFailure,
+    7: () => copy.noExecutionEvidence,
+    8: () => copy.outcomeUncertain
+  };
+}
+
 function softwareRenderers(): Record<number, Renderer> {
   const copy = uiText.backendMessage.software;
   return {
@@ -89,7 +104,9 @@ function softwareRenderers(): Record<number, Renderer> {
     9: () => copy.selfNoUninstall,
     10: () => copy.adaptedNoUninstall,
     11: () => copy.legacyControlledNoUninstall,
-    12: () => copy.portableNoUninstall
+    12: () => copy.portableNoUninstall,
+    13: () => uiText.managementFeedback.managedRootRemoved,
+    14: () => uiText.managementFeedback.uninstallerLaunchRequested
   };
 }
 
@@ -210,7 +227,8 @@ export function renderBackendMessage(
     [backendMessageDomains.gpuPlacement]: gpuPlacementRenderers,
     [backendMessageDomains.metric]: metricRenderers,
     [backendMessageDomains.software]: softwareRenderers,
-    [backendMessageDomains.deviceTopology]: deviceTopologyRenderers
+    [backendMessageDomains.deviceTopology]: deviceTopologyRenderers,
+    [backendMessageDomains.operation]: operationRenderers
   };
   const renderer = renderersByDomain[message.domain]?.()[message.code];
   if (!renderer) {

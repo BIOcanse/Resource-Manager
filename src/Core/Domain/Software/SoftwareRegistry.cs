@@ -98,7 +98,7 @@ public sealed record SoftwareOperationCaller(string WindowsSid, uint WindowsSess
 public sealed record SoftwareOperationResult(
     string Id,
     string State,
-    string Message,
+    BackendMessage Message,
     ResourceManager.App.Domain.Operations.FileChangeReport? FileChanges = null);
 
 public sealed record ManualSoftwareRecord(
