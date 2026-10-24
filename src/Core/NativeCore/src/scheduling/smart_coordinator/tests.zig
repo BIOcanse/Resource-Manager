@@ -315,8 +315,7 @@ test "CPU score-only facts reach native process and software state without raw o
     input.flags |= protocol.CycleFlags.score_only;
     var actions: ActionBuffer = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input,
-        rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
     const process_slot = session.findProcess(9_105, 95, 905) orelse return error.MissingProcessSnapshot;
     const process = session.processes[process_slot];
     try std.testing.expect(process.cpu_score_valid);
@@ -1833,6 +1832,109 @@ test "missing canonical score excludes only the corresponding candidate" {
     try std.testing.expect(session.softwares[complete_software_slot].cpu_candidate_valid);
 }
 
+test "missing CPU metric advances owned Normal restore confirmations without a fresh score" {
+    for ([_]u64{ 0, 0xC000_0000_0000_0001 }) |fingerprint| {
+        var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+        const session = try coordinator.create(&config);
+        defer coordinator.destroy(session);
+        var identity = corpus.processFact(0, 16_101, 161_001, 162, 1_612, 85, .general_application, 0, protocol.ProcessGrade.level3, .normal, .normal, protocol.InputFlags.owns_process_grade);
+        var rows = [_]protocol.InputRow{
+            identity,
+            corpus.metricFact(identity, 1, .cpu_usage_percent, 0, 0),
+        };
+        var actions: ActionBuffer = undefined;
+        var snapshot: protocol.Snapshot = undefined;
+        var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+            session,
+            &input,
+            rows[0..].ptr,
+            rows.len,
+            actions[0..].ptr,
+            actions.len,
+            &snapshot,
+        ));
+        const slot = session.findProcess(16_101, 162, 1_612) orelse return error.MissingProcessSnapshot;
+        try std.testing.expectEqual(protocol.ProcessGrade.normal, session.processes[slot].transition.desired);
+        try std.testing.expectEqual(@as(u32, 1), session.processes[slot].transition.pending_count);
+
+        identity.flags &= ~protocol.InputFlags.process_cpu_metrics_complete;
+        rows[0] = identity;
+        var sequence: u32 = 2;
+        while (sequence <= config.required_consecutive_decisions) : (sequence += 1) {
+            input = corpus.cycle(&config, sequence, @as(i64, sequence) * 1_000, 1, false);
+            input.cpu_score_source_fingerprint = fingerprint;
+            if (fingerprint == 0) input.valid_mask &= ~protocol.CycleValidity.cpu_score_source_fingerprint;
+            try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+                session,
+                &input,
+                rows[0..].ptr,
+                1,
+                actions[0..].ptr,
+                actions.len,
+                &snapshot,
+            ));
+            const process = session.processes[slot];
+            try std.testing.expect(!process.cpu_score_valid);
+            try std.testing.expectEqual(sequence, process.transition.pending_count);
+            try std.testing.expectEqual(@as(i64, 1_000), process.transition.pending_first_seen_ms);
+            try std.testing.expectEqual(@as(i64, sequence) * 1_000, process.transition.pending_last_seen_ms);
+            const action = findProcessAction(actions[0..snapshot.action_count], 16_101) orelse return error.MissingProcessAction;
+            try std.testing.expect((action.reason_mask & protocol.Reason.missing_cpu_metric) != 0);
+            if (sequence < config.required_consecutive_decisions) {
+                try std.testing.expectEqual(@as(u32, 0), action.flags & protocol.ActionFlags.requires_feedback);
+                try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
+            } else {
+                try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), action.disposition);
+                try std.testing.expectEqual(protocol.ProcessGrade.level3, action.from_process_grade);
+                try std.testing.expectEqual(protocol.ProcessGrade.normal, action.to_process_grade);
+                try std.testing.expect((action.flags & protocol.ActionFlags.requires_feedback) != 0);
+                try std.testing.expectEqual(@as(u32, 1), snapshot.inflight_count);
+            }
+        }
+    }
+}
+
+test "missing CPU metric cannot emit a pending demotion from Normal" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var rows = lowScoreProcessRows(16_201, 162_001, 163, 1_613);
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+        session,
+        &input,
+        rows[0..].ptr,
+        rows.len,
+        actions[0..].ptr,
+        actions.len,
+        &snapshot,
+    ));
+    rows[0].flags &= ~protocol.InputFlags.process_cpu_metrics_complete;
+    var sequence: u32 = 2;
+    while (sequence <= config.required_consecutive_decisions + 1) : (sequence += 1) {
+        input = corpus.cycle(&config, sequence, @as(i64, sequence) * 1_000, 1, false);
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(
+            session,
+            &input,
+            rows[0..].ptr,
+            1,
+            actions[0..].ptr,
+            actions.len,
+            &snapshot,
+        ));
+        const slot = session.findProcess(16_201, 163, 1_613) orelse return error.MissingProcessSnapshot;
+        try std.testing.expectEqual(protocol.ProcessGrade.normal, session.processes[slot].transition.applied);
+        try std.testing.expectEqual(@as(u32, 1), session.processes[slot].transition.pending_count);
+        const action = findProcessAction(actions[0..snapshot.action_count], 16_201) orelse return error.MissingProcessAction;
+        try std.testing.expect((action.reason_mask & protocol.Reason.missing_cpu_metric) != 0);
+        try std.testing.expectEqual(@as(u32, 0), action.flags & protocol.ActionFlags.requires_feedback);
+        try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
+    }
+}
+
 test "missing canonical score does not block mandatory owned process restoration" {
     const cases = [_]MandatoryProcessRestoreCase{
         .feature_disabled,
@@ -1972,8 +2074,7 @@ fn expectMissingScoreOwnedProcessRestore(case: MandatoryProcessRestoreCase) !voi
         switch (case) {
             .feature_disabled => {},
             .not_running => row.flags &= ~protocol.InputFlags.running,
-            .explicitly_ineligible =>
-                row.flags &= ~protocol.InputFlags.can_apply_process_policy,
+            .explicitly_ineligible => row.flags &= ~protocol.InputFlags.can_apply_process_policy,
         }
     }
     if (case == .feature_disabled) {
