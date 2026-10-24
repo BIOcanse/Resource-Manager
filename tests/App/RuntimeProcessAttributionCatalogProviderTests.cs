@@ -15,6 +15,61 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RuntimeProcessAttributionCatalogProviderTests
 {
     [Fact]
+    public async Task ExplicitCategoryChangeInvalidatesTheAttributionCatalog()
+    {
+        const string path = @"D:\Apps\One\app.exe";
+        var record = CreateSoftware("software:one", "One", @"D:\Apps\One");
+        var registry = new MutableSoftwareRegistryView([record]);
+        using var provider = CreateProvider(registry,
+            windowsGameListSource: new FakeWindowsGameListSource { Paths = [path] });
+        using var first = await provider.AcquireCatalogAsync(default);
+        Assert.Equal(SoftwareKinds.Game, first.Catalog.Pipeline.Match(CreateProcess(path)).Kind);
+        registry.SetSoftware([record with { HasExplicitKind = true }]);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var updated = await provider.AcquireCatalogAsync(default);
+        Assert.NotSame(first.Catalog, updated.Catalog);
+        Assert.Equal(SoftwareKinds.Other, updated.Catalog.Pipeline.Match(CreateProcess(path)).Kind);
+    }
+
+    [Fact]
+    public async Task WindowsGameListRefreshesWithSoftwareSnapshotAndPreservesLeasedFacts()
+    {
+        const string path = @"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe";
+        var games = new FakeWindowsGameListSource();
+        using var provider = CreateProvider(new MutableSoftwareRegistryView([]), windowsGameListSource: games);
+        var process = new RuntimeProcessIdentity(46210, null, "bf6", path, false, ProductName: "Battlefield 6");
+        using var first = await provider.AcquireCatalogAsync(default);
+        Assert.Equal(SoftwareKinds.RuntimeProduct, first.Catalog.Pipeline.Match(process).Kind);
+        games.Paths = ["", "bf6.exe", @"..\bf6.exe", path.ToUpperInvariant(), path.Replace('\\', '/')];
+        using (var cached = await provider.AcquireCatalogAsync(default)) Assert.Same(first.Catalog, cached.Catalog);
+        Assert.Equal(1, games.ReadCount);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var refreshed = await provider.AcquireCatalogAsync(default);
+        Assert.Equal(2, games.ReadCount);
+        Assert.Equal(2, refreshed.Catalog.Generation);
+        Assert.Equal(1, refreshed.Catalog.Version.WindowsGames.ItemCount);
+        var before = first.Catalog.Pipeline.Match(process);
+        var after = refreshed.Catalog.Pipeline.Match(process);
+        Assert.Equal(SoftwareKinds.RuntimeProduct, before.Kind);
+        Assert.Equal(SoftwareKinds.Game, after.Kind);
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal(before.Name, after.Name);
+        Assert.NotNull(after.CategorySource);
+        Assert.Equal(SoftwareKinds.RuntimeProduct, refreshed.Catalog.Pipeline.Match(process with
+            { ExecutablePath = @"D:\Other\bf6.exe" }).Kind);
+
+        games.Paths = [path.ToLowerInvariant()];
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using (var equivalent = await provider.AcquireCatalogAsync(default)) Assert.Same(refreshed.Catalog, equivalent.Catalog);
+        games.Paths = [];
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var removed = await provider.AcquireCatalogAsync(default);
+        Assert.Equal(3, removed.Catalog.Generation);
+        Assert.Equal(SoftwareKinds.RuntimeProduct, removed.Catalog.Pipeline.Match(process).Kind);
+        Assert.Equal(SoftwareKinds.Game, refreshed.Catalog.Pipeline.Match(process).Kind);
+    }
+
+    [Fact]
     public async Task InvalidateSoftwareSnapshotAsync_RefreshesAnOtherwiseLiveSnapshot()
     {
         var registry = new MutableSoftwareRegistryView(
@@ -243,7 +298,8 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
 
     private static RuntimeProcessAttributionCatalogProvider CreateProvider(
         ISoftwareRegistryView softwareRegistry,
-        IAdapterSoftwareRegistry? adapterRegistry = null)
+        IAdapterSoftwareRegistry? adapterRegistry = null,
+        IWindowsGameListSource? windowsGameListSource = null)
     {
         var resolvers = new NullResolvers();
         return new RuntimeProcessAttributionCatalogProvider(
@@ -255,7 +311,19 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             resolvers,
             resolvers,
             SoftwareIdentityCatalogTestData.Empty,
-            SoftwareIdentityCatalogTestData.Owner);
+            SoftwareIdentityCatalogTestData.Owner,
+            windowsGameListSource ?? new FakeWindowsGameListSource());
+    }
+
+    private sealed class FakeWindowsGameListSource : IWindowsGameListSource
+    {
+        public IReadOnlyList<string> Paths { get; set; } = [];
+        public int ReadCount { get; private set; }
+        public IReadOnlyList<string> ReadExecutablePaths()
+        {
+            ReadCount++;
+            return Paths;
+        }
     }
 
     private static SoftwareRecord CreateSoftware(

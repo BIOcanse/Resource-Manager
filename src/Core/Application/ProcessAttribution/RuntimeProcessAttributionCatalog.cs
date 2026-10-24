@@ -19,7 +19,8 @@ public readonly record struct RuntimeProcessAttributionCatalogVersion(
     RuntimeProcessAttributionSourceVersion Adapted,
     RuntimeProcessAttributionSourceVersion Controlled,
     string CatalogConfigurationSha256,
-    string ResolutionConfigurationSha256);
+    string ResolutionConfigurationSha256,
+    RuntimeProcessAttributionSourceVersion WindowsGames = default);
 
 public sealed class RuntimeProcessAttributionCatalog : IDisposable
 {
@@ -93,7 +94,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         IRuntimeRootIdentityResolver rootIdentityResolver,
         IRuntimeSystemProcessClassifier systemClassifier,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
-        HostManagerSoftwareIdentityOwner softwareIdentityOwner)
+        HostManagerSoftwareIdentityOwner softwareIdentityOwner,
+        IReadOnlySet<string>? windowsGamePaths = null)
     {
         using var lease = softwareIdentityOwner.Acquire();
         var version = RuntimeProcessAttributionCatalogVersionFactory.Create(
@@ -101,7 +103,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
             adapterRegistrations,
             controlledRegistrations,
             lease.CatalogPlan.ConfigurationSha256,
-            lease.ResolutionPlan.ConfigurationSha256);
+            lease.ResolutionPlan.ConfigurationSha256,
+            windowsGamePaths);
         if (current is not null
             && current.Version == version
             && current.UsesResolvers(
@@ -125,7 +128,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
             rootIdentityResolver,
             systemClassifier,
             softwareIdentityCatalog,
-            softwareIdentityOwner);
+            softwareIdentityOwner,
+            windowsGamePaths);
         try
         {
             return new RuntimeProcessAttributionCatalog(
@@ -181,14 +185,23 @@ internal static class RuntimeProcessAttributionCatalogVersionFactory
         IReadOnlyList<AdapterSoftwareRegistration> adapterRegistrations,
         IReadOnlyList<ControlledSoftwareRegistration> controlledRegistrations,
         string catalogConfigurationSha256,
-        string resolutionConfigurationSha256)
+        string resolutionConfigurationSha256,
+        IReadOnlySet<string>? windowsGamePaths = null)
     {
         return new RuntimeProcessAttributionCatalogVersion(
             CreateSoftwareVersion(softwareRecords),
             CreateAdaptedVersion(adapterRegistrations),
             CreateControlledVersion(controlledRegistrations),
             catalogConfigurationSha256,
-            resolutionConfigurationSha256);
+            resolutionConfigurationSha256,
+            CreateWindowsGamesVersion(windowsGamePaths));
+    }
+
+    private static RuntimeProcessAttributionSourceVersion CreateWindowsGamesVersion(IReadOnlySet<string>? paths)
+    {
+        var hash = new StableVersionHash(paths?.Count ?? 0);
+        foreach (var path in (paths ?? new HashSet<string>()).Order(StringComparer.Ordinal)) hash.Add(path);
+        return hash.ToVersion(paths?.Count ?? 0);
     }
 
     private static RuntimeProcessAttributionSourceVersion CreateSoftwareVersion(
@@ -200,6 +213,7 @@ internal static class RuntimeProcessAttributionCatalogVersionFactory
             hash.Add(record.Id);
             hash.Add(record.Name);
             hash.Add(record.Kind);
+            hash.Add(record.HasExplicitKind ? 1 : 0);
             hash.Add(record.DisplayKind);
             hash.Add(record.RootPaths.Count);
             foreach (var rootPath in record.RootPaths)

@@ -15,7 +15,8 @@ public sealed record RuntimeSoftwareAttribution(
     string Name,
     string Kind,
     string DisplayKind,
-    IReadOnlyList<string> RootPaths)
+    IReadOnlyList<string> RootPaths,
+    string? CategorySource = null)
 {
     public static RuntimeSoftwareAttribution Unattributed { get; } = new(
         RuntimeAttributionIds.Unattributed,

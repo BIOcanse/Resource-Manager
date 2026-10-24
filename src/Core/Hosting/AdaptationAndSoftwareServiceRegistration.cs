@@ -53,6 +53,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<WindowsInstalledSoftwareInventory>();
         services.AddSingleton<IInstalledSoftwareInventory>(static provider => provider.GetRequiredService<WindowsInstalledSoftwareInventory>());
         services.AddSingleton<IRuntimeProcessAttributionCatalogProvider, RuntimeProcessAttributionCatalogProvider>();
+        services.AddSingleton<IWindowsGameListSource, WindowsGameListSource>();
         services.AddSingleton<ISoftwareOperationManager, SoftwareOperationManager>();
         services.AddResourceManagerSystem();
         return services;

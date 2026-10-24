@@ -50,7 +50,9 @@ public sealed record SoftwareRecord(
     BackendMessage? MessageCode = null,
     /// <summary>发布者与版本是事实，不走消息码；前端负责拼接与省略。</summary>
     string? Publisher = null,
-    string? Version = null);
+    string? Version = null,
+    /// <summary>Manual or policy classification, which precedes OS/catalog category evidence.</summary>
+    bool HasExplicitKind = false);
 
 public sealed record SoftwareOperationCapabilities(
     bool CanUninstall,

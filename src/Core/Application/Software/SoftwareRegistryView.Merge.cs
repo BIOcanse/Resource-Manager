@@ -17,6 +17,7 @@ public sealed partial class SoftwareRegistryView
             Sources = records.SelectMany(static record => record.Sources).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             RootPaths = records.SelectMany(static record => record.RootPaths).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Kind = ResolveMergedKind(records),
+            HasExplicitKind = records.Any(static record => record.HasExplicitKind),
             DisplayKind = ResolveMergedDisplayKind(records),
             Message = string.Join(" | ", records.Select(static record => record.Message).Where(static item => !string.IsNullOrWhiteSpace(item))),
             RequiresRootPathConfirmation = records.Any(static record => record.RequiresRootPathConfirmation),

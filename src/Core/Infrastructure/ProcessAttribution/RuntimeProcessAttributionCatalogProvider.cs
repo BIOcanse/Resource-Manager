@@ -17,13 +17,14 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     IRuntimeRootIdentityResolver rootIdentityResolver,
     IRuntimeSystemProcessClassifier systemProcessClassifier,
     ISoftwareIdentityCatalog softwareIdentityCatalog,
-    HostManagerSoftwareIdentityOwner softwareIdentityOwner) : IRuntimeProcessAttributionCatalogProvider, IDisposable
+    HostManagerSoftwareIdentityOwner softwareIdentityOwner,
+    IWindowsGameListSource windowsGameListSource) : IRuntimeProcessAttributionCatalogProvider, IDisposable
 {
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(8);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
     private CatalogHolder? current;
-    private IReadOnlyList<SoftwareRecord>? cachedSoftware;
+    private SoftwareSnapshot? cachedSoftware;
     private DateTimeOffset cachedSoftwareAt;
     private long softwareSnapshotGeneration;
     private bool disposed;
@@ -44,7 +45,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
             var previous = current?.Catalog;
             var next = RuntimeProcessAttributionCatalog.CreateOrReuse(
                 previous,
-                software,
+                software.Software,
                 adapted,
                 controlled,
                 packageIdentityResolver,
@@ -52,7 +53,8 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 rootIdentityResolver,
                 systemProcessClassifier,
                 softwareIdentityCatalog,
-                softwareIdentityOwner);
+                softwareIdentityOwner,
+                software.WindowsGamePaths);
             if (cancellationToken.IsCancellationRequested)
             {
                 if (!ReferenceEquals(previous, next)) next.Dispose();
@@ -124,7 +126,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         retired?.Retire();
     }
 
-    private async Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
+    private async Task<SoftwareSnapshot> GetSoftwareAsync(CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         if (TryGetCachedSoftware(now, out var software))
@@ -141,7 +143,9 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 return software;
             }
 
-            software = await softwareRegistry.GetSoftwareAsync(cancellationToken);
+            var records = await softwareRegistry.GetSoftwareAsync(cancellationToken);
+            software = new SoftwareSnapshot(records,
+                WindowsGameListPaths.Normalize(windowsGameListSource.ReadExecutablePaths()));
             lock (lifecycleGate)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
@@ -158,7 +162,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     private bool TryGetCachedSoftware(
         DateTimeOffset now,
-        out IReadOnlyList<SoftwareRecord> software)
+        out SoftwareSnapshot software)
     {
         lock (lifecycleGate)
         {
@@ -170,9 +174,13 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
             }
         }
 
-        software = [];
+        software = null!;
         return false;
     }
+
+    private sealed record SoftwareSnapshot(
+        IReadOnlyList<SoftwareRecord> Software,
+        IReadOnlySet<string> WindowsGamePaths);
 
     // Acquire is only called under lifecycleGate while this is the current holder.
     // Releases never acquire lifecycleGate; Native disposal occurs after retirement
