@@ -46,7 +46,6 @@ public sealed partial class WindowsProcessFieldOwner
             prepare?.Invoke(processes);
             foreach (var process in processes)
             {
-                using var release = prepare is null ? process : null;
                 if (process.Id <= 0) { excluded++; continue; }
                 if (!capture(process, out var sample, out var time, out var key)) { skipped++; continue; }
                 if (key is { } identity) live.Add(identity);
@@ -56,7 +55,11 @@ public sealed partial class WindowsProcessFieldOwner
         }
         finally
         {
-            if (prepare is not null) foreach (var process in processes) process.Dispose();
+            foreach (var process in processes)
+            {
+                try { process.Dispose(); }
+                catch { }
+            }
         }
         afterCapture?.Invoke(samples, live);
         var interval = tracker.UpdateInterval(includeCpu, now, cpu, Environment.ProcessorCount);

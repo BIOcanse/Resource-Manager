@@ -51,6 +51,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         uiDispatcher.CreateControl();
         _ = uiDispatcher.Handle;
         performanceOverlay = new PerformanceOverlayCoordinator(uiDispatcher);
+        desktopObservations.HostWindowVisibilityChanged += OnObservedHostWindowVisibilityChanged;
         singleInstance.RequestReceived += OnSingleInstanceRequest;
         singleInstance.StartListening(shutdown.Token);
 
@@ -126,6 +127,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
             RunDisposalAction(DisposeMainForm);
             RunDisposalAction(performanceOverlay.Dispose);
+            RunDisposalAction(() => desktopObservations.HostWindowVisibilityChanged -= OnObservedHostWindowVisibilityChanged);
             RunDisposalAction(desktopObservations.Dispose);
             RunDisposalAction(DisposeBackendGeneration);
             RunDisposalAction(singleInstance.Dispose);
@@ -307,9 +309,43 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         form.DiagnosticsRequested += OnDiagnosticsRequested;
         form.ExitRequested += OnExitRequested;
         form.FormClosed += OnMainFormClosed;
+        form.HandleCreated += OnMainFormHandleCreated;
+        form.HandleDestroyed += OnMainFormHandleDestroyed;
         mainForm = form;
+        if (form.IsHandleCreated)
+            desktopObservations.SetVisibilityWindow(form.Handle);
         ApplyBackendStateToForm(form);
         return form;
+    }
+
+    private void OnMainFormHandleCreated(object? sender, EventArgs args)
+    {
+        if (ReferenceEquals(mainForm, sender) && sender is MainForm form)
+            desktopObservations.SetVisibilityWindow(form.Handle);
+    }
+
+    private void OnMainFormHandleDestroyed(object? sender, EventArgs args)
+    {
+        if (ReferenceEquals(mainForm, sender) && sender is MainForm form)
+            desktopObservations.SetVisibilityWindow(IntPtr.Zero);
+    }
+
+    private void OnObservedHostWindowVisibilityChanged(IntPtr window, bool visible)
+    {
+        if (exiting || uiDispatcher.IsDisposed)
+            return;
+        try
+        {
+            uiDispatcher.BeginInvoke(new Action(() =>
+            {
+                if (mainForm is { IsDisposed: false, IsHandleCreated: true } form
+                    && form.Handle == window)
+                    form.SetDesktopOccluded(!visible);
+            }));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException)
+        {
+        }
     }
 
     private async Task<bool> EnsureBackendReadyAsync()
@@ -844,6 +880,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             return;
         }
 
+        desktopObservations.SetVisibilityWindow(IntPtr.Zero);
         mainForm = null;
         frontendConnectionState = FrontendConnectionState.NotStarted;
         if (!exiting)
@@ -866,6 +903,9 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         form.DiagnosticsRequested -= OnDiagnosticsRequested;
         form.ExitRequested -= OnExitRequested;
         form.FormClosed -= OnMainFormClosed;
+        form.HandleCreated -= OnMainFormHandleCreated;
+        form.HandleDestroyed -= OnMainFormHandleDestroyed;
+        desktopObservations.SetVisibilityWindow(IntPtr.Zero);
         if (!form.IsDisposed)
         {
             form.StopPolling();

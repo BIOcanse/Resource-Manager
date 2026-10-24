@@ -48,6 +48,20 @@ public sealed class ProcessThreadCountFieldTests
         Assert.Equal(IntPtr.Size == 8 ? 28 : 20, Marshal.OffsetOf<WindowsProcessEntry32>(nameof(WindowsProcessEntry32.ThreadCount)).ToInt32());
     }
 
+    [Fact]
+    public void CurrentCreationReadReturnsOnlyTheIdentityAndAlwaysClosesItsNativeHandle()
+    {
+        var api = new Api(); var reader = new WindowsProcessBasicMetricReader(api);
+        Assert.Equal((long)Basic.Birth, reader.ReadCurrentCreationFileTime(Environment.ProcessId));
+        Assert.Equal(1, api.Basic.TimeCalls); Assert.Equal(1, api.Basic.Closes);
+        Assert.Equal(new[] { 0x1000U }, api.OpenRights);
+        api.Basic.Fault = "close";
+        Assert.Null(reader.ReadCurrentCreationFileTime(Environment.ProcessId));
+        Assert.Equal(2, api.Basic.TimeCalls); Assert.Equal(2, api.Basic.Closes);
+        Assert.Null(reader.ReadCurrentCreationFileTime(0));
+        Assert.Equal(2, api.Basic.Opens);
+    }
+
     [Theory]
     [InlineData("identity-before")] [InlineData("identity-after")] [InlineData("close")]
     public void OriginalCreationAndCloseFailuresDoNotPublishThreadCount(string failure)

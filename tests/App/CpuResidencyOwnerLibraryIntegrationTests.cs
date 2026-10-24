@@ -158,6 +158,22 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     }
 
     [Fact]
+    public void EarlyInventoryCancellationDisposesEveryProcessAndThreadLeaseInItsOwnedArray()
+    {
+        var processes = new[] { new InventoryLease(), new InventoryLease(), new InventoryLease() };
+        var processVisits = 0;
+        Assert.False(EtwCpuResidencyCaptureOwner.VisitOwnedArray(processes, _ => ++processVisits < 2));
+        Assert.Equal(2, processVisits);
+        Assert.All(processes, process => Assert.True(process.Disposed));
+
+        var threads = new[] { new InventoryLease(), new InventoryLease(), new InventoryLease() };
+        var threadVisits = 0;
+        Assert.False(EtwCpuResidencyCaptureOwner.VisitOwnedArray(threads, _ => ++threadVisits < 2));
+        Assert.Equal(2, threadVisits);
+        Assert.All(threads, thread => Assert.True(thread.Disposed));
+    }
+
+    [Fact]
     public void RawOwnerStartsOnlyOnDemandAndStopPreservesBorrowedBrokerLifetime()
     {
         var broker = new Broker();
@@ -387,6 +403,11 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         public bool TryReadCreationFileTime(out ulong created)
         { created = index < births.Length ? births[index++] : 0; return created != 0; }
         public void Dispose() { }
+    }
+    private sealed class InventoryLease : IDisposable
+    {
+        public bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
     private sealed class Permit(bool active = true) : IMetricPublicationPermit
     {

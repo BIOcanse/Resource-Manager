@@ -54,6 +54,32 @@ public sealed class WindowsProcessBasicMetricReader
     internal WindowsProcessBasicMetricReader(IWindowsProcessBasicMetricApi api, TimeProvider? clock = null)
     { this.api = api; this.clock = clock ?? TimeProvider.System; }
 
+    /// <summary>Reads the current creation time for a PID without allocating a Process wrapper or observation.</summary>
+    internal long? ReadCurrentCreationFileTime(int processId)
+    {
+        if (processId <= 0) return null;
+        var handle = IntPtr.Zero;
+        var released = true;
+        long? creation = null;
+        try
+        {
+            handle = api.Open(processId, ProcessMetricReadMask.StartTime);
+            if (ValidHandle(handle) && api.Times(handle, out var created, out _, out _)
+                && created is > 0 and <= long.MaxValue)
+                creation = (long)created;
+        }
+        catch (Exception error) when (IsSourceFailure(error)) { }
+        finally
+        {
+            if (ValidHandle(handle))
+            {
+                try { released = api.Close(handle); }
+                catch (Exception error) when (IsSourceFailure(error)) { released = false; }
+            }
+        }
+        return released ? creation : null;
+    }
+
     public ProcessBasicMetricObservation Read(int processId, long creationFileTime, ProcessMetricReadMask mask)
         => mask.HasFlag(ProcessMetricReadMask.ThreadCount)
             ? ReadBatch([new(processId, creationFileTime, mask)])[0]

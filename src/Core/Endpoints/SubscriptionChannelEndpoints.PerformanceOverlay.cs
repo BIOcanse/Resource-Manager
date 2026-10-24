@@ -49,13 +49,27 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         processLease = null;
                     }
 
-                    var systemIds = enabled.SelectMany(static item => item.Metrics)
+                    var initialProcesses = processLease is null ? null : processSource.ReadLatest(
+                        new SchedulingProcessFactRequest(
+                            SchedulingProcessMetricMask.CpuUsage,
+                            new SchedulingGpuInventorySnapshot(
+                                SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
+                    var running = PerformanceOverlayProjection.SelectTargets(enabled, initialProcesses);
+                    var hasRunningTargets = running.Count > 0;
+
+                    var runningSoftwareIds = running.Select(static process => process.SoftwareId)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var runningSettings = enabled.Where(item => runningSoftwareIds.Contains(item.SoftwareId))
+                        .ToArray();
+                    var systemIds = runningSettings.SelectMany(static item => item.Metrics)
                         .Where(static id => !id.StartsWith("target.", StringComparison.OrdinalIgnoreCase))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToArray();
-                    var needsGpu = enabled.Any(static item => item.Metrics.Any(static id =>
+                    var needsGpu = runningSettings.Any(static item => item.Metrics.Any(static id =>
                         id is PerformanceOverlayMetricIds.Gpu or PerformanceOverlayMetricIds.Vram));
-                    var metricRequest = needsGpu
+                    var metricRequest = !hasRunningTargets
+                        ? MetricSampleRequest.ForIds([])
+                        : needsGpu
                         ? MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(systemIds)
                         : MetricSampleRequest.ForIds(systemIds);
                     if (metricKey != metricRequest.CacheKey)
@@ -69,9 +83,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     var hardware = metricLease is null ? null : metricSource.ReadLatest(metricRequest);
 
                     var resourceIds = new List<string>();
-                    if (enabled.Any(static item => item.Metrics.Contains(PerformanceOverlayMetricIds.Memory)))
+                    if (runningSettings.Any(static item => item.Metrics.Contains(PerformanceOverlayMetricIds.Memory)))
                         resourceIds.Add(ResourceBreakdownMetricIds.MemoryUsage);
-                    if (needsGpu)
+                    if (hasRunningTargets && needsGpu)
                     {
                         var indexes = hardware?.Gpus.Select(static gpu => gpu.Index).ToArray() ?? [];
                         foreach (var index in indexes)
@@ -94,12 +108,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     }
                     var breakdown = resourceLease is null ? null : resourceSource.ReadLatest(resourceRequest);
 
-                    var processes = processLease is null ? null : processSource.ReadLatest(
-                        new SchedulingProcessFactRequest(
-                            SchedulingProcessMetricMask.CpuUsage,
-                            hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
-                                SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
-                    var running = PerformanceOverlayProjection.SelectTargets(enabled, processes);
+                    var processes = processLease is null
+                        ? null
+                        : hasRunningTargets && hardware is not null
+                            ? processSource.ReadLatest(new SchedulingProcessFactRequest(
+                                SchedulingProcessMetricMask.CpuUsage, hardware.GpuInventory))
+                            : initialProcesses;
+                    running = PerformanceOverlayProjection.SelectTargets(enabled, processes);
                     if (running.Count > 0 && frameLease is null)
                         frameLease = frameSource.AcquireSubscription();
                     else if (running.Count == 0)

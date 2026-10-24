@@ -1,8 +1,9 @@
-using System.Diagnostics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Windows;
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
@@ -10,6 +11,7 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 public sealed class InteractiveDesktopObservationStore
 {
     internal static readonly TimeSpan MaximumAge = TimeSpan.FromSeconds(1);
+    private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private readonly Dictionary<int, InteractiveDesktopObservation> sessions = [];
     private readonly TimeProvider clock;
@@ -106,11 +108,10 @@ public sealed class InteractiveDesktopObservationStore
     {
         try
         {
-            using var process = Process.GetProcessById(observation.PublisherProcessId);
             return NativeMethods.ProcessIdToSessionId(checked((uint)observation.PublisherProcessId), out var session)
                 && session == observation.SessionId
-                && process.StartTime.ToFileTimeUtc() == observation.PublisherCreationFileTimeUtc
-                && StringComparer.OrdinalIgnoreCase.Equals(process.MainModule?.FileName,
+                && StringComparer.OrdinalIgnoreCase.Equals(WindowsProcessImagePathReader.TryRead(
+                        observation.PublisherProcessId, observation.PublisherCreationFileTimeUtc),
                     NativeUiLaunchHostedService.ResolveNativeUiPath());
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -121,9 +122,9 @@ public sealed class InteractiveDesktopObservationStore
     {
         try
         {
-            using var process = Process.GetProcessById(expected.ProcessId);
             return NativeMethods.ProcessIdToSessionId(checked((uint)expected.ProcessId), out var session)
-                && session <= int.MaxValue && process.StartTime.ToFileTimeUtc() == expected.StartKey
+                && session <= int.MaxValue
+                && BasicMetricReader.ReadCurrentCreationFileTime(expected.ProcessId) == expected.StartKey
                 ? checked((int)session) : null;
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)

@@ -15,6 +15,17 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsLoopbackApiAdministratorReaderTests
 {
+    [Fact]
+    public void RejectedConnectionsDoNotCreateDisposableTokenPlaceholders()
+    {
+        var context = new DefaultHttpContext();
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            Assert.False(WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out _, out var token));
+            Assert.Null(token);
+        }
+    }
+
     [Theory]
     [InlineData("127.0.0.1")]
     [InlineData("[::1]")]

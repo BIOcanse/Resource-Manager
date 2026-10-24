@@ -7,6 +7,7 @@ using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Domain.SoftwareDiscovery;
 using ResourceManager.App.Domain.SoftwareIdentity;
 using ResourceManager.App.Domain.ProcessAttribution;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.App.Infrastructure.ProcessAttribution;
 
@@ -279,20 +280,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
 
     private static PortableProcessCandidate[] CaptureCurrentProcesses()
     {
-        var processes = Process.GetProcesses();
-        try
-        {
-            return processes
+        return ProcessCollectionOwner.Use(Process.GetProcesses(), processes =>
+            processes
                 .Select(static process => new PortableProcessCandidate(process.Id))
-                .ToArray();
-        }
-        finally
-        {
-            foreach (var process in processes)
-            {
-                process.Dispose();
-            }
-        }
+                .ToArray());
     }
 
     private static string? SelectEventPath(params string?[] candidates)

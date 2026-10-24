@@ -7,6 +7,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration) : IDisposable
 {
     private static readonly Guid Provider = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
+    private static readonly Guid BoundaryProvider = EventSource.GetGuid(typeof(GpuAllocationBoundary));
     private readonly object lifecycle = new();
     private readonly object gate = new();
     private GpuAllocationLedger ledger = new();
@@ -96,7 +97,7 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
                     if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
                     try
                     {
-                        if (data.ProviderGuid == EventSource.GetGuid(typeof(GpuAllocationBoundary)))
+                        if (data.ProviderGuid == BoundaryProvider)
                         {
                             if ((int)data.ID == 1 && data.PayloadByName("session")?.ToString() == name) ready = true;
                             if (data.PayloadByName("session")?.ToString() == name && (int)data.ID is 2 or 3)
@@ -132,7 +133,7 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
                 }
                 logger.LogWarning(error, "GPU allocation event stream ended; the next requested read will retry.");
             });
-            current.EnableProvider(EventSource.GetGuid(typeof(GpuAllocationBoundary)));
+            current.EnableProvider(BoundaryProvider);
             current.EnableProvider(Provider, 0x41, EventIds);
             current.CaptureState(Provider, 0x41);
             current.EnableProvider(Provider, 0x41, EventIds);

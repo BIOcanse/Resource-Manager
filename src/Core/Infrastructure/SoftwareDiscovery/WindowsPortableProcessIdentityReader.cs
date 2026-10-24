@@ -1,7 +1,6 @@
 using System.Diagnostics;
-using System.Text;
 using ResourceManager.App.Domain.ProcessAttribution;
-using ResourceManager.App.Infrastructure.Windows;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.SoftwareDiscovery;
 
@@ -27,7 +26,7 @@ internal sealed class WindowsPortableProcessIdentityReader
             var processName = Clean(process.ProcessName)
                 ?? Clean(candidate.ProcessName)
                 ?? string.Empty;
-            var executablePath = TryReadExecutablePath(process)
+            var executablePath = WindowsProcessImagePathReader.TryRead(process)
                 ?? NormalizeCandidatePath(candidate.ExecutablePath);
             if (string.IsNullOrWhiteSpace(processName) || string.IsNullOrWhiteSpace(executablePath))
             {
@@ -56,38 +55,6 @@ internal sealed class WindowsPortableProcessIdentityReader
         finally
         {
             process?.Dispose();
-        }
-    }
-
-    private static string? TryReadExecutablePath(Process process)
-    {
-        var handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, process.Id);
-        if (handle != IntPtr.Zero && handle != new IntPtr(-1))
-        {
-            try
-            {
-                var size = 1024;
-                var builder = new StringBuilder(size);
-                if (NativeMethods.QueryFullProcessImageName(handle, 0, builder, ref size))
-                {
-                    return builder.ToString();
-                }
-            }
-            finally
-            {
-                NativeMethods.CloseHandle(handle);
-            }
-        }
-
-        try
-        {
-            return process.MainModule?.FileName;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException
-            or System.ComponentModel.Win32Exception
-            or NotSupportedException)
-        {
-            return null;
         }
     }
 

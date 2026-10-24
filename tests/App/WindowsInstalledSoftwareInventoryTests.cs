@@ -7,6 +7,25 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
 {
+    [Fact]
+    public void UnscopedScanReleasesTheCurrentIdentityToken()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var token = identity.AccessToken;
+        var expected = !identity.IsSystem;
+
+        Assert.Equal(expected, WindowsInstalledSoftwareInventory.IncludesCurrentUser(null, () => identity));
+
+        Assert.True(token.IsClosed);
+    }
+
+    [Fact]
+    public void ScopedScanDoesNotOpenAnUnusedIdentityToken()
+    {
+        Assert.False(WindowsInstalledSoftwareInventory.IncludesCurrentUser("S-1-5-21-1-2-3-1001",
+            () => throw new Xunit.Sdk.XunitException("A scoped scan does not need the service identity.")));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

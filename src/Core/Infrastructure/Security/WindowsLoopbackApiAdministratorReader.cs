@@ -1,4 +1,5 @@
 using System.Net;
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -28,10 +29,10 @@ public sealed partial class WindowsLoopbackApiAdministratorReader : ILoopbackApi
     }
 
     internal static bool TryOpenCallerToken(HttpContext context, out LoopbackApiCaller caller,
-        out SafeAccessTokenHandle callerToken)
+        [NotNullWhen(true)] out SafeAccessTokenHandle? callerToken)
     {
         caller = null!;
-        callerToken = SafeAccessTokenHandle.InvalidHandle;
+        callerToken = null;
         if (!OperatingSystem.IsWindows())
             return false;
 

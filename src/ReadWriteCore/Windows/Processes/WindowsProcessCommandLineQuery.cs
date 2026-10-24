@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
@@ -20,6 +21,20 @@ internal static class WindowsProcessCommandLineQuery
 {
     internal const int InformationClass = 60, MaximumBytes = ushort.MaxValue;
     internal static string Read(IntPtr process) => Read(process, NativeCalls.Instance);
+    internal static string Read(SafeProcessHandle process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        var addedReference = false;
+        try
+        {
+            process.DangerousAddRef(ref addedReference);
+            return Read(process.DangerousGetHandle());
+        }
+        finally
+        {
+            if (addedReference) process.DangerousRelease();
+        }
+    }
     internal static string Read(IntPtr process, IWindowsProcessCommandLineCalls calls)
     {
         _ = calls.Query(process, InformationClass, IntPtr.Zero, 0, out var length);

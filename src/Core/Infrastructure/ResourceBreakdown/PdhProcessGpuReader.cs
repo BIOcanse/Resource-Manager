@@ -1,14 +1,15 @@
-using System.Diagnostics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed class PdhProcessGpuReader
 {
+    private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     internal ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot ReadResidencyFields(
         ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot inventory)
         => ResourceManager.ReadWrite.ProcessFields.WindowsPdhProcessGpuFields.Read(snapshotSource, inventory);
@@ -157,18 +158,13 @@ public sealed class PdhProcessGpuReader
         {
             try
             {
-                using var process = Process.GetProcessById(expected.ProcessId);
-                if (process.StartTime.ToFileTimeUtc() == expected.StartKey)
+                if (BasicMetricReader.ReadCurrentCreationFileTime(expected.ProcessId) == expected.StartKey)
                 {
                     result.Add(expected);
                 }
             }
-            catch (Exception ex) when (ex is ArgumentException
-                or InvalidOperationException
-                or System.ComponentModel.Win32Exception
-                or NotSupportedException)
-            {
-            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+                or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
         return result;
     }

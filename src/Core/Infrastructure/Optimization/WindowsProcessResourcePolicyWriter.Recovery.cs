@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Windows;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -117,15 +118,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
 
             var startedAt = new DateTimeOffset(process.StartTime);
             var processName = process.ProcessName;
-            string? executablePath;
-            try
-            {
-                executablePath = process.MainModule?.FileName;
-            }
-            catch (Exception ex) when (IsExpectedProcessException(ex))
-            {
-                executablePath = null;
-            }
+            var executablePath = WindowsProcessImagePathReader.TryRead(process);
 
             long? affinity = null;
             if (requiredFields.HasFlag(ProcessPlacementReadFields.Affinity))
