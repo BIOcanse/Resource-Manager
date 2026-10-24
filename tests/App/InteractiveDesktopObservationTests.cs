@@ -62,6 +62,21 @@ public sealed class InteractiveDesktopObservationTests
     }
 
     [Fact]
+    public void UnreadableProcessIsMatchedByPidAndKeepsWindowlessProcessesBackground()
+    {
+        var store = new InteractiveDesktopObservationStore(new Clock(), _ => true, _ => 1);
+        var unverified = DesktopProcessWindowObservation.UnverifiedCreationTime;
+        Assert.True(store.Publish(new InteractiveDesktopObservation(999, Start, 1, Epoch.UtcTicks, true, true,
+            Window(100, unverified), [Window(100, unverified), Window(101)])));
+        var result = store.Read([new(100, Start), new(101, Start), new(102, Start)]);
+        Assert.True(result.Processes[new(100, Start)].ForegroundFocused);
+        Assert.Equal(HostManagerRuntimeStates.ForegroundUnfocused, result.Processes[new(101, Start)].RuntimeState);
+        Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, result.Processes[new(102, Start)].RuntimeState);
+        // A process that started after the observation cannot inherit the PID-only row.
+        Assert.Null(store.IsForeground(100, Epoch.AddSeconds(1).UtcDateTime.ToFileTimeUtc()));
+    }
+
+    [Fact]
     public void RejectsUnverifiedPublisherAndDuplicateProcessRows()
     {
         var store = new InteractiveDesktopObservationStore(new Clock(), _ => false, _ => 1);
