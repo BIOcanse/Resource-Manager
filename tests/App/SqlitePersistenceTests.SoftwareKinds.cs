@@ -44,7 +44,8 @@ public sealed partial class SqlitePersistenceTests
             Assert.Empty(registration.RootPaths);
             var genshin = catalog.Pipeline.Match(new RuntimeProcessIdentity(
                 4242, null, "YuanShen", executable, false));
-            Assert.Equal(registration.Name, genshin.Name);
+            // The registration keeps its id and paths; name and kind come from the current catalog entry.
+            Assert.Equal("Genshin Impact", genshin.Name);
             Assert.Equal(SoftwareKinds.Game, genshin.Kind);
 
             var inventoryFact = new SchedulingProcessFact(4242, 123, "YuanShen", executable,
@@ -53,7 +54,7 @@ public sealed partial class SqlitePersistenceTests
                 inventoryFact, genshin, CompiledBaseScorePlan.Empty, processKey: null);
             Assert.Equal(4242, fact.ProcessId);
             Assert.Equal(registration.SoftwareId, fact.SoftwareId);
-            Assert.Equal(registration.Name, fact.SoftwareName);
+            Assert.Equal("Genshin Impact", fact.SoftwareName);
             Assert.Equal(SoftwareKinds.Game, fact.SoftwareKind);
             Assert.Equal(95D, fact.BaseScore);
             Assert.Equal(5U, NativeSoftwareKindMap.ToNative(fact.SoftwareKind));
