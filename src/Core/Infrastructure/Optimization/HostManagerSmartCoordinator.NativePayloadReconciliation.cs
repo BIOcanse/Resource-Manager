@@ -21,9 +21,18 @@ public sealed partial class HostManagerSmartCoordinator
             checked(journalSnapshot.Records.Count + ownershipSnapshot.Records.Count));
         foreach (var record in journalSnapshot.Records)
         {
-            live.Add(new NativeTransactionJournalPayloadLiveReference(
-                HostManagerTransactionJournalProjection.CreatePayloadReference(in record),
-                HostManagerTransactionJournalProjection.CreatePayloadProvenance(in record)));
+            try
+            {
+                live.Add(new NativeTransactionJournalPayloadLiveReference(
+                    HostManagerTransactionJournalProjection.CreatePayloadReference(in record),
+                    HostManagerTransactionJournalProjection.CreatePayloadProvenance(in record)));
+            }
+            catch (InvalidDataException exception)
+            {
+                logger.LogWarning(exception,
+                    "Journal record {ActionId} has no valid payload reference; its target remains protected.",
+                    record.Identity.ActionId);
+            }
         }
         foreach (var record in ownershipSnapshot.Records)
         {

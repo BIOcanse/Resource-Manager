@@ -32,7 +32,6 @@ internal sealed partial class NativeTransactionJournalPayloadStore
             var allocationSequence = await ReadSequenceAsync(
                 allowMissingForEmptyStore: true,
                 cancellationToken);
-            QuarantineNonCanonicalPayloadFiles();
             var canonicalPaths = Directory
                 .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
                 .Where(path => !string.Equals(
@@ -43,7 +42,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore
                 .ToArray();
             var livePayloadCount = 0;
             long livePayloadBytes = 0;
-            var deleted = 0;
+            var deleted = DeleteSettledQuarantinedPayloads(liveIdentities);
             foreach (var path in canonicalPaths)
             {
                 CanonicalPayloadFile file;
@@ -55,12 +54,12 @@ internal sealed partial class NativeTransactionJournalPayloadStore
                 }
                 catch (InvalidDataException)
                 {
-                    QuarantinePayloadFile(path);
+                    deleted += RetainInvalidPayloadFile(path, liveIdentities);
                     continue;
                 }
                 catch (EndOfStreamException)
                 {
-                    QuarantinePayloadFile(path);
+                    deleted += RetainInvalidPayloadFile(path, liveIdentities);
                     continue;
                 }
                 catch (FileNotFoundException)

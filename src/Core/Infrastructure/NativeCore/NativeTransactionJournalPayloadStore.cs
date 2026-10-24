@@ -317,7 +317,6 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
     {
         var count = 0;
         long bytes = 0;
-        QuarantineNonCanonicalPayloadFiles();
         var paths = Directory
             .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
             .ToArray();
@@ -328,11 +327,16 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             {
                 continue;
             }
+            // Live records are not available at construction. Reconciliation decides
+            // whether invalid files are evidence to retain or unreferenced garbage.
+            if (!TryParseCanonicalPayloadFileName(fileName))
+            {
+                continue;
+            }
 
             var fileLength = new FileInfo(path).Length;
             if (fileLength <= PayloadHeaderSize)
             {
-                QuarantinePayloadFile(path);
                 continue;
             }
             count = checked(count + 1);
@@ -733,20 +737,27 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
                  "*",
                  SearchOption.TopDirectoryOnly).Any());
 
-    private void QuarantineNonCanonicalPayloadFiles()
+    private int DeleteSettledQuarantinedPayloads(HashSet<(uint Slot, uint Generation)> liveIdentities)
     {
-        var paths = Directory
-            .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
-            .ToArray();
-        foreach (var path in paths)
+        if (!Directory.Exists(quarantineDirectoryPath))
         {
+            return 0;
+        }
+        var deleted = 0;
+        foreach (var path in Directory.EnumerateFiles(
+            quarantineDirectoryPath, "*", SearchOption.TopDirectoryOnly))
+        {
+            // The canonical prefix binds even a corrupt header to its live reference.
             var fileName = Path.GetFileName(path);
-            if (!fileName.Equals(SequenceFileName, StringComparison.Ordinal) &&
-                !TryParseCanonicalPayloadFileName(fileName))
+            var suffix = fileName.IndexOf(".bin.", StringComparison.Ordinal);
+            var canonicalName = suffix < 0 ? fileName : fileName[..(suffix + 4)];
+            if (!TryParseCanonicalPayloadFileName(canonicalName, out var generation, out var slot)
+                || !liveIdentities.Contains((slot, generation)))
             {
-                QuarantinePayloadFile(path);
+                deleted += DeleteUnreferencedPayloadFile(path);
             }
         }
+        return deleted;
     }
 
     private void QuarantinePayloadFile(string path)
@@ -759,6 +770,29 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         System.Diagnostics.Trace.TraceWarning(
             "Quarantined invalid native transaction journal rollback payload: {0}",
             destinationPath);
+    }
+
+    private static int DeleteUnreferencedPayloadFile(string path)
+    {
+        if (WindowsNativeAtomicFileCommitter.DeleteExact(path) != WindowsNativeFileDeleteResult.Deleted)
+        {
+            return 0;
+        }
+        System.Diagnostics.Trace.TraceWarning(
+            "Deleted unreferenced native transaction journal rollback payload: {0}", path);
+        return 1;
+    }
+
+    private int RetainInvalidPayloadFile(
+        string path, HashSet<(uint Slot, uint Generation)> liveIdentities)
+    {
+        if (TryParseCanonicalPayloadFileName(Path.GetFileName(path), out var generation, out var slot)
+            && liveIdentities.Contains((slot, generation)))
+        {
+            QuarantinePayloadFile(path);
+            return 0;
+        }
+        return DeleteUnreferencedPayloadFile(path);
     }
 
     private string ResolvePayloadPath(uint slot, uint generation)

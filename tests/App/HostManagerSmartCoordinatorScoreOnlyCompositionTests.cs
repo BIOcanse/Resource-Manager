@@ -5843,7 +5843,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ulong processStartKey,
             string softwareId,
             bool memoryPolicy,
-            ulong actionId)
+            ulong actionId,
+            byte[]? rollbackPayload = null)
         {
             Assert.True(NativeTransactions.TryAcquireExecutionAdmission(out var admission));
             Assert.NotNull(admission);
@@ -5913,7 +5914,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     GroupMemberIndex: 0,
                     GroupMemberCount: 0);
                 Assert.True(binding.IsValid);
-                var payload = memoryPolicy
+                var payload = rollbackPayload ?? (memoryPolicy
                     ? HostManagerProcessPolicyRollbackPayloadCodec.Encode(
                         new HostManagerProcessPolicyRollbackPayload(
                             HostManagerProcessPolicyTransactionFields.MemoryPriority,
@@ -5924,7 +5925,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                             BaselinePowerControlMask: 0,
                             BaselinePowerStateMask: 0,
                             TargetMemoryPriority: 3))
-                    : BitConverter.GetBytes(actionId);
+                    : BitConverter.GetBytes(actionId));
                 var payloadReference = await admission.PersistPayloadAsync(
                     binding,
                     payload,

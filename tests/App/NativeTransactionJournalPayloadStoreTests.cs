@@ -11,6 +11,54 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeTransactionJournalPayloadStoreTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task QuarantineRetainsOnlyLiveEvidenceAcrossRestartAndSettlement(bool truncated)
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var binding = CreateBinding(actionId: 100);
+            NativeTransactionJournalPayloadReference reference;
+            using (var initial = CreateStore(root))
+            {
+                reference = await initial.PersistAsync(binding, new byte[] { 1, 2 }, CancellationToken.None);
+            }
+            var path = Path.Combine(root, $"payload-{reference.Generation:D10}-{reference.Slot:D10}.bin");
+            var evidence = truncated ? new byte[] { 0xBA, 0xD } : await File.ReadAllBytesAsync(path);
+            if (!truncated) evidence[^1] ^= 0x40;
+            await File.WriteAllBytesAsync(path, evidence);
+            var live = new[] { new NativeTransactionJournalPayloadLiveReference(
+                reference, NativeTransactionJournalPayloadProvenance.Create(binding)) };
+            var quarantine = Path.Combine(root, "quarantine");
+            using (var reopened = CreateStore(root))
+            {
+                // Construction must wait for the live set before moving/deleting evidence.
+                Assert.Equal(evidence, await File.ReadAllBytesAsync(path));
+                var result = await reopened.ReconcileAsync(live, CancellationToken.None);
+                Assert.Equal(0, result.DeletedPayloadCount);
+                var retained = Assert.Single(Directory.EnumerateFiles(quarantine));
+                Assert.Equal(evidence, await File.ReadAllBytesAsync(retained));
+            }
+            using var restarted = CreateStore(root);
+            Assert.Equal(0, (await restarted.ReconcileAsync(live, CancellationToken.None)).DeletedPayloadCount);
+            Assert.Equal(evidence, await File.ReadAllBytesAsync(Assert.Single(Directory.EnumerateFiles(quarantine))));
+            var settled = await restarted.ReconcileAsync(
+                ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty, CancellationToken.None);
+            Assert.Equal(1, settled.DeletedPayloadCount);
+            Assert.Empty(Directory.EnumerateFiles(quarantine));
+            Assert.Equal(0, (await restarted.ReconcileAsync(
+                ReadOnlyMemory<NativeTransactionJournalPayloadLiveReference>.Empty, CancellationToken.None)).DeletedPayloadCount);
+            var next = await restarted.PersistAsync(CreateBinding(actionId: 101), new byte[] { 3 }, CancellationToken.None);
+            Assert.True(ToSequence(next) > ToSequence(reference));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task ConflictingProvenanceClaimDoesNotHideExactOwner()
     {
@@ -367,7 +415,7 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     }
 
     [Fact]
-    public async Task CorruptOrphanIsQuarantinedAndDoesNotBlockNewPayloads()
+    public async Task CorruptOrphanIsDeletedAndDoesNotBlockNewPayloads()
     {
         var root = CreateTempDirectory();
         try
@@ -403,14 +451,10 @@ public sealed class NativeTransactionJournalPayloadStoreTests
                 $"payload-{first.Generation:D10}-{first.Slot:D10}.bin");
             Assert.Equal(0, result.LivePayloadCount);
             Assert.Equal(0, result.LivePayloadBytes);
-            Assert.Equal(1, result.DeletedPayloadCount);
+            Assert.Equal(2, result.DeletedPayloadCount);
             Assert.False(File.Exists(firstPath));
             Assert.False(File.Exists(corruptPath));
-            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
-                Path.Combine(root, "quarantine"),
-                "*",
-                SearchOption.TopDirectoryOnly));
-            Assert.Equal(bytes, await File.ReadAllBytesAsync(quarantinedPath));
+            Assert.False(Directory.Exists(Path.Combine(root, "quarantine")));
             var nextBinding = CreateBinding(actionId: 18);
             var next = await reopened.PersistAsync(
                 nextBinding,
@@ -502,7 +546,7 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     }
 
     [Fact]
-    public async Task NonCanonicalPayloadFileIsQuarantinedAndNewEffectsCanPersist()
+    public async Task NonCanonicalPayloadFileIsDeletedAndNewEffectsCanPersist()
     {
         var root = CreateTempDirectory();
         try
@@ -533,13 +577,9 @@ public sealed class NativeTransactionJournalPayloadStoreTests
 
             Assert.Equal(1, result.LivePayloadCount);
             Assert.Equal(2, result.LivePayloadBytes);
-            Assert.Equal(0, result.DeletedPayloadCount);
+            Assert.Equal(1, result.DeletedPayloadCount);
             Assert.False(File.Exists(badPath));
-            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
-                Path.Combine(root, "quarantine"),
-                "*",
-                SearchOption.TopDirectoryOnly));
-            Assert.Equal(badBytes, await File.ReadAllBytesAsync(quarantinedPath));
+            Assert.False(Directory.Exists(Path.Combine(root, "quarantine")));
 
             var nextBinding = CreateBinding(actionId: 23);
             _ = await reopened.PersistAsync(
@@ -554,7 +594,7 @@ public sealed class NativeTransactionJournalPayloadStoreTests
     }
 
     [Fact]
-    public async Task QuarantinedPayloadStillPreventsSequenceReuseWhenSequenceIsMissing()
+    public async Task UnreconciledInvalidPayloadStillPreventsSequenceReuseWhenSequenceIsMissing()
     {
         var root = CreateTempDirectory();
         try
@@ -564,12 +604,8 @@ public sealed class NativeTransactionJournalPayloadStoreTests
             await File.WriteAllBytesAsync(badPath, badBytes);
 
             using var store = CreateStore(root);
-            Assert.False(File.Exists(badPath));
-            var quarantinedPath = Assert.Single(Directory.EnumerateFiles(
-                Path.Combine(root, "quarantine"),
-                "*",
-                SearchOption.TopDirectoryOnly));
-            Assert.Equal(badBytes, await File.ReadAllBytesAsync(quarantinedPath));
+            Assert.Equal(badBytes, await File.ReadAllBytesAsync(badPath));
+            Assert.False(Directory.Exists(Path.Combine(root, "quarantine")));
 
             await Assert.ThrowsAsync<InvalidDataException>(() =>
                 store.PersistAsync(

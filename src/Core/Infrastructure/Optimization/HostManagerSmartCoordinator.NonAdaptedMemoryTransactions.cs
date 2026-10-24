@@ -91,6 +91,12 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var directive = admitted.Processes[index];
+                if (await SkipPendingJournalTargetAsync(admission,
+                        HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),
+                        NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+                {
+                    continue;
+                }
                 var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                     checked((uint)directive.ProcessId),
                     directive.ProcessStartKey);
@@ -319,6 +325,12 @@ public sealed partial class HostManagerSmartCoordinator
     {
         permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
         var directive = decision.TransactionDirective;
+        if (await SkipPendingJournalTargetAsync(admission,
+                HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),
+                NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+        {
+            return default;
+        }
         var target = directive.TargetMemoryPriority
             ?? throw new InvalidDataException(
                 "A fresh process-memory apply has no explicit target.");
@@ -425,6 +437,14 @@ public sealed partial class HostManagerSmartCoordinator
                 cancellationToken);
             prepareRejectedWithoutMutation =
                 prepareStatus != NativeTransactionJournalStatus.Ok;
+            if (prepareStatus == NativeTransactionJournalStatus.InvalidTransition
+                && await SkipPendingJournalTargetAsync(admission,
+                    HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),
+                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+            {
+                _ = await admission.DeletePayloadAsync(payloadReference, actionBinding, CancellationToken.None);
+                return default;
+            }
             RequireJournalStatus(
                 prepareStatus,
                 "prepare-process-memory-apply");
@@ -493,6 +513,11 @@ public sealed partial class HostManagerSmartCoordinator
             CancellationToken cancellationToken)
     {
         permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
+        if (await SkipPendingJournalTargetAsync(admission, ownership.Primary,
+                NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+        {
+            return default;
+        }
         var journalPlan = nativeActionTransactions.CurrentJournalPlan;
         var action = decision.Kind ==
             HostManagerNonAdaptedMemoryDirectiveDecisionKind
@@ -576,9 +601,14 @@ public sealed partial class HostManagerSmartCoordinator
                 throw new InvalidOperationException(
                     "The process-memory restore validation target was not durably declared.");
             }
-            RequireJournalStatus(
-                await admission.PrepareAsync(prepare, cancellationToken),
-                "prepare-process-memory-restore");
+            var prepareStatus = await admission.PrepareAsync(prepare, cancellationToken);
+            if (prepareStatus == NativeTransactionJournalStatus.InvalidTransition
+                && await SkipPendingJournalTargetAsync(admission, ownership.Primary,
+                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+            {
+                return default;
+            }
+            RequireJournalStatus(prepareStatus, "prepare-process-memory-restore");
             record = await RequireJournalRecordAsync(
                 admission,
                 prepare.Identity,

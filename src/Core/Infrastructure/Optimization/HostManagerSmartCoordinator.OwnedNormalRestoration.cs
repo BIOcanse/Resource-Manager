@@ -154,6 +154,11 @@ public sealed partial class HostManagerSmartCoordinator
             .ThenBy(static pair => pair.Key.TargetKey))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (await SkipPendingJournalTargetAsync(admission, pair.Value.Primary,
+                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+            {
+                continue;
+            }
             if (restored >= maximumActions || permit.OwnedMemoryRestoreRemaining == 0)
             {
                 return false;
@@ -189,6 +194,12 @@ public sealed partial class HostManagerSmartCoordinator
                 NextOwnedRestoreActionId(NonAdaptedMemoryActionIdNamespace),
                 admission,
                 cancellationToken);
+            if (!result.TransactionPrepared
+                && await SkipPendingJournalTargetAsync(admission, pair.Value.Primary,
+                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
+            {
+                continue;
+            }
             if (!result.TransactionPrepared || result.IsBlocked)
             {
                 return false;

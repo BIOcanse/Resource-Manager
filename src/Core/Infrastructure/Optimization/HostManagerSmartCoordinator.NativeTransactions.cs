@@ -125,6 +125,13 @@ public sealed partial class HostManagerSmartCoordinator
     {
         permit.Require(HostManagerCycleEffectKind.NativeActionTransaction);
         var primary = CreateAppliedOwnershipPrimary(in action);
+        if (await SkipPendingJournalTargetAsync(admission, primary,
+                (NativeTransactionJournalDomain)action.DomainMask, cancellationToken))
+        {
+            return NativeTransactionActionResult.Direct(CreateNativeFeedback(
+                action, NativeSmartCoordinatorFeedbackStatus.Skipped,
+                durableTimeSource.NextUtc()));
+        }
         var ownershipRead = await nativeActionTransactions.AppliedOwnership.GetAsync(
             primary,
             cancellationToken);
@@ -308,6 +315,17 @@ public sealed partial class HostManagerSmartCoordinator
                 cancellationToken);
             prepareRejectedWithoutMutation =
                 prepareStatus != NativeTransactionJournalStatus.Ok;
+            if (prepareStatus == NativeTransactionJournalStatus.InvalidTransition
+                && await SkipPendingJournalTargetAsync(admission, primary,
+                    (NativeTransactionJournalDomain)action.DomainMask, cancellationToken))
+            {
+                if (persistedForThisAction)
+                {
+                    _ = await admission.DeletePayloadAsync(payloadReference, payloadBinding, CancellationToken.None);
+                }
+                return NativeTransactionActionResult.Direct(CreateNativeFeedback(
+                    action, NativeSmartCoordinatorFeedbackStatus.Skipped, durableTimeSource.NextUtc()));
+            }
             RequireJournalStatus(prepareStatus, "prepare");
             prepareCompleted = true;
             record = await RequireJournalRecordAsync(
@@ -1307,6 +1325,22 @@ public sealed partial class HostManagerSmartCoordinator
 
     private static ulong CheckedAdd(ulong value, ulong delta)
         => checked(value + delta);
+
+    private async Task<bool> SkipPendingJournalTargetAsync(
+        HostManagerTransactionJournalAdmission admission,
+        NativeAppliedOwnershipPrimaryIdentity target,
+        NativeTransactionJournalDomain domains,
+        CancellationToken cancellationToken)
+    {
+        if (!await admission.HasPendingTargetAsync(target, domains, cancellationToken))
+        {
+            return false;
+        }
+        logger.LogWarning(
+            "Skipping target with an unsettled journal record: scope {Scope}, process {ProcessId}/{ProcessStartKey}, software {SoftwareId}, domains {Domains}.",
+            target.Scope, target.ProcessId, target.ProcessStartKey, target.SoftwareId, domains);
+        return true;
+    }
 
     private static void RequireJournalStatus(
         NativeTransactionJournalStatus status,
