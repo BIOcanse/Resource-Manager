@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Controlled;
@@ -30,7 +31,7 @@ namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder app)
+    private static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder app, StartupCapabilitySet startupCapabilities)
     {
         app.MapGet("/api/settings/app", async (
             IAppSettingsStore settingsStore,
@@ -39,6 +40,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await settingsStore.LoadReadOnlyAsync(cancellationToken));
         }).AllowAnonymous();
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPut("/api/settings/app", async (
             AppSettings settings,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
@@ -64,6 +66,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             };
         });
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPatch("/api/settings/app", async (
             AppSettingsPatchRequest patch,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
@@ -101,6 +104,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             };
         });
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPost("/api/settings/app/reapply", async (
             IAppSettingsStore settingsStore,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
@@ -140,6 +144,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(result with { Settings = settings });
         }).AllowAnonymous();
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPut("/api/settings/dashboard", async (
             DashboardSettings settings,
             IDashboardSettingsStore settingsStore,

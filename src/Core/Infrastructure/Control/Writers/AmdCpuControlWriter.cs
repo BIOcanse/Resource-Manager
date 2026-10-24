@@ -3,14 +3,16 @@ using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.ReadWrite.Vendors.Amd;
+using ResourceManager.App.Hosting.StartupCapabilities;
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// <summary>Product routing/copy/baseline-path adapter; execution and the original baseline map are SDK owned.</summary>
 public sealed class AmdCpuControlWriter : IControlWriter, IDisposable
 {
     private readonly AmdCpuControlResource resource;
     internal AmdCpuControlResource Resource => resource;
-    public AmdCpuControlWriter(HardwareBridgeClient bridge, IHostEnvironment environment, ILogger<AmdCpuControlWriter>? logger = null)
-        => resource = new(bridge, new(file => ControlDataPaths.FilePath(environment.ContentRootPath, file)), Describe,
+    public AmdCpuControlWriter(HardwareBridgeClient bridge, IHostEnvironment environment, ILogger<AmdCpuControlWriter>? logger = null,
+        StartupCapabilitySet? capabilities = null)
+        => resource = new(bridge, new(file => ControlDataPaths.FilePath(environment.ContentRootPath, file, capabilities)), Describe,
             logger is null ? null : (error, code, args) => logger.LogWarning(error, "{Detail}", Describe(code, args)));
     internal const string PowerLimitCapabilityId = "cpu.power-limit";
     internal const string SlowPowerLimitCapabilityId = "cpu.slow-power-limit";
@@ -72,6 +74,7 @@ public sealed class AmdCpuControlWriter : IControlWriter, IDisposable
             AmdCpuControlMessage.ReadbackWarning => "处理器 {0}（{1}）没写进去：要 {2}，回读 {3}。",
             AmdCpuControlMessage.ReadBaselineWarning => "读不到基线：{0}",
             AmdCpuControlMessage.WriteBaselineWarning => "存不下基线：{0}",
+            AmdCpuControlMessage.BaselineUnavailable => "无法确认并持久保存此处理器的恢复基线，未执行写入。",
             _ => code.ToString()
         };
         return string.Format(System.Globalization.CultureInfo.CurrentCulture,format,arguments.ToArray());

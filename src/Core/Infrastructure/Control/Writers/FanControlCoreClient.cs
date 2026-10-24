@@ -80,13 +80,6 @@ public sealed partial class FanControlCoreClient(
             describedFans = null;
             refreshDetection = true;
         }
-        // 曲线也一起丢掉：用户点"重新检测"要的是重新问一遍硬件，
-        // 不是看我们上次记下的那份答案。别的软件、或者换了性能档位，
-        // 固件那张表都可能已经不是我们存的那条了。
-        lock (curveGate)
-        {
-            curves.Clear();
-        }
     }
 
     private IReadOnlyList<FanCoreFan> ReadDescription()
@@ -119,7 +112,6 @@ public sealed partial class FanControlCoreClient(
             && name.ValueKind == JsonValueKind.String
                 ? name.GetString()
                 : null;
-        needsTemperatures = Flag(result, "needsTemperatures");
         temperatureNotifications = Flag(result, "temperatureNotifications");
         /*
          * 通道用不上时那句**具体**原因。
@@ -182,22 +174,12 @@ public sealed partial class FanControlCoreClient(
 
     /// <summary>
     /// 读取核心的曲线回执，无法确认完整读值时返回 null。
-    /// 固件表读取可能较慢，单独请求并缓存；软件计划可能随时退出，每次重新读取。
+    /// 每次显式编辑都重新读取；OEM 工具或性能档位可能已经改变固件表。
     /// </summary>
     public async Task<IReadOnlyList<ControlCurvePoint>?> ReadCurveAsync(
         int fanIndex,
         CancellationToken cancellationToken)
     {
-        // Cache only a confirmed firmware table. Writes, cancellation and explicit
-        // detection reset invalidate it; a software plan's lifetime belongs to the core.
-        lock (curveGate)
-        {
-            if (curves.TryGetValue(fanIndex, out var cached))
-            {
-                return cached;
-            }
-        }
-
         var response = await SendAsync(
                 "curve",
                 new Dictionary<string, object?> { ["fan"] = fanIndex },
@@ -206,7 +188,6 @@ public sealed partial class FanControlCoreClient(
         if (response is not { } result) return null;
         var points = ParseCurveReceipt(result);
         if (points is null) return null;
-        StoreCurveReceipt(fanIndex, result, points);
         return points;
     }
 
@@ -233,25 +214,62 @@ public sealed partial class FanControlCoreClient(
     }
 
     /// <summary>
-    /// 这台机器要不要我们喂温度。
-    ///
-    /// 曲线归固件执行的机器**一次都不用推** —— 由核心在 describe 里回答，
-    /// 我们不去猜。和风扇清单同一份缓存，问它很便宜。
+    /// 只有本客户端已成功应用、尚未撤销的软件曲线需要温度；能力探测不是需求。
     /// </summary>
     public bool NeedsTemperatures()
     {
-        lock (describeGate)
-        {
-            // 清单没探过就先探一遍：这一条和风扇清单是同一次 describe 的结果。
-            if (describedFans is null)
-            {
-                describedFans = ReadDescription();
-            }
-        }
-        return needsTemperatures;
+        lock (softwareCurveGate) return softwareCurves.Count > 0;
     }
 
-    private volatile bool needsTemperatures;
+    private readonly object softwareCurveGate = new();
+    private readonly HashSet<int> softwareCurves = [];
+    internal event Action? TemperatureDemandChanged;
+
+    private void UpdateSoftwareCurve(int fanIndex, bool active)
+    {
+        bool changed;
+        lock (softwareCurveGate)
+        {
+            var needed = softwareCurves.Count > 0;
+            if (active && !disposed && !stopping) softwareCurves.Add(fanIndex);
+            else softwareCurves.Remove(fanIndex);
+            changed = needed != (softwareCurves.Count > 0);
+        }
+        if (changed) TemperatureDemandChanged?.Invoke();
+    }
+
+    private void ClearSoftwareCurves(Process? owner = null)
+    {
+        bool changed;
+        lock (softwareCurveGate)
+        {
+            if (owner is not null && !ReferenceEquals(process, owner)) return;
+            changed = softwareCurves.Count > 0;
+            softwareCurves.Clear();
+        }
+        if (changed) TemperatureDemandChanged?.Invoke();
+    }
+
+    private void ObserveSoftwareCurveReceipt(string operation, IReadOnlyDictionary<string, object?>? arguments, JsonElement response)
+    {
+        if (arguments is null || !arguments.TryGetValue("fan", out var value) || value is not int fanIndex
+            || !Flag(response, "ok")) return;
+        if (operation == "setcurve" && ParseCurveReceipt(response) is not null
+            && Text(response, "execution") is ControlFanCurveExecutions.Software or ControlFanCurveExecutions.Firmware)
+        {
+            UpdateSoftwareCurve(fanIndex, Text(response, "execution") == ControlFanCurveExecutions.Software);
+        }
+        else if (operation is "set" or "boost"
+            || operation == "auto" && response.TryGetProperty("fans", out var fans) && fans.ValueKind == JsonValueKind.Array
+                && fans.EnumerateArray().Any(fan => Integer(fan, "index") == fanIndex && Flag(fan, "automaticControl")))
+        {
+            UpdateSoftwareCurve(fanIndex, false);
+        }
+        else if (operation == "curve" && Text(response, "execution") != ControlFanCurveExecutions.Software)
+        {
+            UpdateSoftwareCurve(fanIndex, false);
+        }
+    }
 
     /// <summary>
     /// 这条通道用不上时，核心给的那句具体原因。用得上就是 null。
@@ -280,9 +298,10 @@ public sealed partial class FanControlCoreClient(
     /// 排一堆旧温度进去，等轮到它们时每一条都已经过期了 ——
     /// 核心那边宁可短暂收不到（它有自己的时效兜底），也不该按着过期的数调速。
     /// </summary>
-    public async Task PushTemperaturesAsync(
+    public async Task<bool> PushTemperaturesAsync(
         IReadOnlyDictionary<string, FanTemperatureSample> samples,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool skipIfBusy = true)
     {
         ArgumentNullException.ThrowIfNull(samples);
         var arguments = new Dictionary<string, object?>
@@ -290,57 +309,40 @@ public sealed partial class FanControlCoreClient(
             ["samples"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.Celsius),
             ["observedAtUtcTicks"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.ObservedAtUtcTicks)
         };
-        if (temperatureNotifications)
+        if (temperatureNotifications && skipIfBusy)
         {
-            if (!await inputGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return;
+            if (!await inputGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return false;
             try
             {
-                if (stopping || process is not { HasExited: false } running) return;
+                if (stopping || process is not { HasExited: false } running) return false;
                 arguments["op"] = "temp";
                 arguments["notification"] = true;
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromMilliseconds(500));
                 await running.StandardInput.WriteLineAsync(JsonSerializer.Serialize(arguments).AsMemory(), timeout.Token).ConfigureAwait(false);
                 await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+                return true;
             }
             catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException)
             {
                 logger?.LogDebug(error, "温度通知未送达。");
+                return false;
             }
             finally
             {
                 inputGate.Release();
                 if (disposed || stopping) Stop();
             }
-            return;
         }
         // Older installed cores still use acknowledged, serialized temperature requests.
-        await SendAsync(
+        var response = await SendAsync(
                 "temp",
                 arguments,
                 cancellationToken,
-                skipIfBusy: true)
+                skipIfBusy: skipIfBusy)
             .ConfigureAwait(false);
+        return response is { } result && Flag(result, "ok");
     }
-
-    private readonly object curveGate = new();
-    internal void InvalidateCurve(int fanIndex)
-    {
-        lock (curveGate) curves.Remove(fanIndex);
-    }
-
-    /// <summary>消费完整有效的曲线回执，只缓存实际归固件执行的表。</summary>
-    internal void StoreCurveReceipt(int fanIndex, JsonElement response, IReadOnlyList<ControlCurvePoint> curve)
-    {
-        lock (curveGate)
-        {
-            curves.Remove(fanIndex);
-            if (response.TryGetProperty("execution", out var execution) && execution.ValueKind == JsonValueKind.String
-                && execution.GetString() == ControlFanCurveExecutions.Firmware) curves[fanIndex] = curve;
-        }
-    }
-
-    private readonly Dictionary<int, IReadOnlyList<ControlCurvePoint>> curves = [];
 
     private readonly object describeGate = new();
     private IReadOnlyList<FanCoreFan>? describedFans;
@@ -418,6 +420,7 @@ public sealed partial class FanControlCoreClient(
                 return null;
             }
             using var document = JsonDocument.Parse(line);
+            ObserveSoftwareCurveReceipt(operation, arguments, document.RootElement);
             return document.RootElement.Clone();
         }
         catch (OperationCanceledException) when (!commandStarted && cancellationToken.IsCancellationRequested)
@@ -447,6 +450,7 @@ public sealed partial class FanControlCoreClient(
             return stopping ? null : process;
         }
         // Called under inputGate: an exited process has no pending input ownership.
+        ClearSoftwareCurves();
         process?.Dispose();
         process = null;
 
@@ -475,6 +479,11 @@ public sealed partial class FanControlCoreClient(
             start.Environment["FANCONTROLCORE_STATE_DIRECTORY"] = Path.Combine(
                 PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "FanControlCore");
             process = startFactory is not null ? startFactory(start) : Process.Start(start);
+            if (process is { } child)
+            {
+                child.Exited += (_, _) => ClearSoftwareCurves(child);
+                child.EnableRaisingEvents = true;
+            }
             errorOutput = process is null ? null : new(process.StandardError);
             stopping = false;
             temperatureNotifications = false;
@@ -515,6 +524,7 @@ public sealed partial class FanControlCoreClient(
         // StreamWriter cannot be closed while WriteLineAsync/FlushAsync is in progress.
         // The active writer finishes the accepted line and calls Stop after releasing inputGate.
         stopping = true;
+        ClearSoftwareCurves();
         if (!inputGate.Wait(0)) return;
         var running = process;
         try

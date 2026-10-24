@@ -87,7 +87,7 @@ const topologyState: DeviceTopologySnapshotState = {
   lastSuccessAt: topologyCapturedAt,
   lastAttemptAt: topologyCapturedAt,
   failureCode: null,
-  attemptDiagnostics: []
+  informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
 };
 
 assert.deepEqual(projectDeviceTopologyObservation(loading, topologyState), {

@@ -12,9 +12,11 @@ public static class WindowsGpuProviderIdentityResolver
         if (!IsComplete(inventory) || luid == 0 || vendorId is 0 or > 0xFFFF || deviceId is 0 or > 0xFFFF)
             return WindowsGpuProviderIdentityMatch.Unavailable;
         var adapter = inventory.Adapters.SingleOrDefault(adapter => Pack(adapter.Luid) == luid);
-        if (adapter is null || adapter.VendorId != vendorId || adapter.DeviceId != deviceId)
+        if (adapter is null || adapter.VendorId != vendorId || adapter.DeviceId != deviceId
+            || adapter.PhysicalIdentityStatus != SamplingObservationStatus.Current)
             return WindowsGpuProviderIdentityMatch.Unavailable;
         // An LDA LUID names a logical adapter, not one of its physical GPU members.
+        if (adapter.PhysicalIdentities.Count == 0) return WindowsGpuProviderIdentityMatch.Unavailable;
         if (adapter.PhysicalIdentities.Count != 1) return WindowsGpuProviderIdentityMatch.Conflict;
         var physical = adapter.PhysicalIdentities[0];
         if (physical.Status != WindowsGpuPhysicalIdentityStatus.Bound || physical.VendorId != vendorId
@@ -40,7 +42,7 @@ public static class WindowsGpuProviderIdentityResolver
         {
             if (adapter.PhysicalIdentityStatus != SamplingObservationStatus.Current)
             {
-                return WindowsGpuProviderIdentityMatch.Unavailable;
+                continue;
             }
 
             foreach (var physical in adapter.PhysicalIdentities)
@@ -83,7 +85,7 @@ public static class WindowsGpuProviderIdentityResolver
         {
             if (adapter.PhysicalIdentityStatus != SamplingObservationStatus.Current)
             {
-                return WindowsGpuProviderIdentityMatch.Unavailable;
+                continue;
             }
 
             foreach (var physical in adapter.PhysicalIdentities)
@@ -244,9 +246,6 @@ public static class WindowsGpuProviderIdentityResolver
             if (adapter.Index < 0
                 || luid == 0
                 || adapter.IsSoftware
-                || adapter.PhysicalIdentityStatus
-                    != SamplingObservationStatus.Current
-                || adapter.PhysicalIdentities.Count == 0
                 || !indexes.Add(adapter.Index)
                 || !luids.Add(luid))
             {

@@ -332,7 +332,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                 </Show>
               </aside>
 
-              <Show when={(data().notes ?? []).length > 0}>
+              <Show when={(data().notes ?? []).length > 0 || topology.state().attemptDiagnostics.length > 0}>
                 <div class="device-topology-notes">
                   <span>{uiText.deviceTopology.partialUnavailable}</span>
                 </div>
@@ -347,7 +347,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         onClose={() => setDetailsOpen(false)}
       >
         <Show when={selectedNode()?.specializedDevice}>
-          {(model) => <DeviceSpecializedDetails model={model()} />}
+          {(model) => <DeviceSpecializedDetails model={model()} information={topology.state().informationFields} />}
         </Show>
         <Show when={selectedPort()?.deviceId}>
           {(deviceId) => <DeviceMetricFieldDetails devices={metricFieldDevices()} deviceId={deviceId()} />}

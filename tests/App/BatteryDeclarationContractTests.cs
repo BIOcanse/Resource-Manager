@@ -56,11 +56,16 @@ public sealed class BatteryDeclarationContractTests
     }
 
     [Fact]
-    public void ZoneFreezeAndChangedTagCannotPublishDeclarations()
+    public void ZoneFreezeIsUnavailableAndChangedBatteryTagRejectsOnlyItsOwnDeclarations()
     {
         var changed = new FakeBatteryQuery { ChangeTag = true };
         var zone = new WindowsBatteryMonitoringZone(new(() => ["battery-path"], _ => changed));
-        Assert.Null(WindowsDeviceTopologyReader.ReadBatteryDeclarations(zone));
+        Assert.Empty(WindowsDeviceTopologyReader.ReadBatteryDeclarations(zone)!);
+        zone = new(new WindowsBatteryReader(() => ["a-changing", "b-healthy"],
+            path => new FakeBatteryQuery { ChangeTag = path == "a-changing" }));
+        var healthy = Assert.Single(WindowsDeviceTopologyReader.ReadBatteryDeclarations(zone)!);
+        Assert.Equal(BatteryCatalogIdentity.CreateIdentity("b-healthy", "unique-uid"), healthy.DeviceIdentity);
+        Assert.Equal("電池厂商", healthy.Manufacturer);
         var calls = 0;
         zone = new(new WindowsBatteryReader(() => { calls++; return []; }, _ => null));
         zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);

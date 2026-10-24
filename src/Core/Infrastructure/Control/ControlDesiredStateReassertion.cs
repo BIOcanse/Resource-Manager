@@ -1,54 +1,44 @@
 using ResourceManager.App.Application.Control;
+using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
-/// <summary>
-/// 把已经存着的期望状态反复重新施加。
-///
-/// 这就是「用户设定一次就一直维持」的兑现方式。需要它是因为设定会被外力抹掉：
-/// 重启、显卡驱动重置、笔记本睡醒、设备拔了再插、别的软件改了同一块卡。
-/// 所以不能只在用户点确定那一下写一次。
-///
-/// 只在**有设定**的时候才动手（见 <see cref="IControlPlane.ReassertAsync"/>）——
-/// 用户没设过就完全不碰这台机器，不去把它"重置"成我们以为的默认值。
-/// </summary>
+/// <summary>Startup applies saved intent once; subsequent ticks maintain successful items only.</summary>
 public sealed class ControlDesiredStateReassertion(
     IControlPlane plane,
+    IAppSettingsStore settings,
+    RuntimePlanProvider plans,
     ILogger<ControlDesiredStateReassertion>? logger = null) : BackgroundService
 {
-    /// <summary>启动后先等一会儿：让设备目录先认全，免得对着空目录施加。</summary>
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(8);
-
-    /// <summary>之后的重新施加间隔。设定被外力抹掉时，最多这么久就会被重新按回去。</summary>
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(2);
+    private readonly SemaphoreSlim settingsChanged = new(0, 1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        void Changed(CompiledRuntimePlan _) { try { settingsChanged.Release(); } catch (SemaphoreFullException) { } }
+        plans.Published += Changed;
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken).ConfigureAwait(false);
+            await plane.InitializeAsync(stoppingToken).ConfigureAwait(false);
+            var lastPass = Environment.TickCount64;
             while (!stoppingToken.IsCancellationRequested)
             {
-                await ReassertOnceAsync(stoppingToken).ConfigureAwait(false);
-                await Task.Delay(Interval, stoppingToken).ConfigureAwait(false);
+                // A plan publication only re-reads the interval; the next pass stays due from the last one.
+                var current = await settings.LoadReadOnlyAsync(stoppingToken).ConfigureAwait(false);
+                var interval = TimeSpan.FromSeconds(current.Settings.Control?.ReassertionIntervalSeconds ?? 120);
+                var remaining = interval - TimeSpan.FromMilliseconds(Environment.TickCount64 - lastPass);
+                if (remaining > TimeSpan.Zero
+                    && await settingsChanged.WaitAsync(remaining, stoppingToken).ConfigureAwait(false)) continue;
+                try { await plane.ReassertAsync(stoppingToken).ConfigureAwait(false); }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    logger?.LogWarning(error, "Control reassertion failed.");
+                }
+                lastPass = Environment.TickCount64;
             }
         }
-        catch (OperationCanceledException)
-        {
-            // 关机，正常路径。
-        }
-    }
-
-    private async Task ReassertOnceAsync(CancellationToken stoppingToken)
-    {
-        try
-        {
-            await plane.ReassertAsync(stoppingToken).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is not OperationCanceledException)
-        {
-            // 一次没成功不能让这条循环死掉 —— 下一轮还要接着维持。
-            logger?.LogWarning(error, "重新施加控制设定失败，下一轮再试。");
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally { plans.Published -= Changed; }
     }
 }

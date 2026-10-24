@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Application.Control;
 
 namespace ResourceManager.App.Infrastructure.Control;
@@ -18,12 +19,13 @@ public sealed class JsonControlOverclockConsent : IControlOverclockConsent
 
     public JsonControlOverclockConsent(
         IHostEnvironment environment,
-        ILogger<JsonControlOverclockConsent>? logger = null)
+        ILogger<JsonControlOverclockConsent>? logger = null,
+        StartupCapabilitySet? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         consentPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "overclock-consent.txt");
+            "overclock-consent.txt", capabilities);
         this.logger = logger;
     }
 

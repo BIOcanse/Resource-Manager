@@ -13,6 +13,25 @@ public sealed class OperatingSystemSessionOwnerTests
         => new(() => new(TimeSpan.FromSeconds(7), 7), new(TimeSpan.FromSeconds(2), static (_, _, _) => new([], "Recorded no WMI")), new(read), clock);
 
     [Fact]
+    public void DisappearingAndInvalidSessionsOnlyRemoveTheirOwnRows()
+    {
+        var queried = new List<uint>();
+        var result = WindowsSessionInformationReader.ReadRows([1, 2, 3, 4, 5, 5], id =>
+        {
+            queried.Add(id);
+            return id switch
+            {
+                2 => null,
+                3 => WindowsSessionInformationReader.Decode(3, 99, 1, "", "", "user", WindowsSessionConnectionState.Active),
+                _ => Row(id, 134116992000000000L + id)
+            };
+        });
+        Assert.Equal(new uint[] { 1, 4 }, result.Select(static row => row.SessionId));
+        Assert.Equal(new uint[] { 1, 2, 3, 4 }, queried);
+        Assert.Equal(134116992000000004L, result[1].LogonFileTime);
+    }
+
+    [Fact]
     public void NativeProductionDecoderDistinguishesLoginsFromSlotsAndRetainsExactReportedIds()
     {
         // Independent Windows SDK WTSINFOEXW / LEVEL1_W ABI, not a live WTS call.

@@ -471,12 +471,22 @@ public sealed class NvidiaGpuControlResource : IDisposable
             var key = (adapterIndex, clockType);
             var pair = clockRange.GetValueOrDefault(key, (0u, deviceMaximum));
             minimum = isMinimum ? wanted : pair.Item1;
-            maximum = isMinimum ? pair.Item2 : wanted;
+            maximum = isMinimum ? pair.Item2 : wanted == 0 ? deviceMaximum : wanted;
             if (minimum > maximum) return 2;
             var code = write(minimum, maximum);
             if (code == 0) clockRange[key] = (minimum, maximum);
             return code;
         }
+    }
+
+    /// <summary>Choose which endpoint to write first, using the same successful pair as the writer.</summary>
+    public bool ShouldWriteClockMaximumFirst(NvidiaControlObject target, string minimumCapabilityId, double requestedMinimum)
+    {
+        CheckLifetime();
+        if (!target.IsDiscreteNvidia || target.AdapterIndex is not { } adapter
+            || ClockLockOf(minimumCapabilityId) is not { IsMinimum: true } clock) return false;
+        lock (clockGate)
+            return clockRange.TryGetValue((adapter, clock.ClockType), out var pair) && requestedMinimum > pair.Max;
     }
 
     /// <summary>

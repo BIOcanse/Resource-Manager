@@ -194,8 +194,9 @@ public sealed class VolumeSpaceInformationCollectorTests
         Assert.Equal("S-1-5-18", Field(fields, IdA, "volume_all_space_query_caller_sid").Value!.Value.GetString());
         var raw = DeviceInformationTestData.Snapshot() with { VolumeSpaceInformation = [volume] };
         var comparer = new DeviceTopologySemanticComparer(); Assert.Equal(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { CapturedAt = raw.CapturedAt.AddSeconds(1) }));
-        Assert.NotEqual(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume with { AvailableBytes = 0 }] }));
-        Assert.NotEqual(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume with { QueryCallerSid = "S-1-5-19" }] }));
+        Assert.Equal(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume with { AvailableBytes = 0 }] }));
+        Assert.Equal(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume with { QueryCallerSid = "S-1-5-19" }] }));
+        Assert.NotEqual(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume with { TotalBytes = 8192 }] }));
         var other = volume with { DeviceIdentity = IdB };
         Assert.Equal(comparer.ComputeHash(raw with { VolumeSpaceInformation = [volume, other] }), comparer.ComputeHash(raw with { VolumeSpaceInformation = [other, volume] }));
         var restored = JsonSerializer.Deserialize<DeviceTopologySnapshot>(JsonSerializer.Serialize(raw))!;

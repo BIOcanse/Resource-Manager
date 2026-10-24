@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 
@@ -11,7 +12,7 @@ public sealed record ControlAccessLevelRequest(string? Level);
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private static IEndpointRouteBuilder MapControlEndpoints(this IEndpointRouteBuilder app)
+    private static IEndpointRouteBuilder MapControlEndpoints(this IEndpointRouteBuilder app, StartupCapabilitySet startupCapabilities)
     {
         // 可控对象清单。每次现读：显卡会热插拔，风扇会因为装上组件而突然可控。
         //
@@ -89,6 +90,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         // 改某个对象的设定。**先存后施加**，所以返回的一定是存下来的那份。
         // 施加不算重大操作：用户设一次就该一直维持，不每次问。
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/state/{objectId}", async (
             string objectId,
             ControlSetting[] settings,
@@ -110,6 +112,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         // 整份应用。草稿应用和配置应用走同一条路 —— 用户面对的是一整套设定，
         // 不是一条条分别提交。这一份里没有的项会被恢复到硬件默认。
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/state", async (
             ControlDesiredState? desired,
             IControlPlane plane,
@@ -144,6 +147,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }).AllowAnonymous();
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/overclock-consent", async (
             ControlOverclockConsentRequest? request,
             IControlOverclockConsent consent,
@@ -165,6 +169,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
          *
          * **只清缓存，不改任何设定。** 重新检测不该顺手把用户调过的东西动了。
          */
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPost("/api/control/redetect", (
             IEnumerable<IControlDetectionCache> caches,
             IControlObjectCatalog catalog) =>
@@ -194,6 +199,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }).AllowAnonymous();
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/notice", async (
             IControlNoticeAcknowledgement notice,
             CancellationToken cancellationToken) =>
@@ -223,6 +229,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }).AllowAnonymous();
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/access-level", async (
             ControlAccessLevelRequest? request,
             IControlAccessLevel accessLevel,
@@ -250,6 +257,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         // 给某个实例存一份。同一个实例下同名覆盖 —— 在这块卡上再存一次"游戏"
         // 是想更新那一份；不同实例下的同名配置互不相干。
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPut("/api/control/presets/{objectId}/{name}", async (
             string objectId,
             string name,
@@ -271,6 +279,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapDelete("/api/control/presets/{presetId}", async (
             string presetId,
             IControlPresets presets,
@@ -298,12 +307,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }).AllowAnonymous();
 
         // 重新检测。新设备会被登记并自带默认配置。
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapPost("/api/control/instances/refresh", async (
             IControlInstanceRegistry registry,
             CancellationToken cancellationToken) =>
             Results.Ok(await registry.RefreshAsync(cancellationToken)));
 
         // 删掉一条早就不用的记录，连同它的设定。
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
         app.MapDelete("/api/control/instances/{instanceId}", async (
             string instanceId,
             IControlInstanceRegistry registry,

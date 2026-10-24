@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Units;
+using ResourceManager.App.Domain.Units;
 
 namespace ResourceManager.App.Domain.Settings;
 
@@ -186,7 +186,10 @@ public sealed record AppSettings(
     AppDebugSettings Debug,
     AppLocalPublicServiceSettings PublicService,
     AppAiModelServiceSettings AiModelService,
-    AppUpdateSettings? Update = null);
+    AppUpdateSettings? Update = null,
+    AppHardwareControlSettings? Control = null);
+
+public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120);
 
 public sealed record AppUpdateSettings(bool AutoUpdateEnabled);
 

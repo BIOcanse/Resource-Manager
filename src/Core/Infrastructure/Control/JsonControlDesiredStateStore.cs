@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
@@ -23,12 +24,13 @@ public sealed class JsonControlDesiredStateStore : IControlDesiredStateStore
 
     public JsonControlDesiredStateStore(
         IHostEnvironment environment,
-        ILogger<JsonControlDesiredStateStore>? logger = null)
+        ILogger<JsonControlDesiredStateStore>? logger = null,
+        StartupCapabilitySet? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         statePath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "desired-state.json");
+            "desired-state.json", capabilities);
         this.logger = logger;
     }
 

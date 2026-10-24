@@ -36,6 +36,7 @@ const applicationDispositions = [
 ] as const satisfies readonly AppSettingsApplicationDisposition[];
 
 const settingsSectionKeys = [
+  "control",
   "performance",
   "appearance",
   "systemIntegration",
@@ -54,6 +55,14 @@ export const appSettingsResultDecoder =
       for (const key of settingsSectionKeys) {
         if (settingsRecord[key] !== undefined) {
           requireRecord(settingsRecord[key], `$.settings.${key}`);
+        }
+      }
+
+      if (settingsRecord.control !== undefined) {
+        const control = requireRecord(settingsRecord.control, "$.settings.control");
+        const interval = requireSafeInteger(control.reassertionIntervalSeconds, "$.settings.control.reassertionIntervalSeconds");
+        if (interval < 1 || interval > 86400) {
+          throw new ResponseDecodeError("$.settings.control.reassertionIntervalSeconds", "Expected 1–86400 seconds");
         }
       }
 

@@ -1,10 +1,12 @@
 ﻿using System.Globalization;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using ResourceManager.ReadWrite.Helpers;
 
 
 namespace ResourceManager.ReadWrite.Vendors.Amd;
-/// <summary>Original AMD CPU owner. Probe explicitly captures baselines. Borrowed helpers remain shared with iGPU.</summary>
+/// <summary>AMD CPU owner. Only an explicit write captures a durable, target-bound restore value.</summary>
 public sealed class AmdCpuControlResource : IDisposable
 {
     private readonly IHardwareBridgeProcessClient bridge;
@@ -40,8 +42,19 @@ public sealed class AmdCpuControlResource : IDisposable
     public async Task<bool> RestoreAsync(AmdCpuControlTarget target, AmdCpuControlCapability capability, CancellationToken token = default)
     {
         CheckLifetime();
-        if (capability.Range?.DefaultValue is not { } value) return false;
-        return (await WriteAsync(target, capability, new(capability.Field, value, capability.Range.Unit), token).ConfigureAwait(false)).Status == AmdCpuControlStatus.Applied;
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(capability);
+        if (!IsMine(target, capability.Id) || WritableOf(capability.Id) is not { } writable || writable.Unverified is not null) return false;
+        await writeGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if (!TryReadBaseline(target, writable, out var baseline) || baseline is not { } value) return false;
+            if ((await WriteValueAsync(target, capability, writable, value, token).ConfigureAwait(false)).Status != AmdCpuControlStatus.Applied) return false;
+            try { File.Delete(BaselinePath(target, writable)); return true; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { Warn(error, AmdCpuControlMessage.WriteBaselineWarning, BaselinePath(target, writable)); return false; }
+        }
+        finally { writeGate.Release(); }
     }
     internal const string PowerLimitCapabilityId = "cpu.power-limit";
     internal const string SlowPowerLimitCapabilityId = "cpu.slow-power-limit";
@@ -108,8 +121,7 @@ public sealed class AmdCpuControlResource : IDisposable
     private string TemperatureLimitUnverifiable => Describe(AmdCpuControlMessage.TemperatureLimitUnverifiable);
     private string CurrentLimitMappingUnconfirmed => Describe(AmdCpuControlMessage.CurrentLimitMappingUnconfirmed);
 
-    private readonly object gate = new();
-    private readonly Dictionary<string, double> baselines = [];
+    private readonly SemaphoreSlim writeGate = new(1, 1);
     public string? ChannelOf(AmdCpuControlTarget target, string capabilityId)
         => IsMine(target, capabilityId) && WritableOf(capabilityId) is not null
             ? "amd-smu"
@@ -154,7 +166,10 @@ public sealed class AmdCpuControlResource : IDisposable
             return AmdCpuControlAvailability.No(BridgeSilent);
         }
 
-        return AmdCpuControlAvailability.Yes(RangeOf(writable, capability, reading));
+        if (!TryReadBaseline(target, writable, out var baseline)
+            || baseline is null && File.Exists(options.BaselinePath(writable.BaselineFileName)))
+            return AmdCpuControlAvailability.No(Describe(AmdCpuControlMessage.BaselineUnavailable));
+        return AmdCpuControlAvailability.Yes(RangeOf(writable, capability, reading, baseline));
     }
     public static bool IsUsableReading(JsonElement reading, string? field)
         => reading.ValueKind == JsonValueKind.Object && Flag(reading, "ok")
@@ -163,7 +178,8 @@ public sealed class AmdCpuControlResource : IDisposable
     private AmdCpuControlRange RangeOf(
         CpuWritable writable,
         AmdCpuControlCapability capability,
-        JsonElement reading)
+        JsonElement reading,
+        double? saved)
     {
         var declared = capability.Range;
         // 读不回来的项（PBO 标量）用目录里写的默认值 —— 那个 1 倍是有文档的固定值，
@@ -171,7 +187,7 @@ public sealed class AmdCpuControlResource : IDisposable
         var current = writable.ReadingField is { } field
             ? Number(reading, field)
             : declared?.DefaultValue;
-        double? baseline = current is { } value ? CaptureBaseline(writable, value) : null;
+        double? baseline = saved ?? current;
 
         return declared is { } shape
             ? shape with { DefaultValue = baseline is { } found ? Math.Round(found, 2) : null }
@@ -201,8 +217,33 @@ public sealed class AmdCpuControlResource : IDisposable
         }
         var bounds = capability.Range;
         var wanted = bounds is null ? value : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
+        await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!TryReadBaseline(target, writable, out var baseline))
+                return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
+            if (baseline is null)
+            {
+                // Capability-only files cannot prove which CPU or explicit operation they belonged to.
+                if (File.Exists(options.BaselinePath(writable.BaselineFileName)))
+                    return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
+                var reading = await bridge.SendAsync("read", null, cancellationToken).ConfigureAwait(false);
+                var original = writable.ReadingField is { } field && reading is { } confirmed && IsUsableReading(confirmed, field)
+                    ? Number(confirmed, field)
+                    : writable.ReadingField is null ? 1d : null;
+                if (original is not { } before || !double.IsFinite(before))
+                    return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
+                if (!WritePersisted(target, writable, before))
+                    return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
+            }
+            return await WriteValueAsync(target, capability, writable, wanted, cancellationToken).ConfigureAwait(false);
+        }
+        finally { writeGate.Release(); }
+    }
 
-        
+    private async Task<AmdCpuControlOutcome> WriteValueAsync(AmdCpuControlTarget target,
+        AmdCpuControlCapability capability, CpuWritable writable, double wanted, CancellationToken cancellationToken)
+    {
         var arguments = new Dictionary<string, object?>
         {
             ["value"] = wanted,
@@ -299,57 +340,60 @@ public sealed class AmdCpuControlResource : IDisposable
                 capability.Id,
                 UnreadableReason: Describe(AmdCpuControlMessage.ReadingMissing));
     }
-    private double CaptureBaseline(CpuWritable writable, double current)
+    private sealed record RestoreBaseline(int Version, string TargetId, string CapabilityId, double? Value);
+    private bool TryReadBaseline(AmdCpuControlTarget target, CpuWritable writable, out double? value)
     {
-        lock (gate)
-        {
-            if (baselines.TryGetValue(writable.CapabilityId, out var captured))
-            {
-                return captured;
-            }
-            var path = BaselinePath(writable.BaselineFileName);
-            var baseline = ReadPersisted(path) ?? current;
-            baselines[writable.CapabilityId] = baseline;
-            WritePersisted(path, baseline);
-            return baseline;
-        }
-    }
-
-    private double? ReadPersisted(string path)
-    {
+        value = null;
+        var path = BaselinePath(target, writable);
         try
         {
-            return File.Exists(path)
-                && double.TryParse(
-                    File.ReadAllText(path).Trim(),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var value)
-                    ? value
-                    : null;
+            var baseline = JsonSerializer.Deserialize<RestoreBaseline>(File.ReadAllText(path));
+            if (baseline is not { Version: 1, Value: { } original } || baseline.TargetId != target.Id
+                || baseline.CapabilityId != writable.CapabilityId || !double.IsFinite(original))
+            { Warn(null, AmdCpuControlMessage.ReadBaselineWarning, path); return false; }
+            value = original;
+            return true;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (FileNotFoundException) { return true; }
+        catch (DirectoryNotFoundException) { return true; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
             Warn(error, AmdCpuControlMessage.ReadBaselineWarning, path);
-            return null;
+            return false;
         }
     }
 
-    private void WritePersisted(string path, double value)
+    private bool WritePersisted(AmdCpuControlTarget target, CpuWritable writable, double value)
     {
+        var path = BaselinePath(target, writable);
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, value.ToString("0.###", CultureInfo.InvariantCulture));
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                JsonSerializer.Serialize(stream, new RestoreBaseline(1, target.Id, writable.CapabilityId, value));
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, path);
+            return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            // 记不下来不影响这次调节，只是下次重启后"恢复默认"可能不准。
             Warn(error, AmdCpuControlMessage.WriteBaselineWarning, path);
+            return false;
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { Warn(error, AmdCpuControlMessage.WriteBaselineWarning, temporary); }
         }
     }
 
-    private string BaselinePath(string fileName) => options.BaselinePath(fileName);
+    private string BaselinePath(AmdCpuControlTarget target, CpuWritable writable)
+        => options.BaselinePath(Path.GetFileNameWithoutExtension(writable.BaselineFileName) + "-"
+            + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(target.Id))) + ".json");
     private JsonElement? Ask(string operation, IReadOnlyDictionary<string, object?>? arguments)
         => bridge.SendAsync(operation, arguments, CancellationToken.None)
             .GetAwaiter()

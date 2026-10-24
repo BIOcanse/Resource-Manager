@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
@@ -22,12 +23,13 @@ public sealed class JsonControlPresetStore : IControlPresetStore
 
     public JsonControlPresetStore(
         IHostEnvironment environment,
-        ILogger<JsonControlPresetStore>? logger = null)
+        ILogger<JsonControlPresetStore>? logger = null,
+        StartupCapabilitySet? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         presetPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "presets.json");
+            "presets.json", capabilities);
         this.logger = logger;
     }
 

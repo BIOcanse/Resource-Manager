@@ -4,7 +4,7 @@ import { controlCapabilityLabel, controlDisplayText } from "../src/features/cont
 import { createAppCopy } from "../src/i18n/copy/index.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
-import { applyLanguage, currentLanguage } from "../src/text.ts";
+import { applyLanguage, currentLanguage, uiText } from "../src/text.ts";
 
 const en = createAppCopy("en-US").control.presentation;
 const zh = createAppCopy("zh-CN").control.presentation;
@@ -40,7 +40,12 @@ assert.doesNotMatch(writerSource, /下发了，但从固件里读不回这条曲
 let curveReceiptLanguages = 0;
 for (const { id } of languageOptions) {
   if (id === "system") continue;
-  const presentation = (await loadAppCopy(id)).control.presentation;
+  const control = (await loadAppCopy(id)).control;
+  const presentation = control.presentation;
+  for (const field of ["reassertionInterval", "stateUnavailable", "retryRead", "curveUnavailable"] as const) {
+    assert.ok(control[field].trim(), `${id}: ${field} is empty`);
+    if (id !== "en-US") assert.notEqual(control[field], (await loadAppCopy("en-US")).control[field], `${id}: ${field} inherited English`);
+  }
   const translated = presentation.text[curveReceiptReason];
   assert.ok(translated?.trim(), `${id}: curve readback reason is absent`);
   if (id !== "zh-CN") assert.notEqual(translated, curveReceiptReason, `${id}: inherited backend Chinese`);
@@ -50,6 +55,9 @@ for (const { id } of languageOptions) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
   assert.equal(currentLanguage(), id);
+  for (const field of ["reassertionInterval", "stateUnavailable", "retryRead", "curveUnavailable"] as const) {
+    assert.equal(uiText.control[field], control[field], `${id}: active-language ${field}`);
+  }
   assert.equal(controlDisplayText(curveReceiptReason), translated, `${id}: active-language curve failure`);
   curveReceiptLanguages++;
 }

@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.App.Hosting.StartupCapabilities;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -27,7 +28,8 @@ public sealed class ControlWriteLayer(
     IControlObjectCatalog catalog,
     IEnumerable<IControlWriter> writers,
     IControlAccessLevel accessLevel,
-    ILogger<ControlWriteLayer>? logger = null) : IControlWriteLayer
+    ILogger<ControlWriteLayer>? logger = null,
+    StartupCapabilitySet? capabilities = null) : IControlWriteLayer
 {
     private const string ObjectMissing = "这个设备现在不在了，设定暂时生效不了。";
     private const string CapabilityMissing = "这个设备上没有这一项。";
@@ -41,6 +43,13 @@ public sealed class ControlWriteLayer(
     {
         ArgumentNullException.ThrowIfNull(desired);
         cancellationToken.ThrowIfCancellationRequested();
+
+        var rejection = capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners)
+            ? "startup-profile-read-only"
+            : null;
+        if (rejection is not null)
+            return new(desired.Objects.SelectMany(target => target.Settings.Select(setting =>
+                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, rejection))).ToArray(), DateTimeOffset.UtcNow);
 
         var objects = catalog.ReadObjects().Objects
             .ToDictionary(static entry => entry.Id, StringComparer.Ordinal);
@@ -63,11 +72,23 @@ public sealed class ControlWriteLayer(
                 continue;
             }
 
-            foreach (var setting in target.Settings)
+            var rejected = writers.SelectMany(writer => writer.ValidateSettings(controlObject, target.Settings))
+                .GroupBy(entry => entry.Key, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().Value, StringComparer.Ordinal);
+            var ordered = writers.Aggregate(target.Settings, (settings, writer) => writer.OrderSettings(controlObject, settings));
+            foreach (var setting in ordered)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                outcomes.Add(await WriteOneAsync(controlObject, setting, cancellationToken)
-                    .ConfigureAwait(false));
+                try
+                {
+                    outcomes.Add(rejected.TryGetValue(setting.CapabilityId, out var reason)
+                        ? Outcome(controlObject, setting, ControlApplyStatuses.Failed, reason)
+                        : await WriteOneAsync(controlObject, setting, cancellationToken).ConfigureAwait(false));
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    logger?.LogWarning(error, "Control write failed: {Object} / {Capability}.", controlObject.Id, setting.CapabilityId);
+                    outcomes.Add(Outcome(controlObject, setting, ControlApplyStatuses.Failed, "control-write-failed"));
+                }
             }
 
         }
@@ -79,6 +100,9 @@ public sealed class ControlWriteLayer(
         ControlDesiredState removed, ControlDesiredState remaining, CancellationToken cancellationToken)
     {
         if (removed.Objects.Count == 0) return ControlApplyReport.Empty;
+        if (capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners))
+            return new(removed.Objects.SelectMany(target => target.Settings.Select(setting =>
+                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, "startup-profile-read-only"))).ToArray(), DateTimeOffset.UtcNow);
         var objects = catalog.ReadObjects().Objects.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var outcomes = new List<ControlApplyOutcome>();
         foreach (var removedObject in removed.Objects)

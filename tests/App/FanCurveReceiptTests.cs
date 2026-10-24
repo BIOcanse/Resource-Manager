@@ -29,9 +29,6 @@ public sealed partial class FanCurveReceiptTests
     public async Task IncompleteWriteReceiptDoesNotReportAppliedAndRequiresAFreshCompleteRead(string curve)
     {
         await using var helper = new CurveHelper($"\"ok\":true,\"curve\":{curve}");
-        var previous = new ControlCurvePoint[] { new(45, 20), new(95, 100) };
-        using var firmwareReceipt = System.Text.Json.JsonDocument.Parse("{\"execution\":\"firmware\"}");
-        helper.Client.StoreCurveReceipt(0, firmwareReceipt.RootElement, previous);
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
             new("fan.curve", "Curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 35), new(120, 100)], CurveExecution: ControlFanCurveExecutions.Software), default);
@@ -40,13 +37,12 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal("写下去了，但回读的值没有变。", result.Message);
         var actual = await helper.Client.ReadCurveAsync(0, default);
         Assert.Equal(new ControlCurvePoint[] { new(60, 35), new(120, 100) }, actual);
-        Assert.NotSame(previous, actual);
         Assert.Equal(1, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
     }
 
     [Theory]
     [MemberData(nameof(InvalidCurves))]
-    public Task IncompleteReadReceiptIsNotCachedAndTheNextCompleteReadRecovers(string curve)
+    public Task IncompleteReadReceiptIsUnavailableAndTheNextCompleteReadRecovers(string curve)
         => RejectReadAndRecoverAsync($"\"ok\":true,\"curve\":{curve}");
 
     [Fact]
@@ -54,7 +50,7 @@ public sealed partial class FanCurveReceiptTests
         => RejectReadAndRecoverAsync($"\"ok\":false,\"curve\":{CompleteCurve}");
 
     [Fact]
-    public async Task CompleteFirmwareReceiptCachesTheActualReturnedPointsIncludingHighTemperature()
+    public async Task ExplicitReadRevalidatesFirmwareAfterASuccessfulWrite()
     {
         await using var helper = new CurveHelper($"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}");
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
@@ -64,8 +60,8 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal(ControlApplyStatuses.Applied, result.Status);
         var actual = await helper.Client.ReadCurveAsync(0, default);
         Assert.Equal(new ControlCurvePoint[] { new(60, 35), new(120, 100) }, actual);
-        Assert.Same(actual, await helper.Client.ReadCurveAsync(0, default));
-        Assert.DoesNotContain("curve", File.ReadAllLines(helper.Operations));
+        Assert.Equal(actual, await helper.Client.ReadCurveAsync(0, default));
+        Assert.Equal(2, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
         Assert.Contains("setcurve", File.ReadAllLines(helper.Operations));
     }
 
@@ -98,8 +94,8 @@ public sealed partial class FanCurveReceiptTests
         Assert.Null(await helper.Client.ReadCurveAsync(0, default));
         var actual = await helper.Client.ReadCurveAsync(0, default);
         Assert.Equal(new ControlCurvePoint[] { new(60, 35), new(120, 100) }, actual);
-        Assert.Same(actual, await helper.Client.ReadCurveAsync(0, default));
-        Assert.Equal(2, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
+        Assert.Equal(actual, await helper.Client.ReadCurveAsync(0, default));
+        Assert.Equal(3, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
     }
 
     [Theory]
@@ -113,7 +109,7 @@ public sealed partial class FanCurveReceiptTests
     [InlineData("release-duty", false)]
     [InlineData("release-curve", true)]
     [InlineData("release-curve", false)]
-    public async Task ManualWritesAndRestorationInvalidateTheFirmwareTableEvenWithoutConfirmation(string action, bool confirmed)
+    public async Task ManualWritesAndRestorationNeverReplaceAnExplicitFreshRead(string action, bool confirmed)
     {
         var automatic = action is "auto" or "release-duty" or "release-curve";
         var receipt = $"\"ok\":{confirmed.ToString().ToLowerInvariant()},\"firmwareCurveReset\":true,\"fans\":[{{\"index\":0,\"automaticControl\":{automatic.ToString().ToLowerInvariant()},\"dutyPercent\":100}}]";
@@ -122,8 +118,6 @@ public sealed partial class FanCurveReceiptTests
             "\"ok\":true,\"execution\":\"firmware\",\"curve\":[{\"temperatureCelsius\":60,\"percent\":55},{\"temperatureCelsius\":120,\"percent\":100}]", receipt);
         var previous = await helper.Client.ReadCurveAsync(0, default);
         Assert.NotNull(previous);
-        using var firmware = System.Text.Json.JsonDocument.Parse("{\"execution\":\"firmware\"}");
-        helper.Client.StoreCurveReceipt(1, firmware.RootElement, previous);
         var id = action is "duty" or "release-duty" ? "fan.duty"
             : action == "release-curve" ? "fan.curve" : "fan.lock-maximum";
         var capability = new ControlCapability(id, id, id == "fan.curve" ? ControlValueKinds.Curve
@@ -137,14 +131,13 @@ public sealed partial class FanCurveReceiptTests
             var outcome = await writer.WriteAsync(Target, capability, new(id, Number: 55, Toggle: action == "boost"), default);
             Assert.Equal(confirmed ? ControlApplyStatuses.Applied : ControlApplyStatuses.Failed, outcome.Status);
         }
-        // A failed command can still have modified part of the table. Read again;
-        // only this fan's cached table is invalidated, and the complete new receipt caches normally.
+        // A failed command can still have modified part of the table. Every edit reads again.
         var actual = await helper.Client.ReadCurveAsync(0, default);
         Assert.Equal(changed, actual);
         Assert.NotSame(previous, actual);
-        Assert.Same(actual, await helper.Client.ReadCurveAsync(0, default));
-        Assert.Same(previous, await helper.Client.ReadCurveAsync(1, default));
-        Assert.Equal(2, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
+        Assert.Equal(actual, await helper.Client.ReadCurveAsync(0, default));
+        Assert.Equal(changed, await helper.Client.ReadCurveAsync(1, default));
+        Assert.Equal(4, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
     }
 
     private static ControlObject Target => new("fan:oem0", ControlObjectKinds.Fan, "Fixture",
@@ -159,7 +152,7 @@ public sealed partial class FanCurveReceiptTests
         internal string Operations { get; }
         internal FanControlCoreClient Client { get; }
 
-        internal CurveHelper(string firstReceipt, string? laterReceipt = null, string? manualReceipt = null)
+        internal CurveHelper(string firstReceipt, string? laterReceipt = null, string? manualReceipt = null, bool requireSeed = false)
         {
             laterReceipt ??= $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}";
             helperDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "fan-control-core")).FullName;
@@ -167,11 +160,21 @@ public sealed partial class FanCurveReceiptTests
             Operations = Path.Combine(root, "operations.txt");
             var script = $$"""
                 $count = 0
+                $seeded = $false
                 while ($null -ne ($line = [Console]::In.ReadLine())) {
                     $request = $line | ConvertFrom-Json
                     [IO.File]::AppendAllText('{{Operations.Replace("'", "''")}}', $request.op + [Environment]::NewLine)
-                    if ($request.op -eq 'describe') {
-                        $body = '"ok":true,"available":true,"backend":"fixture","fans":[{"index":0,"name":"Fixture","role":"cpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true}]'
+                    if ($request.op -eq 'exit-fixture') {
+                        [Console]::Out.WriteLine('{"id":' + $request.id + ',"ok":true}')
+                        [Console]::Out.Flush()
+                        break
+                    } elseif ($request.op -eq 'temp') {
+                        $seeded = $null -ne $request.samples.cpu -and $request.observedAtUtcTicks.cpu -gt 0
+                        $body = '"ok":true'
+                    } elseif ($request.op -eq 'setcurve' -and {{(requireSeed ? "$true" : "$false")}} -and -not $seeded) {
+                        $body = '"ok":false,"error":"temperature required"'
+                    } elseif ($request.op -eq 'describe') {
+                        $body = '"ok":true,"available":true,"backend":"fixture","needsTemperatures":true,"fans":[{"index":0,"name":"Fixture","role":"cpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true},{"index":1,"name":"Other","role":"gpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true}]'
                     } elseif ($request.op -in @('set','boost','auto') -and '{{manualReceipt}}' -ne '') {
                         $body = '{{manualReceipt}}'
                     } else {

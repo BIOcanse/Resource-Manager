@@ -27,6 +27,12 @@ assert.equal(canonicalDefaults.publicService?.databaseServiceEnabled, false);
 assert.equal(canonicalDefaults.publicService?.aiModelCatalogEnabled, false);
 assert.equal(canonicalDefaults.aiModelService?.autoStartEnabled, false);
 
+assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 });
+assert.deepEqual(normalizeAppSettings({ control: { reassertionIntervalSeconds: 0 } }).control,
+  { reassertionIntervalSeconds: 1 });
+assert.equal(normalizeAppSettings({ control: { reassertionIntervalSeconds: 999999 } }).control!.reassertionIntervalSeconds, 86400);
+assert.equal(normalizeAppSettings({ control: { reassertionIntervalSeconds: NaN } }).control!.reassertionIntervalSeconds, 120);
+
 const normalizedMissingFields = normalizeAppSettings({ version: "1.0.23" });
 assert.equal(normalizedMissingFields.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(normalizedMissingFields.publicService?.enabled, false);

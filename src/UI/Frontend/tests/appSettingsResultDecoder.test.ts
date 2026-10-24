@@ -42,6 +42,8 @@ for (const [value, expectedPath] of [
   [{ ...source, revision: "" }, "$.revision"],
   [{ ...source, settings: { ...source.settings, appearance: [] } }, "$.settings.appearance"],
   [{ ...source, runtimeApplicationDisposition: "maybe" }, "$.runtimeApplicationDisposition"],
+  [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 0 } } }, "$.settings.control.reassertionIntervalSeconds"],
+  [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 86401 } } }, "$.settings.control.reassertionIntervalSeconds"],
   [{ ...source, runtimeDeliveryFailureCount: -1 }, "$.runtimeDeliveryFailureCount"]
 ] as const) {
   assert.throws(
@@ -49,3 +51,7 @@ for (const [value, expectedPath] of [
     (error: unknown) => error instanceof ResponseDecodeError
       && error.path === expectedPath);
 }
+
+assert.deepEqual(appSettingsResultDecoder.decode({ ...source, settings: { ...source.settings,
+  control: { reassertionIntervalSeconds: 337 } } }).settings.control,
+  { reassertionIntervalSeconds: 337 });

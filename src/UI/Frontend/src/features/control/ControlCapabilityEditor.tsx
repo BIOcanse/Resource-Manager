@@ -1,15 +1,15 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { uiText } from "../../text.ts";
 import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
 import {
   curveFromStops,
-  defaultStops,
   curveOnTemperatures,
   curveTemperatures,
   stopsFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
+import { curveSettingFromRead } from "./controlInitialSetting.ts";
 import { getControlObjectCurve } from "./controlApi.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type { ControlCapability, ControlSetting } from "./controlTypes.ts";
@@ -48,7 +48,7 @@ export { initialSettingFor } from "./controlInitialSetting.ts";
  *
  * **控不了的项也能编。** 这不是将就：期望状态和写入器是分开的 ——
  * 用户现在就可以把曲线编好，等风扇控制核心装上、写入器接进来，
- * 后台重新施加那一轮就会把它写下去。所以编辑不需要等硬件就位。
+ * 硬件就位后仍需用户明确应用。所以编辑不需要等硬件就位。
  *
  * 但**没勾选的项不能编**：没勾就是"下次应用把它交还固件"，
  * 这时候还让人拖滑块，拖出来的数字既不生效也没地方去。
@@ -356,10 +356,11 @@ function CurveEditor(props: {
 }) {
   const runtime = useFrontendRuntime();
   const [reading, setReading] = createSignal(false);
+  const [readFailed, setReadFailed] = createSignal(false);
   let mounted = true;
   onCleanup(() => { mounted = false; });
 
-  const configured = () => props.setting?.curve != null;
+  const configured = () => (props.setting?.curve?.length ?? 0) > 0;
 
   /*
    * 这条曲线能交给谁执行。两条都有的机器上用户可以选。
@@ -411,31 +412,25 @@ function CurveEditor(props: {
    * 挂载时就去读的话，两个风扇一上来各占十几秒，把整页要用的
    * describe / read 全堵在后面，控制页直接超时打不开。这一条是实测踩到的。
    *
-   * 读不到就退回默认曲线：读不到不该让用户连新建都做不了。
+   * 读不到时保持不可用，不能把未确认的曲线当作机器当前值。
    */
   const start = async () => {
     if (reading()) {
       return;
     }
     setReading(true);
+    setReadFailed(false);
     const requestedSetting = props.setting;
     const stillSelected = () => mounted && props.setting === requestedSetting && !props.disabled;
     try {
       const firmware = await getControlObjectCurve(runtime.requestClient, props.objectId);
-      // 固件表的断点不规则（例如 0、48、52…85 度），落到固定的 5 度点上再交给用户调。
-      if (stillSelected()) props.onChange({
-        capabilityId: props.capability.id,
-        curve: curveOnTemperatures(firmware ?? curveFromStops(defaultStops()), temperatures()),
-        curveExecution: execution()
-      });
+      if (stillSelected()) {
+        const setting = curveSettingFromRead(props.capability.id, firmware, temperatures(), execution());
+        if (setting) props.onChange(setting);
+        else setReadFailed(true);
+      }
     } catch {
-      // 读不到就用默认曲线起步。这里不报错：用户要的是开始编曲线，
-      // 而那件事并不依赖读得到固件当前值。
-      if (stillSelected()) props.onChange({
-        capabilityId: props.capability.id,
-        curve: curveOnTemperatures(curveFromStops(defaultStops()), temperatures()),
-        curveExecution: execution()
-      });
+      if (stillSelected()) setReadFailed(true);
     } finally {
       setReading(false);
     }
@@ -449,13 +444,14 @@ function CurveEditor(props: {
    * 这里的触发条件是"这一项被勾上了但还没有曲线"，也就是用户自己动的手。
    */
   createEffect(() => {
-    if (!props.disabled && props.setting !== undefined && props.setting.curve == null && !reading()) {
-      void start();
+    if (!props.disabled && props.setting !== undefined && props.setting.curve == null) {
+      void untrack(start);
     }
   });
 
   return (
     <div class="control-curve">
+      <Show when={readFailed()}><p class="control-curve-note" role="alert">{uiText.control.curveUnavailable}</p></Show>
       {/*
         交给谁执行。**只在两条都有的时候才摆这个选择** ——
         只有一条路的机器上摆一个选不动的开关，纯粹是噪音；

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.App.Hosting.StartupCapabilities;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -15,7 +16,8 @@ public sealed class JsonControlInstanceRegistry(
     IHostEnvironment environment,
     IControlObjectCatalog catalog,
     IControlDesiredStateStore desiredStates,
-    ILogger<JsonControlInstanceRegistry>? logger = null) : IControlInstanceRegistry
+    ILogger<JsonControlInstanceRegistry>? logger = null,
+    StartupCapabilitySet? capabilities = null) : IControlInstanceRegistry
 {
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -23,7 +25,7 @@ public sealed class JsonControlInstanceRegistry(
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string registryPath = ControlDataPaths.FilePath(
         environment.ContentRootPath,
-        "instances.json");
+        "instances.json", capabilities);
     private ControlInstanceRegistryFile? cached;
 
     public Task<ControlInstanceCatalog> ReadAsync(CancellationToken cancellationToken)
@@ -121,7 +123,8 @@ public sealed class JsonControlInstanceRegistry(
             {
                 file = new ControlInstanceRegistryFile(
                     byId.Values.OrderBy(static entry => entry.FirstSeenAt).ToArray());
-                await SaveAsync(file, cancellationToken).ConfigureAwait(false);
+                if (capabilities is null || capabilities.Allows(StartupCapability.MutablePersistence))
+                    await SaveAsync(file, cancellationToken).ConfigureAwait(false);
             }
         }
         finally

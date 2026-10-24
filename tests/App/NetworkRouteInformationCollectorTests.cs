@@ -134,7 +134,7 @@ public sealed class NetworkRouteInformationCollectorTests
     }
 
     [Fact]
-    public void RouteEnumerationOrderDoesNotChangeSemanticHashButChangedContentDoes()
+    public void RouteEnumerationAndLiveAgeChangesDoNotChangeStructuralHash()
     {
         var api = new NetworkAddressInformationCollectorTests.Api();
         var first = DeviceInformationTestData.Snapshot() with { NetworkInterfaceInformation = new WindowsNetworkInterfaceInformationReader(api).Read() };
@@ -143,10 +143,10 @@ public sealed class NetworkRouteInformationCollectorTests
         var comparer = new DeviceTopologySemanticComparer();
         var reordered = first with { NetworkInterfaceInformation = new WindowsNetworkInterfaceInformationReader(api).Read() };
         Assert.Equal(comparer.ComputeHash(first), comparer.ComputeHash(reordered));
-        // Changing only the route's age is still new OS data, not an enumeration-order change.
+        // Route readings remain current information; time passing does not replace topology.
         BinaryPrimitives.WriteUInt32LittleEndian(api.Routes.AsSpan(8+96), 10);
         var changed = first with { NetworkInterfaceInformation = new WindowsNetworkInterfaceInformationReader(api).Read() };
-        Assert.NotEqual(comparer.ComputeHash(first), comparer.ComputeHash(changed));
+        Assert.Equal(comparer.ComputeHash(first), comparer.ComputeHash(changed));
     }
 
     [Theory]

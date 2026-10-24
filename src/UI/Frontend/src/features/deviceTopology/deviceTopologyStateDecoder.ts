@@ -16,7 +16,8 @@ import type {
   DeviceTopologySnapshotState,
   DeviceTopologySnapshotStatus,
   DeviceTopologySourceDiagnostic,
-  DeviceTopologySourceDiagnosticStatus
+  DeviceTopologySourceDiagnosticStatus,
+  DeviceTopologyInformationSnapshot
 } from "../../types.ts";
 import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
 
@@ -70,9 +71,32 @@ export const deviceTopologyStateDecoder =
           "$.attemptDiagnostics")
           .map((item, index) => decodeSourceDiagnostic(
             item,
-            `$.attemptDiagnostics[${index}]`))
+            `$.attemptDiagnostics[${index}]`)),
+        informationFields: decodeInformation(record.informationFields, "$.informationFields")
       };
     });
+
+function decodeInformation(value: unknown, path: string): DeviceTopologyInformationSnapshot {
+  const record = requireRecord(value, path);
+  return {
+    observedAt: nullableTimestamp(record.observedAt, `${path}.observedAt`),
+    devices: requireArray(record.devices, `${path}.devices`).map((item, index) => {
+      const devicePath = `${path}.devices[${index}]`;
+      const device = requireRecord(item, devicePath);
+      return {
+        deviceIdentity: requireNonEmptyString(device.deviceIdentity, `${devicePath}.deviceIdentity`),
+        objectType: requireNonEmptyString(device.objectType, `${devicePath}.objectType`),
+        fields: requireArray(device.fields, `${devicePath}.fields`).map((item, fieldIndex) => {
+          const fieldPath = `${devicePath}.fields[${fieldIndex}]`;
+          const field = requireRecord(item, fieldPath);
+          const definition = requireRecord(field.definition, `${fieldPath}.definition`);
+          if (!Object.hasOwn(field, "value")) throw new ResponseDecodeError(`${fieldPath}.value`, "current value or null");
+          return { definition: { name: requireNonEmptyString(definition.name, `${fieldPath}.definition.name`) }, value: field.value };
+        })
+      };
+    })
+  };
+}
 
 function decodeSourceDiagnostic(
   value: unknown,

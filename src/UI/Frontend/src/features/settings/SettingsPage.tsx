@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
 import { DebugSettingsSection } from "./components/DebugSettingsSection";
@@ -42,6 +43,7 @@ interface SettingsPageProps {
   onReapply: () => void;
   onSave: () => void;
   onRestoreDefaults: () => void;
+  onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
@@ -239,6 +241,7 @@ export function SettingsPage(props: SettingsPageProps) {
             aria-describedby={props.loadState === "stale" ? "settingsStaleNotice" : undefined}
           >
           <Show when={props.activeSection === "performance"}>
+            <HardwareControlSettings control={props.settings.control!} onChange={props.onControlChange} />
             <PerformanceSettingsSection
               settings={props.settings.performance}
               text={text()}

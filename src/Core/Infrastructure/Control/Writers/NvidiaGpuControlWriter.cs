@@ -13,6 +13,7 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     public NvidiaGpuControlWriter(ILogger<NvidiaGpuControlWriter>? logger = null)
         => Resource = new(describe: NvidiaGpuControlCopy.Describe,
             warning: logger is null ? null : (message, arguments) => logger.LogWarning(message, arguments));
+    internal NvidiaGpuControlWriter(NvidiaGpuControlResource resource) => Resource = resource;
     internal const string PowerLimitCapabilityId = "gpu.power-limit";
     internal const string CoreClockMinimumCapabilityId = "gpu.core-clock-minimum";
     internal const string CoreClockMaximumCapabilityId = "gpu.core-clock-maximum";
@@ -23,6 +24,45 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     internal const string ShutdownTemperatureCapabilityId = "gpu.shutdown-temperature";
     internal const string CoreClockOffsetCapabilityId = "gpu.core-clock-offset";
     internal const string MemoryClockOffsetCapabilityId = "gpu.memory-clock-offset";
+    private static readonly (string Minimum, string Maximum)[] ClockPairs =
+    [ (CoreClockMinimumCapabilityId, CoreClockMaximumCapabilityId), (MemoryClockMinimumCapabilityId, MemoryClockMaximumCapabilityId) ];
+
+    public IReadOnlyDictionary<string, string> ValidateSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
+    {
+        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!Target(target).IsDiscreteNvidia) return errors;
+        foreach (var pair in ClockPairs)
+        {
+            var minimum = settings.FirstOrDefault(setting => setting.CapabilityId == pair.Minimum);
+            var maximum = settings.FirstOrDefault(setting => setting.CapabilityId == pair.Maximum);
+            if (ClockMhz(minimum) is not { } low || ClockMhz(maximum) is not { } high) continue;
+            if (high == 0 || low <= high) continue;
+            var reason = NvidiaGpuControlCopy.Describe(NvidiaControlMessage.M36, [low, high]);
+            errors[pair.Minimum] = reason;
+            errors[pair.Maximum] = reason;
+        }
+        return errors;
+    }
+
+    public IReadOnlyList<ControlSetting> OrderSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
+    {
+        if (!Target(target).IsDiscreteNvidia) return settings;
+        var ordered = settings.ToArray();
+        foreach (var pair in ClockPairs)
+        {
+            var minimum = Array.FindIndex(ordered, setting => setting.CapabilityId == pair.Minimum);
+            var maximum = Array.FindIndex(ordered, setting => setting.CapabilityId == pair.Maximum);
+            if (minimum < 0 || maximum < 0 || ClockMhz(ordered[minimum]) is not { } low) continue;
+            var maximumFirst = Resource.ShouldWriteClockMaximumFirst(Target(target), pair.Minimum, low);
+            if (maximumFirst ? maximum > minimum : minimum > maximum)
+                (ordered[minimum], ordered[maximum]) = (ordered[maximum], ordered[minimum]);
+        }
+        return ordered;
+    }
+
+    private static double? ClockMhz(ControlSetting? setting)
+        => setting?.Number is { } number && double.IsFinite(number) && number >= 0
+            ? ControlUnitAdapter.Convert(number, setting.Unit, ControlUnits.Megahertz) : null;
     public void ResetDetection() => Resource.ResetDetection();
     public void Dispose() => Resource.Dispose();
     internal void RecordWriteResult(string objectId, string capabilityId, int code) => Resource.RecordWriteResult(objectId, capabilityId, code);

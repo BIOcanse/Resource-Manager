@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 
@@ -20,12 +21,13 @@ public sealed class JsonControlAccessLevel : IControlAccessLevel
 
     public JsonControlAccessLevel(
         IHostEnvironment environment,
-        ILogger<JsonControlAccessLevel>? logger = null)
+        ILogger<JsonControlAccessLevel>? logger = null,
+        StartupCapabilitySet? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         markerPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "access-level.txt");
+            "access-level.txt", capabilities);
         this.logger = logger;
     }
 

@@ -29,6 +29,13 @@ public interface IControlWriter
     /// </summary>
     string? ChannelOf(ControlObject target, string capabilityId) => null;
 
+    /// <summary>Validate related requested settings before either is written. Does not access hardware.</summary>
+    IReadOnlyDictionary<string, string> ValidateSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
+        => new Dictionary<string, string>();
+
+    /// <summary>Order related settings so each intermediate hardware state is valid. Leave unowned settings unchanged.</summary>
+    IReadOnlyList<ControlSetting> OrderSettings(ControlObject target, IReadOnlyList<ControlSetting> settings) => settings;
+
     /// <summary>
     /// 这个对象**现在跑的**曲线。不认领、或者这次读不到，就是 null。
     ///

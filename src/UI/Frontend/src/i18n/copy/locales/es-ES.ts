@@ -30,6 +30,10 @@ const esEsAppCopy: AppCopy = {
     control: "Control"
   },
   control: {
+    reassertionInterval: "Intervalo de reaplicación (segundos)",
+    stateUnavailable: "Los ajustes de control confirmados no están disponibles. La aplicación está suspendida.",
+    retryRead: "Volver a leer",
+    curveUnavailable: "No se pudo leer la curva actual del firmware. Inténtalo de nuevo; no se ha creado una curva de sustitución.",
     title: "Control",
     intro: "Aquí se ajustan los ventiladores, los gráficos y el procesador. También se muestran los elementos que no se pueden ajustar y el motivo.",
     loadFailed: "No se pudieron leer los dispositivos ajustables.",

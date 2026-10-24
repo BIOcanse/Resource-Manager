@@ -1,4 +1,7 @@
-import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { Portal } from "solid-js/web";
 import { CircleDashed, Download, Lock, X } from "lucide-solid";
 import {
@@ -58,6 +61,13 @@ const ActualStateIntervalMs = 2000;
 
 export function ControlWorkspace(props: { onNotice: (message: string) => void }) {
   const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  useFrontendVisibilityDemand("control.workspace", [frontendWorkIds.controlActual]);
+  const visible = () => frontendWork.isNeeded(frontendWorkIds.controlActual);
+  const [stateLoad, setStateLoad] = createSignal<"loading" | "ready" | "error">("loading");
+  const [readAttempt, setReadAttempt] = createSignal(0);
+  const reloadState = () => setReadAttempt(attempt => attempt + 1);
+
   const [catalog, setCatalog] = createSignal<ControlObjectCatalog | null>(null);
   const [state, setState] = createSignal<ControlStateView | null>(null);
   const [instances, setInstances] = createSignal<ControlInstanceCatalog | null>(null);
@@ -145,15 +155,16 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
    * 用户也可能用别的软件改过，两者对不上是常态，而且正是要让用户看见的信息。
    */
   const [actual, setActual] = createSignal<ControlActualState | null>(null);
-  onMount(() => {
+  createEffect(() => {
+    if (!visible()) { setActual(null); return; }
     const unsubscribe = runtime.sources.controlActualState.subscribe(
       ActualStateIntervalMs,
       setActual);
-    onCleanup(unsubscribe);
+    onCleanup(() => { unsubscribe(); setActual(null); });
   });
 
   const apply = async (objectId: string) => {
-    if (saving()) return;
+    if (saving() || stateLoad() !== "ready") return;
     const submitted = settingsOf(objectId);
     setSaving(true);
     try {
@@ -173,16 +184,19 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     }
   };
 
-  onMount(() => {
+  createEffect(() => {
+    if (!visible()) return;
+    readAttempt();
     const controller = new AbortController();
     const read = () => {
       void getControlObjects(runtime.requestClient, controller.signal)
         .then((next) => { setCatalog(next); setFailed(false); })
         .catch(() => setFailed(true));
       // 期望状态和回执分开取：对象清单是硬件事实，这份是用户设过什么。
+      setStateLoad("loading");
       void getControlState(runtime.requestClient, controller.signal)
-        .then(setState)
-        .catch(() => undefined);
+        .then(next => { if (!controller.signal.aborted) { setState(next); setStateLoad("ready"); } })
+        .catch(() => { if (!controller.signal.aborted) setStateLoad("error"); });
       void getControlInstances(runtime.requestClient, controller.signal)
         .then(setInstances)
         .catch(() => undefined);
@@ -203,7 +217,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
 
     read();
     // 显卡会热插拔，组件装上之后风扇会突然可控，所以回到窗口时重读一次。
-    const refresh = () => read();
+    const refresh = () => reloadState();
     window.addEventListener("focus", refresh);
     onCleanup(() => {
       window.removeEventListener("focus", refresh);
@@ -237,7 +251,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   };
 
   return (
-    <div class="page control-page">
+    <div class="page control-page" data-frontend-visibility-surface="control.workspace" data-frontend-visibility-demands="control.workspace">
       <Show when={noticeSeen() === false}>
         {/* 挂到 body：页面入场动画给 .page 加了 transform，留在页内时固定定位的弹窗会以页面为容器，前 0.3 秒错位后再跳回中间。 */}
         <Portal>
@@ -248,6 +262,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
         </Portal>
       </Show>
       <div class="panel">
+        <Show when={stateLoad() !== "ready"}>
+          <p role={stateLoad() === "error" ? "alert" : "status"}>{uiText.control.stateUnavailable}</p>
+          <button type="button" class="secondary" onClick={reloadState}>{uiText.control.retryRead}</button>
+        </Show>
         <Show when={failed()}>
           <div class="disk-usage-warning" role="note">
             <strong>{uiText.control.loadFailed}</strong>
@@ -347,6 +365,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           />
         </Show>
 
+        <Show when={stateLoad() === "ready"}>
         <For each={groups()}>
           {(group) => (
             <section class="control-group">
@@ -402,6 +421,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
             </section>
           )}
         </For>
+        </Show>
       </div>
     </div>
   );

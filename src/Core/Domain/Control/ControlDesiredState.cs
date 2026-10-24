@@ -40,10 +40,9 @@ public sealed record ControlObjectDesiredState(
 /// <summary>
 /// 期望状态：用户想让这台机器保持成什么样。
 ///
-/// **这是持久化的，而且要反复维持。**
-/// 用户设定一次之后就该一直是那样 —— 重启、显卡驱动重置、设备拔了再插回来，
-/// 都要自动重新施加，而不是回到默认值，更不是再问用户一遍。
-/// 所以它的所有者是后端存储，不是某个界面的临时状态。
+/// 保存的用户选择归后端存储所有。全局控制开启时，启动应用一次；
+/// 此后只维持成功应用的项，失败项由用户显式重新应用。
+/// 全局控制关闭保留此配置，但不应用或维持。
 /// </summary>
 public sealed record ControlDesiredState(
     IReadOnlyList<ControlObjectDesiredState> Objects)

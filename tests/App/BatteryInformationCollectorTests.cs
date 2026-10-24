@@ -70,14 +70,34 @@ public sealed partial class BatteryInformationCollectorTests
         Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, found.Status);
         Assert.Equal("b", Assert.Single(found.Identities).DevicePath);
         Assert.Empty(new WindowsBatteryReader(() => ["a"], _ => new DeviceQuery { TagError = 2 }).ReadIdentities().Identities);
-        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-            new WindowsBatteryReader(() => ["a"], _ => new DeviceQuery { TagError = 5 }).ReadIdentities().Status);
+        var failedRow = new WindowsBatteryReader(() => ["a"], _ => new DeviceQuery { TagError = 5 }).ReadIdentities();
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, failedRow.Status);
+        Assert.Equal(1, failedRow.RejectedCount);
+        Assert.Empty(failedRow.Identities);
         Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, new WindowsBatteryReader(() => [], _ => null).ReadIdentities().Status);
         Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, new WindowsBatteryReader(() => null, _ => null).ReadIdentities().Status);
         Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, new WindowsBatteryReader(() => ["a", "A"], _ => null).ReadIdentities().Status);
-        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, new WindowsBatteryReader(() => ["a"], _ => new DeviceQuery { UniqueId = null }).ReadIdentities().Status);
+        Assert.Equal(1, new WindowsBatteryReader(() => ["a"], _ => new DeviceQuery { UniqueId = null }).ReadIdentities().RejectedCount);
         Assert.NotEqual(BatteryCatalogIdentity.CreateIdentity("path", "A"), BatteryCatalogIdentity.CreateIdentity("path", "B"));
         Assert.Equal(BatteryCatalogIdentity.CreateIdentity("PATH", "A"), BatteryCatalogIdentity.CreateIdentity("path", "A"));
+    }
+
+    [Fact]
+    public void UnreadableBatteryRowsDoNotDiscardEarlierOrLaterVerifiedIdentities()
+    {
+        var read = new WindowsBatteryReader(() => ["a", "b", "c", "d", "e", "f"], path => path switch
+        {
+            "b" => null,
+            "c" => new DeviceQuery { UniqueId = null },
+            "d" => new DeviceQuery { ChangedTag = true },
+            "e" => throw new IOException("device removed"),
+            _ => new DeviceQuery { UniqueId = path + "-unique" }
+        }).ReadIdentities(includeDeclarations: true);
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, read.Status);
+        Assert.Equal(4, read.RejectedCount);
+        Assert.Equal(new[] { "a", "f" }, read.Identities.Select(static row => row.DevicePath));
+        Assert.Equal(new[] { BatteryCatalogIdentity.CreateIdentity("a", "a-unique"),
+            BatteryCatalogIdentity.CreateIdentity("f", "f-unique") }, read.Identities.Select(static row => row.ExactIdentityKey));
     }
 
     [Fact]

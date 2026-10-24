@@ -43,11 +43,14 @@ public interface IControlPlane
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// 把已经存着的期望状态重新施加一遍。
-    ///
-    /// 启动时、以及设备重新出现时调用 —— 这就是「设定一次就一直维持」的兑现方式。
+    /// 只维持本次运行中仍成功应用的项；失败项等待用户显式重新应用。
+    /// 启动保存配置的一次性应用由 InitializeAsync 负责。
     /// </summary>
     Task<ControlApplyReport> ReassertAsync(CancellationToken cancellationToken);
+
+    /// <summary>Apply the persisted choice once when the device catalog is available.</summary>
+    Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
 }
 
 /// <summary>

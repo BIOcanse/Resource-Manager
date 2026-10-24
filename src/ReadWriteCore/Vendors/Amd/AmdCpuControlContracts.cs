@@ -2,7 +2,7 @@
 public enum AmdCpuControlField { PowerLimit, SlowPowerLimit, FastPowerLimit, TdcLimit, EdcLimit, TemperatureLimit, PowerBoostScalar, CurveOptimizer }
 public enum AmdCpuControlStatus { Applied, Failed }
 public enum AmdCpuControlUnavailableKind { Platform, Component, NotImplemented }
-public enum AmdCpuControlMessage { BridgeMissing, BridgeSilent, NotSupported, NotEffective, TemperatureLimitUnverifiable, CurrentLimitMappingUnconfirmed, NumberRequired, SmuRejected, Unreadable, ReadingMissing, StatusRejected, StatusWarning, ReadbackWarning, ReadBaselineWarning, WriteBaselineWarning }
+public enum AmdCpuControlMessage { BridgeMissing, BridgeSilent, NotSupported, NotEffective, TemperatureLimitUnverifiable, CurrentLimitMappingUnconfirmed, NumberRequired, SmuRejected, Unreadable, ReadingMissing, StatusRejected, StatusWarning, ReadbackWarning, ReadBaselineWarning, WriteBaselineWarning, BaselineUnavailable }
 public sealed record AmdCpuControlTarget(string Id, bool IsAmdCpu);
 public sealed record AmdCpuControlRange(double Minimum, double Maximum, double Step, string Unit, double? DefaultValue = null);
 public sealed record AmdCpuControlCapability(AmdCpuControlField Field, AmdCpuControlRange? Range = null)

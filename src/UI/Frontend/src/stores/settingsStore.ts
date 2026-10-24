@@ -97,6 +97,7 @@ export interface SettingsStore {
   reapply: () => Promise<void>;
   discardDraftChanges: () => void;
   resetDraftToDefaults: () => void;
+  updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
@@ -391,6 +392,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     reapply,
     discardDraftChanges,
     resetDraftToDefaults,
+    updateControl: (control) => updateDraft(current => ({ ...current, control })),
     updateSmartMonitoringMode: (mode) => updatePerformance((performance) => ({
       ...performance,
       smartMonitoringMode: normalizeAdaptiveBooleanMode(mode)
@@ -596,6 +598,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 export function defaultAppSettings(): AppSettings {
   return {
     version: "1.0.28",
+    control: { reassertionIntervalSeconds: 120 },
     performance: {
       optimizationMode: "normal",
       preciseGpuPlacementEnabled: false,
@@ -652,6 +655,9 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
   const defaults = defaultAppSettings();
   return {
     version: "1.0.28",
+    control: {
+      reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
+    },
     // 只列出当前模型里的字段：旧文件里已删除的键（旧布尔副本、隐藏时刷新、三项无读取方的刷新频率等）在这里自然丢弃。
     performance: {
       optimizationMode: normalizeOptimizationMode(settings?.performance?.optimizationMode),

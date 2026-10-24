@@ -30,6 +30,10 @@ const frFrAppCopy: AppCopy = {
     control: "Réglages"
   },
   control: {
+    reassertionInterval: "Intervalle de réapplication (secondes)",
+    stateUnavailable: "Les réglages de contrôle confirmés sont indisponibles. Leur application est suspendue.",
+    retryRead: "Relire",
+    curveUnavailable: "Impossible de lire la courbe actuelle du micrologiciel. Réessayez ; aucune courbe de remplacement n’a été créée.",
     title: "Réglages",
     intro: "Réglez ici les ventilateurs, la carte graphique et le processeur. Les éléments non réglables sont aussi affichés avec leur raison.",
     loadFailed: "Impossible de lire les appareils réglables.",

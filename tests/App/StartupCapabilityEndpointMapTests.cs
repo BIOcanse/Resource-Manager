@@ -28,6 +28,9 @@ public sealed class StartupCapabilityEndpointMapTests
             "GET /api/adapters/resource-manager/scheduling/subscribe",
             routes);
         Assert.Contains("GET /api/settings/app", routes);
+        Assert.Contains("GET /api/control/state", routes);
+        Assert.DoesNotContain(routes, route => (route.Contains(" /api/control/", StringComparison.Ordinal)
+            || route.Contains(" /api/settings/", StringComparison.Ordinal)) && !route.StartsWith("GET ", StringComparison.Ordinal));
         Assert.Contains("GET /api/components", routes);
         Assert.Contains("GET /api/dependencies", routes);
         Assert.Contains("GET /api/public/v1/capability", routes);
@@ -74,6 +77,10 @@ public sealed class StartupCapabilityEndpointMapTests
     public async Task FullProfileMapsExplicitEffectRoutes()
     {
         var routes = await CaptureRoutesAsync(StartupCapabilitySet.Full);
+
+        Assert.Contains("PUT /api/control/state", routes);
+        Assert.Contains("PUT /api/settings/app", routes);
+        Assert.Contains("PATCH /api/settings/app", routes);
 
         Assert.Contains("POST /api/optimization/smart/run-once", routes);
         Assert.Contains(
