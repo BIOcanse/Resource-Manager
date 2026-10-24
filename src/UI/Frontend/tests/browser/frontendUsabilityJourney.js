@@ -257,6 +257,8 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await setScenario({ capabilities: "hang", settings: "ready" });
   const reloadStartedAt = Date.now();
   await page.reload({ waitUntil: "domcontentloaded" });
+  // 760×500 下资源表在折叠线以下；监视区按区域可见取数，先把它滚进视口。
+  await page.locator('[data-frontend-visibility-surface="monitor.table"]').scrollIntoViewIfNeeded();
   const independentRow = page.getByRole("button", { name: "更多操作：示例软件" }).first();
   await independentRow.waitFor({ state: "visible", timeout: 3500 });
   const independentReadyMs = Date.now() - reloadStartedAt;

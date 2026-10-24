@@ -426,7 +426,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       (value) => {
         if (accepting) {
           setBarsSourceSnapshot({ queryKey, source: value });
-          pruneResourceSelection(value.data?.breakdown.bars ?? []);
+          // 只有状态没有数据的快照（新订阅待数据、失败）说明不了哪些软件还在，不据此清掉选中。
+          if (value.data) {
+            pruneResourceSelection(value.data.breakdown.bars ?? []);
+          }
         }
       });
     onCleanup(() => {

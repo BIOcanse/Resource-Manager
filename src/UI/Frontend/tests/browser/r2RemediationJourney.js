@@ -40,6 +40,8 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
   assert(interactionBudget.tooltips <= interactionBudget.tracks,
     `Resource tooltips exceeded the per-track budget: ${JSON.stringify(interactionBudget)}`);
 
+  // 800×520 下资源表在折叠线以下；监视区按区域可见取数，先把它滚进视口。
+  await page.locator('[data-frontend-visibility-surface="monitor.table"]').scrollIntoViewIfNeeded();
   const activeRow = page.locator(".resource-table-row[role='row'][tabindex='0']").first();
   await activeRow.waitFor({ state: "visible", timeout: 7000 });
   await activeRow.focus();
@@ -100,6 +102,8 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
 
   await setScenario({ resourceTableVariant: "unavailable-actions" });
   await page.reload({ waitUntil: "domcontentloaded" });
+  // 800×520 下资源表在折叠线以下；监视区按区域可见取数，先把它滚进视口。
+  await page.locator('[data-frontend-visibility-surface="monitor.table"]').scrollIntoViewIfNeeded();
   const unavailableRow = page.locator(".resource-table-row[data-resource-row-id='software:unavailable-actions']");
   await unavailableRow.waitFor({ state: "visible", timeout: 7000 });
   await unavailableRow.focus();
