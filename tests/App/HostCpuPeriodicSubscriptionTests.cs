@@ -377,6 +377,8 @@ public sealed class HostCpuPeriodicSubscriptionTests
 
         private sealed class RecordedLease(WarmingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int disposed;
 
             public void Dispose()

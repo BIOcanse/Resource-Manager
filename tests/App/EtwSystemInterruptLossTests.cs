@@ -286,6 +286,8 @@ public sealed class EtwSystemInterruptLossTests
 
         private sealed class Lease(Broker broker) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+
             private bool disposed;
             public void Dispose()
             {

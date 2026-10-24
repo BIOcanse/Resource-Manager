@@ -9,6 +9,38 @@ public sealed class KernelEtwSubscriptionDispatcherTests
     private static readonly KernelEtwSessionContext Context = new(17, DateTimeOffset.UnixEpoch);
 
     [Fact]
+    public void DeniedRetriesLeaveUncoveredConsumersUnboundUntilKeywordsAreEnabled()
+    {
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.ContextSwitch);
+        var pending = new Consumer(2, KernelTraceEventParser.Keywords.DiskIO);
+        var covered = new Consumer(3, KernelTraceEventParser.Keywords.Process);
+        dispatcher.InitializeSubscriptions([first.Registration], Context);
+        var before = first.Source;
+        for (var retry = 0; retry < 3; retry++)
+        {
+            Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions(
+                [first.Registration, pending.Registration, covered.Registration], Context,
+                _ => throw new UnauthorizedAccessException("fixture denied")));
+            EmitProcessStart(dispatcher);
+            Assert.Equal(0, pending.BindCount);
+            Assert.Null(pending.Source);
+            Assert.Equal(1, first.BindCount);
+            Assert.Equal(1, covered.BindCount);
+            Assert.Same(before, first.Source);
+            Assert.Equal(retry + 1, first.Received);
+            Assert.Equal(retry + 1, covered.Received);
+        }
+
+        dispatcher.UpdateSubscriptions([first.Registration, pending.Registration, covered.Registration], Context, _ => { });
+        EmitProcessStart(dispatcher);
+        Assert.Equal(1, pending.BindCount);
+        Assert.Equal(1, pending.Received);
+        Assert.Equal(1, first.BindCount);
+        Assert.Equal(1, covered.BindCount);
+    }
+
+    [Fact]
     public void DeniedReductionRemovesWithdrawnCallbacksAndPreservesTheSurvivor()
     {
         var dispatcher = new KernelEtwSubscriptionDispatcher();
@@ -81,7 +113,8 @@ public sealed class KernelEtwSubscriptionDispatcherTests
             updates.Add(keywords);
             EmitProcessStart(dispatcher);
             Assert.Equal(0, second.Received);
-            Assert.False(second.Source!.IsActive);
+            Assert.Null(second.Source);
+            Assert.Equal(0, second.BindCount);
         });
         EmitProcessStart(dispatcher);
 
@@ -129,7 +162,7 @@ public sealed class KernelEtwSubscriptionDispatcherTests
     }
 
     [Fact]
-    public void FailedBindingDoesNotChangeThePublishedSetOrWriteNativeKeywords()
+    public void FailedBindingAfterKeywordUpdateDoesNotChangeThePublishedSet()
     {
         var dispatcher = new KernelEtwSubscriptionDispatcher();
         var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
@@ -138,13 +171,14 @@ public sealed class KernelEtwSubscriptionDispatcherTests
         var invalid = new KernelEtwSubscriptionRegistration(2, "invalid",
             KernelTraceEventParser.Keywords.NetworkTCPIP, (_, _) => throw failure);
 
+        var updates = new List<KernelTraceEventParser.Keywords>();
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => dispatcher.UpdateSubscriptions(
-            [first.Registration, invalid], Context,
-            _ => throw new InvalidOperationException("A failed binding must not write native keywords."))));
+            [first.Registration, invalid], Context, updates.Add)));
         EmitProcessStart(dispatcher);
 
         Assert.Equal(1, first.Received);
         Assert.True(first.Source!.IsActive);
+        Assert.Equal(new[] { KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.NetworkTCPIP }, updates);
     }
 
     [Fact]
@@ -162,7 +196,8 @@ public sealed class KernelEtwSubscriptionDispatcherTests
 
         Assert.Equal(1, first.Received);
         Assert.Equal(0, second.Received);
-        Assert.False(second.Source!.IsActive);
+        Assert.Null(second.Source);
+        Assert.Equal(0, second.BindCount);
     }
 
     [Fact]

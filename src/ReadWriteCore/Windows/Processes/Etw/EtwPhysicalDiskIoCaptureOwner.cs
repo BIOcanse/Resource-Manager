@@ -33,7 +33,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     private volatile string message = "ETW DiskIO 物理磁盘归因按需启动。";
     public string State => state;
     public string Message => message;
-    public bool IsRunning { get { lock (subscriptionGate) return subscription is not null && broker.GetSnapshot().ForKeywords(RequiredKeywords) is { IsRunning: true } snapshot && snapshot.Generation == Volatile.Read(ref generation); } }
+    public bool IsRunning { get { lock (subscriptionGate) return subscription is not null && (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot()) is { IsRunning: true } snapshot && snapshot.Generation == Volatile.Read(ref generation); } }
 
     public EtwPhysicalDiskIoCaptureOwner(IKernelEtwSessionBroker broker, KernelEtwDiagnostics? diagnostics = null)
         : this(broker, diagnostics ?? new(), static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open) { }
@@ -47,14 +47,14 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         EnsureStarted();
         var now = DateTimeOffset.UtcNow;
         var tick = clock();
-        var before = broker.GetSnapshot().ForKeywords(RequiredKeywords);
+        var before = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
         RefreshBrokerState(before);
         var selected = SelectWindow(tick);
         var legacy = selected.Complete ? AggregateLegacy(selected.Events) : new Dictionary<int, PhysicalDiskProcessAttribution>();
         var scopes = selected.Disks.Select(number => new PhysicalDiskIoScope(selected.Generation, number)).ToArray();
         var observed = !includeObservedTraffic ? null : selected.Complete ? BuildObserved(selected.Events, now, selected.Generation) with { Disks = scopes }
             : new PhysicalDiskProcessIoWindow(now, WindowMilliseconds, []) { Complete = false, Disks = scopes };
-        var after = broker.GetSnapshot().ForKeywords(RequiredKeywords);
+        var after = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
         lock (eventGate)
         {
             if (!before.IsRunning || !after.IsRunning || before.Generation != after.Generation

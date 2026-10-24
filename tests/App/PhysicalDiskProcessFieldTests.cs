@@ -133,7 +133,10 @@ public sealed class PhysicalDiskProcessFieldTests
         { Acquires++; Keywords = request.Keywords; Source = new(); request.Bind(Source, Context); Source.Activate(); return new Lease(this, Source); }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", Generation, DateTimeOffset.UnixEpoch, Keywords, Acquires - Releases, Lost);
         private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
-        { public void Dispose() { source.Cancel(); owner.Releases++; } }
+        {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+            public void Dispose() { source.Cancel(); owner.Releases++; }
+        }
     }
 }
 

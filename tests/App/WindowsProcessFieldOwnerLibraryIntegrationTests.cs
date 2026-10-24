@@ -197,6 +197,8 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
             Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.NetworkTCPIP, Acquires - Releases, 0);
         private sealed class Lease(Broker broker, KernelEtwEventSource source) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
+
             private int disposed;
             public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); broker.Releases++; } }
         }

@@ -6,6 +6,93 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class KernelEtwSessionBrokerTests
 {
+    [Fact]
+    public void DeniedKeywordUpdatesWarnOnlyWhenTheFailureChangesOrAfterRecovery()
+    {
+        var diagnostics = new List<KernelEtwDiagnostic>();
+        var factory = new FakeRuntimeFactory();
+        using var owner = new KernelEtwSessionOwner(factory, new(diagnostics.Add));
+        using var cpu = owner.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.UpdateFailure = new UnauthorizedAccessException("first denial");
+        using var disk = owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        owner.Reconcile();
+        owner.Reconcile();
+        Assert.Single(diagnostics, item => item.Level == KernelEtwDiagnosticLevel.Warning);
+        Assert.Equal(2, diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Debug));
+
+        runtime.UpdateFailure = new UnauthorizedAccessException("different denial");
+        owner.Reconcile();
+        Assert.Equal(2, diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Warning));
+        Assert.Contains("different denial", disk.GetSnapshot().Message);
+
+        runtime.UpdateFailure = null;
+        owner.Reconcile();
+        runtime.UpdateFailure = new UnauthorizedAccessException("different denial");
+        using var network = owner.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        Assert.Equal(3, diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Warning));
+        Assert.Equal("Unavailable", network.GetSnapshot().State);
+        Assert.True(disk.GetSnapshot().IsRunning);
+        Assert.Equal(0, runtime.StopCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeniedStopRetriesLogErrorsOnlyWhenTheFailureChanges(bool restart)
+    {
+        var diagnostics = new List<KernelEtwDiagnostic>();
+        var factory = new FakeRuntimeFactory();
+        using var owner = new KernelEtwSessionOwner(factory, new(diagnostics.Add));
+        using var cpu = owner.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
+        if (restart) runtime.UpdateFailure = new InvalidOperationException("fixture update requires release");
+        using var disk = restart
+            ? owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }))
+            : null;
+        if (!restart) cpu.Dispose();
+        owner.Reconcile();
+        owner.Reconcile();
+
+        Assert.Single(diagnostics, item => item.Level == KernelEtwDiagnosticLevel.Error);
+        Assert.DoesNotContain(diagnostics, item => item.Level == KernelEtwDiagnosticLevel.Warning);
+        Assert.True(diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Debug) >= 2);
+        Assert.Equal(3, runtime.StopCount);
+        Assert.True(owner.GetSnapshot().IsRunning);
+        Assert.Single(factory.Calls);
+
+        runtime.StopResult = new(false, false, false, ["SessionStop: different denial"]) { ControlDenied = true };
+        owner.Reconcile();
+        Assert.Equal(2, diagnostics.Count(item => item.Level == KernelEtwDiagnosticLevel.Error));
+        Assert.Contains("different denial", owner.GetSnapshot().Message);
+        runtime.UpdateFailure = null;
+        runtime.StopResult = KernelEtwSessionStopResult.Released;
+        owner.Reconcile();
+        Assert.Equal(restart ? "Running" : "Idle", owner.GetSnapshot().State);
+    }
+
+    [Fact]
+    public void LeaseAvailabilityIncludesNativeMetadataFlagsAndEndsOnRelease()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var owner = new KernelEtwSessionOwner(factory);
+        using var network = owner.Subscribe(new("network", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        using var metadata = owner.Subscribe(new("metadata", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread,
+            static (_, _) => { }));
+        Assert.True(metadata.GetSnapshot().IsRunning);
+        runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
+        metadata.Dispose();
+        Assert.Equal("Idle", metadata.GetSnapshot().State);
+        Assert.True(network.GetSnapshot().IsRunning);
+        network.Dispose();
+        Assert.True(owner.GetSnapshot().IsRunning);
+        Assert.Equal("Idle", network.GetSnapshot().State);
+        runtime.StopResult = KernelEtwSessionStopResult.Released;
+        owner.Reconcile();
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -35,13 +122,14 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(before.Generation, denied.Generation);
         Assert.Equal(before.StartedAt, denied.StartedAt);
         Assert.Equal(before.EnabledKeywords, denied.EnabledKeywords);
-        Assert.True(denied.ForKeywords(KernelTraceEventParser.Keywords.ContextSwitch).IsRunning);
-        Assert.Equal("Unavailable", denied.ForKeywords(KernelTraceEventParser.Keywords.DiskIO).State);
-        Assert.Contains("fixture access denied", denied.ForKeywords(KernelTraceEventParser.Keywords.DiskIO).Message);
+        Assert.True(first.GetSnapshot().IsRunning);
+        Assert.True(covered.GetSnapshot().IsRunning);
+        Assert.Equal("Unavailable", pending.GetSnapshot().State);
+        Assert.Contains("fixture access denied", pending.GetSnapshot().Message);
 
         original.UpdateFailure = null;
         broker.Owner.Reconcile();
-        Assert.True(broker.GetSnapshot().ForKeywords(KernelTraceEventParser.Keywords.DiskIO).IsRunning);
+        Assert.True(pending.GetSnapshot().IsRunning);
         Assert.Equal(before.Generation, broker.GetSnapshot().Generation);
         Assert.Equal(0, original.StopCount);
     }
@@ -128,7 +216,7 @@ public sealed class KernelEtwSessionBrokerTests
         runtime.UpdateFailure = null;
         runtime.StopResult = KernelEtwSessionStopResult.Released;
         broker.Owner.Reconcile();
-        Assert.True(broker.GetSnapshot().ForKeywords(KernelTraceEventParser.Keywords.DiskIO).IsRunning);
+        Assert.True(disk.GetSnapshot().IsRunning);
         Assert.Equal(1, runtime.StopCount);
         Assert.Single(factory.Calls);
     }

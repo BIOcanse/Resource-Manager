@@ -195,6 +195,8 @@ public sealed class PhysicalDiskIoWindowTests
         }
         private sealed class Lease(Broker owner) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int disposed;
             public void Dispose()
             {

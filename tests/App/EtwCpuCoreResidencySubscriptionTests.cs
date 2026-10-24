@@ -387,6 +387,8 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
 
         private sealed class Lease(CrossThreadBindingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int released;
             public void Dispose()
             {
@@ -422,6 +424,8 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
 
         private sealed class Lease(PassiveUnavailableBroker owner) : IKernelEtwSubscription
         {
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+
             private int disposed;
 
             public void Dispose()

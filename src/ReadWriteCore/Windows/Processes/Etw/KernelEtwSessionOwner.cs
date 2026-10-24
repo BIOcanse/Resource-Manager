@@ -99,6 +99,21 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         }
     }
 
+    private KernelEtwSessionSnapshot GetSnapshot(long leaseId)
+    {
+        lock (stateGate)
+        {
+            var snapshot = GetSnapshot();
+            if (!subscriptions.TryGetValue(leaseId, out var subscription))
+                return snapshot with { State = "Idle", Message = "共享 kernel ETW 订阅已释放。" };
+            return snapshot.IsRunning
+                && (subscription.Keywords & ~(enabledKeywords | KernelTraceEventParser.Keywords.Process
+                    | KernelTraceEventParser.Keywords.Thread)) != 0
+                ? snapshot with { State = "Unavailable" }
+                : snapshot;
+        }
+    }
+
     /// <summary>Stops the entire composition, not only a borrowed reader's lease.</summary>
     public void Dispose() => StopBroker();
 
@@ -159,6 +174,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             currentStartedAt = startedAt;
         }
 
+        Exception? failedUpdate = null;
         var keywords = currentSubscriptions.Aggregate(
             KernelTraceEventParser.Keywords.None,
             static (value, subscription) => value | subscription.Keywords);
@@ -191,14 +207,17 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                     state = "Running";
                     message = $"共享 kernel ETW 会话继续使用已启用的 keywords；订阅更新被拒绝：{updateFailure.Message}";
                 }
-                logger.LogWarning(updateFailure, "Shared kernel ETW keyword update was denied; retaining the running session and retrying reconciliation.");
+                if (ShouldLogFailure($"update:{updateFailure.GetType().FullName}:{updateFailure.Message}"))
+                    logger.LogWarning(updateFailure, "Shared kernel ETW keyword update was denied; retaining the running session and retrying reconciliation.");
+                else
+                    logger.LogDebug(updateFailure, "Shared kernel ETW keyword update was denied again; retaining the running session.");
                 return;
             }
             catch (Exception updateFailure)
             {
                 // A partially applied update must go through the same proven-release
                 // path as a processing failure, rather than retrying an uncertain runtime.
-                logger.LogWarning(updateFailure, "Shared kernel ETW subscription update failed; releasing the runtime.");
+                failedUpdate = updateFailure;
             }
         }
 
@@ -211,11 +230,16 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         var previousStop = previousRuntime?.Stop(StopWait);
         if (previousStop is not null && !previousStop.IsReleased)
         {
+            if (failedUpdate is not null)
+                logger.LogDebug(failedUpdate, "Shared kernel ETW subscription update failed; runtime release was not proven.");
             RecordStopFailure(previousRuntime!, previousStop,
                 Volatile.Read(ref stopping) != 0 ? "shutdown"
                     : currentSubscriptions.Length == 0 ? "last subscription release" : "restart");
             return;
         }
+
+        if (failedUpdate is not null)
+            logger.LogWarning(failedUpdate, "Shared kernel ETW subscription update failed; released the runtime.");
 
         lock (stateGate)
         {
@@ -384,10 +408,11 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             message = CreateStopFailureMessage(result, operation);
         }
 
-        logger.LogError(
-            "Shared kernel ETW {Operation} did not prove release: {Failures}",
-            operation,
-            string.Join(" | ", result.Failures));
+        var failures = string.Join(" | ", result.Failures);
+        if (ShouldLogFailure($"stop:{operation}:{failures}"))
+            logger.LogError("Shared kernel ETW {Operation} did not prove release: {Failures}", operation, failures);
+        else
+            logger.LogDebug("Shared kernel ETW {Operation} still did not prove release: {Failures}", operation, failures);
     }
 
     private void RecordCreationCleanupFailure(
@@ -416,18 +441,7 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
 
     private void LogStartFailure(Exception exception)
     {
-        var fingerprint = $"{exception.GetType().FullName}:{exception.Message}";
-        var shouldWarn = false;
-        lock (stateGate)
-        {
-            if (!string.Equals(lastLoggedFailure, fingerprint, StringComparison.Ordinal))
-            {
-                lastLoggedFailure = fingerprint;
-                shouldWarn = true;
-            }
-        }
-
-        if (shouldWarn)
+        if (ShouldLogFailure($"start:{exception.GetType().FullName}:{exception.Message}"))
         {
             logger.LogWarning(exception, "Failed to start shared kernel ETW session.");
         }
@@ -437,9 +451,21 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         }
     }
 
+    private bool ShouldLogFailure(string fingerprint)
+    {
+        lock (stateGate)
+        {
+            if (string.Equals(lastLoggedFailure, fingerprint, StringComparison.Ordinal)) return false;
+            lastLoggedFailure = fingerprint;
+            return true;
+        }
+    }
+
     private sealed class SubscriptionLease(KernelEtwSessionOwner owner, long leaseId) : IKernelEtwSubscription
     {
         private int disposed;
+
+        public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot(leaseId);
 
         public void Dispose()
         {

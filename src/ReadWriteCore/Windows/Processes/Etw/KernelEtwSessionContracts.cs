@@ -9,7 +9,11 @@ public interface IKernelEtwSessionBroker
     KernelEtwSessionSnapshot GetSnapshot();
 }
 
-public interface IKernelEtwSubscription : IDisposable;
+public interface IKernelEtwSubscription : IDisposable
+{
+    /// <summary>Session status with availability resolved for this lease's registered keywords.</summary>
+    KernelEtwSessionSnapshot GetSnapshot();
+}
 
 public sealed record KernelEtwSubscriptionRequest(
     string Id,
@@ -30,13 +34,6 @@ public sealed record KernelEtwSessionSnapshot(
     int EventsLost)
 {
     public bool IsRunning => State.Equals("Running", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Consumer availability follows the keywords actually enabled, not the pending union.</summary>
-    public KernelEtwSessionSnapshot ForKeywords(KernelTraceEventParser.Keywords required)
-        => IsRunning && (required & ~(EnabledKeywords | KernelTraceEventParser.Keywords.Process
-                | KernelTraceEventParser.Keywords.Thread)) != 0
-            ? this with { State = "Unavailable" }
-            : this;
 }
 
 public sealed record KernelEtwSubscriptionRegistration(
