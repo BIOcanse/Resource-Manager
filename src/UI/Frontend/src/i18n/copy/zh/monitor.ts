@@ -111,7 +111,6 @@ export const zhMonitorCopy = {
       status: {
         warming: "正在预热",
         ready: "当前采样",
-        stale: "上一次采样",
         failed: "采样失败"
       }
     },

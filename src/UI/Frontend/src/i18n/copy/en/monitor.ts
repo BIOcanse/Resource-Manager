@@ -115,7 +115,6 @@ export const enMonitorCopy: Pick<
       status: {
         warming: "Warming up",
         ready: "Current sample",
-        stale: "Last sample",
         failed: "Sampling failed"
       }
     },

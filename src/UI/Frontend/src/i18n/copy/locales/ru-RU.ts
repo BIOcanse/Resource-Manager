@@ -525,7 +525,6 @@ const ruRuAppCopy: AppCopy = {
       status: {
         warming: "Прогрев",
         ready: "Текущая выборка",
-        stale: "Последняя выборка",
         failed: "Сбой выборки"
       }
     },

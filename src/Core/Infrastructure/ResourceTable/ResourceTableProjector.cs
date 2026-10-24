@@ -80,15 +80,11 @@ public sealed partial class ResourceTableProjector(IEnumerable<IResourceTablePro
             return ResourceTableProjectionStatuses.Warming;
         }
 
-        if (inputs.All(static input =>
+        // A failed dataset clears its column; any ready column means the table shows current values.
+        if (inputs.Any(static input =>
                 input.Status == ResourceBreakdownSamplingStatuses.Ready))
         {
             return ResourceTableProjectionStatuses.Ready;
-        }
-
-        if (inputs.Any(static input => input.LastSuccessAt is not null))
-        {
-            return ResourceTableProjectionStatuses.Stale;
         }
 
         return inputs.Any(static input =>
