@@ -3,14 +3,16 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
-public sealed class WindowsExternalGpuPlacementRuntime(
+public sealed partial class WindowsExternalGpuPlacementRuntime(
     IHostEnvironment environment, ExternalGpuResidentObservation observations,
-    ILogger<WindowsExternalGpuPlacementRuntime> logger)
+    ILogger<WindowsExternalGpuPlacementRuntime> logger,
+    IHostManagerRollbackStateStore stateStore)
 {
     public const string FileName = "ResourceManager.GpuPlacementExternal.exe";
     public const string ProviderId = "chromium-external-dxgi";
@@ -56,6 +58,7 @@ public sealed class WindowsExternalGpuPlacementRuntime(
 
     public ExternalGpuPlacementPlan? Prepare(IReadOnlyList<GpuPlacementProcessInstance> processes)
     {
+        RetireFinishedAttempts();
         if (HasUnreleasedControl) return null;
         var eligible = processes.Select(ReadPlan).OfType<ExternalGpuPlacementPlan>().ToArray();
         return eligible.Length == 1 && !HasFailedAttempt(evidenceRoot, eligible[0].Root) ? eligible[0] : null;
@@ -99,26 +102,14 @@ public sealed class WindowsExternalGpuPlacementRuntime(
             GpuPlacementProcessInstance? previous;
             try
             {
-                using var request = JsonDocument.Parse(File.ReadAllText(requestPath));
-                var expected = request.RootElement.GetProperty("expected");
-                // Retained Chromium attempts predate the renderer-neutral Root field.
-                previous = (expected.TryGetProperty("Root", out var rootIdentity)
-                    ? rootIdentity : expected.GetProperty("Browser")).Deserialize<GpuPlacementProcessInstance>();
+                previous = ReadAttemptRoot(directory);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
                 or InvalidOperationException or KeyNotFoundException) { continue; }
             if (previous is null || previous.ProcessId != browser.ProcessId
                 || previous.ProcessStartKey != browser.ProcessStartKey
                 || !StringComparer.OrdinalIgnoreCase.Equals(previous.ExecutablePath, browser.ExecutablePath)) continue;
-            try
-            {
-                var resultPath = Path.Combine(directory, "result.json");
-                if (!File.Exists(resultPath)) return true;
-                var result = JsonSerializer.Deserialize<RunningGpuPlacementActionResult>(File.ReadAllText(resultPath));
-                if (result?.Status != RunningGpuPlacementActionStatuses.RecreateRequested) return true;
-            }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
-                or InvalidOperationException or KeyNotFoundException) { return true; }
+            if (HasFailedAttemptForDirectory(directory)) return true;
         }
         return false;
     }
@@ -143,6 +134,18 @@ public sealed class WindowsExternalGpuPlacementRuntime(
             && result.Records[0].Metadata.GetValueOrDefault("cleanupPassed") == bool.TrueString;
 
     public async Task<RunningGpuPlacementActionResult> ExecuteAsync(RunningGpuPlacementActionPlan plan,
+        RunningGpuPlacementExecution execution, CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            RetireFinishedAttempts();
+            executingAttempts++;
+        }
+        try { return await ExecuteAttemptAsync(plan, execution, cancellationToken).ConfigureAwait(false); }
+        finally { lock (gate) executingAttempts--; }
+    }
+
+    private async Task<RunningGpuPlacementActionResult> ExecuteAttemptAsync(RunningGpuPlacementActionPlan plan,
         RunningGpuPlacementExecution execution, CancellationToken cancellationToken)
     {
         var expected = plan.External ?? throw new ArgumentException("Missing external process identities.", nameof(plan));

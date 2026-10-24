@@ -521,7 +521,8 @@ public sealed class ExternalGpuPlacementTests
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var sources = new NoSampling();
-        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources), NullLogger<WindowsExternalGpuPlacementRuntime>.Instance);
+        using var receipts = new ResourceManager.App.Infrastructure.Optimization.JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
+        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources), NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, receipts);
         var service = new WindowsRunningGpuPlacementActionService(NullLogger<WindowsRunningGpuPlacementActionService>.Instance,
             new(files), null!, null!, new GpuGraphicsApiIdentificationTests.Plans(software), new(), external);
         var result = await service.PrepareWithFirstApiObservationAsync(new("target", "software", "Software",
@@ -542,8 +543,9 @@ public sealed class ExternalGpuPlacementTests
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var sources = new NoSampling();
+        using var receipts = new ResourceManager.App.Infrastructure.Optimization.JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
         var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources),
-            NullLogger<WindowsExternalGpuPlacementRuntime>.Instance);
+            NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, receipts);
         var service = new ExternalOnlyRunningGpuPlacementActionService(
             new GpuGraphicsApiIdentificationTests.Plans(policy), external, new UnusedHistory());
         var request = new RunningGpuPlacementActionRequest("target", "software", "Software",

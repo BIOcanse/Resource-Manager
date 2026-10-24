@@ -4,6 +4,9 @@ namespace ResourceManager.App.Application.Optimization;
 
 public interface IHostManagerRollbackStateStore
 {
+    // Only durable receipts authorize retirement. Null means authority is not available yet.
+    IReadOnlySet<string>? ReadExternalGpuAttemptReferences() => null;
+
     Task<HostManagerRollbackStateDocument> LoadAsync(CancellationToken cancellationToken);
 
     Task<HostManagerRollbackStateDocument> ReserveNativeHostSessionIncarnationAsync(
