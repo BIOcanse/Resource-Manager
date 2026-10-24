@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Controlled;
@@ -46,18 +47,32 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
 
     internal static RuntimeProcessAttributionBatch MatchBatch(IReadOnlyList<RuntimeProcessIdentity> processes,
         Func<RuntimeProcessIdentity, RuntimeProcessAttributionPipeline> selectPipeline,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<int, RuntimeProcessAttributionDirectMatch>? cachedDirectMatches = null,
+        bool captureDirectMatches = false)
     {
         var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
         var sources = new Dictionary<int, uint>();
+        Dictionary<int, RuntimeProcessAttributionDirectMatch>? directMatches =
+            captureDirectMatches ? new Dictionary<int, RuntimeProcessAttributionDirectMatch>() : null;
         var failures = new Dictionary<int, string>();
         var byId = processes.ToDictionary(process => process.ProcessId);
         foreach (var process in processes)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (cachedDirectMatches?.TryGetValue(process.ProcessId, out var cachedMatch) == true)
+            {
+                if (directMatches is not null) directMatches[process.ProcessId] = cachedMatch;
+                resolved[process.ProcessId] = cachedMatch.Attribution;
+                sources[process.ProcessId] = cachedMatch.Source;
+                continue;
+            }
             try
             {
-                resolved[process.ProcessId] = selectPipeline(process).resolver.Resolve(process, out var source);
+                var attribution = selectPipeline(process).resolver.Resolve(process, out var source);
+                var directMatch = new RuntimeProcessAttributionDirectMatch(attribution, source);
+                if (directMatches is not null) directMatches[process.ProcessId] = directMatch;
+                resolved[process.ProcessId] = attribution;
                 sources[process.ProcessId] = source;
             }
             catch (Exception error) when (RuntimeProcessAttributionFailure.IsCandidateFailure(error)
@@ -115,7 +130,13 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             foreach (var pair in group) resolved[pair.Key] = pair.Value with
             { Kind = category.Kind, DisplayKind = category.DisplayKind, CategorySource = category.CategorySource };
         }
-        return new(resolved, owners) { Failures = failures };
+        return new(resolved, owners)
+        {
+            Failures = failures,
+            DirectMatchesByProcessId = directMatches is null
+                ? ImmutableDictionary<int, RuntimeProcessAttributionDirectMatch>.Empty
+                : directMatches
+        };
     }
 
     private static bool IsHelper(RuntimeProcessIdentity process)
@@ -142,4 +163,11 @@ public sealed record RuntimeProcessAttributionBatch(
     IReadOnlyDictionary<int, int> HelperOwnerByProcessId)
 {
     public IReadOnlyDictionary<int, string> Failures { get; init; } = new Dictionary<int, string>();
+
+    internal IReadOnlyDictionary<int, RuntimeProcessAttributionDirectMatch> DirectMatchesByProcessId { get; init; }
+        = ImmutableDictionary<int, RuntimeProcessAttributionDirectMatch>.Empty;
 }
+
+internal readonly record struct RuntimeProcessAttributionDirectMatch(
+    RuntimeSoftwareAttribution Attribution,
+    uint Source);

@@ -17,6 +17,28 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsProcessDetailsInformationTests
 {
+    [Fact]
+    public void NativeProcessHeaderReadDoesNotAllocateUnusedReservedArrays()
+    {
+        Assert.False(System.Runtime.CompilerServices.RuntimeHelpers
+            .IsReferenceOrContainsReferences<WindowsProcessSystemThreadParser.SystemProcessInformationHeader>());
+        var rows = Enumerable.Range(100, 512).Select(pid => ThreadTable(pid, [])).ToArray();
+        for (var i = 0; i < rows.Length - 1; i++) WriteUInt32(rows[i], 0, (uint)rows[i].Length);
+        var bytes = rows.SelectMany(static row => row).ToArray();
+        var selected = new HashSet<int>();
+        for (var i = 0; i < 32; i++)
+            Assert.True(WindowsProcessSystemThreadParser.TryParse(bytes, selected, WindowsProcessDetailsOptions.Default, out _));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var valid = true;
+        for (var i = 0; i < 32; i++)
+            valid &= WindowsProcessSystemThreadParser.TryParse(bytes, selected, WindowsProcessDetailsOptions.Default, out _);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(valid);
+        // Only the per-operation result and PID validation set remain. No header
+        // object, reserved arrays, or unmanaged copy is needed per native row.
+        Assert.InRange(allocated, 1, 32 * 512 * 64);
+    }
+
     private static readonly ProcessInstanceKey Key = new(321, 123456789);
     private static readonly DateTimeOffset ObservedAt = DateTimeOffset.UnixEpoch.AddSeconds(10);
 

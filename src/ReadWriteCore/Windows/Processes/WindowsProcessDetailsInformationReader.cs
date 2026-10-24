@@ -242,19 +242,15 @@ internal static class WindowsProcessSystemThreadParser
         var headerSize = Marshal.SizeOf<SystemProcessInformationHeader>();
         var threadSize = Marshal.SizeOf<SystemThreadInformation>();
         if (headerSize <= 0 || threadSize <= 0) return false;
-        var memory = IntPtr.Zero;
         try
         {
-            memory = Marshal.AllocHGlobal(data.Length);
-            Marshal.Copy(data, 0, memory, data.Length);
             var seenPids = new HashSet<uint>();
             var offset = 0;
             var rows = 0;
             while (offset < data.Length && rows++ < options.MaximumProcesses)
             {
                 if (offset % IntPtr.Size != 0 || data.Length - offset < headerSize) return false;
-                var headerPointer = IntPtr.Add(memory, offset);
-                var header = Marshal.PtrToStructure<SystemProcessInformationHeader>(headerPointer);
+                var header = MemoryMarshal.Read<SystemProcessInformationHeader>(data.AsSpan(offset, headerSize));
                 var recordLength = header.NextEntryOffset == 0 ? data.Length - offset : checked((int)header.NextEntryOffset);
                 if (recordLength < headerSize || recordLength > data.Length - offset) return false;
                 if (header.NumberOfThreads > options.MaximumThreadsPerProcess) return false;
@@ -269,8 +265,8 @@ internal static class WindowsProcessSystemThreadParser
                     var threadIds = new HashSet<uint>();
                     for (var index = 0; index < header.NumberOfThreads; index++)
                     {
-                        var threadPointer = IntPtr.Add(headerPointer, checked(headerSize + (int)((ulong)index * (ulong)threadSize)));
-                        var thread = Marshal.PtrToStructure<SystemThreadInformation>(threadPointer);
+                        var threadOffset = checked(offset + headerSize + (int)((ulong)index * (ulong)threadSize));
+                        var thread = MemoryMarshal.Read<SystemThreadInformation>(data.AsSpan(threadOffset, threadSize));
                         if (PointerValue(thread.ClientProcessId) != pidValue) return false;
                         var tidValue = PointerValue(thread.ClientThreadId);
                         if (tidValue == 0 || tidValue > uint.MaxValue || !threadIds.Add((uint)tidValue)) return false;
@@ -291,10 +287,6 @@ internal static class WindowsProcessSystemThreadParser
             processes = [];
             return false;
         }
-        finally
-        {
-            if (memory != IntPtr.Zero) Marshal.FreeHGlobal(memory);
-        }
     }
 
     private static ulong PointerValue(IntPtr value) => unchecked((ulong)value.ToInt64());
@@ -312,7 +304,9 @@ internal static class WindowsProcessSystemThreadParser
     {
         internal uint NextEntryOffset;
         internal uint NumberOfThreads;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 48)] internal byte[] Reserved1;
+        // Inline reserved bytes allow reading directly from the bounded native
+        // byte table without boxed structs or unused managed reserved arrays.
+        internal long Reserved1a, Reserved1b, Reserved1c, Reserved1d, Reserved1e, Reserved1f;
         internal UnicodeString ImageName;
         internal int BasePriority;
         internal IntPtr UniqueProcessId;
@@ -332,7 +326,7 @@ internal static class WindowsProcessSystemThreadParser
         internal UIntPtr PagefileUsage;
         internal UIntPtr PeakPagefileUsage;
         internal UIntPtr PrivatePageCount;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)] internal long[] Reserved7;
+        internal long Reserved7a, Reserved7b, Reserved7c, Reserved7d, Reserved7e, Reserved7f;
     }
 
     [StructLayout(LayoutKind.Sequential)]

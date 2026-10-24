@@ -14,7 +14,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private const string AutomaticPlacementOwner = "host-manager-automatic-placement-v1";
+    internal const string AutomaticPlacementOwner = "host-manager-automatic-placement-v1";
     private const string CpuSetsAffinityKind = "cpu-sets";
     private const string AffinityMaskKind = "affinity-mask";
 
@@ -632,12 +632,25 @@ public sealed partial class HostManagerSmartCoordinator
         DateTimeOffset startedAt,
         string processName,
         string executablePath)
+        => CreateProcessPlacementMetadata(
+            process.ProcessId,
+            process.ProcessStartKey,
+            startedAt.ToUnixTimeMilliseconds(),
+            processName,
+            executablePath);
+
+    private static Dictionary<string, string> CreateProcessPlacementMetadata(
+        int processId,
+        ulong processStartKey,
+        long processStartedAtUnixMilliseconds,
+        string processName,
+        string executablePath)
         => new(StringComparer.Ordinal)
         {
             ["owner"] = AutomaticPlacementOwner,
-            ["processId"] = process.ProcessId.ToString(CultureInfo.InvariantCulture),
-            ["processStartKey"] = process.ProcessStartKey.ToString(CultureInfo.InvariantCulture),
-            ["processStartedAt"] = startedAt.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture),
+            ["processId"] = processId.ToString(CultureInfo.InvariantCulture),
+            ["processStartKey"] = processStartKey.ToString(CultureInfo.InvariantCulture),
+            ["processStartedAt"] = processStartedAtUnixMilliseconds.ToString(CultureInfo.InvariantCulture),
             ["processName"] = processName,
             ["executablePath"] = executablePath
         };
@@ -710,8 +723,7 @@ public sealed partial class HostManagerSmartCoordinator
                         placement,
                         record) == HostManagerPlacementCoordinatorProjection.CreatePayloadDigest(
                         "applied",
-                        matchingDesired.Placement,
-                        matchingDesired.Record);
+                        matchingDesired);
                 var needsRecovery = observation.Status != NativePlacementObservationStatus.Unavailable
                     && (!observation.ReceiptMatches || !sameDesired);
                 if (needsRecovery && recoveryBudget == 0)
@@ -970,6 +982,7 @@ public sealed partial class HostManagerSmartCoordinator
         try
         {
             permit.RequireSingleNewActionReservation(reservation!);
+            desired = desired.MaterializeForApply();
             var externalAction = ExternalGpuRuntimePlacementRecord.IsRecord(desired.Record);
             var gpu = desired.Record.Kind is HostManagerAppliedRecordKinds.GpuPreference or HostManagerAppliedRecordKinds.GpuShimPolicy
                 || externalAction;

@@ -45,6 +45,27 @@ public sealed class RuntimeProcessAttributionCatalogTests
     }
 
     [Fact]
+    public void CreateOrReuse_AdvancesGenerationWhenResolverInstancesChange()
+    {
+        using var first = CreateCatalog(null, [], [], []);
+        using var changed = RuntimeProcessAttributionCatalog.CreateOrReuse(
+            first,
+            [],
+            [],
+            [],
+            new NullPackageIdentityResolver(),
+            serviceResolver,
+            rootResolver,
+            systemClassifier,
+            SoftwareIdentityCatalogTestData.Empty,
+            SoftwareIdentityCatalogTestData.Owner);
+
+        Assert.NotSame(first, changed);
+        Assert.Equal(first.Version, changed.Version);
+        Assert.Equal(first.Generation + 1, changed.Generation);
+    }
+
+    [Fact]
     public void CreateOrReuse_AdvancesGenerationForEveryAttributionSourceVersion()
     {
         using var empty = CreateCatalog(null, [], [], []);

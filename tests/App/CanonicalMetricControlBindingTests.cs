@@ -14,6 +14,7 @@ using ResourceManager.ReadWrite.Windows.Cpu.Models;
 using ResourceManager.ReadWrite.Windows.Gpu;
 using ResourceManager.ReadWrite.Windows.Gpu.Control;
 using ResourceManager.ReadWrite.Windows.Metrics;
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
 using ResourceManager.ReadWrite.Windows.Metrics.Configuration;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 using ResourceManager.ReadWrite.Windows.Metrics.Topology;
@@ -112,6 +113,84 @@ public sealed class CanonicalMetricControlBindingTests
         Assert.Same(nativeValue, unavailable.Items[nativeBinding.RequestAddress]);
         Assert.Equal(SamplingObservationStatus.Unavailable, unavailable.Datasets[control.RequestAddress].Status);
         Assert.Equal(8UL, unavailable.Datasets[control.RequestAddress].CommittedGeneration);
+    }
+
+    [Fact]
+    public async Task SelectedAndUnselectedControlRowsMatchWithMinimalOrFullNativePreFrame()
+    {
+        using var recording = new Fixture();
+        var producer = recording.Producer();
+        var discovered = producer.Discover(Fixture.Snapshot());
+        var selected = discovered.FieldBindings.Values.Single(binding => binding.Field.Name == IntelPl1);
+        var unselected = discovered.FieldBindings.Values.First(binding => binding.ControlTarget is not null
+            && binding.RequestAddress != selected.RequestAddress);
+        var request = MetricSampleRequest.ForIds([selected.RequestAddress]);
+
+        // The old pre-enrichment input was a fresh full native projection and
+        // therefore contained no previously published managed-control rows.
+        var fullNativePreFrame = Fixture.Snapshot();
+        var oldPrepared = await producer.ReadSelectedAsync(fullNativePreFrame, request);
+
+        // A matching published field catalog can contain the prior sample's
+        // control values. The minimal preparation view must discard them before
+        // the exact same original selected-read path executes.
+        var staleFieldCatalog = discovered with
+        {
+            Items = new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase)
+            {
+                [selected.RequestAddress] = new(selected.RequestAddress, selected.Field.Name,
+                    "cpu", "stale", 999, selected.Field.Unit, null, null) { IntegerValue = "999" },
+                [unselected.RequestAddress] = new(unselected.RequestAddress, unselected.Field.Name,
+                    "cpu", "stale", 888, unselected.Field.Unit, null, null) { IntegerValue = "888" }
+            },
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(StringComparer.OrdinalIgnoreCase)
+            {
+                [selected.RequestAddress] = new(selected.RequestAddress, SamplingObservationStatus.Current,
+                    1, 2, 3, 4, 5, 6),
+                [unselected.RequestAddress] = new(unselected.RequestAddress, SamplingObservationStatus.Current,
+                    1, 2, 3, 4, 5, 6)
+            }
+        };
+        var minimalPreFrame = WindowsHardwareMetricCapture.CreateMinimalControlPreparation(staleFieldCatalog);
+        var newPrepared = await producer.ReadSelectedAsync(minimalPreFrame, request);
+
+        Assert.Equal(oldPrepared.FieldBindings.OrderBy(static pair => pair.Key),
+            newPrepared.FieldBindings.OrderBy(static pair => pair.Key));
+        Assert.Contains(selected.RequestAddress, oldPrepared.FieldBindings.Keys);
+        Assert.Contains(unselected.RequestAddress, oldPrepared.FieldBindings.Keys);
+        Assert.Equal(oldPrepared.Items[selected.RequestAddress], newPrepared.Items[selected.RequestAddress]);
+        Assert.Equal(oldPrepared.Items.ContainsKey(unselected.RequestAddress),
+            newPrepared.Items.ContainsKey(unselected.RequestAddress));
+        Assert.False(oldPrepared.Items.ContainsKey(unselected.RequestAddress));
+        Assert.Equal(ComparableObservation(oldPrepared.Datasets[selected.RequestAddress]),
+            ComparableObservation(newPrepared.Datasets[selected.RequestAddress]));
+        Assert.False(oldPrepared.Datasets.ContainsKey(unselected.RequestAddress));
+        Assert.False(newPrepared.Datasets.ContainsKey(unselected.RequestAddress));
+
+        var finalNativeFrame = Fixture.Snapshot() with
+        {
+            WorkspaceIdentity = 31,
+            ConfigurationGeneration = 32,
+            CatalogGeneration = 33,
+            CommittedGeneration = 34
+        };
+        var oldMerged = WindowsMetricControlFields.ApplyPreparedFields(finalNativeFrame, oldPrepared);
+        var newMerged = WindowsMetricControlFields.ApplyPreparedFields(finalNativeFrame, newPrepared);
+        Assert.Equal(oldMerged.FieldBindings.OrderBy(static pair => pair.Key),
+            newMerged.FieldBindings.OrderBy(static pair => pair.Key));
+        Assert.Contains(selected.RequestAddress, newMerged.FieldBindings.Keys);
+        Assert.Contains(unselected.RequestAddress, newMerged.FieldBindings.Keys);
+        Assert.Equal(oldMerged.Items[selected.RequestAddress], newMerged.Items[selected.RequestAddress]);
+        Assert.False(oldMerged.Items.ContainsKey(unselected.RequestAddress));
+        Assert.False(newMerged.Items.ContainsKey(unselected.RequestAddress));
+        Assert.Equal(ComparableObservation(oldMerged.Datasets[selected.RequestAddress]),
+            ComparableObservation(newMerged.Datasets[selected.RequestAddress]));
+        Assert.Equal(34UL, newMerged.Datasets[selected.RequestAddress].CommittedGeneration);
+        Assert.False(oldMerged.Datasets.ContainsKey(unselected.RequestAddress));
+        Assert.False(newMerged.Datasets.ContainsKey(unselected.RequestAddress));
+
+        static HardwareMetricDatasetObservation ComparableObservation(HardwareMetricDatasetObservation value)
+            => value with { ObservedAtUtcTicks = 0, LastAttemptAtUtcTicks = 0, LastSuccessAtUtcTicks = 0 };
     }
 
     [Fact]

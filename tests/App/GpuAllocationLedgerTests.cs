@@ -9,6 +9,32 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuAllocationLedgerTests
 {
     [Fact]
+    public void WarmReadsAllocateOnlyIndependentResultsNotPerAllocationWorkBuffers()
+    {
+        var ledger = new GpuAllocationLedger();
+        ledger.SetAdapter(1, 23);
+        ledger.SetSegment(1, 2, 0);
+        for (ulong i = 1; i <= 512; i++)
+        {
+            ledger.SetAllocation(1, i, 1024);
+            ledger.Open(1, i, i, 41, 200);
+            ledger.SetCommittedGlobal(i, 2);
+        }
+        for (var i = 0; i < 64; i++) ledger.Read(Births);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        GpuAllocationReading last = null!;
+        for (var i = 0; i < 64; i++) last = ledger.Read(Births);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.InRange(allocated, 1, 64 * 2048);
+        Assert.Equal(512 * 1024D, last.Adapters[23][41].PrivateBytes);
+        ledger.Delete(1, 1);
+        var next = ledger.Read(Births);
+        Assert.Equal(511 * 1024D, next.Adapters[23][41].PrivateBytes);
+        Assert.Equal(512 * 1024D, last.Adapters[23][41].PrivateBytes);
+        Assert.NotSame(last.Adapters[23], next.Adapters[23]);
+    }
+
+    [Fact]
     public void BoundaryProviderGuidMatchesTheEventSourceDefinition()
     {
         var field = typeof(GpuAllocationCollector).GetField("BoundaryProvider",

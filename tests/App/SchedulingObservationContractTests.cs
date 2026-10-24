@@ -12,6 +12,33 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SchedulingObservationContractTests
 {
     [Fact]
+    public void GpuInventoryCompletenessDoesNotAllocateOnRepeatedReads()
+    {
+        var snapshot = CreateGpuInventory();
+        snapshot = snapshot with
+        {
+            ObservedCount = 2,
+            Adapters = [snapshot.Adapters[0], snapshot.Adapters[0] with { Index = 2, AdapterKey = 24 }]
+        };
+        Assert.True(snapshot.IsCurrentComplete());
+        for (var i = 0; i < 128; i++) _ = snapshot.IsCurrentComplete();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var complete = true;
+        for (var i = 0; i < 1024; i++) complete &= snapshot.IsCurrentComplete();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(complete);
+        Assert.Equal(0, allocated);
+        Assert.False((snapshot with
+        {
+            Adapters = [snapshot.Adapters[0], snapshot.Adapters[1] with { Index = snapshot.Adapters[0].Index }]
+        }).IsCurrentComplete());
+        Assert.False((snapshot with
+        {
+            Adapters = [snapshot.Adapters[0], snapshot.Adapters[1] with { AdapterKey = snapshot.Adapters[0].AdapterKey }]
+        }).IsCurrentComplete());
+    }
+
+    [Fact]
     public void ProcessFacts_IdleProcessIsStructurallyExcludedFromGovernance()
     {
         Assert.True(WindowsResourceBreakdownSampler.IsStructurallyExcludedProcessId(0));

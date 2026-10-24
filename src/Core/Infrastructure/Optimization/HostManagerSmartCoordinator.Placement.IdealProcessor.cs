@@ -10,7 +10,32 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    internal const string AutomaticIdealProcessorSource = "automatic-score-balanced-ideal-processor";
+
     private readonly HostManagerIdealProcessorWorkspace idealProcessorWorkspace = new();
+
+    internal static HostManagerAppliedRecord CreateIdealProcessorAppliedRecord(
+        string recordId,
+        HostManagerIdealProcessorDesiredMetadata metadata)
+    {
+        var recordMetadata = CreateProcessPlacementMetadata(
+            metadata.ProcessId,
+            metadata.ProcessStartKey,
+            metadata.ProcessStartedAtUnixMilliseconds,
+            metadata.ProcessName,
+            metadata.ExecutablePath);
+        recordMetadata["threadId"] = metadata.ThreadId.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["threadStartKey"] = metadata.ThreadStartKey.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["previousProcessorGroup"] = metadata.Previous.Group.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["previousProcessorNumber"] = metadata.Previous.Number.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["appliedProcessorGroup"] = metadata.Applied.Group.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["appliedProcessorNumber"] = metadata.Applied.Number.ToString(CultureInfo.InvariantCulture);
+        recordMetadata["source"] = AutomaticIdealProcessorSource;
+        return new HostManagerAppliedRecord(
+            HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
+            recordId,
+            recordMetadata);
+    }
 
     private IReadOnlyList<HostManagerPlacementDesired> CreateIdealProcessorDesired(
         IThreadIdealProcessorReadCycle idealReads,
@@ -85,20 +110,26 @@ public sealed partial class HostManagerSmartCoordinator
                 else previous = thread.IdealProcessor;
                 // Returning to the baseline is a restore, not a new receipt with identical payloads.
                 if (previous == next) continue;
-                var metadata = CreateProcessPlacementMetadata(plan.Process,
-                    DateTimeOffset.FromFileTime(checked((long)thread.ProcessStartKey)), plan.Process.ProcessName, plan.Process.ExecutablePath ?? string.Empty);
-                metadata["threadId"] = thread.ThreadId.ToString(CultureInfo.InvariantCulture);
-                metadata["threadStartKey"] = thread.ThreadStartKey.ToString(CultureInfo.InvariantCulture);
-                metadata["previousProcessorGroup"] = previous.Group.ToString(CultureInfo.InvariantCulture);
-                metadata["previousProcessorNumber"] = previous.Number.ToString(CultureInfo.InvariantCulture);
-                metadata["appliedProcessorGroup"] = next.Group.ToString(CultureInfo.InvariantCulture);
-                metadata["appliedProcessorNumber"] = next.Number.ToString(CultureInfo.InvariantCulture);
-                metadata["source"] = "automatic-score-balanced-ideal-processor";
-                var record = new HostManagerAppliedRecord(HostManagerAppliedRecordKinds.CpuThreadIdealProcessor, recordId, metadata);
+                var idealProcessorMetadata = new HostManagerIdealProcessorDesiredMetadata(
+                    plan.Process.ProcessId,
+                    plan.Process.ProcessStartKey,
+                    DateTimeOffset.FromFileTime(checked((long)thread.ProcessStartKey)).ToUnixTimeMilliseconds(),
+                    plan.Process.ProcessName,
+                    plan.Process.ExecutablePath ?? string.Empty,
+                    thread.ThreadId,
+                    thread.ThreadStartKey,
+                    previous,
+                    next);
+                var record = new HostManagerAppliedRecord(
+                    HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
+                    recordId);
                 var now = durableTimeSource.NextUtc();
                 var placement = new HostManagerAppliedPlacementReceipt(plan.Process.TargetId, plan.Process.DisplayName,
                     plan.Process.SoftwareId, OptimizationResourceKinds.Cpu, [record], old.Placement?.AppliedAt ?? now, now);
-                workspace.Desired.Add(new(placement, record, ToPlacementPriority(plan.Process.CanonicalCpuScore!.Value)));
+                workspace.Desired.Add(new(placement, record, ToPlacementPriority(plan.Process.CanonicalCpuScore!.Value))
+                {
+                    IdealProcessorMetadata = idealProcessorMetadata
+                });
             }
             return workspace.Desired.Count == 0
                 ? Array.Empty<HostManagerPlacementDesired>()
