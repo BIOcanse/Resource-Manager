@@ -7,6 +7,10 @@ const software_aggregation = @import("../compute_scoring/software_aggregation.zi
 
 const ActionBuffer = [corpus.default_action_capacity]protocol.Action;
 
+test {
+    _ = @import("growth_tests.zig");
+}
+
 test "reconfigure applies changed content at the same generation and accepts rollback" {
     const original = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&original);

@@ -41,9 +41,11 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
             Layout = new NativeReportScratchLayout(0, 0);
             Rules = CreateRules(plan);
             scratch = new RowSizedComputeScratch(createScratch, "report-coordinator");
+            scratch.DescribeNative(Session.ReadWorkspaceCapacity, Session.SetGrowthObserver);
         }
         catch
         {
+            scratch?.Dispose();
             Session.Dispose();
             throw;
         }

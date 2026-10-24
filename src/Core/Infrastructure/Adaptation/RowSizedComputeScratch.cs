@@ -1,3 +1,5 @@
+using ResourceManager.App.Infrastructure.NativeCore;
+
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
 // The PDH high-water path: return/close the old region before creating the next
@@ -9,6 +11,25 @@ internal sealed class RowSizedComputeScratch(Func<ulong, IComputeScratch> factor
     private string capacityRows = "0";
     private bool bound;
     private bool disposed;
+    private IDisposable? nativeCapacityRegistration;
+    private Action? stopNativeGrowthObservation;
+
+    internal void DescribeNative(Func<NativeWorkspaceCapacityDescription> read,
+        Action<Action<NativeWorkspaceGrowthEvent>?>? observeGrowth = null)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (nativeCapacityRegistration is not null)
+            throw new InvalidOperationException($"{workArea} native capacity is already registered.");
+        if (factory.Target is IWorkspaceCapacityRegistry registry)
+        {
+            nativeCapacityRegistration = registry.RegisterNativeWorkspace(workArea + "-native", read);
+            if (observeGrowth is not null)
+            {
+                stopNativeGrowthObservation = () => observeGrowth(null);
+                observeGrowth(registry.LogNativeGrowth);
+            }
+        }
+    }
 
     public ulong Length => bound ? capacity : 0;
 
@@ -54,6 +75,10 @@ internal sealed class RowSizedComputeScratch(Func<ulong, IComputeScratch> factor
     {
         if (disposed) return;
         scratch?.Dispose();
+        stopNativeGrowthObservation?.Invoke();
+        stopNativeGrowthObservation = null;
+        nativeCapacityRegistration?.Dispose();
+        nativeCapacityRegistration = null;
         scratch = null;
         bound = false;
         disposed = true;

@@ -169,6 +169,29 @@ pub const Bank = struct {
         self.* = undefined;
     }
 
+    // Record slots and the order of existing free slots stay stable. Indexes
+    // retain their exact key -> slot mapping when the hash mask changes.
+    pub fn copyInto(self: *const Bank, next: *Bank) void {
+        std.debug.assert(next.records.len >= self.records.len);
+        @memcpy(next.records[0..self.records.len], self.records);
+        @memcpy(next.order_scratch[0..self.order_scratch.len], self.order_scratch);
+        @memcpy(next.actions[0..self.actions.len], self.actions);
+        const added = next.records.len - self.records.len;
+        for (next.free_stack[0..added], 0..) |*slot, ordinal|
+            slot.* = @intCast(next.records.len - ordinal - 1);
+        @memcpy(next.free_stack[added..][0..self.free_count], self.free_stack[0..self.free_count]);
+        next.free_count = @intCast(added + self.free_count);
+        next.operation_count = self.operation_count;
+        next.domain_count = self.domain_count;
+        next.action_count = self.action_count;
+        for (self.operation_index) |slot| {
+            if (slot.state == .occupied) std.debug.assert(insertIndex(next.operation_index, slot.key, slot.record_index));
+        }
+        for (self.domain_index) |slot| {
+            if (slot.state == .occupied) std.debug.assert(insertIndex(next.domain_index, slot.key, slot.record_index));
+        }
+    }
+
     pub fn reset(self: *Bank) void {
         @memset(self.records, .{});
         @memset(self.operation_index, .{});
@@ -255,6 +278,19 @@ pub const Bank = struct {
         return true;
     }
 };
+
+pub fn sizedConfig(limit: *const protocol.Config, rows: u32) !protocol.Config {
+    if (rows == 0 or rows > limit.maximum_operation_count) return error.Overflow;
+    var config = limit.*;
+    config.maximum_operation_count = rows;
+    config.maximum_domain_count = @min(rows, limit.maximum_domain_count);
+    config.maximum_action_count = @min(rows, limit.maximum_action_count);
+    const desired_index = try std.math.ceilPowerOfTwo(u32, try std.math.mul(u32, rows, 2));
+    config.operation_index_capacity = @min(desired_index, limit.operation_index_capacity);
+    const domain_index = try std.math.ceilPowerOfTwo(u32, try std.math.mul(u32, @max(config.maximum_domain_count, 1), 2));
+    config.domain_index_capacity = @min(domain_index, limit.domain_index_capacity);
+    return config;
+}
 
 pub fn committedByteCount(config: *const protocol.Config, page_size: u64) !u64 {
     if (page_size == 0) return error.Overflow;

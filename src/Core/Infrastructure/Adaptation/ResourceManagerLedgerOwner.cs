@@ -33,12 +33,18 @@ public sealed partial class ResourceManagerLedgerOwner : IDiskUsageTreePayloadAl
 
     public IReadOnlyList<ResourceManagerWorkspaceCapacity> ReadWorkspaceCapacities()
     {
+        ResourceManagerWorkspaceCapacity[] scratchRows;
+        NativeWorkspaceRegistration[] native;
         lock (operationGate)
         {
             ThrowIfDisposed();
-            return computeScratch.Select(static scratch => new ResourceManagerWorkspaceCapacity(
+            scratchRows = computeScratch.Select(static scratch => new ResourceManagerWorkspaceCapacity(
                 scratch.Uid.ToString()!, scratch.WorkArea, scratch.Rows, scratch.Length, scratch.InLedger)).ToArray();
+            native = nativeWorkspaces.ToArray();
         }
+        // Native session locks must never be taken while holding the Ledger gate.
+        return scratchRows.Concat(native.Select(static entry => entry.Read())
+            .OfType<ResourceManagerWorkspaceCapacity>()).ToArray();
     }
 
     public ResourceManagerLedgerOwner(string nativeLibraryPath)

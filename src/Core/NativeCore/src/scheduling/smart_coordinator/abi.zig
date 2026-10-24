@@ -1,4 +1,14 @@
 const protocol = @import("protocol.zig");
+
+pub export fn rm_smart_coordinator_query_workspace_capacity(
+    handle: ?*anyopaque,
+    output: ?*protocol.WorkspaceCapacity,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(protocol.WorkspaceCapacity)) return code(.abi_mismatch);
+    const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(coordinator.workspaceCapacity(session, output orelse return code(.invalid_argument)));
+}
 const coordinator = @import("session.zig");
 
 fn code(status: protocol.Status) i32 {

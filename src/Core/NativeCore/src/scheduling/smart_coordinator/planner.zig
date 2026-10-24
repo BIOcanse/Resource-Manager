@@ -72,15 +72,75 @@ pub fn requiredActionCapacity(session: *const state.Session) usize {
     // Bound the complete candidate batch before reconcile mutates authoritative state.
     var process_count: usize = 0;
     var software_count: usize = 0;
-    for (session.processes) |process| if (process.occupied) { process_count += 1; };
-    for (session.softwares) |software| if (software.occupied) { software_count += 1; };
+    for (session.processes) |process| if (process.occupied) {
+        process_count += 1;
+    };
+    for (session.softwares) |software| if (software.occupied) {
+        software_count += 1;
+    };
     for (session.staged_processes[0..session.staged_process_count]) |process| {
         if (session.findProcess(process.target_key, process.process_id, process.process_start_key) == null) process_count += 1;
     }
     for (session.staged_softwares[0..session.staged_software_count]) |software| {
         if (session.findSoftware(software.software_key) == null) software_count += 1;
     }
-    return @min(process_count, session.processes.len) + @min(software_count, session.softwares.len);
+    return @min(process_count, session.config.max_processes) + @min(software_count, session.config.max_software_groups);
+}
+
+pub fn bankDemand(session: *const state.Session, input: *const protocol.CycleInput, output: *state.BankDemand) protocol.Status {
+    const full = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
+    var processes: u32 = 0;
+    var softwares: u32 = 0;
+    var gpus: u32 = 0;
+    for (session.processes) |item| {
+        if (item.occupied and (!full or item.transition.owned or item.transition.inflight_action_id != 0 or
+            session.findStagedProcess(item.target_key, item.process_id, item.process_start_key) != null)) processes += 1;
+    }
+    for (session.softwares) |item| {
+        if (item.occupied and (!full or item.cpu_transition.owned or item.gpu_transition.owned or
+            item.cpu_transition.inflight_action_id != 0 or item.gpu_transition.inflight_action_id != 0 or
+            session.findStagedSoftware(item.software_key) != null)) softwares += 1;
+    }
+    for (session.gpus) |item| {
+        if (item.occupied and (!full or session.findStagedGpu(item.target_key, item.process_id, item.process_start_key, item.device_index) != null)) gpus += 1;
+    }
+    for (session.staged_processes[0..session.staged_process_count]) |item| {
+        if (!item.identity_conflict and session.findProcess(item.target_key, item.process_id, item.process_start_key) == null)
+            processes = std.math.add(u32, processes, 1) catch return .capacity_exceeded;
+    }
+    for (session.staged_softwares[0..session.staged_software_count]) |item| {
+        if (session.findSoftware(item.software_key) == null)
+            softwares = std.math.add(u32, softwares, 1) catch return .capacity_exceeded;
+    }
+    for (session.staged_gpus[0..session.staged_gpu_count]) |item| {
+        if (!session.staged_processes[item.process_slot].identity_conflict and
+            session.findGpu(item.target_key, item.process_id, item.process_start_key, item.device_index) == null)
+            gpus = std.math.add(u32, gpus, 1) catch return .capacity_exceeded;
+    }
+    var reservations: u32 = 0;
+    var groups: u32 = 0;
+    for (session.reservations) |item| if (item.occupied) {
+        reservations += 1;
+    };
+    for (session.atomic_groups) |item| if (item.occupied) {
+        groups += 1;
+    };
+    output.* = .{ .processes = processes, .softwares = softwares, .gpus = gpus, .reservations = reservations, .atomic_groups = groups };
+    if (processes > session.config.max_processes or softwares > session.config.max_software_groups or gpus > session.config.max_gpu_states)
+        return .capacity_exceeded;
+    return .ok;
+}
+
+pub fn hasCapacityForPlan(session: *const state.Session, input: *const protocol.CycleInput, demand: state.BankDemand) bool {
+    if (demand.processes > session.processes.len or demand.softwares > session.softwares.len or demand.gpus > session.gpus.len) return false;
+    if ((input.flags & protocol.CycleFlags.score_only) != 0) return true;
+    // These finite content bounds prove that no insertion can allocate. They
+    // select the direct route only and are never passed to a growth allocator.
+    const adapters = std.math.mul(u32, demand.softwares, 2) catch return false;
+    const reservations = std.math.add(u32, demand.processes, adapters) catch return false;
+    const groups = std.math.add(u32, demand.atomic_groups, demand.processes / 2) catch return false;
+    return reservations <= session.reservations.len and
+        @min(groups, session.config.max_atomic_groups) <= session.atomic_groups.len;
 }
 
 pub fn fillSnapshot(
@@ -1060,6 +1120,8 @@ fn prepareAtomicFreezeGroups(session: *state.Session, actions: []protocol.Action
         action.valid_mask |= protocol.ActionValidity.atomic_group;
         action.flags |= protocol.ActionFlags.atomic;
         const group_slot = session.findAtomicGroup(group_id) orelse blk: {
+            const growth_status = session.ensureAtomicGroupSlot();
+            if (growth_status != .ok) return growth_status;
             const allocated = session.allocateAtomicGroup() orelse return .capacity_exceeded;
             session.atomic_groups[allocated] = .{
                 .occupied = true,
@@ -1193,6 +1255,8 @@ fn assignIdsAndReserve(session: *state.Session, input: *const protocol.CycleInpu
     for (actions) |*action| {
         action.action_id = session.takeActionId();
         if ((action.flags & protocol.ActionFlags.requires_feedback) == 0) continue;
+        const growth_status = session.ensureReservationSlot();
+        if (growth_status != .ok) return growth_status;
         const reservation_slot = session.allocateReservation() orelse return .capacity_exceeded;
         var process_slot = no_slot;
         var software_slot = no_slot;

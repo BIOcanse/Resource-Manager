@@ -83,11 +83,18 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         {
             fixed (NativeReportRuleInput* rulePointer = rules)
             {
-                return (NativeReportCoordinatorStatus)NativeMethods.ReplaceRules(
-                    RequireHandle(),
-                    in input,
-                    rulePointer,
-                    checked((uint)rules.Length));
+                try
+                {
+                    return (NativeReportCoordinatorStatus)NativeMethods.ReplaceRules(
+                        RequireHandle(),
+                        in input,
+                        rulePointer,
+                        checked((uint)rules.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }
@@ -100,11 +107,18 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         {
             fixed (NativeReportPersistenceOperation* rowPointer = rows)
             {
-                return (NativeReportCoordinatorStatus)NativeMethods.Import(
-                    RequireHandle(),
-                    in input,
-                    rowPointer,
-                    checked((uint)rows.Length));
+                try
+                {
+                    return (NativeReportCoordinatorStatus)NativeMethods.Import(
+                        RequireHandle(),
+                        in input,
+                        rowPointer,
+                        checked((uint)rows.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }
@@ -117,11 +131,18 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         {
             fixed (NativeReportFactInput* factPointer = facts)
             {
-                return (NativeReportCoordinatorStatus)NativeMethods.Observe(
-                    RequireHandle(),
-                    in input,
-                    factPointer,
-                    checked((uint)facts.Length));
+                try
+                {
+                    return (NativeReportCoordinatorStatus)NativeMethods.Observe(
+                        RequireHandle(),
+                        in input,
+                        factPointer,
+                        checked((uint)facts.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }
@@ -131,9 +152,16 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
     {
         lock (sync)
         {
-            return (NativeReportCoordinatorStatus)NativeMethods.CommandTrust(
-                RequireHandle(),
-                in input);
+            try
+            {
+                return (NativeReportCoordinatorStatus)NativeMethods.CommandTrust(
+                    RequireHandle(),
+                    in input);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
         }
     }
 
@@ -144,8 +172,15 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
     {
         lock (sync)
         {
-            return (NativeReportCoordinatorStatus)NativeMethods.QueryPlanSize(
-                RequireHandle(), in input, out reportCount, out persistenceCount);
+            try
+            {
+                return (NativeReportCoordinatorStatus)NativeMethods.QueryPlanSize(
+                    RequireHandle(), in input, out reportCount, out persistenceCount);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
         }
     }
 
@@ -161,14 +196,21 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
             fixed (NativeReportOutput* reportPointer = reports)
             fixed (NativeReportPersistenceOperation* operationPointer = operations)
             {
-                return (NativeReportCoordinatorStatus)NativeMethods.Plan(
-                    RequireHandle(),
-                    in input,
-                    reportPointer,
-                    checked((uint)reports.Length),
-                    operationPointer,
-                    checked((uint)operations.Length),
-                    ref output);
+                try
+                {
+                    return (NativeReportCoordinatorStatus)NativeMethods.Plan(
+                        RequireHandle(),
+                        in input,
+                        reportPointer,
+                        checked((uint)reports.Length),
+                        operationPointer,
+                        checked((uint)operations.Length),
+                        ref output);
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }

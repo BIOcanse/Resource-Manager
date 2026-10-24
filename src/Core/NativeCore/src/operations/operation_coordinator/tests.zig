@@ -3,6 +3,238 @@ const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
+fn growthConfig(maximum: u32) protocol.Config {
+    var config = testConfig();
+    config.maximum_operation_count = maximum;
+    config.maximum_domain_count = maximum;
+    config.maximum_action_count = maximum;
+    config.maximum_read_count = maximum;
+    config.operation_index_capacity = std.math.ceilPowerOfTwo(u32, maximum * 2) catch unreachable;
+    config.domain_index_capacity = config.operation_index_capacity;
+    config.maximum_persistence_byte_count = @sizeOf(protocol.PersistenceHeader) + @as(u64, maximum) * @sizeOf(protocol.PersistenceRecord);
+    config.resident_byte_budget = 64 * 1024 * 1024;
+    return config;
+}
+
+test "operation exact growth retains every live action record and lookup" {
+    const bank_module = @import("bank.zig");
+    var config = growthConfig(65);
+    const growing = try state.Session.create(&config);
+    defer growing.destroy();
+    const full = try state.Session.create(&config);
+    defer full.destroy();
+    try full.ensureBankCapacity(&full.bank, 65, .operation_submit);
+    try std.testing.expectEqual(@as(u32, 16), growing.workspaceCapacity().operation_capacity);
+    var ordinal: u32 = 1;
+    while (ordinal <= 65) : (ordinal += 1) {
+        var input = submitInput(ordinal, ordinal + 1000, ordinal, 100, 100);
+        var left = std.mem.zeroes(protocol.SubmitOutput);
+        var right = std.mem.zeroes(protocol.SubmitOutput);
+        try std.testing.expectEqual(ResultCode.ok, growing.submit(&input, &left));
+        try std.testing.expectEqual(ResultCode.ok, full.submit(&input, &right));
+        try std.testing.expectEqualDeep(left, right);
+        if (ordinal == 1) {
+            // Keep an unread, in-flight action across every subsequent growth.
+            const left_plan = try runPlan(growing, 1, 101, 101, 8);
+            const right_plan = try runPlan(full, 1, 101, 101, 8);
+            try std.testing.expectEqualDeep(left_plan, right_plan);
+        }
+        var key: u32 = 1;
+        while (key <= ordinal) : (key += 1) {
+            const left_index = growing.bank.findOperation(handle(key)).?;
+            const right_index = full.bank.findOperation(handle(key)).?;
+            try std.testing.expectEqualDeep(full.bank.records[right_index], growing.bank.records[left_index]);
+            try std.testing.expectEqual(left_index, growing.bank.findDomain(handle(key + 1000)).?);
+        }
+        try std.testing.expectEqualSlices(protocol.ActionOutput, full.bank.actions[0..full.bank.action_count], growing.bank.actions[0..growing.bank.action_count]);
+    }
+    const diagnostic = growing.workspaceCapacity();
+    try std.testing.expectEqual(@as(u32, 65), diagnostic.operation_capacity);
+    try std.testing.expectEqual(@as(u64, 3), diagnostic.growth.count);
+    for ([_]u64{ 32, 64, 65 }, 0..) |new_capacity, index| {
+        const event = diagnostic.growth.events[index];
+        try std.testing.expectEqual(@as(u64, index + 1), event.sequence);
+        try std.testing.expectEqual(@as(u32, 1), event.reason);
+        try std.testing.expectEqual(@as(u32, 0), event.unit);
+        try std.testing.expectEqual(new_capacity, event.new_capacity);
+        try std.testing.expectEqual(if (index == 0) @as(u64, 16) else diagnostic.growth.events[index - 1].new_capacity, event.old_capacity);
+    }
+    var overflow = submitInput(66, 1066, 66, 100, 100);
+    overflow.valid_mask = 0;
+    overflow.domain_id = zeroHandle();
+    var output = std.mem.zeroes(protocol.SubmitOutput);
+    try std.testing.expectEqual(ResultCode.out_of_memory, growing.submit(&overflow, &output));
+    try std.testing.expectEqual(@as(u32, 65), growing.bank.operation_count);
+    try std.testing.expectEqual(@as(u64, 1), growing.bank.records[0].pending_action_id);
+    _ = bank_module;
+}
+
+test "operation failed growth leaves every old allocation and live state untouched" {
+    var fail_offset: usize = 0;
+    while (fail_offset < 6) : (fail_offset += 1) {
+        var config = growthConfig(64);
+        const owner = try state.Session.create(&config);
+        defer owner.destroy();
+        var ordinal: u32 = 1;
+        while (ordinal <= 16) : (ordinal += 1) {
+            var input = submitInput(ordinal, ordinal + 1000, ordinal, 100, 100);
+            var output = std.mem.zeroes(protocol.SubmitOutput);
+            try std.testing.expectEqual(ResultCode.ok, owner.submit(&input, &output));
+        }
+        _ = try runPlan(owner, 1, 101, 101, 8);
+        const old_allocator = owner.bank.allocator;
+        var failing = std.testing.FailingAllocator.init(old_allocator, .{ .fail_index = fail_offset });
+        owner.bank.allocator = failing.allocator();
+        const old_records = owner.bank.records.ptr;
+        const old_index = owner.bank.operation_index.ptr;
+        const old_free = owner.bank.free_stack.ptr;
+        const old_actions = owner.bank.actions.ptr;
+        const before = owner.bank.records[0];
+        const old_revision = owner.state_revision;
+        const old_resident = owner.resident_byte_count;
+        var input = submitInput(17, 1017, 17, 100, 100);
+        var output = std.mem.zeroes(protocol.SubmitOutput);
+        try std.testing.expectEqual(ResultCode.out_of_memory, owner.submit(&input, &output));
+        try std.testing.expectEqual(@as(u64, 0), owner.workspaceCapacity().growth.count);
+        owner.bank.allocator = old_allocator;
+        try std.testing.expectEqual(old_records, owner.bank.records.ptr);
+        try std.testing.expectEqual(old_index, owner.bank.operation_index.ptr);
+        try std.testing.expectEqual(old_free, owner.bank.free_stack.ptr);
+        try std.testing.expectEqual(old_actions, owner.bank.actions.ptr);
+        try std.testing.expectEqualDeep(before, owner.bank.records[0]);
+        try std.testing.expectEqual(old_revision, owner.state_revision);
+        try std.testing.expectEqual(old_resident, owner.resident_byte_count);
+        try std.testing.expectEqual(@as(usize, 0), failing.allocated_bytes - failing.freed_bytes);
+        try std.testing.expectEqual(ResultCode.ok, owner.submit(&input, &output));
+    }
+}
+
+test "operation bank bytes for content and configured machine shape" {
+    var config = growthConfig(8192);
+    config.maximum_action_count = 1024; // Production default action ceiling.
+    const bank_module = @import("bank.zig");
+    const page: u64 = @intCast(std.heap.pageSize());
+    const initial = try bank_module.sizedConfig(&config, 16);
+    const session_bytes = ((@sizeOf(state.Session) + page - 1) / page) * page;
+    const before = session_bytes + 2 * try bank_module.committedByteCount(&config, page);
+    const after = session_bytes + 2 * try bank_module.committedByteCount(&initial, page);
+    try std.testing.expect(after < before);
+    try std.testing.expectEqual(@as(u64, 9_146_368), before);
+    try std.testing.expectEqual(@as(u64, 61_440), after);
+    const owner = try state.Session.create(&config);
+    defer owner.destroy();
+    try owner.ensureBankCapacity(&owner.bank, 300, .operation_submit);
+    try std.testing.expectEqual(@as(u64, 372_736), owner.resident_byte_count);
+    std.debug.print("operation shape: record={d} index={d} session={d} production8192={d} idle16={d} stress300={d}\n", .{ @sizeOf(bank_module.Record), @sizeOf(bank_module.IndexSlot), @sizeOf(state.Session), before, after, owner.resident_byte_count });
+}
+
+test "operation decode grows staging without changing recovery semantics and allocation failure is atomic" {
+    var config = growthConfig(64);
+    const source = try state.Session.create(&config);
+    defer source.destroy();
+    var ordinal: u32 = 1;
+    while (ordinal <= 33) : (ordinal += 1) {
+        var input = submitInput(ordinal, ordinal + 1000, ordinal, 100, 100);
+        var output = std.mem.zeroes(protocol.SubmitOutput);
+        try std.testing.expectEqual(ResultCode.ok, source.submit(&input, &output));
+    }
+    _ = try runPlan(source, 1, 101, 101, 8);
+    var header: protocol.PersistenceHeader = undefined;
+    var records: [33]protocol.PersistenceRecord = undefined;
+    const export_input = persistenceInput(1);
+    try std.testing.expectEqual(ResultCode.ok, source.exportPersistence(&export_input, &header, &records));
+    var fail_offset: usize = 0;
+    while (fail_offset < 6) : (fail_offset += 1) {
+        const restored = try state.Session.create(&config);
+        defer restored.destroy();
+        const old_allocator = restored.staging.allocator;
+        var failing = std.testing.FailingAllocator.init(old_allocator, .{ .fail_index = fail_offset });
+        restored.staging.allocator = failing.allocator();
+        const old_bank = restored.bank.records.ptr;
+        const old_staging = restored.staging.records.ptr;
+        const old_bytes = restored.resident_byte_count;
+        const import_input = persistenceImportInput(1, 102, 102, config.clock_instance_id);
+        try std.testing.expectEqual(ResultCode.out_of_memory, restored.importPersistence(&import_input, &header, &records));
+        try std.testing.expectEqual(@as(u64, 0), restored.workspaceCapacity().growth.count);
+        restored.staging.allocator = old_allocator;
+        try std.testing.expectEqual(old_bank, restored.bank.records.ptr);
+        try std.testing.expectEqual(old_staging, restored.staging.records.ptr);
+        try std.testing.expectEqual(old_bytes, restored.resident_byte_count);
+        try std.testing.expectEqual(@as(u64, 1), restored.state_revision);
+        try std.testing.expectEqual(@as(usize, 0), failing.allocated_bytes - failing.freed_bytes);
+        try std.testing.expectEqual(ResultCode.ok, restored.importPersistence(&import_input, &header, &records));
+        try std.testing.expectEqual(@as(u32, 64), restored.workspaceCapacity().operation_capacity);
+        const event = restored.workspaceCapacity().growth.events[0];
+        try std.testing.expectEqual(@as(u64, 1), event.sequence);
+        try std.testing.expectEqual(@as(u32, 2), event.reason);
+        try std.testing.expectEqual(@as(u64, 16), event.old_capacity);
+        try std.testing.expectEqual(@as(u64, 64), event.new_capacity);
+        for (records) |persisted| {
+            const slot = restored.bank.findOperation(persisted.operation_id).?;
+            const record = restored.bank.records[slot];
+            try std.testing.expectEqual(protocol.OperationState.recovery_pending, record.state);
+            try std.testing.expectEqual(persisted.state, record.recovery_origin_state);
+            try std.testing.expectEqual(@as(u64, 0), record.pending_action_id);
+            try std.testing.expectEqual(slot, restored.bank.findDomain(record.domain_id).?);
+        }
+    }
+}
+
+test "operation growth preserves retired slot reuse order and pending actions" {
+    var config = growthConfig(64);
+    config.maximum_recent_terminal_count = 0;
+    const growing = try state.Session.create(&config);
+    defer growing.destroy();
+    const full = try state.Session.create(&config);
+    defer full.destroy();
+    try full.ensureBankCapacity(&full.bank, 32, .operation_submit);
+    for ([_]*state.Session{ growing, full }) |owner| {
+        var ordinal: u64 = 1;
+        while (ordinal <= 16) : (ordinal += 1) {
+            var input = submitInput(ordinal, ordinal + 1000, ordinal, 100, 100);
+            var output = std.mem.zeroes(protocol.SubmitOutput);
+            try std.testing.expectEqual(ResultCode.ok, owner.submit(&input, &output));
+        }
+        for ([_]u64{ 3, 8, 14 }, 0..) |retired, epoch| {
+            var input = cancelInput(handle(retired), epoch + 1, 101, 101);
+            var output = std.mem.zeroes(protocol.CancelOutput);
+            try std.testing.expectEqual(ResultCode.ok, owner.cancel(&input, &output));
+            try std.testing.expectEqual(@as(?u32, null), owner.bank.findOperation(handle(retired)));
+            try std.testing.expectEqual(@as(?u32, null), owner.bank.findDomain(handle(retired + 1000)));
+        }
+        _ = try runPlan(owner, 1, 102, 102, 8);
+    }
+    try std.testing.expectEqual(@as(u32, 3), growing.bank.free_count);
+    const old_free = [_]u32{
+        growing.bank.free_stack[0],
+        growing.bank.free_stack[1],
+        growing.bank.free_stack[2],
+    };
+    const pending = growing.bank.records[0];
+    try growing.ensureBankCapacity(&growing.bank, 17, .operation_submit);
+    try std.testing.expectEqualSlices(u32, &old_free, growing.bank.free_stack[16..19]);
+    try std.testing.expectEqualDeep(pending, growing.bank.records[0]);
+    var ordinal: u64 = 17;
+    while (ordinal <= 20) : (ordinal += 1) {
+        var input = submitInput(ordinal, ordinal + 1000, ordinal, 103, 103);
+        var left = std.mem.zeroes(protocol.SubmitOutput);
+        var right = std.mem.zeroes(protocol.SubmitOutput);
+        try std.testing.expectEqual(ResultCode.ok, growing.submit(&input, &left));
+        try std.testing.expectEqual(ResultCode.ok, full.submit(&input, &right));
+        try std.testing.expectEqualDeep(left, right);
+        const slot = growing.bank.findOperation(handle(ordinal)).?;
+        try std.testing.expectEqual(full.bank.findOperation(handle(ordinal)).?, slot);
+        const expected_slot = if (ordinal < 20) old_free[@intCast(19 - ordinal)] else 16;
+        try std.testing.expectEqual(expected_slot, slot);
+        try std.testing.expectEqual(slot, growing.bank.findDomain(handle(ordinal + 1000)).?);
+    }
+    try std.testing.expectEqualDeep(full.bank.records, growing.bank.records);
+    try std.testing.expectEqualSlices(protocol.ActionOutput, full.bank.actions[0..full.bank.action_count], growing.bank.actions[0..growing.bank.action_count]);
+    var final_pending = pending;
+    final_pending.state_revision = growing.state_revision;
+    try std.testing.expectEqualDeep(final_pending, growing.bank.records[0]);
+}
+
 test "configuration is explicit and reconfiguration preserves allocated shape" {
     var invalid = testConfig();
     invalid.generation = 0;

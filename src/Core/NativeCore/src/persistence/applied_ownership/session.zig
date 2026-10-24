@@ -46,6 +46,9 @@ pub fn promote(session: *Session, input: *const protocol.PromoteInput) protocol.
     };
     const validity = protocol.validRecord(&record);
     if (validity != .ok) return validity;
+    const needed = std.math.add(u32, session.active.count, 1) catch return .capacity_full;
+    session.ensureRecordCapacity(needed, .ownership_promote) catch |err|
+        return growthStatus(err);
     if (!session.active.append(record)) return .capacity_full;
     session.ledger_revision = next_ledger_revision;
     return .ok;
@@ -283,7 +286,11 @@ pub fn openExisting(
         .maximum_image_bytes = header.maximum_image_bytes,
         .reserved = .{ 0, 0, 0, 0, 0 },
     };
-    const session = state.Session.create(&create_config) catch |err| return switch (err) {
+    const session = state.Session.createWithContentCapacity(
+        &create_config,
+        std.heap.page_allocator,
+        @max(1, header.entry_count),
+    ) catch |err| return switch (err) {
         error.ResidentBudgetExceeded => .configuration_mismatch,
         error.OutOfMemory => .out_of_memory,
         else => .invalid_argument,
@@ -313,6 +320,8 @@ fn decodeReplaceUnlocked(session: *Session, image: []const u8) protocol.Status {
     }
     if (header.ledger_revision <= session.ledger_revision) return .stale_revision;
 
+    session.ensureRecordCapacity(header.entry_count, .ownership_decode) catch |err|
+        return growthStatus(err);
     session.staging.clear();
     var previous_primary: ?protocol.PrimaryIdentity = null;
     var record_index: u32 = 0;
@@ -351,6 +360,13 @@ fn decodeReplaceUnlocked(session: *Session, image: []const u8) protocol.Status {
     }
     session.publishStaging(header.ledger_revision);
     return .ok;
+}
+
+fn growthStatus(err: anyerror) protocol.Status {
+    return switch (err) {
+        error.OutOfMemory => .out_of_memory,
+        else => .capacity_full,
+    };
 }
 
 fn validateCas(record: *const protocol.Record, cas: *const protocol.OwnershipCas) protocol.Status {

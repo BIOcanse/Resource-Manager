@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 
 pub const abi_version: u32 = 0x0002_0000;
@@ -109,6 +110,16 @@ pub const Capacity = extern struct {
     maximum_image_bytes: u64,
     resident_bytes: u64,
     reserved: [3]u64,
+};
+
+/// Current native allocation, independent of the configured durable limits.
+pub const WorkspaceCapacity = extern struct {
+    struct_size: u32,
+    record_capacity: u32,
+    primary_index_capacity: u32,
+    payload_index_capacity: u32,
+    resident_bytes: u64,
+    growth: growth.Log,
 };
 
 pub const PrimaryIdentity = extern struct {
@@ -766,4 +777,9 @@ comptime {
     {
         @compileError("applied ownership ABI layout drifted");
     }
+}
+
+comptime {
+    if (@sizeOf(WorkspaceCapacity) != 288 or @offsetOf(WorkspaceCapacity, "growth") != 24)
+        @compileError("workspace capacity diagnostics ABI mismatch");
 }

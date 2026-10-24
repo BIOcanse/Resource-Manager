@@ -29,7 +29,7 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         this.fileStore = fileStore;
         this.pathLease = pathLease;
         this.session = session;
-        workspace = new NativeTransactionJournalWorkspace(session.Capacity, createScratch);
+        workspace = new NativeTransactionJournalWorkspace(session.Capacity, createScratch, session);
     }
 
     public NativeTransactionJournalOwnerState State

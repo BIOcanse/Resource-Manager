@@ -1,9 +1,12 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
 pub const no_index: u32 = std.math.maxInt(u32);
+pub const initial_record_capacity: u32 = 16;
 
 pub const Session = struct {
+    growth: growth.Log = .{},
     allocator: std.mem.Allocator,
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.CreateConfig,
@@ -28,7 +31,7 @@ pub const Session = struct {
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
 
-        const record_capacity: usize = config.record_capacity;
+        const record_capacity: usize = @min(initial_record_capacity, config.record_capacity);
         const index_capacity = try indexCapacity(record_capacity);
         const records = try allocator.alloc(protocol.Record, record_capacity);
         errdefer allocator.free(records);
@@ -72,6 +75,84 @@ pub const Session = struct {
             .resident_bytes = requiredResidentBytes(self.config.record_capacity) catch unreachable,
             .reserved = .{0},
         };
+    }
+
+    pub fn workspaceCapacity(self: *Session) protocol.WorkspaceCapacity {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        return .{
+            .struct_size = @sizeOf(protocol.WorkspaceCapacity),
+            .growth = self.growth,
+            .record_capacity = @intCast(self.records.len),
+            .staging_record_capacity = @intCast(self.staging_records.len),
+            .index_capacity = @intCast(self.index.len),
+            .sort_capacity = @intCast(self.sort_indices.len),
+            .resident_bytes = requiredResidentBytes(@intCast(self.records.len)) catch unreachable,
+        };
+    }
+
+    // The caller owns the Session mutex. Allocate a complete replacement before
+    // publishing any pointer, so allocation failure leaves the old bank intact.
+    pub fn ensureRecordCapacityUnlocked(self: *Session, required: u32, reason: enum { prepare, prepare_batch, decode }) protocol.Status {
+        if (required <= self.records.len) return .ok;
+        if (required > self.config.record_capacity) return .capacity_full;
+        var new_capacity: u32 = @intCast(self.records.len);
+        while (new_capacity < required) {
+            new_capacity = @intCast(@min(
+                std.math.mul(u64, new_capacity, 2) catch return .capacity_full,
+                @as(u64, self.config.record_capacity),
+            ));
+        }
+        const resident_bytes = requiredResidentBytes(new_capacity) catch return .capacity_full;
+        if (resident_bytes > self.config.maximum_resident_bytes) return .capacity_full;
+        const old_capacity = self.records.len;
+        self.growUnlocked(new_capacity) catch return .capacity_full;
+        self.growth.record(switch (reason) {
+            .prepare => .journal_prepare,
+            .prepare_batch => .journal_batch,
+            .decode => .journal_decode,
+        }, .rows, old_capacity, new_capacity);
+        return .ok;
+    }
+
+    fn growUnlocked(self: *Session, new_capacity: u32) !void {
+        const records = try self.allocator.alloc(protocol.Record, new_capacity);
+        errdefer self.allocator.free(records);
+        @memset(records, std.mem.zeroes(protocol.Record));
+        const staging_records = try self.allocator.alloc(protocol.Record, new_capacity);
+        errdefer self.allocator.free(staging_records);
+        @memset(staging_records, std.mem.zeroes(protocol.Record));
+        const index = try self.allocator.alloc(u32, try indexCapacity(new_capacity));
+        errdefer self.allocator.free(index);
+        const sort_indices = try self.allocator.alloc(u32, new_capacity);
+        errdefer self.allocator.free(sort_indices);
+        @memset(sort_indices, 0);
+        std.mem.copyForwards(protocol.Record, records[0..self.count], self.records[0..self.count]);
+        std.mem.copyForwards(protocol.Record, staging_records[0..self.staging_records.len], self.staging_records);
+        std.mem.copyForwards(u32, sort_indices[0..self.sort_indices.len], self.sort_indices);
+        var replacement: Session = .{
+            .allocator = self.allocator,
+            .config = self.config,
+            .records = records,
+            .staging_records = staging_records,
+            .index = index,
+            .sort_indices = sort_indices,
+            .count = self.count,
+            .journal_revision = self.journal_revision,
+        };
+        if (!replacement.rebuildIndex()) return error.InvalidIndex;
+        const old_records = self.records;
+        const old_staging_records = self.staging_records;
+        const old_index = self.index;
+        const old_sort_indices = self.sort_indices;
+        self.records = records;
+        self.staging_records = staging_records;
+        self.index = index;
+        self.sort_indices = sort_indices;
+        self.allocator.free(old_sort_indices);
+        self.allocator.free(old_index);
+        self.allocator.free(old_staging_records);
+        self.allocator.free(old_records);
     }
 
     pub fn find(self: *const Session, identity: *const protocol.Identity) ?u32 {

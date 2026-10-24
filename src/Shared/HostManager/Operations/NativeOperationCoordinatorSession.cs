@@ -79,10 +79,17 @@ internal sealed partial class NativeOperationCoordinatorSession : IDisposable
         lock (sync)
         {
             output = default;
-            return (NativeOperationCoordinatorStatus)NativeMethods.Submit(
-                RequireHandle(),
-                in input,
-                ref output);
+            try
+            {
+                return (NativeOperationCoordinatorStatus)NativeMethods.Submit(
+                    RequireHandle(),
+                    in input,
+                    ref output);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
         }
     }
 
@@ -225,12 +232,19 @@ internal sealed partial class NativeOperationCoordinatorSession : IDisposable
         {
             fixed (NativeOperationOutput* pointer = records)
             {
-                return (NativeOperationCoordinatorStatus)NativeMethods.ImportPersistence(
-                    RequireHandle(),
-                    in input,
-                    in header,
-                    pointer,
-                    checked((uint)records.Length));
+                try
+                {
+                    return (NativeOperationCoordinatorStatus)NativeMethods.ImportPersistence(
+                        RequireHandle(),
+                        in input,
+                        in header,
+                        pointer,
+                        checked((uint)records.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }

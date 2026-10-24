@@ -1,5 +1,18 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
+
+pub export fn rm_applied_ownership_query_workspace_capacity(
+    handle: ?*anyopaque,
+    output: ?*protocol.WorkspaceCapacity,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(protocol.WorkspaceCapacity)) return code(.abi_mismatch);
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    @import("state.zig").lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    (output orelse return code(.invalid_argument)).* = session.workspaceCapacity();
+    return code(.ok);
+}
 const session_module = @import("session.zig");
 
 const empty_bytes = [_]u8{};
@@ -64,6 +77,8 @@ pub export fn rm_applied_ownership_query_capacity(
     const session: *session_module.Session = @ptrCast(@alignCast(
         handle orelse return code(.invalid_argument),
     ));
+    @import("state.zig").lockMutex(&session.mutex);
+    defer session.mutex.unlock();
     (output orelse return code(.invalid_argument)).* = session.capacity();
     return code(.ok);
 }

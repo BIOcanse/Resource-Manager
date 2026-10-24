@@ -38,7 +38,7 @@ public sealed record ResourceManagerSelfLocalResourceTickResult(
     public IReadOnlyList<ResourceManagerWorkspaceCapacity> Workspaces { get; init; } = [];
 }
 
-public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
+public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWorkspaceCapacityRegistry
 {
     private readonly IProcessResourcePolicyWriter policyWriter;
     private readonly IDiskUsageTreeStore diskUsageTrees;
@@ -83,6 +83,13 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
 
     internal IComputeScratch CreateScratch(ulong length)
         => ledger.CreateScratch(length);
+
+    IDisposable IWorkspaceCapacityRegistry.RegisterNativeWorkspace(
+        string workArea, Func<NativeWorkspaceCapacityDescription> read)
+        => ((IWorkspaceCapacityRegistry)ledger).RegisterNativeWorkspace(workArea, read);
+
+    void IWorkspaceCapacityRegistry.LogNativeGrowth(NativeCore.NativeWorkspaceGrowthEvent growth)
+        => ((IWorkspaceCapacityRegistry)ledger).LogNativeGrowth(growth);
 
     public IReadOnlyList<ResourceManagerWorkspaceCapacity> WorkspaceCapacities => ledger.ReadWorkspaceCapacities();
 

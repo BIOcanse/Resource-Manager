@@ -1,4 +1,10 @@
 const std = @import("std");
+
+// Capacity diagnostics have their own version so adding allocation details
+// cannot change the version stamped into persisted owner records.
+pub export fn rm_workspace_capacity_abi_version() callconv(.c) u32 {
+    return 0x0002_0000;
+}
 const pdh = @import("telemetry/pdh_collector.zig");
 const process_policy = @import("scheduling/process_policy_executor.zig");
 const memory_cleanup = @import("scheduling/memory_cleanup_planner.zig");
@@ -53,6 +59,7 @@ comptime {
     _ = smart_coordinator_abi.rm_smart_coordinator_create;
     _ = smart_coordinator_abi.rm_smart_coordinator_destroy;
     _ = smart_coordinator_abi.rm_smart_coordinator_query_capacity;
+    _ = smart_coordinator_abi.rm_smart_coordinator_query_workspace_capacity;
     _ = smart_coordinator_abi.rm_smart_coordinator_query_scratch_layout;
     _ = smart_coordinator_abi.rm_smart_coordinator_reconfigure;
     _ = smart_coordinator_abi.rm_smart_coordinator_reset;
@@ -135,6 +142,7 @@ comptime {
     _ = report_coordinator_abi.rm_report_coordinator_destroy;
     _ = report_coordinator_abi.rm_report_coordinator_reconfigure;
     _ = report_coordinator_abi.rm_report_coordinator_query_capacity;
+    _ = report_coordinator_abi.rm_report_coordinator_query_workspace_capacity;
     _ = report_coordinator_abi.rm_report_coordinator_replace_rules;
     _ = report_coordinator_abi.rm_report_coordinator_import;
     _ = report_coordinator_abi.rm_report_coordinator_observe;
@@ -200,6 +208,7 @@ comptime {
     _ = operation_coordinator_abi.rm_operation_coordinator_create;
     _ = operation_coordinator_abi.rm_operation_coordinator_destroy;
     _ = operation_coordinator_abi.rm_operation_coordinator_query_capacity;
+    _ = operation_coordinator_abi.rm_operation_coordinator_query_workspace_capacity;
     _ = operation_coordinator_abi.rm_operation_coordinator_reconfigure;
     _ = operation_coordinator_abi.rm_operation_coordinator_submit;
     _ = operation_coordinator_abi.rm_operation_coordinator_cancel;
@@ -217,6 +226,7 @@ comptime {
     _ = transaction_journal_abi.rm_transaction_journal_open_existing;
     _ = transaction_journal_abi.rm_transaction_journal_destroy;
     _ = transaction_journal_abi.rm_transaction_journal_query_capacity;
+    _ = transaction_journal_abi.rm_transaction_journal_query_workspace_capacity;
     _ = transaction_journal_abi.rm_transaction_journal_prepare;
     _ = transaction_journal_abi.rm_transaction_journal_prepare_batch;
     _ = transaction_journal_abi.rm_transaction_journal_mutate;
@@ -231,6 +241,7 @@ comptime {
     _ = applied_ownership_abi.rm_applied_ownership_open_existing;
     _ = applied_ownership_abi.rm_applied_ownership_destroy;
     _ = applied_ownership_abi.rm_applied_ownership_query_capacity;
+    _ = applied_ownership_abi.rm_applied_ownership_query_workspace_capacity;
     _ = applied_ownership_abi.rm_applied_ownership_promote;
     _ = applied_ownership_abi.rm_applied_ownership_plan_transition;
     _ = applied_ownership_abi.rm_applied_ownership_transition;
@@ -445,8 +456,7 @@ pub export fn rm_pdh_collector_copy_frame(
     ));
 }
 
-pub export fn rm_pdh_collector_copy_gpu_engine_windows(handle: ?*anyopaque, expected_sequence: u64,
-    rows: ?[*]pdh.GpuEngineWindow, capacity: u32, row_size: u32, count: ?*u32) callconv(.c) i32 {
+pub export fn rm_pdh_collector_copy_gpu_engine_windows(handle: ?*anyopaque, expected_sequence: u64, rows: ?[*]pdh.GpuEngineWindow, capacity: u32, row_size: u32, count: ?*u32) callconv(.c) i32 {
     const collector: *pdh.Collector = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
     return code(collector.copyEngineWindows(expected_sequence, rows, capacity, row_size, count orelse return code(.invalid_argument)));
 }
@@ -593,4 +603,3 @@ test {
     _ = display_coordinator;
     _ = operation_coordinator;
 }
-

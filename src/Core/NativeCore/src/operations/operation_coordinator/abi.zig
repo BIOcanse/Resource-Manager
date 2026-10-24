@@ -1,4 +1,15 @@
 const protocol = @import("protocol.zig");
+
+pub export fn rm_operation_coordinator_query_workspace_capacity(
+    handle: ?*anyopaque,
+    output: ?*protocol.WorkspaceCapacity,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(protocol.WorkspaceCapacity)) return code(.abi_mismatch);
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    (output orelse return code(.invalid_argument)).* = session.workspaceCapacity();
+    return code(.ok);
+}
 const abi_layout = @import("abi_layout.zig");
 const session_module = @import("session.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;

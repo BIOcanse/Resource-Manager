@@ -1,6 +1,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
+const growth = @import("growth.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub fn importPersisted(
@@ -14,6 +15,9 @@ pub fn importPersisted(
     if (!session.operationAdvances(input.operation_epoch, input.command_monotonic_milliseconds)) {
         return .stale_frame;
     }
+
+    const reserve = growth.importRows(session, rows);
+    if (reserve != .ok) return reserve;
 
     @memset(session.staging_sources, .{});
     @memset(session.staging_observations, .{});

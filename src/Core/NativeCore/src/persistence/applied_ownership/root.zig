@@ -5,4 +5,5 @@ pub const state = @import("state.zig");
 
 test {
     _ = @import("tests.zig");
+    _ = @import("growth_tests.zig");
 }

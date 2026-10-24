@@ -16,7 +16,8 @@ internal sealed class NativeTransactionJournalWorkspace : IDisposable
     private bool disposed;
 
     public NativeTransactionJournalWorkspace(in NativeTransactionJournalCapacity capacity,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        INativeWorkspaceCapacitySource? nativeCapacity = null)
     {
         ArgumentNullException.ThrowIfNull(createScratch);
         if (capacity.RecordCapacity == 0 ||
@@ -30,7 +31,16 @@ internal sealed class NativeTransactionJournalWorkspace : IDisposable
 
         maximumRecords = capacity.RecordCapacity;
         scratch = new RowSizedComputeScratch(createScratch, "journal");
-        EnsureRows(0);
+        try
+        {
+            EnsureRows(0);
+            if (nativeCapacity is not null) scratch.DescribeNative(nativeCapacity.ReadWorkspaceCapacity, nativeCapacity.SetGrowthObserver);
+        }
+        catch
+        {
+            scratch.Dispose();
+            throw;
+        }
     }
 
     internal ulong Length => scratch.Length;

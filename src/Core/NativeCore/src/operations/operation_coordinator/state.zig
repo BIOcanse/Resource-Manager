@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const windows = std.os.windows;
 const protocol = @import("protocol.zig");
@@ -9,6 +10,7 @@ const Bank = bank_module.Bank;
 const Record = bank_module.Record;
 
 pub const Session = struct {
+    growth: growth.Log = .{},
     allocator: std.mem.Allocator,
     mutex: windows.SRWLOCK = windows.SRWLOCK_INIT,
     config: protocol.Config,
@@ -49,16 +51,19 @@ pub const Session = struct {
         if (resident > config.resident_byte_budget) return error.InvalidConfiguration;
 
         const allocator = std.heap.page_allocator;
+        const initial = try bank_module.sizedConfig(config, @min(16, config.maximum_operation_count));
+        const initial_buffers = try std.math.mul(u64, try bank_module.committedByteCount(&initial, page_size), 2);
+        const initial_resident = try std.math.add(u64, session_resident, initial_buffers);
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        var bank = try Bank.create(allocator, config);
+        var bank = try Bank.create(allocator, &initial);
         errdefer bank.destroy();
-        var staging = try Bank.create(allocator, config);
+        var staging = try Bank.create(allocator, &initial);
         errdefer staging.destroy();
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .resident_byte_count = resident,
+            .resident_byte_count = initial_resident,
             .bank = bank,
             .staging = staging,
         };
@@ -90,6 +95,44 @@ pub const Session = struct {
             .resident_byte_count = self.resident_byte_count,
             .reserved = [_]u64{0} ** 4,
         };
+    }
+
+    pub fn workspaceCapacity(self: *Session) protocol.WorkspaceCapacity {
+        lockMutex(&self.mutex);
+        defer unlockMutex(&self.mutex);
+        return .{
+            .struct_size = @sizeOf(protocol.WorkspaceCapacity),
+            .growth = self.growth,
+            .operation_capacity = @intCast(self.bank.records.len),
+            .staging_capacity = @intCast(self.staging.records.len),
+            .action_capacity = @intCast(self.bank.actions.len),
+            .operation_index_capacity = @intCast(self.bank.operation_index.len),
+            .domain_index_capacity = @intCast(self.bank.domain_index.len),
+            .resident_byte_count = self.resident_byte_count,
+        };
+    }
+
+    pub fn ensureBankCapacity(self: *Session, bank: *Bank, required: u32, reason: growth.Reason) !void {
+        if (required <= bank.records.len) return;
+        if (required > self.config.maximum_operation_count) return error.OutOfMemory;
+        var rows: u32 = @intCast(bank.records.len);
+        while (rows < required) {
+            rows = @intCast(@min(@as(u64, rows) * 2, self.config.maximum_operation_count));
+        }
+        const old_config = try bank_module.sizedConfig(&self.config, @intCast(bank.records.len));
+        const next_config = try bank_module.sizedConfig(&self.config, rows);
+        const page_size: u64 = @intCast(std.heap.pageSize());
+        const old_bytes = try bank_module.committedByteCount(&old_config, page_size);
+        const next_bytes = try bank_module.committedByteCount(&next_config, page_size);
+        const resident = try std.math.add(u64, self.resident_byte_count - old_bytes, next_bytes);
+        if (resident > self.config.resident_byte_budget) return error.OutOfMemory;
+        var replacement = try Bank.create(bank.allocator, &next_config);
+        bank.copyInto(&replacement);
+        var previous = bank.*;
+        bank.* = replacement;
+        self.resident_byte_count = resident;
+        previous.destroy();
+        self.growth.record(reason, .rows, old_config.maximum_operation_count, rows);
     }
 
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
@@ -177,6 +220,8 @@ pub const Session = struct {
         {
             return .out_of_memory;
         }
+        const required = std.math.add(u32, self.bank.operation_count, 1) catch return .out_of_memory;
+        self.ensureBankCapacity(&self.bank, required, .operation_submit) catch return .out_of_memory;
         const record_index = self.bank.allocateRecord() orelse return .out_of_memory;
         errdefer self.bank.releaseRecord(record_index);
         const allocated_record = &self.bank.records[record_index];

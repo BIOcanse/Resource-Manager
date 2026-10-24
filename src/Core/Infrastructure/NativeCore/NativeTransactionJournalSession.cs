@@ -108,7 +108,14 @@ internal sealed partial class NativeTransactionJournalSession : IDisposable
     {
         lock (sync)
         {
-            return (NativeTransactionJournalStatus)NativeMethods.Prepare(RequireHandle(), in input);
+            try
+            {
+                return (NativeTransactionJournalStatus)NativeMethods.Prepare(RequireHandle(), in input);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
         }
     }
 
@@ -120,11 +127,18 @@ internal sealed partial class NativeTransactionJournalSession : IDisposable
         {
             fixed (NativeTransactionJournalPrepareInput* inputPointer = inputs)
             {
-                return (NativeTransactionJournalStatus)NativeMethods.PrepareBatch(
-                    RequireHandle(),
-                    in batch,
-                    inputPointer,
-                    checked((uint)inputs.Length));
+                try
+                {
+                    return (NativeTransactionJournalStatus)NativeMethods.PrepareBatch(
+                        RequireHandle(),
+                        in batch,
+                        inputPointer,
+                        checked((uint)inputs.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }

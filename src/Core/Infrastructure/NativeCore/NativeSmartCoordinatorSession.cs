@@ -148,16 +148,23 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
             fixed (NativeSmartCoordinatorInputRow* inputPointer = inputRows)
             fixed (NativeSmartCoordinatorAction* actionPointer = actions)
             {
-                return (NativeSmartCoordinatorStatus)NativeMethods.Plan(
-                    RequireHandle(),
-                    in input,
-                    inputPointer,
-                    checked((uint)inputRows.Length),
-                    actionPointer,
-                    checked((uint)actions.Length),
-                    (void*)scratchPointer,
-                    scratchLength,
-                    ref snapshot);
+                try
+                {
+                    return (NativeSmartCoordinatorStatus)NativeMethods.Plan(
+                        RequireHandle(),
+                        in input,
+                        inputPointer,
+                        checked((uint)inputRows.Length),
+                        actionPointer,
+                        checked((uint)actions.Length),
+                        (void*)scratchPointer,
+                        scratchLength,
+                        ref snapshot);
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }

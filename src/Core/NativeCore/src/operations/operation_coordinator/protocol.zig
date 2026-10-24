@@ -1,4 +1,16 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
+
+pub const WorkspaceCapacity = extern struct {
+    struct_size: u32,
+    operation_capacity: u32,
+    staging_capacity: u32,
+    action_capacity: u32,
+    operation_index_capacity: u32,
+    domain_index_capacity: u32,
+    resident_byte_count: u64,
+    growth: growth.Log,
+};
 
 pub const abi_version: u32 = 0x0001_0000;
 pub const no_slot: u32 = std.math.maxInt(u32);
@@ -708,4 +720,9 @@ fn validIndexCapacity(capacity: u32, count: u32) bool {
 
 fn handleMatchesValidity(handle: Handle128, valid_mask: u64, bit: u64) bool {
     return ((valid_mask & bit) != 0) != handle.isZero();
+}
+
+comptime {
+    if (@sizeOf(WorkspaceCapacity) != 296 or @offsetOf(WorkspaceCapacity, "growth") != 32)
+        @compileError("workspace capacity diagnostics ABI mismatch");
 }

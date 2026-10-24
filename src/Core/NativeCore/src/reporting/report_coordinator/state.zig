@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
@@ -161,6 +162,7 @@ pub const RollingValues = struct {
 };
 
 pub const Session = struct {
+    growth: growth.Log = .{},
     allocator: std.mem.Allocator,
     storage: []u128,
     mutex: std.atomic.Mutex = .unlocked,
@@ -238,118 +240,122 @@ pub const Session = struct {
 
     pub fn create(config: *const protocol.Config) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
-        const allocator = std.heap.page_allocator;
-        const resident = requiredResidentBytes(config) catch return error.InvalidConfiguration;
+        return createWithShape(std.heap.page_allocator, config, initialShape(config));
+    }
+
+    // Shape describes allocation only. The externally configured limits remain unchanged.
+    pub fn createWithShape(allocator: std.mem.Allocator, config: *const protocol.Config, shape: protocol.Config) !*Session {
+        const resident = requiredResidentBytes(&shape) catch return error.InvalidConfiguration;
         if (resident > config.resident_byte_budget) return error.InvalidConfiguration;
 
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
 
-        const storage_word_count = try requiredStorageWordCount(config);
+        const storage_word_count = try requiredStorageWordCount(&shape);
         const storage = try allocator.alloc(u128, @intCast(storage_word_count));
         errdefer allocator.free(storage);
         var fixed = std.heap.FixedBufferAllocator.init(std.mem.sliceAsBytes(storage));
         const storage_allocator = fixed.allocator();
 
-        const sources = try allocZeroed(storage_allocator, SourceSlot, config.maximum_source_count);
+        const sources = try allocZeroed(storage_allocator, SourceSlot, shape.maximum_source_count);
         const staging_sources = try allocZeroed(
             storage_allocator,
             SourceSlot,
-            config.maximum_source_count,
+            shape.maximum_source_count,
         );
-        const rules = try allocZeroed(storage_allocator, RuleSlot, config.maximum_rule_count);
+        const rules = try allocZeroed(storage_allocator, RuleSlot, shape.maximum_rule_count);
         const staging_rules = try allocZeroed(
             storage_allocator,
             RuleSlot,
-            config.maximum_rule_count,
+            shape.maximum_rule_count,
         );
         const observations = try allocZeroed(
             storage_allocator,
             ObservationSlot,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const staging_observations = try allocZeroed(
             storage_allocator,
             ObservationSlot,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const reports = try allocZeroed(
             storage_allocator,
             ReportSlot,
-            config.maximum_report_count,
+            shape.maximum_report_count,
         );
         const staging_reports = try allocZeroed(
             storage_allocator,
             ReportSlot,
-            config.maximum_report_count,
+            shape.maximum_report_count,
         );
         const trusts = try allocZeroed(
             storage_allocator,
             TrustSlot,
-            config.maximum_trust_count,
+            shape.maximum_trust_count,
         );
         const staging_trusts = try allocZeroed(
             storage_allocator,
             TrustSlot,
-            config.maximum_trust_count,
+            shape.maximum_trust_count,
         );
         const buckets = try allocZeroed(
             storage_allocator,
             BucketSlot,
-            config.maximum_bucket_count,
+            shape.maximum_bucket_count,
         );
         const staging_buckets = try allocZeroed(
             storage_allocator,
             BucketSlot,
-            config.maximum_bucket_count,
+            shape.maximum_bucket_count,
         );
 
-        const source_index = try allocIndex(storage_allocator, config.source_index_capacity);
+        const source_index = try allocIndex(storage_allocator, shape.source_index_capacity);
         const staging_source_index = try allocIndex(
             storage_allocator,
-            config.source_index_capacity,
+            shape.source_index_capacity,
         );
-        const rule_index = try allocIndex(storage_allocator, config.rule_index_capacity);
+        const rule_index = try allocIndex(storage_allocator, shape.rule_index_capacity);
         const staging_rule_index = try allocIndex(
             storage_allocator,
-            config.rule_index_capacity,
+            shape.rule_index_capacity,
         );
         const observation_index = try allocIndex(
             storage_allocator,
-            config.observation_index_capacity,
+            shape.observation_index_capacity,
         );
         const staging_observation_index = try allocIndex(
             storage_allocator,
-            config.observation_index_capacity,
+            shape.observation_index_capacity,
         );
-        const report_index = try allocIndex(storage_allocator, config.report_index_capacity);
+        const report_index = try allocIndex(storage_allocator, shape.report_index_capacity);
         const staging_report_index = try allocIndex(
             storage_allocator,
-            config.report_index_capacity,
+            shape.report_index_capacity,
         );
-        const trust_index = try allocIndex(storage_allocator, config.trust_index_capacity);
+        const trust_index = try allocIndex(storage_allocator, shape.trust_index_capacity);
         const staging_trust_index = try allocIndex(
             storage_allocator,
-            config.trust_index_capacity,
+            shape.trust_index_capacity,
         );
-        const bucket_index = try allocIndex(storage_allocator, config.bucket_index_capacity);
+        const bucket_index = try allocIndex(storage_allocator, shape.bucket_index_capacity);
         const staging_bucket_index = try allocIndex(
             storage_allocator,
-            config.bucket_index_capacity,
+            shape.bucket_index_capacity,
         );
 
         const report_candidates = try allocFilled(
             storage_allocator,
             u32,
-            config.maximum_report_count,
+            shape.maximum_report_count,
             no_index,
         );
         const report_order = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_report_count,
+            shape.maximum_report_count,
         );
-        const dirty_capacity = try totalPersistentCapacity(config);
+        const dirty_capacity = try totalPersistentCapacity(&shape);
         const dirty_references = try allocZeroed(
             storage_allocator,
             DirtyReference,
@@ -358,56 +364,56 @@ pub const Session = struct {
         const planned_persistence = try allocZeroed(
             storage_allocator,
             PlannedPersistenceReference,
-            config.maximum_persistence_operation_count,
+            shape.maximum_persistence_operation_count,
         );
         const planned_persistence_index = try allocIndex(
             storage_allocator,
-            config.planned_persistence_index_capacity,
+            shape.planned_persistence_index_capacity,
         );
         const planned_feedback_marks = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_persistence_operation_count,
+            shape.maximum_persistence_operation_count,
         );
         const trust_feedback_outcomes = try allocZeroed(
             storage_allocator,
             u8,
-            config.maximum_trust_count,
+            shape.maximum_trust_count,
         );
         const fact_keys = try allocZeroed(
             storage_allocator,
             FactKey,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const rolling_values = try allocZeroed(
             storage_allocator,
             RollingValues,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const staging_rolling_values = try allocZeroed(
             storage_allocator,
             RollingValues,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const observation_transaction_marks = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_observation_count,
+            shape.maximum_observation_count,
         );
         const report_transaction_marks = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_report_count,
+            shape.maximum_report_count,
         );
         const bucket_transaction_marks = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_bucket_count,
+            shape.maximum_bucket_count,
         );
         const source_transaction_marks = try allocZeroed(
             storage_allocator,
             u32,
-            config.maximum_source_count,
+            shape.maximum_source_count,
         );
 
         self.* = .{
@@ -461,6 +467,91 @@ pub const Session = struct {
         const allocator = self.allocator;
         allocator.free(self.storage);
         allocator.destroy(self);
+    }
+
+    pub fn workspaceCapacity(self: *Session) protocol.WorkspaceCapacity {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        return .{
+            .struct_size = @sizeOf(protocol.WorkspaceCapacity),
+            .growth = self.growth,
+            .source_capacity = @intCast(self.sources.len),
+            .rule_capacity = @intCast(self.rules.len),
+            .observation_capacity = @intCast(self.observations.len),
+            .report_capacity = @intCast(self.reports.len),
+            .trust_capacity = @intCast(self.trusts.len),
+            .bucket_capacity = @intCast(self.buckets.len),
+            .persistence_operation_capacity = @intCast(self.planned_persistence.len),
+            .resident_byte_count = self.resident_byte_count,
+        };
+    }
+
+    pub fn allocationShape(self: *const Session) protocol.Config {
+        var shape = self.config;
+        shape.maximum_source_count = @intCast(self.sources.len);
+        shape.maximum_rule_count = @intCast(self.rules.len);
+        shape.maximum_observation_count = @intCast(self.observations.len);
+        shape.maximum_report_count = @intCast(self.reports.len);
+        shape.maximum_trust_count = @intCast(self.trusts.len);
+        shape.maximum_bucket_count = @intCast(self.buckets.len);
+        shape.maximum_persistence_operation_count = @intCast(self.planned_persistence.len);
+        inline for (index_fields, index_slice_fields) |field, slice| @field(shape, field) = @intCast(@field(self, slice).len);
+        return shape;
+    }
+
+    // Caller holds the Session mutex and has not started a semantic transaction.
+    // All allocation, budget checks and index construction finish before publication.
+    pub fn ensureShape(self: *Session, demand: protocol.Config, reason: growth.Reason) ResultCode {
+        std.debug.assert(!self.transaction_active);
+        var shape = self.allocationShape();
+        inline for (capacity_fields) |field| {
+            const required = @field(demand, field);
+            const limit = @field(self.config, field);
+            if (required > limit) return .buffer_too_small;
+            var count = @field(shape, field);
+            while (count < required) count = @intCast(@min(@as(u64, count) * 2, limit));
+            @field(shape, field) = count;
+        }
+        const previous = shape;
+        setShapeIndexes(&shape);
+        inline for (index_fields) |field| @field(shape, field) = @max(@field(shape, field), @field(previous, field));
+        const resident = requiredResidentBytes(&shape) catch return .out_of_memory;
+        if (resident == self.resident_byte_count) return .ok;
+        // The configured budget retains its steady resident-extent semantics.
+        // Check arithmetic for the temporary copy peak.
+        _ = std.math.add(u64, self.resident_byte_count, resident) catch return .out_of_memory;
+        if (resident > self.config.resident_byte_budget) return .out_of_memory;
+        const replacement = createWithShape(self.allocator, &self.config, shape) catch return .out_of_memory;
+        defer replacement.destroy();
+        inline for (@typeInfo(Session).@"struct".fields) |field| {
+            if (comptime switch (@typeInfo(field.type)) {
+                .pointer => |pointer| pointer.size == .slice,
+                else => false,
+            } and !std.mem.eql(u8, field.name, "storage")) {
+                const source = @field(self, field.name);
+                @memcpy(@field(replacement, field.name)[0..source.len], source);
+            }
+        }
+        if (!rebuildSourceIndex(replacement.sources, replacement.source_index) or
+            !rebuildRuleIndex(replacement.rules, replacement.rule_index) or
+            !rebuildObservationIndex(replacement.observations, replacement.observation_index) or
+            !rebuildReportIndex(replacement.reports, replacement.report_index) or
+            !rebuildTrustIndex(replacement.trusts, replacement.trust_index) or
+            !rebuildBucketIndex(replacement.buckets, replacement.bucket_index)) return .invalid_argument;
+        @memset(replacement.planned_persistence_index, no_index);
+        for (0..self.planned_persistence_count) |index| {
+            if (!replacement.insertPlannedPersistenceIndex(@intCast(index))) return .invalid_argument;
+        }
+        const old_arena_bytes = self.storage.len * @sizeOf(u128);
+        inline for (@typeInfo(Session).@"struct".fields) |field| {
+            if (comptime switch (@typeInfo(field.type)) {
+                .pointer => |pointer| pointer.size == .slice,
+                else => false,
+            }) std.mem.swap(field.type, &@field(self, field.name), &@field(replacement, field.name));
+        }
+        self.resident_byte_count = resident;
+        self.growth.record(reason, .bytes, old_arena_bytes, self.storage.len * @sizeOf(u128));
+        return .ok;
     }
 
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
@@ -893,6 +984,31 @@ pub fn requiredResidentBytes(config: *const protocol.Config) !u64 {
     const words = try requiredStorageWordCount(config);
     const storage_bytes = try std.math.mul(u64, words, @sizeOf(u128));
     return std.math.add(u64, @sizeOf(Session), storage_bytes);
+}
+
+const capacity_fields = .{ "maximum_source_count", "maximum_rule_count", "maximum_observation_count", "maximum_report_count", "maximum_trust_count", "maximum_bucket_count", "maximum_persistence_operation_count" };
+const index_fields = .{ "source_index_capacity", "rule_index_capacity", "observation_index_capacity", "report_index_capacity", "trust_index_capacity", "bucket_index_capacity", "planned_persistence_index_capacity" };
+const index_slice_fields = .{ "source_index", "rule_index", "observation_index", "report_index", "trust_index", "bucket_index", "planned_persistence_index" };
+
+pub fn initialShape(config: *const protocol.Config) protocol.Config {
+    var shape = config.*;
+    inline for (capacity_fields) |field| @field(shape, field) = 1;
+    setShapeIndexes(&shape);
+    return shape;
+}
+
+fn indexCapacity(count: u32) u32 {
+    return std.math.ceilPowerOfTwo(u32, count * 2) catch unreachable;
+}
+
+fn setShapeIndexes(shape: *protocol.Config) void {
+    shape.source_index_capacity = indexCapacity(shape.maximum_source_count);
+    shape.rule_index_capacity = indexCapacity(shape.maximum_rule_count);
+    shape.observation_index_capacity = indexCapacity(shape.maximum_observation_count);
+    shape.report_index_capacity = indexCapacity(shape.maximum_report_count);
+    shape.trust_index_capacity = indexCapacity(shape.maximum_trust_count);
+    shape.bucket_index_capacity = indexCapacity(shape.maximum_bucket_count);
+    shape.planned_persistence_index_capacity = indexCapacity(shape.maximum_persistence_operation_count);
 }
 
 fn requiredStorageWordCount(config: *const protocol.Config) !u64 {

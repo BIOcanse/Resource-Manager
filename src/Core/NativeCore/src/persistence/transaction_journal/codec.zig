@@ -64,6 +64,8 @@ pub fn decodeUnlocked(session: *state.Session, image: []const u8) protocol.Statu
     {
         return .configuration_mismatch;
     }
+    const growth = session.ensureRecordCapacityUnlocked(metadata.entry_count, .decode);
+    if (growth != .ok) return growth;
 
     var input_index: usize = 0;
     var staged_count: usize = 0;

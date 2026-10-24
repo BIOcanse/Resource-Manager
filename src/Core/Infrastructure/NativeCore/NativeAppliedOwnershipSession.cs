@@ -190,9 +190,16 @@ internal sealed partial class NativeAppliedOwnershipSession
     {
         lock (sync)
         {
-            return (NativeAppliedOwnershipStatus)NativeMethods.Promote(
-                RequireHandle(),
-                in input);
+            try
+            {
+                return (NativeAppliedOwnershipStatus)NativeMethods.Promote(
+                    RequireHandle(),
+                    in input);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
         }
     }
 
@@ -285,10 +292,17 @@ internal sealed partial class NativeAppliedOwnershipSession
         {
             fixed (byte* imagePointer = image)
             {
-                return (NativeAppliedOwnershipStatus)NativeMethods.DecodeReplace(
-                    RequireHandle(),
-                    imagePointer,
-                    checked((ulong)image.Length));
+                try
+                {
+                    return (NativeAppliedOwnershipStatus)NativeMethods.DecodeReplace(
+                        RequireHandle(),
+                        imagePointer,
+                        checked((ulong)image.Length));
+                }
+                finally
+                {
+                    ObserveGrowth();
+                }
             }
         }
     }

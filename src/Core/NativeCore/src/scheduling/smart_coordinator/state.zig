@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
@@ -321,7 +322,63 @@ pub const AtomicGroup = struct {
     order_score: f64,
 };
 
+pub const BankDemand = struct {
+    processes: u32,
+    softwares: u32,
+    gpus: u32,
+    reservations: u32,
+    atomic_groups: u32,
+};
+
+// A replacement owns both the value bank and its hash index. Preparing all five
+// owners before committing any of them makes allocation failure atomic.
+fn BankGrowth(comptime T: type) type {
+    return struct {
+        values: ?[]T = null,
+        index: ?[]u32 = null,
+
+        fn prepare(allocator: std.mem.Allocator, old: []const T, demand: u32, limit: u32, empty: T) !@This() {
+            if (demand > limit) return error.CapacityExceeded;
+            if (demand <= old.len) return .{};
+            var count: u32 = @intCast(old.len);
+            while (count < demand) {
+                count = @intCast(@min(@as(u64, limit), try std.math.mul(u64, count, 2)));
+            }
+            _ = try std.math.mul(usize, count, @sizeOf(T));
+            const index_count = try hashIndexCapacity(count);
+            _ = try std.math.mul(usize, index_count, @sizeOf(u32));
+            const values = try allocator.alloc(T, count);
+            errdefer allocator.free(values);
+            const index = try allocator.alloc(u32, index_count);
+            @memcpy(values[0..old.len], old);
+            for (values[old.len..]) |*item| item.* = empty;
+            @memset(index, 0);
+            return .{ .values = values, .index = index };
+        }
+
+        fn discard(self: *@This(), allocator: std.mem.Allocator) void {
+            if (self.values) |values| allocator.free(values);
+            if (self.index) |index| allocator.free(index);
+        }
+
+        fn commit(self: *@This(), session: *Session, values: *[]T, index: *[]u32) bool {
+            const replacement = self.values orelse return false;
+            const replacement_index = self.index.?;
+            const old_values = values.*;
+            const old_index = index.*;
+            values.* = replacement;
+            index.* = replacement_index;
+            self.values = null;
+            self.index = null;
+            session.allocator.free(old_values);
+            session.allocator.free(old_index);
+            return true;
+        }
+    };
+}
+
 pub const Session = struct {
+    growth: growth.Log = .{},
     allocator: std.mem.Allocator,
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
@@ -377,19 +434,24 @@ pub const Session = struct {
     atomic_group_index: []u32,
 
     pub fn create(config: *const protocol.Config) !*Session {
+        return createWithAllocator(config, std.heap.page_allocator);
+    }
+
+    pub fn createWithAllocator(config: *const protocol.Config, allocator: std.mem.Allocator) !*Session {
         if (!protocol.isValidConfig(config)) return error.InvalidConfiguration;
-        const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
 
-        const process_count: usize = @intCast(config.max_processes);
-        const software_count: usize = @intCast(config.max_software_groups);
-        const gpu_count: usize = @intCast(config.max_gpu_states);
-        const process_index_count = try hashIndexCapacity(config.max_processes);
-        const software_index_count = try hashIndexCapacity(config.max_software_groups);
-        const gpu_index_count = try hashIndexCapacity(config.max_gpu_states);
-        const reservation_index_count = try hashIndexCapacity(config.max_reservations);
-        const atomic_group_index_count = try hashIndexCapacity(config.max_atomic_groups);
+        // Configured dimensions are ceilings. One slot is the explicit initial
+        // allocation; later banks double only when retained/current content needs it.
+        const process_count: usize = 1;
+        const software_count: usize = 1;
+        const gpu_count: usize = 1;
+        const process_index_count = try hashIndexCapacity(1);
+        const software_index_count = try hashIndexCapacity(1);
+        const gpu_index_count = try hashIndexCapacity(1);
+        const reservation_index_count = try hashIndexCapacity(1);
+        const atomic_group_index_count = try hashIndexCapacity(1);
 
         const processes = try allocator.alloc(ProcessState, process_count);
         errdefer allocator.free(processes);
@@ -405,9 +467,9 @@ pub const Session = struct {
         const gpu_index = try allocator.alloc(u32, gpu_index_count);
         errdefer allocator.free(gpu_index);
 
-        const reservations = try allocator.alloc(Reservation, @intCast(config.max_reservations));
+        const reservations = try allocator.alloc(Reservation, 1);
         errdefer allocator.free(reservations);
-        const atomic_groups = try allocator.alloc(AtomicGroup, @intCast(config.max_atomic_groups));
+        const atomic_groups = try allocator.alloc(AtomicGroup, 1);
         errdefer allocator.free(atomic_groups);
         const reservation_index = try allocator.alloc(u32, reservation_index_count);
         errdefer allocator.free(reservation_index);
@@ -477,6 +539,12 @@ pub const Session = struct {
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
+        self.freeBanks();
+        allocator.destroy(self);
+    }
+
+    pub fn freeBanks(self: *Session) void {
+        const allocator = self.allocator;
         allocator.free(self.atomic_group_index);
         allocator.free(self.reservation_index);
         allocator.free(self.atomic_groups);
@@ -487,7 +555,107 @@ pub const Session = struct {
         allocator.free(self.gpus);
         allocator.free(self.softwares);
         allocator.free(self.processes);
-        allocator.destroy(self);
+    }
+
+    /// Plan against a private copy. Allocation and planner failure cannot change
+    /// live confirmations, ownership, retries, reservations or feedback mapping.
+    pub fn cloneBanks(self: *const Session) !Session {
+        var copy = self.*;
+        const allocator = self.allocator;
+        copy.processes = try allocator.dupe(ProcessState, self.processes);
+        errdefer allocator.free(copy.processes);
+        copy.softwares = try allocator.dupe(SoftwareState, self.softwares);
+        errdefer allocator.free(copy.softwares);
+        copy.gpus = try allocator.dupe(GpuState, self.gpus);
+        errdefer allocator.free(copy.gpus);
+        copy.reservations = try allocator.dupe(Reservation, self.reservations);
+        errdefer allocator.free(copy.reservations);
+        copy.atomic_groups = try allocator.dupe(AtomicGroup, self.atomic_groups);
+        errdefer allocator.free(copy.atomic_groups);
+        copy.process_index = try allocator.dupe(u32, self.process_index);
+        errdefer allocator.free(copy.process_index);
+        copy.software_index = try allocator.dupe(u32, self.software_index);
+        errdefer allocator.free(copy.software_index);
+        copy.gpu_index = try allocator.dupe(u32, self.gpu_index);
+        errdefer allocator.free(copy.gpu_index);
+        copy.reservation_index = try allocator.dupe(u32, self.reservation_index);
+        errdefer allocator.free(copy.reservation_index);
+        copy.atomic_group_index = try allocator.dupe(u32, self.atomic_group_index);
+        return copy;
+    }
+
+    pub fn commitBanks(self: *Session, candidate: *const Session) void {
+        var committed_growth = self.growth;
+        committed_growth.record(.smart_process, .rows, self.processes.len, candidate.processes.len);
+        committed_growth.record(.smart_software, .rows, self.softwares.len, candidate.softwares.len);
+        committed_growth.record(.smart_gpu, .rows, self.gpus.len, candidate.gpus.len);
+        committed_growth.record(.smart_reservation, .rows, self.reservations.len, candidate.reservations.len);
+        committed_growth.record(.smart_atomic_group, .rows, self.atomic_groups.len, candidate.atomic_groups.len);
+        var previous = self.*;
+        self.* = candidate.*;
+        self.growth = committed_growth;
+        previous.freeBanks();
+    }
+
+    pub fn ensureReservationSlot(self: *Session) protocol.Status {
+        for (self.reservations) |item| if (!item.occupied) return .ok;
+        return self.ensureBankCapacity(.{ .processes = @intCast(self.processes.len), .softwares = @intCast(self.softwares.len), .gpus = @intCast(self.gpus.len), .reservations = std.math.add(u32, @intCast(self.reservations.len), 1) catch return .capacity_exceeded, .atomic_groups = @intCast(self.atomic_groups.len) });
+    }
+
+    pub fn ensureAtomicGroupSlot(self: *Session) protocol.Status {
+        for (self.atomic_groups) |item| if (!item.occupied) return .ok;
+        return self.ensureBankCapacity(.{ .processes = @intCast(self.processes.len), .softwares = @intCast(self.softwares.len), .gpus = @intCast(self.gpus.len), .reservations = @intCast(self.reservations.len), .atomic_groups = std.math.add(u32, @intCast(self.atomic_groups.len), 1) catch return .capacity_exceeded });
+    }
+
+    // Caller holds the native session mutex. Slots do not move, so reservations
+    // keep their process/software/group references and all transition history.
+    pub fn ensureBankCapacity(self: *Session, demand: BankDemand) protocol.Status {
+        if (demand.processes > self.config.max_processes or demand.softwares > self.config.max_software_groups or
+            demand.gpus > self.config.max_gpu_states or demand.reservations > self.config.max_reservations or
+            demand.atomic_groups > self.config.max_atomic_groups) return .capacity_exceeded;
+        _ = bankByteCount(ProcessState, self.config.max_processes) catch return .out_of_memory;
+        _ = bankByteCount(SoftwareState, self.config.max_software_groups) catch return .out_of_memory;
+        _ = bankByteCount(GpuState, self.config.max_gpu_states) catch return .out_of_memory;
+        _ = bankByteCount(Reservation, self.config.max_reservations) catch return .out_of_memory;
+        _ = bankByteCount(AtomicGroup, self.config.max_atomic_groups) catch return .out_of_memory;
+        var process = BankGrowth(ProcessState).prepare(self.allocator, self.processes, demand.processes, self.config.max_processes, ProcessState.empty()) catch return .out_of_memory;
+        defer process.discard(self.allocator);
+        var software = BankGrowth(SoftwareState).prepare(self.allocator, self.softwares, demand.softwares, self.config.max_software_groups, SoftwareState.empty()) catch return .out_of_memory;
+        defer software.discard(self.allocator);
+        var gpu = BankGrowth(GpuState).prepare(self.allocator, self.gpus, demand.gpus, self.config.max_gpu_states, std.mem.zeroes(GpuState)) catch return .out_of_memory;
+        defer gpu.discard(self.allocator);
+        var reservation = BankGrowth(Reservation).prepare(self.allocator, self.reservations, demand.reservations, self.config.max_reservations, std.mem.zeroes(Reservation)) catch return .out_of_memory;
+        defer reservation.discard(self.allocator);
+        var group = BankGrowth(AtomicGroup).prepare(self.allocator, self.atomic_groups, demand.atomic_groups, self.config.max_atomic_groups, std.mem.zeroes(AtomicGroup)) catch return .out_of_memory;
+        defer group.discard(self.allocator);
+        const process_changed = process.commit(self, &self.processes, &self.process_index);
+        const software_changed = software.commit(self, &self.softwares, &self.software_index);
+        const gpu_changed = gpu.commit(self, &self.gpus, &self.gpu_index);
+        if (process_changed or software_changed or gpu_changed) self.rebuildPersistentIndices();
+        if (reservation.commit(self, &self.reservations, &self.reservation_index)) self.rebuildReservationIndex();
+        if (group.commit(self, &self.atomic_groups, &self.atomic_group_index)) self.rebuildAtomicGroupIndex();
+        return .ok;
+    }
+
+    pub fn fillWorkspaceCapacity(self: *const Session, output: *protocol.WorkspaceCapacity) void {
+        output.* = .{
+            .abi_version = protocol.abi_version,
+            .struct_size = @sizeOf(protocol.WorkspaceCapacity),
+            .growth = self.growth,
+            .process_capacity = @intCast(self.processes.len),
+            .software_capacity = @intCast(self.softwares.len),
+            .gpu_state_capacity = @intCast(self.gpus.len),
+            .reservation_capacity = @intCast(self.reservations.len),
+            .atomic_group_capacity = @intCast(self.atomic_groups.len),
+            .process_index_capacity = @intCast(self.process_index.len),
+            .software_index_capacity = @intCast(self.software_index.len),
+            .gpu_index_capacity = @intCast(self.gpu_index.len),
+            .reservation_index_capacity = @intCast(self.reservation_index.len),
+            .atomic_group_index_capacity = @intCast(self.atomic_group_index.len),
+            .resident_bytes = @sizeOf(Session) + self.processes.len * @sizeOf(ProcessState) + self.softwares.len * @sizeOf(SoftwareState) +
+                self.gpus.len * @sizeOf(GpuState) + self.reservations.len * @sizeOf(Reservation) + self.atomic_groups.len * @sizeOf(AtomicGroup) +
+                (self.process_index.len + self.software_index.len + self.gpu_index.len + self.reservation_index.len + self.atomic_group_index.len) * @sizeOf(u32),
+        };
     }
 
     pub fn reconfigure(self: *Session, config: *const protocol.Config) protocol.Status {
@@ -854,6 +1022,12 @@ pub fn hashIndexCapacity(maximum: u32) !usize {
     }
     if (capacity > std.math.maxInt(usize)) return error.OutOfMemory;
     return @intCast(capacity);
+}
+
+fn bankByteCount(comptime T: type, count: u32) !usize {
+    const values = try std.math.mul(usize, count, @sizeOf(T));
+    const indices = try std.math.mul(usize, try hashIndexCapacity(count), @sizeOf(u32));
+    return std.math.add(usize, values, indices);
 }
 
 fn mix64(input: u64) u64 {

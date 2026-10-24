@@ -14,6 +14,391 @@ const rule_generation: u64 = 22;
 const family_handle: u64 = 31;
 const target_handle: u64 = 41;
 
+test "steady observe and plan run maintenance once without preview or replacement" {
+    const report_rules = @import("rules.zig");
+    const report_planner = @import("planner.zig");
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{fact(1, 60)});
+    try fixture.observeComplete(4, 4, 2, 110, &.{fact(2, 70)});
+    // Establish exactly the high water the next Plan needs, before denying all
+    // allocations. Neither steady operation may allocate or copy the arena.
+    try expectCode(.ok, @import("growth.zig").persistencePlan(fixture.session, 4));
+    const original = fixture.session.storage.ptr;
+    var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = 0 });
+    fixture.session.allocator = failing.allocator();
+    defer fixture.session.allocator = std.heap.page_allocator;
+    report_rules.test_maintenance_count = 0;
+    report_rules.test_observe_preview_count = 0;
+    try fixture.observeComplete(5, 5, 3, 120, &.{fact(3, 80)});
+    try std.testing.expectEqual(@as(u64, 1), report_rules.test_maintenance_count);
+    try std.testing.expectEqual(@as(u64, 0), report_rules.test_observe_preview_count);
+    try std.testing.expectEqual(original, fixture.session.storage.ptr);
+    try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
+    report_rules.test_maintenance_count = 0;
+    report_planner.test_plan_preview_count = 0;
+    var reports: [4]protocol.ReportOutput = undefined;
+    var operations: [32]protocol.PersistenceOperation = undefined;
+    var output: protocol.PlanOutput = undefined;
+    var input = planInput(6, 6, 1, 130, reports.len, operations.len);
+    var report_count: u32 = 0;
+    var operation_count: u32 = 0;
+    try expectCode(.ok, session_module.queryPlanSize(fixture.session, &input, &report_count, &operation_count));
+    try std.testing.expectEqual(@as(u64, 1), report_rules.test_maintenance_count);
+    try std.testing.expectEqual(@as(u32, 1), report_count);
+    try std.testing.expectEqual(@as(u32, 4), operation_count);
+    try std.testing.expectEqual(original, fixture.session.storage.ptr);
+    try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
+    // The product's sizing query needs its rollback preview for exact output
+    // counts. The following Plan must not preview that work a second time.
+    report_rules.test_maintenance_count = 0;
+    try expectCode(.ok, session_module.plan(fixture.session, &input, &reports, reports.len, &operations, operations.len, &output));
+    try std.testing.expectEqual(@as(u64, 1), report_rules.test_maintenance_count);
+    try std.testing.expectEqual(@as(u64, 0), report_planner.test_plan_preview_count);
+    try std.testing.expectEqual(original, fixture.session.storage.ptr);
+    try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
+    try std.testing.expect(!failing.has_induced_failure);
+    try std.testing.expectEqual(@as(u32, 1), output.report_count);
+    try std.testing.expectEqual(@as(u32, 4), output.persistence_operation_count);
+}
+
+test "default history footprint and false facts allocate no potential reports" {
+    // Counts/indexes from Configuration/HostManager/default.json host_recreate.
+    var config = testConfig();
+    config.maximum_source_count = 16;
+    config.maximum_rule_count = 64;
+    config.maximum_observation_count = 2048;
+    config.maximum_report_count = 1024;
+    config.maximum_trust_count = 2048;
+    config.maximum_bucket_count = 21632;
+    config.maximum_persistence_operation_count = 32768;
+    config.maximum_report_output_count = 1024;
+    config.maximum_rolling_observation_count = 128;
+    config.source_index_capacity = 32;
+    config.rule_index_capacity = 128;
+    config.observation_index_capacity = 4096;
+    config.report_index_capacity = 2048;
+    config.trust_index_capacity = 4096;
+    config.bucket_index_capacity = 65536;
+    config.planned_persistence_index_capacity = 65536;
+    const configured_bytes = try state.requiredResidentBytes(&config);
+    const initial = state.initialShape(&config);
+    const initial_bytes = try state.requiredResidentBytes(&initial);
+    var default_rules = initial;
+    default_rules.maximum_rule_count = 16; // Nine default rules, doubled from one.
+    default_rules.rule_index_capacity = 32;
+    const default_rules_bytes = try state.requiredResidentBytes(&default_rules);
+    try std.testing.expectEqual(@as(u64, 10495264), configured_bytes);
+    try std.testing.expectEqual(@as(u64, 3520), initial_bytes);
+    try std.testing.expectEqual(@as(u64, 8800), default_rules_bytes);
+
+    const rule_row = rule();
+    const session = try createReadySession(&config, &.{rule_row});
+    defer session.destroy();
+    var facts: [300]protocol.FactInput = undefined;
+    for (&facts, 0..) |*value, index| value.* = factForTarget(1, index + 100, 0);
+    try observeRows(session, sourceSnapshot(3, 3, 1, 100, .complete, facts.len), &facts);
+    try std.testing.expectEqual(@as(u32, 0), @import("growth.zig").occupied(session.reports));
+    try std.testing.expectEqual(@as(usize, 1), session.reports.len);
+    var report_count: u32 = 0;
+    var operation_count: u32 = 0;
+    var input = planInput(4, 4, 1, 110, 1024, 32768);
+    try expectCode(.ok, session_module.queryPlanSize(session, &input, &report_count, &operation_count));
+    try std.testing.expectEqual(@as(u32, 0), report_count);
+    try std.testing.expectEqual(@as(u32, 302), operation_count);
+    try std.testing.expectEqual(@as(usize, 1), session.reports.len);
+    const false_bytes = session.resident_byte_count;
+    for (&facts) |*value| {
+        value.fact_sequence = 2;
+        value.current_value = 60;
+    }
+    try observeRows(session, sourceSnapshot(4, 4, 2, 110, .complete, facts.len), &facts);
+    try std.testing.expectEqual(@as(usize, 1), session.reports.len);
+    for (&facts) |*value| value.fact_sequence = 3;
+    try observeRows(session, sourceSnapshot(5, 5, 3, 120, .complete, facts.len), &facts);
+    try std.testing.expectEqual(@as(u32, 300), @import("growth.zig").occupied(session.reports));
+    try std.testing.expectEqual(@as(usize, 512), session.reports.len);
+    var reports: [300]protocol.ReportOutput = undefined;
+    var operations: [602]protocol.PersistenceOperation = undefined;
+    var output: protocol.PlanOutput = undefined;
+    input = planInput(6, 6, 1, 130, reports.len, operations.len);
+    try expectCode(.ok, session_module.plan(session, &input, &reports, reports.len, &operations, operations.len, &output));
+    try std.testing.expectEqual(@as(u32, 602), output.persistence_operation_count);
+    try std.testing.expectEqual(@as(usize, 1024), session.planned_persistence.len);
+    std.debug.print("report bytes configured={d} initial={d} default_9_rules={d} false_300={d} active_300_planned_602={d}\n", .{ configured_bytes, initial_bytes, default_rules_bytes, false_bytes, session.resident_byte_count });
+}
+
+test "content sized arena grows before observe and allocator failure leaves old state byte exact" {
+    for (0..2) |failure_index| {
+        var fixture = try Fixture.create();
+        defer fixture.destroy();
+        try fixture.observeComplete(3, 3, 1, 100, &.{fact(1, 60)});
+        const old_storage = fixture.session.storage.ptr;
+        const old_bytes = try std.testing.allocator.dupe(u8, std.mem.sliceAsBytes(fixture.session.storage));
+        defer std.testing.allocator.free(old_bytes);
+        const revision = fixture.session.state_revision;
+        const mutation = fixture.session.next_mutation_version;
+        const epoch = fixture.session.last_operation_epoch;
+        var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = failure_index });
+        fixture.session.allocator = failing.allocator();
+        const facts = [_]protocol.FactInput{ factForTarget(2, 41, 70), factForTarget(1, 42, 80) };
+        var input = sourceSnapshot(4, 4, 2, 110, .complete, facts.len);
+        const result = session_module.observe(fixture.session, &input, &facts, facts.len);
+        fixture.session.allocator = std.heap.page_allocator;
+        try expectCode(.out_of_memory, result);
+        try std.testing.expectEqual(old_storage, fixture.session.storage.ptr);
+        try std.testing.expectEqualSlices(u8, old_bytes, std.mem.sliceAsBytes(fixture.session.storage));
+        try std.testing.expectEqual(revision, fixture.session.state_revision);
+        try std.testing.expectEqual(mutation, fixture.session.next_mutation_version);
+        try std.testing.expectEqual(epoch, fixture.session.last_operation_epoch);
+        try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+        // The same command remains valid and explicitly succeeds after memory is available.
+        try fixture.observeComplete(4, 4, 2, 110, &facts);
+        try std.testing.expectEqual(@as(usize, 2), fixture.session.observations.len);
+        try std.testing.expectEqual(@as(u64, 2), fixture.session.observations[fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, 41).?].sample_count);
+    }
+}
+
+test "exact report growth failure after preview restores the entire live observation state" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    const first = [_]protocol.FactInput{ factForTarget(1, 41, 60), factForTarget(1, 42, 70), factForTarget(1, 43, 80) };
+    try fixture.observeComplete(3, 3, 1, 100, &first);
+    try std.testing.expectEqual(@as(usize, 1), fixture.session.reports.len);
+    const observations = try std.testing.allocator.dupe(state.ObservationSlot, fixture.session.observations);
+    defer std.testing.allocator.free(observations);
+    const sources = try std.testing.allocator.dupe(state.SourceSlot, fixture.session.sources);
+    defer std.testing.allocator.free(sources);
+    const old_storage = fixture.session.storage.ptr;
+    const revision = fixture.session.state_revision;
+    const mutation = fixture.session.next_mutation_version;
+    const next_observation = fixture.session.next_observation_handle;
+    const next_report = fixture.session.next_report_handle;
+    const report_cursor = fixture.session.next_report_slot;
+    var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = 1 });
+    fixture.session.allocator = failing.allocator();
+    const facts = [_]protocol.FactInput{ factForTarget(2, 41, 70), factForTarget(2, 42, 80), factForTarget(2, 43, 90) };
+    var input = sourceSnapshot(4, 4, 2, 110, .complete, facts.len);
+    const result = session_module.observe(fixture.session, &input, &facts, facts.len);
+    fixture.session.allocator = std.heap.page_allocator;
+    try expectCode(.out_of_memory, result);
+    try std.testing.expectEqual(old_storage, fixture.session.storage.ptr);
+    try std.testing.expectEqualDeep(observations, fixture.session.observations);
+    try std.testing.expectEqualDeep(sources, fixture.session.sources);
+    try std.testing.expectEqual(revision, fixture.session.state_revision);
+    try std.testing.expectEqual(mutation, fixture.session.next_mutation_version);
+    try std.testing.expectEqual(next_observation, fixture.session.next_observation_handle);
+    try std.testing.expectEqual(next_report, fixture.session.next_report_handle);
+    try std.testing.expectEqual(report_cursor, fixture.session.next_report_slot);
+    try std.testing.expectEqual(@as(u64, 3), fixture.session.last_operation_epoch);
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+    try fixture.observeComplete(4, 4, 2, 110, &facts);
+    try std.testing.expectEqual(@as(usize, 4), fixture.session.reports.len);
+    try std.testing.expectEqual(@as(u32, 3), @import("growth.zig").occupied(fixture.session.reports));
+}
+
+test "observe fault matrix covers every bucket and report growth allocation" {
+    // This operation needs two replacements: observations/buckets, then exact
+    // reports discovered by the rollback preview. Each allocates header+arena.
+    for (0..5) |failure_index| {
+        var config = testConfig();
+        var rolling_rule = rule();
+        rolling_rule.flags = protocol.RuleFlags.rolling;
+        rolling_rule.metric_selector = @intFromEnum(protocol.MetricSelector.sum_24h);
+        rolling_rule.required_consecutive_hits = 1;
+        rolling_rule.activation_threshold = 1;
+        rolling_rule.clear_threshold = 0.5;
+        const session = try createReadySession(&config, &.{rolling_rule});
+        defer session.destroy();
+        try observeRows(session, sourceSnapshot(3, 3, 1, 1_000, .complete, 1), &.{rollingFact(1, 0)});
+        const source = session.sources[0];
+        const observation = session.observations[0];
+        const bucket = session.buckets[0];
+        const rolling = session.rolling_values[0];
+        const report = session.reports[0];
+        const pending = session.planned_persistence[0];
+        const planned_output = session.planned_output;
+        const revision = session.state_revision;
+        const mutation = session.next_mutation_version;
+        const next_observation = session.next_observation_handle;
+        const next_bucket = session.next_bucket_handle;
+        const next_report = session.next_report_handle;
+        const observation_cursor = session.next_observation_slot;
+        const bucket_cursor = session.next_bucket_slot;
+        const report_cursor = session.next_report_slot;
+        const original = session.storage.ptr;
+        const old_bytes = session.resident_byte_count;
+        var failing = std.testing.FailingAllocator.init(std.heap.page_allocator, .{ .fail_index = failure_index });
+        session.allocator = failing.allocator();
+        var second = rollingFact(1, 6);
+        second.target_handle = target_handle + 1;
+        const facts = [_]protocol.FactInput{ rollingFact(2, 4), second };
+        var input = sourceSnapshot(4, 4, 2, 2_000, .complete, facts.len);
+        const result = session_module.observe(session, &input, &facts, facts.len);
+        session.allocator = std.heap.page_allocator;
+        if (failure_index == 4) {
+            try expectCode(.ok, result);
+            try std.testing.expect(!failing.has_induced_failure);
+            try std.testing.expectEqual(@as(usize, 4), failing.alloc_index);
+            try std.testing.expectEqual(@as(usize, 2), session.reports.len);
+            try std.testing.expectEqual(@as(u32, 2), @import("growth.zig").occupied(session.reports));
+            continue;
+        }
+        try expectCode(.out_of_memory, result);
+        try std.testing.expect(failing.has_induced_failure);
+        try std.testing.expectEqualDeep(source, session.sources[0]);
+        try std.testing.expectEqualDeep(observation, session.observations[0]);
+        try std.testing.expectEqualDeep(bucket, session.buckets[0]);
+        try std.testing.expectEqualDeep(rolling, session.rolling_values[0]);
+        try std.testing.expectEqualDeep(report, session.reports[0]);
+        try std.testing.expectEqualDeep(pending, session.planned_persistence[0]);
+        try std.testing.expectEqualDeep(planned_output, session.planned_output);
+        try std.testing.expectEqual(@as(u32, 0), session.planned_persistence_count);
+        try std.testing.expectEqual(revision, session.state_revision);
+        try std.testing.expectEqual(mutation, session.next_mutation_version);
+        try std.testing.expectEqual(next_observation, session.next_observation_handle);
+        try std.testing.expectEqual(next_bucket, session.next_bucket_handle);
+        try std.testing.expectEqual(next_report, session.next_report_handle);
+        try std.testing.expectEqual(observation_cursor, session.next_observation_slot);
+        try std.testing.expectEqual(bucket_cursor, session.next_bucket_slot);
+        try std.testing.expectEqual(report_cursor, session.next_report_slot);
+        try std.testing.expectEqual(@as(u64, 3), session.last_operation_epoch);
+        try std.testing.expectEqual(@as(u32, 0), session.findSource(source_handle, coverage_scope_handle).?);
+        try std.testing.expectEqual(@as(u32, 0), session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?);
+        try std.testing.expectEqual(@as(u32, 0), session.findBucket(source_handle, rule_handle, target_handle, 1_000).?);
+        try std.testing.expect(session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle + 1) == null);
+        try std.testing.expect(session.findBucket(source_handle, rule_handle, target_handle, 2_000) == null);
+        try std.testing.expect(session.findReport(target_handle, family_handle) == null);
+        for (session.observations[1..]) |slot| try std.testing.expect(!slot.occupied);
+        for (session.buckets[1..]) |slot| try std.testing.expect(!slot.occupied);
+        if (failure_index < 2) {
+            try std.testing.expectEqual(original, session.storage.ptr);
+            try std.testing.expectEqual(old_bytes, session.resident_byte_count);
+            try std.testing.expectEqual(@as(usize, 1), session.observations.len);
+            try std.testing.expectEqual(@as(usize, 1), session.buckets.len);
+        } else {
+            // The first successful replacement is an allocation high water;
+            // the failed second replacement never publishes or changes it.
+            try std.testing.expect(original != session.storage.ptr);
+            try std.testing.expect(session.resident_byte_count > old_bytes);
+            try std.testing.expectEqual(@as(usize, 2), session.observations.len);
+            try std.testing.expectEqual(@as(usize, 4), session.buckets.len);
+            try std.testing.expectEqual(@as(usize, 1), session.reports.len);
+        }
+        try observeRows(session, input, &facts);
+        try std.testing.expectEqual(@as(u32, 2), @import("growth.zig").occupied(session.reports));
+    }
+}
+
+test "content sized arena obeys configured limit and steady byte budget before publication" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    const original = fixture.session.storage.ptr;
+    const old_bytes = fixture.session.resident_byte_count;
+    const old_arena_bytes = fixture.session.storage.len * @sizeOf(u128);
+    const old_growth = fixture.session.workspaceCapacity().growth;
+    var demand = fixture.session.allocationShape();
+    demand.maximum_bucket_count = fixture.config.maximum_bucket_count + 1;
+    try expectCode(.buffer_too_small, fixture.session.ensureShape(demand, .report_reports));
+    try std.testing.expectEqual(original, fixture.session.storage.ptr);
+    demand = fixture.session.allocationShape();
+    demand.maximum_report_count = 2;
+    demand.report_index_capacity = 4;
+    const required = try state.requiredResidentBytes(&demand);
+    fixture.session.config.resident_byte_budget = required - 1;
+    try expectCode(.out_of_memory, fixture.session.ensureShape(demand, .report_reports));
+    try std.testing.expectEqual(original, fixture.session.storage.ptr);
+    try std.testing.expectEqual(old_bytes, fixture.session.resident_byte_count);
+    try std.testing.expectEqualDeep(old_growth, fixture.session.workspaceCapacity().growth);
+    fixture.session.config.resident_byte_budget = required;
+    try expectCode(.ok, fixture.session.ensureShape(demand, .report_reports));
+    try std.testing.expectEqual(required, fixture.session.resident_byte_count);
+    const diagnostic = fixture.session.workspaceCapacity();
+    try std.testing.expectEqual(old_growth.count + 1, diagnostic.growth.count);
+    const event = diagnostic.growth.events[old_growth.count % diagnostic.growth.events.len];
+    try std.testing.expectEqual(diagnostic.growth.count, event.sequence);
+    try std.testing.expectEqual(@intFromEnum(@import("../../common/workspace_growth.zig").Reason.report_reports), event.reason);
+    try std.testing.expectEqual(@as(u32, 1), event.unit);
+    try std.testing.expectEqual(old_arena_bytes, event.old_capacity);
+    try std.testing.expectEqual(fixture.session.storage.len * @sizeOf(u128), event.new_capacity);
+    const grown = fixture.session.storage.ptr;
+    try expectCode(.ok, fixture.session.ensureShape(demand, .report_reports));
+    try std.testing.expectEqual(grown, fixture.session.storage.ptr);
+    try std.testing.expectEqualDeep(diagnostic.growth, fixture.session.workspaceCapacity().growth);
+    try std.testing.expectEqual(fixture.config.maximum_report_count, fixture.session.capacity().report_capacity);
+    try std.testing.expectEqual(@as(u32, 2), fixture.session.workspaceCapacity().report_capacity);
+}
+
+test "arena replacement preserves pending persistence references replay and exact feedback" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{fact(1, 60)});
+    try fixture.observeComplete(4, 4, 2, 110, &.{fact(2, 70)});
+    var reports: [4]protocol.ReportOutput = undefined;
+    var operations: [32]protocol.PersistenceOperation = undefined;
+    var output: protocol.PlanOutput = undefined;
+    var input = planInput(5, 5, 1, 120, reports.len, operations.len);
+    try expectCode(.ok, session_module.plan(fixture.session, &input, &reports, reports.len, &operations, operations.len, &output));
+    const observation_index = fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?;
+    const saved_observation = fixture.session.observations[observation_index];
+    const saved_revision = fixture.session.state_revision;
+    const saved_next_handle = fixture.session.next_observation_handle;
+    var demand = fixture.session.allocationShape();
+    demand.maximum_bucket_count = 9;
+    demand.maximum_trust_count = 3;
+    state.lockMutex(&fixture.session.mutex);
+    const result = fixture.session.ensureShape(demand, .report_import);
+    fixture.session.mutex.unlock();
+    try expectCode(.ok, result);
+    try std.testing.expectEqual(saved_revision, fixture.session.state_revision);
+    try std.testing.expectEqual(saved_next_handle, fixture.session.next_observation_handle);
+    try std.testing.expectEqualDeep(saved_observation, fixture.session.observations[observation_index]);
+    var replay_reports: [4]protocol.ReportOutput = undefined;
+    var replay_operations: [32]protocol.PersistenceOperation = undefined;
+    var replay: protocol.PlanOutput = undefined;
+    try expectCode(.ok, session_module.plan(fixture.session, &input, &replay_reports, replay_reports.len, &replay_operations, replay_operations.len, &replay));
+    try std.testing.expectEqualDeep(output, replay);
+    try std.testing.expectEqualDeep(reports, replay_reports);
+    try std.testing.expectEqualDeep(operations, replay_operations);
+    var feedbacks: [32]protocol.PersistenceFeedback = undefined;
+    for (operations[0..output.persistence_operation_count], feedbacks[0..output.persistence_operation_count]) |operation, *feedback| feedback.* = feedbackFor(operation, .persisted);
+    var feedback_input = persistenceFeedbackBatchInput(6, 6, 1, 130, output.persistence_operation_count);
+    try expectCode(.ok, session_module.applyFeedback(fixture.session, &feedback_input, &feedbacks, output.persistence_operation_count));
+    try std.testing.expectEqual(@as(u32, 0), fixture.session.planned_persistence_count);
+    try std.testing.expectEqual(fixture.session.observations[observation_index].mutation_version, fixture.session.observations[observation_index].persisted_mutation_version);
+}
+
+test "small growing report arena matches fixed capacity decisions and persistence rows" {
+    var config = testConfig();
+    var growing = try Fixture.create();
+    defer growing.destroy();
+    const fixed_session = try state.Session.createWithShape(std.heap.page_allocator, &config, config);
+    defer fixed_session.destroy();
+    var rule_row = rule();
+    var replace = ruleReplaceInput(1, 1, 100, 1);
+    try expectCode(.ok, session_module.replaceRules(fixed_session, &replace, @ptrCast(&rule_row), 1));
+    var import_input = importInput(2, 2, 100, 1, 0);
+    try expectCode(.ok, session_module.importPersisted(fixed_session, &import_input, null, 0));
+    var fixed = Fixture{ .config = config, .session = fixed_session };
+    for ([_]*Fixture{ &growing, &fixed }) |fixture| {
+        try fixture.observeComplete(3, 3, 1, 100, &.{factForTarget(1, 41, 60)});
+        try fixture.observeComplete(4, 4, 2, 110, &.{ factForTarget(2, 41, 70), factForTarget(1, 42, 80) });
+        try fixture.observeComplete(5, 5, 3, 120, &.{ factForTarget(3, 41, 80), factForTarget(2, 42, 90), factForTarget(1, 43, 100) });
+    }
+    var reports: [2][4]protocol.ReportOutput = undefined;
+    var operations: [2][32]protocol.PersistenceOperation = undefined;
+    var outputs: [2]protocol.PlanOutput = undefined;
+    var input = planInput(6, 6, 1, 130, 4, 32);
+    for ([_]*state.Session{ growing.session, fixed_session }, 0..) |session, index| {
+        try expectCode(.ok, session_module.plan(session, &input, &reports[index], 4, &operations[index], 32, &outputs[index]));
+        outputs[index].resident_byte_count = 0;
+    }
+    try std.testing.expectEqualDeep(outputs[0], outputs[1]);
+    try std.testing.expectEqualDeep(reports[0], reports[1]);
+    try std.testing.expectEqualDeep(operations[0], operations[1]);
+    try std.testing.expect(growing.session.resident_byte_count < fixed_session.resident_byte_count);
+}
+
 test "configuration rejects insufficient explicit bucket capacity" {
     var config = testConfig();
     config.maximum_bucket_count -= 1;
@@ -70,9 +455,10 @@ test "retired ABI configuration and metadata checkpoint are rejected" {
     try std.testing.expect(!session.import_ready);
 }
 
-test "resident budget exactly covers the single fixed storage backing" {
+test "resident budget exactly covers the initial content sized storage backing" {
     var config = testConfig();
-    const required = try state.requiredResidentBytes(&config);
+    const shape = state.initialShape(&config);
+    const required = try state.requiredResidentBytes(&shape);
     config.resident_byte_budget = required;
     const session = try state.Session.create(&config);
     defer session.destroy();
@@ -837,8 +1223,10 @@ test "plan sizing previews maintenance without committing and supports exact ful
     defer fixture.destroy();
     try fixture.observeComplete(3, 3, 1, 100, &.{ factForTarget(1, 41, 60), factForTarget(1, 42, 70) });
     try fixture.observeComplete(4, 4, 2, 110, &.{ factForTarget(2, 41, 60), factForTarget(2, 42, 70) });
-    const before_reports = fixture.session.reports[0..4].*;
-    const before_observations = fixture.session.observations[0..4].*;
+    const before_reports = try std.testing.allocator.dupe(state.ReportSlot, fixture.session.reports);
+    defer std.testing.allocator.free(before_reports);
+    const before_observations = try std.testing.allocator.dupe(state.ObservationSlot, fixture.session.observations);
+    defer std.testing.allocator.free(before_observations);
     const before_mutation = fixture.session.next_mutation_version;
     const before_report = fixture.session.next_report_handle;
     const before_slot = fixture.session.next_report_slot;
@@ -851,8 +1239,8 @@ test "plan sizing previews maintenance without committing and supports exact ful
     var operation_count: u32 = 99;
     try expectCode(.ok, session_module.queryPlanSize(fixture.session, &expired, &report_count, &operation_count));
     try std.testing.expectEqual(@as(u32, 0), report_count);
-    try std.testing.expectEqualDeep(before_reports, fixture.session.reports[0..4].*);
-    try std.testing.expectEqualDeep(before_observations, fixture.session.observations[0..4].*);
+    try std.testing.expectEqualDeep(before_reports, fixture.session.reports);
+    try std.testing.expectEqualDeep(before_observations, fixture.session.observations);
     try std.testing.expectEqual(before_mutation, fixture.session.next_mutation_version);
     try std.testing.expectEqual(before_report, fixture.session.next_report_handle);
     try std.testing.expectEqual(before_slot, fixture.session.next_report_slot);
@@ -1377,16 +1765,19 @@ test "rolling report deactivates when every contributing bucket expires" {
     );
 
     var expired = planInput(7, 7, 2, 7_001, reports.len, operations.len);
-    const before_observations = session.observations[0..4].*;
-    const before_buckets = session.buckets[0..20].*;
-    const before_rolling = session.rolling_values[0..4].*;
+    const before_observations = try std.testing.allocator.dupe(state.ObservationSlot, session.observations);
+    defer std.testing.allocator.free(before_observations);
+    const before_buckets = try std.testing.allocator.dupe(state.BucketSlot, session.buckets);
+    defer std.testing.allocator.free(before_buckets);
+    const before_rolling = try std.testing.allocator.dupe(state.RollingValues, session.rolling_values);
+    defer std.testing.allocator.free(before_rolling);
     var report_count: u32 = 99;
     var operation_count: u32 = 99;
     try expectCode(.ok, session_module.queryPlanSize(session, &expired, &report_count, &operation_count));
     try std.testing.expectEqual(@as(u32, 0), report_count);
-    try std.testing.expectEqualDeep(before_observations, session.observations[0..4].*);
-    try std.testing.expectEqualDeep(before_buckets, session.buckets[0..20].*);
-    try std.testing.expectEqualDeep(before_rolling, session.rolling_values[0..4].*);
+    try std.testing.expectEqualDeep(before_observations, session.observations);
+    try std.testing.expectEqualDeep(before_buckets, session.buckets);
+    try std.testing.expectEqualDeep(before_rolling, session.rolling_values);
     try expectCode(.ok, session_module.plan(
         session,
         &expired,

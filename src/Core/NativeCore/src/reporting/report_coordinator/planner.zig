@@ -4,7 +4,11 @@ const state = @import("state.zig");
 const rules = @import("rules.zig");
 const window = @import("window.zig");
 const persistence = @import("persistence.zig");
+const growth = @import("growth.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
+const builtin = @import("builtin");
+
+pub var test_plan_preview_count: if (builtin.is_test) u64 else void = if (builtin.is_test) 0 else {};
 
 // Preview the same maintenance used by Plan without advancing semantic state.
 // The caller owns serialization between this query and Plan.
@@ -27,6 +31,9 @@ pub fn queryPlanSize(
     if (input.plan_epoch <= session.last_plan_epoch or
         !session.operationAdvances(input.operation_epoch, input.command_monotonic_milliseconds))
         return .stale_frame;
+
+    const reserve = rules.prepareMaintenance(session, @max(session.logical_utc_ms, input.command_utc_milliseconds));
+    if (reserve != .ok) return reserve;
 
     const saved_mutation = session.next_mutation_version;
     const saved_report = session.next_report_handle;
@@ -73,6 +80,21 @@ pub fn plan(
         !session.operationAdvances(input.operation_epoch, input.command_monotonic_milliseconds))
     {
         return .stale_frame;
+    }
+
+    const report_additions = rules.reportAdditionBound(session, &.{});
+    if (report_additions > session.reports.len - growth.occupied(session.reports) or
+        persistenceAdditionBound(session, report_additions) > session.planned_persistence.len)
+    {
+        // Only constrained arenas preview maintenance. Reserve the exact dirty
+        // batch; the read-only bound above is never used as allocation demand.
+        if (builtin.is_test) test_plan_preview_count += 1;
+        var preview_reports: u32 = 0;
+        var preview_operations: u32 = 0;
+        const preview = queryPlanSize(session, input, &preview_reports, &preview_operations);
+        if (preview != .ok) return preview;
+        const reserve = growth.persistencePlan(session, preview_operations);
+        if (reserve != .ok) return reserve;
     }
 
     const saved_mutation = session.next_mutation_version;
@@ -215,6 +237,24 @@ pub fn plan(
     };
     if (operation_count != 0) session.planned_output = output.*;
     return .ok;
+}
+
+// Maintenance may dirty any occupied observation, bucket or report. Sources and
+// trusts are unchanged by maintenance, so only their already-dirty rows count.
+// Each row produces at most one reference, plus one metadata checkpoint and one
+// reference per possible new report. No sorting, snapshotting or mutation here.
+fn persistenceAdditionBound(session: *const state.Session, report_additions: u64) u64 {
+    var count = report_additions + 1;
+    count += growth.occupied(session.observations);
+    count += growth.occupied(session.buckets);
+    count += growth.occupied(session.reports);
+    for (session.sources) |slot| {
+        if (slot.occupied and slot.mutation_version > slot.persisted_mutation_version) count += 1;
+    }
+    for (session.trusts) |slot| {
+        if (slot.occupied and slot.mutation_version > slot.persisted_mutation_version) count += 1;
+    }
+    return count;
 }
 
 fn replayPending(

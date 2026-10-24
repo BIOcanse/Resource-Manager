@@ -1,5 +1,6 @@
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
+const growth = @import("growth.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub fn command(
@@ -12,6 +13,8 @@ pub fn command(
     if (!session.operationAdvances(input.operation_epoch, input.command_monotonic_milliseconds)) {
         return .stale_frame;
     }
+    const reserve = growth.trust(session, input);
+    if (reserve != .ok) return reserve;
     const command_kind = @as(protocol.TrustCommandKind, @enumFromInt(input.command_kind));
     const existing = session.findTrust(input.target_handle, input.family_handle);
     const logical_utc = @max(session.logical_utc_ms, input.command_utc_milliseconds);

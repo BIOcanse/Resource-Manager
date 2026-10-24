@@ -57,6 +57,12 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         try
         {
             scratch.Ensure(layout.Length, "read=1, actions=1, persistence=1");
+            scratch.DescribeNative(() =>
+            {
+                var capacity = session.WorkspaceCapacity;
+                return new($"operations={capacity.OperationCapacity}, staging={capacity.StagingCapacity}, actions={capacity.ActionCapacity}, operation-index={capacity.OperationIndexCapacity}, domain-index={capacity.DomainIndexCapacity}",
+                    capacity.ResidentByteCount);
+            }, session.SetGrowthObserver);
         }
         catch (Exception error)
         {

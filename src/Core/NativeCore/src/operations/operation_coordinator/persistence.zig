@@ -107,6 +107,7 @@ pub fn decodeReplace(
     const base_revision = @max(session.state_revision, header.state_revision);
     if (base_revision == std.math.maxInt(u64)) return .out_of_memory;
 
+    session.ensureBankCapacity(&session.staging, header.operation_count, .operation_decode) catch return .out_of_memory;
     session.staging.reset();
     var last_submit_sequence: u64 = 0;
     for (records) |*persisted| {

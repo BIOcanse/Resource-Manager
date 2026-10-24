@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 
 pub const abi_version: u32 = 0x0006_0000;
@@ -224,6 +225,19 @@ pub const Capacity = extern struct {
     planned_persistence_index_capacity: u32,
     reserved_u32: u32,
     reserved: [2]u64,
+};
+
+pub const WorkspaceCapacity = extern struct {
+    struct_size: u32,
+    source_capacity: u32,
+    rule_capacity: u32,
+    observation_capacity: u32,
+    report_capacity: u32,
+    trust_capacity: u32,
+    bucket_capacity: u32,
+    persistence_operation_capacity: u32,
+    resident_byte_count: u64,
+    growth: growth.Log,
 };
 
 pub const RuleInput = extern struct {
@@ -761,4 +775,9 @@ comptime {
     if (@sizeOf(PersistenceFeedbackInput) != 72) @compileError("report PersistenceFeedbackInput ABI drift");
     if (@sizeOf(PersistenceFeedback) != 80) @compileError("report PersistenceFeedback ABI drift");
     if (@sizeOf(PlanOutput) != 176) @compileError("report PlanOutput ABI drift");
+}
+
+comptime {
+    if (@sizeOf(WorkspaceCapacity) != 304 or @offsetOf(WorkspaceCapacity, "growth") != 40)
+        @compileError("workspace capacity diagnostics ABI mismatch");
 }

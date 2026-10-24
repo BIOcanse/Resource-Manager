@@ -31,6 +31,13 @@ pub fn queryCapacity(session: *Session, capacity: *protocol.Capacity) protocol.S
     return .ok;
 }
 
+pub fn workspaceCapacity(session: *Session, output: *protocol.WorkspaceCapacity) protocol.Status {
+    lock(&session.mutex);
+    defer session.mutex.unlock();
+    session.fillWorkspaceCapacity(output);
+    return .ok;
+}
+
 pub fn queryScratchLayout(session: *Session, requirements: *scratch.Requirements) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
@@ -90,6 +97,36 @@ pub fn plan(
     const stage_status = ingest.stage(session, input, input_rows, input_row_capacity);
     if (stage_status != .ok) return stage_status;
     if (action_capacity < planner.requiredActionCapacity(session)) return .buffer_too_small;
+    var demand: state.BankDemand = undefined;
+    const demand_status = planner.bankDemand(session, input, &demand);
+    if (demand_status != .ok) return demand_status;
+    if (planner.hasCapacityForPlan(session, input, demand)) {
+        return advanceStaged(session, input, actions, snapshot);
+    }
+    // Run the existing planner once against private authority. It discovers
+    // exact reservations/groups on insertion; only a successful plan is swapped
+    // into the live session while this mutex remains held.
+    var candidate = session.cloneBanks() catch return .out_of_memory;
+    var committed = false;
+    defer if (!committed) candidate.freeBanks();
+    const growth_status = candidate.ensureBankCapacity(demand);
+    if (growth_status != .ok) return growth_status;
+    const status = advanceStaged(&candidate, input, actions, snapshot);
+    if (status != .ok) {
+        // Timeout observation keeps the existing resynchronization boundary.
+        // Allocation failures never publish any part of the candidate.
+        if (status == .unavailable and candidate.state_revision != session.state_revision) {
+            session.commitBanks(&candidate);
+            committed = true;
+        }
+        return status;
+    }
+    session.commitBanks(&candidate);
+    committed = true;
+    return .ok;
+}
+
+fn advanceStaged(session: *Session, input: *const protocol.CycleInput, actions: []protocol.Action, snapshot: *protocol.Snapshot) protocol.Status {
     const expiry_status = feedback.expireReservations(session, input.observed_at_ms);
     if (expiry_status != .ok) return expiry_status;
     if (session.requires_authoritative_resync and

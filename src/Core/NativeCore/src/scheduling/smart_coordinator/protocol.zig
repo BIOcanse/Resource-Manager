@@ -1,7 +1,26 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
 pub const abi_version: u32 = 0x000b_0000;
+
+/// Actual canonical storage, separate from configured Capacity ceilings.
+pub const WorkspaceCapacity = extern struct {
+    abi_version: u32,
+    struct_size: u32,
+    process_capacity: u32,
+    software_capacity: u32,
+    gpu_state_capacity: u32,
+    reservation_capacity: u32,
+    atomic_group_capacity: u32,
+    process_index_capacity: u64,
+    software_index_capacity: u64,
+    gpu_index_capacity: u64,
+    reservation_index_capacity: u64,
+    atomic_group_index_capacity: u64,
+    resident_bytes: u64,
+    growth: growth.Log,
+};
 pub const runtime_state_count: usize = 7;
 pub const adapter_grade_count: u8 = 4;
 
@@ -810,4 +829,9 @@ fn finiteNonNegative(value: f64) bool {
 fn allZero(comptime T: type, values: []const T) bool {
     for (values) |value| if (value != 0) return false;
     return true;
+}
+
+comptime {
+    if (@sizeOf(WorkspaceCapacity) != 344 or @offsetOf(WorkspaceCapacity, "growth") != 80)
+        @compileError("workspace capacity diagnostics ABI mismatch");
 }

@@ -2,11 +2,18 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const window = @import("window.zig");
+const growth = @import("growth.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
+const builtin = @import("builtin");
+
+// These counters do not add fields to the session or storage in the product.
+pub var test_maintenance_count: if (builtin.is_test) u64 else void = if (builtin.is_test) 0 else {};
+pub var test_observe_preview_count: if (builtin.is_test) u64 else void = if (builtin.is_test) 0 else {};
 
 const ObserveCheckpoint = struct {
     next_mutation_version: u64,
     next_report_handle: u64,
+    next_report_slot: u32,
     next_observation_handle: u64,
     next_bucket_handle: u64,
     next_source_record_handle: u64,
@@ -28,6 +35,9 @@ pub fn replace(
         return .stale_frame;
     }
     if (!validPredicateGroups(rules)) return .invalid_argument;
+
+    const reserve = growth.replaceRules(session, rules.len);
+    if (reserve != .ok) return reserve;
 
     @memset(session.staging_rules, .{});
     @memset(session.staging_rule_index, state.no_index);
@@ -147,6 +157,28 @@ pub fn observe(
     input: *const protocol.SourceSnapshotInput,
     facts: []const protocol.FactInput,
 ) ResultCode {
+    const additions = if (input.status == @intFromEnum(protocol.SourceStatus.complete))
+        reportAdditionBound(session, facts)
+    else
+        0;
+    if (additions <= session.reports.len - growth.occupied(session.reports)) {
+        return observeInternal(session, input, facts, null);
+    }
+    if (builtin.is_test) test_observe_preview_count += 1;
+    var report_count: u32 = 0;
+    const preview = observeInternal(session, input, facts, &report_count);
+    if (preview != .ok) return preview;
+    const reserve = growth.reportRows(session, report_count);
+    if (reserve != .ok) return reserve;
+    return observeInternal(session, input, facts, null);
+}
+
+fn observeInternal(
+    session: *state.Session,
+    input: *const protocol.SourceSnapshotInput,
+    facts: []const protocol.FactInput,
+    preview_report_count: ?*u32,
+) ResultCode {
     if (!session.rules_ready or !session.import_ready) return .unavailable;
     if (!protocol.validSourceSnapshot(input, &session.config)) return .abi_mismatch;
     if (session.planned_persistence_count != 0) return .unavailable;
@@ -161,6 +193,8 @@ pub fn observe(
 
     const status: protocol.SourceStatus = @enumFromInt(input.status);
     if (status != .complete and facts.len != 0) return .invalid_argument;
+    const reserve = growth.observe(session, input, facts);
+    if (reserve != .ok) return reserve;
     if (!validateFacts(session, input, facts)) return .invalid_argument;
 
     const source_index = session.findSource(input.source_handle, input.coverage_scope_handle);
@@ -193,6 +227,7 @@ pub fn observe(
     const checkpoint = ObserveCheckpoint{
         .next_mutation_version = session.next_mutation_version,
         .next_report_handle = session.next_report_handle,
+        .next_report_slot = session.next_report_slot,
         .next_observation_handle = session.next_observation_handle,
         .next_bucket_handle = session.next_bucket_handle,
         .next_source_record_handle = session.next_source_record_handle,
@@ -247,7 +282,7 @@ pub fn observe(
     source.mutation_version = source_mutation;
 
     if (status == .complete) {
-        const result = observeComplete(session, &effective_input, facts);
+        const result = observeComplete(session, &effective_input, facts, preview_report_count);
         if (result != .ok) {
             rollbackObserve(session, &checkpoint);
             return result;
@@ -268,6 +303,11 @@ pub fn observe(
         }
     }
 
+    if (preview_report_count) |count| {
+        if (status != .complete) count.* = growth.occupied(session.reports);
+        rollbackObserve(session, &checkpoint);
+        return .ok;
+    }
     session.commitFactTransaction();
     session.commitOperation(
         input.operation_epoch,
@@ -282,6 +322,7 @@ fn rollbackObserve(session: *state.Session, checkpoint: *const ObserveCheckpoint
     restoreAggregateAfterRollback(session);
     session.next_mutation_version = checkpoint.next_mutation_version;
     session.next_report_handle = checkpoint.next_report_handle;
+    session.next_report_slot = checkpoint.next_report_slot;
     session.next_observation_handle = checkpoint.next_observation_handle;
     session.next_bucket_handle = checkpoint.next_bucket_handle;
     session.next_source_record_handle = checkpoint.next_source_record_handle;
@@ -292,6 +333,13 @@ fn rollbackObserve(session: *state.Session, checkpoint: *const ObserveCheckpoint
 }
 
 pub fn maintain(session: *state.Session, now_utc_ms: i64) ResultCode {
+    const result = maintainBeforeReports(session, now_utc_ms);
+    if (result != .ok) return result;
+    return recomputeReports(session, now_utc_ms);
+}
+
+fn maintainBeforeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
+    if (builtin.is_test) test_maintenance_count += 1;
     const prune_result = window.prune(session, now_utc_ms);
     if (prune_result != .ok) return prune_result;
     const aggregate_result = window.aggregate(session, now_utc_ms);
@@ -300,7 +348,7 @@ pub fn maintain(session: *state.Session, now_utc_ms: i64) ResultCode {
     if (window_evaluation_result != .ok) return window_evaluation_result;
     const stale_result = updateStaleObservations(session, now_utc_ms);
     if (stale_result != .ok) return stale_result;
-    return recomputeReports(session, now_utc_ms);
+    return .ok;
 }
 
 pub fn metricValue(
@@ -399,6 +447,7 @@ fn observeComplete(
     session: *state.Session,
     input: *const protocol.SourceSnapshotInput,
     facts: []const protocol.FactInput,
+    preview_report_count: ?*u32,
 ) ResultCode {
     const effective_now_utc_ms = @max(
         session.logical_utc_ms,
@@ -553,9 +602,13 @@ fn observeComplete(
         observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
     }
 
-    const maintenance = maintain(session, effective_now_utc_ms);
+    const maintenance = maintainBeforeReports(session, effective_now_utc_ms);
     if (maintenance != .ok) return maintenance;
-    return .ok;
+    if (preview_report_count) |count| {
+        count.* = requiredReportCount(session);
+        return .ok;
+    }
+    return recomputeReports(session, effective_now_utc_ms);
 }
 
 fn applyMetricOutcome(
@@ -671,6 +724,71 @@ fn updateStaleObservations(session: *state.Session, now_utc_ms: i64) ResultCode 
         }
     }
     return .ok;
+}
+
+// Run only the existing observation/window maintenance under rollback to find
+// the exact report identities that recomputeReports will insert.
+pub fn prepareMaintenance(session: *state.Session, now_utc_ms: i64) ResultCode {
+    if (reportAdditionBound(session, &.{}) <=
+        session.reports.len - growth.occupied(session.reports)) return .ok;
+    const saved_mutation = session.next_mutation_version;
+    session.beginFactTransaction();
+    const result = maintainBeforeReports(session, now_utc_ms);
+    const count = if (result == .ok) requiredReportCount(session) else 0;
+    session.rollbackFactTransaction();
+    restoreAggregateAfterRollback(session);
+    session.next_mutation_version = saved_mutation;
+    if (result != .ok) return result;
+    return growth.reportRows(session, count);
+}
+
+// Every report needs a primary predicate observation. Existing reports already
+// cover their target/family, including retained inactive reports. Count possible
+// new primaries without evaluating any window or predicate. Duplicate families
+// can overestimate, but the bound only selects a route and is never allocated.
+pub fn reportAdditionBound(session: *const state.Session, facts: []const protocol.FactInput) u64 {
+    var count: u64 = 0;
+    for (session.observations) |observation| {
+        if (!observation.occupied or observation.delete_pending) continue;
+        const rule_index = session.findRule(observation.rule_handle) orelse continue;
+        const rule = session.rules[rule_index].value;
+        if (rule.predicate_index == 0 and
+            session.findReport(observation.target_handle, rule.family_handle) == null) count += 1;
+    }
+    for (facts) |fact| {
+        if (fact.flags == 0) continue;
+        const rule_index = session.findRule(fact.rule_handle) orelse continue;
+        const rule = session.rules[rule_index].value;
+        if (rule.predicate_index == 0 and
+            session.findObservation(rule.source_handle, rule.coverage_scope_handle, fact.rule_handle, fact.target_handle) == null and
+            session.findReport(fact.target_handle, rule.family_handle) == null) count += 1;
+    }
+    return count;
+}
+
+fn requiredReportCount(session: *state.Session) u32 {
+    var count = growth.occupied(session.reports);
+    for (session.observations, 0..) |observation, index| {
+        if (!observation.occupied or observation.delete_pending or !observation.active) continue;
+        const rule_index = session.findRule(observation.rule_handle) orelse continue;
+        const rule = session.rules[rule_index].value;
+        if (rule.predicate_index != 0 or !predicateGroupActive(session, observation.target_handle, &rule) or
+            session.findReport(observation.target_handle, rule.family_handle) != null) continue;
+        var duplicate = false;
+        for (session.observations[0..index]) |previous| {
+            if (!previous.occupied or previous.delete_pending or !previous.active or previous.target_handle != observation.target_handle) continue;
+            const previous_rule_index = session.findRule(previous.rule_handle) orelse continue;
+            const previous_rule = session.rules[previous_rule_index].value;
+            if (previous_rule.predicate_index == 0 and previous_rule.family_handle == rule.family_handle and
+                predicateGroupActive(session, previous.target_handle, &previous_rule))
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) count += 1;
+    }
+    return count;
 }
 
 pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {

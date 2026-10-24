@@ -1,3 +1,4 @@
+const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const feedback_contract = @import("../../contracts/action_feedback_contract.zig");
 
@@ -203,6 +204,16 @@ pub const Capacity = extern struct {
     maximum_image_length: u64,
     resident_bytes: u64,
     reserved: [1]u64,
+};
+
+pub const WorkspaceCapacity = extern struct {
+    struct_size: u32,
+    record_capacity: u32,
+    staging_record_capacity: u32,
+    sort_capacity: u32,
+    index_capacity: u64,
+    resident_bytes: u64,
+    growth: growth.Log,
 };
 
 pub const Identity = extern struct {
@@ -935,4 +946,9 @@ comptime {
     if (@sizeOf(Record) != 296) @compileError("transaction journal Record size changed");
     if (@sizeOf(ImageHeader) != 128) @compileError("transaction journal ImageHeader size changed");
     if (@sizeOf(SnapshotHeader) != 128) @compileError("transaction journal SnapshotHeader size changed");
+}
+
+comptime {
+    if (@sizeOf(WorkspaceCapacity) != 296 or @offsetOf(WorkspaceCapacity, "growth") != 32)
+        @compileError("workspace capacity diagnostics ABI mismatch");
 }

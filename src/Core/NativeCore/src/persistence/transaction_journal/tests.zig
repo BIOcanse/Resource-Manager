@@ -8,6 +8,243 @@ const state = @import("state.zig");
 
 const maximum_test_image = @sizeOf(protocol.ImageHeader) + 8 * @sizeOf(protocol.Record);
 
+test "content sized journal growth preserves canonical bytes and pending feedback" {
+    var config = corpus.createConfig(128);
+    const journal = try state.Session.createWithAllocator(&config, std.testing.allocator);
+    defer journal.destroy();
+    const full = try state.Session.createWithAllocator(&config, std.testing.allocator);
+    defer full.destroy();
+    state.lockMutex(&full.mutex);
+    const reserved = full.ensureRecordCapacityUnlocked(config.record_capacity, .prepare);
+    full.mutex.unlock();
+    try std.testing.expectEqual(protocol.Status.ok, reserved);
+    try std.testing.expectEqual(@as(u32, 16), journal.workspaceCapacity().record_capacity);
+
+    for ([_]*state.Session{ journal, full }) |target| {
+        const identity = try prepareAndObserveEffect(target, 7, 1, .durable, 100);
+        var feedback = corpus.processFeedback(identity, target.journal_revision, 2, 120, .durable);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.stageFeedback(target, &feedback));
+        var action_id: u64 = 2;
+        while (action_id <= 37) : (action_id += 1) {
+            var input = corpus.processPrepare(7, action_id, target.journal_revision, 200, .durable);
+            try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(target, &input));
+        }
+    }
+    const actual = journal.workspaceCapacity();
+    try std.testing.expectEqual(@as(u64, 2), actual.growth.count);
+    for (actual.growth.events[0..2], 0..) |event, row| {
+        try std.testing.expectEqual(@as(u64, row + 1), event.sequence);
+        try std.testing.expectEqual(@as(u32, 5), event.reason);
+        try std.testing.expectEqual(@as(u32, 0), event.unit);
+        try std.testing.expectEqual(@as(u64, 16) << @intCast(row), event.old_capacity);
+        try std.testing.expectEqual(@as(u64, 32) << @intCast(row), event.new_capacity);
+    }
+    try std.testing.expectEqual(@as(u32, 64), actual.record_capacity);
+    try std.testing.expectEqual(@as(u32, 64), actual.staging_record_capacity);
+    try std.testing.expectEqual(@as(u32, 64), actual.sort_capacity);
+    try std.testing.expectEqual(@as(u64, 128), actual.index_capacity);
+    try std.testing.expectEqual(try state.requiredResidentBytes(64), actual.resident_bytes);
+    try std.testing.expect(actual.resident_bytes < journal.capacity().resident_bytes);
+    var image: [@sizeOf(protocol.ImageHeader) + 128 * @sizeOf(protocol.Record)]u8 = undefined;
+    var full_image: [image.len]u8 = undefined;
+    var written: u64 = 0;
+    var full_written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(full, &full_image, &full_written));
+    try std.testing.expectEqual(written, full_written);
+    try std.testing.expectEqualSlices(u8, image[0..@intCast(written)], full_image[0..@intCast(full_written)]);
+    const reopened = try openImage(image[0..@intCast(written)], 128);
+    defer reopened.destroy();
+    try std.testing.expectEqual(@as(u32, 64), reopened.workspaceCapacity().record_capacity);
+    try std.testing.expectEqual(@as(u32, 37), reopened.count);
+    var pending = std.mem.zeroes(protocol.Record);
+    const identity = corpus.processIdentity(7, 1);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.get(reopened, &identity, &pending));
+    try std.testing.expectEqual(@intFromEnum(protocol.Phase.feedback_pending), pending.phase);
+    var ack = corpus.ack(identity, reopened.journal_revision, pending.entry_revision, .feedback_pending, .accepted, 130);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.acknowledge(reopened, &ack));
+    try std.testing.expectEqual(@as(u32, 36), reopened.count);
+}
+
+test "journal growth failure at every allocation preserves complete authority and retries" {
+    var failure_offset: usize = 0;
+    while (failure_offset < 4) : (failure_offset += 1) {
+        var allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        var config = corpus.createConfig(64);
+        const journal = try state.Session.createWithAllocator(&config, allocator.allocator());
+        defer journal.destroy();
+        var action_id: u64 = 1;
+        while (action_id <= 16) : (action_id += 1) {
+            var input = corpus.processPrepare(7, action_id, journal.journal_revision, 100, .durable);
+            try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+        }
+        var before: [@sizeOf(protocol.ImageHeader) + 16 * @sizeOf(protocol.Record)]u8 = undefined;
+        var after: [before.len]u8 = undefined;
+        var written: u64 = 0;
+        try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &before, &written));
+        const records = journal.records.ptr;
+        const staging = journal.staging_records.ptr;
+        const index = journal.index.ptr;
+        const sort = journal.sort_indices.ptr;
+        const resident = allocator.allocated_bytes - allocator.freed_bytes;
+        allocator.fail_index = allocator.alloc_index + failure_offset;
+        var input = corpus.processPrepare(7, 17, journal.journal_revision, 100, .durable);
+        try std.testing.expectEqual(protocol.Status.capacity_full, session_module.prepare(journal, &input));
+        try std.testing.expectEqual(@as(u64, 0), journal.workspaceCapacity().growth.count);
+        try std.testing.expectEqual(records, journal.records.ptr);
+        try std.testing.expectEqual(staging, journal.staging_records.ptr);
+        try std.testing.expectEqual(index, journal.index.ptr);
+        try std.testing.expectEqual(sort, journal.sort_indices.ptr);
+        try std.testing.expectEqual(resident, allocator.allocated_bytes - allocator.freed_bytes);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &after, &written));
+        try std.testing.expectEqualSlices(u8, &before, &after);
+        for (journal.records[0..journal.count], 0..) |*record, row| {
+            try std.testing.expectEqual(@as(u32, @intCast(row)), journal.find(&record.identity).?);
+        }
+        allocator.fail_index = std.math.maxInt(usize);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+        try std.testing.expectEqual(@as(u32, 17), journal.count);
+        try std.testing.expectEqual(@as(u32, 32), journal.workspaceCapacity().record_capacity);
+    }
+}
+
+test "journal growth clamps at the configured limit before allocation" {
+    var allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var config = corpus.createConfig(17);
+    const journal = try state.Session.createWithAllocator(&config, allocator.allocator());
+    defer journal.destroy();
+    var action_id: u64 = 1;
+    while (action_id <= 16) : (action_id += 1) {
+        var input = corpus.processPrepare(7, action_id, journal.journal_revision, 100, .none_required);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+    }
+    var input = corpus.processPrepare(7, 17, journal.journal_revision, 100, .none_required);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+    try std.testing.expectEqual(@as(u32, 17), journal.workspaceCapacity().record_capacity);
+    const revision = journal.journal_revision;
+    const allocation_count = allocator.alloc_index;
+    input = corpus.processPrepare(7, 18, journal.journal_revision, 100, .none_required);
+    try std.testing.expectEqual(protocol.Status.capacity_full, session_module.prepare(journal, &input));
+    try std.testing.expectEqual(revision, journal.journal_revision);
+    try std.testing.expectEqual(allocation_count, allocator.alloc_index);
+}
+
+test "journal batch growth is atomic on allocation failure and invalid input" {
+    var allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var config = corpus.createConfig(64);
+    const journal = try state.Session.createWithAllocator(&config, allocator.allocator());
+    defer journal.destroy();
+    var action_id: u64 = 1;
+    while (action_id <= 15) : (action_id += 1) {
+        var input = corpus.processPrepare(7, action_id, journal.journal_revision, 100, .none_required);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+    }
+    var inputs = [_]protocol.PrepareInput{
+        corpus.processPrepare(7, 16, journal.journal_revision, 200, .durable),
+        corpus.processPrepare(7, 17, journal.journal_revision, 200, .durable),
+    };
+    for (&inputs, 0..) |*input, row| {
+        input.atomic_group_id = 55;
+        input.group_member_index = @intCast(row);
+        input.group_member_count = 2;
+        input.process_to_grade = @intFromEnum(protocol.ProcessGrade.level_4);
+    }
+    var batch: protocol.PrepareBatchInput = .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.PrepareBatchInput),
+        .expected_journal_revision = journal.journal_revision,
+        .input_count = 2,
+        .flags = 0,
+        .reserved = .{ 0, 0, 0 },
+    };
+    const allocation_count = allocator.alloc_index;
+    inputs[1].group_member_index = 0;
+    try std.testing.expectEqual(protocol.Status.duplicate_identity, session_module.prepareBatch(journal, &batch, &inputs));
+    try std.testing.expectEqual(allocation_count, allocator.alloc_index);
+    inputs[1].group_member_index = 1;
+    allocator.fail_index = allocator.alloc_index + 2;
+    try std.testing.expectEqual(protocol.Status.capacity_full, session_module.prepareBatch(journal, &batch, &inputs));
+    try std.testing.expectEqual(@as(u64, 0), journal.workspaceCapacity().growth.count);
+    try std.testing.expectEqual(@as(u32, 15), journal.count);
+    try std.testing.expectEqual(batch.expected_journal_revision, journal.journal_revision);
+    try std.testing.expectEqual(@as(u32, 16), journal.workspaceCapacity().record_capacity);
+    allocator.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepareBatch(journal, &batch, &inputs));
+    try std.testing.expectEqual(@as(u32, 17), journal.count);
+    try std.testing.expectEqual(batch.expected_journal_revision + 1, journal.journal_revision);
+    try std.testing.expectEqual(@as(u32, 32), journal.workspaceCapacity().record_capacity);
+    const batch_event = journal.workspaceCapacity().growth.events[0];
+    try std.testing.expectEqual(@as(u64, 1), batch_event.sequence);
+    try std.testing.expectEqual(@as(u32, 6), batch_event.reason);
+    try std.testing.expectEqual(@as(u64, 16), batch_event.old_capacity);
+    try std.testing.expectEqual(@as(u64, 32), batch_event.new_capacity);
+    try std.testing.expectEqual(@as(u64, 55), journal.records[15].atomic_group_id);
+    try std.testing.expectEqual(@as(u32, 1), journal.records[16].group_member_index);
+}
+
+test "journal decode growth failure leaves pending authority intact and content sized retry succeeds" {
+    var config = corpus.createConfig(8192);
+    const source = try state.Session.createWithAllocator(&config, std.testing.allocator);
+    defer source.destroy();
+    var action_id: u64 = 1;
+    while (action_id <= 33) : (action_id += 1) {
+        var input = corpus.processPrepare(7, action_id, source.journal_revision, 100, .durable);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(source, &input));
+    }
+    var image: [@sizeOf(protocol.ImageHeader) + 33 * @sizeOf(protocol.Record)]u8 = undefined;
+    var written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(source, &image, &written));
+    var allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const target = try state.Session.createWithAllocator(&config, allocator.allocator());
+    defer target.destroy();
+    const identity = try prepareAndObserveEffect(target, 8, 99, .durable, 100);
+    const revision = target.journal_revision;
+    const old_records = target.records.ptr;
+    const old_record = target.records[0];
+    allocator.fail_index = allocator.alloc_index + 3;
+    try std.testing.expectEqual(protocol.Status.capacity_full, session_module.decode(target, &image));
+    try std.testing.expectEqual(@as(u64, 0), target.workspaceCapacity().growth.count);
+    try std.testing.expectEqual(old_records, target.records.ptr);
+    try std.testing.expectEqual(revision, target.journal_revision);
+    try std.testing.expectEqual(@as(u32, 1), target.count);
+    try std.testing.expectEqualDeep(old_record, target.records[0]);
+    try std.testing.expectEqual(@as(u32, 0), target.find(&identity).?);
+    allocator.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.decode(target, &image));
+    try std.testing.expectEqual(source.journal_revision, target.journal_revision);
+    try std.testing.expectEqual(@as(u32, 33), target.count);
+    try std.testing.expectEqual(@as(u32, 64), target.workspaceCapacity().record_capacity);
+    const decode_event = target.workspaceCapacity().growth.events[0];
+    try std.testing.expectEqual(@as(u64, 1), decode_event.sequence);
+    try std.testing.expectEqual(@as(u32, 7), decode_event.reason);
+    try std.testing.expectEqual(@as(u64, 16), decode_event.old_capacity);
+    try std.testing.expectEqual(@as(u64, 64), decode_event.new_capacity);
+    var roundtrip: [image.len]u8 = undefined;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(target, &roundtrip, &written));
+    try std.testing.expectEqualSlices(u8, &image, &roundtrip);
+}
+
+test "journal native allocation bytes follow process transaction count independently of thread placement" {
+    var allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var config = corpus.createConfig(8192);
+    const journal = try state.Session.createWithAllocator(&config, allocator.allocator());
+    defer journal.destroy();
+    try std.testing.expectEqual(@as(u64, 10088), journal.workspaceCapacity().resident_bytes);
+    var action_id: u64 = 1;
+    while (action_id <= 300) : (action_id += 1) {
+        var input = corpus.processPrepare(7, action_id, journal.journal_revision, 100, .durable);
+        try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+    }
+    const actual = journal.workspaceCapacity();
+    try std.testing.expectEqual(@as(usize, 424), @sizeOf(state.Session));
+    try std.testing.expectEqual(@as(usize, 296), @sizeOf(protocol.WorkspaceCapacity));
+    try std.testing.expectEqual(@as(u32, 300), journal.count);
+    try std.testing.expectEqual(@as(u32, 512), actual.record_capacity);
+    try std.testing.expectEqual(@as(u64, 309672), actual.resident_bytes);
+    try std.testing.expectEqual(actual.resident_bytes, allocator.allocated_bytes - allocator.freed_bytes);
+    try std.testing.expectEqual(@as(u64, 4948392), journal.capacity().resident_bytes);
+}
+
 test "transaction journal ABI sizes offsets and CRC64 ECMA are fixed" {
     try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.CreateConfig));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(protocol.OpenConfig));

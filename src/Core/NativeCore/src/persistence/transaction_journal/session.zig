@@ -14,6 +14,11 @@ pub fn prepare(session: *Session, input: *const protocol.PrepareInput) protocol.
     if (session.count == session.config.record_capacity) return .capacity_full;
     const next_journal_revision = incrementRevision(session.journal_revision) orelse
         return .revision_exhausted;
+    const growth = session.ensureRecordCapacityUnlocked(
+        std.math.add(u32, session.count, 1) catch return .capacity_full,
+        .prepare,
+    );
+    if (growth != .ok) return growth;
     const record = recordFromPrepare(input);
     const index = session.count;
     session.records[index] = record;
@@ -91,6 +96,11 @@ pub fn prepareBatch(
 
     const next_journal_revision = incrementRevision(session.journal_revision) orelse
         return .revision_exhausted;
+    const growth = session.ensureRecordCapacityUnlocked(
+        std.math.add(u32, session.count, @intCast(inputs.len)) catch return .capacity_full,
+        .prepare_batch,
+    );
+    if (growth != .ok) return growth;
     const original_count: usize = session.count;
     for (inputs, 0..) |*input, offset| {
         session.records[original_count + offset] = recordFromPrepare(input);

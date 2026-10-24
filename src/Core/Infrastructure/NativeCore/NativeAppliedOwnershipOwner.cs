@@ -29,7 +29,8 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         this.fileStore = fileStore;
         this.pathLease = pathLease;
         this.session = session;
-        workspace = new NativeAppliedOwnershipWorkspace(session.Capacity, createScratch);
+        workspace = new NativeAppliedOwnershipWorkspace(session.Capacity, createScratch,
+            session as INativeWorkspaceCapacitySource);
     }
 
     public NativeAppliedOwnershipOwnerState State

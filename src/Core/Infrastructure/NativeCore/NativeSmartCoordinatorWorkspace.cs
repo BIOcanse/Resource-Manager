@@ -29,6 +29,7 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
             layout = new(1, 1, 1,
                 nativeScratch.ByteCount, nativeScratch.Alignment);
             scratch.Ensure(layout.Length, "inputs=1, actions=1, feedback=1");
+            scratch.DescribeNative(session.ReadWorkspaceCapacity, session.SetGrowthObserver);
         }
         catch (Exception failure)
         {
