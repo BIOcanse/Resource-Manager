@@ -254,28 +254,40 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
             foreach (var subKeyName in uninstallKey.GetSubKeyNames())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                using var appKey = uninstallKey.OpenSubKey(subKeyName);
-                if (appKey is null)
+                ReadInventoryEntry(subKeyName, name =>
                 {
-                    continue;
-                }
+                    using var appKey = uninstallKey.OpenSubKey(name);
+                    if (appKey is null)
+                    {
+                        return;
+                    }
 
-                var entry = ReadEntry(root, subKeyName, appKey);
-                if (entry is null)
-                {
-                    continue;
-                }
+                    var entry = ReadEntry(root, name, appKey);
+                    if (entry is null)
+                    {
+                        return;
+                    }
 
-                var key = BuildDeduplicationKey(entry);
-                if (!records.TryGetValue(key, out var existing) || PreferEntry(entry, existing))
-                {
-                    records[key] = entry;
-                }
+                    var key = BuildDeduplicationKey(entry);
+                    if (!records.TryGetValue(key, out var existing) || PreferEntry(entry, existing))
+                    {
+                        records[key] = entry;
+                    }
+                });
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return;
+            System.Diagnostics.Trace.TraceWarning($"Cannot enumerate uninstall inventory root {root.Hive}/{root.View}/{root.UserSid}: {ex.Message}");
+        }
+    }
+
+    internal static void ReadInventoryEntry(string name, Action<string> readEntry)
+    {
+        try { readEntry(name); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Cannot read uninstall inventory entry {name}: {error.Message}");
         }
     }
 

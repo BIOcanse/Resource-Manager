@@ -12,6 +12,14 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class SoftwareRuntimeReminderTests
 {
+    [Fact]
+    public async Task RuntimeIdentifiedGameAppearsInTheSoftwareList()
+    {
+        var runtime = new RuntimeSoftwareAttribution("runtime-game:fixture", "Game", SoftwareKinds.Game, SoftwareDisplayKinds.Game, [@"D:\Games\Game"]);
+        var view = SoftwareRegistryViewTests.CreateRuntimeReminderView();
+        Assert.Contains(await view.GetSoftwareAsync(null, default, [runtime]), item => item.Id == runtime.Id && item.Kind == SoftwareKinds.Game);
+    }
+
     [Theory]
     [InlineData(SoftwareKinds.RuntimePackage)]
     [InlineData(SoftwareKinds.RuntimeProduct)]
@@ -32,7 +40,7 @@ public sealed class SoftwareRuntimeReminderTests
                 runtime.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
             view = SoftwareRegistryViewTests.CreateRuntimeReminderView([manual]);
             var classified = await view.GetSoftwareAsync(null, default, [runtime]);
-            var record = Assert.Single(await issues.ProjectAsync(classified, default), item => item.Id == manual.Id);
+            var record = Assert.Single(await issues.ProjectAsync(classified, default), item => item.Id == runtime.Id);
             Assert.Equal(category, record.Kind);
             Assert.Equal(runtime.Id, record.SourceSoftwareId);
             Assert.Empty(record.Issues!);
@@ -50,7 +58,7 @@ public sealed class SoftwareRuntimeReminderTests
             var attributed = pipeline.Match(new(1234, null, "client", @"C:\Apps\Runtime\client.exe", false,
                 ProductName: kind == SoftwareKinds.RuntimeProduct ? "Runtime App" : null,
                 CompanyName: kind == SoftwareKinds.RuntimeProduct ? "Publisher" : null));
-            Assert.Equal(manual.Id, attributed.Id);
+            Assert.Equal(runtime.Id, attributed.Id);
             Assert.Equal(category, attributed.Kind);
             var fact = WindowsResourceBreakdownSampler.ProjectSchedulingAttribution(
                 new SchedulingProcessFact(1234, 1, "client", null, "", "", "", "", 0,
@@ -99,7 +107,7 @@ public sealed class SoftwareRuntimeReminderTests
         var manual = new ManualSoftwareRecord("manual:app", "App", SoftwareKinds.Other, "other", "manual", [], [], "",
             runtime.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         view = SoftwareRegistryViewTests.CreateRuntimeReminderView([manual], [installed]);
-        var classified = Assert.Single(await view.GetSoftwareAsync(null, default, [runtime]), item => item.Id == manual.Id);
+        var classified = Assert.Single(await view.GetSoftwareAsync(null, default, [runtime]), item => item.Id == runtime.Id);
         Assert.Equal(SoftwareKinds.Other, classified.Kind);
         Assert.Null(classified.CategorySource);
     }

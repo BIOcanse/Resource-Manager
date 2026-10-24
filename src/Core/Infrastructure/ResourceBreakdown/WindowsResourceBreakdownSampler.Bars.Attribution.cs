@@ -16,58 +16,15 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         var processById = processSamples.ToDictionary(static process => process.ProcessId);
         var baseScorePlan = runtimePlanProvider.Current.BaseScore;
+        var batch = catalog.Pipeline.MatchBatch(processSamples.Select(CreateRuntimeIdentity).ToArray());
         return new ProcessAttributionSnapshot(
-            processSamples,
-            processById,
-            BuildAttributionMap(processSamples, catalog),
-            baseScorePlan,
-            catalog.GetSoftwareBaseScores(baseScorePlan));
+            processSamples, processById, batch.SoftwareByProcessId,
+            baseScorePlan, catalog.GetSoftwareBaseScores(baseScorePlan), batch.HelperOwnerByProcessId);
     }
 
-    private IReadOnlyDictionary<int, RuntimeSoftwareAttribution> BuildAttributionMap(
-        IReadOnlyList<ProcessResourceSample> processSamples,
-        RuntimeProcessAttributionCatalog catalog)
+    private RuntimeProcessIdentity CreateRuntimeIdentity(ProcessResourceSample process)
     {
-        var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
-        foreach (var process in processSamples)
-        {
-            var identity = CreateRuntimeIdentity(process);
-            if (process.StartKey is not > 0)
-            {
-                resolved[process.ProcessId] =
-                    catalog.Pipeline.Match(identity);
-                continue;
-            }
-
-            var key =
-                new ProcessInstanceKey(
-                    process.ProcessId,
-                    process.StartKey.Value);
-            if (processAttributionCache.TryGet(key, out var cached)
-                && cached is not null
-                && cached.CatalogGeneration == catalog.Generation
-                && cached.Identity == identity)
-            {
-                resolved[process.ProcessId] = cached.Attribution;
-                continue;
-            }
-
-            var attribution = catalog.Pipeline.Match(identity);
-            processAttributionCache.Set(
-                key,
-                new CachedProcessAttribution(
-                    catalog.Generation,
-                    identity,
-                    attribution));
-            resolved[process.ProcessId] = attribution;
-        }
-
-        return resolved;
-    }
-
-    private static RuntimeProcessIdentity CreateRuntimeIdentity(ProcessResourceSample process)
-    {
-        return new RuntimeProcessIdentity(
+        var identity = new RuntimeProcessIdentity(
             process.ProcessId,
             process.ParentProcessId,
             process.Name,
@@ -80,6 +37,22 @@ public sealed partial class WindowsResourceBreakdownSampler
             process.WindowApplicationUserModelId,
             process.WindowTitle,
             process.StartKey);
+        if (process.StartKey is not > 0) return identity;
+        var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
+        if (processAttributionCache.TryGet(key, out var cached) && cached is not null)
+            return identity with { CommandLine = cached.Identity.CommandLine };
+        identity = identity with { CommandLine = ReadHelperCommandLine(process) };
+        if (identity.CommandLine is not null)
+            processAttributionCache.Set(key, new CachedProcessAttribution(identity));
+        return identity;
+    }
+
+    private static string? ReadHelperCommandLine(ProcessResourceSample process)
+    {
+        if (process.StartKey is not > 0) return null;
+        return new ResourceManager.ReadWrite.Windows.Processes.WindowsProcessBasicMetricReader().Read(
+            process.ProcessId, process.StartKey.Value,
+            ResourceManager.ReadWrite.ProcessFields.ProcessMetricReadMask.CommandLine).CommandLine;
     }
 
     private sealed record ProcessAttributionSnapshot(
@@ -87,10 +60,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         IReadOnlyDictionary<int, ProcessResourceSample> ProcessById,
         IReadOnlyDictionary<int, RuntimeSoftwareAttribution> AttributionByProcessId,
         CompiledBaseScorePlan BaseScorePlan,
-        ImmutableArray<SoftwareBaseScore> SoftwareBaseScores);
+        ImmutableArray<SoftwareBaseScore> SoftwareBaseScores,
+        IReadOnlyDictionary<int, int>? HelperOwnerByProcessId = null);
 
     private sealed record CachedProcessAttribution(
-        long CatalogGeneration,
-        RuntimeProcessIdentity Identity,
-        RuntimeSoftwareAttribution Attribution);
+        RuntimeProcessIdentity Identity);
 }

@@ -5,6 +5,7 @@ using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.ProcessAttribution;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.SoftwareIdentity;
 
 namespace ResourceManager.App.Application.ProcessAttribution;
 
@@ -40,5 +41,82 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
     public RuntimeSoftwareAttribution Match(RuntimeProcessIdentity process)
         => resolver.Resolve(process);
 
+    public RuntimeProcessAttributionBatch MatchBatch(IReadOnlyList<RuntimeProcessIdentity> processes)
+    {
+        var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
+        var sources = new Dictionary<int, uint>();
+        var byId = processes.ToDictionary(process => process.ProcessId);
+        foreach (var process in processes)
+        {
+            resolved[process.ProcessId] = resolver.Resolve(process, out var source);
+            sources[process.ProcessId] = source;
+        }
+        var owners = new Dictionary<int, int>();
+        foreach (var process in processes.OrderBy(process => process.StartKey))
+        {
+            if (sources[process.ProcessId] is NativeRuntimeAttributionSources.Adapted
+                or NativeRuntimeAttributionSources.Controlled or NativeRuntimeAttributionSources.ResourceManagerSelf
+                or NativeRuntimeAttributionSources.Service) continue;
+            var current = process;
+            var visited = new HashSet<int> { current.ProcessId };
+            while (visited.Count <= byId.Count && IsHelper(current)
+                && current.StartKey is > 0 && current.ParentProcessId is { } parentId
+                && byId.TryGetValue(parentId, out var parent) && parent.StartKey is > 0
+                && parent.StartKey <= current.StartKey && visited.Add(parentId))
+            {
+                current = parent;
+                if (IsHelper(parent) && sources[parentId] is not (NativeRuntimeAttributionSources.Adapted
+                    or NativeRuntimeAttributionSources.Controlled or NativeRuntimeAttributionSources.ResourceManagerSelf
+                    or NativeRuntimeAttributionSources.Service)) continue;
+                if (WebViewHostName(process.CommandLine) is { } hostName
+                    && !Path.GetFileName(parent.ExecutablePath ?? parent.Name)
+                        .Equals(hostName, StringComparison.OrdinalIgnoreCase)) break;
+                var owner = resolved[parentId];
+                if (owner.Kind == SoftwareKinds.Unattributed) break;
+                resolved[process.ProcessId] = owner;
+                owners[process.ProcessId] = parentId;
+                break;
+            }
+        }
+        // The exact catalog entry and a launcher-derived identity share the observed game root.
+        foreach (var pair in resolved.Where(pair => pair.Value.Id.StartsWith("runtime-game:", StringComparison.Ordinal)).ToArray())
+        {
+            var catalogGame = resolved.Values.FirstOrDefault(value => value.Id.StartsWith("catalog:", StringComparison.Ordinal)
+                && value.Kind == SoftwareKinds.Game && value.RootPaths.SequenceEqual(pair.Value.RootPaths, StringComparer.OrdinalIgnoreCase));
+            if (catalogGame is not null) resolved[pair.Key] = catalogGame;
+        }
+        // Category belongs to the software, and is merged only within this batch.
+        foreach (var group in resolved.GroupBy(pair => pair.Value.Id, StringComparer.OrdinalIgnoreCase).ToArray())
+        {
+            var category = group.Select(pair => pair.Value)
+                .OrderByDescending(value => value.Kind == SoftwareKinds.Game)
+                .FirstOrDefault(value => value.CategorySource is not null);
+            if (category is null) continue;
+            foreach (var pair in group) resolved[pair.Key] = pair.Value with
+            { Kind = category.Kind, DisplayKind = category.DisplayKind, CategorySource = category.CategorySource };
+        }
+        return new(resolved, owners);
+    }
+
+    private static bool IsHelper(RuntimeProcessIdentity process)
+        => Path.GetFileNameWithoutExtension(process.ExecutablePath ?? process.Name)
+            .Equals("msedgewebview2", StringComparison.OrdinalIgnoreCase)
+            || process.CommandLine is { } command && System.Text.RegularExpressions.Regex.IsMatch(command,
+                @"(?:^|\s)--type=(?:renderer|gpu-process|utility|zygote|crashpad-handler)(?:\s|$)",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static string? WebViewHostName(string? commandLine)
+    {
+        if (commandLine is null) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(commandLine,
+            "(?:^|\\s)--webview-exe-name=(?:\"([^\"]+)\"|([^\\s]+))",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value : null;
+    }
+
     public void Dispose() => resolver.Dispose();
 }
+
+public sealed record RuntimeProcessAttributionBatch(
+    IReadOnlyDictionary<int, RuntimeSoftwareAttribution> SoftwareByProcessId,
+    IReadOnlyDictionary<int, int> HelperOwnerByProcessId);

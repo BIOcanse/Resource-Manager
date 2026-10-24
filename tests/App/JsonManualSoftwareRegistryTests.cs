@@ -9,6 +9,19 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonManualSoftwareRegistryTests : IDisposable
 {
+    [Fact]
+    public async Task ChangingClassificationPreservesSourceAndStandaloneIdentities()
+    {
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        var classified = await registry.AddOrUpdateAsync(new("Installed", SoftwareKinds.Game, [], "windows-installed:one"), default);
+        var reclassified = await registry.AddOrUpdateAsync(new("Installed", SoftwareKinds.Other, [], classified.Id), default);
+        Assert.Equal("windows-installed:one", reclassified.Id);
+        var standalone = await registry.AddOrUpdateAsync(new("Portable", SoftwareKinds.Game, [@"D:\Apps\Portable"], null), default);
+        var changed = await registry.AddOrUpdateAsync(new("Portable", SoftwareKinds.Other, [@"D:\Apps\Portable"], null), default);
+        Assert.Equal(standalone.Id, changed.Id);
+        Assert.Equal(2, (await registry.GetAllAsync(default)).Count);
+    }
+
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-manual-software-{Guid.NewGuid():N}");
     private string StoragePath => Path.Combine(testRoot, "Config", "manual-software.json");
 

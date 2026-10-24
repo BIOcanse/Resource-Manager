@@ -12,29 +12,30 @@ public sealed partial class SoftwareRegistryView
                 .Where(record => ShouldReplaceWithManual(record, manualRecord))
                 .ToArray();
             records.RemoveAll(record => replacedRecords.Contains(record));
-            records.Add(ToManualSoftwareRecord(
+            var classified = ToManualSoftwareRecord(
                 manualRecord,
-                ResolveMergedSoftwareIdentityId(replacedRecords)) with { HasExplicitKind = true });
+                ResolveMergedSoftwareIdentityId(replacedRecords)) with { HasExplicitKind = true };
+            records.Add(replacedRecords.Length == 1
+                ? replacedRecords[0] with
+                {
+                    Kind = classified.Kind, DisplayKind = classified.DisplayKind,
+                    HasExplicitKind = true, SourceSoftwareId = manualRecord.SourceSoftwareId, CategorySource = null
+                }
+                : classified with { Id = manualRecord.SourceSoftwareId ?? manualRecord.Id });
         }
     }
 
     private static bool ShouldReplaceWithManual(SoftwareRecord record, ManualSoftwareRecord manualRecord)
     {
-        if (!string.IsNullOrWhiteSpace(manualRecord.SourceSoftwareId)
-            && record.Id.Equals(manualRecord.SourceSoftwareId, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(manualRecord.SourceSoftwareId))
         {
-            return true;
+            return record.Id.Equals(manualRecord.SourceSoftwareId, StringComparison.OrdinalIgnoreCase);
         }
 
         // A published runtime identity already failed known-root matching.
         // Only the user's exact source identity may replace that observation.
         if (record.State == "runtime") return false;
 
-        if (NormalizeSoftwareKey(record.Name) == NormalizeSoftwareKey(manualRecord.Name))
-        {
-            return true;
-        }
-
-        return RootOverlaps(record.RootPaths, manualRecord.RootPaths);
+        return record.Id.Equals(manualRecord.Id, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -7,6 +7,7 @@ using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.SoftwareIdentity;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareIdentity;
@@ -84,7 +85,12 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         NativeRuntimeSourceCatalog? acquiredKnownCatalog = null;
         try
         {
-            var software = softwareRecords
+            var catalogEntries = bundledCatalog.Entries.ToDictionary(entry => $"catalog:{entry.Id}", StringComparer.Ordinal);
+            var currentRecords = softwareRecords.Select(record =>
+                !record.HasExplicitKind && catalogEntries.TryGetValue(record.Id, out var entry)
+                    ? record with { Name = entry.DisplayName, Kind = entry.Kind, DisplayKind = SoftwareDisplayKinds.Project(entry.Kind) }
+                    : record).ToArray();
+            var software = currentRecords
                 .Select(static record => new RuntimeSoftwareAttribution(
                     record.Id,
                     record.Name,
@@ -98,7 +104,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 .ToArray();
 
             registeredSoftware = software.ToDictionary(static item => item.Id, StringComparer.Ordinal);
-            sourceClassifications = softwareRecords
+            sourceClassifications = currentRecords
                 .Where(static record => record.HasExplicitKind && !string.IsNullOrWhiteSpace(record.SourceSoftwareId))
                 .ToDictionary(static record => record.SourceSoftwareId!,
                     record => registeredSoftware[record.Id], StringComparer.OrdinalIgnoreCase);
@@ -127,7 +133,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 acquiredLease.CatalogPlan);
             var knownProjection =
                 NativeSoftwareIdentityCatalogProjector.ProjectRuntimeKnown(
-                    softwareRecords,
+                    currentRecords,
                     acquiredLease.CatalogPlan);
             acquiredKnownCatalog = new NativeRuntimeSourceCatalog(
                 knownProjection,
@@ -150,6 +156,9 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     }
 
     internal RuntimeSoftwareAttribution Resolve(RuntimeProcessIdentity process)
+        => Resolve(process, out _);
+
+    internal RuntimeSoftwareAttribution Resolve(RuntimeProcessIdentity process, out uint selectedSource)
     {
         ArgumentNullException.ThrowIfNull(process);
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -195,10 +204,12 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             AddCatalogSource(
                 observations,
                 NativeRuntimeAttributionSources.KnownSoftware,
-                knownCatalog.ObserveKnown(process),
+                CanonicalPath(process.ExecutablePath) is { } knownPath && IsWindowsOwnedPath(knownPath)
+                    ? NativeSourceCatalogObservation.NoMatch
+                    : knownCatalog.ObserveKnown(process),
                 [],
                 frame.FrameEpoch);
-            AddBundledSource(observations, process, frame.FrameEpoch);
+            var bundledEntry = AddBundledSource(observations, process, frame.FrameEpoch);
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.RuntimeProduct,
@@ -251,20 +262,33 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     $"Native software identity resolution failed with {status}.");
             }
             var attribution = ResolveOutput(output);
+            selectedSource = output.SelectedSourceId;
+            if (attribution.Id.StartsWith("runtime-game:", StringComparison.Ordinal)
+                && bundledEntry is { } game)
+                attribution = attribution with
+                {
+                    Id = $"catalog:{game.Id}", Name = game.DisplayName,
+                    Kind = game.Kind, DisplayKind = SoftwareDisplayKinds.Project(game.Kind)
+                };
             if (output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched
-                && output.SelectedSourceId is not (NativeRuntimeAttributionSources.Adapted
-                    or NativeRuntimeAttributionSources.Controlled
-                    or NativeRuntimeAttributionSources.ResourceManagerSelf)
+                && output.SelectedSourceId != NativeRuntimeAttributionSources.ResourceManagerSelf
                 && sourceClassifications.TryGetValue(attribution.Id, out var classification))
             {
                 attribution = classification;
             }
-            // Category evidence does not compete with or replace software identity.
-            // Explicit registrations and user classifications retain their category.
+            // Registration is ownership evidence; category is a property of that same software.
+            // Explicit user classifications retain priority over automatic category evidence.
+            if (output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched
+                && output.SelectedSourceId != NativeRuntimeAttributionSources.ResourceManagerSelf
+                && !explicitKindSoftwareIds.Contains(attribution.Id)
+                && bundledEntry is { Kind: SoftwareKinds.Game or SoftwareKinds.HighPerformance } category)
+                attribution = attribution with
+                {
+                    Kind = category.Kind, DisplayKind = SoftwareDisplayKinds.Project(category.Kind),
+                    CategorySource = $"software_identity_catalog:{category.Id}"
+                };
             return output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched
-                && output.SelectedSourceId is not (NativeRuntimeAttributionSources.Adapted
-                    or NativeRuntimeAttributionSources.Controlled
-                    or NativeRuntimeAttributionSources.ResourceManagerSelf)
+                && output.SelectedSourceId != NativeRuntimeAttributionSources.ResourceManagerSelf
                 && !explicitKindSoftwareIds.Contains(attribution.Id)
                 && WindowsGameListPaths.CanonicalPath(process.ExecutablePath) is { } path
                 && windowsGamePaths.Contains(path)
@@ -318,7 +342,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         return attribution;
     }
 
-    private void AddBundledSource(
+    private SoftwareIdentityCatalogEntry? AddBundledSource(
         ICollection<NativeSoftwareIdentityObservationInput> target,
         RuntimeProcessIdentity process,
         ulong generation)
@@ -331,7 +355,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 NativeRuntimeAttributionSources.BundledCatalog,
                 NativeSoftwareIdentityObservationStatus.NoMatch,
                 generation);
-            return;
+            return null;
         }
 
         var observation = bundledCatalog.ObserveProcess(process);
@@ -343,13 +367,13 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     NativeRuntimeAttributionSources.BundledCatalog,
                     NativeSoftwareIdentityObservationStatus.NoMatch,
                     generation);
-                return;
+                return null;
             case NativeCatalogProcessObservationStatus.Conflict:
                 AddConflict(
                     target,
                     NativeRuntimeAttributionSources.BundledCatalog,
                     generation);
-                return;
+                return null;
             case NativeCatalogProcessObservationStatus.Matched:
                 var entry = observation.Entry
                     ?? throw new InvalidOperationException(
@@ -370,7 +394,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                         root is null ? [] : [root]),
                     observation.EvidenceMask,
                     generation);
-                return;
+                return entry;
             default:
                 throw new InvalidOperationException(
                     $"Unknown native catalog observation status {observation.Status}.");
@@ -556,7 +580,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         });
     }
 
-    private static RuntimeAttributionObservation ObserveRuntimeProduct(
+    private RuntimeAttributionObservation ObserveRuntimeProduct(
         RuntimeProcessIdentity process)
     {
         var processPath = CanonicalPath(process.ExecutablePath);
@@ -564,6 +588,11 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         {
             return RuntimeAttributionObservation.NoMatch;
         }
+
+        // A per-user application owns its embedded runtime/cache subdirectories.
+        if (ResourceManager.App.Infrastructure.ProcessIdentity.WindowsRuntimeRootIdentityResolver
+            .InferAppDataProductRoot(process.ExecutablePath!) is not null)
+            return rootResolver.Observe(process);
 
         var displayName = CleanMetadata(process.ProductName)
             ?? CleanMetadata(process.FileDescription)
@@ -768,6 +797,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
 
     private static bool IsWindowsOwnedPath(string path)
         => IsUnder(path, WindowsRoot)
+            || ResourceManager.App.Infrastructure.ProcessIdentity.WindowsSystemProcessClassifier.IsPlatformComponentPath(path)
             || IsUnder(
                 path,
                 CanonicalPath(Path.Combine(
@@ -798,7 +828,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             || value.Equals("Microsoft Windows", StringComparison.OrdinalIgnoreCase)
             || value.Equals(
                 "Microsoft Windows Operating System",
-                StringComparison.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase)
+            || NormalizeId(value) is "microsoft-windows-operating-system" or "windows-r-win-7-ddk-provider";
 
     private static string NormalizeId(string value)
     {

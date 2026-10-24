@@ -457,6 +457,15 @@ public sealed class SchedulingObservationContractTests
     }
 
     [Fact]
+    public void RuntimeState_HiddenWindowDoesNotProveTrayIcon()
+    {
+        var process = new ProcessInstanceKey(104, 1004);
+        var snapshot = WindowsProcessRuntimeStateSnapshot.Project([process], null,
+            new Dictionary<int, ProcessWindowPresence> { [104] = new(false, false, true) }, false, _ => true);
+        Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, snapshot.Processes[process].RuntimeState);
+    }
+
+    [Fact]
     public void ProcessFacts_GpuAcceptsIndependentlyRefreshedUnchangedInventory()
     {
         var inventory = CreateGpuInventory();

@@ -11,6 +11,179 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class RuntimeProcessAttributionPipelineTests
 {
+    [Fact]
+    public void GameCategoryWinsOverHelperCatalogCategoryRegardlessOfEnumerationOrder()
+    {
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "high-performance-helper", "Tool Helper", SoftwareKinds.HighPerformance, "test", ExecutableNames: ["KnownToolHelper.exe"]));
+        const string gamePath = @"D:\Games\One\gameclient.exe";
+        using var pipeline = CreatePipeline([CreateSoftware("installed:one", "One", [@"D:\Games\One"])], identityCatalog: catalog,
+            windowsGamePaths: new HashSet<string> { gamePath });
+        var result = pipeline.MatchBatch([
+            new(951, 950, "KnownToolHelper", @"D:\Games\One\KnownToolHelper.exe", false, StartKey: 20),
+            new(950, null, "gameclient", gamePath, false, StartKey: 10)]);
+        Assert.All(result.SoftwareByProcessId.Values, item => Assert.Equal(SoftwareKinds.Game, item.Kind));
+    }
+
+    [Fact]
+    public void CatalogGameCategoryReachesInstalledHelpersAndPreservesExplicitScores()
+    {
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "game-known", "Known Game", SoftwareKinds.Game, "test", ExecutableNames: ["KnownGameClient.exe"]));
+        using var pipeline = CreatePipeline([CreateSoftware("installed:known", "Unmapped Installed Label", [@"D:\Games\Known"])], identityCatalog: catalog);
+        var batch = pipeline.MatchBatch([
+            new(940, null, "KnownGameClient", @"D:\Games\Known\KnownGameClient.exe", false, StartKey: 10),
+            new(941, 940, "CrashReporter", @"D:\Games\Known\CrashReporter.exe", false, StartKey: 20)]);
+        var scores = new ResourceManager.App.Domain.RuntimeSpecialization.CompiledBaseScorePlan(
+            new Dictionary<string, double> { ["installed:known"] = 88 },
+            new Dictionary<string, double> { ["installed:known\nprocess:helper"] = 77 });
+        Assert.All(batch.SoftwareByProcessId.Values, value =>
+        {
+            Assert.Equal("installed:known", value.Id);
+            Assert.Equal(SoftwareKinds.Game, value.Kind);
+            Assert.Equal(88, scores.ResolveBaseScore(value.Id, value.Kind, null));
+        });
+        var helper = batch.SoftwareByProcessId[941];
+        Assert.Equal(77, scores.ResolveBaseScore(helper.Id, helper.Kind, "process:helper"));
+    }
+
+    [Theory]
+    [InlineData("host.exe", true)]
+    [InlineData("different.exe", false)]
+    public void ChromiumHelpersHonorTheWebViewHostSwitch(string declaredHost, bool inherits)
+    {
+        using var pipeline = CreatePipeline([CreateSoftware("installed:host", "Host", [@"D:\Apps\Host"])]);
+        var batch = pipeline.MatchBatch([
+            new(942, null, "host", @"D:\Apps\Host\host.exe", false, StartKey: 10),
+            new(943, 942, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", false, StartKey: 20,
+                CommandLine: $"webview --webview-exe-name={declaredHost}"),
+            new(944, 943, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", false, StartKey: 30,
+                CommandLine: $"webview --type=gpu-process --webview-exe-name={declaredHost}")]);
+        Assert.Equal(inherits, batch.SoftwareByProcessId[944].Id == "installed:host");
+        Assert.Equal(inherits, batch.HelperOwnerByProcessId.ContainsKey(944));
+    }
+
+    [Fact]
+    public void ChromiumRendererInheritsButAServiceKeepsItsOwnOwnership()
+    {
+        var service = new ChangingServiceResolver();
+        using var pipeline = CreatePipeline([CreateSoftware("installed:host", "Host", [@"D:\Apps\Host"])], serviceResolver: service);
+        RuntimeProcessIdentity[] processes = [
+            new(945, null, "host", @"D:\Apps\Host\host.exe", false, StartKey: 10),
+            new(946, 945, "chromium", @"C:\Runtime\chromium.exe", false, StartKey: 20, CommandLine: "chromium --type=renderer")];
+        Assert.Equal("installed:host", pipeline.MatchBatch(processes).SoftwareByProcessId[946].Id);
+        service.Current = RuntimeAttributionObservation.Matched(new("windows-service:fixture", "Fixture", SoftwareKinds.WindowsService, SoftwareKinds.WindowsService, []));
+        Assert.Equal("windows-service:fixture", pipeline.MatchBatch(processes).SoftwareByProcessId[946].Id);
+    }
+
+    [Fact]
+    public void ExactCatalogGameIdentityReplacesLauncherDerivedIdentityForAllGameMembers()
+    {
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "game-known", "Known Game", SoftwareKinds.Game, "test", ExecutableNames: ["KnownGameClient.exe"]));
+        using var pipeline = CreatePipeline([CreateSoftware("installed:launcher", "miHoYo Launcher", [@"D:\miHoYo Launcher"])], identityCatalog: catalog);
+        var result = pipeline.MatchBatch([
+            new(947, null, "KnownGameClient", @"D:\miHoYo Launcher\Games\Known\KnownGameClient.exe", false, StartKey: 10),
+            new(948, 947, "helper", @"D:\miHoYo Launcher\Games\Known\helper.exe", false, StartKey: 20)]);
+        Assert.All(result.SoftwareByProcessId.Values, value => Assert.Equal("catalog:game-known", value.Id));
+    }
+
+    [Fact]
+    public void EmbeddedCodexRuntimeUsesTheSameApplicationRootAcrossUserProfiles()
+    {
+        using var pipeline = CreatePipeline([], rootResolver: new ResourceManager.App.Infrastructure.ProcessIdentity.WindowsRuntimeRootIdentityResolver());
+        const string app = @"C:\Users\AnotherUser\AppData\Local\OpenAI\Codex";
+        var main = pipeline.Match(new(930, null, "Codex", app + @"\bin\Codex.exe", false, ProductName: "Codex"));
+        var helper = pipeline.Match(new(931, null, "node_repl", app + @"\runtimes\cua_node\2b841c3d44b123ec\bin\node_repl.exe", false, ProductName: "Node.js"));
+        Assert.Equal(main.Id, helper.Id);
+        Assert.Equal("Codex", helper.Name);
+        Assert.Equal(app, Assert.Single(helper.RootPaths), ignoreCase: true);
+    }
+
+    [Fact]
+    public void DefenderPlatformIsAWindowsComponentAndDdkMetadataIsNotAnIdentity()
+    {
+        using var pipeline = new RuntimeProcessAttributionPipeline(
+            [CreateSoftware("installed:wrong-windows-root", "PowerShell", [@"C:\Windows"])], [], [], new NullPackageIdentityResolver(),
+            new NullServiceIdentityResolver(), new ResourceManager.App.Infrastructure.ProcessIdentity.WindowsRuntimeRootIdentityResolver(),
+            new ResourceManager.App.Infrastructure.ProcessIdentity.WindowsSystemProcessClassifier(), SoftwareIdentityCatalogTestData.Empty,
+            SoftwareIdentityCatalogTestData.Owner);
+        var defenderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Microsoft", "Windows Defender", "Platform", "4.18.0", "DefenderSessionHelper.exe");
+        var defender = pipeline.Match(new(932, null, "DefenderSessionHelper", defenderPath, false,
+            ProductName: "Microsoft® Windows® Operating System"));
+        Assert.Equal(RuntimeAttributionIds.WindowsComponent, defender.Id);
+        var powershell = pipeline.Match(new(934, null, "powershell",
+            @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", false));
+        Assert.Equal(RuntimeAttributionIds.WindowsComponent, powershell.Id);
+        var gameInput = pipeline.Match(new(933, null, "GameInputRedistService",
+            @"C:\Program Files\Microsoft GameInput\x64\GameInputRedistService.exe", false,
+            ProductName: "Windows (R) Win 7 DDK provider"));
+        Assert.DoesNotContain("ddk", gameInput.Id, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Microsoft GameInput", gameInput.Name);
+    }
+
+    [Theory]
+    [InlineData("rustc", @"D:\Rust\rustc.exe", "Rust")]
+    [InlineData("build", @"D:\Source\.zig-cache\build.exe", "Microsoft Build of OpenJDK")]
+    [InlineData("powershell", @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "PowerShell 7-x64")]
+    [InlineData("pwsh", @"D:\Portable\pwsh.exe", "PowerShell 7-x64")]
+    public void InstalledDisplayNamesNeverClaimExecutablesOutsideTheirRoot(string name, string path, string installedName)
+    {
+        using var pipeline = CreatePipeline([CreateSoftware("installed:unrelated", installedName, [@"C:\Program Files\Unrelated"])]);
+        Assert.NotEqual("installed:unrelated", pipeline.Match(new(920, null, name, path, false, ProductName: installedName)).Id);
+    }
+
+    [Fact]
+    public void BatchProjectsWindowsGameCategoryToEveryProcessOfTheSoftware()
+    {
+        const string gamePath = @"D:\Games\NewGame\game.exe";
+        using var pipeline = CreatePipeline([CreateSoftware("installed:game", "New Game", [@"D:\Games\NewGame"])],
+            windowsGamePaths: new HashSet<string> { gamePath });
+        var result = pipeline.MatchBatch([
+            new(921, null, "game", gamePath, false, StartKey: 10),
+            new(922, 921, "helper", @"D:\Games\NewGame\helper.exe", false, StartKey: 20)]);
+        Assert.All(result.SoftwareByProcessId.Values, value =>
+        {
+            Assert.Equal("installed:game", value.Id);
+            Assert.Equal(SoftwareKinds.Game, value.Kind);
+            Assert.NotNull(value.CategorySource);
+            Assert.Equal(95, ResourceManager.App.Domain.Optimization.Scoring.OptimizationRuntimeScoringDefaults.BaseScoreForKind(value.Kind));
+        });
+    }
+
+    [Theory]
+    [InlineData(10, true)]
+    [InlineData(30, false)]
+    [InlineData(0, false)]
+    public void WebViewBelongsToItsVerifiedHostInstance(long hostStart, bool inherits)
+    {
+        using var pipeline = CreatePipeline([CreateSoftware("installed:host", "Host", [@"D:\Apps\Host"])]);
+        var result = pipeline.MatchBatch([
+            new(923, null, "host", @"D:\Apps\Host\host.exe", false, StartKey: hostStart),
+            new(924, 923, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", false, StartKey: 20)]);
+        Assert.Equal(inherits, result.SoftwareByProcessId[924].Id == "installed:host");
+    }
+
+    [Fact]
+    public void ServiceChangesAreObservedWithinTheSameProcessLifetime()
+    {
+        var services = new ChangingServiceResolver();
+        using var pipeline = CreatePipeline([], serviceResolver: services);
+        var process = new RuntimeProcessIdentity(925, null, "svchost", @"C:\Windows\System32\svchost.exe", false, StartKey: 10);
+        Assert.NotEqual("service:one", pipeline.MatchBatch([process]).SoftwareByProcessId[925].Id);
+        services.Current = RuntimeAttributionObservation.Matched(new("service:one", "One", SoftwareKinds.WindowsService, SoftwareDisplayKinds.WindowsService, []));
+        Assert.Equal("service:one", pipeline.MatchBatch([process]).SoftwareByProcessId[925].Id);
+        services.Current = RuntimeAttributionObservation.NoMatch;
+        Assert.NotEqual("service:one", pipeline.MatchBatch([process]).SoftwareByProcessId[925].Id);
+    }
+
+    private sealed class ChangingServiceResolver : IRuntimeServiceIdentityResolver
+    {
+        public RuntimeAttributionObservation Current { get; set; } = RuntimeAttributionObservation.NoMatch;
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process) => Current;
+    }
+
     [Theory]
     [InlineData(@"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe", SoftwareKinds.Game)]
     [InlineData(@"f:/STEAMLIBRARY/steamapps/common/Battlefield 6/bin/../BF6.EXE", SoftwareKinds.Game)]
@@ -51,7 +224,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             windowsGamePaths: new HashSet<string> { path });
         var result = pipeline.Match(new(46201, null, "wps", path, false));
         Assert.Equal(software.Id, result.Id);
-        Assert.Equal(software.Name, result.Name);
+        Assert.Equal(explicitKind ? software.Name : "WPS Office", result.Name);
         Assert.Equal(explicitKind ? SoftwareKinds.HighPerformance : SoftwareKinds.Game, result.Kind);
         Assert.Equal(!explicitKind, result.CategorySource is not null);
     }
@@ -71,18 +244,20 @@ public sealed class RuntimeProcessAttributionPipelineTests
     }
 
     [Fact]
-    public void Match_AdaptedAndControlledRegistrationsWinOverWindowsCategory()
+    public void Match_AdaptedAndControlledOwnershipPreservesWindowsGameCategory()
     {
         const string path = @"D:\Apps\WordMemory\WordMemory.WebHost.exe";
         var gamePaths = new HashSet<string> { path };
         var adapter = ScopedAdapter([new("WordMemory.WebHost", null, null)]);
         using var adapted = CreatePipeline([], [adapter], windowsGamePaths: gamePaths);
         var process = new RuntimeProcessIdentity(46203, null, "WordMemory.WebHost", path, false);
-        Assert.Equal(SoftwareKinds.Adapted, adapted.Match(process).Kind);
+        Assert.Equal(SoftwareKinds.Game, adapted.Match(process).Kind);
+        Assert.Equal(adapter.Id, adapted.Match(process).Id);
         var registration = new ControlledSoftwareRegistration(Guid.NewGuid(), DateTimeOffset.UtcNow,
             "test", ["WordMemory"], [@"D:\Apps\WordMemory"], [], [], "registered");
         using var controlled = CreatePipeline([], windowsGamePaths: gamePaths, controlledRegistrations: [registration]);
-        Assert.Equal(SoftwareKinds.Controlled, controlled.Match(process).Kind);
+        Assert.Equal(SoftwareKinds.Game, controlled.Match(process).Kind);
+        Assert.Equal($"controlled-registration:{registration.Id}", controlled.Match(process).Id);
     }
 
     [Theory]
@@ -129,7 +304,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             false, ProductName: "WPS Office"));
         Assert.Equal(software.Id, result.Id);
         Assert.Equal(software.Name, result.Name);
-        Assert.Equal(kind, result.Kind);
+        Assert.Equal(SoftwareKinds.Other, result.Kind);
         Assert.Equal(confirmedRoot ? ["d:/software/wps office"] : Array.Empty<string>(), result.RootPaths);
     }
 
@@ -388,7 +563,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     public void Match_NormalizesSoftwareAndProcessIdentityOnceWithoutChangingMatchSemantics()
     {
         using var pipeline = CreatePipeline([
-            CreateSoftware("windows-installed:foo-bar", "Foo Bar", [])
+            CreateSoftware("windows-installed:foo-bar", "Foo Bar", [@"D:\Tools"])
         ]);
         var process = new RuntimeProcessIdentity(
             107,
@@ -494,7 +669,8 @@ public sealed class RuntimeProcessAttributionPipelineTests
         IRuntimePackageIdentityResolver? packageResolver = null,
         IRuntimeServiceIdentityResolver? serviceResolver = null,
         IReadOnlySet<string>? windowsGamePaths = null,
-        IReadOnlyList<ControlledSoftwareRegistration>? controlledRegistrations = null)
+        IReadOnlyList<ControlledSoftwareRegistration>? controlledRegistrations = null,
+        IRuntimeRootIdentityResolver? rootResolver = null)
     {
         return new RuntimeProcessAttributionPipeline(
             software,
@@ -502,7 +678,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             controlledRegistrations ?? [],
             packageResolver ?? new NullPackageIdentityResolver(),
             serviceResolver ?? new NullServiceIdentityResolver(),
-            new NullRootIdentityResolver(),
+            rootResolver ?? new NullRootIdentityResolver(),
             new NullSystemProcessClassifier(),
             identityCatalog ?? SoftwareIdentityCatalogTestData.Empty,
             SoftwareIdentityCatalogTestData.Owner,

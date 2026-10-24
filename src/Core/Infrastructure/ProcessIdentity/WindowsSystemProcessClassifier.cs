@@ -82,6 +82,7 @@ public sealed class WindowsSystemProcessClassifier : IRuntimeSystemProcessClassi
         }
 
         if (IsSameOrUnder(processPath, Path.Combine(WindowsRoot, "SystemApps"))
+            || IsPlatformComponentPath(processPath)
             || WindowsComponentProcessNames.Contains(process.Name))
         {
             return RuntimeAttributionObservation.Matched(WindowsComponent);
@@ -89,11 +90,16 @@ public sealed class WindowsSystemProcessClassifier : IRuntimeSystemProcessClassi
 
         if (IsSameOrUnder(processPath, WindowsRoot))
         {
-            return RuntimeAttributionObservation.Matched(WindowsSystem);
+            return RuntimeAttributionObservation.Matched(WindowsComponent);
         }
 
         return RuntimeAttributionObservation.NoMatch;
     }
+
+    internal static bool IsPlatformComponentPath(string path)
+        => NormalizePath(path) is { } normalized
+            && IsSameOrUnder(normalized, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Microsoft", "Windows Defender", "Platform"));
 
     private static string? NormalizePath(string? value)
     {

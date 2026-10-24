@@ -9,13 +9,15 @@ public sealed partial class SoftwareRegistryView
 {
     private SoftwareRecord ToPortableSoftwareRecord(PortableSoftwareRegistration registration)
     {
-        var projectedKind = registration.IdentityConfirmed ? registration.Kind : SoftwareKinds.Other;
+        var entry = softwareIdentityCatalog.Entries.FirstOrDefault(entry =>
+            entry.Id.Equals(registration.CatalogEntryId, StringComparison.Ordinal));
+        var projectedKind = registration.IdentityConfirmed ? entry?.Kind ?? SoftwareKinds.Other : SoftwareKinds.Other;
         var confirmationMessage = registration.RequiresRootPathConfirmation
             ? "根目录尚未确认，请检查并选择软件根目录。"
             : "便携软件根目录已确认。";
         return new SoftwareRecord(
             registration.SoftwareId,
-            registration.Name,
+            entry?.DisplayName ?? registration.Name,
             projectedKind,
             SoftwareDisplayKinds.Project(projectedKind),
             registration.RequiresRootPathConfirmation ? "RootConfirmationRequired" : "portable",

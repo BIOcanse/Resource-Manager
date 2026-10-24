@@ -164,6 +164,8 @@ fn scoreIdentity(
     }
     const primary_name = protocol.keySlice(bank.key_bytes, entry.primary_name_offset, entry.primary_name_length).?;
     const root_hit = entryRootHit(bank, entry_index, context.path);
+    // Installed display names are labels, not executable identity keys.
+    if (!root_hit) return null;
     var best_strong: i32 = 0;
     var best_auxiliary: i32 = 0;
     var evidence_mask: u64 = 0;
@@ -416,16 +418,7 @@ fn isSameOrUnder(candidate: []const u8, root: []const u8) bool {
 
 fn textMatchScore(config: *const protocol.Config, software_key: []const u8, process_key: []const u8) i32 {
     if (std.mem.eql(u8, software_key, process_key)) return config.exact_text_score;
-    if (software_key.len < config.minimum_contains_key_length or
-        process_key.len < config.minimum_contains_key_length)
-    {
-        return 0;
-    }
-    return if (std.mem.indexOf(u8, software_key, process_key) != null or
-        std.mem.indexOf(u8, process_key, software_key) != null)
-        config.contains_text_score
-    else
-        0;
+    return 0;
 }
 
 fn derivedIdentityFingerprint(attribution_id_handle: u64, root: []const u8) Fingerprint {

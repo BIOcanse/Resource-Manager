@@ -91,13 +91,13 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
                 state = ReadIdentity((int)pid);
                 if (state is null) return true;
             }
-            var title = GetWindowTextLengthW(window) > 0;
-            var visible = IsWindowVisible(window) && !IsIconic(window) && title;
+            var shown = IsWindowVisible(window);
+            var visible = shown && !IsIconic(window);
             windows[(int)pid] = state with
             {
                 HasVisibleWindow = state.HasVisibleWindow || visible,
-                HasBackgroundWindow = state.HasBackgroundWindow || !visible && title,
-                HasHiddenWindow = state.HasHiddenWindow || !title
+                HasBackgroundWindow = state.HasBackgroundWindow || shown && !visible,
+                HasHiddenWindow = state.HasHiddenWindow || !shown
             };
             return true;
         }, IntPtr.Zero);
