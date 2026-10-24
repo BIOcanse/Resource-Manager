@@ -118,7 +118,10 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             Assert.Equal("%", busyJson.GetProperty("unit").GetString());
             Assert.Equal("windows.npu-engine", busyJson.GetProperty("sourceId").GetString());
             Assert.Equal(125d, busyJson.GetProperty("numericValue").GetDouble());
-            Assert.Equal(2, recording.LastRequested.Count); Assert.Equal(256U, recording.LastMaximum);
+            var requests = recording.RequestHistory.ToArray();
+            Assert.Equal(recording.Opened[0].Identities.Select(static target => target.ExactIdentityKey).Order(StringComparer.Ordinal),
+                requests.SelectMany(static request => request.Targets).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+            Assert.All(requests, static request => Assert.Equal(256U, request.Maximum));
             await cancellation.CancelAsync(); response.Dispose(); reader.Dispose(); await ended.Task.WaitAsync(timeout.Token);
             await sampler.StopAsync(timeout.Token);
             var reads = recording.Reads; var current = core.ReadCached(new(identity, NpuEngineRecordedResources.Ratio));
