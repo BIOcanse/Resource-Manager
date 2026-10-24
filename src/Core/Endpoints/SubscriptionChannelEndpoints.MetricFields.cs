@@ -34,10 +34,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             while (await changes.Reader.WaitToReadAsync(cancellationToken))
             {
                 while (changes.Reader.TryRead(out _)) { }
-                var request = MetricSampleRequest.ForIds(catalog.Current!.FieldBindings.Values
-                    .Where(binding => (device is null || binding.DeviceIdentity == device)
-                        && names.Contains(binding.Field.Name))
-                    .Select(static binding => binding.RequestAddress));
+                // Compilation already validated the selection against a published catalog.
+                var request = MetricDeviceFields.SelectBound(catalog.Current!, device, names);
                 if (request.IsEmpty)
                 {
                     await writer.WriteAsync(id, Array.Empty<DeviceMetricFieldSnapshot>(), cancellationToken);
