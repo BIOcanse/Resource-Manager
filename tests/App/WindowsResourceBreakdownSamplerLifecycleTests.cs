@@ -202,12 +202,17 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var request = ResourceBreakdownSampleRequest.ForResourceTable(
             [ResourceBreakdownMetricIds.MemoryUsage], new Dictionary<string, string>());
         if (canceled)
+        {
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+            Assert.Equal(0, hardware.CaptureCount);
+        }
         else
-            await Assert.ThrowsAsync<InvalidOperationException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+        {
+            // A process whose identity cannot be resolved is skipped; the capture itself continues.
+            await sampler.CaptureSnapshotAsync(request, cancellation.Token);
+        }
         Assert.Equal(1, catalogProvider.CaptureCount);
         Assert.Equal(1, catalogProvider.ReturnedLeases);
-        Assert.Equal(0, hardware.CaptureCount);
     }
 
     [Theory]

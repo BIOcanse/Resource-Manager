@@ -962,7 +962,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             return new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, ticks,
                 1, 1, 0, 0, SchedulingProcessMetricMask.RuntimeState, SchedulingProcessMetricMask.RuntimeState,
                 [new SchedulingProcessFact(101, 1, "Editor.exe", @"C:\Tools\Editor.exe", "software:editor", "Editor",
-                    SoftwareKinds.Other, SoftwareKinds.Other, 35, SchedulingProcessMetricMask.RuntimeState, 0, 0, 1, [])])
+                    SoftwareKinds.Other, SoftwareKinds.Other, 35, SchedulingProcessMetricMask.RuntimeState, 0, 0, 1, [])
+                    { RuntimeState = HostManagerRuntimeStates.BackgroundProcess }])
             {
                 DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
                 {
