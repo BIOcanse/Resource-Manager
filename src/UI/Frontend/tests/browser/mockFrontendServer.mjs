@@ -35,6 +35,9 @@ const defaultScenario = {
   diskUsageMultiRoot: false,
   diskUsageRootIndexOneDelayMs: 0,
   deviceTopologyDelayMs: 0,
+  deviceTopologyInvalid: false,
+  invalidMetricFields: false,
+  deviceTopologyNullProtocol: false,
   displayEdid: "off",
   animations: "normal",
   gpuGrade: "normal",
@@ -1531,6 +1534,7 @@ function fixtureDisplayEdid() {
   return display;
 }
 function fixtureDeviceTopologyState(capturedAt = now()) {
+  if (scenario.deviceTopologyInvalid) return { schemaVersion: "invalid" };
   return {
     schemaVersion: "4.0.0",
     state: "ready",
@@ -1545,7 +1549,9 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
         baseBoardManufacturer: null,
         baseBoardProduct: null
       },
-      ports: scenario.displayEdid === "identity" ? [fixtureHdmiPort(), { ...fixtureHdmiPort(), id: "fixture-hdmi-2", deviceId: "DISPLAY\\FIXTURE_HDMI_2",
+      ports: scenario.deviceTopologyNullProtocol ? [fixtureHdmiPort(), {
+        ...fixtureHdmiPort(), id: "fixture-null-protocol", deviceId: "DISPLAY\\FIXTURE_NULL_PROTOCOL", protocol: null
+      }] : scenario.displayEdid === "identity" ? [fixtureHdmiPort(), { ...fixtureHdmiPort(), id: "fixture-hdmi-2", deviceId: "DISPLAY\\FIXTURE_HDMI_2",
         display: { ...fixtureDisplayEdid(), monitorDevicePath: "different-monitor-path", modeCapabilityDeclared: null } }] : [fixtureHdmiPort()],
       notes: []
     },
@@ -1885,7 +1891,7 @@ function subscriptionPayloadFactory(url) {
       if (url.searchParams.has("fields")) {
         // 按字段订阅：返回绑定了其中任一字段的设备，每台只含它绑定的那些字段。
         const requested = new Set(url.searchParams.get("fields").split(",").filter(Boolean));
-        return () => scenario.metricFieldDevices
+        return () => scenario.invalidMetricFields ? [{}] : scenario.metricFieldDevices
           .map((device) => ({ ...device, fields: device.fields.filter((field) => requested.has(field.name)) }))
           .filter((device) => device.fields.length > 0);
       }

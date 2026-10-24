@@ -20,6 +20,7 @@ export function portHardwareKind(port: DeviceTopologyPort) {
  * 其中几个普通英文词（Ethernet、Audio、Display）按当前语言出；显示连接给的是 Windows 输出技术 id 时按输出技术出。
  */
 export function portProtocol(port: Pick<DeviceTopologyPort, "protocol" | "display">) {
+  if (port.protocol === null) return uiText.deviceTopology.deviceCategory.unknown;
   if (port.display && port.protocol === port.display.outputTechnology) {
     return outputTechnologyLabel(port.protocol);
   }

@@ -66,7 +66,7 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
       record.hardwareKindCode ?? null,
       `${path}.hardwareKindCode`,
       requireBackendMessage),
-    protocol: requireString(record.protocol, `${path}.protocol`),
+    protocol: requireNullable(record.protocol, `${path}.protocol`, requireString),
     speed: requireNullable(record.speed ?? null, `${path}.speed`, requireString),
     physicalMaximumSpeed: nullableString(
       record.physicalMaximumSpeed,

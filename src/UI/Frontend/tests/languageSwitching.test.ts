@@ -1,3 +1,4 @@
+import { portProtocol } from "../src/features/deviceTopology/deviceVocabulary.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { languageOptions, normalizeLanguageMode, resolveLanguageMode } from "../src/i18n/settingsLanguages.ts";
@@ -190,4 +191,16 @@ function deferred<T>() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+for (const language of languageOptions.filter(option => option.id !== "system")) {
+  if (language.id === "system") continue;
+  applyLanguage(language.id);
+  await Promise.all([loadAppCopy(language.id), loadSettingsText(language.id)]);
+  await Promise.resolve();
+  assert.equal(currentLanguage(), language.id);
+  const copy = await loadAppCopy(language.id);
+  assert.equal(portProtocol({ protocol: null, display: null }), copy.deviceTopology.deviceCategory.unknown);
+  assert.ok(portProtocol({ protocol: null, display: null }).trim());
+  assert.equal(portProtocol({ protocol: "USB4", display: null }), "USB4");
 }

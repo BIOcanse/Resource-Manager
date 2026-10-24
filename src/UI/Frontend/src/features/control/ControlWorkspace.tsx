@@ -32,6 +32,7 @@ import {
   controlItemStatusOf,
   hasPendingChanges
 } from "./controlStateMachine.ts";
+import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { uiText } from "../../text.ts";
@@ -154,13 +155,14 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
    * 和期望值并排显示 —— 它不是期望的回声：固件会按温度自己调度，
    * 用户也可能用别的软件改过，两者对不上是常态，而且正是要让用户看见的信息。
    */
-  const [actual, setActual] = createSignal<ControlActualState | null>(null);
+  const [actualSource, setActualSource] = createSignal<SourceSnapshot<ControlActualState> | null>(null);
+  const actual = () => actualSource()?.data ?? null;
   createEffect(() => {
-    if (!visible()) { setActual(null); return; }
-    const unsubscribe = runtime.sources.controlActualState.subscribe(
+    if (!visible()) { setActualSource(null); return; }
+    const unsubscribe = runtime.sources.controlActualState.subscribeSnapshot(
       ActualStateIntervalMs,
-      setActual);
-    onCleanup(() => { unsubscribe(); setActual(null); });
+      setActualSource);
+    onCleanup(() => { unsubscribe(); setActualSource(null); });
   });
 
   const apply = async (objectId: string) => {
