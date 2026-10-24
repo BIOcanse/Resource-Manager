@@ -61,6 +61,22 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
     internal void RequirePayloadReconciliation()
         => RequireRuntime().RequirePayloadReconciliation();
 
+    internal async Task<bool> HasPendingTargetAsync(
+        NativeAppliedOwnershipPrimaryIdentity target,
+        NativeTransactionJournalDomain domains,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await ReadSnapshotAsync(cancellationToken);
+        return snapshot.Records.Any(record =>
+            (record.DomainMask == 0 || (record.DomainMask & (uint)domains) != 0) &&
+            (target.Scope == (uint)NativeAppliedOwnershipScope.Process
+                ? record.Scope == (uint)NativeTransactionJournalScope.Process &&
+                    record.Identity.ProcessId == target.ProcessId &&
+                    record.Identity.ProcessStartKey == target.ProcessStartKey
+                : record.Scope == (uint)NativeTransactionJournalScope.Software &&
+                    record.Identity.SoftwareId == target.SoftwareId));
+    }
+
     public Task<NativeTransactionJournalStatus> PrepareAsync(
         NativeTransactionJournalPrepareInput input,
         CancellationToken cancellationToken)

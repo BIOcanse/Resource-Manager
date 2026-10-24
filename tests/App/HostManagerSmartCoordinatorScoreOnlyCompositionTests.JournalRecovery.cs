@@ -11,6 +11,148 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
     [Fact]
+    public async Task BlockedNativeTargetIsSkippedWhileSameBatchRestoresHealthyPeer()
+    {
+        const int blockedId = 24_048, healthyId = 24_049;
+        var started = CreateProcessStartedAtOrderedBeforeSoftwareTarget(healthyId);
+        var startKey = checked((ulong)started.ToFileTime());
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            processRecoveryRead: id => id == blockedId
+                ? RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(5, "blocked target")
+                : RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)));
+        await fixture.SeedProcessOwnershipAsync(blockedId, startKey, "software:blocked-native", false, 900);
+        var baseline = HostManagerProcessPolicyRollbackPayloadCodec.Encode(new HostManagerProcessPolicyRollbackPayload(
+            HostManagerProcessPolicyTransactionFields.CpuPolicy, healthyId, checked((long)startKey),
+            BaselinePriorityClass: 0x20, BaselineMemoryPriority: 0,
+            BaselinePowerControlMask: 0, BaselinePowerStateMask: 0, TargetMemoryPriority: 0));
+        await fixture.SeedProcessOwnershipAsync(healthyId, startKey, "software:healthy-native", false, 902, baseline);
+        var owners = await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(CancellationToken.None);
+        var blocked = Assert.Single(owners.Records, record => record.Primary.ProcessId == blockedId);
+        await PrepareOwnershipJournalAsync(fixture, blocked, mismatchPayload: false);
+        await ApplyJournalRecoveryAsync(fixture, NativeTransactionJournalRecoveryOutcome.InvalidProof);
+        var current = new ProcessResourcePolicySnapshot(healthyId, "fixture", @"c:\tests\fixture.exe",
+            started, "BelowNormal", 1, 1, MemoryPriority: 5,
+            PowerThrottlingControlMask: 1, PowerThrottlingStateMask: 1);
+        fixture.ProcessPolicyWriter.ProcessReadHandler = id =>
+        {
+            Assert.Equal(healthyId, id);
+            return current;
+        };
+        fixture.ProcessPolicyWriter.BatchHandler = requests =>
+        {
+            var request = Assert.Single(requests);
+            Assert.Equal(healthyId, request.ProcessId);
+            current = current with
+            {
+                PriorityClass = request.PriorityClass ?? current.PriorityClass,
+                PowerThrottlingControlMask = request.PowerControlMask ?? current.PowerThrottlingControlMask,
+                PowerThrottlingStateMask = request.PowerStateMask ?? current.PowerThrottlingStateMask
+            };
+            var fields = new List<ProcessResourcePolicyBatchFieldResult>();
+            if (request.PriorityClass is not null)
+                fields.Add(new(ProcessResourcePolicyBatchFields.PriorityClass, true, "applied peer"));
+            if (request.PowerControlMask is not null)
+                fields.Add(new(ProcessResourcePolicyBatchFields.PowerThrottling, true, "applied peer"));
+            return [new ProcessResourcePolicyBatchWriteResult(healthyId, fields)];
+        };
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal("Normal", current.PriorityClass);
+        Assert.Equal(0U, current.PowerThrottlingControlMask);
+        Assert.Equal(0U, current.PowerThrottlingStateMask);
+        Assert.Equal((uint)blockedId, Assert.Single((await fixture.NativeTransactions.AppliedOwnership
+            .ReadSnapshotAsync(CancellationToken.None)).Records).Primary.ProcessId);
+        Assert.Equal((uint)blockedId, Assert.Single((await fixture.ReadJournalSnapshotAsync()).Records).Identity.ProcessId);
+    }
+
+    [Fact]
+    public async Task BlockedOwnedMemoryTargetIsSkippedBeforeHealthyPeerRestoresInSameBatch()
+    {
+        const int blockedId = 24_048, healthyId = 24_049;
+        var started = CreateProcessStartedAtOrderedBeforeSoftwareTarget(healthyId);
+        var startKey = checked((ulong)started.ToFileTime());
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            processRecoveryRead: id => id == blockedId
+                ? RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(5, "blocked target")
+                : RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)));
+        await fixture.SeedProcessOwnershipAsync(blockedId, startKey, "software:blocked-memory", true, 900);
+        await fixture.SeedProcessOwnershipAsync(healthyId, startKey,
+            CreateSoftwareIdOrderedAfterProcessTarget(healthyId, startKey), true, 902);
+        var ownership = await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(CancellationToken.None);
+        var blockedOwner = Assert.Single(ownership.Records, record => record.Primary.ProcessId == blockedId);
+        await PrepareOwnershipJournalAsync(fixture, blockedOwner, mismatchPayload: false);
+        await ApplyJournalRecoveryAsync(fixture, NativeTransactionJournalRecoveryOutcome.InvalidProof);
+        var current = 3U;
+        fixture.ProcessPolicyWriter.ProcessReadHandler = id =>
+        {
+            Assert.Equal(healthyId, id);
+            return new ProcessResourcePolicySnapshot(id, "fixture", @"c:\tests\fixture.exe",
+                started, "Normal", 1, 1, MemoryPriority: current);
+        };
+        fixture.ProcessPolicyWriter.BatchHandler = requests =>
+        {
+            var request = Assert.Single(requests);
+            Assert.Equal(healthyId, request.ProcessId);
+            Assert.Equal(5U, request.MemoryPriority);
+            current = 5;
+            return [new ProcessResourcePolicyBatchWriteResult(healthyId,
+                [new ProcessResourcePolicyBatchFieldResult(
+                    ProcessResourcePolicyBatchFields.MemoryPriority, true, "restored peer")])];
+        };
+
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
+        var retained = Assert.Single((await fixture.NativeTransactions.AppliedOwnership
+            .ReadSnapshotAsync(CancellationToken.None)).Records);
+        Assert.Equal(blockedOwner.Primary.ProcessId, retained.Primary.ProcessId);
+        Assert.Equal(blockedOwner.Payload.Slot, retained.Payload.Slot);
+        Assert.Equal((uint)NativeTransactionJournalPhase.RecoveryBlocked,
+            Assert.Single((await fixture.ReadJournalSnapshotAsync()).Records).Phase);
+    }
+
+    [Fact]
+    public async Task ProtectedRecordWithoutPayloadDoesNotStopOtherPayloadReconciliation()
+    {
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false);
+        var started = DateTimeOffset.UtcNow.AddMinutes(-5);
+        await fixture.SeedProcessOwnershipAsync(24_049, checked((ulong)started.ToFileTime()),
+            "software:healthy-payload", true, 900);
+        var owner = Assert.Single((await fixture.NativeTransactions.AppliedOwnership
+            .ReadSnapshotAsync(CancellationToken.None)).Records);
+        await PrepareOwnershipJournalAsync(fixture, owner, mismatchPayload: false);
+        Assert.True(fixture.NativeTransactions.TryAcquireExecutionAdmission(out var admission));
+        await using (admission)
+        {
+            var snapshot = await admission!.ReadSnapshotAsync(CancellationToken.None);
+            var valid = Assert.Single(snapshot.Records);
+            var bad = valid;
+            bad.Identity.ActionId += 100;
+            bad.Phase = (uint)NativeTransactionJournalPhase.RecoveryBlocked;
+            bad.PayloadSlot = 0;
+            var source = HostManagerAppliedOwnershipProjection.CreatePayloadBinding(owner);
+            var orphan = await admission.PersistPayloadAsync(source, new byte[] { 1, 2, 3 }, CancellationToken.None);
+            admission.RequirePayloadReconciliation();
+            await (Task)typeof(HostManagerSmartCoordinator)
+                .GetMethod("ReconcileNativePayloadsIfRequiredAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(fixture.Coordinator,
+                    [admission, snapshot with { Records = new[] { bad, valid } }, CancellationToken.None])!;
+
+            Assert.False(admission.PayloadReconciliationRequired);
+            Assert.NotEmpty(await admission.ReadPayloadAsync(
+                HostManagerAppliedOwnershipProjection.CreatePayloadReference(owner), source, CancellationToken.None));
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                admission.ReadPayloadAsync(orphan, source, CancellationToken.None));
+        }
+    }
+
+    [Fact]
     public async Task BlockedJournalTargetLeavesOtherOwnedNormalRestorationRunning()
     {
         const int processId = 24_049;
