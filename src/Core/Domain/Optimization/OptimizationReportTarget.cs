@@ -2,6 +2,7 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class OptimizationReportTargetTypes
 {
+    public const string ProcessInstance = "process_instance";
     public const string Software = "Software";
     public const string Drive = "Drive";
     public const string System = "System";

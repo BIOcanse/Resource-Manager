@@ -55,7 +55,11 @@ internal static class HostManagerReportPresentation
                 checked((int)Math.Min(output.ActiveSampleCount, int.MaxValue)),
                 checked((int)Math.Min(output.SampleCount, int.MaxValue)),
                 Math.Max(0, (observedAt - createdAt).TotalSeconds),
-                []),
+                [])
+            {
+                Process = IsStray(rule.FactKind) && targets.TryGetValue(output.TargetHandle, out var processTarget)
+                    ? processTarget.Process : null
+            },
             [
                 new OptimizationReportAction(
                     "dismiss",
@@ -104,6 +108,15 @@ internal static class HostManagerReportPresentation
         ulong targetHandle,
         IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor> targets)
     {
+        if (IsStray(kind))
+        {
+            targets.TryGetValue(targetHandle, out var process);
+            return new OptimizationReportTarget(OptimizationReportTargetTypes.ProcessInstance,
+                process?.Process is { } evidence ? $"process:{evidence.ProcessId}:{evidence.ProcessStartKey}" : $"process_handle:{targetHandle:x16}",
+                process?.Process?.Name ?? process?.SoftwareName ?? string.Empty,
+                process?.SoftwareId, process?.SoftwareName, process?.SoftwareKind, process?.DisplayKind,
+                process?.ProcessNames ?? [], process?.ProcessIds ?? [], null);
+        }
         if (IsSoftwareMemory(kind))
         {
             return targets.TryGetValue(targetHandle, out var software)
@@ -165,8 +178,10 @@ internal static class HostManagerReportPresentation
         => kind is HostManagerReportFactKind.SoftwareMemorySystemPercent
             or HostManagerReportFactKind.SoftwareMemoryBytes;
 
+    private static bool IsStray(HostManagerReportFactKind kind) => HostManagerStrayProcessReportFactProjector.Supports(kind);
+
     private static string ReportType(HostManagerReportFactKind kind)
-        => IsSoftwareMemory(kind)
+        => IsStray(kind) ? OptimizationReportTypes.SuspectedStrayProcess : IsSoftwareMemory(kind)
             ? OptimizationReportTypes.BackgroundHighUsage
             : kind is HostManagerReportFactKind.CpuTemperatureCelsius
             or HostManagerReportFactKind.CpuUsagePercent
@@ -175,7 +190,7 @@ internal static class HostManagerReportPresentation
             : OptimizationReportTypes.SystemInterruptPressure;
 
     private static string ResourceKind(HostManagerReportFactKind kind)
-        => IsSoftwareMemory(kind)
+        => IsStray(kind) ? OptimizationResourceKinds.Memory : IsSoftwareMemory(kind)
             ? OptimizationResourceKinds.Memory
             : kind is HostManagerReportFactKind.CpuTemperatureCelsius
             or HostManagerReportFactKind.CpuUsagePercent
@@ -184,7 +199,7 @@ internal static class HostManagerReportPresentation
             : OptimizationResourceKinds.SystemInterrupt;
 
     private static string TrustScope(HostManagerReportFactKind kind)
-        => IsSoftwareMemory(kind)
+        => IsStray(kind) ? "suspected_stray_process" : IsSoftwareMemory(kind)
             ? "software-memory"
             : kind is HostManagerReportFactKind.CpuTemperatureCelsius
             or HostManagerReportFactKind.CpuUsagePercent
@@ -213,8 +228,9 @@ internal static class HostManagerReportPresentation
                 => OptimizationValueUnits.Milliseconds,
             HostManagerReportFactKind.InterruptEventsAtOrAboveOneMillisecond
                 => OptimizationValueUnits.Count,
-            HostManagerReportFactKind.SoftwareMemoryBytes
+            HostManagerReportFactKind.SoftwareMemoryBytes or HostManagerReportFactKind.ProcessMemoryBytes
                 => OptimizationValueUnits.Bytes,
+            HostManagerReportFactKind.ProcessIdleMilliseconds => OptimizationValueUnits.Milliseconds,
             _ => OptimizationValueUnits.Percent
         };
 

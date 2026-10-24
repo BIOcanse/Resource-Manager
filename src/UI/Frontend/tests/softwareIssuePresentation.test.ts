@@ -34,6 +34,21 @@ for (const language of languageOptions) {
   const presentation = presentOptimizationReport(report);
   assert(presentation.title.length > 0 && presentation.summary.includes("12 ms"));
   assert(presentation.summary.includes(uiText.management.issueText.interruptAdvice));
+  const stray = { ...report, type: "suspected_stray_process", severity: "Info",
+    target: { ...report.target, targetType: "process_instance", displayName: "pwsh", processIds: [42] },
+    evidence: { ...report.evidence, resourceKind: "Memory", currentValue: 1, valueUnit: "B",
+      process: { processId: 42, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
+        idleDurationSeconds: 900, commandLine: 'pwsh -File "任务.ps1"' } }
+  } as OptimizationReportItem;
+  const strayPresentation = presentOptimizationReport(stray);
+  assert.equal(strayPresentation.title, uiText.optimizationReport.strayProcess.title("pwsh"));
+  assert(strayPresentation.summary.includes("50") && strayPresentation.summary.includes("15"));
+  const rendered = JSON.stringify(strayPresentation.details);
+  for (const value of ["42", "134000000000000000", "任务.ps1", uiText.optimizationReport.strayProcess.commandLine])
+    assert(rendered.includes(value), `${language.id}: missing stray evidence ${value}`);
+  assert(!strayPresentation.summary.includes("BACKEND_PROSE"));
+  const unavailable = presentOptimizationReport({ ...stray, evidence: { ...stray.evidence, process: null } });
+  assert(!unavailable.summary.includes("undefined") && !unavailable.summary.includes("null"));
   if (!["zh-CN", "zh-TW"].includes(language.id)) assert(!(label + message + softwareIssueMessage(catalog)).includes("内存占用异常"), language.id);
   console.log(`PASS software issue and interrupt report presentation ${language.id}`);
 }

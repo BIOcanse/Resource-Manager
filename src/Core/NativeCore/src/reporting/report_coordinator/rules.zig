@@ -368,6 +368,9 @@ fn validateFacts(
 }
 
 fn factShapeMatchesRule(fact: *const protocol.FactInput, rule: *const protocol.RuleInput) bool {
+    // An explicitly present fact without a value is unavailable for this target.
+    // Omission from a complete source still means the target has disappeared.
+    if (fact.flags == 0) return (rule.flags & protocol.RuleFlags.rolling) == 0;
     if (fact.sample_duration_milliseconds < rule.minimum_sample_duration_milliseconds) return false;
     const selector: protocol.MetricSelector = @enumFromInt(rule.metric_selector);
     const comparison: protocol.Comparison = @enumFromInt(rule.comparison);
@@ -410,6 +413,21 @@ fn observeComplete(
             fact.rule_handle,
             fact.target_handle,
         );
+        if (fact.flags == 0) {
+            if (existing) |slot_index| {
+                session.snapshotObservation(slot_index);
+                var observation = &session.observations[slot_index];
+                if (observation.delete_pending or observation.rule_generation != fact.rule_generation or
+                    fact.fact_sequence <= observation.last_fact_sequence) return .stale_frame;
+                observation.seen_operation_epoch = input.operation_epoch;
+                observation.last_fact_sequence = fact.fact_sequence;
+                observation.consecutive_hits = 0;
+                observation.consecutive_misses = 0;
+                observation.active_sample_count = 0;
+                observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
+            }
+            continue;
+        }
         const slot_index = existing orelse state.firstFreeFrom(
             state.ObservationSlot,
             session.observations,
@@ -498,6 +516,7 @@ fn observeComplete(
     const aggregate_result = window.aggregate(session, effective_now_utc_ms);
     if (aggregate_result != .ok) return aggregate_result;
     for (facts) |fact| {
+        if (fact.flags == 0) continue;
         const rule_index = session.findRule(fact.rule_handle) orelse return .invalid_argument;
         const rule = &session.rules[rule_index].value;
         const observation_index = session.findObservation(

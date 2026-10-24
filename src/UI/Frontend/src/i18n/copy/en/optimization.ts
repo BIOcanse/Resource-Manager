@@ -115,6 +115,14 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
       occurrences: "Times seen",
       occurrenceTimes: (count: number) => `${count} times`
     },
+    strayProcess: {
+      title: (name: string) => `Suspected stray process: ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name} holds ${memory} after ${duration} with no observed CPU or GPU activity. Check its command line before deciding whether it is still needed.`,
+      pid: "Process ID",
+      startKey: "Process start key",
+      idleDuration: "Idle duration",
+      commandLine: "Command line",
+    },
     duration: {
       days: (value: number) => `${value} d`,
       hours: (value: number) => `${value} h`,

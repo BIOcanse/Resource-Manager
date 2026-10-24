@@ -195,7 +195,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         for (var index = 0; index < facts.Length; index++)
         {
             var fact = source.Facts[index];
-            var flags = NativeReportFactFlags.CurrentValid;
+            var flags = fact.CurrentValue.HasValue ? NativeReportFactFlags.CurrentValid : NativeReportFactFlags.None;
             if (fact.EventCount is not null)
             {
                 flags |= NativeReportFactFlags.EventCountValid;
@@ -211,7 +211,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
                 FactSequence = state.PreviewNextFactSequence(
                     fact.Rule.RuleHandle,
                     fact.TargetHandle),
-                CurrentValue = fact.CurrentValue,
+                CurrentValue = fact.CurrentValue ?? 0,
                 EventCount = fact.EventCount ?? 0,
                 SampleDurationMilliseconds = checked(
                     (ulong)source.SampleDurationMilliseconds)

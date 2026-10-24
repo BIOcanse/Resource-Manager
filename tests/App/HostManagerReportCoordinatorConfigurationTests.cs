@@ -24,7 +24,7 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(21632, plan.Recreate.Capacity.MaximumBucketCount);
         Assert.Equal(32768, plan.Recreate.Capacity.MaximumPersistenceOperationCount);
         Assert.Equal(65536, plan.Recreate.Capacity.PlannedPersistenceIndexCapacity);
-        Assert.Equal(7, plan.Recreate.Rules.Length);
+        Assert.Equal(9, plan.Recreate.Rules.Length);
         Assert.DoesNotContain(plan.Recreate.Rules, rule => rule.RuleHandle == 1035);
         Assert.All(plan.Recreate.Rules, rule => Assert.NotEqual(0UL, rule.RuleGeneration));
         Assert.Equal(
@@ -55,6 +55,31 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(3_600_000, plan.HotPublish.BucketWidthMilliseconds);
         Assert.Equal(86_400_000, plan.HotPublish.Window24HoursMilliseconds);
         Assert.Equal(604_800_000, plan.HotPublish.Window7DaysMilliseconds);
+    }
+
+    [Fact]
+    public void StrayProcessRulesPublishVisibleDefaultsAndRejectMissingOptions()
+    {
+        var rules = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator.Recreate.Rules;
+        var memory = rules.Single(rule => rule.FactKind == HostManagerReportFactKind.ProcessMemoryBytes);
+        var idle = rules.Single(rule => rule.FactKind == HostManagerReportFactKind.ProcessIdleMilliseconds);
+        Assert.Equal(50 * 1024 * 1024, memory.ActivationThreshold);
+        Assert.Equal(45 * 1024 * 1024, memory.ClearThreshold);
+        Assert.Equal(900_000, idle.ActivationThreshold);
+        Assert.Equal(0, idle.ZeroActivityThreshold);
+        Assert.Equal(24, idle.ExecutableNames.Length);
+        Assert.Contains("VBCSCompiler", idle.ExecutableNames);
+        Assert.Equal(memory.PredicateGroupHandle, idle.PredicateGroupHandle);
+        Assert.Equal(2U, idle.PredicateCount);
+        Assert.Equal(1U, idle.Severity);
+        foreach (var field in new[] { "executable_names", "zero_activity_threshold" })
+            Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
+                root["host_recreate"]!["report_coordinator"]!["rules"]!.AsArray().Last()!.AsObject().Remove(field)));
+        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
+            root["host_recreate"]!["report_coordinator"]!["rules"]!.AsArray().Last()!["zero_activity_threshold"] = -1));
+        var changed = HostManagerTestPlanFactory.CreatePlan(root =>
+            root["host_recreate"]!["report_coordinator"]!["rules"]!.AsArray().Last()!["executable_names"] = new System.Text.Json.Nodes.JsonArray("custom"));
+        Assert.NotEqual(idle.RuleGeneration, changed.ReportCoordinator.Recreate.Rules.Last().RuleGeneration);
     }
 
     [Fact]

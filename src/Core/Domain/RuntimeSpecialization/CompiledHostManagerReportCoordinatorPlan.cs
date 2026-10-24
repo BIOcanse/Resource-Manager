@@ -110,6 +110,9 @@ public sealed record CompiledHostManagerReportCoordinatorRulePlan(
     uint PredicateIndex,
     uint PredicateCount)
 {
+    public ImmutableArray<string> ExecutableNames { get; init; } = [];
+    public double? ZeroActivityThreshold { get; init; }
+
     public bool IsPublished => Enum.IsDefined(FactKind)
         && RuleHandle > 0
         && RuleGeneration > 0

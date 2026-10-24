@@ -192,6 +192,7 @@ function decodeTarget(value: unknown, path: string): OptimizationReportTarget {
 function decodeEvidence(value: unknown, path: string): OptimizationReportEvidence {
   const record = requireRecord(value, path);
   return Object.freeze({
+    process: record.process == null ? null : decodeProcessEvidence(record.process, `${path}.process`),
     resourceKind: requireNonEmptyString(record.resourceKind, `${path}.resourceKind`),
     averageValue: requireFiniteNumber(record.averageValue, `${path}.averageValue`),
     peakValue: requireFiniteNumber(record.peakValue, `${path}.peakValue`),
@@ -205,6 +206,18 @@ function decodeEvidence(value: unknown, path: string): OptimizationReportEvidenc
       record.durationSeconds,
       `${path}.durationSeconds`),
     details: Object.freeze(requireStringArray(record.details, `${path}.details`))
+  });
+}
+
+function decodeProcessEvidence(value: unknown, path: string): NonNullable<OptimizationReportEvidence["process"]> {
+  const record = requireRecord(value, path);
+  return Object.freeze({
+    processId: requireNonNegativeSafeInteger(record.processId, `${path}.processId`),
+    processStartKey: requireNonEmptyString(record.processStartKey, `${path}.processStartKey`),
+    name: requireNonEmptyString(record.name, `${path}.name`),
+    memoryBytes: requireNullable(record.memoryBytes, `${path}.memoryBytes`, requireNonNegativeFiniteNumber),
+    idleDurationSeconds: requireNullable(record.idleDurationSeconds, `${path}.idleDurationSeconds`, requireNonNegativeFiniteNumber),
+    commandLine: requireNullable(record.commandLine, `${path}.commandLine`, requireString)
   });
 }
 

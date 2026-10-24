@@ -32,6 +32,7 @@ export function optimizationSeverityLabel(value: string) {
 
 function reportTitle(type: string, name: string, resource: string) {
   switch (type) {
+    case "suspected_stray_process": return uiText.optimizationReport.strayProcess.title(name);
     case "GameBackgroundResourceUsage": return uiText.optimizationReport.title.gameBackgroundResourceUsage(name);
     case "BackgroundHighUsage": return uiText.optimizationReport.title.backgroundHighUsage(name, resource);
     case "BackgroundPersistentMicroUsage": return uiText.optimizationReport.title.backgroundPersistentMicroUsage(name);
@@ -61,6 +62,12 @@ function reportSummary(report: OptimizationReportItem, name: string, resource: s
   const current = optimizationEvidenceValue(report.evidence, report.evidence.currentValue);
   const average = optimizationEvidenceValue(report.evidence, report.evidence.averageValue);
   switch (report.type) {
+    case "suspected_stray_process": {
+      const process = report.evidence.process;
+      return uiText.optimizationReport.strayProcess.summary(name,
+        process?.memoryBytes == null ? userFacingOptionalValue(null) : formatBytes(process.memoryBytes, "memory"),
+        process?.idleDurationSeconds == null ? userFacingOptionalValue(null) : formatDuration(process.idleDurationSeconds));
+    }
     case "DiskPressure": return uiText.optimizationReport.summary.diskPressure(name, current);
     case "SoftwareFootprint": return uiText.optimizationReport.summary.softwareFootprint(name, current);
     case "RollingDiskTraffic":
@@ -75,6 +82,19 @@ function reportSummary(report: OptimizationReportItem, name: string, resource: s
 }
 
 function reportDetails(report: OptimizationReportItem, name: string, resource: string): UserDetailSection[] {
+  if (report.type === "suspected_stray_process") {
+    const process = report.evidence.process;
+    const text = uiText.optimizationReport;
+    return compactUserDetailSections([userDetailSection(text.detail.currentSituation, [
+      userDetailItem(text.detail.target, name),
+      userDetailItem(text.strayProcess.pid, process?.processId.toString() ?? userFacingOptionalValue(null)),
+      userDetailItem(text.strayProcess.startKey, process?.processStartKey ?? userFacingOptionalValue(null)),
+      userDetailItem(text.resource.memory, process?.memoryBytes == null ? userFacingOptionalValue(null) : formatBytes(process.memoryBytes, "memory")),
+      userDetailItem(text.strayProcess.idleDuration, process?.idleDurationSeconds == null ? userFacingOptionalValue(null) : formatDuration(process.idleDurationSeconds)),
+      userDetailItem(text.strayProcess.commandLine, userFacingOptionalValue(process?.commandLine)),
+      userDetailItem(text.detail.lastObserved, userFacingDateTime(report.lastObservedAt))
+    ])]);
+  }
   const foreground = report.context?.contextKind === "Game"
     ? report.context.foregroundSoftwareName || report.context.foregroundProcessName
     : null;

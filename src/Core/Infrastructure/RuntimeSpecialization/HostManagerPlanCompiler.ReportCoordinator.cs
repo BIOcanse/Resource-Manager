@@ -193,6 +193,8 @@ public sealed partial class HostManagerPlanCompiler
         foreach (var item in source)
         {
             ArgumentNullException.ThrowIfNull(item);
+            if (item.FactKind == HostManagerReportFactKind.ProcessIdleMilliseconds && item.ExecutableNames is null)
+                throw Missing("host_recreate.report_coordinator.rules.executable_names");
             var rule = new CompiledHostManagerReportCoordinatorRulePlan(
                 item.FactKind,
                 item.RuleHandle,
@@ -217,7 +219,11 @@ public sealed partial class HostManagerPlanCompiler
                 item.Rolling,
                 item.PredicateGroupHandle,
                 item.PredicateIndex,
-                item.PredicateCount);
+                item.PredicateCount)
+            {
+                ExecutableNames = item.ExecutableNames?.ToImmutableArray() ?? [],
+                ZeroActivityThreshold = item.ZeroActivityThreshold
+            };
             ValidateReportCoordinatorRule(rule);
             if (!handles.Add(rule.RuleHandle))
             {
@@ -275,6 +281,21 @@ public sealed partial class HostManagerPlanCompiler
     private static void ValidateReportCoordinatorRule(
         CompiledHostManagerReportCoordinatorRulePlan rule)
     {
+        if (rule.FactKind == HostManagerReportFactKind.ProcessIdleMilliseconds)
+        {
+            if (rule.ZeroActivityThreshold is not { } zero || !double.IsFinite(zero) || zero < 0
+                || rule.ExecutableNames.IsDefault
+                || rule.ExecutableNames.Any(name => string.IsNullOrWhiteSpace(name)
+                    || name.IndexOfAny(['/', '\\', ':']) >= 0)
+                || rule.ExecutableNames.Distinct(StringComparer.OrdinalIgnoreCase).Count() != rule.ExecutableNames.Length
+                || rule.ActivationThreshold <= 0 || rule.ClearThreshold <= 0
+                || rule.Comparison != 1 || rule.MetricSelector != 1
+                || rule.RequiredConsecutiveHits != 1 || rule.RequiredConsecutiveMisses != 1)
+                throw new InvalidDataException("Process idle rules require explicit executable_names, zero_activity_threshold and positive wall-time thresholds.");
+        }
+        else if (!rule.ExecutableNames.IsEmpty || rule.ZeroActivityThreshold is not null)
+            throw new InvalidDataException("Process idle options belong only to process idle facts.");
+
         if (!rule.IsPublished)
         {
             throw new InvalidDataException(

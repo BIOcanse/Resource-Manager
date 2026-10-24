@@ -1903,6 +1903,45 @@ test "full observation capacity rejects a new target without changing existing r
     }
 }
 
+test "unavailable fact affects only its target and expires without renewing evidence" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{ factForTarget(1, 41, 60), factForTarget(1, 42, 60) });
+    try fixture.observeComplete(4, 4, 2, 110, &.{ factForTarget(2, 41, 60), factForTarget(2, 42, 60) });
+    var missing = factForTarget(3, 41, 0);
+    missing.flags = 0;
+    try fixture.observeComplete(5, 5, 3, 120, &.{ missing, factForTarget(3, 42, 0) });
+    missing.fact_sequence = 4;
+    try fixture.observeComplete(6, 6, 4, 130, &.{ missing, factForTarget(4, 42, 0) });
+    const a = fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, 41).?;
+    const b = fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, 42).?;
+    try std.testing.expect(fixture.session.observations[a].active);
+    try std.testing.expect(!fixture.session.observations[b].active);
+    try std.testing.expectEqual(@as(i64, 110), fixture.session.observations[a].last_observed_at_utc_ms);
+    try std.testing.expectEqual(@as(u64, 2), fixture.session.observations[a].sample_count);
+    try std.testing.expectEqual(@as(u32, 0), fixture.session.observations[a].consecutive_hits);
+    missing.fact_sequence = 5;
+    try fixture.observeComplete(7, 7, 5, 10_111, &.{missing});
+    try std.testing.expect(!fixture.session.observations[a].active);
+}
+
+test "unavailable fact resets pending hits and complete absence still clears" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{fact(1, 60)});
+    var missing = fact(2, 0);
+    missing.flags = 0;
+    try fixture.observeComplete(4, 4, 2, 110, &.{missing});
+    try fixture.observeComplete(5, 5, 3, 120, &.{fact(3, 60)});
+    const index = fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?;
+    try std.testing.expect(!fixture.session.observations[index].active);
+    try fixture.observeComplete(6, 6, 4, 130, &.{fact(4, 60)});
+    try std.testing.expect(fixture.session.observations[index].active);
+    try fixture.observeComplete(7, 7, 5, 140, &.{});
+    try fixture.observeComplete(8, 8, 6, 150, &.{});
+    try std.testing.expect(!fixture.session.observations[index].active);
+}
+
 const Fixture = struct {
     config: protocol.Config,
     session: *state.Session,

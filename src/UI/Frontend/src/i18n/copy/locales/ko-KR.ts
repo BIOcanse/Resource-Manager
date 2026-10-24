@@ -919,6 +919,14 @@ const koKrAppCopy: AppCopy = {
       occurrences: "발견 횟수",
       occurrenceTimes: (count: number) => `${count}회`
     },
+    strayProcess: {
+      title: (name: string) => `잔류 의심 프로세스: ${name}`,
+      summary: (name: string, memory: string, duration: string) => `${name}이(가) ${memory}를 점유하며 ${duration} 동안 CPU 및 GPU 활동이 관측되지 않았습니다. 명령줄을 확인한 후 계속 필요한지 판단하세요.`,
+      pid: "프로세스 ID",
+      startKey: "프로세스 시작 식별자",
+      idleDuration: "유휴 시간",
+      commandLine: "명령줄",
+    },
     duration: {
       days: (value: number) => `${value}일`,
       hours: (value: number) => `${value}시간`,

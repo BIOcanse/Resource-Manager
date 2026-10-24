@@ -102,12 +102,17 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
     {
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT target_handle, software_id, software_name, software_kind, display_kind FROM host_manager_report_target_identities;";
+        command.CommandText = "SELECT target_handle, software_id, software_name, software_kind, display_kind, process_evidence FROM host_manager_report_target_identities;";
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var targets = new List<HostManagerReportTargetDescriptor>();
         while (await reader.ReadAsync(cancellationToken))
+        {
+            var process = reader.IsDBNull(5) ? null : System.Text.Json.JsonSerializer.Deserialize<ResourceManager.App.Domain.Optimization.OptimizationProcessEvidence>(reader.GetString(5))
+                ?? throw new InvalidDataException("Persisted process report evidence is null.");
             targets.Add(new HostManagerReportTargetDescriptor(unchecked((ulong)reader.GetInt64(0)),
-                reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), [], []));
+                reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                process is null ? [] : [process.Name], process is null ? [] : [process.ProcessId], process));
+        }
         return targets.ToArray();
     }
 
@@ -133,16 +138,18 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
             await using var write = connection.CreateCommand();
             write.Transaction = transaction;
             write.CommandText = """
-                INSERT INTO host_manager_report_target_identities VALUES ($handle, $id, $name, $kind, $display)
+                INSERT INTO host_manager_report_target_identities(target_handle, software_id, software_name, software_kind, display_kind, process_evidence)
+                VALUES ($handle, $id, $name, $kind, $display, $process)
                 ON CONFLICT(target_handle) DO UPDATE SET software_id=excluded.software_id,
                     software_name=excluded.software_name, software_kind=excluded.software_kind,
-                    display_kind=excluded.display_kind;
+                    display_kind=excluded.display_kind, process_evidence=excluded.process_evidence;
                 """;
             write.Parameters.AddWithValue("$handle", unchecked((long)target.TargetHandle));
             write.Parameters.AddWithValue("$id", target.SoftwareId);
             write.Parameters.AddWithValue("$name", target.SoftwareName);
             write.Parameters.AddWithValue("$kind", target.SoftwareKind);
             write.Parameters.AddWithValue("$display", target.DisplayKind);
+            write.Parameters.AddWithValue("$process", target.Process is null ? DBNull.Value : System.Text.Json.JsonSerializer.Serialize(target.Process));
             await write.ExecuteNonQueryAsync(cancellationToken);
         }
         var obsolete = new List<long>();
