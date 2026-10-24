@@ -12,12 +12,12 @@ internal sealed class SystemInterruptWindowAggregator
 
     public void Observe(SystemInterruptEventSample sample)
     {
-        var sliceKey = sample.ObservedAt.ToUnixTimeSeconds();
+        var sliceKey = sample.ObservedTickMilliseconds / 1000;
         lock (gate)
         {
             if (!slices.TryGetValue(sliceKey, out var slice))
             {
-                slice = new InterruptSlice(DateTimeOffset.FromUnixTimeSeconds(sliceKey));
+                slice = new InterruptSlice(sliceKey * 1000);
                 slices[sliceKey] = slice;
             }
 
@@ -27,28 +27,30 @@ internal sealed class SystemInterruptWindowAggregator
 
     public SystemInterruptSnapshot CreateSnapshot(
         DateTimeOffset now,
+        long nowTickMilliseconds,
         long sourceGeneration,
-        DateTimeOffset sessionStartedAt,
+        long sessionStartedTickMilliseconds,
         int logicalProcessorCount,
         SystemInterruptProviderState providerState)
     {
         var processorCount = Math.Max(1, logicalProcessorCount);
-        var startedAt = Max(sessionStartedAt, now - Window);
-        var window = now - startedAt;
-        var available = window >= BucketDuration;
+        var startedAt = Math.Max(sessionStartedTickMilliseconds, nowTickMilliseconds - (long)Window.TotalMilliseconds);
+        var window = TimeSpan.FromMilliseconds(Math.Max(0, nowTickMilliseconds - startedAt));
 
         lock (gate)
         {
-            PruneCore(now - Window - TimeSpan.FromSeconds(1));
+            PruneCore(nowTickMilliseconds - (long)Window.TotalMilliseconds - 1000);
             var selected = slices.Values
-                .Where(slice => slice.StartedAt >= startedAt && slice.StartedAt <= now)
+                .Where(slice => slice.StartedAt >= startedAt && slice.StartedAt <= nowTickMilliseconds)
                 .OrderBy(static slice => slice.StartedAt)
                 .ToArray();
             var maximum = selected
                 .Select(static slice => slice.Maximum)
-                .Where(static sample => sample is not null)
-                .MaxBy(static sample => sample!.DurationMilliseconds);
+                .Where(static sample => sample.HasValue)
+                .MaxBy(static sample => sample!.Value.DurationMilliseconds);
             var totalDuration = selected.Sum(static slice => slice.TotalDurationMilliseconds);
+            var buckets = CreateBuckets(now, nowTickMilliseconds, startedAt, processorCount, selected);
+            var available = buckets.Count > 0;
 
             return new SystemInterruptSnapshot(
                 now,
@@ -63,7 +65,7 @@ internal sealed class SystemInterruptWindowAggregator
                 selected.Sum(static slice => slice.EventCount),
                 selected.Sum(static slice => slice.LongEventCount),
                 CapacityPercent(totalDuration, window.TotalMilliseconds, processorCount),
-                CreateBuckets(now, startedAt, processorCount, selected),
+                buckets,
                 CreateDrivers(window, processorCount, selected),
                 available
                     ? providerState
@@ -83,7 +85,7 @@ internal sealed class SystemInterruptWindowAggregator
         }
     }
 
-    private void PruneCore(DateTimeOffset cutoff)
+    private void PruneCore(long cutoff)
     {
         foreach (var key in slices
             .Where(pair => pair.Value.StartedAt < cutoff)
@@ -96,24 +98,25 @@ internal sealed class SystemInterruptWindowAggregator
 
     private static IReadOnlyList<SystemInterruptBucketSnapshot> CreateBuckets(
         DateTimeOffset now,
-        DateTimeOffset startedAt,
+        long nowTickMilliseconds,
+        long startedAt,
         int logicalProcessorCount,
         IReadOnlyList<InterruptSlice> slices)
     {
         var buckets = new List<SystemInterruptBucketSnapshot>();
-        var bucketSeconds = (long)BucketDuration.TotalSeconds;
-        var bucketEnd = DateTimeOffset.FromUnixTimeSeconds(
-            now.ToUnixTimeSeconds() / bucketSeconds * bucketSeconds);
-        while (bucketEnd - BucketDuration >= startedAt && buckets.Count < 6)
+        var bucketMilliseconds = (long)BucketDuration.TotalMilliseconds;
+        // Anchor complete buckets to observed coverage, never to a wall-clock boundary.
+        var bucketEnd = startedAt + (nowTickMilliseconds - startedAt) / bucketMilliseconds * bucketMilliseconds;
+        while (bucketEnd - bucketMilliseconds >= startedAt && buckets.Count < 6)
         {
-            var bucketStart = bucketEnd - BucketDuration;
+            var bucketStart = bucketEnd - bucketMilliseconds;
             var bucketSlices = slices
-                .Where(slice => slice.StartedAt > bucketStart && slice.StartedAt <= bucketEnd)
+                .Where(slice => slice.StartedAt >= bucketStart && slice.StartedAt < bucketEnd)
                 .ToArray();
             var totalDuration = bucketSlices.Sum(static slice => slice.TotalDurationMilliseconds);
             buckets.Add(new SystemInterruptBucketSnapshot(
-                bucketStart,
-                bucketEnd,
+                now.AddMilliseconds(bucketStart - nowTickMilliseconds),
+                now.AddMilliseconds(bucketEnd - nowTickMilliseconds),
                 totalDuration,
                 CapacityPercent(totalDuration, BucketDuration.TotalMilliseconds, logicalProcessorCount),
                 bucketSlices.Sum(static slice => slice.EventCount)));
@@ -165,14 +168,9 @@ internal sealed class SystemInterruptWindowAggregator
             : Math.Round(Math.Clamp(durationMilliseconds * 100d / capacityMilliseconds, 0, 100), 4);
     }
 
-    private static DateTimeOffset Max(DateTimeOffset left, DateTimeOffset right)
+    private sealed class InterruptSlice(long startedAt)
     {
-        return left >= right ? left : right;
-    }
-
-    private sealed class InterruptSlice(DateTimeOffset startedAt)
-    {
-        public DateTimeOffset StartedAt { get; } = startedAt;
+        public long StartedAt { get; } = startedAt;
         public double TotalDurationMilliseconds { get; private set; }
         public int EventCount { get; private set; }
         public int LongEventCount { get; private set; }
@@ -188,7 +186,7 @@ internal sealed class SystemInterruptWindowAggregator
                 LongEventCount++;
             }
 
-            if (Maximum is null || sample.DurationMilliseconds > Maximum.DurationMilliseconds)
+            if (Maximum is null || sample.DurationMilliseconds > Maximum.Value.DurationMilliseconds)
             {
                 Maximum = sample;
             }
@@ -234,8 +232,8 @@ internal sealed class SystemInterruptWindowAggregator
     }
 }
 
-internal sealed record SystemInterruptEventSample(
-    DateTimeOffset ObservedAt,
+internal readonly record struct SystemInterruptEventSample(
+    long ObservedTickMilliseconds,
     string Kind,
     double DurationMilliseconds,
     ulong RoutineAddress,

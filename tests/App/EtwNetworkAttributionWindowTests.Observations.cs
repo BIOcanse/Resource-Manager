@@ -13,7 +13,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class EtwNetworkAttributionWindowTests
 {
     [Fact]
-    public void DefaultRateReadDoesNotQueryProcessIdentityOrBuildAnObservedWindow()
+    public void DefaultRateReadVerifiesIdentityWithoutPublishingAnObservedWindow()
     {
         var broker = new Broker();
         long tick = 0;
@@ -26,9 +26,9 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var ordinary = reader.Read();
         Assert.Equal(1000, ordinary.RawProcessValues[41].SendBytesPerSecond);
         Assert.Null(ordinary.ObservedTraffic);
-        Assert.Equal(0, opens);
-        Assert.Equal("2000", Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes).SendBytes);
         Assert.Equal(1, opens);
+        Assert.Equal("2000", Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes).SendBytes);
+        Assert.Equal(2, opens);
         Assert.Equal(1, broker.SubscribeCount);
     }
 
@@ -105,11 +105,14 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Transfer(reader, broker, 41, 7, true, false, IPAddress.Loopback, 1200, 201);
         tick = 2001;
 
-        var row = Assert.Single(reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes);
+        var snapshot = reader.Read(includeObservedTraffic: true);
+        var row = Assert.Single(snapshot.ObservedTraffic!.Processes);
 
         Assert.Equal("200", row.CreationWindowsFileTime100Ns);
         Assert.Equal("3", row.ReceiveBytes);
         Assert.Equal("7", row.SendBytes);
+        Assert.Equal(200UL, snapshot.RawProcessValues[41].ProcessStartKey);
+        Assert.Equal(3.5, snapshot.RawProcessValues[41].SendBytesPerSecond);
     }
 
     [Theory]
@@ -145,9 +148,12 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Transfer(reader, broker, 42, 5, false, true, IPAddress.Loopback, 1100, 200);
         tick = 2001;
 
-        var rows = reader.Read(includeObservedTraffic: true).ObservedTraffic!.Processes;
+        var snapshot = reader.Read(includeObservedTraffic: true);
+        var rows = snapshot.ObservedTraffic!.Processes;
 
         Assert.Equal(2, rows.Count);
+        Assert.DoesNotContain(41, snapshot.RawProcessValues.Keys);
+        Assert.Equal(200UL, snapshot.RawProcessValues[42].ProcessStartKey);
         Assert.Equal(new ProcessNetworkTrafficObservation(41, null, null, null, null, null), rows[0]);
         Assert.Equal("5", rows[1].ReceiveBytes);
         Assert.Equal("0", rows[1].SendBytes);
@@ -268,7 +274,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         var birth = checked((ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc());
         var broker = new Broker();
         long tick = 0;
-        using var reader = NewReader(broker, () => tick);
+        using var reader = ObservationReader(broker, () => tick, WindowsNetworkEndpointProcessLease.Open);
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, process.Id, 1025, false, true, IPAddress.Loopback, 1000, birth);
         tick = 2001;

@@ -90,6 +90,7 @@ public sealed partial class IpHelperNetworkAttributionReader
             }
 
             target.ActivityEventCount += source.ActivityEventCount;
+            target.ProcessStartKey = source.ProcessStartKey;
             target.IsKnownProxy |= proxyCatalog.IsKnownProxyProcessName(
                 GetProcessName(source.ProcessId, processNames));
         }
@@ -184,8 +185,15 @@ public sealed partial class IpHelperNetworkAttributionReader
         int endpointCount,
         int exactTcpConnections,
         int etwActivityEvents,
-        double systemBytesPerSecond)
+        double systemBytesPerSecond,
+        bool hasEstimatedContributions)
     {
+        if (hasEstimatedContributions)
+        {
+            return new NetworkAttributionProviderState("ip-helper-network", "Degraded",
+                "部分网络速率按活动 endpoint 权重估算，或由已知代理重新分配。");
+        }
+
         if (exactTcpConnections > 0 || etwActivityEvents > 0)
         {
             return new NetworkAttributionProviderState(

@@ -16,6 +16,7 @@ public sealed partial class IpHelperNetworkAttributionReader
         public bool IsEstimated { get; set; }
         public bool IsKnownProxy { get; set; }
         public int ActivityEventCount { get; set; }
+        public ulong? ProcessStartKey { get; set; }
         public double TotalBytesPerSecond => ReceiveBytesPerSecond + SendBytesPerSecond;
 
         public NetworkProcessAttribution ToSnapshot(int processId)
@@ -28,7 +29,7 @@ public sealed partial class IpHelperNetworkAttributionReader
                 UdpSocketCount,
                 IsEstimated,
                 IsKnownProxy,
-                ActivityEventCount);
+                ActivityEventCount) { ProcessStartKey = ProcessStartKey };
         }
     }
 

@@ -28,6 +28,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private readonly object resourceDisposeGate = new();
     private readonly object eventGate = new();
     private readonly Func<DateTimeOffset> readUtcNow = static () => DateTimeOffset.UtcNow;
+    private readonly Func<long> readTickMilliseconds = static () => Environment.TickCount64;
     private readonly SemaphoreSlim demandSignal = new(0, 1);
     private KernelModuleAddressMap modules = new();
     private SystemInterruptWindowAggregator aggregator = new();
@@ -39,7 +40,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private bool disposed;
     private bool ownedResourcesDisposed;
     private long nextLeaseId;
-    private DateTimeOffset sessionStartedAt = DateTimeOffset.MinValue;
+    private long sessionStartedTick = long.MinValue;
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     private volatile string state = "Idle";
     private volatile string message = "ETW 系统中断监控按报告需求启动。";
@@ -71,10 +72,12 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     internal EtwSystemInterruptSnapshotSource(IKernelEtwSessionBroker kernelEtwBroker,
         HostManagerSamplingSubscriptionOwner subscriptionOwner,
-        ILogger<EtwSystemInterruptSnapshotSource> logger, Func<DateTimeOffset> readUtcNow)
+        ILogger<EtwSystemInterruptSnapshotSource> logger, Func<DateTimeOffset> readUtcNow,
+        Func<long> readTickMilliseconds)
         : this(kernelEtwBroker, subscriptionOwner, logger)
     {
         this.readUtcNow = readUtcNow ?? throw new ArgumentNullException(nameof(readUtcNow));
+        this.readTickMilliseconds = readTickMilliseconds ?? throw new ArgumentNullException(nameof(readTickMilliseconds));
     }
 
     public ulong ZoneKey => ZoneObjectKey;
@@ -134,7 +137,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             await worker.RunAsync((plan, _) =>
             {
                 EnsureStarted();
-                var sampled = TryPublishCurrentSnapshot(DateTimeOffset.UtcNow, plan.OwnerToken);
+                var sampled = TryPublishCurrentSnapshot(readUtcNow(), plan.OwnerToken);
                 return Task.FromResult(!plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
                     : sampled ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Failed);
             }, stoppingToken);
@@ -252,39 +255,39 @@ public sealed class EtwSystemInterruptSnapshotSource(
         {
             Volatile.Write(ref modules, sessionModules);
             Volatile.Write(ref aggregator, sessionAggregator);
-            sessionStartedAt = readUtcNow();
+            sessionStartedTick = readTickMilliseconds();
             observedBrokerLoss = 0;
             Volatile.Write(ref sessionGeneration, context.Generation);
             state = "Running";
             message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
-            PublishCurrentWindow(sessionStartedAt);
+            PublishCurrentWindow(readUtcNow());
         }
         kernel.PerfInfoISR += data => ObserveBoundInterrupt(
             kernel, context, sessionModules, sessionAggregator,
             SystemInterruptEventKinds.Isr,
             data.ElapsedTimeMSec,
-            data.Routine, readUtcNow());
+            data.Routine, readTickMilliseconds());
         kernel.PerfInfoDPC += data => ObserveBoundInterrupt(
             kernel, context, sessionModules, sessionAggregator,
             SystemInterruptEventKinds.Dpc,
             data.ElapsedTimeMSec,
-            data.Routine, readUtcNow());
+            data.Routine, readTickMilliseconds());
         kernel.PerfInfoThreadedDPC += data => ObserveBoundInterrupt(
             kernel, context, sessionModules, sessionAggregator,
             SystemInterruptEventKinds.ThreadedDpc,
             data.ElapsedTimeMSec,
-            data.Routine, readUtcNow());
+            data.Routine, readTickMilliseconds());
         kernel.PerfInfoTimerDPC += data => ObserveBoundInterrupt(
             kernel, context, sessionModules, sessionAggregator,
             SystemInterruptEventKinds.TimerDpc,
             data.ElapsedTimeMSec,
-            data.Routine, readUtcNow());
+            data.Routine, readTickMilliseconds());
         kernel.ImageDCStart += data => ObserveBoundImage(kernel, context, sessionModules,
-            data.ImageBase, data.ImageSize, data.FileName, false, readUtcNow());
+            data.ImageBase, data.ImageSize, data.FileName, false, readTickMilliseconds());
         kernel.ImageLoad += data => ObserveBoundImage(kernel, context, sessionModules,
-            data.ImageBase, data.ImageSize, data.FileName, false, readUtcNow());
+            data.ImageBase, data.ImageSize, data.FileName, false, readTickMilliseconds());
         kernel.ImageUnload += data => ObserveBoundImage(kernel, context, sessionModules,
-            data.ImageBase, data.ImageSize, data.FileName, true, readUtcNow());
+            data.ImageBase, data.ImageSize, data.FileName, true, readTickMilliseconds());
     }
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
@@ -302,9 +305,9 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 // A missed unload invalidates address ownership as well as totals.
                 modules.Clear();
                 aggregator.Reset();
-                sessionStartedAt = readUtcNow();
+                sessionStartedTick = readTickMilliseconds();
                 observedBrokerLoss = snapshot.EventsLost;
-                PublishCurrentWindow(sessionStartedAt);
+                PublishCurrentWindow(readUtcNow());
             }
             return;
         }
@@ -339,11 +342,11 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 if (generation != Volatile.Read(ref sessionGeneration)
                     || observedBrokerLoss != brokerSnapshot.EventsLost) return false;
                 sampledAggregator = aggregator;
-                if (now < sessionStartedAt) now = sessionStartedAt;
                 candidate = sampledAggregator.CreateSnapshot(
                     now,
+                    readTickMilliseconds() - sessionStartedTick,
                     generation,
-                    sessionStartedAt,
+                    0,
                     Environment.ProcessorCount,
                     new SystemInterruptProviderState(
                         "etw-system-interrupts",
@@ -371,8 +374,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     // Call only while holding eventGate.
     private void PublishCurrentWindow(DateTimeOffset now)
-        => Volatile.Write(ref latestSnapshot, aggregator.CreateSnapshot(now, sessionGeneration,
-            sessionStartedAt, Environment.ProcessorCount,
+        => Volatile.Write(ref latestSnapshot, aggregator.CreateSnapshot(now, readTickMilliseconds() - sessionStartedTick, sessionGeneration,
+            0, Environment.ProcessorCount,
             new SystemInterruptProviderState("etw-system-interrupts", state, message, observedBrokerLoss)));
 
     private void PublishUnavailable(string snapshotState, string snapshotMessage)
@@ -385,7 +388,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private void ObserveBoundInterrupt(KernelEtwEventSource source, KernelEtwSessionContext context,
         KernelModuleAddressMap sessionModules,
         SystemInterruptWindowAggregator sessionAggregator,
-        string kind, double durationMilliseconds, ulong routineAddress, DateTimeOffset observedAt)
+        string kind, double durationMilliseconds, ulong routineAddress, long observedTick)
     {
         if (!double.IsFinite(durationMilliseconds) || durationMilliseconds <= 0)
         {
@@ -397,22 +400,22 @@ public sealed class EtwSystemInterruptSnapshotSource(
             if (!source.IsActive || context.Generation != sessionGeneration
                 || !ReferenceEquals(sessionModules, modules)
                 || !ReferenceEquals(sessionAggregator, aggregator)
-                || observedAt <= sessionStartedAt) return;
+                || observedTick < sessionStartedTick) return;
             var module = sessionModules.Resolve(routineAddress);
             sessionAggregator.Observe(new SystemInterruptEventSample(
-                observedAt, kind, durationMilliseconds, routineAddress, module.Name, module.Path));
+                observedTick - sessionStartedTick, kind, durationMilliseconds, routineAddress, module.Name, module.Path));
         }
     }
 
     private void ObserveBoundImage(KernelEtwEventSource source, KernelEtwSessionContext context,
         KernelModuleAddressMap sessionModules, ulong imageBase, int imageSize,
-        string? fileName, bool unload, DateTimeOffset observedAt)
+        string? fileName, bool unload, long observedTick)
     {
         lock (eventGate)
         {
             if (!source.IsActive || context.Generation != sessionGeneration
                 || !ReferenceEquals(sessionModules, modules)
-                || observedAt <= sessionStartedAt) return;
+                || observedTick < sessionStartedTick) return;
             if (unload) sessionModules.Remove(imageBase);
             else sessionModules.Upsert(imageBase, imageSize, fileName);
         }
@@ -431,7 +434,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             {
                 aggregatorToReset = Volatile.Read(ref aggregator);
                 modulesToClear = Volatile.Read(ref modules);
-                sessionStartedAt = DateTimeOffset.MinValue;
+                sessionStartedTick = long.MinValue;
                 Volatile.Write(ref sessionGeneration, 0);
             }
         }
@@ -444,7 +447,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             if (kernelSubscription is not null) return;
             lock (eventGate)
             {
-                sessionStartedAt = DateTimeOffset.MinValue;
+                sessionStartedTick = long.MinValue;
                 Volatile.Write(ref sessionGeneration, 0);
                 state = idleState;
                 message = idleMessage;

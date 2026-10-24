@@ -15,6 +15,21 @@ namespace ResourceManager.App.Tests;
 
 public sealed class MftDiskUsageOwnerLibraryIntegrationTests
 {
+    [Theory]
+    [InlineData(3, 1_000_000)]
+    [InlineData(100, 1_200)]
+    public async Task RetainedInputLimitsIncludeExtensionNamesAndMarkPartialCoverage(int countLimit, long byteLimit)
+    {
+        var scanner = new SdkScanner(new Catalog(), openReader: _ => new Reader(Image()),
+            retainedInputBudgetBytes: byteLimit, maximumRetainedRecords: countLimit);
+        var result = await scanner.ScanAsync(new(DiskUsageScanScopes.Volume, DiskUsageScanModes.Fast, "C:"), null, default);
+        Assert.False(result.Summary.IsComplete);
+        Assert.True(result.Summary.SkippedCount > 0);
+        var root = Assert.Single(result.Tree.Roots);
+        Assert.False(result.Tree.CountKnownOf(root));
+        Assert.False(result.Tree.LogicalSizeKnownOf(root));
+        Assert.True(result.Tree.Count <= countLimit);
+    }
 
     [Fact]
     public void ParserKeepsResidentZeroAndExactSparseMetadata()

@@ -32,6 +32,7 @@ public sealed record NetworkProcessAttribution(
     bool IsKnownProxy = false,
     int ActivityEventCount = 0)
 {
+    public ulong? ProcessStartKey { get; init; }
     public double TotalBytesPerSecond => ReceiveBytesPerSecond + SendBytesPerSecond;
 }
 

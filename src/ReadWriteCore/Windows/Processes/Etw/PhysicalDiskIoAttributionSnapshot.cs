@@ -30,6 +30,7 @@ public sealed record PhysicalDiskProcessAttribution(
     int ReadEventCount,
     int WriteEventCount)
 {
+    public ulong? ProcessStartKey { get; init; }
     public double TotalBytesPerSecond => ReadBytesPerSecond + WriteBytesPerSecond;
 }
 

@@ -13,6 +13,16 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TcpEStatsLifecycleTests
 {
+    [Fact]
+    public void QuietExactTcpBaselineDoesNotHideEstimatedUdpResidual()
+    {
+        using var reader = Create(new Stats { Enabled = true }, new Zones(),
+            () => [Connection, Endpoint.Udp("udp", 456, false, true, 5000)]);
+        var snapshot = reader.Read(Request);
+        Assert.Contains(snapshot.Processes.Values, row => row.IsEstimated && row.TotalBytesPerSecond > 0);
+        Assert.Equal("Degraded", snapshot.ProviderState.State);
+    }
+
     private static readonly NetworkAttributionReadRequest Request = new(1000, 1000, new Dictionary<int, string> { [123] = "fixture" });
     private static readonly Endpoint Connection = Endpoint.Tcp("tcp4:fixture", 123, 3, new Row(5, 1, 2, 3, 4), false, true, 80, 443);
 

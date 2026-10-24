@@ -18,7 +18,7 @@ internal sealed class KernelModuleAddressMap
         var name = ModuleName(path);
         lock (gate)
         {
-            modules[imageBase] = new KernelModuleRange(imageBase, (ulong)imageSize, name, path);
+            modules[imageBase] = new KernelModuleRange(imageBase, (ulong)imageSize, new(name, path));
         }
     }
 
@@ -54,7 +54,7 @@ internal sealed class KernelModuleAddressMap
 
             return best is null
                 ? KernelModuleIdentity.Unknown
-                : new KernelModuleIdentity(best.Name, best.Path);
+                : best.Identity;
         }
     }
 
@@ -86,8 +86,7 @@ internal sealed class KernelModuleAddressMap
     private sealed record KernelModuleRange(
         ulong ImageBase,
         ulong ImageSize,
-        string Name,
-        string? Path);
+        KernelModuleIdentity Identity);
 }
 
 internal sealed record KernelModuleIdentity(string Name, string? Path)

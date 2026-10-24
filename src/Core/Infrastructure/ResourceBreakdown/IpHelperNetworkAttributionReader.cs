@@ -160,7 +160,9 @@ public sealed partial class IpHelperNetworkAttributionReader(
                 endpoints.Count,
                 exactTcpConnections,
                 etwAttribution.EffectiveProcesses.Values.Sum(static item => item.ActivityEventCount),
-                totalReceive + totalSend);
+                totalReceive + totalSend,
+                rawProcessValues.Values.Concat(effectiveProcessValues.Values)
+                    .Any(static item => item.IsEstimated && item.ReceiveBytesPerSecond + item.SendBytesPerSecond > 0));
             lastProviderState = providerState;
             return new NetworkAttributionSnapshot(
                 now,

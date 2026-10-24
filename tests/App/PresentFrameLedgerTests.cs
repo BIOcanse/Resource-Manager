@@ -5,6 +5,47 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class PresentFrameLedgerTests
 {
+    [Fact]
+    public void LossRechecksReusedPidWithoutDestroyingRecordedExactHistory()
+    {
+        long birth = 111;
+        var reads = 0;
+        var ledger = new PresentFrameLedger(_ => { reads++; return birth; });
+        ledger.Present(10, FramePresentSource.Dxgi, 1, Start, 7, 100, 1000);
+        ledger.Present(10, FramePresentSource.Dxgi, 1, Start + TenMs, 7, 110, 1000);
+        ledger.LegacyFlip(10, 7, true, 111);
+        ledger.QueuePacketStart(10, 7, 9, 1, 3, true, 112);
+        birth = 222;
+        ledger.EventsLost();
+        ledger.MmioFlip(9, Start + 2 * TenMs, 120, true);
+        ledger.Present(10, FramePresentSource.Dxgi, 1, Start + 3 * TenMs);
+        ledger.Present(10, FramePresentSource.Dxgi, 1, Start + 4 * TenMs);
+
+        Assert.Equal(2, reads);
+        Assert.Equal(222, Assert.Single(ledger.Read(Start + 5 * TenMs, TimeSpan.FromSeconds(1))).ProcessStartKey);
+        var intervals = ledger.ReadIntervals(Start - 1, Start + 5 * TenMs);
+        Assert.Contains(intervals, sample => sample.ProcessStartKey == 111);
+        Assert.Contains(intervals, sample => sample.ProcessStartKey == 222);
+        Assert.DoesNotContain(ledger.ReadDisplayStreams(Start + 5 * TenMs, TimeSpan.FromSeconds(1))
+            .SelectMany(stream => stream.Frames), frame => frame.Outcome == FrameTimingDisplayOutcome.Displayed);
+    }
+
+    [Fact]
+    public void TimestampEvictionMakesDelayedCursorIncompleteAndLaterWindowsRecover()
+    {
+        var ledger = new PresentFrameLedger(_ => 111);
+        var oneMs = TimeSpan.TicksPerMillisecond;
+        for (var index = 0; index < 20_000; index++)
+            ledger.Present(10, FramePresentSource.Dxgi, 1, Start + index * oneMs);
+
+        Assert.False(ledger.IsComplete(Start));
+        Assert.Equal(PresentFrameLedger.MaximumTimestampsPerStream - 1,
+            ledger.ReadIntervals(Start, Start + 20_000 * oneMs).Count);
+        Assert.True(ledger.IsComplete(Start + 4000 * oneMs));
+        ledger.ProcessStopped(10);
+        Assert.False(ledger.IsComplete(Start));
+    }
+
     private static readonly long Start = new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc).Ticks;
     private static readonly long TenMs = TimeSpan.FromMilliseconds(10).Ticks;
 

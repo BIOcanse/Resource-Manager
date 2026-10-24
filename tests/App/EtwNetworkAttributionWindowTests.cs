@@ -132,11 +132,11 @@ public sealed partial class EtwNetworkAttributionWindowTests
 
     private static EtwNetworkTcpIpAttributionReader NewReader(Broker broker, Func<long> clock)
         => new(new EtwNetworkTcpIpMonitoringZone(), broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock);
+            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100));
 
     private static void Observe(EtwNetworkTcpIpAttributionReader reader, Broker broker, int pid, int bytes, long tick)
         => reader.ObserveBoundNetworkTransfer(broker.Source, broker.Context, pid, bytes, true, false,
-            IPAddress.Parse("203.0.113.1"), tick);
+            IPAddress.Parse("203.0.113.1"), tick, 100);
 
     private sealed class Broker : IKernelEtwSessionBroker
     {

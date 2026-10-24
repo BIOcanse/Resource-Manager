@@ -24,8 +24,26 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     private readonly Dictionary<uint, List<DisplayFrameState>> presentsBySubmitSequence = [];
     private readonly Dictionary<Win32kTokenKey, DisplayFrameState> presentsByWin32kToken = [];
     private readonly Dictionary<StreamKey, long> displayOverflowAtUtcTicks = [];
+    private long incompleteThroughUtcTicks;
 
     public int StreamCount => streams.Count;
+
+    // Lost lifecycle events invalidate live identity/correlation state. Exact recorded
+    // history remains readable by cursor consumers until normal retention expires.
+    public void EventsLost()
+    {
+        foreach (var processId in startKeys.Keys.ToArray()) RemoveProcess(processId);
+        startKeys.Clear();
+        foreach (var frame in displayFrames.Values.SelectMany(static frames => frames))
+        {
+            if (frame.Outcome == FrameTimingDisplayOutcome.Unknown) frame.Ambiguous = true;
+        }
+        currentPresentsByThread.Clear();
+        presentsBySubmitSequence.Clear();
+        presentsByWin32kToken.Clear();
+    }
+
+    public bool IsComplete(long afterUtcTicks) => incompleteThroughUtcTicks < afterUtcTicks;
 
     public void ProcessStarted(int processId, long processStartKey)
     {
@@ -64,6 +82,7 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         {
             if (streams.Count >= MaximumStreams)
             {
+                incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestampUtcTicks);
                 return;
             }
 
@@ -72,7 +91,9 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
 
         if (timestamps.Count == MaximumTimestampsPerStream)
         {
-            timestamps.Dequeue();
+            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestamps.Dequeue());
+            // The replacement timestamp also loses its predecessor interval.
+            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, timestamps.Peek());
         }
 
         timestamps.Enqueue(timestampUtcTicks);
@@ -665,8 +686,22 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         {
             if (retiredStreams.Count < MaximumStreams)
             {
-                retiredStreams[key] = streams[key];
+                if (retiredStreams.TryGetValue(key, out var retained))
+                {
+                    foreach (var timestamp in streams[key])
+                    {
+                        if (retained.Count == MaximumTimestampsPerStream)
+                        {
+                            retained.Dequeue();
+                            incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, retained.Peek());
+                        }
+                        retained.Enqueue(timestamp);
+                    }
+                }
+                else retiredStreams[key] = streams[key];
             }
+            else if (streams[key].Count > 0)
+                incompleteThroughUtcTicks = Math.Max(incompleteThroughUtcTicks, streams[key].Max());
             streams.Remove(key);
         }
     }

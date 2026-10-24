@@ -14,7 +14,8 @@ namespace ResourceManager.App.Infrastructure.DiskUsage;
 /// 反向扫一遍就能把大小汇总上去。
 /// </summary>
 internal sealed class DirectoryWalkDiskUsageScanner(
-    IDiskUsageVolumeCatalog volumes) : IDiskUsageScanner
+    IDiskUsageVolumeCatalog volumes,
+    Func<string, IEnumerable<FileSystemInfo>>? enumerateDirectory = null) : IDiskUsageScanner
 {
     /// <summary>每看这么多条目回报一次进度。太密会把进度通道打满。</summary>
     private const int ProgressEntryInterval = 4096;
@@ -60,7 +61,8 @@ internal sealed class DirectoryWalkDiskUsageScanner(
             state.BytesSeen >= 0 ? (ulong)state.BytesSeen : 0,
             state.FileCount,
             state.DirectoryCount,
-            state.UnreadableCount + (builder.Truncated ? 1 : 0));
+            state.UnreadableCount + (builder.Truncated ? 1 : 0))
+        { IsComplete = skipped.Count == 0 && state.UnreadableCount == 0 && !builder.Truncated };
         return new DiskUsageScanResult(tree, summary);
     }
 
@@ -136,7 +138,7 @@ internal sealed class DirectoryWalkDiskUsageScanner(
         }
     }
 
-    private static void WalkOneRoot(
+    private void WalkOneRoot(
         string rootPath,
         DiskUsageTreeBuilder builder,
         WalkState state,
@@ -160,27 +162,19 @@ internal sealed class DirectoryWalkDiskUsageScanner(
             cancellationToken.ThrowIfCancellationRequested();
             var (node, path) = pending.Pop();
 
-            IEnumerable<FileSystemInfo> entries;
+            IEnumerator<FileSystemInfo> enumerator;
             try
             {
-                entries = new DirectoryInfo(path).EnumerateFileSystemInfos(
-                    "*",
-                    new EnumerationOptions
-                    {
-                        // 重解析点会把遍历引到别的卷上去，甚至绕成环。
-                        AttributesToSkip = FileAttributes.ReparsePoint,
-                        IgnoreInaccessible = true,
-                        RecurseSubdirectories = false,
-                        ReturnSpecialDirectories = false
-                    });
+                enumerator = (enumerateDirectory ?? EnumerateDirectory)(path).GetEnumerator();
             }
             catch (Exception error) when (IsExpectedIoFailure(error))
             {
                 state.UnreadableCount++;
+                builder.SetIncomplete(node);
                 continue;
             }
 
-            using var enumerator = entries.GetEnumerator();
+            using var ownedEnumerator = enumerator;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -196,6 +190,7 @@ internal sealed class DirectoryWalkDiskUsageScanner(
                 catch (Exception error) when (IsExpectedIoFailure(error))
                 {
                     state.UnreadableCount++;
+                    builder.SetIncomplete(node);
                     break;
                 }
 
@@ -219,6 +214,7 @@ internal sealed class DirectoryWalkDiskUsageScanner(
                     catch (Exception error) when (IsExpectedIoFailure(error))
                     {
                         state.UnreadableCount++;
+                        builder.SetIncomplete(node);
                         continue;
                     }
 
@@ -260,6 +256,15 @@ internal sealed class DirectoryWalkDiskUsageScanner(
         => error is IOException
             or UnauthorizedAccessException
             or System.Security.SecurityException;
+
+    private static IEnumerable<FileSystemInfo> EnumerateDirectory(string path)
+        => new DirectoryInfo(path).EnumerateFileSystemInfos("*", new EnumerationOptions
+        {
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            IgnoreInaccessible = false,
+            RecurseSubdirectories = false,
+            ReturnSpecialDirectories = false
+        });
 
     private sealed class WalkState
     {

@@ -1,23 +1,9 @@
-using System.Diagnostics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider
 {
-    private static bool IsProcessAlive(int processId)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            return !process.HasExited;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static bool IsGpuVramMetric(string metricId)
     {
         return metricId.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)

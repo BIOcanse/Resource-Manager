@@ -30,7 +30,7 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker();
         using var reader = NewReader(broker);
         reader.Read();
-        reader.ObserveDiskTransfer(41, 4096, false, Environment.TickCount64);
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, Environment.TickCount64, null, 100);
         var queries = 0;
         broker.OnSnapshot = () => { if (++queries == 2) broker.EventsLost++; };
 
@@ -46,7 +46,7 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker();
         using var reader = NewReader(broker);
         reader.Read();
-        reader.ObserveDiskTransfer(41, 4096, false, Environment.TickCount64);
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, Environment.TickCount64, null, 100);
         broker.State = "Unavailable";
 
         var snapshot = reader.Read();
@@ -69,7 +69,7 @@ public sealed class PhysicalDiskIoWindowTests
             var context = new KernelEtwSessionContext(0, DateTimeOffset.UnixEpoch);
             broker.Request!.Bind(source, context);
             source.Activate();
-            reader.ObserveBoundDiskTransfer(source, context, 42, 8192, true, Environment.TickCount64);
+            reader.CaptureResource.ObserveBoundDiskTransfer(source, context, 42, (ulong)(8192), true, Environment.TickCount64, null, 100);
         };
 
         reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
@@ -91,7 +91,7 @@ public sealed class PhysicalDiskIoWindowTests
         broker.Request!.Bind(previous, context);
         previous.Activate();
         var now = Environment.TickCount64;
-        reader.ObserveBoundDiskTransfer(previous, context, 41, 2048, false, now + 1000);
+        reader.CaptureResource.ObserveBoundDiskTransfer(previous, context, 41, (ulong)(2048), false, now + 1000, null, 100);
         previous.Cancel();
         var current = new KernelEtwEventSource();
         broker.Request.Bind(current, context);
@@ -99,8 +99,8 @@ public sealed class PhysicalDiskIoWindowTests
 
         // Represents a delivery already admitted before cancellation but delayed
         // until after the consumer has bound its replacement window.
-        reader.ObserveBoundDiskTransfer(previous, context, 41, 4096, true, now + 1000);
-        reader.ObserveBoundDiskTransfer(current, context, 42, 8192, true, now + 1000);
+        reader.CaptureResource.ObserveBoundDiskTransfer(previous, context, 41, (ulong)(4096), true, now + 1000, null, 100);
+        reader.CaptureResource.ObserveBoundDiskTransfer(current, context, 42, (ulong)(8192), true, now + 1000, null, 100);
 
         var window = reader.ReadWindow(now + 2100);
         Assert.True(window.Complete);
@@ -122,28 +122,28 @@ public sealed class PhysicalDiskIoWindowTests
     }
 
     [Fact]
-    public void CompletedTransfersKeepReadWriteTotalsAndUnassignedPhysicalIo()
+    public void CompletedTransfersKeepReadWriteTotalsAndOmitUnassignedIdentity()
     {
         using var reader = NewReader(new Broker());
-        reader.ObserveDiskTransfer(41, 2048, false, 1900);
-        reader.ObserveDiskTransfer(41, 4096, true, 2000);
-        reader.ObserveDiskTransfer(-1, 512, false, 2100);
-        reader.ObserveDiskTransfer(42, 8192, false, 100); // Outside the current two-second window.
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(2048), false, 1900, null, 100);
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), true, 2000, null, 100);
+        reader.CaptureResource.ObserveDiskTransfer(-1, (ulong)(512), false, 2100, null, 100);
+        reader.CaptureResource.ObserveDiskTransfer(42, (ulong)(8192), false, 100, null, 100); // Outside the current two-second window.
         var window = reader.ReadWindow(3000);
         Assert.True(window.Complete);
-        Assert.Equal(2, window.Processes.Count);
+        Assert.Single(window.Processes);
         Assert.Equal(1024, window.Processes[41].ReadBytesPerSecond);
         Assert.Equal(2048, window.Processes[41].WriteBytesPerSecond);
         Assert.Equal(1, window.Processes[41].ReadEventCount);
         Assert.Equal(1, window.Processes[41].WriteEventCount);
-        Assert.Equal(256, window.Processes[0].ReadBytesPerSecond);
+        Assert.DoesNotContain(0, window.Processes.Keys);
     }
 
     [Fact]
     public void SnapshotDoesNotIncludeACompletionAfterItsTimestamp()
     {
         using var reader = NewReader(new Broker());
-        reader.ObserveDiskTransfer(41, 4096, false, 3001);
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, 3001, null, 100);
         Assert.Empty(reader.ReadWindow(3000).Processes);
         Assert.Equal(1, reader.RetainedEventCount);
         Assert.Equal(2048, reader.ReadWindow(3001).Processes[41].ReadBytesPerSecond);
@@ -154,11 +154,11 @@ public sealed class PhysicalDiskIoWindowTests
     {
         using var reader = NewReader(new Broker());
         for (var index = 0; index <= EtwPhysicalDiskIoAttributionReader.MaximumTrackedEvents; index++)
-            reader.ObserveDiskTransfer(41, 4096, false, 2000);
+            reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, 2000, null, 100);
         Assert.Equal(EtwPhysicalDiskIoAttributionReader.MaximumTrackedEvents, reader.RetainedEventCount);
         var incomplete = reader.ReadWindow(3000);
         Assert.False(incomplete.Complete); Assert.Empty(incomplete.Processes);
-        reader.ObserveDiskTransfer(42, 16384, true, 4000);
+        reader.CaptureResource.ObserveDiskTransfer(42, (ulong)(16384), true, 4000, null, 100);
         var recovered = reader.ReadWindow(5001);
         Assert.True(recovered.Complete);
         Assert.Equal(8192, Assert.Single(recovered.Processes).Value.WriteBytesPerSecond);
@@ -173,12 +173,18 @@ public sealed class PhysicalDiskIoWindowTests
         var first = reader.Read();
         Assert.Equal("Warming", first.ProviderState.State); Assert.Empty(first.Processes);
         var future = Environment.TickCount64 + 2100;
-        reader.ObserveDiskTransfer(41, 4096, false, future);
+        reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, future, null, 100);
         var recovered = reader.ReadWindow(future);
         Assert.True(recovered.Complete); Assert.Equal(2048, recovered.Processes[41].ReadBytesPerSecond);
     }
 
-    private static EtwPhysicalDiskIoAttributionReader NewReader(Broker broker) => new(broker, NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
+    private static EtwPhysicalDiskIoAttributionReader NewReader(Broker broker) => new(new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid)));
+    private sealed class ProcessLease(uint pid) : ResourceManager.ReadWrite.Windows.Devices.IWindowsNetworkEndpointProcessLease
+    {
+        public uint ProcessId => pid;
+        public bool TryReadCreationFileTime(out ulong birth) { birth = 100; return true; }
+        public void Dispose() { }
+    }
     private sealed class Broker : IKernelEtwSessionBroker
     {
         internal KernelEtwSubscriptionRequest? Request;

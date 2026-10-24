@@ -18,7 +18,8 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             ObjectDisposedException.ThrowIf(disposed, this);
             var subscription = new GraphicsApiSubscription(this, process);
             lock (gate) graphicsApiSubscriptions.Add(subscription);
-            if (leases++ == 0 && mode != ResourceManagerComputeZoneMode.Freeze) Start();
+            leases++;
+            ReconcileDemand();
             return subscription;
         }
     }
@@ -81,7 +82,11 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         {
             var current = Volatile.Read(ref owner);
             if (current is null) return null;
-            lock (current.gate) return !current.disposed && !current.failed && Active ? Api : null;
+            lock (current.lifecycle)
+            {
+                current.ReconcileDemand();
+                lock (current.gate) return !current.disposed && !current.failed && Active ? Api : null;
+            }
         }
 
         public void Dispose()

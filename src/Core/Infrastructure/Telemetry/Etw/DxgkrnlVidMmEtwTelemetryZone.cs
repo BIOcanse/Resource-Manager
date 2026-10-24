@@ -5,6 +5,8 @@ using ResourceManager.Adapter;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Adaptation;
+using ResourceManager.ReadWrite.Windows.Devices;
+using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -35,10 +37,12 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         "OwnerProcessID"
     ];
 
-    private readonly ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> evidenceByProcess = new();
+    private ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> evidenceByProcess = new();
     private readonly object sessionGate = new();
     private TraceEventSession? session;
     private Task? processingTask;
+    private bool disposed;
+    private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess = WindowsNetworkEndpointProcessLease.Open;
     private DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     private volatile string state = "Idle";
@@ -49,6 +53,10 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
     public string State => state;
     public string Message => message;
+
+    internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
+        Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess) : this(logger)
+        => this.openProcess = openProcess;
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
     {
@@ -62,9 +70,16 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         var now = DateTimeOffset.UtcNow;
         lastRequestAt = now;
         EnsureStarted();
+        if (state != "Running") return [];
+        return ReadCurrentEvidence(now, evidenceWindow);
+    }
+
+    internal IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadCurrentEvidence(DateTimeOffset now, TimeSpan evidenceWindow)
+    {
         PruneStaleEvidence(now, evidenceWindow + evidenceWindow);
         return evidenceByProcess.Values
-            .Where(evidence => evidence.ValueBytes > 0 && now - evidence.ObservedAt <= evidenceWindow)
+            .Where(evidence => evidence.ValueBytes > 0 && now - evidence.ObservedAt <= evidenceWindow
+                && ReadProcessBirth(evidence.ProcessId) == evidence.ProcessStartKey)
             .ToArray();
     }
 
@@ -143,6 +158,9 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
 
         lock (sessionGate)
         {
+            if (disposed) return;
+            if (session is not null && processingTask is { IsCompleted: true })
+                StopSession("DXGKrnl/VidMm ETW 事件流已结束。");
             if (session is not null)
             {
                 return;
@@ -155,10 +173,12 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
                     StopOnDispose = true
                 };
                 session.EnableProvider(ProviderName, TraceEventLevel.Verbose, DxgKrnlKeywords);
-                session.Source.Dynamic.All += OnDynamicEvent;
+                var currentEvidence = evidenceByProcess;
+                session.Source.Dynamic.All += data => OnDynamicEvent(data, currentEvidence);
                 state = "Running";
                 message = "DXGKrnl/VidMm ETW 正在采集 GPU 内存归因事件。";
-                processingTask = Task.Run(ProcessTraceSource, CancellationToken.None);
+                var current = session;
+                processingTask = Task.Run(() => ProcessTraceSource(current), CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -170,21 +190,31 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         }
     }
 
-    private void ProcessTraceSource()
+    private void ProcessTraceSource(TraceEventSession current)
     {
         try
         {
-            session?.Source.Process();
+            current.Source.Process();
         }
         catch (Exception ex)
         {
-            state = "Unavailable";
-            message = $"DXGKrnl/VidMm ETW 处理失败：{ex.Message}";
             logger.LogDebug(ex, "DXGKrnl/VidMm source processing stopped.");
+        }
+        finally
+        {
+            lock (sessionGate)
+            {
+                if (ReferenceEquals(session, current))
+                {
+                    evidenceByProcess.Clear();
+                    state = "Unavailable";
+                    message = "DXGKrnl/VidMm ETW 事件流已结束，等待下一次需求重新启动。";
+                }
+            }
         }
     }
 
-    private void OnDynamicEvent(TraceEvent data)
+    private void OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {
         try
         {
@@ -197,18 +227,27 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
                 return;
             }
 
-            var processName = NormalizeProcessName(data.ProcessName, processId);
-            evidenceByProcess[processId] = new DxgkrnlVidMmEtwMemoryEvidence(
-                processId,
-                processName,
-                valueBytes,
-                data.EventName,
-                DateTimeOffset.UtcNow);
+            ObserveProcessMemory(currentEvidence, processId, data.ProcessName, valueBytes,
+                data.EventName, EtwNetworkTcpIpCaptureOwner.ToEventFileTime(data.TimeStamp), DateTimeOffset.UtcNow);
         }
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Ignored malformed DXGKrnl/VidMm event.");
         }
+    }
+
+    internal void ObserveProcessMemory(int processId, string? processName, double valueBytes,
+        string eventName, ulong? eventTime, DateTimeOffset observedAt)
+        => ObserveProcessMemory(Volatile.Read(ref evidenceByProcess), processId, processName,
+            valueBytes, eventName, eventTime, observedAt);
+
+    private void ObserveProcessMemory(ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence,
+        int processId, string? processName, double valueBytes, string eventName, ulong? eventTime, DateTimeOffset observedAt)
+    {
+        var birth = ReadProcessBirth(processId);
+        if (birth is null || eventTime is null || eventTime.Value < birth.Value) return;
+        currentEvidence[processId] = new(processId, NormalizeProcessName(processName, processId),
+            valueBytes, eventName, observedAt) { ProcessStartKey = birth.Value };
     }
 
     private void PruneStaleEvidence(DateTimeOffset now, TimeSpan retention)
@@ -232,6 +271,7 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
             taskToWait = processingTask;
             session = null;
             processingTask = null;
+            Interlocked.Exchange(ref evidenceByProcess, new());
         }
 
         if (sessionToStop is null)
@@ -286,6 +326,31 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         return !string.IsNullOrWhiteSpace(processName)
             ? Path.GetFileNameWithoutExtension(processName.Trim())
             : $"PID {processId}";
+    }
+
+    private ulong? ReadProcessBirth(int processId)
+    {
+        try
+        {
+            using var process = openProcess(checked((uint)processId));
+            return process is not null && process.ProcessId == (uint)processId
+                && process.TryReadCreationFileTime(out var birth) && birth > 0 ? birth : null;
+        }
+        catch (Exception error)
+        {
+            logger.LogDebug(error, "Could not verify DXGKrnl process identity for {ProcessId}.", processId);
+            return null;
+        }
+    }
+
+    public override void Dispose()
+    {
+        lock (sessionGate)
+        {
+            disposed = true;
+        }
+        StopSession("DXGKrnl/VidMm ETW 显存残差归因正在随程序停止。");
+        base.Dispose();
     }
 
     private static bool IsProcessMemoryEvent(string eventName)
@@ -406,4 +471,7 @@ public sealed record DxgkrnlVidMmEtwMemoryEvidence(
     string ProcessName,
     double ValueBytes,
     string EventName,
-    DateTimeOffset ObservedAt);
+    DateTimeOffset ObservedAt)
+{
+    public ulong ProcessStartKey { get; init; }
+}
