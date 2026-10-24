@@ -525,7 +525,6 @@ const frFrAppCopy: AppCopy = {
       status: {
         warming: "Préchauffage",
         ready: "Échantillon actuel",
-        stale: "Dernier échantillon",
         failed: "Échec de l'échantillonnage"
       }
     },

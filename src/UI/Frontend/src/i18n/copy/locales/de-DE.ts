@@ -525,7 +525,6 @@ const deDeAppCopy: AppCopy = {
       status: {
         warming: "Aufwärmen",
         ready: "Aktuelle Messung",
-        stale: "Letzte Messung",
         failed: "Messung fehlgeschlagen"
       }
     },

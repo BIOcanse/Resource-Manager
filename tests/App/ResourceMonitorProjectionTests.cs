@@ -132,7 +132,7 @@ public sealed class ResourceMonitorProjectionTests
             ])
         {
             Sampling = new ResourceBreakdownSamplingState(
-                ResourceBreakdownSamplingStatuses.Stale,
+                ResourceBreakdownSamplingStatuses.Failed,
                 12,
                 memoryAttemptedAt,
                 cpuCapturedAt,
@@ -153,7 +153,7 @@ public sealed class ResourceMonitorProjectionTests
                     null),
                 new ResourceBreakdownDatasetSamplingState(
                     SamplingDatasetIds.ProcessMemoryUsage,
-                    ResourceBreakdownSamplingStatuses.Stale,
+                    ResourceBreakdownSamplingStatuses.Failed,
                     7,
                     9,
                     memoryCapturedAt,

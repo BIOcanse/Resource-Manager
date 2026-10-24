@@ -525,7 +525,6 @@ const jaJpAppCopy: AppCopy = {
       status: {
         warming: "ウォームアップ中",
         ready: "現在のサンプル",
-        stale: "前回のサンプル",
         failed: "サンプリング失敗"
       }
     },

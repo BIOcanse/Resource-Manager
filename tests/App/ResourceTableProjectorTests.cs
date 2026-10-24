@@ -30,7 +30,7 @@ public sealed class ResourceTableProjectorTests
     }
 
     [Fact]
-    public void Project_MixedDatasetGenerationsRemainVisibleAndTraceable()
+    public void Project_ReadyColumnBesideAFailedColumnIsCurrentAndTraceable()
     {
         var cpuCapturedAt = DateTimeOffset.UnixEpoch.AddSeconds(20);
         var memoryCapturedAt = DateTimeOffset.UnixEpoch.AddSeconds(15);
@@ -72,7 +72,7 @@ public sealed class ResourceTableProjectorTests
                     null),
                 new ResourceBreakdownDatasetSamplingState(
                     SamplingDatasetIds.ProcessMemoryUsage,
-                    ResourceBreakdownSamplingStatuses.Stale,
+                    ResourceBreakdownSamplingStatuses.Failed,
                     7,
                     9,
                     memoryCapturedAt,
@@ -80,7 +80,7 @@ public sealed class ResourceTableProjectorTests
                     memoryCapturedAt,
                     memoryCapturedAt.AddSeconds(5),
                     "memory-sample-failed",
-                    "本轮内存采样失败，保留旧值。")
+                    "本轮内存采样失败。")
             ]
         };
         var request = new ResourceTableRequest(
@@ -93,7 +93,7 @@ public sealed class ResourceTableProjectorTests
 
         var result = new ResourceTableProjector().Project(snapshot, request);
 
-        Assert.Equal(ResourceTableProjectionStatuses.Stale, result.Status);
+        Assert.Equal(ResourceTableProjectionStatuses.Ready, result.Status);
         Assert.Equal(cpuCapturedAt, result.CapturedAt);
         Assert.Collection(
             result.InputDatasets.OrderBy(static input => input.DatasetId),
@@ -107,10 +107,10 @@ public sealed class ResourceTableProjectorTests
             {
                 Assert.Equal(SamplingDatasetIds.ProcessMemoryUsage, input.DatasetId);
                 Assert.Equal((ulong)7, input.Generation);
-                Assert.Equal(ResourceBreakdownSamplingStatuses.Stale, input.Status);
+                Assert.Equal(ResourceBreakdownSamplingStatuses.Failed, input.Status);
             });
         // 汇总行的状态装的是采样状态标识，措辞由前端出。
-        Assert.Equal(ResourceTableProjectionStatuses.Stale, result.Rows[0].Status);
+        Assert.Equal(ResourceTableProjectionStatuses.Ready, result.Rows[0].Status);
     }
 
     [Fact]

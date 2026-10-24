@@ -525,7 +525,6 @@ const koKrAppCopy: AppCopy = {
       status: {
         warming: "준비 중",
         ready: "현재 샘플",
-        stale: "마지막 샘플",
         failed: "샘플링 실패"
       }
     },

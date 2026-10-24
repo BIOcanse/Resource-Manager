@@ -525,7 +525,6 @@ const esEsAppCopy: AppCopy = {
       status: {
         warming: "Calentando",
         ready: "Muestra actual",
-        stale: "Última muestra",
         failed: "Error de muestreo"
       }
     },

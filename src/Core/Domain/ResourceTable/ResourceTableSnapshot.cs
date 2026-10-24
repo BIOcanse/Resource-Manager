@@ -44,7 +44,6 @@ public static class ResourceTableProjectionStatuses
 {
     public const string Warming = "warming";
     public const string Ready = "ready";
-    public const string Stale = "stale";
     public const string Failed = "failed";
 }
 
