@@ -67,10 +67,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(processScores.Select(row => row.ProcessId).Order(),
             batch.Processes.Select(row => row.ProcessId).Order());
 
+        // Without residency memory modes still follow CPU scores from process CPU usage when the facts carry it.
         current = null;
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        Assert.Null(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
-        Assert.Null(fixture.Coordinator.NonAdaptedMemoryModeProjection);
+        Assert.Equal(removeScalarCpu ? null : HostManagerCpuOccupancySource.ProcessCpuUsage,
+            fixture.Coordinator.SchedulingAuthority.Compute?.CpuOccupancySource);
+        Assert.Equal(!removeScalarCpu, fixture.Coordinator.NonAdaptedMemoryModeProjection is not null);
         Assert.Equal(2, reader.ReadCount);
         Assert.Empty(reader.Subscriptions);
         Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);

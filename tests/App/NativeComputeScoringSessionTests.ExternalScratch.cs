@@ -51,7 +51,7 @@ public sealed partial class NativeComputeScoringSessionTests
     }
 
     [Fact]
-    public void CpuAndGpuKeepIndependentGenerationsWhileReusingOnePoisonedRegion()
+    public void CpuAndGpuSessionsScoreIndependentlyWhileReusingOnePoisonedRegion()
     {
         var configuration = CreateConfiguration();
         using var cpu = new NativeComputeScoringSession(in configuration, [1]);
@@ -81,15 +81,14 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok,
             cpu.Score(in cpuEnvelope, [process], [], cpuOutputs, scratch.Pointer, scratch.Length, ref cpuSnapshot));
         Assert.Equal(1UL, gpuSnapshot.SchedulingGeneration);
-        Assert.Equal(NativeComputeScoringStatus.StaleGeneration,
-            gpu.Score(in gpuEnvelope, [process], [row], gpuOutputs, scratch.Pointer, scratch.Length, ref gpuSnapshot));
-        gpuEnvelope.SchedulingGeneration = 2;
+        // A session keeps no generation from earlier scores; each score uses only its own envelope.
         Assert.Equal(NativeComputeScoringStatus.Ok,
             gpu.Score(in gpuEnvelope, [process], [row], gpuOutputs, scratch.Pointer, scratch.Length, ref gpuSnapshot));
+        Assert.Equal(25D, gpuOutputs[0].Score);
     }
 
     [Fact]
-    public void ReconfigureKeepsScratchRequirementAndExplicitlyResetsOnlySessionGeneration()
+    public void ReconfigureKeepsScratchRequirementAndScoresTheNextEnvelope()
     {
         var configuration = CreateConfiguration();
         using var session = new NativeComputeScoringSession(in configuration, [1]);

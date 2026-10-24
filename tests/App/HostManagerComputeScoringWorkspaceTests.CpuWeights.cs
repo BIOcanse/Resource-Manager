@@ -109,6 +109,27 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
+    public void CoreResidencyArrivingAfterProcessCpuUsageStillScores()
+    {
+        // Live failure: cycles scored from process CPU usage (dataset generation 101) until the kernel
+        // session (generation 1) delivered residency; every later cycle was then rejected as stale.
+        var configuration = CreateConfiguration();
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
+        var inventory = CreateInventory();
+        var facts = CreateFacts(inventory, 10);
+        var physical = CpuCoreResidencyTestValues.Create(1, DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(10, 100, ("core:0", facts.Processes[0].CpuUsagePercent)));
+
+        var fallback = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), null);
+        var weighted = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), physical);
+
+        Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, fallback?.CpuOccupancySource);
+        Assert.Equal(HostManagerCpuOccupancySource.CoreResidency, weighted?.CpuOccupancySource);
+        Assert.NotNull(weighted?.Memory);
+    }
+
+    [Fact]
     public void EmptyCurrentCpuValueDoesNotRetainThePreviousScoreOrSuppressGpu()
     {
         var configuration = CreateConfiguration();

@@ -316,7 +316,7 @@ test "complete GPU scoring rejects a missing topology generation" {
     ));
 }
 
-test "source and topology generations remain monotonic across accepted scores" {
+test "each score uses only its own inputs whatever earlier scores carried" {
     var config = testConfig();
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
@@ -339,67 +339,14 @@ test "source and topology generations remain monotonic across accepted scores" {
         &snapshot,
     ));
 
-    envelope.scheduling_generation = 2;
-    envelope.process_source_generation = 100;
-    processes[0].source_generation = 100;
-    try std.testing.expectEqual(protocol.Status.stale_generation, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
-    ));
+    const first_score = outputs[0].score;
 
-    envelope.process_source_generation = 102;
-    processes[0].source_generation = 102;
-    envelope.gpu_source_generation = 201;
-    gpus[0].source_generation = 201;
-    try std.testing.expectEqual(protocol.Status.stale_generation, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
-    ));
-
-    envelope.gpu_source_generation = 203;
-    gpus[0].source_generation = 203;
-    envelope.gpu_topology_generation = 302;
-    try std.testing.expectEqual(protocol.Status.stale_generation, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
-    ));
-
-    envelope.gpu_topology_generation = 303;
+    // A source switch can restart its own generation numbering; the score still follows the new facts.
+    envelope.process_source_generation = 1;
+    processes[0].source_generation = 1;
+    envelope.gpu_source_generation = 1;
+    gpus[0].source_generation = 1;
     envelope.gpu_topology_fingerprint = 405;
-    try std.testing.expectEqual(protocol.Status.conflicting_facts, scoreWithScratchFixture(
-        session,
-        &envelope,
-        &processes,
-        processes.len,
-        &gpus,
-        gpus.len,
-        &outputs,
-        outputs.len,
-        &snapshot,
-    ));
-
-    envelope.gpu_topology_fingerprint = 404;
     try std.testing.expectEqual(protocol.Status.ok, scoreWithScratchFixture(
         session,
         &envelope,
@@ -411,6 +358,8 @@ test "source and topology generations remain monotonic across accepted scores" {
         outputs.len,
         &snapshot,
     ));
+    try std.testing.expectEqual(@as(u64, 1), snapshot.process_source_generation);
+    try std.testing.expectEqual(first_score, outputs[0].score);
 }
 
 test "sparse GPU rows accept different observed adapter sets" {
@@ -799,15 +748,12 @@ test "bad scratch rejects before writes and cannot commit a generation" {
     for (bad) |item| {
         try std.testing.expectEqual(item.status, session_module.score(session, &envelope, &processes, 1,
             null, 0, &outputs, outputs.len, item.pointer, item.length, &snapshot));
-        try std.testing.expectEqual(@as(u64, 0), session.last_scheduling_generation);
-        try std.testing.expectEqual(@as(u64, 0), session.last_process_source_generation);
         try std.testing.expectEqual(@as(f64, 987), outputs[0].score);
         try std.testing.expectEqual(@as(u64, 999), snapshot.scheduling_generation);
         for (bytes) |byte| try std.testing.expectEqual(@as(u8, 0xa5), byte);
     }
     try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope, &processes, 1,
         null, 0, &outputs, outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &snapshot));
-    try std.testing.expectEqual(@as(u64, 1), session.last_scheduling_generation);
     try std.testing.expectEqual(@as(f64, 50), outputs[0].score);
 }
 
@@ -824,7 +770,6 @@ test "scratch cannot alias actual input output or envelope" {
     for ([_]*anyopaque{ @ptrCast(&processes), @ptrCast(&outputs), @ptrCast(&envelope), @ptrCast(&snapshot) }) |pointer| {
         try std.testing.expectEqual(protocol.Status.invalid_argument, session_module.score(session, &envelope, &processes, 1,
             null, 0, &outputs, outputs.len, pointer, capacity.scratch_byte_count, &snapshot));
-        try std.testing.expectEqual(@as(u64, 0), session.last_scheduling_generation);
         try std.testing.expectEqual(@as(f64, 50), processes[0].weighted_cpu_use_percent);
         try std.testing.expectEqual(@as(u64, 0), snapshot.scheduling_generation);
     }
@@ -861,15 +806,10 @@ test "one poisoned region is sequentially reused by independent CPU GPU sessions
     try std.testing.expectEqual(@as(f64, 50), cpu_outputs[0].score);
     try std.testing.expectEqual(@as(f64, 25), gpu_outputs[0].score);
     try std.testing.expectEqualSlices(u8, std.mem.asBytes(&saved), std.mem.asBytes(&cpu_outputs));
-    try std.testing.expectEqual(@as(u64, 1), cpu.last_scheduling_generation);
-    try std.testing.expectEqual(@as(u64, 1), gpu.last_scheduling_generation);
-    try std.testing.expectEqual(@as(u64, 0), cpu.last_gpu_source_generation);
-    try std.testing.expectEqual(@as(u64, 202), gpu.last_gpu_source_generation);
     cpu_envelope.scheduling_generation = 2;
     @memset(bytes, 0xff);
     try std.testing.expectEqual(protocol.Status.ok, session_module.score(cpu, &cpu_envelope, &processes, 1,
         null, 0, &cpu_outputs, cpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &cpu_snapshot));
-    try std.testing.expectEqual(@as(u64, 1), gpu.last_scheduling_generation);
-    try std.testing.expectEqual(protocol.Status.stale_generation, session_module.score(gpu, &gpu_envelope, &processes, 1,
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(gpu, &gpu_envelope, &processes, 1,
         &gpus, 1, &gpu_outputs, gpu_outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &gpu_snapshot));
 }
