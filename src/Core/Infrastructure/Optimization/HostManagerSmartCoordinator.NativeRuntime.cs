@@ -271,6 +271,7 @@ public sealed partial class HostManagerSmartCoordinator
             : null;
         if (!modePlan.SchedulingEnabled)
         {
+            cycleFactExclusions.Clear();
             hostPublicResourceNormalReleaseEvidence.Stop();
             ClearNonAdaptedMemoryModeProjection();
             schedulingAuthorityOwner.PublishUnavailable(

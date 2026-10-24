@@ -291,7 +291,9 @@ public sealed partial class NativeComputeScoringSessionTests
         var status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
+        Assert.Equal(NativeComputeScoringStatus.Ok, status);
+        Assert.Equal(1u, snapshot.InvalidFactCount);
+        Assert.Equal(0u, snapshot.OutputCount);
 
         process = CreateProcess(1, 10, 100, 1, 50);
         process.RuntimeState = NativeComputeScoringRuntimeState.NotRunning;
@@ -299,7 +301,9 @@ public sealed partial class NativeComputeScoringSessionTests
         status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
+        Assert.Equal(NativeComputeScoringStatus.Ok, status);
+        Assert.Equal(1u, snapshot.InvalidFactCount);
+        Assert.Equal(0u, snapshot.OutputCount);
     }
 
     [Fact]
@@ -428,7 +432,7 @@ public sealed partial class NativeComputeScoringSessionTests
             WeightedCpuUsePercent = occupancy,
             SourceIndex = sourceIndex,
             ProcessId = processId,
-            RuntimeState = NativeComputeScoringRuntimeState.Unknown
+            RuntimeState = NativeComputeScoringRuntimeState.BackgroundProcess
         };
 
     private static NativeComputeScoringGpuInput CreateGpu(

@@ -34,7 +34,7 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes)
     {
         // A missing authoritative process dataset is not evidence that an owner exited.
-        if (!sample.ProcessFacts.IsCpuCurrentComplete()) return null;
+        if (!sample.ProcessFacts.IsInventoryCurrentComplete() || !sample.ProcessFacts.IsCpuCurrentComplete()) return null;
         EnsurePlacementCoordinatorWorkspace();
         var plan = appliedPlacementCoordinatorPlan!;
         var projection = HostManagerCpuExclusivityProjection.Create(topology, sample.CpuResidency, processes,

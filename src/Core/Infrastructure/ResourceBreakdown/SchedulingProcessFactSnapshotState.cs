@@ -654,7 +654,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                     : [],
             RuntimeState = bit == SchedulingProcessMetricMask.RuntimeState
                 ? process.RuntimeState
-                : HostManagerRuntimeStates.BackgroundProcess,
+                : HostManagerRuntimeStates.Unknown,
             ForegroundFocused = bit == SchedulingProcessMetricMask.RuntimeState
                 && process.ForegroundFocused,
             HasVisibleWindow = bit == SchedulingProcessMetricMask.RuntimeState
@@ -680,7 +680,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             CpuUsagePercent = 0,
             MemoryUsedBytes = 0,
             Gpus = [],
-            RuntimeState = HostManagerRuntimeStates.BackgroundProcess,
+            RuntimeState = HostManagerRuntimeStates.Unknown,
             ForegroundFocused = false,
             HasVisibleWindow = false,
             HasBackgroundWindow = false,
@@ -695,7 +695,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             CpuUsagePercent = 0,
             MemoryUsedBytes = 0,
             Gpus = [],
-            RuntimeState = HostManagerRuntimeStates.BackgroundProcess,
+            RuntimeState = HostManagerRuntimeStates.Unknown,
             ForegroundFocused = false,
             HasVisibleWindow = false,
             HasBackgroundWindow = false,
@@ -874,7 +874,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         private SchedulingProcessMetricMask validMask;
         private double cpuUsagePercent;
         private double memoryUsedBytes;
-        private string runtimeState = HostManagerRuntimeStates.BackgroundProcess;
+        private string runtimeState = HostManagerRuntimeStates.Unknown;
         private bool foregroundFocused;
         private bool hasVisibleWindow;
         private bool hasBackgroundWindow;

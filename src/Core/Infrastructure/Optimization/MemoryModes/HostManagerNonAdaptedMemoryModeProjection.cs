@@ -60,7 +60,7 @@ internal static class HostManagerNonAdaptedMemoryModeProjection
             ?? throw new InvalidDataException(
                 "Non-adapted memory-mode projection requires a complete CPU score domain.");
         if (compute.RoundNumber == 0
-            || !processFacts.IsInventoryCurrentComplete())
+            || !processFacts.IsInventoryCurrent())
         {
             throw new InvalidDataException(
                 "Non-adapted memory-mode projection requires a scheduling round with a complete process inventory.");

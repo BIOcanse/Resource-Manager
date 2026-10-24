@@ -58,7 +58,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
 
         var cpu = scoring.Cpu ?? throw new InvalidDataException(
             "Memory mode planning requires a complete CPU score domain.");
-        if (!processFacts.IsInventoryCurrentComplete())
+        if (!processFacts.IsInventoryCurrent())
         {
             throw new InvalidDataException("Memory mode planning requires a complete process inventory.");
         }

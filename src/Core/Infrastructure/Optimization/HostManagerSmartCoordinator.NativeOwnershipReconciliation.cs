@@ -102,7 +102,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var live = new HashSet<NativeAppliedOwnershipProcessIdentity>();
-        foreach (var process in processFacts.Processes)
+        foreach (var process in processFacts.CurrentInventoryProcesses)
         {
             var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                 checked((uint)process.ProcessId),
@@ -111,7 +111,8 @@ public sealed partial class HostManagerSmartCoordinator
                 incarnation,
                 out var anchor)
                 ? anchor.SoftwareKey
-                : NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
+                : string.IsNullOrWhiteSpace(process.SoftwareId) ? 0
+                    : NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
             live.Add(new NativeAppliedOwnershipProcessIdentity(
                 NativeStableIdentity.CreateCaseInsensitiveKey(
                     HostManagerTargetIdentity.CreateProcessTargetId(

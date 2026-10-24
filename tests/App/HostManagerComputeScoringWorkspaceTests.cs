@@ -9,6 +9,9 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerComputeScoringWorkspaceTests
 {
+    private const ulong FirstStartKey = 133_900_000_000_000_000;
+    private const ulong SecondStartKey = FirstStartKey + 10_000_000;
+
     [Fact]
     public void GpuScoringProjectionDoesNotRetainMemoryValuesWithoutTheirSource()
     {
@@ -251,7 +254,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
                 row.Kind == NativeComputeScoringOutputKind.SoftwareCpu).Score);
 
         var changedProcess = one with { Processes = [one.Processes[0] with { BaseScore = 1, CpuUsagePercent = 99 }] };
-        runtime[new(10, 100)] = new(NativeComputeScoringRuntimeState.BackgroundProcess, 0.25, 0.5);
+        runtime[new(10, FirstStartKey)] = new(NativeComputeScoringRuntimeState.BackgroundProcess, 0.25, 0.5);
         var third = workspace.Score(3, changedProcess, inventory, runtime, CreateCpuResidency(), singleCapacity)!;
         Assert.Equal(second.Welfare, third.Welfare);
         Assert.NotEqual(second.Cpu!.Scores[0].Score, third.Cpu!.Scores[0].Score);
@@ -435,8 +438,8 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
     private static ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot CreateCpuResidency()
         => CpuCoreResidencyTestValues.Create(71, new DateTimeOffset(2026, 9, 3, 0, 0, 0, TimeSpan.Zero),
-            CpuCoreResidencyTestValues.Process(10, 100, ("core:0", 50)),
-            CpuCoreResidencyTestValues.Process(20, 200, ("core:0", 0)));
+            CpuCoreResidencyTestValues.Process(10, FirstStartKey, ("core:0", 50)),
+            CpuCoreResidencyTestValues.Process(20, SecondStartKey, ("core:0", 0)));
 
     private static NativeComputeScoringConfiguration CreateConfiguration(
         double cpuBaselineRatio = 1,
@@ -461,12 +464,12 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         CreateRuntimeFacts()
         => new Dictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact>
         {
-            [new HostManagerComputeProcessIdentity(10, 100)] = new(
-                NativeComputeScoringRuntimeState.Unknown,
+            [new HostManagerComputeProcessIdentity(10, FirstStartKey)] = new(
+                NativeComputeScoringRuntimeState.BackgroundProcess,
                 1,
                 1),
-            [new HostManagerComputeProcessIdentity(20, 200)] = new(
-                NativeComputeScoringRuntimeState.Unknown,
+            [new HostManagerComputeProcessIdentity(20, SecondStartKey)] = new(
+                NativeComputeScoringRuntimeState.BackgroundProcess,
                 1,
                 1)
         };
@@ -527,8 +530,8 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             all,
             all,
             [
-                CreateProcess(10, 100, 50, firstMemoryPercent, 25, 50),
-                CreateProcess(20, 200, 0, 1, 25, 0)
+                CreateProcess(10, FirstStartKey, 50, firstMemoryPercent, 25, 50),
+                CreateProcess(20, SecondStartKey, 0, 1, 25, 0)
             ],
             202,
             now,

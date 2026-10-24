@@ -61,9 +61,12 @@ public sealed partial class HostManagerSmartCoordinator
         var seenGpuProcessScores = new HashSet<NativeGpuScoreKey>();
         var observedCpuSoftwareMembers = new Dictionary<ulong, uint>();
         var observedGpuSoftwareMembers = new Dictionary<NativeSoftwareGpuScoreKey, uint>();
+        var projectedScoreRows = new List<(int Index, HostManagerComputeScore SoftwareScore)>();
         var reattributedSoftwareKeys = new HashSet<ulong>();
         foreach (var process in sample.ProcessFacts.Processes)
         {
+            // Missing attribution says nothing about whether an owned process changed software.
+            if (string.IsNullOrWhiteSpace(process.SoftwareId)) continue;
             var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                 checked((uint)process.ProcessId), process.ProcessStartKey);
             var currentKey = NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
@@ -74,12 +77,31 @@ public sealed partial class HostManagerSmartCoordinator
                 reattributedSoftwareKeys.Add(anchor.SoftwareKey);
             }
         }
-        var fullProcessSnapshot = sample.ProcessFacts.IsInventoryCurrentComplete();
+        // Missing decision facts can omit a still-live process; its absence here is not exit evidence.
+        var representedProcesses = new HashSet<(int ProcessId, ulong ProcessStartKey)>();
         var seenProcessOwnership = new HashSet<NativeAppliedOwnershipProcessIdentity>();
-        var seenMemoryProcessOwnership = new HashSet<NativeAppliedOwnershipProcessIdentity>();
         var seenAdapterOwnership = new HashSet<ulong>();
         foreach (var target in sample.Targets)
         {
+            if (target.ProcessIds.Count != 1)
+            {
+                Exclude(null, null, target.TargetId, "identity", "target-process-count-not-one");
+                continue;
+            }
+            var targetProcessId = target.ProcessIds[0];
+            if (targetProcessId <= 0
+                || !target.ProcessStartKeys.TryGetValue(targetProcessId, out var targetStartKey)
+                || targetStartKey == 0)
+            {
+                Exclude(targetProcessId, null, target.TargetId, "identity", "target-process-identity-missing");
+                continue;
+            }
+            if (!string.Equals(target.TargetId,
+                HostManagerTargetIdentity.CreateProcessTargetId(targetProcessId, targetStartKey), StringComparison.Ordinal))
+            {
+                Exclude(targetProcessId, targetStartKey, target.TargetId, "identity", "target-process-identity-mismatch");
+                continue;
+            }
             var targetKey = NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId);
             var attributedSoftwareKey =
                 NativeStableIdentity.CreateCaseInsensitiveKey(target.SoftwareId);
@@ -89,12 +111,8 @@ public sealed partial class HostManagerSmartCoordinator
 
             foreach (var processId in target.ProcessIds)
             {
-                if (!target.ProcessStartKeys.TryGetValue(processId, out var startKey)
-                    || startKey == 0)
-                {
-                    fullProcessSnapshot = false;
-                    continue;
-                }
+                var startKey = targetStartKey;
+                representedProcesses.Add((processId, startKey));
 
                 var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                     checked((uint)processId),
@@ -107,6 +125,10 @@ public sealed partial class HostManagerSmartCoordinator
                     : attributedSoftwareKey;
                 var scoreMembershipConsistent = !reattributedSoftwareKeys.Contains(softwareKey)
                     && !reattributedSoftwareKeys.Contains(attributedSoftwareKey);
+                if (!scoreMembershipConsistent)
+                {
+                    Exclude(processId, startKey, target.TargetId, "compute-score", "ownership-software-attribution-mismatch");
+                }
                 var hasAdapterRecord = ownership.AdapterRecords.TryGetValue(
                     softwareKey,
                     out var adapterRecord);
@@ -135,20 +157,25 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     seenProcessOwnership.Add(processIdentity);
                 }
-                var memoryProcessIdentity = CreateMemoryPolicyOwnershipIdentity(
-                    softwareKey,
-                    checked((uint)processId),
-                    startKey);
-                if (ownership.MemoryProcessRecords.ContainsKey(memoryProcessIdentity))
-                {
-                    seenMemoryProcessOwnership.Add(memoryProcessIdentity);
-                }
                 var processGrade = hasProcessRecord
                     ? ToNativeProcessGrade(processRecord.CurrentGrades.ProcessGrade)
                     : NativeSmartCoordinatorProcessGrade.Normal;
                 var processOwned = hasProcessRecord;
                 var processScoreKey = new NativeProcessScoreKey(targetKey, processId, startKey);
                 var processCpuMetricsComplete = scoreProjection.ProcessCpu.TryGetValue(processScoreKey, out var cpuScore);
+                HostManagerComputeScore? cpuSoftwareScore = null;
+                if (processCpuMetricsComplete
+                    && (cpuScore!.SoftwareKey != attributedSoftwareKey
+                        || !seenCpuProcessScores.Add(processScoreKey)))
+                {
+                    Exclude(processId, startKey, target.TargetId, "cpu-score", "canonical-process-membership-mismatch");
+                    processCpuMetricsComplete = false;
+                }
+                if (processCpuMetricsComplete
+                    && !scoreProjection.SoftwareCpu.TryGetValue(attributedSoftwareKey, out cpuSoftwareScore))
+                {
+                    Exclude(processId, startKey, target.TargetId, "cpu-score", "canonical-software-score-missing");
+                }
                 var rawCpuAvailable = target.HasCpuMetric && IsPercent(target.CpuUsagePercent);
                 var processGpuMetricsComplete = IsProcessGpuMetricsComplete(
                     sample.ProcessFacts,
@@ -189,12 +216,6 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 if (processCpuMetricsComplete)
                 {
-                    if (!scoreProjection.SoftwareCpu.TryGetValue(attributedSoftwareKey, out var softwareScore)
-                        || cpuScore!.SoftwareKey != attributedSoftwareKey
-                        || !seenCpuProcessScores.Add(processScoreKey))
-                    {
-                        throw new InvalidDataException("The canonical CPU software score does not match its process membership.");
-                    }
                     IncrementMemberCount(observedCpuSoftwareMembers, attributedSoftwareKey);
                     // Historical ownership must not receive another software's current score.
                     if (scoreMembershipConsistent || rawCpuAvailable)
@@ -202,7 +223,7 @@ public sealed partial class HostManagerSmartCoordinator
                         AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent,
                             rawCpuAvailable ? target.CpuUsagePercent : null, 0,
                             scoreMembershipConsistent ? cpuScore : null,
-                            scoreMembershipConsistent ? softwareScore : null);
+                            scoreMembershipConsistent ? cpuSoftwareScore : null);
                     }
                 }
                 else if (rawCpuAvailable)
@@ -229,28 +250,33 @@ public sealed partial class HostManagerSmartCoordinator
                             var softwareScoreKey = new NativeSoftwareGpuScoreKey(
                                 attributedSoftwareKey,
                                 gpu.AdapterKey);
+                            scoreProjection.SoftwareGpu.TryGetValue(softwareScoreKey, out var softwareScore);
                             if (!scoreProjection.ProcessGpu.TryGetValue(
                                     gpuProcessScoreKey,
                                     out var processScore)
-                                || !scoreProjection.SoftwareGpu.TryGetValue(
-                                    softwareScoreKey,
-                                    out var softwareScore)
                                 || processScore.SoftwareKey != attributedSoftwareKey
                                 || !seenGpuProcessScores.Add(gpuProcessScoreKey))
                             {
-                                throw new InvalidDataException(
-                                    "The canonical GPU score projection does not match the native process metric row.");
+                                Exclude(processId, startKey, target.TargetId, "gpu-score", "canonical-process-membership-mismatch");
+                                // Raw usage and VRAM remain independent of the score filter.
+                                AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.GpuUsagePercent,
+                                    gpu.GpuUsagePercent, usageGpuIndex);
                             }
-                            IncrementMemberCount(
-                                observedGpuSoftwareMembers,
-                                softwareScoreKey);
-                            AppendMetric(inputRows, 
-                                identity,
-                                NativeSmartCoordinatorMetricKind.GpuUsagePercent,
-                                gpu.GpuUsagePercent,
-                                usageGpuIndex,
-                                scoreMembershipConsistent ? processScore : null,
-                                scoreMembershipConsistent ? softwareScore : null);
+                            else
+                            {
+                                if (softwareScore is null)
+                                {
+                                    Exclude(processId, startKey, target.TargetId, "gpu-score", "canonical-software-score-missing");
+                                }
+                                IncrementMemberCount(observedGpuSoftwareMembers, softwareScoreKey);
+                                AppendMetric(inputRows,
+                                    identity,
+                                    NativeSmartCoordinatorMetricKind.GpuUsagePercent,
+                                    gpu.GpuUsagePercent,
+                                    usageGpuIndex,
+                                    scoreMembershipConsistent ? processScore : null,
+                                    scoreMembershipConsistent ? softwareScore : null);
+                            }
                         }
                         else
                         {
@@ -275,12 +301,15 @@ public sealed partial class HostManagerSmartCoordinator
             }
         }
 
-        ValidateProjectedComputeScores(
+        ExcludeUnprojectedComputeScores(
+            inputRows,
+            projectedScoreRows,
             scoreProjection,
             seenCpuProcessScores,
             seenGpuProcessScores,
             observedCpuSoftwareMembers,
-            observedGpuSoftwareMembers);
+            observedGpuSoftwareMembers,
+            cycleFactExclusions);
 
         foreach (var pair in ownership.ProcessRecords
             .Where(pair => !seenProcessOwnership.Contains(pair.Key))
@@ -310,13 +339,14 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var allNativeOwnershipRepresented = seenProcessOwnership.Count == ownership.ProcessRecords.Count
-            && seenMemoryProcessOwnership.Count == ownership.MemoryProcessRecords.Count
             && seenAdapterOwnership.Count == ownership.AdapterRecords.Count;
 
         Volatile.Read(ref transitionProbe)?.ObserveNativeInputs(inputRows[..cursor]);
         return new NativeFactProjectionResult(
             checked((uint)cursor),
-            fullProcessSnapshot,
+            sample.ProcessFacts.IsInventoryCurrentComplete()
+                && representedProcesses.SetEquals(sample.ProcessFacts.CurrentInventoryProcesses
+                    .Select(static process => (process.ProcessId, process.ProcessStartKey))),
             allNativeOwnershipRepresented);
 
         void AppendMetric(
@@ -328,34 +358,37 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerComputeScore? processScore = null,
             HostManagerComputeScore? softwareScore = null)
         {
-            if ((processScore is null) != (softwareScore is null))
-            {
-                throw new InvalidDataException(
-                    "A native metric row must carry both canonical process and software scores or neither.");
-            }
             identity.MetricKind = kind;
             identity.MetricValue = value.GetValueOrDefault();
             identity.DeviceIndex = deviceIndex;
             identity.SourceIndex = sourceIndex++;
             if (value.HasValue) identity.ValidMask |= NativeSmartCoordinatorInputValidity.Metric;
-            if (processScore is not null && softwareScore is not null)
+            if (processScore is not null)
             {
                 if (processScore.MemberCount != 1
-                    || softwareScore.MemberCount == 0
                     || !double.IsFinite(processScore.Score)
-                    || processScore.Score < 0
+                    || processScore.Score < 0)
+                {
+                    throw new InvalidDataException(
+                        "The canonical score row cannot be projected into the native ABI.");
+                }
+                identity.ValidMask |= NativeSmartCoordinatorInputValidity.ProcessScore;
+                identity.ProcessScore = processScore.Score;
+            }
+            if (softwareScore is not null)
+            {
+                if (softwareScore.MemberCount == 0
                     || !double.IsFinite(softwareScore.Score)
                     || softwareScore.Score < 0)
                 {
                     throw new InvalidDataException(
                         "The canonical score row cannot be projected into the native ABI.");
                 }
-                identity.ValidMask |= NativeSmartCoordinatorInputValidity.ProcessScore
-                    | NativeSmartCoordinatorInputValidity.SoftwareScore
+                identity.ValidMask |= NativeSmartCoordinatorInputValidity.SoftwareScore
                     | NativeSmartCoordinatorInputValidity.ScoreMemberCount;
-                identity.ProcessScore = processScore.Score;
                 identity.SoftwareScore = softwareScore.Score;
                 identity.ScoreMemberCount = softwareScore.MemberCount;
+                projectedScoreRows.Add((cursor, softwareScore));
             }
             Append(outputRows, identity);
         }
@@ -370,6 +403,9 @@ public sealed partial class HostManagerSmartCoordinator
 
             outputRows[cursor++] = row;
         }
+
+        void Exclude(int? processId, ulong? startKey, string targetId, string fact, string reason)
+            => cycleFactExclusions.Add(new SchedulingFactExclusion(processId, startKey, targetId, fact, reason));
     }
 
     private static NativeSmartCoordinatorInputRow CreateNativeIdentityFact(
@@ -1116,29 +1152,44 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    private static void ValidateProjectedComputeScores(
+    private static void ExcludeUnprojectedComputeScores(
+        Span<NativeSmartCoordinatorInputRow> rows,
+        IReadOnlyList<(int Index, HostManagerComputeScore SoftwareScore)> projectedRows,
         NativeComputeScoreProjection projection,
         IReadOnlySet<NativeProcessScoreKey> seenCpuProcessScores,
         IReadOnlySet<NativeGpuScoreKey> seenGpuProcessScores,
         IReadOnlyDictionary<ulong, uint> observedCpuSoftwareMembers,
-        IReadOnlyDictionary<NativeSoftwareGpuScoreKey, uint> observedGpuSoftwareMembers)
+        IReadOnlyDictionary<NativeSoftwareGpuScoreKey, uint> observedGpuSoftwareMembers,
+        ICollection<SchedulingFactExclusion> exclusions)
     {
-        if (seenCpuProcessScores.Count != projection.ProcessCpu.Count
-            || seenGpuProcessScores.Count != projection.ProcessGpu.Count
-            || observedCpuSoftwareMembers.Count != projection.SoftwareCpu.Count
-            || observedGpuSoftwareMembers.Count != projection.SoftwareGpu.Count)
+        foreach (var pair in projection.ProcessCpu)
         {
-            throw new InvalidDataException(
-                "The native metric projection did not consume the complete canonical score set.");
+            if (!seenCpuProcessScores.Contains(pair.Key))
+            {
+                exclusions.Add(new SchedulingFactExclusion(pair.Key.ProcessId, pair.Key.ProcessStartKey,
+                    HostManagerTargetIdentity.CreateProcessTargetId(pair.Key.ProcessId, pair.Key.ProcessStartKey),
+                    "cpu-score", "canonical-process-not-projected"));
+            }
         }
-
+        foreach (var pair in projection.ProcessGpu)
+        {
+            if (!seenGpuProcessScores.Contains(pair.Key))
+            {
+                exclusions.Add(new SchedulingFactExclusion(pair.Key.ProcessId, pair.Key.ProcessStartKey,
+                    HostManagerTargetIdentity.CreateProcessTargetId(pair.Key.ProcessId, pair.Key.ProcessStartKey),
+                    "gpu-score", "canonical-process-not-projected"));
+            }
+        }
+        var incompleteCpuSoftware = new HashSet<ulong>();
+        var incompleteGpuSoftware = new HashSet<NativeSoftwareGpuScoreKey>();
         foreach (var pair in projection.SoftwareCpu)
         {
             if (!observedCpuSoftwareMembers.TryGetValue(pair.Key, out var memberCount)
                 || memberCount != pair.Value.MemberCount)
             {
-                throw new InvalidDataException(
-                    "The native CPU score projection does not match canonical software membership.");
+                incompleteCpuSoftware.Add(pair.Key);
+                exclusions.Add(new SchedulingFactExclusion(null, null, $"software:{pair.Key:x16}",
+                    "cpu-score", "canonical-software-membership-incomplete"));
             }
         }
         foreach (var pair in projection.SoftwareGpu)
@@ -1146,9 +1197,25 @@ public sealed partial class HostManagerSmartCoordinator
             if (!observedGpuSoftwareMembers.TryGetValue(pair.Key, out var memberCount)
                 || memberCount != pair.Value.MemberCount)
             {
-                throw new InvalidDataException(
-                    "The native GPU score projection does not match canonical software membership.");
+                incompleteGpuSoftware.Add(pair.Key);
+                exclusions.Add(new SchedulingFactExclusion(null, null, $"software:{pair.Key.SoftwareKey:x16}/gpu:{pair.Key.AdapterKey:x16}",
+                    "gpu-score", "canonical-software-membership-incomplete"));
             }
+        }
+        foreach (var (index, score) in projectedRows)
+        {
+            var incomplete = score.Kind == NativeComputeScoringOutputKind.SoftwareCpu
+                ? incompleteCpuSoftware.Contains(score.SoftwareKey)
+                : incompleteGpuSoftware.Contains(new NativeSoftwareGpuScoreKey(score.SoftwareKey, score.AdapterKey));
+            if (!incomplete) continue;
+
+            // A partial software aggregate cannot be advertised as complete. The matching
+            // process score and independent raw metric remain valid.
+            ref var row = ref rows[index];
+            row.ValidMask &= ~(NativeSmartCoordinatorInputValidity.SoftwareScore
+                | NativeSmartCoordinatorInputValidity.ScoreMemberCount);
+            row.SoftwareScore = 0;
+            row.ScoreMemberCount = 0;
         }
     }
 

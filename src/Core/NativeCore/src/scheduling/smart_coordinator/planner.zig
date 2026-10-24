@@ -26,7 +26,7 @@ pub fn advance(
     if (session.plan_epoch == 0) session.plan_epoch = 1;
     session.last_cycle_sequence = input.cycle_sequence;
     session.last_observed_at_ms = input.observed_at_ms;
-    session.invalid_fact_count = 0;
+    session.invalid_fact_count = session.staged_invalid_fact_count;
     session.last_reason_mask = 0;
 
     observeCriticalEvents(session, input);
@@ -140,7 +140,7 @@ pub fn copySnapshotRows(session: *const state.Session, rows: []protocol.Snapshot
 }
 
 fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) protocol.Status {
-    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0;
+    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
     for (session.processes) |*item| item.seen_this_cycle = false;
     for (session.softwares) |*item| {
         item.seen_this_cycle = false;
@@ -170,6 +170,7 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) pr
 
     var new_processes: u32 = 0;
     for (session.staged_processes[0..@intCast(session.staged_process_count)]) |process| {
+        if (process.identity_conflict) continue;
         if (session.findProcess(process.target_key, process.process_id, process.process_start_key) == null) new_processes += 1;
     }
     var free_processes: u32 = 0;
@@ -190,6 +191,7 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) pr
 
     var new_gpus: u32 = 0;
     for (session.staged_gpus[0..@intCast(session.staged_gpu_count)]) |gpu| {
+        if (session.staged_processes[gpu.process_slot].identity_conflict) continue;
         if (session.findGpu(gpu.target_key, gpu.process_id, gpu.process_start_key, gpu.device_index) == null) new_gpus += 1;
     }
     var free_gpus: u32 = 0;
@@ -200,6 +202,7 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) pr
 
     const authoritative = (input.flags & protocol.CycleFlags.authoritative_applied_facts) != 0;
     for (session.staged_processes[0..@intCast(session.staged_process_count)]) |staged| {
+        if (staged.identity_conflict) continue;
         const slot = session.findProcess(staged.target_key, staged.process_id, staged.process_start_key) orelse
             (session.allocateProcess() orelse return .capacity_exceeded);
         if (session.findProcess(staged.target_key, staged.process_id, staged.process_start_key) == null) {
@@ -223,6 +226,7 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) pr
     }
 
     for (session.staged_gpus[0..@intCast(session.staged_gpu_count)]) |staged| {
+        if (session.staged_processes[staged.process_slot].identity_conflict) continue;
         const existing = session.findGpu(staged.target_key, staged.process_id, staged.process_start_key, staged.device_index);
         const slot = existing orelse (session.allocateGpu() orelse return .capacity_exceeded);
         if (existing == null) {
@@ -294,7 +298,7 @@ fn copyProcessFacts(
     if (is_game and !previous_game_active) target.game_started_at_ms = input.observed_at_ms;
     if (!is_game) target.game_started_at_ms = 0;
 
-    if (authoritative) {
+    if (authoritative and (staged.valid_mask & protocol.InputValidity.applied_process_grade) != 0) {
         const owned = (staged.input_flags & protocol.InputFlags.owns_process_grade) != 0;
         const grade = staged.applied_process_grade;
         target.transition.applied = grade;
@@ -372,7 +376,7 @@ fn syncAuthoritativeAdapterTransition(
     owned_flag: u64,
     grade: u8,
 ) void {
-    std.debug.assert((valid_mask & valid_bit) != 0);
+    if ((valid_mask & valid_bit) == 0) return;
     transition.applied = grade;
     transition.owned = (flags & owned_flag) != 0;
     transition.inflight_action_id = 0;
@@ -428,7 +432,7 @@ fn observeCriticalEvents(session: *state.Session, input: *const protocol.CycleIn
 }
 
 fn evaluateProcesses(session: *state.Session, input: *const protocol.CycleInput) void {
-    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0;
+    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
     const feature_enabled = (session.config.feature_flags & protocol.FeatureFlags.process_policy) != 0;
     for (session.processes) |*process| {
         if (!process.occupied) continue;
@@ -445,6 +449,12 @@ fn evaluateProcesses(session: *state.Session, input: *const protocol.CycleInput)
                 process.reason_mask |= protocol.Reason.no_complete_snapshot;
                 session.invalid_fact_count += 1;
             }
+            session.last_reason_mask |= process.reason_mask;
+            continue;
+        }
+        if ((process.valid_mask & protocol.InputValidity.applied_process_grade) == 0) {
+            process.reason_mask |= protocol.Reason.ineligible;
+            session.invalid_fact_count += 1;
             session.last_reason_mask |= process.reason_mask;
             continue;
         }
@@ -571,7 +581,7 @@ fn resolveFreezeGroups(session: *state.Session) void {
 }
 
 fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) void {
-    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0;
+    const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
     for (session.softwares) |*software| {
         if (!software.occupied) continue;
         software.reason_mask = 0;
@@ -619,7 +629,10 @@ fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) 
             continue;
         }
 
-        if ((session.config.feature_flags & protocol.FeatureFlags.adapter_cpu) == 0) {
+        if ((software.valid_mask & protocol.InputValidity.applied_cpu_grade) == 0) {
+            software.reason_mask |= protocol.Reason.ineligible;
+            session.invalid_fact_count += 1;
+        } else if ((session.config.feature_flags & protocol.FeatureFlags.adapter_cpu) == 0) {
             software.cpu_candidate_valid = true;
             software.cpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
             software.reason_mask |= protocol.Reason.feature_disabled;
@@ -648,7 +661,10 @@ fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) 
             if (cpu.clamped) software.reason_mask |= protocol.Reason.capability_clamped;
         }
 
-        if ((session.config.feature_flags & protocol.FeatureFlags.adapter_gpu) == 0) {
+        if ((software.valid_mask & protocol.InputValidity.applied_gpu_grade) == 0) {
+            software.reason_mask |= protocol.Reason.ineligible;
+            session.invalid_fact_count += 1;
+        } else if ((session.config.feature_flags & protocol.FeatureFlags.adapter_gpu) == 0) {
             software.gpu_candidate_valid = true;
             software.gpu_candidate_grade = @intFromEnum(protocol.AdapterGrade.normal);
             software.reason_mask |= protocol.Reason.feature_disabled;

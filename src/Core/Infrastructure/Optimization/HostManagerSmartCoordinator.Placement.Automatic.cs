@@ -120,11 +120,38 @@ public sealed partial class HostManagerSmartCoordinator
         var appliedPlan = appliedPlacementCoordinatorPlan
             ?? throw new InvalidOperationException("The Host Manager placement coordinator plan is unavailable.");
         fullDesired = fullDesired.Where(item => !GpuActionFacts.BlocksEffect(state.AppliedPlacements, item.Placement, item.Record)).ToArray();
+        var observations = CapturePlacementObservations(placementEffects);
+        // A confirmed exited thread has no policy left to restore. Settle
+        // its durable receipt before limiting actual restore writes by budget.
+        var exitedCpuRecords = placementEffects.SelectMany(placement => placement.Records
+            .Where(record => record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor)
+            .Select(record => HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record)))
+            .Where(identity => observations[identity].Status == NativePlacementObservationStatus.NotFoundOrExited)
+            .ToHashSet();
+        if (exitedCpuRecords.Count != 0)
+        {
+            state = state with
+            {
+                AppliedPlacements = state.AppliedPlacements.Select(placement => placement with
+                {
+                    Records = placement.Records.Where(record => !exitedCpuRecords.Contains(
+                        HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record))).ToArray()
+                }).Where(placement => placement.Records.Count != 0).ToArray()
+            };
+            await SavePlacementCheckpointAsync(state,
+                "Host Manager settled CPU placement receipts for confirmed exited identities.", CancellationToken.None);
+            placementEffects = placementEffects.Select(placement => placement with
+            {
+                Records = placement.Records.Where(record => !exitedCpuRecords.Contains(
+                    HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record))).ToArray()
+            }).Where(placement => placement.Records.Count != 0).ToArray();
+            fullDesired = fullDesired.Where(item => !exitedCpuRecords.Contains(
+                HostManagerPlacementCoordinatorProjection.CreateIdentity(item.Placement, item.Record))).ToArray();
+        }
         var desiredByIdentity = fullDesired.ToDictionary(
             static item => HostManagerPlacementCoordinatorProjection.CreateIdentity(
                 item.Placement,
                 item.Record));
-        var observations = CapturePlacementObservations(placementEffects);
         var bounded = BuildBoundedPlacementCycle(
             placementEffects,
             fullDesired,

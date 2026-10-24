@@ -11,7 +11,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task MemoryModesConsumeOnlyPhysicalScoreMembers(
+    public async Task MemoryModesIncludeEveryCoveredPhysicalProcessAndSoftware(
         bool removeScalarCpu,
         bool partialPhysicalObservation)
     {
@@ -49,14 +49,28 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var cpu = Assert.IsType<HostManagerComputeScoreDomainSnapshot>(authority.Compute!.Cpu);
         var processScores = cpu.Scores.Where(score =>
             score.Kind == NativeComputeScoringOutputKind.ProcessCpu).ToArray();
-        Assert.Equal(partialPhysicalObservation ? 1 : 3, processScores.Length);
+        Assert.Equal(3, processScores.Length);
+        Assert.Equal(new[] { pid, pid + 1, pid + 2 }, processScores.Select(row => row.ProcessId).Order());
+        if (partialPhysicalObservation)
+        {
+            Assert.All(processScores.Where(row => row.ProcessId != pid), row =>
+                Assert.Equal(authority.Compute!.Welfare.CpuBonus, row.Score));
+        }
+        var softwareScores = cpu.Scores.Where(row => row.Kind == NativeComputeScoringOutputKind.SoftwareCpu).ToArray();
+        Assert.Equal(2, softwareScores.Length);
+        Assert.Equal(2U, Assert.Single(softwareScores, row => row.SoftwareKey ==
+            NativeStableIdentity.CreateCaseInsensitiveKey(software)).MemberCount);
+        Assert.Equal(1U, Assert.Single(softwareScores, row => row.SoftwareKey ==
+            NativeStableIdentity.CreateCaseInsensitiveKey("software:other-memory-mode")).MemberCount);
         Assert.Equal(authority.RoundNumber, cpu.RoundNumber);
         var modes = Assert.IsType<HostManagerMemoryModeDesiredSnapshot>(authority.MemoryModes);
         Assert.Equal(authority.RoundNumber, modes.RoundNumber);
-        Assert.Equal(partialPhysicalObservation ? 1 : 2, modes.Software.Length);
+        Assert.Equal(2, modes.Software.Length);
         var softwareMode = Assert.Single(modes.Software,
             row => row.SoftwareKey == NativeStableIdentity.CreateCaseInsensitiveKey(software));
-        Assert.Equal(partialPhysicalObservation ? 30 : 100, softwareMode.BaseScore);
+        Assert.Equal(100, softwareMode.BaseScore);
+        Assert.Contains(modes.Software, row => row.SoftwareKey ==
+            NativeStableIdentity.CreateCaseInsensitiveKey("software:other-memory-mode"));
         var projection = Assert.IsType<HostManagerNonAdaptedMemoryModeProjectionSnapshot>(
             fixture.Coordinator.NonAdaptedMemoryModeProjection);
         Assert.Equal(authority.RoundNumber, projection.RoundNumber);

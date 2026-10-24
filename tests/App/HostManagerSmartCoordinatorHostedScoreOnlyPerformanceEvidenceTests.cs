@@ -582,7 +582,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         process.CpuUsagePercent,
                         process.MemoryUsagePercent,
                         generation,
-                        []))
+                        []) { RuntimeState = HostManagerRuntimeStates.BackgroundProcess })
                     .ToArray();
                 var processSnapshot = new SchedulingProcessFactSnapshot(
                     SamplingObservationStatus.Current,

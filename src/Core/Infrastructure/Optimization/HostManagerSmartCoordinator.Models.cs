@@ -52,7 +52,7 @@ public sealed partial class HostManagerSmartCoordinator
         private double evidenceSystemPercent;
 
         public bool HasAnyUsage { get; private set; }
-        public string RuntimeState { get; private set; } = HostManagerRuntimeStates.BackgroundProcess;
+        public string RuntimeState { get; private set; } = HostManagerRuntimeStates.Unknown;
         public double CpuUsagePercent { get; private set; }
         public double GpuUsagePercent { get; private set; }
         public double? VramUsedPercent { get; private set; }

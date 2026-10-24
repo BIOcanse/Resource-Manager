@@ -347,7 +347,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 {
                     PrivateMemoryBytes = includeDedicatedMemory ? (adapter.Index == initialIndex ? 64UL << 20 : 0) : null,
                     SharedMemoryBytes = includeDedicatedMemory ? 0 : null
-                }).ToArray())],
+                }).ToArray()) { RuntimeState = HostManagerRuntimeStates.BackgroundProcess }],
             1, now, inventory.Generation, inventory.TopologyFingerprint)
         {
             DatasetObservations = datasets,

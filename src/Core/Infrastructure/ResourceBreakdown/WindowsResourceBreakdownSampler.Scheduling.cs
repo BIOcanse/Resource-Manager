@@ -249,7 +249,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     ? Math.Max(0, sample.WorkingSetBytes) : 0,
                 Gpus = gpuFacts,
                 RuntimeState = runtimeState?.RuntimeState
-                    ?? HostManagerRuntimeStates.BackgroundProcess,
+                    ?? HostManagerRuntimeStates.Unknown,
                 ForegroundFocused = runtimeState?.ForegroundFocused == true,
                 HasVisibleWindow = runtimeState?.HasVisibleWindow == true,
                 HasBackgroundWindow = runtimeState?.HasBackgroundWindow == true

@@ -31,25 +31,53 @@ pub fn stage(
         &[_]protocol.InputRow{}
     else
         (row_pointer orelse return .invalid_argument)[0..@intCast(input.input_count)];
-    for (rows, 0..) |*row, index| {
-        const result = protocol.validateInputRow(row, @intCast(index));
-        if (result != .ok) return result;
-        if (!validFlagOwnership(row)) return .invalid_argument;
+    // A different stride makes the supplied memory incompatible. Fact fields,
+    // including per-row flags and source indices, are validated independently.
+    for (rows) |*row| {
+        if (row.struct_size != @sizeOf(protocol.InputRow)) return .abi_mismatch;
     }
 
     session.clearStage();
+    // Identity observations survive a bad metric, and every alias of an ambiguous
+    // process instance is excluded before any software membership is aggregated.
     for (rows) |*row| {
+        if ((row.valid_mask & protocol.InputValidity.process_identity) == 0 or
+            row.target_key == 0 or row.process_id == 0 or row.process_start_key == 0) continue;
+        const slot = session.findStagedIdentity(row.process_id, row.process_start_key) orelse
+            (session.addStagedProcess(newStagedProcess(row)) orelse return .capacity_exceeded);
+        const process = &session.staged_processes[slot];
+        if (process.target_key != row.target_key) {
+            if (!process.identity_conflict) session.staged_invalid_fact_count += 1;
+            process.identity_conflict = true;
+            session.staged_inventory_complete = false;
+        }
+    }
+    for (rows, 0..) |*row, index| {
+        if (protocol.validateInputRow(row, @intCast(index)) != .ok or !validFlagOwnership(row)) {
+            session.staged_invalid_fact_count += 1;
+            if (row.source_index != index or
+                (row.valid_mask & protocol.InputValidity.process_identity) == 0 or
+                row.target_key == 0 or row.process_id == 0 or row.process_start_key == 0)
+                session.staged_inventory_complete = false;
+            continue;
+        }
         const metric: protocol.MetricKind = @enumFromInt(row.metric_kind);
         if ((row.valid_mask & protocol.InputValidity.process_identity) == 0) {
-            if ((row.valid_mask & protocol.InputValidity.software_identity) == 0) return .invalid_argument;
+            if ((row.valid_mask & protocol.InputValidity.software_identity) == 0) {
+                session.staged_invalid_fact_count += 1;
+                session.staged_inventory_complete = false;
+                continue;
+            }
             const software_slot = session.findStagedSoftware(row.software_key) orelse
                 (session.addStagedSoftware(newStagedSoftware(row.software_key, row.source_index)) orelse return .capacity_exceeded);
             const software_result = mergeStandaloneSoftwareRow(session, software_slot, row);
             if (software_result != .ok) return software_result;
             continue;
         }
-        const process_slot = session.findStagedProcess(row.target_key, row.process_id, row.process_start_key) orelse
+        const process_slot = session.findStagedIdentity(row.process_id, row.process_start_key) orelse
             (session.addStagedProcess(newStagedProcess(row)) orelse return .capacity_exceeded);
+        const process = &session.staged_processes[process_slot];
+        if (process.identity_conflict) continue;
         const merge_result = mergeProcessRow(session, process_slot, row);
         if (merge_result != .ok) return merge_result;
         if ((row.valid_mask & protocol.InputValidity.metric) != 0 and
@@ -61,6 +89,8 @@ pub fn stage(
     }
 
     for (session.staged_processes[0..@intCast(session.staged_process_count)]) |*process| {
+        if (process.identity_conflict) continue;
+        session.staged_invalid_fact_count += @popCount(process.invalid_mask);
         process.runtime_state = classifyRuntimeState(process.valid_mask, process.input_flags);
         if ((process.valid_mask & protocol.InputValidity.software_identity) == 0) continue;
         const software_slot = session.findStagedSoftware(process.software_key) orelse
@@ -72,6 +102,7 @@ pub fn stage(
 
     for (session.staged_gpus[0..@intCast(session.staged_gpu_count)]) |gpu| {
         const process = session.staged_processes[gpu.process_slot];
+        if (process.identity_conflict) continue;
         if (process.software_slot == no_slot) continue;
         const software_gpu_slot = session.findStagedSoftwareGpu(process.software_slot, gpu.device_index) orelse
             (session.addStagedSoftwareGpu(.{
@@ -92,46 +123,35 @@ pub fn stage(
         if ((gpu.valid_mask & state.SampleValidity.vram) != 0) {
             aggregate.vram_usage_percent = @min(100, aggregate.vram_usage_percent + gpu.vram_usage_percent);
         }
-        if (gpu.gpu_score_valid) {
+        if (gpu.software_gpu_score_valid and !aggregate.score_invalid) {
             if (aggregate.gpu_score_valid and
                 (aggregate.gpu_score != gpu.software_gpu_score or
                     aggregate.gpu_score_member_count != gpu.software_gpu_score_member_count))
             {
-                return .conflicting_facts;
+                aggregate.score_invalid = true;
+                session.staged_invalid_fact_count += 1;
             }
             aggregate.gpu_score = gpu.software_gpu_score;
             aggregate.gpu_score_member_count = gpu.software_gpu_score_member_count;
-            aggregate.gpu_score_valid = true;
+            aggregate.gpu_score_valid = !aggregate.score_invalid;
             aggregate.gpu_scored_member_count += 1;
         }
     }
 
-    const score_result = validateCanonicalScoreCoverage(session);
-    if (score_result != .ok) return score_result;
+    validateCanonicalScoreCoverage(session);
     selectSoftwareGpuScore(session);
-    if ((input.flags & protocol.CycleFlags.authoritative_applied_facts) != 0 and
-        !hasCompleteAuthoritativeAppliedFacts(session))
-    {
-        return .invalid_argument;
-    }
+    for (session.staged_softwares[0..@intCast(session.staged_software_count)]) |software|
+        session.staged_invalid_fact_count += @popCount(software.invalid_mask);
     return .ok;
-}
-
-fn hasCompleteAuthoritativeAppliedFacts(session: *const state.Session) bool {
-    for (session.staged_processes[0..@intCast(session.staged_process_count)]) |process| {
-        if ((process.valid_mask & protocol.InputValidity.applied_process_grade) == 0) return false;
-    }
-    for (session.staged_softwares[0..@intCast(session.staged_software_count)]) |software| {
-        if ((software.valid_mask & protocol.InputValidity.applied_cpu_grade) == 0) return false;
-        if ((software.valid_mask & protocol.InputValidity.applied_gpu_grade) == 0) return false;
-    }
-    return true;
 }
 
 fn validFlagOwnership(row: *const protocol.InputRow) bool {
     const surface_flags = protocol.InputFlags.running | protocol.InputFlags.foreground_focused |
         protocol.InputFlags.has_visible_window | protocol.InputFlags.has_background_window |
         protocol.InputFlags.has_hidden_window;
+    if ((row.valid_mask & protocol.InputValidity.surface_facts) != 0 and
+        (row.flags & protocol.InputFlags.running) == 0 and
+        (row.flags & (surface_flags & ~protocol.InputFlags.running)) != 0) return false;
     const eligibility_flags = protocol.InputFlags.can_apply_process_policy |
         protocol.InputFlags.can_apply_adapter_policy | protocol.InputFlags.hardware_scheduling_eligible;
     if ((row.flags & surface_flags) != 0 and (row.valid_mask & protocol.InputValidity.surface_facts) == 0) return false;
@@ -154,7 +174,7 @@ fn newStagedProcess(row: *const protocol.InputRow) state.StagedProcess {
         .process_id = row.process_id,
         .source_index = row.source_index,
         .valid_mask = protocol.InputValidity.process_identity,
-        .input_flags = row.flags & (protocol.InputFlags.process_cpu_metrics_complete | protocol.InputFlags.process_gpu_metrics_complete),
+        .input_flags = 0,
         .software_kind = @intFromEnum(protocol.SoftwareKind.unknown),
         .protection_level = 0,
         .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
@@ -182,18 +202,20 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
 
     var result = mergeU64Fact(
         &process.valid_mask,
+        &process.invalid_mask,
         protocol.InputValidity.software_identity,
         &process.software_key,
         row.software_key,
         row.valid_mask,
     );
     if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, protocol.InputValidity.software_kind, &process.software_kind, row.software_kind, row.valid_mask);
+    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.software_kind, &process.software_kind, row.software_kind, row.valid_mask);
     if (result != .ok) return result;
-    result = mergeF64Fact(&process.valid_mask, protocol.InputValidity.base_score, &process.base_score, row.base_score, row.valid_mask);
+    result = mergeF64Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.base_score, &process.base_score, row.base_score, row.valid_mask);
     if (result != .ok) return result;
     result = mergeFlagFact(
         &process.valid_mask,
+        &process.invalid_mask,
         protocol.InputValidity.surface_facts,
         &process.input_flags,
         row.flags,
@@ -205,6 +227,7 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
     if (result != .ok) return result;
     result = mergeFlagFact(
         &process.valid_mask,
+        &process.invalid_mask,
         protocol.InputValidity.eligibility,
         &process.input_flags,
         row.flags,
@@ -213,11 +236,11 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
         row.valid_mask,
     );
     if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, protocol.InputValidity.protection, &process.protection_level, row.protection_level, row.valid_mask);
+    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.protection, &process.protection_level, row.protection_level, row.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, protocol.InputValidity.cpu_capabilities, &process.cpu_capability_mask, row.cpu_capability_mask, row.valid_mask);
+    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.cpu_capabilities, &process.cpu_capability_mask, row.cpu_capability_mask, row.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&process.valid_mask, protocol.InputValidity.gpu_capabilities, &process.gpu_capability_mask, row.gpu_capability_mask, row.valid_mask);
+    result = mergeU8Fact(&process.valid_mask, &process.invalid_mask, protocol.InputValidity.gpu_capabilities, &process.gpu_capability_mask, row.gpu_capability_mask, row.valid_mask);
     if (result != .ok) return result;
     result = mergeAppliedProcessFact(process, row);
     if (result != .ok) return result;
@@ -238,23 +261,25 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
                         row.metric_value;
                     process.cpu_metric_valid = true;
                 }
-                if ((row.valid_mask & protocol.InputValidity.process_score) != 0) {
+                if ((row.valid_mask & protocol.InputValidity.process_score) != 0 and !process.cpu_score_invalid) {
                     if (process.cpu_score_valid and process.cpu_score != row.process_score) {
-                        return .conflicting_facts;
+                        process.cpu_score_invalid = true;
+                        session.staged_invalid_fact_count += 1;
                     }
                     process.cpu_score = row.process_score;
-                    process.cpu_score_valid = true;
+                    process.cpu_score_valid = !process.cpu_score_invalid;
                 }
-                if ((row.valid_mask & protocol.InputValidity.software_score) != 0) {
+                if ((row.valid_mask & protocol.InputValidity.software_score) != 0 and !process.software_cpu_score_invalid) {
                     if (process.software_cpu_score_valid and
                         (process.software_cpu_score != row.software_score or
                             process.software_cpu_score_member_count != row.score_member_count))
                     {
-                        return .conflicting_facts;
+                        process.software_cpu_score_invalid = true;
+                        session.staged_invalid_fact_count += 1;
                     }
                     process.software_cpu_score = row.software_score;
                     process.software_cpu_score_member_count = row.score_member_count;
-                    process.software_cpu_score_valid = true;
+                    process.software_cpu_score_valid = !process.software_cpu_score_invalid;
                 }
             },
             .gpu_usage_percent, .vram_usage_percent => {},
@@ -266,11 +291,15 @@ fn mergeProcessRow(session: *state.Session, slot: u32, row: *const protocol.Inpu
 
 fn mergeAppliedProcessFact(process: *state.StagedProcess, row: *const protocol.InputRow) protocol.Status {
     const bit = protocol.InputValidity.applied_process_grade;
-    if ((row.valid_mask & bit) == 0) return .ok;
+    if ((row.valid_mask & bit) == 0 or (process.invalid_mask & bit) != 0) return .ok;
     const owned = (row.flags & protocol.InputFlags.owns_process_grade) != 0;
     if ((process.valid_mask & bit) != 0) {
         const current_owned = (process.input_flags & protocol.InputFlags.owns_process_grade) != 0;
-        if (process.applied_process_grade != row.applied_process_grade or current_owned != owned) return .conflicting_facts;
+        if (process.applied_process_grade != row.applied_process_grade or current_owned != owned) {
+            process.valid_mask &= ~bit;
+            process.invalid_mask |= bit;
+            process.input_flags &= ~protocol.InputFlags.owns_process_grade;
+        }
         return .ok;
     }
     process.valid_mask |= bit;
@@ -282,13 +311,17 @@ fn mergeAppliedProcessFact(process: *state.StagedProcess, row: *const protocol.I
 fn mergeAppliedAdapterFact(process: *state.StagedProcess, row: *const protocol.InputRow, comptime cpu: bool) protocol.Status {
     const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
     const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((row.valid_mask & bit) == 0) return .ok;
+    if ((row.valid_mask & bit) == 0 or (process.invalid_mask & bit) != 0) return .ok;
     const grade = if (cpu) row.applied_cpu_grade else row.applied_gpu_grade;
     const owned = (row.flags & owned_flag) != 0;
     if ((process.valid_mask & bit) != 0) {
         const current_grade = if (cpu) process.applied_cpu_grade else process.applied_gpu_grade;
         const current_owned = (process.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) {
+            process.valid_mask &= ~bit;
+            process.invalid_mask |= bit;
+            process.input_flags &= ~owned_flag;
+        }
         return .ok;
     }
     process.valid_mask |= bit;
@@ -325,23 +358,25 @@ fn mergeGpuMetric(session: *state.Session, process_slot: u32, row: *const protoc
         else
             row.metric_value;
         gpu.valid_mask |= state.SampleValidity.gpu;
-        if ((row.valid_mask & protocol.InputValidity.process_score) != 0) {
+        if ((row.valid_mask & protocol.InputValidity.process_score) != 0 and !gpu.score_invalid) {
             if (gpu.gpu_score_valid and gpu.gpu_score != row.process_score) {
-                return .conflicting_facts;
+                gpu.score_invalid = true;
+                session.staged_invalid_fact_count += 1;
             }
             gpu.gpu_score = row.process_score;
-            gpu.gpu_score_valid = true;
+            gpu.gpu_score_valid = !gpu.score_invalid;
         }
-        if ((row.valid_mask & protocol.InputValidity.software_score) != 0) {
+        if ((row.valid_mask & protocol.InputValidity.software_score) != 0 and !gpu.software_score_invalid) {
             if (gpu.software_gpu_score_valid and
                 (gpu.software_gpu_score != row.software_score or
                     gpu.software_gpu_score_member_count != row.score_member_count))
             {
-                return .conflicting_facts;
+                gpu.software_score_invalid = true;
+                session.staged_invalid_fact_count += 1;
             }
             gpu.software_gpu_score = row.software_score;
             gpu.software_gpu_score_member_count = row.score_member_count;
-            gpu.software_gpu_score_valid = true;
+            gpu.software_gpu_score_valid = !gpu.software_score_invalid;
         }
     } else {
         gpu.vram_usage_percent = if ((gpu.valid_mask & state.SampleValidity.vram) != 0)
@@ -395,6 +430,7 @@ fn mergeStandaloneSoftwareRow(
 
     var result = mergeU8Fact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.software_kind,
         &software.software_kind,
         row.software_kind,
@@ -403,6 +439,7 @@ fn mergeStandaloneSoftwareRow(
     if (result != .ok) return result;
     result = mergeF64Fact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.base_score,
         &software.base_score,
         row.base_score,
@@ -411,6 +448,7 @@ fn mergeStandaloneSoftwareRow(
     if (result != .ok) return result;
     result = mergeU8Fact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.cpu_capabilities,
         &software.cpu_capability_mask,
         row.cpu_capability_mask,
@@ -419,6 +457,7 @@ fn mergeStandaloneSoftwareRow(
     if (result != .ok) return result;
     result = mergeU8Fact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.gpu_capabilities,
         &software.gpu_capability_mask,
         row.gpu_capability_mask,
@@ -427,6 +466,7 @@ fn mergeStandaloneSoftwareRow(
     if (result != .ok) return result;
     result = mergeFlagFact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.eligibility,
         &software.input_flags,
         row.flags,
@@ -453,13 +493,17 @@ fn mergeStandaloneSoftwareAppliedFact(
 ) protocol.Status {
     const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
     const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((row.valid_mask & bit) == 0) return .ok;
+    if ((row.valid_mask & bit) == 0 or (software.invalid_mask & bit) != 0) return .ok;
     const grade = if (cpu) row.applied_cpu_grade else row.applied_gpu_grade;
     const owned = (row.flags & owned_flag) != 0;
     if ((software.valid_mask & bit) != 0) {
         const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
         const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) {
+            software.valid_mask &= ~bit;
+            software.invalid_mask |= bit;
+            software.input_flags &= ~owned_flag;
+        }
         return .ok;
     }
     software.valid_mask |= bit;
@@ -476,16 +520,17 @@ fn mergeProcessIntoSoftware(session: *state.Session, slot: u32, process: *const 
     software.member_count += 1;
     software.member_signature ^= state.processHash(process.target_key, process.process_id, process.process_start_key);
     software.runtime_state = higherRuntimeState(software.runtime_state, process.runtime_state);
-    if (process.software_cpu_score_valid) {
+    if (process.software_cpu_score_valid and !software.cpu_score_invalid) {
         if (software.cpu_score_valid and
             (software.cpu_score != process.software_cpu_score or
                 software.cpu_score_member_count != process.software_cpu_score_member_count))
         {
-            return .conflicting_facts;
+            software.cpu_score_invalid = true;
+            session.staged_invalid_fact_count += 1;
         }
         software.cpu_score = process.software_cpu_score;
         software.cpu_score_member_count = process.software_cpu_score_member_count;
-        software.cpu_score_valid = true;
+        software.cpu_score_valid = !software.cpu_score_invalid;
         software.cpu_scored_member_count += 1;
     }
     if ((process.valid_mask & protocol.InputValidity.base_score) != 0) {
@@ -497,14 +542,15 @@ fn mergeProcessIntoSoftware(session: *state.Session, slot: u32, process: *const 
         software.valid_mask |= protocol.InputValidity.protection;
     }
 
-    var result = mergeU8Fact(&software.valid_mask, protocol.InputValidity.software_kind, &software.software_kind, process.software_kind, process.valid_mask);
+    var result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.software_kind, &software.software_kind, process.software_kind, process.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&software.valid_mask, protocol.InputValidity.cpu_capabilities, &software.cpu_capability_mask, process.cpu_capability_mask, process.valid_mask);
+    result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.cpu_capabilities, &software.cpu_capability_mask, process.cpu_capability_mask, process.valid_mask);
     if (result != .ok) return result;
-    result = mergeU8Fact(&software.valid_mask, protocol.InputValidity.gpu_capabilities, &software.gpu_capability_mask, process.gpu_capability_mask, process.valid_mask);
+    result = mergeU8Fact(&software.valid_mask, &software.invalid_mask, protocol.InputValidity.gpu_capabilities, &software.gpu_capability_mask, process.gpu_capability_mask, process.valid_mask);
     if (result != .ok) return result;
     result = mergeFlagFact(
         &software.valid_mask,
+        &software.invalid_mask,
         protocol.InputValidity.eligibility,
         &software.input_flags,
         process.input_flags,
@@ -526,13 +572,17 @@ fn mergeProcessIntoSoftware(session: *state.Session, slot: u32, process: *const 
 fn mergeSoftwareAppliedFact(software: *state.StagedSoftware, process: *const state.StagedProcess, comptime cpu: bool) protocol.Status {
     const bit = if (cpu) protocol.InputValidity.applied_cpu_grade else protocol.InputValidity.applied_gpu_grade;
     const owned_flag = if (cpu) protocol.InputFlags.owns_cpu_grade else protocol.InputFlags.owns_gpu_grade;
-    if ((process.valid_mask & bit) == 0) return .ok;
+    if ((process.valid_mask & bit) == 0 or (software.invalid_mask & bit) != 0) return .ok;
     const grade = if (cpu) process.applied_cpu_grade else process.applied_gpu_grade;
     const owned = (process.input_flags & owned_flag) != 0;
     if ((software.valid_mask & bit) != 0) {
         const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
         const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) {
+            software.valid_mask &= ~bit;
+            software.invalid_mask |= bit;
+            software.input_flags &= ~owned_flag;
+        }
         return .ok;
     }
     software.valid_mask |= bit;
@@ -562,26 +612,27 @@ fn selectSoftwareGpuScore(session: *state.Session) void {
     }
 }
 
-fn validateCanonicalScoreCoverage(session: *const state.Session) protocol.Status {
-    for (session.staged_softwares[0..@intCast(session.staged_software_count)]) |software| {
+fn validateCanonicalScoreCoverage(session: *state.Session) void {
+    for (session.staged_softwares[0..@intCast(session.staged_software_count)]) |*software| {
         if (software.member_count == 0) continue;
         if (software.cpu_score_valid and
             (software.cpu_scored_member_count != software.cpu_score_member_count or
                 software.cpu_score_member_count == 0))
         {
-            return .invalid_argument;
+            software.cpu_score_valid = false;
+            session.staged_invalid_fact_count += 1;
         }
     }
-    for (session.staged_software_gpus[0..@intCast(session.staged_software_gpu_count)]) |gpu| {
+    for (session.staged_software_gpus[0..@intCast(session.staged_software_gpu_count)]) |*gpu| {
         if (gpu.gpu_usage_percent == 0 and gpu.gpu_scored_member_count == 0) continue;
         if (gpu.gpu_score_valid and
             (gpu.gpu_scored_member_count != gpu.gpu_score_member_count or
                 gpu.gpu_score_member_count == 0))
         {
-            return .invalid_argument;
+            gpu.gpu_score_valid = false;
+            session.staged_invalid_fact_count += 1;
         }
     }
-    return .ok;
 }
 
 fn classifyRuntimeState(valid_mask: u64, flags: u64) u8 {
@@ -618,25 +669,37 @@ fn isCriticalProcess(session: *const state.Session, process: *const state.Staged
         process.base_score >= session.config.high_tier_minimum_base_score;
 }
 
-fn mergeU64Fact(target_mask: *u64, bit: u64, target: *u64, value: u64, source_mask: u64) protocol.Status {
-    if ((source_mask & bit) == 0) return .ok;
-    if ((target_mask.* & bit) != 0 and target.* != value) return .conflicting_facts;
+fn mergeU64Fact(target_mask: *u64, invalid_mask: *u64, bit: u64, target: *u64, value: u64, source_mask: u64) protocol.Status {
+    if ((source_mask & bit) == 0 or (invalid_mask.* & bit) != 0) return .ok;
+    if ((target_mask.* & bit) != 0 and target.* != value) {
+        target_mask.* &= ~bit;
+        invalid_mask.* |= bit;
+        return .ok;
+    }
     target.* = value;
     target_mask.* |= bit;
     return .ok;
 }
 
-fn mergeU8Fact(target_mask: *u64, bit: u64, target: *u8, value: u8, source_mask: u64) protocol.Status {
-    if ((source_mask & bit) == 0) return .ok;
-    if ((target_mask.* & bit) != 0 and target.* != value) return .conflicting_facts;
+fn mergeU8Fact(target_mask: *u64, invalid_mask: *u64, bit: u64, target: *u8, value: u8, source_mask: u64) protocol.Status {
+    if ((source_mask & bit) == 0 or (invalid_mask.* & bit) != 0) return .ok;
+    if ((target_mask.* & bit) != 0 and target.* != value) {
+        target_mask.* &= ~bit;
+        invalid_mask.* |= bit;
+        return .ok;
+    }
     target.* = value;
     target_mask.* |= bit;
     return .ok;
 }
 
-fn mergeF64Fact(target_mask: *u64, bit: u64, target: *f64, value: f64, source_mask: u64) protocol.Status {
-    if ((source_mask & bit) == 0) return .ok;
-    if ((target_mask.* & bit) != 0 and target.* != value) return .conflicting_facts;
+fn mergeF64Fact(target_mask: *u64, invalid_mask: *u64, bit: u64, target: *f64, value: f64, source_mask: u64) protocol.Status {
+    if ((source_mask & bit) == 0 or (invalid_mask.* & bit) != 0) return .ok;
+    if ((target_mask.* & bit) != 0 and target.* != value) {
+        target_mask.* &= ~bit;
+        invalid_mask.* |= bit;
+        return .ok;
+    }
     target.* = value;
     target_mask.* |= bit;
     return .ok;
@@ -644,15 +707,21 @@ fn mergeF64Fact(target_mask: *u64, bit: u64, target: *f64, value: f64, source_ma
 
 fn mergeFlagFact(
     target_mask: *u64,
+    invalid_mask: *u64,
     bit: u64,
     target_flags: *u64,
     source_flags: u64,
     field_flags: u64,
     source_mask: u64,
 ) protocol.Status {
-    if ((source_mask & bit) == 0) return .ok;
+    if ((source_mask & bit) == 0 or (invalid_mask.* & bit) != 0) return .ok;
     const value = source_flags & field_flags;
-    if ((target_mask.* & bit) != 0 and (target_flags.* & field_flags) != value) return .conflicting_facts;
+    if ((target_mask.* & bit) != 0 and (target_flags.* & field_flags) != value) {
+        target_mask.* &= ~bit;
+        target_flags.* &= ~field_flags;
+        invalid_mask.* |= bit;
+        return .ok;
+    }
     target_flags.* = (target_flags.* & ~field_flags) | value;
     target_mask.* |= bit;
     return .ok;

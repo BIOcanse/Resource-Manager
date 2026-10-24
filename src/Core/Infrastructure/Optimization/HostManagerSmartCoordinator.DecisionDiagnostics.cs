@@ -33,7 +33,14 @@ public sealed partial class HostManagerSmartCoordinator
                 schedulerRunning && schedulingEnabled,
                 ProjectSchedulingAuthorityDiagnostics(authority),
                 native,
-                ProjectNonAdaptedMemoryDiagnostics(memoryProjection));
+                ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
+            {
+                FactExclusionCount = cycleFactExclusions.Count,
+                FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
+                    .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
+                FactExclusions = cycleFactExclusions.Take(64).Select(e => new HostManagerFactExclusionDiagnostics(
+                    e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason)).ToArray()
+            };
         }
         finally
         {
@@ -250,7 +257,16 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
     HostManagerSchedulingAuthorityDiagnostics SchedulingAuthority,
     HostManagerNativeCoordinatorDiagnostics? NativeCoordinator,
     IReadOnlyList<HostManagerNonAdaptedMemoryDecisionDiagnostics>
-        NonAdaptedMemoryDecisions);
+        NonAdaptedMemoryDecisions)
+{
+    public int FactExclusionCount { get; init; }
+    public IReadOnlyList<HostManagerFactExclusionCount> FactExclusionCounts { get; init; } = [];
+    public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
+}
+
+internal sealed record HostManagerFactExclusionCount(string Fact, string Reason, int Count);
+internal sealed record HostManagerFactExclusionDiagnostics(
+    int? ProcessId, string? ProcessStartKey, string? TargetId, string Fact, string Reason);
 
 internal sealed record HostManagerSchedulingAuthorityDiagnostics(
     string RoundNumber,
