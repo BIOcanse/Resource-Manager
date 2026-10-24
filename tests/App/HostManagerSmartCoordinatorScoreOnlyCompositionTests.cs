@@ -724,7 +724,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             policyExecutionEnabled: true,
             automaticMemoryCleanupEnabled: true,
             optimizationMode: AppOptimizationModes.MemoryOnly,
-            timeProvider: time);
+            timeProvider: time,
+            realtimeActionBudget: 1);
         fixture.MemoryCleanupPlanner.PlanHandler = request =>
             CreateAutomaticMemoryCleanupPlan(request);
         fixture.ProcessPolicyWriter.BatchHandler = requests => requests
@@ -3539,7 +3540,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processStartedAt));
             },
             memoryModePolicyEnabled: true,
-            cpuUsagePercent: 1);
+            cpuUsagePercent: 1,
+            realtimeActionBudget: 1);
         await fixture.PrimeMemoryCleanupAdmissionAsync();
         fixture.MetricSampler.SetCpuUsagePercent(99);
         fixture.PublishNextHostedCpuObservation();
@@ -3673,6 +3675,84 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
     }
 
+    [Fact]
+    public async Task DefaultRealtimeBudgetAppliesSeveralMemoryTransactionsInOneCycle()
+    {
+        const int firstProcessId = 24_300;
+        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var startKey = checked((ulong)startedAt.ToFileTime());
+        var inputs = Enumerable.Range(firstProcessId, 12)
+            .Select(pid => (pid, startKey, $"software:default-budget:{pid}", 40d, 1d, 1d))
+            .ToArray();
+        var states = inputs.ToDictionary(input => input.pid, input =>
+            new ProcessResourcePolicySnapshot(input.pid, $"budget-{input.pid}",
+                $@"c:\tests\budget-{input.pid}.exe", startedAt, "Normal", 1, 1,
+                MemoryPriority: 5, PowerThrottlingControlMask: 0, PowerThrottlingStateMask: 0));
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false,
+            processFactsSnapshot: CreateCompleteProcessFacts(inputs),
+            processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
+                new ProcessInstanceRecoverySnapshot(pid, startedAt)),
+            memoryModePolicyEnabled: true, cpuUsagePercent: 99, automaticMemoryCleanupEnabled: false);
+        var budget = fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.MaximumActionsPerRealtimeTick;
+        Assert.Equal(32, budget);
+        var memoryWrites = 0;
+        fixture.ProcessPolicyWriter.ProcessReadHandler = pid => states[pid];
+        fixture.ProcessPolicyWriter.BatchHandler = requests => requests.Select(request =>
+        {
+            var current = states[request.ProcessId];
+            var fields = new List<ProcessResourcePolicyBatchFieldResult>();
+            if (request.MemoryPriority is { } memoryPriority)
+            {
+                memoryWrites++;
+                current = current with { MemoryPriority = memoryPriority };
+                fields.Add(new(ProcessResourcePolicyBatchFields.MemoryPriority, true, "applied"));
+            }
+            if (request.PriorityClass is { } priorityClass)
+            {
+                current = current with { PriorityClass = priorityClass };
+                fields.Add(new(ProcessResourcePolicyBatchFields.PriorityClass, true, "applied"));
+            }
+            if (request.PowerControlMask is { } powerControl)
+            {
+                current = current with
+                {
+                    PowerThrottlingControlMask = powerControl,
+                    PowerThrottlingStateMask = request.PowerStateMask
+                };
+                fields.Add(new(ProcessResourcePolicyBatchFields.PowerThrottling, true, "applied"));
+            }
+            states[request.ProcessId] = current;
+            return new ProcessResourcePolicyBatchWriteResult(request.ProcessId, fields);
+        }).ToArray();
+
+        // The five new-effect stages take turns going first; within five real-time cycles the memory stage
+        // goes first once and can spend more than one action of the shared budget.
+        var mostInOneCycle = 0;
+        for (var cycle = 0; cycle < 5; cycle++)
+        {
+            fixture.PublishNextHostedCpuObservation();
+            fixture.MetricSampler.PublishNextHostedMemoryObservation();
+            fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
+                fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
+            var before = memoryWrites;
+            _ = await fixture.RunRealtimeCycleAsync();
+            mostInOneCycle = Math.Max(mostInOneCycle, memoryWrites - before);
+            Assert.InRange(memoryWrites - before, 0, budget);
+            Assert.Equal(0u, fixture.Workspace.Snapshot.InflightCount);
+        }
+
+        Assert.True(mostInOneCycle > 1, $"No real-time cycle applied more than one memory transaction ({mostInOneCycle}).");
+        // The memory modes demote only part of the processes; every demotion they ask for has landed.
+        var demotions = fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes
+            .Where(static directive => directive.Action is HostManagerNonAdaptedMemoryProcessAction.Optimize
+                or HostManagerNonAdaptedMemoryProcessAction.PagedFrozen)
+            .ToArray();
+        Assert.True(demotions.Length > 1);
+        Assert.All(demotions, directive =>
+            Assert.Equal(directive.TargetMemoryPriority, states[directive.ProcessId].MemoryPriority));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -3693,7 +3773,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: CreateCompleteProcessFacts(inputs),
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(pid, startedAt)),
-            memoryModePolicyEnabled: true, cpuUsagePercent: 99);
+            memoryModePolicyEnabled: true, cpuUsagePercent: 99,
+            realtimeActionBudget: 1);
         var memoryWrites = 0;
         var memoryRestoreWrites = 0;
         var nativeWrites = 0;
@@ -4040,8 +4121,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(0U, fixture.Workspace.Snapshot.InflightCount);
 
         // Emulate a saved Normal mode whose foreground restore did not run.
-        // Only the real-time cycle may restore, under the default one-action budget.
-        Assert.Equal(1, fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.MaximumActionsPerRealtimeTick);
+        // Only the real-time cycle may restore, under the default real-time action budget.
+        Assert.Equal(32, fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.MaximumActionsPerRealtimeTick);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = checked(fixture.RuntimePlan.Version + 1),
@@ -5530,6 +5611,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              int? normalIntervalMilliseconds = null,
              int? eventIntervalMilliseconds = null,
              bool failFastEffects = false,
+             int? realtimeActionBudget = null,
              Action<System.Text.Json.Nodes.JsonObject>? editFreedomPoints = null,
              ResourceManager.App.Application.CpuTopology.ICpuCoreResidencyReader? cpuCoreReader = null,
              ResourceManager.App.Domain.CpuTopology.CpuTopologySnapshot? cpuTopology = null,
@@ -5575,6 +5657,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     {
                         root["hot_publish"]!["smart_coordinator"]!
                             ["event_interval_ms"] = eventIntervalMilliseconds.Value;
+                    }
+                    if (realtimeActionBudget is not null)
+                    {
+                        root["hot_publish"]!["smart_coordinator"]!
+                            ["maximum_actions_per_realtime_tick"] = realtimeActionBudget.Value;
                     }
                 },
                 performance,

@@ -260,7 +260,7 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(3, smartCoordinator.HotPublish.RequiredConsecutiveDecisions);
         Assert.Equal(5000, smartCoordinator.HotPublish.FailureRetryMilliseconds);
         Assert.Equal(30000, smartCoordinator.HotPublish.ReservationTimeoutMilliseconds);
-        Assert.Equal(1, smartCoordinator.HotPublish.MaximumActionsPerRealtimeTick);
+        Assert.Equal(32, smartCoordinator.HotPublish.MaximumActionsPerRealtimeTick);
         Assert.Equal<double>([1, 1.35, 1.12, 0.75, 0.55, 0.45, 0], smartCoordinator.HotPublish.ProcessStateMultipliers);
         Assert.Equal(120, smartCoordinator.HotPublish.A1MinimumCpuScore);
         Assert.Equal(81, smartCoordinator.HotPublish.BaseScoreTiers.HighMinimumBaseScore);

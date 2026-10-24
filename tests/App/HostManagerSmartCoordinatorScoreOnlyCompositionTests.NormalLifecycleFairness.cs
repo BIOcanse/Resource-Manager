@@ -19,7 +19,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.Normal,
-            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)));
+            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)),
+            realtimeActionBudget: 1);
         var payload = HostManagerProcessPolicyRollbackPayloadCodec.Encode(new(
             HostManagerProcessPolicyTransactionFields.CpuPolicy, processId, checked((long)startKey),
             BaselinePriorityClass: 0x20, BaselineMemoryPriority: 0,
@@ -80,7 +81,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.Normal,
-            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)));
+            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)),
+            realtimeActionBudget: 1);
         // Initialize legacy state before inserting a current owned receipt.
         _ = await fixture.RunRealtimeCycleAsync();
         var targetId = HostManagerTargetIdentity.CreateProcessTargetId(placementId, startKey);

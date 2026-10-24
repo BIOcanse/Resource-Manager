@@ -101,7 +101,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.Create(95,
                 DateTimeOffset.UtcNow, CpuCoreResidencyTestValues.Process(gamePid, start, ("core:0", 95)))),
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
-            automaticPlacementTopology: topology);
+            automaticPlacementTopology: topology,
+            realtimeActionBudget: 1);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 100, cpuUsagePercent: 100));
         var states = inputs.ToDictionary(x => x.Item1, x => new ProcessResourcePolicySnapshot(x.Item1,
             "fixture", @"C:\tests\fixture.exe", startedAt, "Normal", 1, 1, MemoryPriority: 5,

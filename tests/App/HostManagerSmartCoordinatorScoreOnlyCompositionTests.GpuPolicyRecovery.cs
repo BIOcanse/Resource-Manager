@@ -69,7 +69,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
                 warm: true, scoreOnlyEnabled: false, policyExecutionEnabled: false,
                 automaticMemoryCleanupEnabled: false, optimizationMode: AppOptimizationModes.Normal,
-                rollbackStateStoreOverride: reopenedOwner);
+                rollbackStateStoreOverride: reopenedOwner,
+            realtimeActionBudget: 1);
             var runtime = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));
             byte[]? previous = originallyAbsent ? null : [1, 0, 255];
             Assert.True(runtime.TryWritePolicy("good", null, previous));

@@ -28,7 +28,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.Create(
                 95, DateTimeOffset.UtcNow, inputs.Select(x => CpuCoreResidencyTestValues.Process(x.pid, start, ("core:0", 1))).ToArray())),
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
-            automaticPlacementTopology: topology);
+            automaticPlacementTopology: topology,
+            realtimeActionBudget: 1);
         var policyWrites = 0;
         fixture.ProcessPolicyWriter.ProcessReadHandler = pid => policies[pid];
         fixture.ProcessPolicyWriter.BatchHandler = requests => requests.Select(request =>

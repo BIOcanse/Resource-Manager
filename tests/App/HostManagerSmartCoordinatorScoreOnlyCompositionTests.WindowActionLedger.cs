@@ -176,7 +176,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
                 scoreOnlyEnabled: false, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
                 optimizationMode: AppOptimizationModes.Normal, rollbackStateStoreOverride: store,
-                processRecoveryRead: ReadRetainedTarget);
+                processRecoveryRead: ReadRetainedTarget,
+            realtimeActionBudget: 1);
             var runtime = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));
             Assert.True(runtime.TryWritePolicy("window-recovery", null, [1, 3]));
             var policy = Assert.IsType<HostManagerAppliedRecord>(runtime.CapturePolicyRecord("window-recovery", [2]));

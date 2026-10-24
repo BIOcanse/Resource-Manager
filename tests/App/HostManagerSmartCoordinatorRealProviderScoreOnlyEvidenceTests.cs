@@ -577,12 +577,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var runtimeStateValue = checked((int)row.RuntimeState);
             Assert.InRange(runtimeStateValue, 0, processStateMultipliers.Count - 1);
             var multiplier = processStateMultipliers[runtimeStateValue];
-            // Without core residency the CPU domain scores each process from its CPU usage. A running
+            // Without core residency the CPU domain scores each process from its CPU usage. A process
+            // without a current CPU usage reading is left out of CPU scoring and scores zero. A running
             // process with no usage keeps exactly the CPU welfare bonus; a process that is not running
             // gets no welfare. Any usage of a weighted process scores above zero.
             Assert.True(double.IsFinite(row.CpuScore));
             Assert.True(row.CpuScore >= 0);
-            if (fact.CpuUsagePercent == 0)
+            if (!cpuCurrent)
+            {
+                Assert.Equal(0d, row.CpuScore);
+            }
+            else if (fact.CpuUsagePercent == 0)
             {
                 Assert.Equal(
                     row.RuntimeState == NativeSmartCoordinatorRuntimeState.NotRunning ? 0d : cpuWelfareBonus,

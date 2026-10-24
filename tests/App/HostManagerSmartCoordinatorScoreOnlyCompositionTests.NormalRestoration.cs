@@ -18,7 +18,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true, scoreOnlyEnabled: false, automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.Normal,
-            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)));
+            processRecoveryRead: id => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(new(id, started)),
+            realtimeActionBudget: 1);
         await fixture.SeedProcessOwnershipAsync(failedId, startKey, "software:normal-failure", true, 100);
         await fixture.SeedProcessOwnershipAsync(memoryPeerId, startKey, "software:normal-memory-peer", true, 101);
         var payload = HostManagerProcessPolicyRollbackPayloadCodec.Encode(new(

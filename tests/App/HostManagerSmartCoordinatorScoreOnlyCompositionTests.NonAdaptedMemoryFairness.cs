@@ -89,7 +89,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: false,
             optimizationMode: AppOptimizationModes.MemoryOnly,
-            cpuUsagePercent: 1);
+            cpuUsagePercent: 1,
+            realtimeActionBudget: 1);
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
             memoryUsagePercent: 100,
             cpuUsagePercent: 1));
