@@ -10,7 +10,7 @@ assert.equal(workspace.match(/<ComponentAcquisitionDialog\b/g)?.length, 1);
 assert.ok(workspace.indexOf("<ComponentAcquisitionDialog") > workspace.lastIndexOf("</Show>"),
   "One shared acquisition dialog must remain outside both management branches");
 const store = read("stores/managementStore.ts");
-assert.match(store, /Promise\.all\(\[getBrowserRuntimeSnapshot\(forceRefresh\), refreshComponents\(\)\]\)/);
+assert.match(store, /Promise\.all\(\[getBrowserRuntimeSnapshot\(nextForceRefresh\), refreshComponents\(\)\]\)/);
 const remove = store.slice(store.indexOf("async function removeManualRegistration"), store.indexOf("async function uninstallSoftware"));
 assert.match(remove, /record\.id\.startsWith\("manual:"\)/);
 assert.ok(remove.indexOf("confirmDialog") < remove.indexOf("await removeManualSoftware"));

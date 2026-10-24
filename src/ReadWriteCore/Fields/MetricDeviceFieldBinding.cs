@@ -96,18 +96,24 @@ public static class MetricDeviceFields
         {
             if (names.Count == 0 || names.Any(static name => MetricFieldRegistry.FindByName(name) is null))
                 throw new ArgumentException("metric-field-name-unknown", nameof(fields));
-            return MetricSampleRequest.ForIds(catalog.FieldBindings.Values
-                .Where(binding => names.Contains(binding.Field.Name))
-                .Select(static binding => binding.RequestAddress));
+            return SelectBound(catalog, null, names);
         }
 
         var available = catalog.FieldBindings.Values.Where(binding => binding.DeviceIdentity == deviceIdentity).ToArray();
         if (available.Length == 0) throw new ArgumentException("metric-field-device-unknown", nameof(deviceIdentity));
         if (names.Count == 0 || names.Except(available.Select(static binding => binding.Field.Name), StringComparer.Ordinal).Any())
             throw new ArgumentException("metric-field-name-unknown", nameof(fields));
-        return MetricSampleRequest.ForIds(available.Where(binding => names.Contains(binding.Field.Name))
-            .Select(static binding => binding.RequestAddress));
+        return SelectBound(catalog, deviceIdentity, names);
     }
+
+    // The addresses bound to an already validated selection in this catalog. Empty while the device or
+    // fields are absent, so a long-lived subscription can re-expand it after each catalog change.
+    public static MetricSampleRequest SelectBound(
+        HardwareMetricSnapshot catalog, string? deviceIdentity, IReadOnlySet<string> normalizedNames)
+        => MetricSampleRequest.ForIds(catalog.FieldBindings.Values
+            .Where(binding => (deviceIdentity is null || binding.DeviceIdentity == deviceIdentity)
+                && normalizedNames.Contains(binding.Field.Name))
+            .Select(static binding => binding.RequestAddress));
 
     public static IReadOnlyList<DeviceMetricFieldSnapshot> Read(
         HardwareMetricSnapshot snapshot, string? deviceIdentity = null, IReadOnlySet<string>? fields = null)
