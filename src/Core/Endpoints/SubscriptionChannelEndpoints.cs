@@ -365,9 +365,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var catalogState = services.GetRequiredService<DashboardMonitoringCatalogState>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
-            if (useFields && snapshotRequest.IsEmpty)
+            if (useFields)
             {
-                await writer.WriteAsync(subscription.Id, Array.Empty<DeviceMetricFieldSnapshot>(), cancellationToken);
+                await RunMetricFieldSubscriptionAsync(subscription.Id, source, catalogState,
+                    device, fields, interval, services, writer, cancellationToken);
                 return;
             }
             await foreach (var snapshot in source.SubscribeAsync(
@@ -379,9 +380,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var presentation = MetricCatalog.ApplyPresentation(snapshot);
                 await writer.WriteAsync(
                     subscription.Id,
-                    useFields
-                        ? (object)ReadMetricFields(snapshot, device, fields, services)
-                        : MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision),
+                    MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision),
                     cancellationToken);
             }
         });

@@ -1,5 +1,7 @@
 import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.js";
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
+import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
+import overlaySettingsJourney from "./overlaySettingsJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
@@ -53,6 +55,8 @@ const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
   ["frontend-refresh-intervals", frontendRefreshIntervalsJourney],
   ["management-inventory-revisions", managementInventoryRevisionJourney],
+  ["disk-usage-read-recovery", diskUsageReadRecoveryJourney],
+  ["overlay-settings", overlaySettingsJourney],
   ["frontend-audit", frontendAuditJourney],
   ["report-rule-settings", reportRuleSettingsJourney],
   ["localization", localizationJourney],

@@ -20,6 +20,8 @@ import type {
 export function DiskUsagePage(props: {
   volumes: DiskUsageVolume[];
   scanning: boolean;
+  volumesReadState: "loading" | "ready" | "error";
+  onRetryVolumes: () => void;
   onScan: (scope: DiskUsageScanScope, mode: DiskUsageScanMode, target: string) => void;
   /** 扫描结果面板。还没有结果时由这里出空态。 */
   children?: JSX.Element;
@@ -164,58 +166,67 @@ export function DiskUsagePage(props: {
               <h2>{uiText.diskUsage.volumeColumnLabel}</h2>
             </div>
           </div>
-          <Show
-            when={props.volumes.length > 0}
-            fallback={<div class="optimization-empty">{uiText.diskUsage.noVolumes}</div>}
-          >
-            <ul class="disk-usage-volume-list">
-              <For each={props.volumes}>
-                {(volume) => (
-                  <li>
-                    <button
-                      type="button"
-                      class="disk-usage-volume"
-                      classList={{
-                        selected: scope() === "volume" && volumeId() === volume.volumeId,
-                        unavailable: !volume.isReady
-                      }}
-                      disabled={!volume.isReady}
-                      aria-pressed={scope() === "volume" && volumeId() === volume.volumeId}
-                      onClick={() => {
-                        setVolumeId(volume.volumeId);
-                        setScope("volume");
-                      }}
-                    >
-                      <span class="disk-usage-volume-name">
-                        {volume.volumeId}
-                        <Show when={volume.label}>{` ${volume.label}`}</Show>
-                      </span>
-                      <span class="disk-usage-volume-meta">
-                        {uiText.diskUsage.volumeKind[volume.volumeKind]}
-                        <Show when={volume.fileSystem}>{` · ${volume.fileSystem}`}</Show>
-                      </span>
-                      <span class="disk-usage-volume-size">
-                        <Show
-                          when={volume.isReady}
-                          fallback={uiText.diskUsage.notReady}
-                        >
-                          {uiText.diskUsage.freeOfTotal(
-                            formatBytes(volume.freeBytes, "storage"),
-                            formatBytes(volume.totalBytes, "storage"))}
-                        </Show>
-                      </span>
-                      <span
-                        class="disk-usage-volume-bar"
-                        aria-hidden="true"
-                        style={{
-                          "--disk-usage-used": usedFraction(volume).toFixed(4)
+          <Show when={props.volumesReadState === "error"}>
+            <div role="alert">
+              <p>{uiText.diskUsage.volumesReadFailed}</p>
+              <Show when={props.volumes.length > 0}><p>{uiText.diskUsage.retainedVolumesStale}</p></Show>
+              <button type="button" onClick={props.onRetryVolumes}>{uiText.diskUsage.retryRead}</button>
+            </div>
+          </Show>
+          <Show when={props.volumes.length > 0 || props.volumesReadState === "ready"}>
+            <Show
+              when={props.volumes.length > 0}
+              fallback={<div class="optimization-empty">{uiText.diskUsage.noVolumes}</div>}
+            >
+              <ul class="disk-usage-volume-list">
+                <For each={props.volumes}>
+                  {(volume) => (
+                    <li>
+                      <button
+                        type="button"
+                        class="disk-usage-volume"
+                        classList={{
+                          selected: scope() === "volume" && volumeId() === volume.volumeId,
+                          unavailable: !volume.isReady
                         }}
-                      />
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
+                        disabled={!volume.isReady}
+                        aria-pressed={scope() === "volume" && volumeId() === volume.volumeId}
+                        onClick={() => {
+                          setVolumeId(volume.volumeId);
+                          setScope("volume");
+                        }}
+                      >
+                        <span class="disk-usage-volume-name">
+                          {volume.volumeId}
+                          <Show when={volume.label}>{` ${volume.label}`}</Show>
+                        </span>
+                        <span class="disk-usage-volume-meta">
+                          {uiText.diskUsage.volumeKind[volume.volumeKind]}
+                          <Show when={volume.fileSystem}>{` · ${volume.fileSystem}`}</Show>
+                        </span>
+                        <span class="disk-usage-volume-size">
+                          <Show
+                            when={volume.isReady}
+                            fallback={uiText.diskUsage.notReady}
+                          >
+                            {uiText.diskUsage.freeOfTotal(
+                              formatBytes(volume.freeBytes, "storage"),
+                              formatBytes(volume.totalBytes, "storage"))}
+                          </Show>
+                        </span>
+                        <span
+                          class="disk-usage-volume-bar"
+                          aria-hidden="true"
+                          style={{
+                            "--disk-usage-used": usedFraction(volume).toFixed(4)
+                          }}
+                        />
+                      </button>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
           </Show>
         </div>
       </Show>

@@ -31,6 +31,11 @@ const defaultScenario = {
   settingsUiStyle: "standard",
   localSystemIntervalMs: null,
   performanceMonitorRefreshIntervalMs: null,
+  overlaySaveDelayMs: 0,
+  overlaySaveFailure: false,
+  diskUsageVolumesFailure: false,
+  diskUsageVolumesEmpty: false,
+  diskUsageResultFailure: false,
   diskUsageScanFailure: false,
   diskUsageScanLifecycle: false,
   diskUsageScanCompletionDelayMs: 900,
@@ -154,6 +159,38 @@ let metricSlot = {
 };
 let resourceSlotCapturedAt = now();
 
+const overlaySettings = new Map();
+function overlayDefaults(softwareId) {
+  return { softwareId, enabled: false, mode: "external",
+    metrics: ["target.fps", "target.onePercentLow", "target.frameTime", "target.cpu", "target.gpu"],
+    sizeMode: "absolutePixels", fontSizePx: 14, regionWidthRatio: 0.25,
+    regionHeightRatio: 0.2, anchor: "topLeft", marginPx: 12 };
+}
+function normalizeOverlay(settings, softwareId) {
+  const defaults = overlayDefaults(softwareId);
+  const ratio = (value, fallback) => Number.isFinite(value) ? Math.max(0.05, Math.min(1, value)) : fallback;
+  const known = ["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow",
+    "target.cpu", "target.gpu", "target.memory", "target.vram"];
+  const metrics = [];
+  const seen = new Set();
+  for (const item of settings.metrics ?? defaults.metrics) {
+    if (typeof item !== "string" || !item.trim() || item.trim().length > 128) continue;
+    const id = known.find(id => id.toLowerCase() === item.trim().toLowerCase()) ?? item.trim();
+    if (seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    metrics.push(id);
+    if (metrics.length === 64) break;
+  }
+  return { ...defaults, ...settings, softwareId, metrics,
+    mode: settings.mode?.toLowerCase() === "injected" ? "injected" : "external",
+    sizeMode: settings.sizeMode?.toLowerCase() === "windowratio" ? "windowRatio" : "absolutePixels",
+    fontSizePx: Math.max(8, Math.min(72, settings.fontSizePx ?? defaults.fontSizePx)),
+    marginPx: Math.max(0, Math.min(256, settings.marginPx ?? defaults.marginPx)),
+    regionWidthRatio: ratio(settings.regionWidthRatio, defaults.regionWidthRatio),
+    regionHeightRatio: ratio(settings.regionHeightRatio, defaults.regionHeightRatio),
+    anchor: ["topLeft", "topRight", "bottomLeft", "bottomRight"]
+      .find(value => value.toLowerCase() === settings.anchor?.toLowerCase()) ?? "topLeft" };
+}
 const metricCatalog = [
   metric("cpu.usage", "处理器", "CPU", "%"),
   metric("cpu.frequency", "处理器频率", "CPU", "GHz"),
@@ -375,7 +412,30 @@ async function handleApi(request, response, url) {
   if (path === "/api/optimization/smart/status" && request.method === "GET") {
     return json(response, 200, smartCoordinatorStatus());
   }
+  if (path === "/api/performance-overlay/metrics/catalog" && request.method === "GET") {
+    return json(response, 200, [...overlayDefaults("").metrics, "target.memory", "target.vram", "target.pointOnePercentLow"]
+      .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")));
+  }
+  if (path === "/api/performance-overlay/default" && request.method === "GET") {
+    const id = url.searchParams.get("softwareId")?.trim();
+    return json(response, id ? 200 : 400, id ? overlayDefaults(id) : { error: "Software ID is required." });
+  }
+  if (path.startsWith("/api/performance-overlay/software/")) {
+    const id = decodeURIComponent(path.slice("/api/performance-overlay/software/".length)).trim();
+    if (!id) return json(response, 400, { error: "Software ID is required." });
+    if (request.method === "GET") return json(response, 200, overlaySettings.get(id) ?? overlayDefaults(id));
+    if (request.method === "PUT") {
+      const settings = JSON.parse(await readBody(request));
+      await delay(normalizeDelay(scenario.overlaySaveDelayMs));
+      if (scenario.overlaySaveFailure) return json(response, 503, { error: "fixture overlay save failure" });
+      const saved = normalizeOverlay(settings, id);
+      overlaySettings.set(id, saved);
+      return json(response, 200, saved);
+    }
+  }
   if (path === "/api/disk-usage/volumes" && request.method === "GET") {
+    if (scenario.diskUsageVolumesFailure) return json(response, 503, { error: "fixture volume read failure" });
+    if (scenario.diskUsageVolumesEmpty) return json(response, 200, []);
     if (scenario.diskUsageMultiRoot === true) {
       return json(response, 200, [
         {
@@ -412,10 +472,12 @@ async function handleApi(request, response, url) {
     }]);
   }
   if (path === "/api/disk-usage/summary" && request.method === "GET") {
+    if (scenario.diskUsageResultFailure) return json(response, 503, { error: "fixture summary read failure" });
     return json(response, 200,
       scenario.diskUsageMultiRoot === true ? diskUsageSummary : null);
   }
   if (path === "/api/disk-usage/layout" && request.method === "GET") {
+    if (scenario.diskUsageResultFailure) return json(response, 503, { error: "fixture layout read failure" });
     if (scenario.diskUsageMultiRoot === true) {
       const nodeId = url.searchParams.get("node");
       const rootIndex = url.searchParams.get("rootIndex");
@@ -1158,6 +1220,7 @@ function applyScenarioPatch(patch) {
 }
 
 function resetScenario() {
+  overlaySettings.clear();
   if (diskScanCompletionTimer) clearTimeout(diskScanCompletionTimer);
   if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
   diskScanCompletionTimer = null;
