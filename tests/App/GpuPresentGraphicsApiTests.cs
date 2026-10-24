@@ -192,7 +192,7 @@ public sealed class GpuPresentGraphicsApiTests
         using var files = new Files();
         var source = new Presents();
         var processSource = new Processes(Snapshot(Process(files)));
-        var record = new SoftwareRecord("software", "Software", "Game", "Game", "installed", [], [], "",
+        var record = new SoftwareRecord("software", "Software", "game", "game", "installed", [], [], "",
             new(false, "", "", ""), null);
         using var owner = new GpuPlacementProcessHistoryObserver(processSource, new SoftwareRegistry([record]),
             Plans(), new JsonGpuPlacementProcessHistoryStore(files), source,
@@ -209,7 +209,7 @@ public sealed class GpuPresentGraphicsApiTests
     private static PlanProvider Plans() => new(Policy());
     private static GpuPlacementProcessInstance Instance() => new(42, (ulong)DateTime.UtcNow.ToFileTimeUtc(), "target", @"C:\target.exe");
     private static SchedulingProcessFact Process(Files files)
-        => new(42, 1, "target", files.Target, "software", "Software", "Game", "Game", 1,
+        => new(42, 1, "target", files.Target, "software", "Software", "game", "game", 1,
             SchedulingProcessMetricMask.RuntimeState, 0, 0, 1, []);
     private static SchedulingProcessFactSnapshot Snapshot(params SchedulingProcessFact[] processes)
         => new(SamplingObservationStatus.Current, 1, DateTime.UtcNow.Ticks, (uint)processes.Length,

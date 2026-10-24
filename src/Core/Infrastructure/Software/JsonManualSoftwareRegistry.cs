@@ -132,7 +132,10 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             if (records is null || records.Any(static record => record is null))
                 throw new InvalidDataException("The manual software registry contains an invalid record; its contents were left unchanged.");
 
-            return NormalizeRecords(records.Select(static record => record!));
+            return NormalizeRecords(records.Select(static record => record! with
+            {
+                Kind = SoftwareKinds.ReadStored(record!.Kind)
+            }));
         }
     }
 
@@ -177,16 +180,16 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
                 || string.IsNullOrWhiteSpace(record.Id)
                 || string.IsNullOrWhiteSpace(record.Name)))
             throw new InvalidDataException("The manual software registry contains a record without an ID or name; its contents were left unchanged.");
+        if (materialized.Any(static record => !IsAllowedKind(record.Kind)))
+            throw new InvalidDataException("The manual software registry contains an unsupported kind; its contents were left unchanged.");
 
         return materialized
             .Select(static record => record with
             {
-                Kind = NormalizeKind(record.Kind),
-                DisplayKind = DisplayKind(NormalizeKind(record.Kind)),
+                DisplayKind = DisplayKind(record.Kind),
                 RootPaths = NormalizeRootPaths(record.RootPaths),
                 Sources = record.Sources is { Count: > 0 } ? record.Sources : ["手动分类"]
             })
-            .Where(static record => IsAllowedKind(record.Kind))
             .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.OrderByDescending(static record => record.UpdatedAt).First())
             .OrderBy(static record => KindSort(record.Kind))
@@ -201,7 +204,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             throw new InvalidOperationException("手动软件分类请求不能为空。");
         }
 
-        var kind = NormalizeKind(request.Kind);
+        var kind = request.Kind;
         if (!IsAllowedKind(kind))
         {
             throw new InvalidOperationException($"手动软件分类只支持{SoftwareDisplayKinds.Adapted}、{SoftwareDisplayKinds.Game}、{SoftwareDisplayKinds.HighPerformance}和{SoftwareDisplayKinds.General}。");
@@ -229,7 +232,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
         var source = string.IsNullOrWhiteSpace(request.SourceSoftwareId)
             ? $"{request.Kind}|{request.Name}|{string.Join("|", request.RootPaths)}"
             : $"{request.Kind}|{request.SourceSoftwareId}";
-        return $"manual:{request.Kind.ToLowerInvariant()}:{ShortHash(source)}";
+        return $"manual:{request.Kind}:{ShortHash(source)}";
     }
 
     private static IReadOnlyList<string> NormalizeRootPaths(IEnumerable<string>? paths)
@@ -275,21 +278,6 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
         var leaf = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         return CleanText(leaf) ?? CleanText(path);
-    }
-
-    private static string NormalizeKind(string? value)
-    {
-        return CleanText(value) switch
-        {
-            SoftwareKinds.Adapted => SoftwareKinds.Adapted,
-            SoftwareKinds.Game => SoftwareKinds.Game,
-            SoftwareKinds.HighPerformance => SoftwareKinds.HighPerformance,
-            SoftwareKinds.Other => SoftwareKinds.Other,
-            "适配软件" => SoftwareKinds.Adapted,
-            "游戏" => SoftwareKinds.Game,
-            "高性能软件" => SoftwareKinds.HighPerformance,
-            _ => SoftwareKinds.Other
-        };
     }
 
     private static bool HasSameSourceSoftware(ManualSoftwareRecord record, ManualSoftwareRequest request)

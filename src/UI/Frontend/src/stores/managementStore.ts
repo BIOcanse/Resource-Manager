@@ -162,7 +162,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
   function classifySoftware(software: SoftwareRecord) {
     if (!options.mutablePersistenceEnabled()) return;
     setManualSoftwareSource(software);
-    setManualSoftwareKind("Other");
+    setManualSoftwareKind("other");
   }
 
   function closeManualSoftwareModal() {
@@ -555,7 +555,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
 }
 
 function isManualSoftwareKind(kind: ManagementKind): kind is ManualSoftwareKind {
-  return kind === "Adapted" || kind === "Game" || kind === "HighPerformance" || kind === "Other";
+  return kind === "adapted" || kind === "game" || kind === "high_performance" || kind === "other";
 }
 
 function labelForOperation(operation: OperationSnapshot) {

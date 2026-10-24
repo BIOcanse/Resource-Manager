@@ -12,6 +12,55 @@ public sealed class JsonManualSoftwareRegistryTests : IDisposable
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-manual-software-{Guid.NewGuid():N}");
     private string StoragePath => Path.Combine(testRoot, "Config", "manual-software.json");
 
+    [Theory]
+    [InlineData("Game", SoftwareKinds.Game)]
+    [InlineData("highperformance", SoftwareKinds.HighPerformance)]
+    [InlineData("High_Performance", SoftwareKinds.HighPerformance)]
+    public async Task StoredLegacyKindLoadsAsCurrentKind(string storedKind, string expected)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StoragePath)!);
+        var record = new ManualSoftwareRecord("manual:legacy", "Legacy", storedKind, storedKind,
+            "manual", [], [], "", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        await File.WriteAllTextAsync(StoragePath, JsonSerializer.Serialize(new[] { record },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        var loaded = Assert.Single(await registry.GetAllAsync(default));
+        Assert.Equal(expected, loaded.Kind);
+        Assert.Equal(expected, loaded.DisplayKind);
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("游戏")]
+    public async Task UnknownStoredKindFailsWithoutChangingTheFile(string storedKind)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StoragePath)!);
+        var record = new ManualSoftwareRecord("manual:legacy", "Legacy", storedKind, storedKind,
+            "manual", [], [], "", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var json = JsonSerializer.Serialize(new[] { record }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        await File.WriteAllTextAsync(StoragePath, json);
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.GetAllAsync(default));
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.AddOrUpdateAsync(
+            new("New", SoftwareKinds.Game, [], null), default));
+        Assert.Equal(json, await File.ReadAllTextAsync(StoragePath));
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("游戏")]
+    [InlineData("Game")]
+    [InlineData("highperformance")]
+    [InlineData("")]
+    public async Task RequestsRejectUnknownOrLegacyKinds(string kind)
+    {
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => registry.AddOrUpdateAsync(
+            new("New", kind, [], "runtime:app"), default));
+        Assert.False(File.Exists(StoragePath));
+    }
+
     [Fact]
     public async Task RuntimeSourceCanBeClassifiedAsGeneralWithoutAKnownRoot()
     {

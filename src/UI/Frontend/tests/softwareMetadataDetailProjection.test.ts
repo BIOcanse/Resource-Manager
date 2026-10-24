@@ -67,7 +67,7 @@ function detailModel(
     type: "software",
     id: softwareIdentityId,
     name: softwareIdentityId,
-    kind: "Other",
+    kind: "other",
     displayKind: "软件",
     state: "Ready",
     message: "",

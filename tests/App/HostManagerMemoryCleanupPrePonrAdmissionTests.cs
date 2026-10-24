@@ -229,7 +229,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             softwareId,
             "Pre-PONR",
             SoftwareKinds.Other,
-            "Other",
+            "other",
             BaseScore: 20,
             SchedulingProcessMetricMask.MemoryUsage,
             CpuUsagePercent: 0,

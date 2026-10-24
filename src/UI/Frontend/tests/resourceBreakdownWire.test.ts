@@ -11,7 +11,7 @@ import type { ResourceBreakdownBar } from "../src/types";
 const wire: ResourceBreakdownWireSnapshot = {
   version: 8,
   capturedAt: "2026-07-12T00:00:00Z",
-  softwareCatalog: [["software:test", "Test App", "Other", "一般应用"]],
+  softwareCatalog: [["software:test", "Test App", "other", "other"]],
   bars: [{
     metricId: "memory.usage",
     label: "内存占用",

@@ -3,13 +3,13 @@ import type { ManagementKind } from "../../types";
 export const managementInventoryKinds = [
   "Dependency",
   "Support",
-  "Adapted",
-  "Controlled",
+  "adapted",
+  "controlled",
   "Unconfirmed",
   "Unclassified",
-  "Game",
-  "HighPerformance",
-  "Other"
+  "game",
+  "high_performance",
+  "other"
 ] as const satisfies readonly ManagementKind[];
 
 export const browserRuntimeManagementSubpageId = "BrowserRuntime" as const;

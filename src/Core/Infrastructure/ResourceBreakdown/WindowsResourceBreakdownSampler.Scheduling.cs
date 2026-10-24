@@ -4,6 +4,7 @@ using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
@@ -182,18 +183,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 var processKey = OptimizationBaseScorePolicyResolver.CreateProcessKey(
                     sample.Name,
                     sample.ExecutablePath);
-                identityFact = inventoryFact with
-                {
-                    SoftwareId = software.Id,
-                    SoftwareName = software.Name,
-                    SoftwareKind = software.Kind,
-                    SoftwareDisplayKind = software.DisplayKind,
-                    SoftwareRootPaths = software.RootPaths,
-                    BaseScore = baseScorePlan.ResolveBaseScore(
-                        software.Id,
-                        software.Kind,
-                        processKey)
-                };
+                identityFact = ProjectSchedulingAttribution(inventoryFact, software, baseScorePlan, processKey);
                 attributionFacts.Add(identityFact);
             }
             else if (!preserveUnattributedMetricRows)
@@ -334,6 +324,21 @@ public sealed partial class WindowsResourceBreakdownSampler
             DatasetObservations = datasetObservations
         };
     }
+
+    internal static SchedulingProcessFact ProjectSchedulingAttribution(
+        SchedulingProcessFact inventoryFact,
+        RuntimeSoftwareAttribution software,
+        CompiledBaseScorePlan baseScorePlan,
+        string? processKey)
+        => inventoryFact with
+        {
+            SoftwareId = software.Id,
+            SoftwareName = software.Name,
+            SoftwareKind = software.Kind,
+            SoftwareDisplayKind = software.DisplayKind,
+            SoftwareRootPaths = software.RootPaths,
+            BaseScore = baseScorePlan.ResolveBaseScore(software.Id, software.Kind, processKey)
+        };
 
     private static IReadOnlyDictionary<
         string,

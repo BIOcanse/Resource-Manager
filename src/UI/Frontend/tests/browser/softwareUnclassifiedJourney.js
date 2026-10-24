@@ -7,14 +7,14 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   const writes = [];
   const issue = { id: "classification:unclassified", kind: "Unclassified", severity: "Info",
     source: "RuntimeAttribution", label: "", message: "", dynamic: false, references: [], reportIds: [] };
-  const software = ["RuntimeProduct", "RuntimePackage", "RuntimeRoot"].map((kind, index) => ({
-    id: `runtime:${index}`, name: `Runtime App ${index}`, kind, displayKind: "Other", state: "runtime",
+  const software = ["runtime_product", "runtime_package", "runtime_root"].map((kind, index) => ({
+    id: `runtime:${index}`, name: `Runtime App ${index}`, kind, displayKind: "other", state: "runtime",
     sources: [kind], rootPaths: index === 0 ? [] : [`C:/Apps/Runtime${index}`], message: "",
     operations: { canUninstall: false, uninstallKind: "None", uninstallLabel: "", uninstallMessage: "" },
     issues: [issue]
   }));
   await page.route("**/api/software", route => route.fulfill({ json: software.map((item, index) =>
-    classified && index === 0 ? { ...item, id: "manual:0", kind: "Other", issues: [] } : item) }));
+    classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item) }));
   await page.route("**/api/software/manual", async route => {
     writes.push(route.request().postDataJSON());
     classified = true;
@@ -45,7 +45,7 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   await page.getByRole("dialog", { name: "添加一般应用" }).getByRole("button", { name: "确定", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.waitForFunction(() => document.querySelectorAll(".software-item").length === 2);
-  assert.deepEqual(writes, [{ name: "Runtime App 0", kind: "Other", rootPaths: [], sourceSoftwareId: "runtime:0" }]);
+  assert.deepEqual(writes, [{ name: "Runtime App 0", kind: "other", rootPaths: [], sourceSoftwareId: "runtime:0" }]);
   await nav.getByRole("button", { name: /^一般应用/ }).click();
   await page.locator(".software-item").filter({ hasText: "Runtime App 0" }).waitFor();
   assert.equal(await page.locator(".software-item .software-issue-tag").count(), 0);

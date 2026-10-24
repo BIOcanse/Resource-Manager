@@ -56,7 +56,7 @@ public sealed class NativePortableSoftwareRegistryPersistenceStoreTests : IDispo
         Assert.Equal("catalog:tool", reader.GetString(0));
         Assert.Equal("tool", reader.GetString(1));
         Assert.Equal("Tool", reader.GetString(2));
-        Assert.Equal("portable", reader.GetString(3));
+        Assert.Equal("other", reader.GetString(3));
         Assert.Equal("c:/portable/helper.exe", reader.GetString(4));
         Assert.Equal("c:/portable", reader.GetString(5));
         Assert.Equal(firstObserved.AddSeconds(1).UtcTicks, reader.GetInt64(6));
@@ -194,7 +194,7 @@ public sealed class NativePortableSoftwareRegistryPersistenceStoreTests : IDispo
             new(NativePortableSoftwarePayloadKind.SoftwareId, "catalog:tool"),
             new(NativePortableSoftwarePayloadKind.CatalogEntryId, "tool"),
             new(NativePortableSoftwarePayloadKind.DisplayName, "Tool"),
-            new(NativePortableSoftwarePayloadKind.SoftwareKind, "portable"),
+            new(NativePortableSoftwarePayloadKind.SoftwareKind, "other"),
             new(NativePortableSoftwarePayloadKind.ExecutablePath, executablePath),
             new(NativePortableSoftwarePayloadKind.RootPath, rootPath)
         ]);

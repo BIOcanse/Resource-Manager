@@ -69,7 +69,7 @@ function bar(metricId: string, softwareIds: string[]): ResourceBreakdownBar {
     software: softwareIds.map((softwareId, index) => ({
       softwareId,
       name: softwareId,
-      kind: "Other",
+      kind: "other",
       displayKind: "其他",
       value: index + 1,
       systemPercent: index + 1,

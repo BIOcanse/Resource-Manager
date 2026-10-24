@@ -156,55 +156,55 @@ internal static class NativeSoftwareKindMap
     internal static uint ToNative(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        if (value.Equals(SoftwareKinds.Adapted, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Adapted, StringComparison.Ordinal))
         {
             return 2;
         }
-        if (value.Equals(SoftwareKinds.Controlled, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Controlled, StringComparison.Ordinal))
         {
             return 3;
         }
-        if (value.Equals(SoftwareKinds.Managed, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Managed, StringComparison.Ordinal))
         {
             return 4;
         }
-        if (value.Equals(SoftwareKinds.Game, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Game, StringComparison.Ordinal))
         {
             return 5;
         }
-        if (value.Equals(SoftwareKinds.HighPerformance, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.HighPerformance, StringComparison.Ordinal))
         {
             return 6;
         }
-        if (value.Equals(SoftwareKinds.Other, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Other, StringComparison.Ordinal))
         {
             return 7;
         }
-        if (value.Equals(SoftwareKinds.WindowsSystem, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.WindowsSystem, StringComparison.Ordinal))
         {
             return 8;
         }
-        if (value.Equals(SoftwareKinds.WindowsComponent, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.WindowsComponent, StringComparison.Ordinal))
         {
             return 9;
         }
-        if (value.Equals(SoftwareKinds.WindowsService, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.WindowsService, StringComparison.Ordinal))
         {
             return 10;
         }
-        if (value.Equals(SoftwareKinds.RuntimePackage, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.RuntimePackage, StringComparison.Ordinal))
         {
             return 11;
         }
-        if (value.Equals(SoftwareKinds.RuntimeProduct, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.RuntimeProduct, StringComparison.Ordinal))
         {
             return 12;
         }
-        if (value.Equals(SoftwareKinds.RuntimeRoot, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.RuntimeRoot, StringComparison.Ordinal))
         {
             return 13;
         }
-        if (value.Equals(SoftwareKinds.Unattributed, StringComparison.OrdinalIgnoreCase))
+        if (value.Equals(SoftwareKinds.Unattributed, StringComparison.Ordinal))
         {
             return 14;
         }

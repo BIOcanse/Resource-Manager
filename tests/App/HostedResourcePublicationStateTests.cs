@@ -548,7 +548,7 @@ public sealed class HostedResourcePublicationStateTests
                     @"C:\Tools\worker.exe",
                     "software:test",
                     "Test",
-                    "Other",
+                    "other",
                     SoftwareDisplayKinds.General,
                     100,
                     SchedulingProcessMetricMask.CpuUsage,

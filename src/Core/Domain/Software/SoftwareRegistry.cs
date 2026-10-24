@@ -1,21 +1,45 @@
-﻿using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Domain.Messages;
 namespace ResourceManager.App.Domain.Software;
 
 public static class SoftwareKinds
 {
-    public const string Adapted = "Adapted";
-    public const string Controlled = "Controlled";
-    public const string Managed = "Managed";
-    public const string Game = "Game";
-    public const string HighPerformance = "HighPerformance";
-    public const string Other = "Other";
-    public const string WindowsSystem = "WindowsSystem";
-    public const string WindowsComponent = "WindowsComponent";
-    public const string WindowsService = "WindowsService";
-    public const string RuntimePackage = "RuntimePackage";
-    public const string RuntimeProduct = "RuntimeProduct";
-    public const string RuntimeRoot = "RuntimeRoot";
-    public const string Unattributed = "Unattributed";
+    public const string Adapted = "adapted";
+    public const string Controlled = "controlled";
+    public const string Managed = "managed";
+    public const string Game = "game";
+    public const string HighPerformance = "high_performance";
+    public const string Other = "other";
+    public const string WindowsSystem = "windows_system";
+    public const string WindowsComponent = "windows_component";
+    public const string WindowsService = "windows_service";
+    public const string RuntimePackage = "runtime_package";
+    public const string RuntimeProduct = "runtime_product";
+    public const string RuntimeRoot = "runtime_root";
+    public const string Unattributed = "unattributed";
+
+    public static bool IsKnown(string? value)
+        => value is Adapted or Controlled or Managed or Game or HighPerformance or Other
+            or WindowsSystem or WindowsComponent or WindowsService or RuntimePackage
+            or RuntimeProduct or RuntimeRoot or Unattributed;
+
+    // Compatibility read for pre-lowercase persisted registries only. Delete when all
+    // supported stored SQLite/manual-software registries have been rewritten or retired.
+    public static string ReadStored(string? value)
+    {
+        var token = value?.Replace("_", string.Empty, StringComparison.Ordinal);
+        foreach (var kind in new[] { Adapted, Controlled, Managed, Game, HighPerformance, Other,
+            WindowsSystem, WindowsComponent, WindowsService, RuntimePackage, RuntimeProduct,
+            RuntimeRoot, Unattributed })
+        {
+            if (string.Equals(token, kind.Replace("_", string.Empty, StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return kind;
+            }
+        }
+
+        throw new InvalidDataException($"Unsupported stored software kind '{value}'.");
+    }
 }
 
 public static class SoftwareManagementRoles

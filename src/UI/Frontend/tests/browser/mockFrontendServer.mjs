@@ -162,8 +162,8 @@ const dashboardSettingsResult = {
 const mockSoftware = {
   id: "frontend-harness.software",
   name: "示例软件",
-  kind: "Other",
-  displayKind: "普通软件",
+  kind: "other",
+  displayKind: "other",
   state: "installed",
   message: "已安装",
   executablePaths: ["C:\\FrontendHarness\\example.exe"],
@@ -1253,8 +1253,8 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
   const softwareCatalog = Array.from({ length: segmentCount }, (_, index) => [
     index === 0 ? "frontend-harness.software" : `frontend-harness.software.${index}`,
     index === 0 ? "示例软件" : `示例软件 ${index}`,
-    "Other",
-    "普通软件"
+    "other",
+    "other"
   ]);
   return {
     version: 8,

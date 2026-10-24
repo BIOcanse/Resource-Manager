@@ -154,8 +154,8 @@ public sealed class BackendFrontendWireAcceptanceTests
         var software = new ResourceSoftwareSegment(
             "software:test",
             "Test App",
-            "Other",
-            "普通软件",
+            "other",
+            "other",
             12,
             12,
             1,

@@ -105,7 +105,7 @@ public sealed class TargetedRecordingServiceTests : IDisposable
     private sealed class FakeSoftware : ISoftwareRegistryView
     {
         private static readonly IReadOnlyList<SoftwareRecord> Records =
-        [new SoftwareRecord("software", "Example", "Game", "Game", "Running", [], [], "",
+        [new SoftwareRecord("software", "Example", "game", "game", "Running", [], [], "",
             new SoftwareOperationCapabilities(false, "", "", ""), null)];
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
             => Task.FromResult(Records);
@@ -143,7 +143,7 @@ public sealed class TargetedRecordingServiceTests : IDisposable
             var hasProcess = !ExitAfterFirstSample || Interlocked.Increment(ref Reads) == 1;
             if (!ExitAfterFirstSample) Interlocked.Increment(ref Reads);
             IReadOnlyList<ResourceSoftwareSegment> software = hasProcess
-                ? [new ResourceSoftwareSegment("software", "Example", "Game", "Game", 40, 40, 1,
+                ? [new ResourceSoftwareSegment("software", "Example", "game", "game", 40, 40, 1,
                     [new ResourceProcessSegment(ExitAfterFirstSample ? int.MaxValue : TestProcessId, "example", null, 40, 40, 100)
                     { ProcessStartKey = ExitAfterFirstSample ? 9876 : TestProcessStartKey }])]
                 : [];

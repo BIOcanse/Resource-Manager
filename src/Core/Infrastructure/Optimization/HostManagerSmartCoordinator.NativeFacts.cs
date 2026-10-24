@@ -972,7 +972,7 @@ public sealed partial class HostManagerSmartCoordinator
             ? memberIndex == 0 && memberCount == 0
             : memberCount > 1 && memberIndex < memberCount;
 
-    private static NativeSmartCoordinatorSoftwareKind ToNativeSoftwareKind(string value)
+    internal static NativeSmartCoordinatorSoftwareKind ToNativeSoftwareKind(string value)
         => value switch
         {
             SoftwareKinds.Game => NativeSmartCoordinatorSoftwareKind.Game,

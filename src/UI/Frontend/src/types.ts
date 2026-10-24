@@ -28,8 +28,8 @@ export interface BackendStartupCapabilities {
   sharedResourceOwnership: boolean;
 }
 export type ManagementRole = "Dependency" | "Support";
-export type ManagementKind = ManagementRole | "Adapted" | "Controlled" | "Unconfirmed" | "Unclassified" | "Game" | "HighPerformance" | "Other";
-export type ManualSoftwareKind = "Adapted" | "Game" | "HighPerformance" | "Other";
+export type ManagementKind = ManagementRole | "adapted" | "controlled" | "Unconfirmed" | "Unclassified" | "game" | "high_performance" | "other";
+export type ManualSoftwareKind = "adapted" | "game" | "high_performance" | "other";
 export type ResourceScaleMode = "capacity" | "active";
 export type ResourceTableViewMode = "software" | "process" | "performance";
 // 界面风格和配色的目录在 presentation/uiStyles.ts，规则见 docs/ui_styles.md。

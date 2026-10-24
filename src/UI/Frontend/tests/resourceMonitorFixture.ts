@@ -10,7 +10,7 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
     breakdown: {
       version: 8,
       capturedAt,
-      softwareCatalog: [["software:test", "Test App", "Other", "一般应用"]],
+      softwareCatalog: [["software:test", "Test App", "other", "other"]],
       bars: [{
         metricId: "memory.usage",
         label: "内存占用",

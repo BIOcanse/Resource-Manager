@@ -88,7 +88,7 @@ public sealed class PerformanceOverlaySubscriptionTests
     }
 
     private static SchedulingProcessFact Process(int pid, ulong start) =>
-        new(pid, start, "Game", null, "game", "Game", "Game", "Game", 0,
+        new(pid, start, "Game", null, "game", "Game", "game", "game", 0,
             SchedulingProcessMetricMask.None, 0, 0, 1, []);
 
     private static SchedulingProcessFactSnapshot Snapshot(params SchedulingProcessFact[] processes) =>

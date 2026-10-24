@@ -13,11 +13,11 @@ export function softwareIssueMessage(issue: SoftwareIssueTag) {
   return issue.kind === "Unclassified" ? uiText.management.unclassifiedReminder : issue.message;
 }
 
-export function runtimeDiscoveryLabel(kind: string) {
+export function runtimeDiscoveryLabel(kind: string | undefined) {
   switch (kind) {
-    case "RuntimePackage": return uiText.management.discoveredPackage;
-    case "RuntimeProduct": return uiText.management.discoveredProduct;
-    case "RuntimeRoot": return uiText.management.discoveredRoot;
+    case "runtime_package": return uiText.management.discoveredPackage;
+    case "runtime_product": return uiText.management.discoveredProduct;
+    case "runtime_root": return uiText.management.discoveredRoot;
     default: return "";
   }
 }

@@ -43,7 +43,7 @@ public sealed class PerformanceOverlayProjectionTests
                 [new FrameTimingStream(FramePresentSource.Dxgi, 1, DateTimeOffset.UtcNow, stats)])]);
         var breakdown = new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow,
             [new ResourceBreakdownBar("memory.usage", "Memory", "B", "active", 1000, 1000, 100,
-                [new ResourceSoftwareSegment("game", "Game", "Game", "Game", 500, 50, 1,
+                [new ResourceSoftwareSegment("game", "Game", "game", "game", 500, 50, 1,
                     [new ResourceProcessSegment(10, "Game", null, 500, 50, 100) { ProcessStartKey = 100 }])])]);
         var setting = PerformanceOverlaySettings.Default("game") with
         {
@@ -93,7 +93,7 @@ public sealed class PerformanceOverlayProjectionTests
     }
 
     private static SchedulingProcessFact Process(int pid, ulong startKey, string softwareId) =>
-        new(pid, startKey, $"Process {pid}", null, softwareId, softwareId, "Game", "Game",
+        new(pid, startKey, $"Process {pid}", null, softwareId, softwareId, "game", "game",
             0, SchedulingProcessMetricMask.None, 0, 0, 1, []);
 
     private static SchedulingProcessFactSnapshot Snapshot(params SchedulingProcessFact[] attributed) =>

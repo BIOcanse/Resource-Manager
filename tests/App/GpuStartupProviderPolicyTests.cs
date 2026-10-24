@@ -312,7 +312,7 @@ public sealed class GpuStartupProviderPolicyTests
     {
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SoftwareRecord>>([new SoftwareRecord(
-                softwareId, "Software", SoftwareKinds.Game, "Game", "registered", [], [], string.Empty,
+                softwareId, "Software", SoftwareKinds.Game, "game", "registered", [], [], string.Empty,
                 new SoftwareOperationCapabilities(false, "", "", ""), null,
                 ExecutablePaths: [executablePath])]);
 

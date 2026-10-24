@@ -18,7 +18,7 @@ public sealed class ResourceTableProjectorTests
     {
         ResourceBreakdownBar Bar(string id, double value) => new(
             id, id, "B/s", ResourceBreakdownScaleModes.Capacity, value, 1000, value / 10,
-            [new ResourceSoftwareSegment("app", "App", "Other", "Other", value, value / 10, 1,
+            [new ResourceSoftwareSegment("app", "App", "other", "other", value, value / 10, 1,
                 [new ResourceProcessSegment(42, "app", null, value, value / 10, 100)])]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow,
             [Bar(total, 100), Bar(incoming, 30), Bar(outgoing, 70)]);
@@ -151,8 +151,8 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "software:test-app",
             "Test App",
-            "Other",
-            "其他软件",
+            "other",
+            "other",
             2 * 1024 * 1024,
             25,
             1,
@@ -297,8 +297,8 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "software:test-app",
             "Test App",
-            "Other",
-            "其他软件",
+            "other",
+            "other",
             2 * 1024 * 1024,
             25,
             1,
@@ -334,7 +334,7 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "resource-residual:virtualMemory.usage",
             "系统/驱动保留 · 虚拟内存占用",
-            "WindowsSystem",
+            "windows_system",
             SoftwareDisplayKinds.SystemResidual,
             2 * 1024 * 1024,
             10,
@@ -379,7 +379,7 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "resource-residual:gpu.1.vram",
             "系统/驱动保留 · GPU1 显存占用",
-            "WindowsSystem",
+            "windows_system",
             SoftwareDisplayKinds.SystemResidual,
             512 * 1024 * 1024,
             12.5,
@@ -435,7 +435,7 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "resource-residual:gpu.1.vram",
             "系统/驱动保留 · GPU1 显存占用",
-            "WindowsSystem",
+            "windows_system",
             SoftwareDisplayKinds.SystemResidual,
             256 * 1024 * 1024,
             6.25,
@@ -510,8 +510,8 @@ public sealed class ResourceTableProjectorTests
         var software = new ResourceSoftwareSegment(
             "software:test-app",
             "Test App",
-            "Other",
-            "其他软件",
+            "other",
+            "other",
             2 * 1024 * 1024,
             25,
             1,
@@ -641,7 +641,7 @@ public sealed class ResourceTableProjectorTests
         var cpuSoftware = new ResourceSoftwareSegment(
             "software:test",
             "Test App",
-            "Other",
+            "other",
             SoftwareDisplayKinds.General,
             30,
             30,
@@ -650,7 +650,7 @@ public sealed class ResourceTableProjectorTests
         var memorySoftware = new ResourceSoftwareSegment(
             "software:test",
             "Test App",
-            "Other",
+            "other",
             SoftwareDisplayKinds.General,
             400,
             40,
@@ -749,7 +749,7 @@ public sealed class ResourceTableProjectorTests
                 return new ResourceSoftwareSegment(
                     group.Key.SoftwareId,
                     group.Key.SoftwareName,
-                    "Other",
+                    "other",
                     SoftwareDisplayKinds.General,
                     total,
                     total * 100 / capacity,

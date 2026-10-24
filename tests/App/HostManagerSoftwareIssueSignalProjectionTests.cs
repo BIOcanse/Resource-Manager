@@ -22,7 +22,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
                 "software-fixture",
                 "Fixture",
                 SoftwareKinds.Other,
-                "普通软件",
+                "other",
                 [],
                 [],
                 null));

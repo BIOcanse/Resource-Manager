@@ -218,7 +218,7 @@ public sealed class ExternalGpuPlacementTests
     {
         var gpu = new SchedulingProcessGpuFact(0, 69842, SchedulingProcessMetricMask.GpuUsage, 5, 0, 1, 0)
             { PrivateMemoryBytes = 32 * 1024 * 1024, SharedMemoryBytes = 16 * 1024 * 1024 };
-        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "Other", "Other",
+        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [gpu]);
         var source = new ResidentSource(process);
         var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
@@ -298,7 +298,7 @@ public sealed class ExternalGpuPlacementTests
         var target = new SchedulingProcessGpuFact(0, 23, SchedulingProcessMetricMask.GpuUsage, 14, 0, 1, 0)
             { PrivateMemoryBytes = 128, SharedMemoryBytes = 0 };
         var sourceEngine = new SchedulingProcessGpuFact(1, 99, SchedulingProcessMetricMask.GpuUsage, 7, 0, 1, 0);
-        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "Other", "Other",
+        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [target, sourceEngine]);
         var source = new ResidentSource(process);
         var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
@@ -312,7 +312,7 @@ public sealed class ExternalGpuPlacementTests
     {
         var gpu = new SchedulingProcessGpuFact(0, 23, SchedulingProcessMetricMask.GpuUsage, 7, 0, 1, 0)
             { PrivateMemoryBytes = 128, SharedMemoryBytes = 0 };
-        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "Other", "Other",
+        var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [gpu]);
         var source = new ResidentSource(process, usageAt: 50);
         var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));

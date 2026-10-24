@@ -1,4 +1,6 @@
 import { runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../src/presentation/softwareClassification.ts";
+import { softwareKindLabel, softwareDisplayKindLabel } from "../src/text.ts";
+import { normalizeSoftwareKind } from "../src/utils.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -88,9 +90,19 @@ try {
     const unclassified = { kind: "Unclassified" } as import("../src/types.ts").SoftwareIssueTag;
     assert.equal(softwareIssueLabel(unclassified), app.softwareKind.Unclassified);
     assert.equal(softwareIssueMessage(unclassified), app.management.unclassifiedReminder);
-    assert.equal(runtimeDiscoveryLabel("RuntimePackage"), app.management.discoveredPackage);
-    assert.equal(runtimeDiscoveryLabel("RuntimeProduct"), app.management.discoveredProduct);
-    assert.equal(runtimeDiscoveryLabel("RuntimeRoot"), app.management.discoveredRoot);
+    assert.equal(runtimeDiscoveryLabel("runtime_package"), app.management.discoveredPackage);
+    assert.equal(runtimeDiscoveryLabel("runtime_product"), app.management.discoveredProduct);
+    assert.equal(runtimeDiscoveryLabel("runtime_root"), app.management.discoveredRoot);
+    for (const kind of ["adapted", "controlled", "game", "high_performance"] as const) {
+      assert.equal(normalizeSoftwareKind({ id: "catalog:test", name: "Test", kind }), kind);
+    }
+    for (const kind of ["adapted", "controlled", "managed", "game", "high_performance", "other",
+      "windows_system", "windows_component", "windows_service", "runtime_package", "runtime_product",
+      "runtime_root", "unattributed", "system_residual"] as const) {
+      assert.ok(app.softwareKind[kind], `${language}: missing software kind ${kind}`);
+      assert.equal(softwareKindLabel(kind), app.softwareKind[kind], `${language}: kind ${kind}`);
+      assert.equal(softwareDisplayKindLabel("other", kind), app.softwareKind[kind], `${language}: display kind ${kind}`);
+    }
 
     assert.equal(currentSettingsText().language, language);
     assert.deepEqual(flattenCopy(uiText), flattenCopy(app), `${language}: active UI differs from the loaded bundle.`);

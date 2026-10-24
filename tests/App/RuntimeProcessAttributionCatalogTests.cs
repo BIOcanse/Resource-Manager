@@ -169,7 +169,7 @@ public sealed class RuntimeProcessAttributionCatalogTests
             id,
             name,
             SoftwareKinds.Other,
-            "其他软件",
+            "other",
             "installed",
             ["test"],
             rootPaths,

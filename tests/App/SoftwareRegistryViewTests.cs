@@ -51,7 +51,7 @@ public sealed class SoftwareRegistryViewTests
                 ["targets.high-performance"] = new(
                     "targets.high-performance",
                     "高性能目标",
-                    "HighPerformance",
+                    "high_performance",
                     ["HighPerformanceCandidate"])
             },
             new Dictionary<string, SoftwarePolicyAssignment>(StringComparer.OrdinalIgnoreCase)
