@@ -16,7 +16,8 @@ pub fn advance(
         return .unavailable;
     }
 
-    const prepare_result = reconcileFacts(session, input);
+    var removed_critical_fact = false;
+    const prepare_result = reconcileFacts(session, input, &removed_critical_fact);
     if (prepare_result != .ok) return prepare_result;
     if ((input.flags & protocol.CycleFlags.authoritative_applied_facts) != 0) {
         session.requires_authoritative_resync = false;
@@ -29,7 +30,7 @@ pub fn advance(
     session.invalid_fact_count = session.staged_invalid_fact_count;
     session.last_reason_mask = 0;
 
-    observeCriticalEvents(session, input);
+    const boost_restarted = observeCriticalEvents(session, input, removed_critical_fact);
     evaluateProcesses(session, input);
     resolveFreezeGroups(session);
     evaluateSoftware(session, input);
@@ -53,6 +54,8 @@ pub fn advance(
     const reservation_status = assignIdsAndReserve(session, input, actions[0..action_count]);
     if (reservation_status != .ok) return reservation_status;
 
+    // The event-observing cycle schedules the next N rounds; later successful cycles consume one.
+    if (!boost_restarted and session.event_boost_rounds_remaining > 0) session.event_boost_rounds_remaining -= 1;
     resolveNextWake(session, input.observed_at_ms);
     for (actions[0..action_count], 0..) |*action, index| {
         action.order_key = @intCast(index);
@@ -88,7 +91,7 @@ pub fn fillSnapshot(
     }
     var flags: u32 = 0;
     if (session.invalid_fact_count > 0) flags |= protocol.SnapshotFlags.has_invalid_facts;
-    if (session.last_observed_at_ms < session.event_boost_until_ms) flags |= protocol.SnapshotFlags.event_boost_active;
+    if (session.event_boost_rounds_remaining > 0) flags |= protocol.SnapshotFlags.event_boost_active;
     if (session.last_cycle_score_only) flags |= protocol.SnapshotFlags.score_only;
     if (session.inflightCount() > 0) flags |= protocol.SnapshotFlags.awaiting_feedback;
     if (session.requires_authoritative_resync) flags |= protocol.SnapshotFlags.requires_authoritative_resync;
@@ -112,6 +115,8 @@ pub fn fillSnapshot(
         .invalid_fact_count = session.invalid_fact_count,
         .snapshot_row_count = process_count + software_count,
         .reason_mask = session.last_reason_mask,
+        .event_boost_rounds_remaining = session.event_boost_rounds_remaining,
+        .reserved0 = 0,
         .reserved = [_]u64{0} ** 2,
     };
 }
@@ -139,7 +144,7 @@ pub fn copySnapshotRows(session: *const state.Session, rows: []protocol.Snapshot
     return .ok;
 }
 
-fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) protocol.Status {
+fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput, removed_critical_fact: *bool) protocol.Status {
     const full_snapshot = (input.flags & protocol.CycleFlags.full_process_snapshot) != 0 and session.staged_inventory_complete;
     for (session.processes) |*item| item.seen_this_cycle = false;
     for (session.softwares) |*item| {
@@ -151,13 +156,17 @@ fn reconcileFacts(session: *state.Session, input: *const protocol.CycleInput) pr
     if (full_snapshot) {
         for (session.processes, 0..) |process, index| {
             if (!process.occupied or session.findStagedProcess(process.target_key, process.process_id, process.process_start_key) != null) continue;
-            if (!process.transition.owned and process.transition.inflight_action_id == 0) session.releaseProcess(@intCast(index));
+            if (!process.transition.owned and process.transition.inflight_action_id == 0) {
+                removed_critical_fact.* = removed_critical_fact.* or process.critical_fact;
+                session.releaseProcess(@intCast(index));
+            }
         }
         for (session.softwares, 0..) |software, index| {
             if (!software.occupied or session.findStagedSoftware(software.software_key) != null) continue;
             if (!software.cpu_transition.owned and !software.gpu_transition.owned and
                 software.cpu_transition.inflight_action_id == 0 and software.gpu_transition.inflight_action_id == 0)
             {
+                removed_critical_fact.* = removed_critical_fact.* or software.critical_fact;
                 session.releaseSoftware(@intCast(index));
             }
         }
@@ -394,12 +403,12 @@ fn copyGpuFacts(session: *state.Session, slot: u32, staged: state.StagedGpu, inp
     target.vram_usage_percent = staged.vram_usage_percent;
 }
 
-fn observeCriticalEvents(session: *state.Session, input: *const protocol.CycleInput) void {
+fn observeCriticalEvents(session: *state.Session, input: *const protocol.CycleInput, removed_critical_fact: bool) bool {
     if ((session.config.feature_flags & protocol.FeatureFlags.critical_events) == 0) {
-        session.event_boost_until_ms = 0;
-        return;
+        session.event_boost_rounds_remaining = 0;
+        return false;
     }
-    var stable_changed = false;
+    var stable_changed = removed_critical_fact;
     var membership_changed = false;
     for (session.softwares) |software| {
         if (!software.occupied) continue;
@@ -425,10 +434,11 @@ fn observeCriticalEvents(session: *state.Session, input: *const protocol.CycleIn
     }
     if ((input.flags & protocol.CycleFlags.external_event) != 0) stable_changed = true;
     if (stable_changed) {
-        session.event_boost_until_ms = saturatingAdd(input.observed_at_ms, session.config.event_boost_ms);
+        session.event_boost_rounds_remaining = session.config.event_boost_rounds;
         session.last_reason_mask |= protocol.Reason.critical_fact_changed;
     }
     if (membership_changed) session.last_reason_mask |= protocol.Reason.critical_membership_changed;
+    return stable_changed;
 }
 
 fn evaluateProcesses(session: *state.Session, input: *const protocol.CycleInput) void {
@@ -1205,7 +1215,7 @@ fn assignIdsAndReserve(session: *state.Session, input: *const protocol.CycleInpu
 }
 
 pub fn resolveNextWake(session: *state.Session, now_ms: i64) void {
-    var delay = if (now_ms < session.event_boost_until_ms)
+    var delay = if (session.event_boost_rounds_remaining > 0)
         session.config.event_interval_ms
     else
         session.config.normal_interval_ms;

@@ -32,7 +32,7 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         Assert.Equal((uint)plan.Recreate.MaximumAtomicGroups, configuration.MaximumAtomicGroups);
         Assert.Equal((uint)plan.HotPublish.NormalIntervalMilliseconds, configuration.NormalIntervalMilliseconds);
         Assert.Equal((uint)plan.HotPublish.EventIntervalMilliseconds, configuration.EventIntervalMilliseconds);
-        Assert.Equal((uint)plan.HotPublish.EventBoostMilliseconds, configuration.EventBoostMilliseconds);
+        Assert.Equal((uint)plan.HotPublish.EventBoostRounds, configuration.EventBoostRounds);
         Assert.Equal((uint)plan.HotPublish.GameStartGraceMilliseconds, configuration.GameStartGraceMilliseconds);
         Assert.Equal((uint)plan.HotPublish.RequiredConsecutiveDecisions, configuration.RequiredConsecutiveDecisions);
         Assert.Equal((uint)plan.HotPublish.FailureRetryMilliseconds, configuration.FailureRetryMilliseconds);
@@ -102,6 +102,21 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         Assert.NotEqual(
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in configuration, baseline),
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in configuration, changed));
+    }
+
+    [Fact]
+    public void ConfigurationIdentityIncludesEventBoostRoundsAtTheSameGeneration()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().SmartCoordinator;
+        var original = NativeSmartCoordinatorConfigurationWriter.Create(
+            plan.Build, plan.Recreate, plan.HotPublish, plan.ConfigurationGeneration);
+        var changed = NativeSmartCoordinatorConfigurationWriter.Create(
+            plan.Build, plan.Recreate, plan.HotPublish with { EventBoostRounds = 11 }, plan.ConfigurationGeneration);
+        Assert.Equal(10U, original.EventBoostRounds);
+        Assert.Equal(11U, changed.EventBoostRounds);
+        Assert.NotEqual(
+            NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in original, plan.HotPublish.RealtimeActionBudget),
+            NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in changed, plan.HotPublish.RealtimeActionBudget));
     }
 
     [Fact]

@@ -24,6 +24,21 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             expectedScoreOnly: false);
     }
 
+    [Theory]
+    [InlineData(0U, true)]
+    [InlineData(10U, false)]
+    public void ValidateNativeSnapshotRejectsInconsistentBoostFlag(uint remaining, bool active)
+    {
+        var capacity = CreateCapacity();
+        var snapshot = CreatePlanSnapshot();
+        snapshot.EventBoostRoundsRemaining = remaining;
+        if (active) snapshot.Flags |= NativeSmartCoordinatorSnapshotFlags.EventBoostActive;
+        Assert.Throws<InvalidDataException>(() => HostManagerSmartCoordinator.ValidateNativeSnapshot(
+            snapshot, capacity, capacity.ConfigurationGeneration, snapshot.CycleSequence,
+            snapshot.ObservedAtMilliseconds, snapshot.ObservedAtMilliseconds, 0,
+            expectedMaximumActionsThisCycle: 2, requireNoActions: false, expectedScoreOnly: false));
+    }
+
     [Fact]
     public void ValidateNativeSnapshot_UsesFeedbackCompletionAsWakeBase()
     {

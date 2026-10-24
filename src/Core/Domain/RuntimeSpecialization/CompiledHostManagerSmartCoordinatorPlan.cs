@@ -145,7 +145,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     ulong FeatureFlags,
     int NormalIntervalMilliseconds,
     int EventIntervalMilliseconds,
-    int EventBoostMilliseconds,
+    int EventBoostRounds,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GameStartGraceMs)]
     int GameStartGraceMilliseconds,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.RequiredConsecutiveDecisions)]
@@ -173,7 +173,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     public bool IsPublished => FeatureFlags > 0
         && NormalIntervalMilliseconds > 0
         && EventIntervalMilliseconds > 0
-        && EventBoostMilliseconds > 0
+        && EventBoostRounds > 0
         && GameStartGraceMilliseconds > 0
         && RequiredConsecutiveDecisions > 0
         && FailureRetryMilliseconds > 0

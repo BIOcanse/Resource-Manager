@@ -6453,7 +6453,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     HostManagerTransactionJournalRuntimeState.RecoveryRequired);
         }
 
-        internal async Task<TimeSpan> RunRealtimeCycleAsync()
+        internal Task<TimeSpan> RunRealtimeCycleAsync() => RunRealtimeCycleAsync("scheduled");
+
+        internal async Task<TimeSpan> RunRealtimeCycleAsync(string trigger)
         {
             var method = typeof(HostManagerSmartCoordinator).GetMethod(
                 "RunNativeCycleCoreAsync",
@@ -6463,7 +6465,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "RunNativeCycleCoreAsync");
             var task = method.Invoke(
                 Coordinator,
-                ["scheduled", true, null, CancellationToken.None]) as Task<TimeSpan>
+                [trigger, true, null, CancellationToken.None]) as Task<TimeSpan>
                 ?? throw new InvalidOperationException(
                     "The realtime Host Manager cycle did not return its expected task.");
             try

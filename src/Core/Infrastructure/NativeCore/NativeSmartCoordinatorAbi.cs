@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x000a_0000;
+    public const uint Version = 0x000b_0000;
     public const int RuntimeStateCount = 7;
     public const int AdapterGradeCount = 4;
 }
@@ -360,7 +360,7 @@ internal unsafe struct NativeSmartCoordinatorConfiguration
 
     public uint NormalIntervalMilliseconds;
     public uint EventIntervalMilliseconds;
-    public uint EventBoostMilliseconds;
+    public uint EventBoostRounds;
     public uint GameStartGraceMilliseconds;
     public uint RequiredConsecutiveDecisions;
     public uint FailureRetryMilliseconds;
@@ -513,7 +513,7 @@ internal unsafe struct NativeSmartCoordinatorFeedback
     public ulong Reserved1;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 120)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 128)]
 internal unsafe struct NativeSmartCoordinatorSnapshot
 {
     public uint AbiVersion;
@@ -535,6 +535,8 @@ internal unsafe struct NativeSmartCoordinatorSnapshot
     public uint InvalidFactCount;
     public uint SnapshotRowCount;
     public NativeSmartCoordinatorReason ReasonMask;
+    public uint EventBoostRoundsRemaining;
+    public uint Reserved0;
     public fixed ulong Reserved[2];
 }
 

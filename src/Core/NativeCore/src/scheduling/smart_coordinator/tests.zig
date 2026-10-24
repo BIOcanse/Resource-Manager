@@ -22,7 +22,7 @@ test "reconfigure applies changed content at the same generation and accepts rol
     try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
 }
 
-test "ABI layout is frozen for version 10" {
+test "ABI layout is frozen for version 11" {
     try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
@@ -30,7 +30,7 @@ test "ABI layout is frozen for version 10" {
     try std.testing.expectEqual(@as(usize, 104), @sizeOf(protocol.InputRow));
     try std.testing.expectEqual(@as(usize, 136), @sizeOf(protocol.Action));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.Feedback));
-    try std.testing.expectEqual(@as(usize, 120), @sizeOf(protocol.Snapshot));
+    try std.testing.expectEqual(@as(usize, 128), @sizeOf(protocol.Snapshot));
     try std.testing.expectEqual(@as(usize, 192), @sizeOf(protocol.SnapshotRow));
     try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.InputRow, "valid_mask"));
     try std.testing.expectEqual(@as(usize, 24), @offsetOf(protocol.InputRow, "target_key"));
@@ -45,17 +45,21 @@ test "ABI layout is frozen for version 10" {
     try std.testing.expectEqual(@as(usize, 76), @offsetOf(protocol.InputRow, "score_member_count"));
     try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.InputRow, "process_score"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.InputRow, "software_score"));
+    try std.testing.expectEqual(@as(usize, 68), @offsetOf(protocol.Config, "event_boost_rounds"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Snapshot, "reason_mask"));
+    try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.Snapshot, "event_boost_rounds_remaining"));
+    try std.testing.expectEqual(@as(usize, 108), @offsetOf(protocol.Snapshot, "reserved0"));
+    try std.testing.expectEqual(@as(usize, 112), @offsetOf(protocol.Snapshot, "reserved"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.SnapshotRow, "cpu_score"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.SnapshotRow, "cpu_occupancy_percent"));
     try std.testing.expectEqual(@as(usize, 172), @offsetOf(protocol.SnapshotRow, "desired_process_grade"));
-    try std.testing.expectEqual(@as(u64, 0x8cc98a222ba80e73), corpus.layoutFingerprint(protocol.Config));
+    try std.testing.expectEqual(@as(u64, 0x5d7118d7fe569a0e), corpus.layoutFingerprint(protocol.Config));
     try std.testing.expectEqual(@as(u64, 0x822e9b7b868af1e6), corpus.layoutFingerprint(protocol.Capacity));
     try std.testing.expectEqual(@as(u64, 0x2a719fac7ecace97), corpus.layoutFingerprint(protocol.CycleInput));
     try std.testing.expectEqual(@as(u64, 0x27f12d8b9e11d1c8), corpus.layoutFingerprint(protocol.InputRow));
     try std.testing.expectEqual(@as(u64, 0x531d6c7ff4bcf206), corpus.layoutFingerprint(protocol.Action));
     try std.testing.expectEqual(@as(u64, 0x7722db7daad0835b), corpus.layoutFingerprint(protocol.Feedback));
-    try std.testing.expectEqual(@as(u64, 0x8b8bdfce5d3ff18e), corpus.layoutFingerprint(protocol.Snapshot));
+    try std.testing.expectEqual(@as(u64, 0x4af84b6efab74145), corpus.layoutFingerprint(protocol.Snapshot));
     try std.testing.expectEqual(@as(u64, 0xba634188acc130a6), corpus.layoutFingerprint(protocol.SnapshotRow));
 }
 
@@ -68,6 +72,9 @@ test "strict config and capacity query have no defaults" {
     try std.testing.expectEqual(config.max_reservations, capacity.feedback_capacity);
     try std.testing.expectEqual(@as(u32, @sizeOf(protocol.Action)), capacity.action_struct_size);
 
+    config.event_boost_rounds = 0;
+    try std.testing.expect(!protocol.isValidConfig(&config));
+    config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     config.field_mask &= ~protocol.ConfigFields.timing;
     try std.testing.expect(!protocol.isValidConfig(&config));
     try std.testing.expectEqual(protocol.Status.invalid_argument, coordinator.capacityForConfig(&config, &capacity));
@@ -171,7 +178,7 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x000a_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000b_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
     try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeatureFlags.known);
@@ -903,6 +910,135 @@ test "ownership lost without observed grade never invents actual state" {
     try std.testing.expectEqual(@as(u32, 0), process.flags & protocol.SnapshotRowFlags.process_owned);
 }
 
+test "normal coordinator wake is thirty seconds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    try expectBoostCycle(session, &config, 1, 1_000, &.{}, 0, 30_000, false);
+}
+
+test "critical start gives exactly ten five-second wakes then normal" {
+    // Exercise both stable software identity and the process-only fact path.
+    for ([_]bool{ true, false }) |software_identity| {
+        for ([_]protocol.SoftwareKind{ .high_performance, .general_application }) |kind| {
+            var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+            const session = try coordinator.create(&config);
+            defer coordinator.destroy(session);
+            var row = corpus.processFact(0, 401, 4001, 41, 411, if (kind == .high_performance) 35 else 85, kind, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+            if (!software_identity) {
+                row.valid_mask &= ~(protocol.InputValidity.software_identity | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade);
+                row.software_key = 0;
+            }
+            // No elapsed-time expiry: each completed cycle consumes just one round.
+            var sequence: u64 = 1;
+            var now: i64 = 1_000;
+            while (sequence <= 11) : (sequence += 1) {
+                const remaining: u32 = @intCast(11 - sequence);
+                try expectBoostCycle(session, &config, sequence, now, &.{row}, remaining, if (remaining > 0) 5_000 else 30_000, false);
+                now += 5_000;
+            }
+        }
+    }
+}
+
+test "game grace early wake consumes a round without changing grace" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .game, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
+    try expectBoostCycle(session, &config, 2, 6_000, &.{row}, 9, 5_000, false);
+    try expectBoostCycle(session, &config, 3, 11_000, &.{row}, 8, 1, false);
+    var sequence: u64 = 4;
+    var now: i64 = 11_001;
+    while (sequence <= 11) : (sequence += 1) {
+        const remaining: u32 = @intCast(11 - sequence);
+        try expectBoostCycle(session, &config, sequence, now, &.{row}, remaining, if (remaining > 0) 5_000 else 30_000, false);
+        now += 5_000;
+    }
+}
+
+test "critical close gives exactly ten five-second wakes then normal" {
+    for ([_]bool{ true, false }) |software_identity| {
+        for ([_]protocol.SoftwareKind{ .game, .high_performance }) |kind| {
+            var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+            const session = try coordinator.create(&config);
+            defer coordinator.destroy(session);
+            var row = corpus.processFact(0, 401, 4001, 41, 411, 35, kind, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+            if (!software_identity) {
+                row.valid_mask &= ~(protocol.InputValidity.software_identity | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade);
+                row.software_key = 0;
+            }
+            try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
+            var sequence: u64 = 2;
+            var now: i64 = 6_000;
+            // Empty complete inventory is a real close, including unowned released slots.
+            while (sequence <= 12) : (sequence += 1) {
+                const remaining: u32 = @intCast(12 - sequence);
+                try expectBoostCycle(session, &config, sequence, now, &.{}, remaining, if (remaining > 0) 5_000 else 30_000, false);
+                now += 5_000;
+            }
+        }
+    }
+}
+
+test "a second critical change restarts the boost at ten rounds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    const row = corpus.processFact(0, 401, 4001, 41, 411, 35, .high_performance, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    try expectBoostCycle(session, &config, 1, 1_000, &.{row}, 10, 5_000, false);
+    try expectBoostCycle(session, &config, 2, 6_000, &.{row}, 9, 5_000, false);
+    try expectBoostCycle(session, &config, 3, 11_000, &.{}, 10, 5_000, false);
+    try expectBoostCycle(session, &config, 4, 16_000, &.{}, 9, 5_000, false);
+    try expectBoostCycle(session, &config, 5, 21_000, &.{row}, 10, 5_000, false);
+}
+
+test "external event starts and restarts ten boost rounds" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    try expectBoostCycle(session, &config, 1, 1_000, &.{}, 10, 5_000, true);
+    try expectBoostCycle(session, &config, 2, 100_000, &.{}, 9, 5_000, false);
+    try expectBoostCycle(session, &config, 3, 105_000, &.{}, 10, 5_000, true);
+}
+
+test "reservation deadline early wake consumes one boost round" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.critical_events);
+    config.required_consecutive_decisions = 1;
+    config.reservation_timeout_ms = 2_000;
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var rows = lowScoreProcessRows(901, 9001, 91, 911);
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+    input.flags |= protocol.CycleFlags.external_event;
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
+    try std.testing.expectEqual(@as(u32, 10), snapshot.event_boost_rounds_remaining);
+    try std.testing.expectEqual(@as(u32, 2_000), snapshot.wake_after_ms);
+    try std.testing.expectEqual(@as(i64, 3_000), snapshot.next_wake_at_ms);
+    const action = findProcessAction(actions[0..snapshot.action_count], 901) orelse return error.MissingProcessAction;
+    const feedback = corpus.feedbackFor(action.*, .succeeded, 3_000);
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.applyFeedback(session, @as([*]const protocol.Feedback, @ptrCast(&feedback)), 1, 1, &snapshot));
+    // Feedback/snapshot queries recalculate the deadline but never consume a cycle.
+    try std.testing.expectEqual(@as(u32, 10), snapshot.event_boost_rounds_remaining);
+    try expectBoostCycle(session, &config, 2, 3_000, &rows, 9, 5_000, false);
+}
+
+fn expectBoostCycle(session: *coordinator.Session, config: *const protocol.Config, sequence: u64, now: i64, rows: []const protocol.InputRow, remaining: u32, wake: u32, external: bool) !void {
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var input = corpus.cycle(config, sequence, now, @intCast(rows.len), sequence == 1);
+    input.flags |= protocol.CycleFlags.score_only;
+    if (external) input.flags |= protocol.CycleFlags.external_event;
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows.ptr, @intCast(rows.len), actions[0..].ptr, actions.len, &snapshot));
+    try std.testing.expectEqual(remaining, snapshot.event_boost_rounds_remaining);
+    try std.testing.expectEqual(remaining > 0, (snapshot.flags & protocol.SnapshotFlags.event_boost_active) != 0);
+    try std.testing.expectEqual(wake, snapshot.wake_after_ms);
+    try std.testing.expectEqual(now + wake, snapshot.next_wake_at_ms);
+}
+
 test "critical membership changes do not extend the stable event boost" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
     const session = try coordinator.create(&config);
@@ -922,8 +1058,8 @@ test "critical membership changes do not extend the stable event boost" {
         actions.len,
         &snapshot,
     ));
-    try std.testing.expectEqual(@as(i64, 11_000), session.event_boost_until_ms);
-    try std.testing.expectEqual(@as(u32, 1_000), snapshot.wake_after_ms);
+    try std.testing.expectEqual(@as(u32, 10), snapshot.event_boost_rounds_remaining);
+    try std.testing.expectEqual(@as(u32, 5_000), snapshot.wake_after_ms);
     try std.testing.expect((snapshot.reason_mask & protocol.Reason.critical_fact_changed) != 0);
 
     const second = corpus.processFact(1, 402, 4001, 42, 412, 85, .high_performance, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
@@ -939,14 +1075,14 @@ test "critical membership changes do not extend the stable event boost" {
         actions.len,
         &snapshot,
     ));
-    try std.testing.expectEqual(@as(i64, 11_000), session.event_boost_until_ms);
+    try std.testing.expectEqual(@as(u32, 9), snapshot.event_boost_rounds_remaining);
     try std.testing.expect((snapshot.reason_mask & protocol.Reason.critical_membership_changed) != 0);
     try std.testing.expectEqual(@as(u64, 0), snapshot.reason_mask & protocol.Reason.critical_fact_changed);
 }
 
 test "game grace is inclusive and participates in next wake" {
     var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
-    config.event_boost_ms = 20_000;
+    config.event_boost_rounds = 10;
     config.event_interval_ms = 20_000;
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
@@ -1006,7 +1142,7 @@ test "game and general application paired inputs differ only in startup grace" {
 
     for (cases) |case| {
         var config = corpus.explicitConfig(protocol.FeatureFlags.critical_events);
-        config.event_boost_ms = 20_000;
+        config.event_boost_rounds = 10;
         config.event_interval_ms = 20_000;
         const session = try coordinator.create(&config);
         defer coordinator.destroy(session);

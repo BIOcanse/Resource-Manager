@@ -964,7 +964,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             MaximumAtomicGroups = 2,
             NormalIntervalMilliseconds = 1_000,
             EventIntervalMilliseconds = 100,
-            EventBoostMilliseconds = 1_000,
+            EventBoostRounds = 10,
             GameStartGraceMilliseconds = 1_000,
             RequiredConsecutiveDecisions = 3,
             FailureRetryMilliseconds = 100,
@@ -988,7 +988,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.FeatureFlags = NativeSmartCoordinatorFeatures.ProcessPolicy;
         configuration.NormalIntervalMilliseconds = 15_000;
         configuration.EventIntervalMilliseconds = 1_000;
-        configuration.EventBoostMilliseconds = 10_000;
+        configuration.EventBoostRounds = 10;
         configuration.GameStartGraceMilliseconds = 10_000;
         configuration.RequiredConsecutiveDecisions = 3;
         configuration.FailureRetryMilliseconds = 5_000;

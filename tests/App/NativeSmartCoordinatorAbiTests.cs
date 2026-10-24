@@ -17,7 +17,7 @@ public sealed class NativeSmartCoordinatorAbiTests
         Assert.Equal(104, Unsafe.SizeOf<NativeSmartCoordinatorInputRow>());
         Assert.Equal(136, Unsafe.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, Unsafe.SizeOf<NativeSmartCoordinatorFeedback>());
-        Assert.Equal(120, Unsafe.SizeOf<NativeSmartCoordinatorSnapshot>());
+        Assert.Equal(128, Unsafe.SizeOf<NativeSmartCoordinatorSnapshot>());
         Assert.Equal(192, Unsafe.SizeOf<NativeSmartCoordinatorSnapshotRow>());
     }
 
@@ -38,7 +38,7 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.MaximumAtomicGroups), 56);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.NormalIntervalMilliseconds), 60);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.EventIntervalMilliseconds), 64);
-        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.EventBoostMilliseconds), 68);
+        AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.EventBoostRounds), 68);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.GameStartGraceMilliseconds), 72);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.RequiredConsecutiveDecisions), 76);
         AssertOffset<NativeSmartCoordinatorConfiguration>(nameof(NativeSmartCoordinatorConfiguration.FailureRetryMilliseconds), 80);
@@ -98,7 +98,9 @@ public sealed class NativeSmartCoordinatorAbiTests
 
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.WakeAfterMilliseconds), 64);
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.ReasonMask), 96);
-        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.Reserved), 104);
+        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.EventBoostRoundsRemaining), 104);
+        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.Reserved0), 108);
+        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.Reserved), 112);
 
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.BaseScore), 88);
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.CpuScore), 96);

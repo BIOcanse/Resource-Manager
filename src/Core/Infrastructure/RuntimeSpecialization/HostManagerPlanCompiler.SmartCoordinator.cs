@@ -78,7 +78,7 @@ public sealed partial class HostManagerPlanCompiler
             throw new InvalidDataException("The software welfare base_score must be finite and in [0, maximum base importance].");
         ValidatePositive(source.NormalIntervalMilliseconds, "hot_publish.smart_coordinator.normal_interval_ms");
         ValidatePositive(source.EventIntervalMilliseconds, "hot_publish.smart_coordinator.event_interval_ms");
-        ValidatePositive(source.EventBoostMilliseconds, "hot_publish.smart_coordinator.event_boost_ms");
+        ValidatePositive(source.EventBoostRounds, "hot_publish.smart_coordinator.event_boost_rounds");
         ValidatePositive(source.ReservationTimeoutMilliseconds, "hot_publish.smart_coordinator.reservation_timeout_ms");
         var realtimeActionBudget = new CompiledHostManagerRealtimeActionBudgetPlan(
             performance.RealtimeActionBudgetMode,
@@ -124,7 +124,7 @@ public sealed partial class HostManagerPlanCompiler
             CompileSmartCoordinatorFeatureFlags(source.FeatureFlags),
             source.NormalIntervalMilliseconds,
             source.EventIntervalMilliseconds,
-            source.EventBoostMilliseconds,
+            source.EventBoostRounds,
             gameStartGrace,
             consecutiveDecisions,
             failureRetry,

@@ -39,8 +39,8 @@ internal sealed class HostManagerSmartCoordinatorHotPublishProfile
     [JsonPropertyName("event_interval_ms")]
     public required int EventIntervalMilliseconds { get; init; }
 
-    [JsonPropertyName("event_boost_ms")]
-    public required int EventBoostMilliseconds { get; init; }
+    [JsonPropertyName("event_boost_rounds")]
+    public required int EventBoostRounds { get; init; }
 
     [JsonPropertyName("game_start_grace_ms")]
     public required int GameStartGraceMilliseconds { get; init; }

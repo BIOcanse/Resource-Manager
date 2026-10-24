@@ -332,7 +332,7 @@ pub const Session = struct {
     next_group_id: u64,
     validation_epoch: u64,
     last_observed_at_ms: i64,
-    event_boost_until_ms: i64,
+    event_boost_rounds_remaining: u32,
     next_wake_at_ms: i64,
     wake_after_ms: u32,
     last_reason_mask: u64,
@@ -435,7 +435,7 @@ pub const Session = struct {
             .next_group_id = 1,
             .validation_epoch = 1,
             .last_observed_at_ms = 0,
-            .event_boost_until_ms = 0,
+            .event_boost_rounds_remaining = 0,
             .next_wake_at_ms = 0,
             .wake_after_ms = config.normal_interval_ms,
             .last_reason_mask = 0,
@@ -515,7 +515,7 @@ pub const Session = struct {
         self.next_group_id = 1;
         self.validation_epoch = 1;
         self.last_observed_at_ms = 0;
-        self.event_boost_until_ms = 0;
+        self.event_boost_rounds_remaining = 0;
         self.next_wake_at_ms = 0;
         self.wake_after_ms = self.config.normal_interval_ms;
         self.last_reason_mask = 0;

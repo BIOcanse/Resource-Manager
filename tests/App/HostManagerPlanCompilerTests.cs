@@ -254,9 +254,9 @@ public sealed class HostManagerPlanCompilerTests
                 | NativeSmartCoordinatorFeatures.AdapterGpu
                 | NativeSmartCoordinatorFeatures.CriticalEvents),
             smartCoordinator.HotPublish.FeatureFlags);
-        Assert.Equal(10000, smartCoordinator.HotPublish.NormalIntervalMilliseconds);
-        Assert.Equal(1000, smartCoordinator.HotPublish.EventIntervalMilliseconds);
-        Assert.Equal(10000, smartCoordinator.HotPublish.EventBoostMilliseconds);
+        Assert.Equal(30000, smartCoordinator.HotPublish.NormalIntervalMilliseconds);
+        Assert.Equal(5000, smartCoordinator.HotPublish.EventIntervalMilliseconds);
+        Assert.Equal(10, smartCoordinator.HotPublish.EventBoostRounds);
         Assert.Equal(10000, smartCoordinator.HotPublish.GameStartGraceMilliseconds);
         Assert.Equal(3, smartCoordinator.HotPublish.RequiredConsecutiveDecisions);
         Assert.Equal(5000, smartCoordinator.HotPublish.FailureRetryMilliseconds);
@@ -937,6 +937,29 @@ public sealed class HostManagerPlanCompilerTests
             performance));
 
         Assert.Contains("maximum_actions", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StrictProfileRejectsRetiredEventBoostMillisecondsKey()
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        profile["hot_publish"]!["smart_coordinator"]!["event_boost_ms"] = 10000;
+        var error = Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(
+            Encoding.UTF8.GetBytes(profile.ToJsonString()), "retired-event-boost.json"));
+        Assert.Contains("event_boost_ms", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void CompilerRejectsNonpositiveEventBoostRounds(int rounds)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        profile["hot_publish"]!["smart_coordinator"]!["event_boost_rounds"] = rounds;
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(
+            Encoding.UTF8.GetBytes(profile.ToJsonString()), "invalid-event-boost.json");
+        var error = Assert.Throws<InvalidDataException>(() => Compile(loaded));
+        Assert.Contains("event_boost_rounds", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

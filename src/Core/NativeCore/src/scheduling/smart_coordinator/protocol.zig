@@ -1,7 +1,7 @@
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x000a_0000;
+pub const abi_version: u32 = 0x000b_0000;
 pub const runtime_state_count: usize = 7;
 pub const adapter_grade_count: u8 = 4;
 
@@ -309,7 +309,7 @@ pub const Config = extern struct {
 
     normal_interval_ms: u32,
     event_interval_ms: u32,
-    event_boost_ms: u32,
+    event_boost_rounds: u32,
     game_start_grace_ms: u32,
     required_consecutive_decisions: u32,
     failure_retry_ms: u32,
@@ -472,6 +472,8 @@ pub const Snapshot = extern struct {
     invalid_fact_count: u32,
     snapshot_row_count: u32,
     reason_mask: u64,
+    event_boost_rounds_remaining: u32,
+    reserved0: u32,
     reserved: [2]u64,
 };
 
@@ -558,7 +560,7 @@ pub fn validateConfig(config: *const Config) Status {
     if (config.max_actions < maximum_entities or config.max_reservations < maximum_reservations or
         config.max_atomic_groups < config.max_processes) return .invalid_argument;
     if (config.normal_interval_ms == 0 or config.event_interval_ms == 0 or
-        config.event_boost_ms == 0 or config.game_start_grace_ms == 0 or
+        config.event_boost_rounds == 0 or config.game_start_grace_ms == 0 or
         config.required_consecutive_decisions == 0 or config.failure_retry_ms == 0 or
         config.reservation_timeout_ms == 0)
     {

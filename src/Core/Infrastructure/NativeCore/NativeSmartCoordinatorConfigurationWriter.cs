@@ -47,7 +47,7 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
             MaximumAtomicGroups = checked((uint)recreate.MaximumAtomicGroups),
             NormalIntervalMilliseconds = checked((uint)hotPublish.NormalIntervalMilliseconds),
             EventIntervalMilliseconds = checked((uint)hotPublish.EventIntervalMilliseconds),
-            EventBoostMilliseconds = checked((uint)hotPublish.EventBoostMilliseconds),
+            EventBoostRounds = checked((uint)hotPublish.EventBoostRounds),
             GameStartGraceMilliseconds = checked((uint)hotPublish.GameStartGraceMilliseconds),
             RequiredConsecutiveDecisions = checked((uint)hotPublish.RequiredConsecutiveDecisions),
             FailureRetryMilliseconds = checked((uint)hotPublish.FailureRetryMilliseconds),

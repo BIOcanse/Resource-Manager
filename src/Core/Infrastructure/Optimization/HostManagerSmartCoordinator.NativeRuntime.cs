@@ -1016,9 +1016,12 @@ public sealed partial class HostManagerSmartCoordinator
             || snapshot.PendingCount > maximumPending
             || invalidFactsFlag != (snapshot.InvalidFactCount != 0)
             || awaitingFeedbackFlag != (snapshot.InflightCount != 0)
+            || snapshot.Flags.HasFlag(NativeSmartCoordinatorSnapshotFlags.EventBoostActive)
+                != (snapshot.EventBoostRoundsRemaining > 0)
             || scoreOnlyFlag != expectedScoreOnly
             || (requireNoActions && snapshot.ActionCount != 0)
             || (!requireNoActions && snapshot.ActionCount > maximumPlanActions)
+            || snapshot.Reserved0 != 0
             || snapshot.Reserved[0] != 0
             || snapshot.Reserved[1] != 0)
         {

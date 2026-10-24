@@ -17,7 +17,8 @@ public sealed class HostManagerDecisionDiagnosticsTests
             StateRevision = 23,
             ObservedAtMilliseconds = 101,
             NextWakeAtMilliseconds = 201,
-            WakeAfterMilliseconds = 100,
+            WakeAfterMilliseconds = 5000,
+            EventBoostRoundsRemaining = 10,
             ActionCount = 1,
             ProcessCount = 1,
             SoftwareCount = 0,
@@ -67,6 +68,8 @@ public sealed class HostManagerDecisionDiagnosticsTests
             [row]);
 
         Assert.Equal("9007199254740993", projected.ConfigurationGeneration);
+        Assert.Equal(5000U, projected.WakeAfterMilliseconds);
+        Assert.Equal(10U, projected.EventBoostRoundsRemaining);
         var actual = Assert.Single(projected.Rows);
         Assert.Equal("9007199254740993", actual.TargetKey);
         Assert.Equal("9007199254740994", actual.SoftwareKey);
