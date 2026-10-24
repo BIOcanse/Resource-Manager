@@ -13,7 +13,7 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
     private readonly ILogger<DashboardMonitoringPlanSynchronizer> logger;
     private CancellationTokenSource? workerCancellation;
     private Task? worker;
-    private int pendingCatalogChange;
+    private readonly SemaphoreSlim catalogSignal = new(0, 1);
     private bool initialCatalogReconciled;
 
     public DashboardMonitoringPlanSynchronizer(
@@ -35,7 +35,7 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
         catalogState.Changed -= OnCatalogChanged;
         workerCancellation?.Dispose();
         initialCatalogReconciled = false;
-        pendingCatalogChange = 1;
+        SignalCatalogChange();
         catalogState.Changed += OnCatalogChanged;
         workerCancellation = new CancellationTokenSource();
         worker = Task.Run(() => RunAsync(workerCancellation.Token), CancellationToken.None);
@@ -69,12 +69,22 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
         {
             try
             {
-                await foreach (var snapshot in source.SubscribeAsync("dashboard-monitoring-catalog",
-                    MetricSampleRequest.CatalogProbe, CatalogSubscriptionInterval, cancellationToken))
+                if (catalogState.Current is not { CatalogGeneration: > 0 })
                 {
-                    if (snapshot.CatalogGeneration == 0) continue;
-                    var changed = Interlocked.Exchange(ref pendingCatalogChange, 0) != 0;
-                    if (initialCatalogReconciled && !changed) continue;
+                    await foreach (var snapshot in source.SubscribeAsync("dashboard-monitoring-catalog",
+                        MetricSampleRequest.CatalogProbe, CatalogSubscriptionInterval, cancellationToken))
+                    {
+                        if (snapshot.CatalogGeneration == 0) continue;
+                        break;
+                    }
+                    if (catalogState.Current is not { CatalogGeneration: > 0 })
+                        throw new InvalidOperationException("The monitoring catalog subscription ended before publication.");
+                }
+                // The bootstrap demand has ended. Subsequent publications come from
+                // consumer refreshes and topology changes, not from this plan owner.
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await catalogSignal.WaitAsync(cancellationToken);
                     try
                     {
                         await runtimeSpecialization.RebuildAsync(initialCatalogReconciled
@@ -87,11 +97,11 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
                     }
                     catch (Exception exception)
                     {
-                        Interlocked.Exchange(ref pendingCatalogChange, 1);
-                        logger.LogWarning(exception, "The dashboard monitoring plan will retry on the next catalog publication.");
+                        logger.LogWarning(exception, "The dashboard monitoring plan rebuild failed; it will be retried without sampling demand.");
+                        await Task.Delay(CatalogSubscriptionInterval, cancellationToken);
+                        SignalCatalogChange();
                     }
                 }
-                logger.LogWarning("The monitoring catalog subscription ended; it will be reacquired.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -112,5 +122,11 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
         }
     }
 
-    private void OnCatalogChanged() => Interlocked.Exchange(ref pendingCatalogChange, 1);
+    private void OnCatalogChanged() => SignalCatalogChange();
+
+    private void SignalCatalogChange()
+    {
+        try { catalogSignal.Release(); }
+        catch (SemaphoreFullException) { }
+    }
 }

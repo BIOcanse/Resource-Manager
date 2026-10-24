@@ -47,6 +47,12 @@ public sealed partial class WindowsResourceBreakdownSampler
                 projected = MarkSelfDescendants(rows);
                 processIdentityCache.Prune(live);
                 processAttributionCache.Prune(live);
+                var livePaths = rows.Select(static row => row.ExecutablePath)
+                    .Concat(live.Select(key => TryGetCachedProcessIdentity(key)?.ExecutablePath))
+                    .Where(static path => !string.IsNullOrWhiteSpace(path))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var path in fileMetadataCache.Keys)
+                    if (!livePaths.Contains(path)) fileMetadataCache.TryRemove(path, out _);
             }, now, basicMask.HasFlag(ProcessMetricReadMask.ThreadCount)
                 ? processes => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
                 {

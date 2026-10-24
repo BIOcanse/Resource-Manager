@@ -29,8 +29,8 @@ public sealed record ResourceManagerSelfWorkingSetTrimResult(
 public sealed record ResourceManagerSelfLocalResourceTickResult(
     LedgerTickResult Ledger,
     LedgerTableView Memory,
-    ulong BackendWorkingSetBytes,
-    ulong NativeUiWorkingSetBytes,
+    ulong? BackendWorkingSetBytes,
+    ulong? NativeUiWorkingSetBytes,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> TrimResults,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> RecheckedTrimObservations,
     int PendingTrimObservationCount);
@@ -126,7 +126,10 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
             }
             Volatile.Write(ref lastTrimResults, Array.Empty<ResourceManagerSelfWorkingSetTrimResult>());
             var rechecked = RecheckPendingTrimObservations();
-            var sample = captureProcesses();
+            // Only PagedFrozen consumes the census to select exact trim targets.
+            // Pending readbacks already carry their own exact process identities.
+            var observeWorkingSets = mode == LocalResourceSoftwareMemoryMode.PagedFrozen;
+            var sample = observeWorkingSets ? captureProcesses() : [];
             var backend = sample.Where(static row => row.IsBackend).ToArray();
             var nativeUi = sample.Where(static row => row.IsNativeUi || row.IsNativeUiDescendant).ToArray();
             var trims = new List<ResourceManagerSelfWorkingSetTrimResult>(2);
@@ -153,7 +156,8 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
                 ledger.SetMode(LedgerMode(desiredMemoryMode));
                 tick = ledger.Tick();
             }
-            return new(tick, ledger.ReadTable(), SumWorkingSetBytes(backend), SumWorkingSetBytes(nativeUi),
+            return new(tick, ledger.ReadTable(), observeWorkingSets ? SumWorkingSetBytes(backend) : null,
+                observeWorkingSets ? SumWorkingSetBytes(nativeUi) : null,
                 trims, rechecked, pendingTrimObservations.Count);
         }
         finally { tickGate.Release(); }
