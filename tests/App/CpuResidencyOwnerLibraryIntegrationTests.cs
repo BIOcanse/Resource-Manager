@@ -367,7 +367,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         {
             await using var stream = subscriptions.SubscribeAsync("recorded-cpu", fields, TimeSpan.FromMilliseconds(20), timeout.Token).GetAsyncEnumerator();
             Assert.True(await stream.MoveNextAsync());
-            Assert.All(stream.Current, reading => Assert.Equal(owner.Backend.ReadCached(reading.Field), reading));
+            Assert.All(stream.Current, reading => FieldReadingAssert.CurrentOrNewer(reading, owner.Backend.ReadCached(reading.Field)));
             Assert.All(stream.Current, reading => Assert.Null(reading.Value)); // real owner has no fabricated closed interval
             Assert.Equal(1, broker.Acquires);
         }

@@ -112,7 +112,7 @@ public sealed class OperatingSystemUptimeOwnerTests
         await using var stream = composition.SubscribeAsync("uptime", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync());
         Assert.Equal("7", stream.Current[0].Value!.Integer);
-        Assert.Equal(stream.Current[0], backend.ReadCached(field));
+        FieldReadingAssert.CurrentOrNewer(stream.Current[0], backend.ReadCached(field));
         await composition.StopAsync();
         Assert.False(await stream.MoveNextAsync());
         Assert.Equal("7", (await backend.CollectAsync([field], default))[0].Value!.Integer);

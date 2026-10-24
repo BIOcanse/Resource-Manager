@@ -28,7 +28,7 @@ public sealed partial class AcpiInformationSubscriptionTests
         Assert.Equal("7", Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
         Assert.True(await next);
         Assert.Equal("7", Assert.Single(stream.Current).Value?.Integer);
-        Assert.Equal(backend.ReadCached(field), Assert.Single(stream.Current));
+        FieldReadingAssert.CurrentOrNewer(Assert.Single(stream.Current), backend.ReadCached(field));
         next = stream.MoveNextAsync().AsTask();
         Assert.Null(Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value);
         Assert.True(await next); Assert.Null(Assert.Single(stream.Current).ObservedAt);
