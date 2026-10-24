@@ -2107,6 +2107,85 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
     }
 
+    [Fact]
+    public async Task NormalModeHotBudgetChangesAcquireAndReleaseOnlyRuntimeStateSubscription()
+    {
+        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: cpuReader,
+            processFactsSnapshot: CreateCompleteProcessFacts(24_103, 132_537_599_900_000_000,
+                "software:normal-percent-subscription", 90, 0, 0));
+        fixture.PublicResourceManager.Available = false;
+        var deadline = Assert.IsType<HostManagerVersionedWakeDeadline>(
+            ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline"));
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason != "optimization-mode-normal"
+                || deadline.Snapshot.HasDeadline)
+                await Task.Delay(10, timeout.Token);
+            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
+
+            var performance = AppSettingsDefaults.Create().Performance with
+            {
+                OptimizationMode = AppOptimizationModes.Normal,
+                RealtimeActionBudgetMode = AppRealtimeActionBudgetModes.Percent
+            };
+            var percentPlan = HostManagerTestPlanFactory.CreatePlan(performance: performance, planEpoch: 2);
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 2, HostManager = percentPlan });
+            HostManagerDecisionDiagnosticsSnapshot diagnostics;
+            do
+            {
+                await Task.Delay(10, timeout.Token);
+                diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(timeout.Token);
+            }
+            while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Percent
+                || deadline.Snapshot.HasDeadline);
+
+            Assert.Equal(1, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Equal(SchedulingProcessMetricMask.RuntimeState,
+                Assert.Single(fixture.ProcessFacts.SubscriptionHistory).MetricMask);
+            Assert.All(fixture.ProcessFacts.ReadLatestRequests, request =>
+                Assert.Equal(SchedulingProcessMetricMask.RuntimeState, request.RequestedMetricMask));
+            Assert.True(fixture.ProcessFacts.ReadLatestCalls > 0);
+            Assert.Equal(1, diagnostics.ActionBudget!.ProcessCount);
+            Assert.Equal(1U, diagnostics.ActionBudget.MaximumActionsThisCycle);
+            Assert.Empty(cpuReader.Subscriptions);
+            Assert.Empty(fixture.MetricSampler.SubscriptionHistory);
+            Assert.Equal(0, fixture.MetricSampler.ReadLatestCalls);
+
+            var reads = fixture.ProcessFacts.ReadLatestCalls;
+            var fixedPlan = HostManagerTestPlanFactory.CreatePlan(
+                performance: performance with { RealtimeActionBudgetMode = AppRealtimeActionBudgetModes.Fixed },
+                planEpoch: 3);
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3, HostManager = fixedPlan });
+            do
+            {
+                await Task.Delay(10, timeout.Token);
+                diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(timeout.Token);
+            }
+            while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Fixed
+                || fixture.ProcessFacts.ActiveSubscriptionCount != 0
+                || deadline.Snapshot.HasDeadline);
+
+            Assert.Equal(reads, fixture.ProcessFacts.ReadLatestCalls);
+            Assert.Null(diagnostics.ActionBudget!.ProcessCount);
+            Assert.Equal(32U, diagnostics.ActionBudget.MaximumActionsThisCycle);
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+        Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+    }
+
     [Theory]
     [InlineData(AppOptimizationModes.MemoryOnly, true, false, true)]
     [InlineData(AppOptimizationModes.CpuOnly, true, false, false)]
@@ -3677,11 +3756,23 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     [Fact]
     public async Task DefaultRealtimeBudgetAppliesSeveralMemoryTransactionsInOneCycle()
+        => await VerifyRealtimeMemoryTransactionBudgetAsync("fixed", null, 5, 12, 32);
+
+    [Theory]
+    [InlineData("fixed", 3, 5, 12, 3)]
+    [InlineData("percent", 32, 5, 12, 1)]
+    [InlineData("percent", 32, 5, 41, 3)]
+    public async Task RealtimeMemoryTransactionsUseTheConfiguredBudget(
+        string mode, int count, int percent, int processCount, int expectedBudget)
+        => await VerifyRealtimeMemoryTransactionBudgetAsync(mode, count, percent, processCount, expectedBudget);
+
+    private async Task VerifyRealtimeMemoryTransactionBudgetAsync(
+        string mode, int? count, int percent, int processCount, int expectedBudget)
     {
         const int firstProcessId = 24_300;
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
         var startKey = checked((ulong)startedAt.ToFileTime());
-        var inputs = Enumerable.Range(firstProcessId, 12)
+        var inputs = Enumerable.Range(firstProcessId, processCount)
             .Select(pid => (pid, startKey, $"software:default-budget:{pid}", 40d, 1d, 1d))
             .ToArray();
         var states = inputs.ToDictionary(input => input.pid, input =>
@@ -3693,9 +3784,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: CreateCompleteProcessFacts(inputs),
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new ProcessInstanceRecoverySnapshot(pid, startedAt)),
-            memoryModePolicyEnabled: true, cpuUsagePercent: 99, automaticMemoryCleanupEnabled: false);
-        var budget = fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.MaximumActionsPerRealtimeTick;
-        Assert.Equal(32, budget);
+            memoryModePolicyEnabled: true, cpuUsagePercent: 99, automaticMemoryCleanupEnabled: false,
+            realtimeActionBudget: count, realtimeActionBudgetMode: mode, realtimeActionBudgetPercent: percent);
+        var budget = fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.RealtimeActionBudget.Count;
+        Assert.Equal(count ?? 32, budget);
         var memoryWrites = 0;
         fixture.ProcessPolicyWriter.ProcessReadHandler = pid => states[pid];
         fixture.ProcessPolicyWriter.BatchHandler = requests => requests.Select(request =>
@@ -3738,19 +3830,28 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var before = memoryWrites;
             _ = await fixture.RunRealtimeCycleAsync();
             mostInOneCycle = Math.Max(mostInOneCycle, memoryWrites - before);
-            Assert.InRange(memoryWrites - before, 0, budget);
+            Assert.InRange(memoryWrites - before, 0, expectedBudget);
+            var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+            Assert.Equal((uint)expectedBudget, diagnostics.ActionBudget!.MaximumActionsThisCycle);
+            Assert.Equal(mode, diagnostics.ActionBudget.Mode);
+            Assert.Equal(mode == "fixed" ? count ?? 32 : percent, diagnostics.ActionBudget.Value);
+            Assert.Equal(mode == "fixed" ? (int?)null : processCount, diagnostics.ActionBudget.ProcessCount);
             Assert.Equal(0u, fixture.Workspace.Snapshot.InflightCount);
         }
 
-        Assert.True(mostInOneCycle > 1, $"No real-time cycle applied more than one memory transaction ({mostInOneCycle}).");
+        if (count is null)
+            Assert.True(mostInOneCycle > 1, $"No real-time cycle applied more than one memory transaction ({mostInOneCycle}).");
+        else
+            Assert.Equal(expectedBudget, mostInOneCycle);
         // The memory modes demote only part of the processes; every demotion they ask for has landed.
         var demotions = fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes
             .Where(static directive => directive.Action is HostManagerNonAdaptedMemoryProcessAction.Optimize
                 or HostManagerNonAdaptedMemoryProcessAction.PagedFrozen)
             .ToArray();
         Assert.True(demotions.Length > 1);
-        Assert.All(demotions, directive =>
-            Assert.Equal(directive.TargetMemoryPriority, states[directive.ProcessId].MemoryPriority));
+        if (count is null)
+            Assert.All(demotions, directive =>
+                Assert.Equal(directive.TargetMemoryPriority, states[directive.ProcessId].MemoryPriority));
     }
 
     [Theory]
@@ -4122,7 +4223,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         // Emulate a saved Normal mode whose foreground restore did not run.
         // Only the real-time cycle may restore, under the default real-time action budget.
-        Assert.Equal(32, fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.MaximumActionsPerRealtimeTick);
+        Assert.Equal(32, fixture.RuntimePlan.HostManager.HotPublish.SmartCoordinator.RealtimeActionBudget.Count);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = checked(fixture.RuntimePlan.Version + 1),
@@ -4241,6 +4342,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(pendingGpu ? 2 : 0, fixture.ProcessPolicyWriter.RecoveryReadCalls);
         Assert.Equal(2, fixture.ProcessPolicyWriter.MemoryRecoveryReadCalls);
         Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
         if (!pendingGpu) Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
         else
         {
@@ -5612,6 +5714,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              int? eventIntervalMilliseconds = null,
              bool failFastEffects = false,
              int? realtimeActionBudget = null,
+             string realtimeActionBudgetMode = AppRealtimeActionBudgetModes.Fixed,
+             int realtimeActionBudgetPercent = 5,
              Action<System.Text.Json.Nodes.JsonObject>? editFreedomPoints = null,
              ResourceManager.App.Application.CpuTopology.ICpuCoreResidencyReader? cpuCoreReader = null,
              ResourceManager.App.Domain.CpuTopology.CpuTopologySnapshot? cpuTopology = null,
@@ -5638,7 +5742,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var runtimePlanProvider = new RuntimePlanProvider(deployment);
             var performance = AppSettingsDefaults.Create().Performance with
             {
-                OptimizationMode = optimizationMode
+                OptimizationMode = optimizationMode,
+                RealtimeActionBudgetMode = realtimeActionBudgetMode,
+                RealtimeActionBudgetCount = realtimeActionBudget ?? AppSettingsDefaults.RealtimeActionBudgetCount,
+                RealtimeActionBudgetPercent = realtimeActionBudgetPercent
             };
             var hostPlan = HostManagerTestPlanFactory.CreatePlan(
                 root =>
@@ -5657,11 +5764,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     {
                         root["hot_publish"]!["smart_coordinator"]!
                             ["event_interval_ms"] = eventIntervalMilliseconds.Value;
-                    }
-                    if (realtimeActionBudget is not null)
-                    {
-                        root["hot_publish"]!["smart_coordinator"]!
-                            ["maximum_actions_per_realtime_tick"] = realtimeActionBudget.Value;
                     }
                 },
                 performance,
@@ -6827,8 +6929,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             ReadLatestCalls++;
             ReadLatestRequests.Add(request);
-            return ReadLatestHandler?.Invoke(request)
-                ?? SchedulingProcessFactTestProjection.Project(snapshot, request);
+            return ReadLatestHandler is { } handler
+                ? handler(request)
+                : SchedulingProcessFactTestProjection.Project(snapshot, request);
         }
     }
 

@@ -237,7 +237,10 @@ public enum HostManagerBindingId : ushort
     AiModelProvider = 11,
     AiModelEndpoint = 12,
     AiModelAutoStart = 13,
-    ReportRuleOverrides = 14
+    ReportRuleOverrides = 14,
+    RealtimeActionBudgetMode = 15,
+    RealtimeActionBudgetCount = 16,
+    RealtimeActionBudgetPercent = 17
 }
 
 public sealed record CompiledHostManagerBindingProvenance(
@@ -256,7 +259,7 @@ public sealed record CompiledHostManagerBindingProvenance(
         && SettingsEffectiveSha256.Length == 64
         && SettingsInputSha256.All(static value => char.IsAsciiHexDigit(value))
         && SettingsEffectiveSha256.All(static value => char.IsAsciiHexDigit(value))
-        && AppliedBindingIds.Length == 14
+        && AppliedBindingIds.Length == 17
         && AppliedBindingIds.Distinct().Count() == AppliedBindingIds.Length;
 
     public static CompiledHostManagerBindingProvenance Unpublished { get; } = new(

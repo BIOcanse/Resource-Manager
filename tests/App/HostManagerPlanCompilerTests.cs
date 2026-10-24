@@ -8,6 +8,7 @@ using ResourceManager.Adapter.SharedMemory;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -260,7 +261,8 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(3, smartCoordinator.HotPublish.RequiredConsecutiveDecisions);
         Assert.Equal(5000, smartCoordinator.HotPublish.FailureRetryMilliseconds);
         Assert.Equal(30000, smartCoordinator.HotPublish.ReservationTimeoutMilliseconds);
-        Assert.Equal(32, smartCoordinator.HotPublish.MaximumActionsPerRealtimeTick);
+        Assert.Equal(new CompiledHostManagerRealtimeActionBudgetPlan("fixed", 32, 5),
+            smartCoordinator.HotPublish.RealtimeActionBudget);
         Assert.Equal<double>([1, 1.35, 1.12, 0.75, 0.55, 0.45, 0], smartCoordinator.HotPublish.ProcessStateMultipliers);
         Assert.Equal(120, smartCoordinator.HotPublish.A1MinimumCpuScore);
         Assert.Equal(81, smartCoordinator.HotPublish.BaseScoreTiers.HighMinimumBaseScore);
@@ -851,6 +853,149 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(first.SmartCoordinator.ConfigurationGeneration, changed.SmartCoordinator.ConfigurationGeneration);
     }
 
+    [Theory]
+    [InlineData("fixed", 1, 100)]
+    [InlineData("fixed", 8192, 1)]
+    [InlineData("percent", 1, 100)]
+    [InlineData("percent", 8192, 1)]
+    public void Compiler_BindsBothRealtimeBudgetValuesWithoutDiscardingTheInactiveValue(
+        string mode,
+        int count,
+        int percent)
+    {
+        var performance = AppSettingsDefaults.Create().Performance with
+        {
+            RealtimeActionBudgetMode = mode,
+            RealtimeActionBudgetCount = count,
+            RealtimeActionBudgetPercent = percent
+        };
+
+        var plan = HostManagerTestPlanFactory.CreatePlan(performance: performance);
+
+        Assert.True(plan.IsPublished);
+        Assert.Equal(new CompiledHostManagerRealtimeActionBudgetPlan(mode, count, percent),
+            plan.SmartCoordinator.HotPublish.RealtimeActionBudget);
+    }
+
+    [Theory]
+    [InlineData("unknown", 32, 5)]
+    [InlineData("fixed", 0, 5)]
+    [InlineData("percent", 8193, 5)]
+    [InlineData("fixed", 32, 0)]
+    [InlineData("percent", 32, 101)]
+    public void Compiler_RejectsInvalidRealtimeBudgetSettings(string mode, int count, int percent)
+    {
+        var performance = AppSettingsDefaults.Create().Performance with
+        {
+            RealtimeActionBudgetMode = mode,
+            RealtimeActionBudgetCount = count,
+            RealtimeActionBudgetPercent = percent
+        };
+
+        Assert.Throws<InvalidDataException>(() =>
+            HostManagerTestPlanFactory.CreatePlan(performance: performance));
+    }
+
+    [Theory]
+    [InlineData("fixed")]
+    [InlineData("percent")]
+    public void Compiler_RejectsRealtimeBudgetCountBeyondTheConfiguredActionCapacity(string mode)
+    {
+        static void ReduceActionCapacity(JsonObject profile)
+            => profile["host_recreate"]!["smart_coordinator"]!["maximum_actions"] = 6144;
+        var performance = AppSettingsDefaults.Create().Performance with
+        {
+            RealtimeActionBudgetMode = mode,
+            RealtimeActionBudgetCount = 6144
+        };
+        var valid = HostManagerTestPlanFactory.CreatePlan(ReduceActionCapacity, performance);
+        Assert.True(valid.IsPublished);
+        Assert.Equal(6144, valid.SmartCoordinator.Recreate.MaximumActions);
+
+        var error = Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(
+            ReduceActionCapacity,
+            performance with { RealtimeActionBudgetCount = 6145 }));
+
+        Assert.Contains("maximum_actions", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Compiler_PercentBudgetRequiresAnActionEnvelopeCoveringAllProcesses()
+    {
+        var performance = AppSettingsDefaults.Create().Performance with
+        {
+            RealtimeActionBudgetMode = AppRealtimeActionBudgetModes.Percent,
+            RealtimeActionBudgetPercent = 100
+        };
+        var valid = HostManagerTestPlanFactory.CreatePlan(performance: performance);
+        Assert.True(valid.SmartCoordinator.Recreate.MaximumProcesses <= valid.SmartCoordinator.Recreate.MaximumActions);
+
+        // The existing process-and-software capacity guard is stronger than the percentage envelope.
+        var error = Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(
+            profile => profile["host_recreate"]!["smart_coordinator"]!["maximum_actions"] =
+                valid.SmartCoordinator.Recreate.MaximumProcesses - 1,
+            performance));
+
+        Assert.Contains("maximum_actions", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Compiler_RejectsTheRetiredProfileRealtimeBudgetKey()
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        profile["hot_publish"]!["smart_coordinator"]!["maximum_actions_per_realtime_tick"] = 32;
+
+        var error = Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(
+            Encoding.UTF8.GetBytes(profile.ToJsonString()),
+            "retired-realtime-budget.json"));
+
+        Assert.Contains("maximum_actions_per_realtime_tick", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("percent", 32, 5)]
+    [InlineData("fixed", 33, 5)]
+    [InlineData("fixed", 32, 6)]
+    public void Compiler_RealtimeBudgetChangesAreHotAppliedWithoutHostRecreation(
+        string mode,
+        int count,
+        int percent)
+    {
+        var first = HostManagerTestPlanFactory.CreatePlan();
+        var changed = HostManagerTestPlanFactory.CreatePlan(
+            performance: AppSettingsDefaults.Create().Performance with
+            {
+                RealtimeActionBudgetMode = mode,
+                RealtimeActionBudgetCount = count,
+                RealtimeActionBudgetPercent = percent
+            },
+            planEpoch: 2);
+
+        Assert.Equal(first.BuildSha256, changed.BuildSha256);
+        Assert.Equal(first.RecreateSha256, changed.RecreateSha256);
+        Assert.Equal(first.SmartCoordinator.Recreate, changed.SmartCoordinator.Recreate);
+        Assert.Equal(first.DeploymentDigests.SmartCoordinator.RecreateSha256,
+            changed.DeploymentDigests.SmartCoordinator.RecreateSha256);
+        Assert.NotEqual(first.HotPublishSha256, changed.HotPublishSha256);
+        Assert.NotEqual(first.DeploymentDigests.SmartCoordinator.HotPublishSha256,
+            changed.DeploymentDigests.SmartCoordinator.HotPublishSha256);
+        Assert.NotEqual(first.SmartCoordinator.ConfigurationSha256, changed.SmartCoordinator.ConfigurationSha256);
+
+        var state = new HostManagerDeploymentState();
+        state.PublishRuntimePlan(CompiledRuntimePlan.Default with { Version = 1, HostManager = first });
+        var initial = state.BeginAttempt(HostManagerModuleKind.SmartCoordinator, first,
+            HostManagerDeploymentOperation.InitialCreate);
+        Assert.Equal(HostManagerDeploymentAttemptSettlement.Applied, state.CompleteAttemptSucceeded(initial));
+        state.PublishRuntimePlan(CompiledRuntimePlan.Default with { Version = 2, HostManager = changed });
+
+        Assert.Equal(HostManagerPendingLifecycle.HotPublish, state.Snapshot.SmartCoordinator.PendingLifecycle);
+        Assert.True(state.CanApplyHot(HostManagerModuleKind.SmartCoordinator, changed));
+        var hot = state.BeginAttempt(HostManagerModuleKind.SmartCoordinator, changed,
+            HostManagerDeploymentOperation.HotPublish);
+        Assert.Equal(HostManagerDeploymentAttemptSettlement.Applied, state.CompleteAttemptSucceeded(hot));
+        Assert.Equal(HostManagerDeploymentStatus.InSync, state.Snapshot.SmartCoordinator.Status);
+    }
+
     [Fact]
     public void Compiler_SmartCoordinatorRevisionAndDigestCoverEveryConfigurationDomain()
     {
@@ -863,7 +1008,6 @@ public sealed class HostManagerPlanCompilerTests
             profile => profile["hot_publish"]!["smart_coordinator"]!["feature_flags"] =
                 new JsonArray("process_policy", "adapter_cpu", "adapter_gpu"),
             profile => profile["hot_publish"]!["smart_coordinator"]!["event_interval_ms"] = 1100,
-            profile => profile["hot_publish"]!["smart_coordinator"]!["maximum_actions_per_realtime_tick"] = 2,
             profile => profile["hot_publish"]!["smart_coordinator"]!["base_score_tiers"]!["high_minimum_base_score"] = 82,
             profile => profile["hot_publish"]!["smart_coordinator"]!["process_policy"]!["default_minimum_cpu_score_scale"] = 101,
             profile => profile["hot_publish"]!["smart_coordinator"]!["cpu_adapter_policy"]!["extreme_minimum_score"] = 121,
@@ -1030,13 +1174,6 @@ public sealed class HostManagerPlanCompilerTests
             StrictHostManagerProfileLoader.LoadBytes(
                 Encoding.UTF8.GetBytes(emptyHighBaseScoreTier.ToJsonString()),
                 "empty-high-base-score-tier.json")));
-
-        var invalidRealtimeLimit = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
-        invalidRealtimeLimit["hot_publish"]!["smart_coordinator"]!["maximum_actions_per_realtime_tick"] = 8193;
-        Assert.Throws<InvalidDataException>(() => Compile(
-            StrictHostManagerProfileLoader.LoadBytes(
-                Encoding.UTF8.GetBytes(invalidRealtimeLimit.ToJsonString()),
-                "invalid-realtime-limit.json")));
 
         var invalidTiming = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
         invalidTiming["hot_publish"]!["smart_coordinator"]!["event_interval_ms"] = 0;

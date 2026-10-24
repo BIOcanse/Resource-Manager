@@ -112,6 +112,11 @@ export default createSettingsLocale("ko-KR", {
     "gpuOverflowDescription": "어느 한 임계값에 도달하면 점수가 낮은 백그라운드 프로세스를 외장 GPU에서 내장 GPU로 옮깁니다. 스케줄링이 활성화되어 있고 내장 GPU를 사용할 수 있어야 합니다.",
     "gpuOverflowUsageLabel": "외장 GPU 사용률 %",
     "gpuOverflowDedicatedMemoryLabel": "GPU 전용 메모리 사용률 %",
+    "realtimeActionBudgetTitle": "실시간 작업 한도",
+    "realtimeActionBudgetDescription": "라운드별 실시간 작업 수를 고정 개수 또는 해당 라운드에서 식별된 모든 프로세스 수의 백분율(올림)로 제한합니다. 모드를 바꿔도 두 값은 유지됩니다.",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"고정 개수"},{"id":"percent","label":"프로세스 비율"}],
+    "realtimeActionBudgetCountLabel": "고정 작업 수",
+    "realtimeActionBudgetPercentLabel": "모든 프로세스 대비 비율 %",
     "refreshCadenceTitle": "정보 갱신 빈도",
     "refreshCadenceDescription": "모니터링 정보와 상태의 갱신 속도를 설정합니다. 빠르게 갱신할수록 리소스를 조금 더 사용합니다.",
     "presetNumericModeOptions": [

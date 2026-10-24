@@ -18,6 +18,7 @@ import type {
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
   AppPresetNumericSetting,
+  AppPerformanceSettings,
   AppSettings,
   AppPalette,
   AppReadingSourceMode,
@@ -51,6 +52,7 @@ interface SettingsPageProps {
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
+  onRealtimeActionBudgetChange: (mode: AppPerformanceSettings["realtimeActionBudgetMode"], count: number, percent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
@@ -255,6 +257,7 @@ export function SettingsPage(props: SettingsPageProps) {
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
               onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
+              onRealtimeActionBudgetChange={props.onRealtimeActionBudgetChange}
               onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
             />
           </Show>

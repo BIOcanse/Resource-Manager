@@ -102,6 +102,7 @@ export interface SettingsStore {
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateGpuOverflowThresholds: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
+  updateRealtimeActionBudget: (mode: AppPerformanceSettings["realtimeActionBudgetMode"], count: number, percent: number) => void;
   updateLogicRefreshInterval: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
@@ -440,6 +441,12 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       gpuOverflowUsagePercent: normalizeGpuOverflowPercent(gpuUsagePercent, performance.gpuOverflowUsagePercent),
       gpuOverflowDedicatedMemoryPercent: normalizeGpuOverflowPercent(dedicatedMemoryPercent, performance.gpuOverflowDedicatedMemoryPercent)
     })),
+    updateRealtimeActionBudget: (mode, count, percent) => updatePerformance((performance) => ({
+      ...performance,
+      realtimeActionBudgetMode: mode === "percent" ? "percent" : "fixed",
+      realtimeActionBudgetCount: normalizeInteger(count, 1, 8192, performance.realtimeActionBudgetCount),
+      realtimeActionBudgetPercent: normalizeInteger(percent, 1, 100, performance.realtimeActionBudgetPercent)
+    })),
     updateLogicRefreshInterval: (key, setting) => updatePerformance((performance) =>
       assignLogicRefreshInterval(performance, key, normalizeLogicRefreshIntervalSetting(key, setting))),
     // 换风格时配色在新风格里也有就保留，没有就用新风格的默认配色。
@@ -621,7 +628,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.29",
+    version: "1.0.30",
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -629,6 +636,9 @@ export function defaultAppSettings(): AppSettings {
       preciseGpuPlacementEnabled: false,
       gpuOverflowUsagePercent: 95,
       gpuOverflowDedicatedMemoryPercent: 80,
+      realtimeActionBudgetMode: "fixed",
+      realtimeActionBudgetCount: 32,
+      realtimeActionBudgetPercent: 5,
       physicalMemoryAutomaticCleanupPercent: 6,
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
@@ -678,7 +688,7 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.29",
+    version: "1.0.30",
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
@@ -689,6 +699,9 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       preciseGpuPlacementEnabled: settings?.performance?.preciseGpuPlacementEnabled ?? defaults.performance!.preciseGpuPlacementEnabled,
       gpuOverflowUsagePercent: normalizeGpuOverflowPercent(settings?.performance?.gpuOverflowUsagePercent, defaults.performance!.gpuOverflowUsagePercent),
       gpuOverflowDedicatedMemoryPercent: normalizeGpuOverflowPercent(settings?.performance?.gpuOverflowDedicatedMemoryPercent, defaults.performance!.gpuOverflowDedicatedMemoryPercent),
+      realtimeActionBudgetMode: settings?.performance?.realtimeActionBudgetMode === "percent" ? "percent" : "fixed",
+      realtimeActionBudgetCount: normalizeInteger(settings?.performance?.realtimeActionBudgetCount, 1, 8192, defaults.performance!.realtimeActionBudgetCount),
+      realtimeActionBudgetPercent: normalizeInteger(settings?.performance?.realtimeActionBudgetPercent, 1, 100, defaults.performance!.realtimeActionBudgetPercent),
       physicalMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.physicalMemoryAutomaticCleanupPercent, defaults.performance!.physicalMemoryAutomaticCleanupPercent),
       virtualMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.virtualMemoryAutomaticCleanupPercent, defaults.performance!.virtualMemoryAutomaticCleanupPercent),
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.physicalMemoryOptimizationTargetUsagePercent, defaults.performance!.physicalMemoryOptimizationTargetUsagePercent),

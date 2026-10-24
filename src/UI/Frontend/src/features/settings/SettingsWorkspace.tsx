@@ -35,6 +35,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}
         onMemoryOptimizationTargetLinesChange={settings.updateMemoryOptimizationTargetLines}
         onGpuOverflowThresholdsChange={settings.updateGpuOverflowThresholds}
+        onRealtimeActionBudgetChange={settings.updateRealtimeActionBudget}
         onLogicRefreshIntervalChange={settings.updateLogicRefreshInterval}
         onUiStyleChange={settings.updateUiStyle}
         onThemeChange={settings.updateTheme}

@@ -138,8 +138,8 @@ let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
-  version: "1.0.28",
-  performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80 },
+  version: "1.0.30",
+  performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
   appearance: {
     uiStyle: scenario.settingsUiStyle,

@@ -72,17 +72,19 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
 
     public static string ComputeSha256(
         in NativeSmartCoordinatorConfiguration configuration,
-        uint maximumActionsPerRealtimeTick)
+        CompiledHostManagerRealtimeActionBudgetPlan realtimeActionBudget)
     {
-        if (maximumActionsPerRealtimeTick == 0)
+        if (!realtimeActionBudget.IsPublished)
         {
             throw new InvalidDataException(
                 "The smart coordinator runtime-only inputs must be explicit.");
         }
         var value = configuration;
         var values = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
-        Span<byte> runtimeInput = stackalloc byte[sizeof(uint)];
-        BinaryPrimitives.WriteUInt32LittleEndian(runtimeInput, maximumActionsPerRealtimeTick);
+        Span<byte> runtimeInput = stackalloc byte[3 * sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(runtimeInput, realtimeActionBudget.Mode == "fixed" ? 0 : 1);
+        BinaryPrimitives.WriteInt32LittleEndian(runtimeInput[sizeof(int)..], realtimeActionBudget.Count);
+        BinaryPrimitives.WriteInt32LittleEndian(runtimeInput[(2 * sizeof(int))..], realtimeActionBudget.Percent);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(MemoryMarshal.AsBytes(values));
         hash.AppendData(runtimeInput);

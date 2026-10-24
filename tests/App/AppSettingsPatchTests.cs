@@ -7,6 +7,34 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsPatchTests
 {
     [Fact]
+    public void Apply_RoundTripsRealtimeActionBudgetAndPreservesBothValuesWhenSwitchingMode()
+    {
+        var current = AppSettingsDefaults.Create();
+        using var percent = JsonDocument.Parse(
+            """{"performance":{"realtimeActionBudgetMode":"percent","realtimeActionBudgetCount":64,"realtimeActionBudgetPercent":25}}""");
+        using var fixedMode = JsonDocument.Parse("""{"performance":{"realtimeActionBudgetMode":"fixed"}}""");
+        using var invalidValues = JsonDocument.Parse(
+            """{"performance":{"realtimeActionBudgetCount":10000,"realtimeActionBudgetPercent":0}}""");
+
+        var patched = AppSettingsPatchApplier.Apply(current, percent.RootElement);
+        var switched = AppSettingsPatchApplier.Apply(patched, fixedMode.RootElement);
+        var clamped = AppSettingsPatchApplier.Apply(switched, invalidValues.RootElement);
+        var persisted = JsonSerializer.SerializeToElement(patched, JsonSerializerOptions.Web)
+            .GetProperty("performance");
+
+        Assert.Equal(AppRealtimeActionBudgetModes.Percent, patched.Performance.RealtimeActionBudgetMode);
+        Assert.Equal("percent", persisted.GetProperty("realtimeActionBudgetMode").GetString());
+        Assert.Equal(64, persisted.GetProperty("realtimeActionBudgetCount").GetInt32());
+        Assert.Equal(25, persisted.GetProperty("realtimeActionBudgetPercent").GetInt32());
+        Assert.Equal(AppRealtimeActionBudgetModes.Fixed, switched.Performance.RealtimeActionBudgetMode);
+        Assert.Equal(64, switched.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(25, switched.Performance.RealtimeActionBudgetPercent);
+        Assert.Equal(8192, clamped.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(1, clamped.Performance.RealtimeActionBudgetPercent);
+        Assert.Equal(current.Performance.OptimizationMode, patched.Performance.OptimizationMode);
+    }
+
+    [Fact]
     public void Apply_ChangesOnlyAddressedLeaf()
     {
         var current = AppSettingsDefaults.Create();

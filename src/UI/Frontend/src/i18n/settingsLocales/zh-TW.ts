@@ -111,6 +111,11 @@ export default createSettingsLocale("zh-TW", {
     "gpuOverflowDescription": "任一項達到閾值時，將背景低分處理程序從獨立顯示卡移到內建顯示晶片。僅在已啟用排程且內顯可用時生效。",
     "gpuOverflowUsageLabel": "獨顯使用率 %",
     "gpuOverflowDedicatedMemoryLabel": "獨顯專用視訊記憶體使用率 %",
+    "realtimeActionBudgetTitle": "即時動作預算",
+    "realtimeActionBudgetDescription": "每輪即時動作上限可按固定數量，或本輪識別的全部處理程序數的百分比（無條件進位）設定。切換模式會保留兩項數值。",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"固定數量"},{"id":"percent","label":"處理程序百分比"}],
+    "realtimeActionBudgetCountLabel": "固定動作數量",
+    "realtimeActionBudgetPercentLabel": "全部處理程序百分比 %",
     "refreshCadenceTitle": "資訊更新頻率",
     "refreshCadenceDescription": "越快越費資源。",
     "presetNumericModeOptions": [

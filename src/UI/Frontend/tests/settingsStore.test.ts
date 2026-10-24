@@ -21,7 +21,7 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.29", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.30", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -85,7 +85,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.29", `${label}: version`);
+    assert.equal(settings.version, "1.0.30", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -128,6 +128,24 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
   } as unknown as AppSettings).performance!;
   assert.equal(rounded.gpuOverflowUsagePercent, 34);
   assert.equal(rounded.gpuOverflowDedicatedMemoryPercent, 80, "A non-number falls back to the default");
+}
+
+// 实时动作预算：默认固定 32，百分比 5；两个数值独立保留和归一化。
+{
+  for (const settings of [canonicalDefaults, normalizedMissingFields]) {
+    assert.equal(settings.performance!.realtimeActionBudgetMode, "fixed");
+    assert.equal(settings.performance!.realtimeActionBudgetCount, 32);
+    assert.equal(settings.performance!.realtimeActionBudgetPercent, 5);
+  }
+  for (const [input, expected] of [
+    [{ realtimeActionBudgetMode: "percent", realtimeActionBudgetCount: 9000, realtimeActionBudgetPercent: 0 }, ["percent", 8192, 1]],
+    [{ realtimeActionBudgetMode: "unknown", realtimeActionBudgetCount: -1, realtimeActionBudgetPercent: 101 }, ["fixed", 1, 100]],
+    [{ realtimeActionBudgetMode: null, realtimeActionBudgetCount: 12.6, realtimeActionBudgetPercent: 8.2 }, ["fixed", 13, 8]],
+    [{ realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: Number.NaN, realtimeActionBudgetPercent: Number.POSITIVE_INFINITY }, ["fixed", 32, 5]]
+  ] as const) {
+    const performance = normalizeAppSettings({ performance: input } as unknown as AppSettings).performance!;
+    assert.deepEqual([performance.realtimeActionBudgetMode, performance.realtimeActionBudgetCount, performance.realtimeActionBudgetPercent], expected);
+  }
 }
 
 class FakeSettingsSource implements SourceHandle<CommittedAppSettingsResult> {
@@ -393,6 +411,42 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(store.settings().performance!.smartMonitoringMode, "disabled");
       assert.equal(store.isDirty(), false);
 
+      dispose();
+      resolve();
+    })().catch((error) => { dispose(); reject(error); });
+  });
+});
+
+await new Promise<void>((resolve, reject) => {
+  createRoot((dispose) => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      const patches: Array<{ expectedRevision: string; changes: Record<string, unknown> }> = [];
+      let committed = defaultAppSettings();
+      let revision = 1;
+      const store = createSettingsStore({ source, requestClient: {
+        request: async <T>(descriptor: { request?: { body?: unknown } }) => {
+          const body = JSON.parse(String(descriptor.request?.body));
+          patches.push(body);
+          committed = applySettingsPatch(committed, body.changes);
+          return { settings: committed, revision: `b${++revision}`, runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
+        }
+      } as never });
+      source.publishReady({ settings: committed, revision: "b1", runtimeApplicationDisposition: "notRequested" });
+      for (const [mode, count, percent, expected] of [
+        ["fixed", 64, 12, { realtimeActionBudgetCount: 64, realtimeActionBudgetPercent: 12 }],
+        ["percent", 64, 12, { realtimeActionBudgetMode: "percent" }],
+        ["fixed", 64, 12, { realtimeActionBudgetMode: "fixed" }],
+        ["percent", 9000, -1, { realtimeActionBudgetMode: "percent", realtimeActionBudgetCount: 8192, realtimeActionBudgetPercent: 1 }]
+      ] as const) {
+        store.updateRealtimeActionBudget(mode, count, percent);
+        await store.saveDraft();
+        assert.deepEqual(patches.at(-1)?.changes, { performance: expected });
+        assert.equal(store.settings().performance!.realtimeActionBudgetMode, mode);
+        assert.equal(store.settings().performance!.realtimeActionBudgetCount, Math.min(count, 8192));
+        assert.equal(store.settings().performance!.realtimeActionBudgetPercent, Math.max(percent, 1));
+        assert.equal(store.isDirty(), false);
+      }
       dispose();
       resolve();
     })().catch((error) => { dispose(); reject(error); });

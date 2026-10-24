@@ -211,7 +211,10 @@ public sealed record AppPerformanceSettings(
     string SmartMonitoringMode,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,
-    AppPresetNumericSetting LocalSystemRefreshIntervalMs);
+    AppPresetNumericSetting LocalSystemRefreshIntervalMs,
+    string RealtimeActionBudgetMode,
+    int RealtimeActionBudgetCount,
+    int RealtimeActionBudgetPercent);
 
 // UiStyle 是界面风格，Theme 是该风格下的配色；合法组合见 src/Shared/Appearance/ui-styles.json。
 public sealed record AppAppearanceSettings(

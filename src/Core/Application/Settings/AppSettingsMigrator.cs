@@ -77,7 +77,10 @@ public static class AppSettingsMigrator
                 ReadLogicRefreshInterval(
                     root,
                     "localSystemRefreshIntervalMs",
-                    defaults.Performance.LocalSystemRefreshIntervalMs)),
+                    defaults.Performance.LocalSystemRefreshIntervalMs),
+                ReadString(root, "performance", "realtimeActionBudgetMode", defaults.Performance.RealtimeActionBudgetMode),
+                ReadInt32(root, "performance", "realtimeActionBudgetCount", defaults.Performance.RealtimeActionBudgetCount),
+                ReadInt32(root, "performance", "realtimeActionBudgetPercent", defaults.Performance.RealtimeActionBudgetPercent)),
             new AppAppearanceSettings(
                 ReadString(root, "appearance", "uiStyle", defaults.Appearance.UiStyle),
                 ReadString(root, "appearance", "theme", defaults.Appearance.Theme),
@@ -200,7 +203,10 @@ public static class AppSettingsMigrator
             || performance.TryGetProperty("managementRefreshIntervalMs", out _)
             || performance.TryGetProperty("discoveryRefreshIntervalMs", out _)
             || performance.TryGetProperty("optimizationRefreshIntervalMs", out _)
-            || !performance.TryGetProperty("localSystemRefreshIntervalMs", out var localSystemRefreshIntervalMs))
+            || !performance.TryGetProperty("localSystemRefreshIntervalMs", out var localSystemRefreshIntervalMs)
+            || !performance.TryGetProperty("realtimeActionBudgetMode", out var realtimeActionBudgetMode)
+            || !performance.TryGetProperty("realtimeActionBudgetCount", out var realtimeActionBudgetCount)
+            || !performance.TryGetProperty("realtimeActionBudgetPercent", out var realtimeActionBudgetPercent))
         {
             return true;
         }
@@ -226,6 +232,10 @@ public static class AppSettingsMigrator
             || !IsSupportedLogicRefreshInterval(monitorRefreshIntervalMs)
             || !IsSupportedLogicRefreshInterval(resourceTableRefreshIntervalMs)
             || !IsSupportedLogicRefreshInterval(localSystemRefreshIntervalMs)
+            || realtimeActionBudgetMode.ValueKind != JsonValueKind.String
+            || !AppRealtimeActionBudgetModes.IsSupported(realtimeActionBudgetMode.GetString())
+            || !IsSupportedRealtimeActionBudgetCount(realtimeActionBudgetCount)
+            || !IsSupportedRealtimeActionBudgetPercent(realtimeActionBudgetPercent)
             || !IsBoolean(debugModeEnabled)
             || !IsBoolean(debugLogEnabled)
             || !IsBoolean(hostManagerSmartCoordinatorScoreOnlyEnabled)
@@ -236,6 +246,18 @@ public static class AppSettingsMigrator
     {
         return value.ValueKind is JsonValueKind.True or JsonValueKind.False;
     }
+
+    private static bool IsSupportedRealtimeActionBudgetCount(JsonElement value)
+        => value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var count)
+            && count >= AppSettingsDefaults.MinRealtimeActionBudgetCount
+            && count <= AppSettingsDefaults.MaxRealtimeActionBudgetCount;
+
+    private static bool IsSupportedRealtimeActionBudgetPercent(JsonElement value)
+        => value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var percent)
+            && percent >= AppSettingsDefaults.MinRealtimeActionBudgetPercent
+            && percent <= AppSettingsDefaults.MaxRealtimeActionBudgetPercent;
 
     private static bool IsSupportedLanguage(JsonElement value)
     {

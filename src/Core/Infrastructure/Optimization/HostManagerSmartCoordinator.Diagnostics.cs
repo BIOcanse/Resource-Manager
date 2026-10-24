@@ -191,6 +191,7 @@ public sealed partial class HostManagerSmartCoordinator
         private int resourceQueueActions;
         private int changedCount;
         private int appliedTargets;
+        private HostManagerCycleActionBudgetDiagnostics? actionBudget;
         private uint nativeInputCount;
         private uint nativeSoftwareCount;
         private uint nativeInvalidFactCount;
@@ -277,6 +278,8 @@ public sealed partial class HostManagerSmartCoordinator
             sampleProcesses = sample.ProcessFacts.Processes.Count;
             samplingComplete = sample.ProcessFacts.IsInventoryCurrentComplete();
         }
+
+        public void CaptureActionBudget(HostManagerCycleActionBudgetDiagnostics budget) => actionBudget = budget;
 
         public void CaptureScoring(HostManagerComputeScoringCycleResult? compute)
         {
@@ -405,6 +408,7 @@ public sealed partial class HostManagerSmartCoordinator
                     new Dictionary<string, object?>
                     {
                         ["realtimeCycle"] = realtimeCycle,
+                        ["actionBudget"] = actionBudget,
                         ["nativeInputCount"] = nativeInputCount,
                         ["nativeSoftwareCount"] = nativeSoftwareCount,
                         ["nativeInvalidFactCount"] = nativeInvalidFactCount,

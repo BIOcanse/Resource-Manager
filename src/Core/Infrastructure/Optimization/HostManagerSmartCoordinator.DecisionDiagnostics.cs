@@ -6,6 +6,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private HostManagerCycleActionBudgetDiagnostics? lastCycleActionBudget;
     internal async Task<HostManagerDecisionDiagnosticsSnapshot>
         GetDecisionDiagnosticsAsync(CancellationToken cancellationToken)
     {
@@ -35,6 +36,7 @@ public sealed partial class HostManagerSmartCoordinator
                 native,
                 ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
             {
+                ActionBudget = lastCycleActionBudget,
                 NonAdaptedMemorySkipCounts = ProjectMemoryDirectiveSkipCounts(),
                 FactExclusionCount = cycleFactExclusions.Count,
                 FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
@@ -265,9 +267,22 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
         NonAdaptedMemoryDecisions)
 {
     public IReadOnlyList<HostManagerMemoryDirectiveSkipDiagnostics> NonAdaptedMemorySkipCounts { get; init; } = [];
+    public HostManagerCycleActionBudgetDiagnostics? ActionBudget { get; init; }
     public int FactExclusionCount { get; init; }
     public IReadOnlyList<HostManagerFactExclusionCount> FactExclusionCounts { get; init; } = [];
     public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
+}
+
+internal sealed record HostManagerCycleActionBudgetDiagnostics(
+    uint? MaximumActionsThisCycle,
+    bool RealtimeCycle,
+    string Mode,
+    int Count,
+    int Percent,
+    int? ProcessCount,
+    string? DeferredReason = null)
+{
+    public int Value => Mode == "fixed" ? Count : Percent;
 }
 
 internal sealed record HostManagerFactExclusionCount(string Fact, string Reason, int Count);

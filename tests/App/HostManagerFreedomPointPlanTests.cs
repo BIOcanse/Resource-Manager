@@ -190,10 +190,10 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal(
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(
                 in baselineNative,
-                checked((uint)baseline.SmartCoordinator.HotPublish.MaximumActionsPerRealtimeTick)),
+                baseline.SmartCoordinator.HotPublish.RealtimeActionBudget),
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(
                 in changedNative,
-                checked((uint)changed.SmartCoordinator.HotPublish.MaximumActionsPerRealtimeTick)));
+                changed.SmartCoordinator.HotPublish.RealtimeActionBudget));
     }
 
     [Theory]

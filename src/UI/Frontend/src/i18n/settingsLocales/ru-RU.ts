@@ -112,6 +112,11 @@ export default createSettingsLocale("ru-RU", {
     "gpuOverflowDescription": "При достижении любого порога фоновые процессы с низкой оценкой перемещаются с дискретного GPU на встроенный. Требуются активное планирование и доступный встроенный GPU.",
     "gpuOverflowUsageLabel": "Загрузка дискретного GPU %",
     "gpuOverflowDedicatedMemoryLabel": "Использование выделенной видеопамяти %",
+    "realtimeActionBudgetTitle": "Лимит действий в реальном времени",
+    "realtimeActionBudgetDescription": "Ограничивает число действий за цикл фиксированным количеством или процентом от всех процессов, обнаруженных в этом цикле, с округлением вверх. При смене режима оба значения сохраняются.",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Фиксированное число"},{"id":"percent","label":"Процент процессов"}],
+    "realtimeActionBudgetCountLabel": "Фиксированное число действий",
+    "realtimeActionBudgetPercentLabel": "Доля всех процессов %",
     "refreshCadenceTitle": "Частота обновления информации",
     "refreshCadenceDescription": "Задаёт скорость обновления данных мониторинга и состояния. Более частое обновление немного увеличивает расход ресурсов.",
     "presetNumericModeOptions": [

@@ -60,6 +60,11 @@ const zhCnSettingsCopy: SettingsCopy = {
     gpuOverflowDescription: "任一项达到阈值时，将后台低分进程从独立显卡移到集成显卡。仅在调度已开启且集显可用时生效。",
     gpuOverflowUsageLabel: "独显使用率 %",
     gpuOverflowDedicatedMemoryLabel: "独显专用显存占用率 %",
+    realtimeActionBudgetTitle: "实时动作预算",
+    realtimeActionBudgetDescription: "每轮实时动作上限可按固定数量，或本轮识别的全部进程数的百分比（向上取整）设置。切换模式会保留两项数值。",
+    realtimeActionBudgetModeOptions: [{"id":"fixed","label":"固定数量"},{"id":"percent","label":"进程百分比"}],
+    realtimeActionBudgetCountLabel: "固定动作数量",
+    realtimeActionBudgetPercentLabel: "全部进程百分比 %",
     refreshCadenceTitle: "信息更新频率",
     refreshCadenceDescription: "越快越费资源。",
     presetNumericModeOptions: [
@@ -356,6 +361,11 @@ const enSettingsCopy: SettingsCopy = {
     gpuOverflowDescription: "When either threshold is reached, move low-scoring background processes from the dedicated GPU to the integrated GPU. Requires active scheduling and an available integrated GPU.",
     gpuOverflowUsageLabel: "Dedicated GPU usage %",
     gpuOverflowDedicatedMemoryLabel: "Dedicated GPU memory usage %",
+    realtimeActionBudgetTitle: "Realtime action budget",
+    realtimeActionBudgetDescription: "Limit realtime actions per round by a fixed count or a percentage of all processes identified in that round, rounded up. Switching modes keeps both values.",
+    realtimeActionBudgetModeOptions: [{"id":"fixed","label":"Fixed count"},{"id":"percent","label":"Process percentage"}],
+    realtimeActionBudgetCountLabel: "Fixed action count",
+    realtimeActionBudgetPercentLabel: "All processes %",
     refreshCadenceTitle: "Information Update Frequency",
     refreshCadenceDescription: "Control how quickly monitoring information and status are updated. Faster updates use slightly more resources.",
     presetNumericModeOptions: [

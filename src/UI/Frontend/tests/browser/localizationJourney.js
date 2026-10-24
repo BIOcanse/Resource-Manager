@@ -120,6 +120,21 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
     await page.getByText(settings.performance.gpuOverflowTitle, { exact: true }).waitFor();
     await page.getByText(settings.performance.gpuOverflowDescription, { exact: true }).waitFor();
+    await page.getByText(settings.performance.realtimeActionBudgetDescription, { exact: true }).waitFor();
+    const budgetMode = page.getByRole("radiogroup", { name: settings.performance.realtimeActionBudgetTitle, exact: true });
+    for (const budgetOption of settings.performance.realtimeActionBudgetModeOptions) {
+      const radio = budgetMode.getByRole("radio", { name: budgetOption.label, exact: true });
+      if (!await radio.isVisible() || await radio.isChecked() !== (budgetOption.id === "fixed"))
+        throw new Error(`${option.id}: localized realtime budget mode is incorrect: ${budgetOption.id}`);
+    }
+    for (const [label, value, max] of [
+      [settings.performance.realtimeActionBudgetCountLabel, "32", "8192"],
+      [settings.performance.realtimeActionBudgetPercentLabel, "5", "100"]
+    ]) {
+      const input = page.getByRole("spinbutton", { name: label, exact: true });
+      if (!await input.isEditable() || await input.inputValue() !== value || await input.getAttribute("min") !== "1"
+        || await input.getAttribute("max") !== max) throw new Error(`${option.id}: localized budget control is incorrect: ${label}`);
+    }
     for (const [label, value] of [
       [settings.performance.gpuOverflowUsageLabel, "95"],
       [settings.performance.gpuOverflowDedicatedMemoryLabel, "80"]

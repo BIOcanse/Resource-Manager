@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace Resource_Manager_APP.Tests;
@@ -73,11 +74,34 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
             plan.ConfigurationSha256,
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(
                 in configuration,
-                checked((uint)plan.HotPublish.MaximumActionsPerRealtimeTick)));
+                plan.HotPublish.RealtimeActionBudget));
         Assert.Equal(
             NativeSmartCoordinatorStatus.Ok,
             NativeSmartCoordinatorSession.CapacityForConfiguration(in configuration, out var capacity));
         Assert.Equal(plan.ConfigurationGeneration, capacity.ConfigurationGeneration);
+    }
+
+    [Theory]
+    [InlineData("percent", 32, 5)]
+    [InlineData("fixed", 33, 5)]
+    [InlineData("fixed", 32, 6)]
+    public void ConfigurationIdentityIncludesEveryRealtimeBudgetFieldWithUnchangedNativeConfiguration(
+        string mode,
+        int count,
+        int percent)
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().SmartCoordinator;
+        var configuration = NativeSmartCoordinatorConfigurationWriter.Create(
+            plan.Build,
+            plan.Recreate,
+            plan.HotPublish,
+            plan.ConfigurationGeneration);
+        var baseline = new CompiledHostManagerRealtimeActionBudgetPlan("fixed", 32, 5);
+        var changed = new CompiledHostManagerRealtimeActionBudgetPlan(mode, count, percent);
+
+        Assert.NotEqual(
+            NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in configuration, baseline),
+            NativeSmartCoordinatorConfigurationWriter.ComputeSha256(in configuration, changed));
     }
 
     [Fact]

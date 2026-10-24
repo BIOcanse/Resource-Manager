@@ -359,13 +359,16 @@ public sealed partial class HostManagerSmartCoordinator(
                         processMask |= SchedulingProcessMetricMask.GpuUsage
                             | SchedulingProcessMetricMask.GpuDedicatedMemory;
                     }
+                    var processRequired = mode.SchedulingEnabled
+                        || runtimePlanProvider.Current.HostManager.RequirePublished().SmartCoordinator
+                            .HotPublish.RealtimeActionBudget.Mode == AppRealtimeActionBudgetModes.Percent;
                     if (processComputeSubscription is not null
-                        && (!mode.SchedulingEnabled || subscribedProcessMetricMask != processMask))
+                        && (!processRequired || subscribedProcessMetricMask != processMask))
                     {
                         processComputeSubscription?.Dispose();
                         processComputeSubscription = null;
                     }
-                    if (mode.SchedulingEnabled && processComputeSubscription is null)
+                    if (processRequired && processComputeSubscription is null)
                     {
                         processComputeSubscription = schedulingProcessFactSource.AcquireSubscription(
                             "host-manager-smart-coordinator:compute",

@@ -112,6 +112,11 @@ export default createSettingsLocale("de-DE", {
     "gpuOverflowDescription": "Sobald einer der Schwellenwerte erreicht ist, werden Hintergrundprozesse mit niedriger Bewertung von der dedizierten auf die integrierte GPU verschoben. Erfordert aktive Planung und eine verfügbare integrierte GPU.",
     "gpuOverflowUsageLabel": "Auslastung der dedizierten GPU %",
     "gpuOverflowDedicatedMemoryLabel": "Belegung des dedizierten GPU-Speichers %",
+    "realtimeActionBudgetTitle": "Limit für Echtzeitaktionen",
+    "realtimeActionBudgetDescription": "Begrenzen Sie Echtzeitaktionen pro Durchlauf auf eine feste Anzahl oder einen aufgerundeten Prozentsatz aller in diesem Durchlauf erkannten Prozesse. Beim Moduswechsel bleiben beide Werte erhalten.",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Feste Anzahl"},{"id":"percent","label":"Prozessanteil"}],
+    "realtimeActionBudgetCountLabel": "Feste Aktionsanzahl",
+    "realtimeActionBudgetPercentLabel": "Anteil aller Prozesse %",
     "refreshCadenceTitle": "Häufigkeit der Informationsaktualisierung",
     "refreshCadenceDescription": "Legt fest, wie schnell Messwerte und Status aktualisiert werden. Häufigere Aktualisierungen benötigen etwas mehr Ressourcen.",
     "presetNumericModeOptions": [

@@ -5,6 +5,43 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AppSettingsNormalizerTests
 {
+    [Fact]
+    public void RealtimeActionBudget_DefaultsToFixedCountWithStoredPercent()
+    {
+        var performance = AppSettingsDefaults.Create().Performance;
+
+        Assert.Equal(AppRealtimeActionBudgetModes.Fixed, performance.RealtimeActionBudgetMode);
+        Assert.Equal(32, performance.RealtimeActionBudgetCount);
+        Assert.Equal(5, performance.RealtimeActionBudgetPercent);
+    }
+
+    [Theory]
+    [InlineData("fixed", 0, 101, "fixed", 1, 100)]
+    [InlineData("percent", 8193, 0, "percent", 8192, 1)]
+    [InlineData("fixed", 8192, 1, "fixed", 8192, 1)]
+    [InlineData("percent", 1, 100, "percent", 1, 100)]
+    [InlineData("invalid", 64, 25, "fixed", 64, 25)]
+    [InlineData("Percent", 64, 25, "fixed", 64, 25)]
+    [InlineData(null, 64, 25, "fixed", 64, 25)]
+    public void RealtimeActionBudget_NormalizesBothValuesIndependentlyOfMode(
+        string? mode, int count, int percent, string expectedMode, int expectedCount, int expectedPercent)
+    {
+        var defaults = AppSettingsDefaults.Create();
+        var normalized = AppSettingsNormalizer.Normalize(defaults with
+        {
+            Performance = defaults.Performance with
+            {
+                RealtimeActionBudgetMode = mode!,
+                RealtimeActionBudgetCount = count,
+                RealtimeActionBudgetPercent = percent
+            }
+        });
+
+        Assert.Equal(expectedMode, normalized.Performance.RealtimeActionBudgetMode);
+        Assert.Equal(expectedCount, normalized.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(expectedPercent, normalized.Performance.RealtimeActionBudgetPercent);
+    }
+
     [Theory]
     [InlineData(0, 255, 1, 100)]
     [InlineData(100, 1, 100, 1)]
@@ -28,6 +65,9 @@ public sealed class AppSettingsNormalizerTests
             Performance = null!, PublicService = null!, AiModelService = null!, SystemIntegration = null!
         });
         Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
+        Assert.Equal(AppRealtimeActionBudgetModes.Fixed, settings.Performance.RealtimeActionBudgetMode);
+        Assert.Equal(32, settings.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(5, settings.Performance.RealtimeActionBudgetPercent);
         Assert.False(settings.PublicService.Enabled);
         Assert.False(settings.PublicService.FileIndexEnabled);
         Assert.False(settings.PublicService.DatabaseServiceEnabled);

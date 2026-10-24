@@ -134,6 +134,13 @@ public sealed record CompiledHostManagerMemoryModePolicyPlan(
                 character is >= '0' and <= '9' or >= 'A' and <= 'F');
 }
 
+public sealed record CompiledHostManagerRealtimeActionBudgetPlan(string Mode, int Count, int Percent)
+{
+    public bool IsPublished => Mode is "fixed" or "percent"
+        && Count is >= 1 and <= 8192
+        && Percent is >= 1 and <= 100;
+}
+
 public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     ulong FeatureFlags,
     int NormalIntervalMilliseconds,
@@ -146,7 +153,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.FailureRetryMs)]
     int FailureRetryMilliseconds,
     int ReservationTimeoutMilliseconds,
-    int MaximumActionsPerRealtimeTick,
+    CompiledHostManagerRealtimeActionBudgetPlan RealtimeActionBudget,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SoftwareWelfare)]
     double WelfareBaseScore,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.StateMultipliers)]
@@ -171,7 +178,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
         && RequiredConsecutiveDecisions > 0
         && FailureRetryMilliseconds > 0
         && ReservationTimeoutMilliseconds > 0
-        && MaximumActionsPerRealtimeTick > 0
+        && RealtimeActionBudget.IsPublished
         && double.IsFinite(WelfareBaseScore)
         && WelfareBaseScore is >= 0 and <= 100
         && ProcessStateMultipliers.Length == CompiledHostManagerSmartCoordinatorPlan.RuntimeStateCount
@@ -181,7 +188,7 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
         && MemoryModePolicy.IsPublished;
 
     public static CompiledHostManagerSmartCoordinatorHotPublishPlan Unpublished { get; } = new(
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [],
+        0, 0, 0, 0, 0, 0, 0, 0, new("fixed", 0, 0), 0, [],
         CompiledHostManagerBaseScoreTierPlan.Unpublished,
         0, 0, 0, 0, 0, 0,
         CompiledHostManagerSmartCoordinatorAdapterPolicyPlan.Unpublished,

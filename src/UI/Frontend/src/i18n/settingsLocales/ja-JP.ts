@@ -112,6 +112,11 @@ export default createSettingsLocale("ja-JP", {
     "gpuOverflowDescription": "いずれかのしきい値に達すると、スコアの低いバックグラウンドプロセスを専用 GPU から内蔵 GPU に移します。スケジューリングが有効で、内蔵 GPU が利用可能な場合に適用されます。",
     "gpuOverflowUsageLabel": "専用 GPU 使用率 %",
     "gpuOverflowDedicatedMemoryLabel": "専用 GPU メモリ使用率 %",
+    "realtimeActionBudgetTitle": "リアルタイム操作の上限",
+    "realtimeActionBudgetDescription": "各ラウンドのリアルタイム操作数を固定数、またはそのラウンドで識別された全プロセス数の割合（切り上げ）で制限します。モードを切り替えても両方の値を保持します。",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"固定数"},{"id":"percent","label":"プロセスの割合"}],
+    "realtimeActionBudgetCountLabel": "固定の操作数",
+    "realtimeActionBudgetPercentLabel": "全プロセスに対する割合 %",
     "refreshCadenceTitle": "情報の更新頻度",
     "refreshCadenceDescription": "監視情報と状態の更新速度を設定します。速くするとリソース使用量が少し増えます。",
     "presetNumericModeOptions": [

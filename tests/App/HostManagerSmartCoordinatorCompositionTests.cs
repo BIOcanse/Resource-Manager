@@ -443,6 +443,11 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         Assert.Equal(
             new HostManagerCycleEffectBudgetSnapshot(0, 0, 0, 0),
             scoreOnly.CaptureBudgetSnapshot());
+        var zeroCapacityScoreOnly = HostManagerCycleEffectAdmission.Create(scoreOnly: true);
+        zeroCapacityScoreOnly.InitializeBudgets(0, 0);
+        Assert.Equal(
+            new HostManagerCycleEffectBudgetSnapshot(0, 0, 0, 0),
+            zeroCapacityScoreOnly.CaptureBudgetSnapshot());
 
         var execute = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
         Assert.Throws<InvalidOperationException>(() =>
@@ -454,6 +459,10 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
             uninitializedPermit.TryReserveNewPointOfNoReturn(0, out _));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             execute.InitializeBudgets(0, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            execute.InitializeBudgets(1, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            execute.InitializeBudgets(0, 0));
 
         execute = HostManagerCycleEffectAdmission.Create(scoreOnly: false);
         execute.InitializeBudgets(1, 1);

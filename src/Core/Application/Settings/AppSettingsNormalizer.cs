@@ -51,7 +51,16 @@ public static class AppSettingsNormalizer
             NormalizeLogicRefreshInterval(
                 performance?.LocalSystemRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Balanced,
-                AppSettingsDefaults.LocalSystemRefreshBalancedIntervalMs));
+                AppSettingsDefaults.LocalSystemRefreshBalancedIntervalMs),
+            AppRealtimeActionBudgetModes.Normalize(performance?.RealtimeActionBudgetMode),
+            Math.Clamp(
+                performance?.RealtimeActionBudgetCount ?? AppSettingsDefaults.RealtimeActionBudgetCount,
+                AppSettingsDefaults.MinRealtimeActionBudgetCount,
+                AppSettingsDefaults.MaxRealtimeActionBudgetCount),
+            Math.Clamp(
+                performance?.RealtimeActionBudgetPercent ?? AppSettingsDefaults.RealtimeActionBudgetPercent,
+                AppSettingsDefaults.MinRealtimeActionBudgetPercent,
+                AppSettingsDefaults.MaxRealtimeActionBudgetPercent));
     }
 
     private static AppAppearanceSettings NormalizeAppearance(AppAppearanceSettings? appearance)

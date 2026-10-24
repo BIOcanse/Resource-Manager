@@ -6,7 +6,13 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.29";
+    public const string CurrentVersion = "1.0.30";
+    public const int RealtimeActionBudgetCount = 32;
+    public const int MinRealtimeActionBudgetCount = 1;
+    public const int MaxRealtimeActionBudgetCount = 8192;
+    public const int RealtimeActionBudgetPercent = 5;
+    public const int MinRealtimeActionBudgetPercent = 1;
+    public const int MaxRealtimeActionBudgetPercent = 100;
     public const int MinLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MinIntervalMs;
     public const int MaxLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MaxIntervalMs;
     public const int MonitorRefreshResponsiveIntervalMs = AppFrontendRefreshIntervalPolicy.MonitorResponsiveIntervalMs;
@@ -41,7 +47,10 @@ public static class AppSettingsDefaults
                 SmartMonitoringMode: AppAdaptiveBooleanModes.Enabled,
                 MonitorRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.Monitor,
                 ResourceTableRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.ResourceTable,
-                LocalSystemRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.LocalSystem),
+                LocalSystemRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.LocalSystem,
+                RealtimeActionBudgetMode: AppRealtimeActionBudgetModes.Fixed,
+                RealtimeActionBudgetCount: RealtimeActionBudgetCount,
+                RealtimeActionBudgetPercent: RealtimeActionBudgetPercent),
             new AppAppearanceSettings(
                 defaultAppearance.UiStyle,
                 defaultAppearance.Theme,

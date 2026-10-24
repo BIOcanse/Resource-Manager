@@ -3,6 +3,9 @@ using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Application.Optimization.SmartControl;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
@@ -132,6 +135,7 @@ public sealed partial class HostManagerSmartCoordinator
         using var publicationLease =
             runtimePlanProvider.AcquirePublicationLease();
         var desired = smartCoordinatorRuntime.CaptureDesired(publicationLease);
+        lastCycleActionBudget = null;
         var processEffectValidationScope =
             processEffectValidationScopeAuthorityOwner.Capture();
         var effectAdmission = HostManagerCycleEffectAdmission.CreateForValidation(
@@ -226,10 +230,37 @@ public sealed partial class HostManagerSmartCoordinator
         cycleDiagnostics?.Mark("workspace");
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The Host Manager smart coordinator workspace was not created.");
+        var budgetRule = desired.SmartCoordinator.HotPublish.RealtimeActionBudget;
+        int? processCount = null;
+        if (realtimeCycle && budgetRule.Mode == AppRealtimeActionBudgetModes.Percent)
+        {
+            // Sizing the percentage budget needs only the latest published inventory.
+            // Scheduling still captures its sample after recovery at the original point.
+            var gpuInventory = new SchedulingGpuInventorySnapshot(
+                SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []);
+            var inventory = schedulingProcessFactSource.ReadLatest(new SchedulingProcessFactRequest(
+                SchedulingProcessMetricMask.RuntimeState, gpuInventory));
+            if (inventory is not null)
+                processCount = inventory.ProjectValidFacts(gpuInventory).Processes.Count;
+            var unavailableReason = inventory is null ? "process-inventory-unavailable"
+                : processCount == 0 ? "process-inventory-empty" : null;
+            if (unavailableReason is not null)
+            {
+                lastCycleActionBudget = new HostManagerCycleActionBudgetDiagnostics(
+                    null, realtimeCycle, budgetRule.Mode, budgetRule.Count, budgetRule.Percent,
+                    processCount, unavailableReason);
+                cycleDiagnostics?.CaptureActionBudget(lastCycleActionBudget);
+                cycleDiagnostics?.Defer(unavailableReason);
+                return new(TimeSpan.FromMilliseconds(
+                    desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            }
+        }
         var maximumActionsThisCycle = ResolveMaximumActionsThisCycle(
-            realtimeCycle,
-            workspace.Capacity.ActionCapacity,
-            desired.SmartCoordinator.HotPublish.MaximumActionsPerRealtimeTick);
+            realtimeCycle, workspace.Capacity.ActionCapacity, budgetRule, processCount);
+        lastCycleActionBudget = new HostManagerCycleActionBudgetDiagnostics(
+            maximumActionsThisCycle, realtimeCycle, budgetRule.Mode, budgetRule.Count,
+            budgetRule.Percent, processCount);
+        cycleDiagnostics?.CaptureActionBudget(lastCycleActionBudget);
         effectAdmission.InitializeBudgets(
             maximumActionsThisCycle,
             maximumActionsThisCycle);
@@ -626,19 +657,16 @@ public sealed partial class HostManagerSmartCoordinator
     internal static uint ResolveMaximumActionsThisCycle(
         bool realtimeCycle,
         uint actionCapacity,
-        int maximumActionsPerRealtimeTick)
+        CompiledHostManagerRealtimeActionBudgetPlan rule,
+        int? processCount)
     {
-        if (actionCapacity == 0
-            || maximumActionsPerRealtimeTick <= 0
-            || maximumActionsPerRealtimeTick > actionCapacity)
-        {
-            throw new InvalidDataException(
-                "The Host Manager action capacity and realtime action limit are inconsistent.");
-        }
-
-        return realtimeCycle
-            ? checked((uint)maximumActionsPerRealtimeTick)
-            : actionCapacity;
+        if (actionCapacity == 0 || !rule.IsPublished || rule.Count > actionCapacity)
+            throw new InvalidDataException("The Host Manager action capacity and real-time budget rule are inconsistent.");
+        if (!realtimeCycle) return actionCapacity;
+        if (rule.Mode == AppRealtimeActionBudgetModes.Fixed) return checked((uint)rule.Count);
+        if (processCount is null or <= 0)
+            throw new InvalidDataException("A percentage action budget requires a nonempty process inventory.");
+        return checked((uint)(((long)processCount.Value * rule.Percent + 99) / 100));
     }
 
     private async Task<HostManagerRollbackStateDocument> EnsureNativeWorkspaceAsync(

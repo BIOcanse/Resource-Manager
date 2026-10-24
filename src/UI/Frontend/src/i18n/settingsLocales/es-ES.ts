@@ -112,6 +112,11 @@ export default createSettingsLocale("es-ES", {
     "gpuOverflowDescription": "Al alcanzar cualquiera de los umbrales, los procesos en segundo plano con baja puntuación pasan de la GPU dedicada a la integrada. Requiere planificación activa y una GPU integrada disponible.",
     "gpuOverflowUsageLabel": "Uso de la GPU dedicada %",
     "gpuOverflowDedicatedMemoryLabel": "Uso de memoria dedicada de la GPU %",
+    "realtimeActionBudgetTitle": "Límite de acciones en tiempo real",
+    "realtimeActionBudgetDescription": "Limita las acciones en tiempo real por ciclo a una cantidad fija o a un porcentaje de todos los procesos identificados en ese ciclo, redondeado hacia arriba. Al cambiar de modo se conservan ambos valores.",
+    "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Cantidad fija"},{"id":"percent","label":"Porcentaje de procesos"}],
+    "realtimeActionBudgetCountLabel": "Cantidad fija de acciones",
+    "realtimeActionBudgetPercentLabel": "Todos los procesos %",
     "refreshCadenceTitle": "Frecuencia de actualización",
     "refreshCadenceDescription": "Controla la frecuencia de actualización de las mediciones y los estados. Una frecuencia mayor usa algo más de recursos.",
     "presetNumericModeOptions": [

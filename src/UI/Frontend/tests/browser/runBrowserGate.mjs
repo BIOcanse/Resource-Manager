@@ -44,6 +44,7 @@ import resourceTableContentStateJourney from "./resourceTableContentStateJourney
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
+import realtimeActionBudgetSettingsJourney from "./realtimeActionBudgetSettingsJourney.js";
 import softwareIssueJourney from "./softwareIssueJourney.js";
 import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
@@ -70,6 +71,7 @@ const allJourneys = [
   ["ui-primitives", uiPrimitivesJourney],
   ["settings-source", settingsSourceJourney],
   ["gpu-overflow-settings", gpuOverflowSettingsJourney],
+  ["realtime-action-budget-settings", realtimeActionBudgetSettingsJourney],
   ["resource-bar-color-modes", resourceBarColorModesJourney],
   ["resource-bar-proportion", resourceBarProportionJourney],
   ["control-readings", controlReadingsJourney],

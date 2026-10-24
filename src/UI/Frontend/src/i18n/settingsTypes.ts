@@ -86,6 +86,11 @@ export interface SettingsCopy {
     gpuOverflowDescription: string;
     gpuOverflowUsageLabel: string;
     gpuOverflowDedicatedMemoryLabel: string;
+    realtimeActionBudgetTitle: string;
+    realtimeActionBudgetDescription: string;
+    realtimeActionBudgetModeOptions: Array<{ id: "fixed" | "percent"; label: string }>;
+    realtimeActionBudgetCountLabel: string;
+    realtimeActionBudgetPercentLabel: string;
     refreshCadenceTitle: string;
     refreshCadenceDescription: string;
     presetNumericModeOptions: Array<{ id: AppPresetNumericSettingMode; label: string; description: string }>;

@@ -263,6 +263,7 @@ public sealed partial class HostManagerPlanCompiler
             hotPublish.SmartCoordinator
             ?? throw Missing("hot_publish.smart_coordinator"),
             recreateSmartCoordinator,
+            performance,
             freedom);
         var memoryCleanup = CompileMemoryCleanup(
             hotPublish.MemoryCleanup
@@ -790,7 +791,10 @@ public sealed partial class HostManagerPlanCompiler
                 HostManagerBindingId.AiModelProvider,
                 HostManagerBindingId.AiModelEndpoint,
                 HostManagerBindingId.AiModelAutoStart,
-                HostManagerBindingId.ReportRuleOverrides
+                HostManagerBindingId.ReportRuleOverrides,
+                HostManagerBindingId.RealtimeActionBudgetMode,
+                HostManagerBindingId.RealtimeActionBudgetCount,
+                HostManagerBindingId.RealtimeActionBudgetPercent
             ]);
     }
 

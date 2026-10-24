@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 
@@ -57,6 +58,7 @@ public sealed partial class HostManagerPlanCompiler
     private static CompiledHostManagerSmartCoordinatorHotPublishPlan CompileSmartCoordinatorHotPublish(
         HostManagerSmartCoordinatorHotPublishProfile source,
         CompiledHostManagerSmartCoordinatorRecreatePlan recreate,
+        AppPerformanceSettings performance,
         FreedomPointCompilation freedom)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -78,12 +80,19 @@ public sealed partial class HostManagerPlanCompiler
         ValidatePositive(source.EventIntervalMilliseconds, "hot_publish.smart_coordinator.event_interval_ms");
         ValidatePositive(source.EventBoostMilliseconds, "hot_publish.smart_coordinator.event_boost_ms");
         ValidatePositive(source.ReservationTimeoutMilliseconds, "hot_publish.smart_coordinator.reservation_timeout_ms");
-        ValidatePositive(source.MaximumActionsPerRealtimeTick, "hot_publish.smart_coordinator.maximum_actions_per_realtime_tick");
-        if (source.MaximumActionsPerRealtimeTick > recreate.MaximumActions)
-        {
+        var realtimeActionBudget = new CompiledHostManagerRealtimeActionBudgetPlan(
+            performance.RealtimeActionBudgetMode,
+            performance.RealtimeActionBudgetCount,
+            performance.RealtimeActionBudgetPercent);
+        if (!realtimeActionBudget.IsPublished)
+            throw new InvalidDataException("The real-time action budget setting is invalid.");
+        if (realtimeActionBudget.Count > recreate.MaximumActions)
             throw new InvalidDataException(
-                "hot_publish.smart_coordinator.maximum_actions_per_realtime_tick must not exceed host_recreate.smart_coordinator.maximum_actions.");
-        }
+                "The real-time action budget count must not exceed host_recreate.smart_coordinator.maximum_actions.");
+        if (realtimeActionBudget.Mode == AppRealtimeActionBudgetModes.Percent
+            && recreate.MaximumProcesses > recreate.MaximumActions)
+            throw new InvalidDataException(
+                "The percentage budget requires maximum_processes <= maximum_actions.");
 
         var process = source.ProcessPolicy
             ?? throw Missing("hot_publish.smart_coordinator.process_policy");
@@ -120,7 +129,7 @@ public sealed partial class HostManagerPlanCompiler
             consecutiveDecisions,
             failureRetry,
             source.ReservationTimeoutMilliseconds,
-            source.MaximumActionsPerRealtimeTick,
+            realtimeActionBudget,
             welfare.BaseScore,
             stateMultipliers,
             baseScoreTiers,
@@ -294,7 +303,7 @@ public sealed partial class HostManagerPlanCompiler
             generation,
             NativeSmartCoordinatorConfigurationWriter.ComputeSha256(
                 in projection,
-                checked((uint)hotPublish.MaximumActionsPerRealtimeTick)))
+                hotPublish.RealtimeActionBudget))
         {
             DataHistory = dataHistory
         };

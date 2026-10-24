@@ -260,6 +260,9 @@ export interface AppPerformanceSettings {
   preciseGpuPlacementEnabled: boolean;
   gpuOverflowUsagePercent: number;
   gpuOverflowDedicatedMemoryPercent: number;
+  realtimeActionBudgetMode: "fixed" | "percent";
+  realtimeActionBudgetCount: number;
+  realtimeActionBudgetPercent: number;
   physicalMemoryAutomaticCleanupPercent: number;
   virtualMemoryAutomaticCleanupPercent: number;
   physicalMemoryOptimizationTargetUsagePercent: number;

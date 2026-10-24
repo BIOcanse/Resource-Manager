@@ -27,7 +27,7 @@ public sealed class HostManagerSmartCoordinatorRuntime(
             smartCoordinator.ConfigurationGeneration);
         var digest = NativeSmartCoordinatorConfigurationWriter.ComputeSha256(
             in configuration,
-            checked((uint)smartCoordinator.HotPublish.MaximumActionsPerRealtimeTick));
+            smartCoordinator.HotPublish.RealtimeActionBudget);
         if (!string.Equals(digest, smartCoordinator.ConfigurationSha256, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(

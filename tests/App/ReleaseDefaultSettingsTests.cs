@@ -7,6 +7,20 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ReleaseDefaultSettingsTests
 {
+    [Fact]
+    public void ReleaseDefaults_IncludeRealtimeActionBudgetAndNeedNoMigration()
+    {
+        var defaults = AppSettingsDefaults.Create();
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(defaults, JsonSerializerOptions.Web));
+        var performance = document.RootElement.GetProperty("performance");
+
+        Assert.Equal("1.0.30", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal(AppRealtimeActionBudgetModes.Fixed, performance.GetProperty("realtimeActionBudgetMode").GetString());
+        Assert.Equal(32, performance.GetProperty("realtimeActionBudgetCount").GetInt32());
+        Assert.Equal(5, performance.GetProperty("realtimeActionBudgetPercent").GetInt32());
+        Assert.False(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+    }
+
     [Theory]
     [InlineData("enabled", "enabled")]
     [InlineData("disabled", "disabled")]

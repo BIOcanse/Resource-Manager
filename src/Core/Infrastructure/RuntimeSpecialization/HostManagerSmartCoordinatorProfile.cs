@@ -54,9 +54,6 @@ internal sealed class HostManagerSmartCoordinatorHotPublishProfile
     [JsonPropertyName("reservation_timeout_ms")]
     public required int ReservationTimeoutMilliseconds { get; init; }
 
-    [JsonPropertyName("maximum_actions_per_realtime_tick")]
-    public required int MaximumActionsPerRealtimeTick { get; init; }
-
     [JsonPropertyName("memory_mode_policy")]
     public required HostManagerMemoryModePolicyProfile MemoryModePolicy { get; init; }
 

@@ -213,6 +213,14 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   await gpuUsage.blur();
   await gpuMemory.fill("68");
   await gpuMemory.blur();
+  const actionCount = page.getByRole("spinbutton", { name: "固定动作数量", exact: true });
+  const actionPercent = page.getByRole("spinbutton", { name: "全部进程百分比 %", exact: true });
+  await actionCount.fill("48");
+  await actionCount.blur();
+  await actionPercent.fill("9");
+  await actionPercent.blur();
+  await page.getByRole("radiogroup", { name: "实时动作预算", exact: true })
+    .getByRole("radio", { name: "进程百分比", exact: true }).click();
   const overflowSave = page.waitForResponse((response) => response.request().method() === "PATCH"
     && new URL(response.url()).pathname === "/api/settings/app");
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -220,10 +228,15 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   const overflowPatch = settingsPatchBodies.at(-1)?.changes?.performance;
   assert(overflowPatch?.gpuOverflowUsagePercent === 72 && overflowPatch?.gpuOverflowDedicatedMemoryPercent === 68,
     `GPU overflow settings did not save their exact values: ${JSON.stringify(overflowPatch)}`);
+  assert(overflowPatch?.realtimeActionBudgetMode === "percent" && overflowPatch?.realtimeActionBudgetCount === 48
+    && overflowPatch?.realtimeActionBudgetPercent === 9, `Budget settings did not save exact values: ${JSON.stringify(overflowPatch)}`);
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "性能", exact: true }).click();
   assert(await gpuUsage.inputValue() === "72" && await gpuMemory.inputValue() === "68", "GPU thresholds did not survive reload");
+  assert(await actionCount.inputValue() === "48" && await actionPercent.inputValue() === "9"
+    && await page.getByRole("radiogroup", { name: "实时动作预算", exact: true })
+      .getByRole("radio", { name: "进程百分比", exact: true }).isChecked(), "Budget settings did not survive reload");
 
   // 信息更新频率只显示当前模式生效的输入：自动调度两者都不显示，锁定预设只有预设下拉框，自定义只有毫秒输入框。
   const cadenceMode = page.getByRole("radiogroup", { name: "资源表", exact: true });

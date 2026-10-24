@@ -1135,7 +1135,6 @@
       "required_consecutive_decisions": 3,
       "failure_retry_ms": 5000,
       "reservation_timeout_ms": 30000,
-      "maximum_actions_per_realtime_tick": 32,
       "memory_mode_policy": {
         "enabled": true,
         "source_kind": "product-baseline",

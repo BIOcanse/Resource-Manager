@@ -350,6 +350,7 @@ public sealed partial class HostManagerSmartCoordinator
     private async Task<bool> CanParkNormalSchedulingAsync(CancellationToken cancellationToken)
     {
         if (HasPendingGpuOwnerWork()
+            || lastCycleActionBudget?.DeferredReason is not null
             || publicResourceNotifications is null
             || HasAvailablePublicResourceLifecycle()
             || !legacyStatePrepared

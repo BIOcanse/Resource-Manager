@@ -9,6 +9,72 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsMigratorTests
 {
     [Fact]
+    public void Version129_AddsRealtimeActionBudgetDefaultsAndPreservesExistingChoices()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["version"] = "1.0.29";
+        var performance = root["performance"]!.AsObject();
+        performance.Remove("realtimeActionBudgetMode");
+        performance.Remove("realtimeActionBudgetCount");
+        performance.Remove("realtimeActionBudgetPercent");
+        performance["optimizationMode"] = AppOptimizationModes.Smart;
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
+
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        Assert.Equal("1.0.30", migrated.Version);
+        Assert.Equal(AppOptimizationModes.Smart, migrated.Performance.OptimizationMode);
+        Assert.Equal(AppRealtimeActionBudgetModes.Fixed, migrated.Performance.RealtimeActionBudgetMode);
+        Assert.Equal(32, migrated.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(5, migrated.Performance.RealtimeActionBudgetPercent);
+        using var written = JsonDocument.Parse(JsonSerializer.Serialize(migrated, JsonSerializerOptions.Web));
+        Assert.False(AppSettingsMigrator.RequiresRewrite(written.RootElement));
+    }
+
+    [Theory]
+    [InlineData("realtimeActionBudgetMode")]
+    [InlineData("realtimeActionBudgetCount")]
+    [InlineData("realtimeActionBudgetPercent")]
+    public void RequiresRewrite_AddsMissingRealtimeActionBudgetFields(string field)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["performance"]!.AsObject().Remove(field);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
+        Assert.Equal(32, migrated.Performance.RealtimeActionBudgetCount);
+        Assert.Equal(5, migrated.Performance.RealtimeActionBudgetPercent);
+    }
+
+    [Theory]
+    [InlineData("\"percent\"", "64", "25", "percent", 64, 25, false)]
+    [InlineData("\"fixed\"", "1", "100", "fixed", 1, 100, false)]
+    [InlineData("\"percent\"", "8192", "1", "percent", 8192, 1, false)]
+    [InlineData("\"fixed\"", "0", "101", "fixed", 1, 100, true)]
+    [InlineData("\"percent\"", "8193", "0", "percent", 8192, 1, true)]
+    [InlineData("\"other\"", "64", "25", "fixed", 64, 25, true)]
+    [InlineData("true", "\"64\"", "5.5", "fixed", 32, 5, true)]
+    public void MigrateForRead_NormalizesRealtimeActionBudgetAndRequiresCanonicalValues(
+        string modeJson, string countJson, string percentJson,
+        string expectedMode, int expectedCount, int expectedPercent, bool requiresRewrite)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["performance"]!["realtimeActionBudgetMode"] = JsonNode.Parse(modeJson);
+        root["performance"]!["realtimeActionBudgetCount"] = JsonNode.Parse(countJson);
+        root["performance"]!["realtimeActionBudgetPercent"] = JsonNode.Parse(percentJson);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var performance = AppSettingsMigrator.MigrateForRead(document.RootElement).Performance;
+
+        Assert.Equal(requiresRewrite, AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        Assert.Equal(expectedMode, performance.RealtimeActionBudgetMode);
+        Assert.Equal(expectedCount, performance.RealtimeActionBudgetCount);
+        Assert.Equal(expectedPercent, performance.RealtimeActionBudgetPercent);
+    }
+
+    [Fact]
     public void Version127_DiscardsRetiredDangerFieldsAndAddsGpuOverflowDefaults()
     {
         using var input = JsonDocument.Parse("""
@@ -87,7 +153,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.27", true)]
     [InlineData("1.0.28", true)]
     [InlineData("1.0.29", true)]
-    [InlineData("1.0.30", false)]
+    [InlineData("1.0.30", true)]
+    [InlineData("1.0.31", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -622,7 +689,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.29",
+          "version": "1.0.30",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
@@ -631,7 +698,10 @@ public sealed class AppSettingsMigratorTests
             "smartMonitoringMode": "enabled",
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
-            "localSystemRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 60000 }
+            "localSystemRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 60000 },
+            "realtimeActionBudgetMode": "fixed",
+            "realtimeActionBudgetCount": 32,
+            "realtimeActionBudgetPercent": 5
           },
           "appearance": {
             "uiStyle": "standard",

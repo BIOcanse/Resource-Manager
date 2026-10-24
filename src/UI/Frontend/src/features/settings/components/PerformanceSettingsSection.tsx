@@ -30,6 +30,7 @@ interface PerformanceSettingsSectionProps {
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
+  onRealtimeActionBudgetChange: (mode: AppPerformanceSettings["realtimeActionBudgetMode"], count: number, percent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
 }
 
@@ -209,6 +210,32 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
               value={performance().gpuOverflowDedicatedMemoryPercent}
               onChange={(event) => updateGpuOverflowThreshold("dedicated", event.currentTarget.value)}
             />
+          </label>
+        </div>
+      </div>
+      <div class="settings-row settings-row-block">
+        <div class="settings-row-copy">
+          <strong>{props.text.performance.realtimeActionBudgetTitle}</strong>
+          <span>{props.text.performance.realtimeActionBudgetDescription}</span>
+        </div>
+        <SegmentedControl<AppPerformanceSettings["realtimeActionBudgetMode"]>
+          value={performance().realtimeActionBudgetMode}
+          options={props.text.performance.realtimeActionBudgetModeOptions}
+          ariaLabel={props.text.performance.realtimeActionBudgetTitle}
+          onChange={(mode) => props.onRealtimeActionBudgetChange(mode, performance().realtimeActionBudgetCount, performance().realtimeActionBudgetPercent)}
+        />
+        <div class="settings-number-pair">
+          <label>
+            <span>{props.text.performance.realtimeActionBudgetCountLabel}</span>
+            <input type="number" min="1" max="8192" step="1"
+              value={performance().realtimeActionBudgetCount}
+              onChange={(event) => props.onRealtimeActionBudgetChange(performance().realtimeActionBudgetMode, Number(event.currentTarget.value), performance().realtimeActionBudgetPercent)} />
+          </label>
+          <label>
+            <span>{props.text.performance.realtimeActionBudgetPercentLabel}</span>
+            <input type="number" min="1" max="100" step="1"
+              value={performance().realtimeActionBudgetPercent}
+              onChange={(event) => props.onRealtimeActionBudgetChange(performance().realtimeActionBudgetMode, performance().realtimeActionBudgetCount, Number(event.currentTarget.value))} />
           </label>
         </div>
       </div>
