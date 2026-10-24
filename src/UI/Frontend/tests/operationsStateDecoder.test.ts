@@ -1,3 +1,4 @@
+import { sameOperationSnapshot } from "../src/frontendRuntime/operations/operationMerge.ts";
 import assert from "node:assert/strict";
 import {
   operationSnapshotDecoder,
@@ -113,3 +114,18 @@ assert.throws(
   () => operationSnapshotDecoder.decode([]),
   (error: unknown) => error instanceof ResponseDecodeError
     && error.path === "$");
+
+const withFeedback = operationSnapshotDecoder.decode({ ...operation,
+  resultCode: "InstallerLaunched", resultMessage: { domain: 1, code: 22, args: [] },
+  errorMessage: { domain: 6, code: 1, args: [] }
+});
+assert.equal(withFeedback.resultCode, "InstallerLaunched");
+assert.deepEqual(withFeedback.resultMessage, { domain: 1, code: 22, args: [] });
+assert.deepEqual(withFeedback.errorMessage, { domain: 6, code: 1, args: [] });
+assert.throws(() => operationSnapshotDecoder.decode({ ...operation, resultMessage: { domain: 256, code: 1, args: [] } }), ResponseDecodeError);
+assert.throws(() => operationSnapshotDecoder.decode({ ...operation, errorMessage: { domain: 6, code: 1, args: [4] } }), ResponseDecodeError);
+
+assert.equal(sameOperationSnapshot(withFeedback, { ...withFeedback, resultMessage: { domain: 1, code: 22, args: [] } }), true);
+assert.equal(sameOperationSnapshot(withFeedback, { ...withFeedback, resultMessage: { domain: 1, code: 21, args: [] } }), false);
+assert.equal(sameOperationSnapshot(withFeedback, { ...withFeedback, errorMessage: { domain: 6, code: 2, args: [] } }), false);
+assert.equal(sameOperationSnapshot(withFeedback, { ...withFeedback, resultCode: "Installed" }), false);

@@ -1511,6 +1511,9 @@ export interface OperationSnapshot {
   progress: OperationProgress | null;
   result: string | null;
   error: string | null;
+  resultCode?: string | null;
+  resultMessage?: BackendMessage | null;
+  errorMessage?: BackendMessage | null;
 }
 
 export interface FileChangeDriveDelta {
@@ -1544,6 +1547,8 @@ export interface SoftwareDetailModel {
   baseRows: DetailRow[];
   softwareIdentityId: string;
   metadataRows: DetailRow[];
+  metadataStatus?: import("./frontendRuntime/source/SourceSnapshot").SourceStatus;
+  manualRegistration?: boolean;
   pathRows: DetailRow[];
   operationRows: DetailRow[];
   capabilities: ComponentCapability[];

@@ -1,4 +1,5 @@
 import type {
+  BackendMessage,
   OperationProgress,
   OperationSnapshot,
   OperationState
@@ -179,7 +180,10 @@ function decodeOperationSnapshot(value: unknown, path: string): OperationSnapsho
       `${path}.progress`,
       decodeProgress),
     result: requireNullable(record.result, `${path}.result`, requireString),
-    error: requireNullable(record.error, `${path}.error`, requireString)
+    error: requireNullable(record.error, `${path}.error`, requireString),
+    resultCode: record.resultCode === undefined ? null : requireNullable(record.resultCode, `${path}.resultCode`, requireString),
+    resultMessage: record.resultMessage === undefined ? null : requireNullable(record.resultMessage, `${path}.resultMessage`, decodeMessage),
+    errorMessage: record.errorMessage === undefined ? null : requireNullable(record.errorMessage, `${path}.errorMessage`, decodeMessage)
   });
 }
 
@@ -236,4 +240,13 @@ function requireUtcTimestamp(value: unknown, path: string): string {
     throw new ResponseDecodeError(path, "valid UTC timestamp string");
   }
   return timestamp;
+}
+
+function decodeMessage(value: unknown, path: string): BackendMessage {
+  const record = requireRecord(value, path);
+  const domain = requireNonNegativeSafeInteger(record.domain, `${path}.domain`);
+  const code = requireNonNegativeSafeInteger(record.code, `${path}.code`);
+  if (domain > 255 || code > 255) throw new ResponseDecodeError(path, "byte message domain and code");
+  return Object.freeze({ domain, code, args: requireArray(record.args, `${path}.args`)
+    .map((arg, index) => requireString(arg, `${path}.args[${index}]`)) });
 }

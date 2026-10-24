@@ -1,4 +1,4 @@
-import type { OperationProgress, OperationSnapshot } from "../../types.ts";
+import type { BackendMessage, OperationProgress, OperationSnapshot } from "../../types.ts";
 import {
   compareUInt64Decimal
 } from "../../data/operations/uint64Decimal.ts";
@@ -55,7 +55,10 @@ export function sameOperationSnapshot(
     && left.cancelRequested === right.cancelRequested
     && sameProgress(left.progress, right.progress)
     && left.result === right.result
-    && left.error === right.error;
+    && left.error === right.error
+    && (left.resultCode ?? null) === (right.resultCode ?? null)
+    && sameMessage(left.resultMessage, right.resultMessage)
+    && sameMessage(left.errorMessage, right.errorMessage);
 }
 
 export function sameOperationsState(
@@ -101,4 +104,11 @@ function sameProgress(
     && left.speedBytesPerSecond === right.speedBytesPerSecond
     && left.stage === right.stage
     && left.message === right.message;
+}
+
+function sameMessage(left: BackendMessage | null | undefined, right: BackendMessage | null | undefined): boolean {
+  if (!left || !right) return (left ?? null) === (right ?? null);
+  return left.domain === right.domain && left.code === right.code
+    && left.args.length === right.args.length
+    && left.args.every((arg, index) => arg === right.args[index]);
 }

@@ -4,6 +4,27 @@ import { targetedReport } from "./ko-KR-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
 const koKrAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "결과 코드",
+    removeManual: "수동 등록 제거",
+    confirmManual: "이 수동 등록과 분류를 제거할까요? 소프트웨어 파일은 유지됩니다.",
+    manualRemoved: "수동 등록을 제거했습니다.",
+    manualRemoveFailed: "수동 등록을 제거하지 못했습니다.",
+    metadataFailed: "소프트웨어 정보를 불러오지 못했습니다.",
+    metadataStale: "정보 업데이트에 실패했습니다. 표시된 내용이 오래되었거나 이전 언어일 수 있습니다.",
+    metadataLoading: "소프트웨어 정보 불러오는 중…",
+    retry: "다시 시도",
+    networkFailure: "다운로드에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.",
+    fileUnavailable: "필요한 파일을 사용할 수 없습니다.",
+    accessDenied: "접근이 거부되었습니다. 권한을 확인하세요.",
+    requestRejected: "작업 요청이 거부되었습니다. 작업 세부 정보를 확인하세요.",
+    ioFailure: "파일 접근에 실패했습니다. 경로와 여유 공간을 확인하세요.",
+    unexpectedFailure: "예기치 않은 오류가 발생했습니다.",
+    noExecutionEvidence: "실행 증거가 기록되지 않았습니다. 다시 시도할 수 있습니다.",
+    outcomeUncertain: "작업이 실행되었을 수 있습니다. 새로 고침하여 확인한 후 다시 시도하세요.",
+    managedRootRemoved: "관리되는 설치 폴더를 제거했습니다. 드라이버와 시스템 공용 런타임은 유지됩니다.",
+    uninstallerLaunchRequested: "Windows 제거 프로그램 실행을 요청했습니다. 완료 후 소프트웨어 목록을 새로 고침하세요."
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

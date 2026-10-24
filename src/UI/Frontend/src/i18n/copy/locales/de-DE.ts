@@ -4,6 +4,27 @@ import { targetedReport } from "./de-DE-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./de-DE-fieldLabels.ts";
 
 const deDeAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "Ergebniscode",
+    removeManual: "Manuelle Registrierung entfernen",
+    confirmManual: "Diese manuelle Registrierung und Zuordnung entfernen? Die Softwaredateien bleiben erhalten.",
+    manualRemoved: "Manuelle Registrierung entfernt.",
+    manualRemoveFailed: "Die manuelle Registrierung konnte nicht entfernt werden.",
+    metadataFailed: "Softwaremetadaten konnten nicht geladen werden.",
+    metadataStale: "Aktualisierung fehlgeschlagen. Die angezeigten Daten können veraltet oder in der vorherigen Sprache sein.",
+    metadataLoading: "Softwaremetadaten werden geladen…",
+    retry: "Erneut versuchen",
+    networkFailure: "Download fehlgeschlagen. Prüfen Sie das Netzwerk und versuchen Sie es erneut.",
+    fileUnavailable: "Eine erforderliche Datei ist nicht verfügbar.",
+    accessDenied: "Zugriff verweigert. Prüfen Sie die Berechtigungen.",
+    requestRejected: "Die Anfrage wurde abgelehnt. Prüfen Sie die Auftragsdetails.",
+    ioFailure: "Dateizugriff fehlgeschlagen. Prüfen Sie Pfad und freien Speicher.",
+    unexpectedFailure: "Ein unerwarteter Fehler ist aufgetreten.",
+    noExecutionEvidence: "Kein Ausführungsnachweis gespeichert. Sie können es erneut versuchen.",
+    outcomeUncertain: "Die Aktion wurde möglicherweise ausgeführt. Aktualisieren und prüfen Sie vor einem erneuten Versuch.",
+    managedRootRemoved: "Das verwaltete Installationsverzeichnis wurde entfernt. Treiber- und Systemlaufzeiten bleiben installiert.",
+    uninstallerLaunchRequested: "Das Windows-Deinstallationsprogramm wurde angefordert. Aktualisieren Sie danach die Softwareliste."
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

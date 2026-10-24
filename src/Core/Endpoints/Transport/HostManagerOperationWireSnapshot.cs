@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Infrastructure.Operations;
 using System.Globalization;
 using ResourceManager.App.Domain.Operations;
 
@@ -30,7 +32,10 @@ internal sealed record HostManagerOperationWireSnapshot(
     bool CancelRequested,
     HostManagerOperationProgressWireSnapshot? Progress,
     string? Result,
-    string? Error);
+    string? Error,
+    string? ResultCode,
+    BackendMessage? ResultMessage,
+    BackendMessage? ErrorMessage);
 
 internal sealed record HostManagerOperationProgressWireSnapshot(
     string Sequence,
@@ -60,7 +65,10 @@ internal static class HostManagerOperationWireProjection
 
     internal static HostManagerOperationWireSnapshot Project(
         HostManagerOperationSnapshot operation)
-        => new(
+    {
+        var result = HostManagerOperationFeedback.Read(operation.Result);
+        var error = HostManagerOperationFeedback.Read(operation.Error);
+        return new(
             operation.Id,
             operation.Kind,
             operation.DomainKey,
@@ -75,8 +83,12 @@ internal static class HostManagerOperationWireProjection
             operation.CompletedAt,
             operation.CancelRequested,
             operation.Progress is null ? null : Project(operation.Progress),
-            operation.Result,
-            operation.Error);
+            result is null ? operation.Result : null,
+            error is null ? operation.Error : error.Diagnostic,
+            result?.ResultCode,
+            result?.Message,
+            error?.Message);
+    }
 
     private static HostManagerOperationProgressWireSnapshot Project(
         HostManagerOperationProgress progress)

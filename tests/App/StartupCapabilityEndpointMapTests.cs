@@ -51,6 +51,9 @@ public sealed class StartupCapabilityEndpointMapTests
             || route.StartsWith("DELETE /api/software", StringComparison.Ordinal));
         Assert.DoesNotContain(routes, static route =>
             route.Contains(" /api/index/", StringComparison.Ordinal));
+        Assert.DoesNotContain("GET /api/components/{id}", routes);
+        Assert.DoesNotContain("GET /api/dependencies/{id}", routes);
+        Assert.DoesNotContain("POST /api/dependencies/{id}/download", routes);
         Assert.DoesNotContain("POST /api/components/{id}/download", routes);
         Assert.DoesNotContain("POST /api/dependencies/{id}/launch-installer", routes);
         Assert.DoesNotContain("POST /api/system/processes/terminate", routes);
@@ -94,8 +97,15 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("GET /api/software", routes);
         Assert.Contains("GET /api/software/metadata/{softwareIdentityId}", routes);
         Assert.Contains("GET /api/index/files/search", routes);
-        Assert.Contains("POST /api/components/{id}/download", routes);
-        Assert.Contains("POST /api/dependencies/{id}/launch-installer", routes);
+        Assert.DoesNotContain("GET /api/components/{id}", routes);
+        Assert.DoesNotContain("GET /api/dependencies/{id}", routes);
+        Assert.DoesNotContain("POST /api/dependencies/{id}/download", routes);
+        Assert.DoesNotContain("POST /api/components/{id}/download", routes);
+        Assert.DoesNotContain("POST /api/dependencies/{id}/launch-installer", routes);
+        Assert.Contains("POST /api/components/{id}/install", routes);
+        Assert.Contains("POST /api/components/{id}/verify", routes);
+        Assert.Contains("GET /api/components/{id}/versions", routes);
+        Assert.Contains("DELETE /api/software/manual/{id}", routes);
         Assert.Contains("POST /api/system/processes/terminate", routes);
         Assert.Contains("PUT /api/cpu/topology/performance-overrides", routes);
         Assert.Contains("GET /api/public/v1/sqlite/databases", routes);

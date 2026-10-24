@@ -4,6 +4,27 @@ import { targetedReport } from "./ja-JP-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
 const jaJpAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "結果コード",
+    removeManual: "手動登録を削除",
+    confirmManual: "この手動登録と分類を削除しますか？ソフトウェアのファイルは削除されません。",
+    manualRemoved: "手動登録を削除しました。",
+    manualRemoveFailed: "手動登録を削除できませんでした。",
+    metadataFailed: "ソフトウェア情報を読み込めませんでした。",
+    metadataStale: "情報の更新に失敗しました。表示内容が古いか、以前の言語のままの可能性があります。",
+    metadataLoading: "ソフトウェア情報を読み込み中…",
+    retry: "再試行",
+    networkFailure: "ダウンロードに失敗しました。ネットワークを確認して再試行してください。",
+    fileUnavailable: "必要なファイルを利用できません。",
+    accessDenied: "アクセスが拒否されました。権限を確認してください。",
+    requestRejected: "操作要求が拒否されました。操作の詳細を確認してください。",
+    ioFailure: "ファイルへのアクセスに失敗しました。パスと空き容量を確認してください。",
+    unexpectedFailure: "予期しないエラーが発生しました。",
+    noExecutionEvidence: "実行の証拠が記録されていません。再試行できます。",
+    outcomeUncertain: "操作が実行された可能性があります。更新して確認してから再試行してください。",
+    managedRootRemoved: "管理対象のインストール先を削除しました。ドライバーとシステム全体のランタイムは残ります。",
+    uninstallerLaunchRequested: "Windows アンインストーラーの起動を要求しました。完了後に一覧を更新してください。"
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

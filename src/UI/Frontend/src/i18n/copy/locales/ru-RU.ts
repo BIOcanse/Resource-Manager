@@ -4,6 +4,27 @@ import { targetedReport } from "./ru-RU-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
 
 const ruRuAppCopy: AppCopy = {
+  managementFeedback: {
+    resultCode: "Код результата",
+    removeManual: "Удалить ручную регистрацию",
+    confirmManual: "Удалить эту ручную регистрацию и категорию? Файлы программы сохранятся.",
+    manualRemoved: "Ручная регистрация удалена.",
+    manualRemoveFailed: "Не удалось удалить ручную регистрацию.",
+    metadataFailed: "Не удалось загрузить сведения о программе.",
+    metadataStale: "Не удалось обновить сведения. Данные могут устареть или остаться на предыдущем языке.",
+    metadataLoading: "Загрузка сведений о программе…",
+    retry: "Повторить",
+    networkFailure: "Ошибка загрузки. Проверьте сеть и повторите попытку.",
+    fileUnavailable: "Необходимый файл недоступен.",
+    accessDenied: "Доступ запрещён. Проверьте права.",
+    requestRejected: "Запрос отклонён. Проверьте сведения о задаче.",
+    ioFailure: "Ошибка доступа к файлам. Проверьте путь и свободное место.",
+    unexpectedFailure: "Произошла непредвиденная ошибка.",
+    noExecutionEvidence: "Свидетельств выполнения нет. Можно повторить попытку.",
+    outcomeUncertain: "Действие могло выполниться. Обновите и проверьте результат перед повтором.",
+    managedRootRemoved: "Управляемый каталог установки удалён. Компоненты драйверов и общесистемные среды сохранены.",
+    uninstallerLaunchRequested: "Запрошен запуск программы удаления Windows. По завершении обновите список программ."
+  },
   targetedReport,
   fieldLabel,
   fieldValueLabel,

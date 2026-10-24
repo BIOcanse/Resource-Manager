@@ -1,6 +1,7 @@
 import { Accessor, createMemo, createSignal, Setter } from "solid-js";
 import {
   addManualSoftware,
+  removeManualSoftware,
   fetchComponentVersionOptions,
   getComponents,
   getSoftware,
@@ -105,6 +106,7 @@ export interface ManagementStore {
   cancelAcquisition: () => void;
   confirmAcquisition: (versionChoice: string | null) => Promise<void>;
   openAcquisitionLink: (url: string) => Promise<void>;
+  removeManualRegistration: (software: SoftwareRecord) => Promise<boolean>;
   uninstallSoftware: (software: SoftwareRecord, actionKey?: string) => Promise<void>;
   dispose: () => void;
 }
@@ -391,7 +393,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
         while (true) {
           setBrowserRuntimesObservation(refreshingObservation);
           try {
-            const next = await getBrowserRuntimeSnapshot(nextForceRefresh);
+            // The runtime page consumes both discovery and its install component, including cold navigation.
+            const [next] = await Promise.all([getBrowserRuntimeSnapshot(nextForceRefresh), refreshComponents()]);
             setBrowserRuntimes(next);
             setBrowserRuntimesObservation(readyObservation(next.capturedAt));
           } catch (error) {
@@ -576,7 +579,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       showErrorToast(error, uiText.stores.actionFailed);
     } finally {
       clearActionLabel(key);
-      const refreshes = [refreshComponents()];
+      const refreshes: Promise<void>[] = id === sharedBrowserRuntimeComponentId ? [] : [refreshComponents()];
       if (options.mutablePersistenceEnabled()) {
         refreshes.push(refreshSoftware());
       }
@@ -605,6 +608,25 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     } finally {
       clearActionLabel(key);
       await refreshComponents();
+    }
+  }
+
+  async function removeManualRegistration(record: SoftwareRecord): Promise<boolean> {
+    if (!options.mutablePersistenceEnabled() || !record.id.startsWith("manual:")) return false;
+    const key = managementActionKey("software", record.id);
+    if (actionLabels()[key]) return false;
+    if (!await options.confirmDialog({ title: record.name, message: uiText.managementFeedback.confirmManual, tone: "warning" })) return false;
+    setActionLabel(key, uiText.stores.progressWorking);
+    try {
+      await removeManualSoftware(record.id);
+      await refreshSoftware();
+      options.showToast({ tone: "success", title: uiText.feedback.success, message: uiText.managementFeedback.manualRemoved });
+      return true;
+    } catch (error) {
+      showErrorToast(error, uiText.managementFeedback.manualRemoveFailed);
+      return false;
+    } finally {
+      clearActionLabel(key);
     }
   }
 
@@ -677,7 +699,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "success",
         title: uiText.feedback.success,
-        message: userFacingMessage(operationResultText(operation), uiText.stores.operationCompleted)
+        message: renderBackendMessage(operation.resultMessage, userFacingMessage(operationResultText(operation), uiText.stores.operationCompleted))
       });
       return;
     }
@@ -686,7 +708,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: userFacingMessage(operation.error, uiText.stores.operationUncertain)
+        message: renderBackendMessage(operation.errorMessage, userFacingMessage(operation.error, uiText.stores.operationUncertain))
       });
       return;
     }
@@ -695,7 +717,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "error",
         title: uiText.feedback.error,
-        message: userFacingMessage(operation.error, uiText.stores.operationIncomplete)
+        message: renderBackendMessage(operation.errorMessage, userFacingMessage(operation.error, uiText.stores.operationIncomplete))
       });
     }
   }
@@ -730,6 +752,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     cancelAcquisition,
     confirmAcquisition,
     openAcquisitionLink,
+    removeManualRegistration,
     uninstallSoftware,
     dispose: unsubscribeOperations
   };

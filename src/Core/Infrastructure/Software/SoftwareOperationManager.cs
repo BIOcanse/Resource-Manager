@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Software;
@@ -93,7 +94,7 @@ public sealed class SoftwareOperationManager(
         return new SoftwareOperationResult(
             $"dependency:{dependencyId}",
             "RemovedManagedRoot",
-            "已清理该依赖的受管安装根目录。驱动自带或系统全局运行库不会被卸载。",
+            BackendMessage.Create(BackendMessageDomains.Software, BackendMessageCodes.Software.ManagedRootRemoved),
             fileChanges);
     }
 
@@ -122,7 +123,7 @@ public sealed class SoftwareOperationManager(
         return new SoftwareOperationResult(
             id,
             "UninstallerLaunchRequested",
-            "已向用户桌面请求启动 Windows 注册表提供的卸载器；需要提升时由 Windows 提示。完成后请刷新软件清单。");
+            BackendMessage.Create(BackendMessageDomains.Software, BackendMessageCodes.Software.UninstallerLaunchRequested));
     }
 
     internal static void ValidateUninstallerCaller(SoftwareOperationCaller? caller, IInteractiveUserSessionBroker broker)

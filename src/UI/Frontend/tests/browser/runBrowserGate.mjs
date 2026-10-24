@@ -2,6 +2,7 @@ import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.j
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
 import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
+import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
@@ -57,6 +58,7 @@ const allJourneys = [
   ["management-inventory-revisions", managementInventoryRevisionJourney],
   ["disk-usage-read-recovery", diskUsageReadRecoveryJourney],
   ["overlay-settings", overlaySettingsJourney],
+  ["management-feedback", managementFeedbackJourney],
   ["frontend-audit", frontendAuditJourney],
   ["report-rule-settings", reportRuleSettingsJourney],
   ["localization", localizationJourney],

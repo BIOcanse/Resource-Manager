@@ -205,9 +205,14 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     await localizedDialog.getByRole("tab").filter({ hasText: app.taskCenter.tabActive }).click();
     await localizedDialog.locator(".task-center-item-title-row strong").filter({ hasText: app.taskCenter.operation.componentInstall }).waitFor();
     const rendered = await localizedDialog.innerText();
-    for (const prose of ["安装前端测试组件", "正在安装", "component.frontend-harness"]) {
+    for (const prose of ["安装前端测试组件", "正在安装"]) {
       assert(!rendered.includes(prose), `${option.id}: backend prose leaked into Task Center: ${prose}`);
     }
+    await localizedDialog.getByText("component.frontend-harness", { exact: true }).first().waitFor();
+    await localizedDialog.getByRole("tab").filter({ hasText: app.taskCenter.tabHistory }).click();
+    await localizedDialog.getByText(app.managementFeedback.managedRootRemoved, { exact: true }).waitFor();
+    await localizedDialog.getByText(app.managementFeedback.networkFailure, { exact: true }).waitFor();
+    await localizedDialog.getByText("component:failed-runtime", { exact: true }).first().waitFor();
     checkedLanguages.push(option.id);
     previousLanguage = option.id;
     await page.keyboard.press("Escape");

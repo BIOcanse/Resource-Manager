@@ -65,6 +65,8 @@ interface SoftwareDetailModalProps {
   gpuPlacementSettings: GpuPlacementSoftwareSettingsSnapshot | null;
   gpuPlacementLoading: boolean;
   onClose: () => void;
+  onRemoveManual: () => void;
+  onRetryMetadata: () => void;
   onOpenPath: (path: string) => void;
   onConfirmPortableRoot: () => void;
   onSaveGpuPlacementSoftwarePolicy: (policy: GpuPlacementSoftwarePolicy) => Promise<void> | void;
@@ -273,6 +275,15 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                 <TabsPanel value="overview" class="software-detail-tab-panel">
                   <SoftwareIssueDetailSection issues={model().issues} />
                   <DetailSection title={uiText.softwareDetail.section.basic} rows={model().baseRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <Show when={model().metadataStatus === "error" || model().metadataStatus === "unavailable" || model().metadataStatus === "stale"}>
+                    <div class="software-detail-notice error" role="alert">
+                      <p>{model().metadataRows.length ? uiText.managementFeedback.metadataStale : uiText.managementFeedback.metadataFailed}</p>
+                      <button type="button" class="secondary" onClick={props.onRetryMetadata}>{uiText.managementFeedback.retry}</button>
+                    </div>
+                  </Show>
+                  <Show when={model().metadataStatus === "loading" || model().metadataStatus === "refreshing"}>
+                    <p role="status">{uiText.managementFeedback.metadataLoading}</p>
+                  </Show>
                   <DetailSection title={uiText.softwareDetail.section.metadata} rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.paths} rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.mutablePersistenceEnabled && model().type === "software" && model().requiresRootPathConfirmation}>
@@ -286,6 +297,11 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                         {uiText.softwareDetail.chooseFolder}
                       </button>
                     </section>
+                  </Show>
+                  <Show when={props.mutablePersistenceEnabled && model().manualRegistration}>
+                    <button type="button" class="secondary" disabled={props.actionInProgress} onClick={props.onRemoveManual}>
+                      {uiText.managementFeedback.removeManual}
+                    </button>
                   </Show>
                   <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.mutablePersistenceEnabled && model().type === "software"}>

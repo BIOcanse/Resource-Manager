@@ -1,4 +1,5 @@
-﻿using ResourceManager.App.Application.Components;
+using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
@@ -32,7 +33,7 @@ internal sealed class ComponentOperationEffectExecutor(
         IHostManagerOperationProgressSink progress,
         CancellationToken cancellationToken)
     {
-        _ = progress;
+        var progressAdapter = new DurableDependencyProgress(ticket, progress, cancellationToken);
         SoftwareOperationCaller? caller = null;
         string id;
         bool acknowledge;
@@ -51,27 +52,31 @@ internal sealed class ComponentOperationEffectExecutor(
                     acknowledge,
                     versionChoice,
                     cancellationToken,
-                    caller).ConfigureAwait(false)
+                    caller,
+                    progressAdapter).ConfigureAwait(false)
                 : await componentManager.DownloadAsync(
                     id,
                     acknowledge,
                     versionChoice,
-                    cancellationToken).ConfigureAwait(false);
-            // 这一层的完成消息还没迁到消息码（操作日志是二进制持久化的，见 M5）。
-            // 暂时不带文本：前端会用自己的本地化「操作完成」，不会漏出中文。
-            return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);
+                    cancellationToken,
+                    progressAdapter).ConfigureAwait(false);
+            return new(HostManagerOperationEffectOutcome.Succeeded, HostManagerOperationFeedback.Result(result.State, result.Message));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return new(HostManagerOperationEffectOutcome.Canceled, string.Empty);
         }
+        catch (HttpRequestException error)
+        {
+            return new(HostManagerOperationEffectOutcome.RetryableFailure, HostManagerOperationFeedback.Failure(error));
+        }
         catch (IOException error)
         {
-            return new(HostManagerOperationEffectOutcome.RetryableFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.RetryableFailure, HostManagerOperationFeedback.Failure(error));
         }
         catch (Exception error)
         {
-            return new(HostManagerOperationEffectOutcome.TerminalFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.TerminalFailure, HostManagerOperationFeedback.Failure(error));
         }
     }
 
@@ -85,9 +90,9 @@ internal sealed class ComponentOperationEffectExecutor(
         return ValueTask.FromResult(receipt.State == HostManagerOperationEffectReceiptState.Prepared
             ? new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.RetryableFailure,
-                string.Empty)
+                HostManagerOperationFeedback.Reason(BackendMessageCodes.Operation.NoExecutionEvidence))
             : new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.Uncertain,
-                string.Empty));
+                HostManagerOperationFeedback.Reason(BackendMessageCodes.Operation.OutcomeUncertain)));
     }
 }
