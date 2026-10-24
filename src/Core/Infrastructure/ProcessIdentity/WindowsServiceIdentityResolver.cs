@@ -11,8 +11,22 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
+    private readonly Func<IReadOnlyList<WindowsServiceRecord>?> readServices;
+    private readonly Func<int, long?> readProcessStartKey;
+    private readonly TimeProvider clock;
     private ServiceSnapshot cachedSnapshot = ServiceSnapshot.Unavailable;
     private DateTimeOffset cachedAt;
+
+    public WindowsServiceIdentityResolver()
+        : this(ReadServiceEntries, TryReadProcessStartKey, TimeProvider.System) { }
+
+    internal WindowsServiceIdentityResolver(Func<IReadOnlyList<WindowsServiceRecord>?> readServices,
+        Func<int, long?> readProcessStartKey, TimeProvider clock)
+    {
+        this.readServices = readServices;
+        this.readProcessStartKey = readProcessStartKey;
+        this.clock = clock;
+    }
 
     public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
     {
@@ -38,7 +52,11 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
             return RuntimeAttributionObservation.Unavailable;
         }
 
-        var services = processServices.Services;
+        return processServices.Observation;
+    }
+
+    private static RuntimeAttributionObservation CreateObservation(IReadOnlyList<ServiceIdentity> services)
+    {
         var orderedServices = services
             .OrderBy(static service => service.ServiceName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -65,7 +83,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
 
     private ServiceSnapshot GetServicesByProcess()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         lock (gate)
         {
             if (now - cachedAt < CacheLifetime)
@@ -79,14 +97,20 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
         }
     }
 
-    private static ServiceSnapshot ReadServicesByProcess()
+    private static IReadOnlyList<WindowsServiceRecord>? ReadServiceEntries()
     {
         var facts = new WindowsServiceReader().Read(WindowsServiceScope.Win32);
-        if (!facts.Available) return ServiceSnapshot.Unavailable;
-        var serviceMap = BuildServiceMap(facts.Services);
+        return facts.Available ? facts.Services : null;
+    }
+
+    private ServiceSnapshot ReadServicesByProcess()
+    {
+        var entries = readServices();
+        if (entries is null) return ServiceSnapshot.Unavailable;
+        var serviceMap = BuildServiceMap(entries);
         return new ServiceSnapshot(true, serviceMap.ServicesByProcess, serviceMap.UnavailableProcessIds);
     }
-    private static ServiceProcessMap BuildServiceMap(
+    private ServiceProcessMap BuildServiceMap(
         IReadOnlyList<WindowsServiceRecord> entries)
     {
         var result = new Dictionary<int, List<ServiceIdentity>>();
@@ -111,14 +135,14 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
         var unavailable = new HashSet<int>();
         foreach (var item in result)
         {
-            if (TryReadProcessStartKey(item.Key) is not { } startKey)
+            if (readProcessStartKey(item.Key) is not { } startKey)
             {
                 unavailable.Add(item.Key);
                 continue;
             }
             exact[item.Key] = new ServiceProcessIdentity(
                 startKey,
-                item.Value.ToArray());
+                CreateObservation(item.Value));
         }
         return new ServiceProcessMap(exact, unavailable);
     }
@@ -141,7 +165,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
 
     private sealed record ServiceProcessIdentity(
         long StartKey,
-        IReadOnlyList<ServiceIdentity> Services);
+        RuntimeAttributionObservation Observation);
 
     private sealed record ServiceProcessMap(
         IReadOnlyDictionary<int, ServiceProcessIdentity> ServicesByProcess,

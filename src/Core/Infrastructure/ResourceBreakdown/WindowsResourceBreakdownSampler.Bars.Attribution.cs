@@ -48,14 +48,21 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (process.StartKey is not > 0) return identity;
         var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
         processAttributionCache.TryGet(key, out var cached);
-        if (cached?.Identity.CommandLine is not null)
-            return identity with { CommandLine = cached.Identity.CommandLine };
-        identity = identity with { CommandLine = ReadHelperCommandLine(process) };
-        if (identity.CommandLine is not null)
-            processAttributionCache.Set(key, cached is null
-                ? new CachedProcessAttribution(identity)
-                : cached with { Identity = identity });
+        identity = identity with { CommandLine = cached?.Identity.CommandLine ?? ReadHelperCommandLine(process) };
+        CacheRuntimeIdentity(processAttributionCache, identity);
         return identity;
+    }
+
+    internal static void CacheRuntimeIdentity(
+        ProcessInstanceCache<CachedProcessAttribution> cache,
+        RuntimeProcessIdentity identity)
+    {
+        if (identity.StartKey is not > 0) return;
+        var key = new ProcessInstanceKey(identity.ProcessId, identity.StartKey.Value);
+        if (!cache.TryGet(key, out var cached) || cached?.Identity != identity)
+            // A direct match belongs to its original input. Recovery must not
+            // overwrite that input while carrying the old result and stamps.
+            cache.Set(key, new CachedProcessAttribution(identity));
     }
 
     private RuntimeProcessAttributionDirectMatch? TryGetCachedDirectMatch(
@@ -76,6 +83,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             && cached is not null
             && cached.DirectMatch is { } match
             && cached.Identity == process
+            && cached.CatalogSnapshot?.TryGetTarget(out var snapshot) == true
+            && ReferenceEquals(snapshot, catalog)
             && StringComparer.Ordinal.Equals(cached.CatalogScope, catalogScope)
             && cached.CatalogGeneration == catalog.Generation
             && cached.CatalogVersion == catalog.Version
@@ -106,7 +115,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             catalog.Generation,
             catalog.Version,
             catalog.BundledCatalogVersion,
-            match));
+            match,
+            new WeakReference<RuntimeProcessAttributionCatalog>(catalog)));
     }
 
     private static string? ReadHelperCommandLine(ProcessResourceSample process)
@@ -131,5 +141,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         long CatalogGeneration = 0,
         RuntimeProcessAttributionCatalogVersion? CatalogVersion = null,
         string? BundledCatalogVersion = null,
-        RuntimeProcessAttributionDirectMatch? DirectMatch = null);
+        RuntimeProcessAttributionDirectMatch? DirectMatch = null,
+        WeakReference<RuntimeProcessAttributionCatalog>? CatalogSnapshot = null);
 }

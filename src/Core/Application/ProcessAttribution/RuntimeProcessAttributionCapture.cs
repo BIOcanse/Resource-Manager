@@ -67,8 +67,9 @@ internal static class RuntimeProcessAttributionCapture
                 foreach (var process in processes)
                 {
                     if (process.StartKey is not > 0
-                        || cachedDirectMatches?.ContainsKey(process.ProcessId) == true
-                        || !batch.DirectMatchesByProcessId.TryGetValue(process.ProcessId, out var match))
+                        || !batch.DirectMatchesByProcessId.TryGetValue(process.ProcessId, out var match)
+                        || cachedDirectMatches?.TryGetValue(process.ProcessId, out var previous) == true
+                            && ReferenceEquals(previous.ExternalInputs, match.ExternalInputs))
                         continue;
                     var scope = scopeByPid[process.ProcessId];
                     cacheDirectMatch(process, scope, catalogs[scope].Catalog, match);
