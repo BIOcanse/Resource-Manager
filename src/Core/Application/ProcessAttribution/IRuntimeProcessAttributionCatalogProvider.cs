@@ -4,7 +4,10 @@ public interface IRuntimeProcessAttributionCatalogProvider
 {
     long SoftwareSnapshotGeneration { get; }
 
-    Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken);
+    Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken)
+        => AcquireCatalogAsync(null, cancellationToken);
+
+    Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken);
 
     Task InvalidateSoftwareSnapshotAsync();
 }

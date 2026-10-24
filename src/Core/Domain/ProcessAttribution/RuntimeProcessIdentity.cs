@@ -13,4 +13,5 @@ public sealed record RuntimeProcessIdentity(
     string? WindowApplicationUserModelId = null,
     string? WindowTitle = null,
     long? StartKey = null,
-    string? CommandLine = null);
+    string? CommandLine = null,
+    string? UserSid = null);

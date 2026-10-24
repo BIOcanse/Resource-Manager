@@ -59,7 +59,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     var mask = includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask;
                     var cached = creation is { } birth ? TryGetCachedProcessIdentity(new(process.Id, birth)) : null;
                     if (preserveProductIdentity && cached is null) mask |= ProcessMetricReadMask.ImagePath;
-                    if (preserveProductIdentity && ShouldReadUserName(detailLevel)) mask |= ProcessMetricReadMask.UserSid;
+                    if (preserveProductIdentity) mask |= ProcessMetricReadMask.UserSid;
                     return mask;
                 }) : null);
         if (batch.Status != SamplingObservationStatus.Current)
@@ -135,7 +135,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var cachedIdentity = TryGetCachedProcessIdentity(processInstanceKey);
             var queryMask = basicMask;
             if (preserveProductIdentity && cachedIdentity is null) queryMask |= ProcessMetricReadMask.ImagePath;
-            if (preserveProductIdentity && ShouldReadUserName(detailLevel)) queryMask |= ProcessMetricReadMask.UserSid;
+            if (preserveProductIdentity) queryMask |= ProcessMetricReadMask.UserSid;
             var basic = prepared?.Basic ?? processBasicMetricReader.Read(processId, startKey ?? 0, queryMask);
             // Scheduling keeps the original cache; its path now comes from the same verified SDK query.
             if (preserveProductIdentity && cachedIdentity is null && processInstanceKey is { } cacheKey)

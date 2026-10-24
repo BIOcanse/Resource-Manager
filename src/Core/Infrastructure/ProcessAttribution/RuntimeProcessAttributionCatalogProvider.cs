@@ -23,26 +23,29 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(8);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
-    private CatalogHolder? current;
-    private SoftwareSnapshot? cachedSoftware;
-    private DateTimeOffset cachedSoftwareAt;
+    private readonly Dictionary<string, CatalogScopeState> scopes = new(StringComparer.Ordinal);
     private long softwareSnapshotGeneration;
     private bool disposed;
 
     public long SoftwareSnapshotGeneration => Volatile.Read(ref softwareSnapshotGeneration);
 
-    public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken)
+    public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken)
+        => AcquireCatalogAsync(null, cancellationToken);
+
+    public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
     {
-        var software = await GetSoftwareAsync(cancellationToken);
+        var scope = RuntimeProcessAttributionCapture.CatalogScope(windowsSid);
+        var software = await GetSoftwareAsync(scope, cancellationToken);
         var adapted = await adapterRegistry.GetAllAsync(cancellationToken);
         var controlled = controlledRegistry.GetAll();
-        CatalogHolder? retired = null;
+        var retired = new List<CatalogHolder>();
         RuntimeProcessAttributionCatalogLease result;
         lock (lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             cancellationToken.ThrowIfCancellationRequested();
-            var previous = current?.Catalog;
+            var state = GetScope(scope);
+            var previous = state.Current?.Catalog;
             var next = RuntimeProcessAttributionCatalog.CreateOrReuse(
                 previous,
                 software.Software,
@@ -61,7 +64,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 cancellationToken.ThrowIfCancellationRequested();
             }
             if (ReferenceEquals(previous, next))
-                result = current!.Acquire();
+                result = state.Current!.Acquire();
             else
             {
                 CatalogHolder holder;
@@ -75,13 +78,21 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                     next.Dispose();
                     throw;
                 }
-                retired = current;
-                current = holder;
+                if (state.Current is { } old) retired.Add(old);
+                state.Current = holder;
+            }
+            state.LastAcquiredAt = DateTimeOffset.UtcNow;
+            // Idle owner catalogs do not accumulate for the lifetime of the service.
+            foreach (var idle in scopes.Where(pair => pair.Key != scope
+                && state.LastAcquiredAt - pair.Value.LastAcquiredAt >= SnapshotLifetime).ToArray())
+            {
+                if (idle.Value.Current is { } holder) retired.Add(holder);
+                scopes.Remove(idle.Key);
             }
         }
         try
         {
-            retired?.Retire();
+            foreach (var holder in retired) holder.Retire();
             return result;
         }
         catch
@@ -99,8 +110,11 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
             lock (lifecycleGate)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
-                cachedSoftware = null;
-                cachedSoftwareAt = default;
+                foreach (var state in scopes.Values)
+                {
+                    state.CachedSoftware = null;
+                    state.CachedSoftwareAt = default;
+                }
                 softwareSnapshotGeneration = checked(softwareSnapshotGeneration + 1);
             }
         }
@@ -112,7 +126,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     public void Dispose()
     {
-        CatalogHolder? retired;
+        CatalogHolder[] retired;
         lock (lifecycleGate)
         {
             if (disposed)
@@ -120,16 +134,16 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 return;
             }
             disposed = true;
-            retired = current;
-            current = null;
+            retired = scopes.Values.Where(state => state.Current is not null).Select(state => state.Current!).ToArray();
+            scopes.Clear();
         }
-        retired?.Retire();
+        foreach (var holder in retired) holder.Retire();
     }
 
-    private async Task<SoftwareSnapshot> GetSoftwareAsync(CancellationToken cancellationToken)
+    private async Task<SoftwareSnapshot> GetSoftwareAsync(string scope, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        if (TryGetCachedSoftware(now, out var software))
+        if (TryGetCachedSoftware(scope, now, out var software))
         {
             return software;
         }
@@ -138,19 +152,20 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         try
         {
             now = DateTimeOffset.UtcNow;
-            if (TryGetCachedSoftware(now, out software))
+            if (TryGetCachedSoftware(scope, now, out software))
             {
                 return software;
             }
 
-            var records = await softwareRegistry.GetSoftwareAsync(cancellationToken);
+            var records = await softwareRegistry.GetSoftwareAsync(scope, cancellationToken);
             software = new SoftwareSnapshot(records,
                 WindowsGameListPaths.Normalize(windowsGameListSource.ReadExecutablePaths()));
             lock (lifecycleGate)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
-                cachedSoftware = software;
-                cachedSoftwareAt = DateTimeOffset.UtcNow;
+                var state = GetScope(scope);
+                state.CachedSoftware = software;
+                state.CachedSoftwareAt = DateTimeOffset.UtcNow;
             }
             return software;
         }
@@ -161,15 +176,17 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     }
 
     private bool TryGetCachedSoftware(
+        string scope,
         DateTimeOffset now,
         out SoftwareSnapshot software)
     {
         lock (lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            if (cachedSoftware is not null && now - cachedSoftwareAt < SnapshotLifetime)
+            if (scopes.TryGetValue(scope, out var state) && state.CachedSoftware is not null
+                && now - state.CachedSoftwareAt < SnapshotLifetime)
             {
-                software = cachedSoftware;
+                software = state.CachedSoftware;
                 return true;
             }
         }
@@ -181,6 +198,21 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     private sealed record SoftwareSnapshot(
         IReadOnlyList<SoftwareRecord> Software,
         IReadOnlySet<string> WindowsGamePaths);
+
+    // Accessed only under lifecycleGate.
+    private CatalogScopeState GetScope(string scope)
+    {
+        if (!scopes.TryGetValue(scope, out var state)) scopes.Add(scope, state = new());
+        return state;
+    }
+
+    private sealed class CatalogScopeState
+    {
+        internal CatalogHolder? Current;
+        internal SoftwareSnapshot? CachedSoftware;
+        internal DateTimeOffset CachedSoftwareAt;
+        internal DateTimeOffset LastAcquiredAt;
+    }
 
     // Acquire is only called under lifecycleGate while this is the current holder.
     // Releases never acquire lifecycleGate; Native disposal occurs after retirement

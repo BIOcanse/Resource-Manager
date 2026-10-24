@@ -47,7 +47,8 @@ public sealed class InteractiveDesktopObservationStore
         return true;
     }
 
-    internal WindowsProcessRuntimeStateSnapshot Read(IReadOnlyCollection<ProcessInstanceKey> expected)
+    internal WindowsProcessRuntimeStateSnapshot Read(IReadOnlyCollection<ProcessInstanceKey> expected,
+        IReadOnlyDictionary<int, int>? helperOwnerByProcessId = null)
     {
         Dictionary<int, InteractiveDesktopObservation> current;
         var now = clock.GetUtcNow().UtcTicks;
@@ -55,6 +56,7 @@ public sealed class InteractiveDesktopObservationStore
         var windows = current.ToDictionary(pair => pair.Key,
             pair => pair.Value.Windows.ToDictionary(window => window.ProcessId));
         var result = new Dictionary<ProcessInstanceKey, ProcessRuntimeStateFact>();
+        var verifiedProcesses = new HashSet<ProcessInstanceKey>();
         foreach (var process in expected.Distinct())
         {
             if (process.ProcessId <= 0 || process.StartKey <= 0 || process.StartKey > 2650467743999999999L) continue;
@@ -62,6 +64,7 @@ public sealed class InteractiveDesktopObservationStore
             if (session is null) continue;
             if (session == 0)
             {
+                verifiedProcesses.Add(process);
                 result[process] = new(HostManagerRuntimeStates.BackgroundProcess, false, false, false, false);
                 continue;
             }
@@ -72,6 +75,7 @@ public sealed class InteractiveDesktopObservationStore
             var foreground = sample.Foreground;
             if (window is not null && !SameInstance(window, process)
                 || foreground?.ProcessId == process.ProcessId && !SameInstance(foreground, process)) continue;
+            verifiedProcesses.Add(process);
             var projected = WindowsProcessRuntimeStateSnapshot.Project([process],
                 foreground?.ProcessId == process.ProcessId ? process.ProcessId : null,
                 window is null ? new Dictionary<int, ProcessWindowPresence>() : new Dictionary<int, ProcessWindowPresence>
@@ -79,7 +83,9 @@ public sealed class InteractiveDesktopObservationStore
                 ownershipIncomplete: !sample.Complete, _ => true);
             foreach (var fact in projected.Processes) result[fact.Key] = fact.Value;
         }
-        return new(result.Count == 0 ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, result);
+        return new WindowsProcessRuntimeStateSnapshot(
+            result.Count == 0 ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, result)
+            .InheritHelperStates(expected, helperOwnerByProcessId, verifiedProcesses);
     }
 
     internal bool? IsForeground(int processId, long creationFileTimeUtc)

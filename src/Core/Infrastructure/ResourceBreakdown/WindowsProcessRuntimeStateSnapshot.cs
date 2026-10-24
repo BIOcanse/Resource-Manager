@@ -26,12 +26,35 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
             SamplingObservationStatus.NotRequested,
             new Dictionary<ProcessInstanceKey, ProcessRuntimeStateFact>());
 
+    // Both the host and helper must have passed this capture's original instance/session checks.
+    internal WindowsProcessRuntimeStateSnapshot InheritHelperStates(
+        IReadOnlyCollection<ProcessInstanceKey> expectedProcesses,
+        IReadOnlyDictionary<int, int>? helperOwnerByProcessId,
+        IReadOnlySet<ProcessInstanceKey> verifiedProcesses)
+    {
+        if (helperOwnerByProcessId is null || helperOwnerByProcessId.Count == 0) return this;
+        var instances = expectedProcesses.GroupBy(process => process.ProcessId)
+            .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single());
+        var result = Processes.ToDictionary();
+        foreach (var (helperId, hostId) in helperOwnerByProcessId)
+        {
+            if (!instances.TryGetValue(helperId, out var helper)) continue;
+            if (verifiedProcesses.Contains(helper) && instances.TryGetValue(hostId, out var host)
+                && host.StartKey <= helper.StartKey && Processes.TryGetValue(host, out var state))
+                result[helper] = state;
+            else
+                result.Remove(helper);
+        }
+        return this with { Processes = result };
+    }
+
     internal static WindowsProcessRuntimeStateSnapshot Capture(
         IReadOnlyCollection<ProcessInstanceKey> expectedProcesses,
-        InteractiveDesktopObservationStore? desktops = null)
+        InteractiveDesktopObservationStore? desktops = null,
+        IReadOnlyDictionary<int, int>? helperOwnerByProcessId = null)
     {
         ArgumentNullException.ThrowIfNull(expectedProcesses);
-        if (desktops is not null) return desktops.Read(expectedProcesses);
+        if (desktops is not null) return desktops.Read(expectedProcesses, helperOwnerByProcessId);
         using (var current = Process.GetCurrentProcess())
             if (current.SessionId == 0) return Unavailable;
         try
@@ -127,7 +150,8 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
                 foregroundProcessId,
                 windowsByPid,
                 ownershipIncomplete,
-                IsSameProcessInstance);
+                IsSameProcessInstance,
+                helperOwnerByProcessId);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException
@@ -144,18 +168,21 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
         int? foregroundProcessId,
         IReadOnlyDictionary<int, ProcessWindowPresence> windowsByPid,
         bool ownershipIncomplete,
-        Func<ProcessInstanceKey, bool> isSameProcessInstance)
+        Func<ProcessInstanceKey, bool> isSameProcessInstance,
+        IReadOnlyDictionary<int, int>? helperOwnerByProcessId = null)
     {
         ArgumentNullException.ThrowIfNull(expectedProcesses);
         ArgumentNullException.ThrowIfNull(windowsByPid);
         ArgumentNullException.ThrowIfNull(isSameProcessInstance);
         var result = new Dictionary<ProcessInstanceKey, ProcessRuntimeStateFact>();
+        var verifiedProcesses = new HashSet<ProcessInstanceKey>();
         foreach (var expected in expectedProcesses)
         {
             if (!isSameProcessInstance(expected))
             {
                 continue;
             }
+            verifiedProcesses.Add(expected);
 
             windowsByPid.TryGetValue(expected.ProcessId, out var windows);
             var foreground = foregroundProcessId == expected.ProcessId;
@@ -186,7 +213,7 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
 
         return new WindowsProcessRuntimeStateSnapshot(
             SamplingObservationStatus.Current,
-            result);
+            result).InheritHelperStates(expectedProcesses, helperOwnerByProcessId, verifiedProcesses);
     }
 
     private static bool IsSameProcessInstance(ProcessInstanceKey expected)

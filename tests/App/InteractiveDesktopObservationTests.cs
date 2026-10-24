@@ -16,6 +16,28 @@ public sealed class InteractiveDesktopObservationTests
             foregroundKnown ? Window(foreground) : null, windows.Select(pid => Window(pid)).ToArray());
 
     [Fact]
+    public void VerifiedHelperUsesHostEvidenceWhenItsOwnWindowObservationIsIncomplete()
+    {
+        var store = new InteractiveDesktopObservationStore(new Clock(), _ => true, _ => 1);
+        Assert.True(store.Publish(Sample(1, 100, [100], complete: false)));
+        var result = WindowsProcessRuntimeStateSnapshot.Capture([new(100, Start), new(101, Start), new(102, Start)],
+            store, new Dictionary<int, int> { [101] = 100 });
+        Assert.True(result.Processes[new(101, Start)].ForegroundFocused);
+        Assert.False(result.Processes.ContainsKey(new(102, Start)));
+    }
+
+    [Fact]
+    public void HelperWithMismatchedWindowCreationCannotInheritAValidHostsState()
+    {
+        var store = new InteractiveDesktopObservationStore(new Clock(), _ => true, _ => 1);
+        Assert.True(store.Publish(Sample(1, 100, [100, 101])));
+        var result = WindowsProcessRuntimeStateSnapshot.Capture([new(100, Start), new(101, Start + 1)],
+            store, new Dictionary<int, int> { [101] = 100 });
+        Assert.True(result.Processes[new(100, Start)].ForegroundFocused);
+        Assert.False(result.Processes.ContainsKey(new(101, Start + 1)));
+    }
+
+    [Fact]
     public void ProjectsEachProcessFromItsOwnInteractiveSession()
     {
         var clock = new Clock();
