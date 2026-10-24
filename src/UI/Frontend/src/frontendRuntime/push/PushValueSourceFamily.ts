@@ -1,3 +1,4 @@
+import { MAX_UNSUBSCRIBED_SOURCE_ENTRIES } from "../source/sourceRetention.ts";
 import type { SourceSnapshot } from "../source/SourceSnapshot.ts";
 import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
 import {
@@ -71,6 +72,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
   private readonly canonicalizeQuery: (query: TQuery) => string;
   private readonly decoder: ResponseDecoder<TValue>;
   private readonly entries = new Map<string, PushEntry<TQuery, TValue>>();
+  private readonly unusedEntries = new Map<string, PushEntry<TQuery, TValue>>();
   private nextListenerId = 0;
 
   constructor(options: PushValueSourceFamilyOptions<TQuery, TValue>) {
@@ -101,6 +103,10 @@ implements PushValueSourceFamily<TQuery, TValue> {
       this.entries.set(canonicalQuery, entry);
     }
 
+    this.unusedEntries.delete(canonicalQuery);
+    if (entry.snapshot?.backendEpoch !== this.channel.backendEpoch) {
+      entry.snapshot = null;
+    }
     const listenerId = ++this.nextListenerId;
     entry.listeners.set(listenerId, {
       intervalMs: normalizeInterval(intervalMs),
@@ -122,7 +128,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
       disposed = true;
       entry!.listeners.delete(listenerId);
       if (entry!.listeners.size === 0) {
-        this.disposeEntry(entry!);
+        this.releaseDemand(entry!);
         return;
       }
       this.reconfigure(entry!);
@@ -157,24 +163,39 @@ implements PushValueSourceFamily<TQuery, TValue> {
     if (!this.isCurrent(entry)) {
       return;
     }
-    entry.snapshot = value;
+    // Reopening transport is demand, not a new value. Session changes still fence it.
+    if (value.status === "loading" && entry.snapshot
+      && value.backendEpoch === entry.snapshot.backendEpoch) {
+      return;
+    }
+    const snapshot = Object.freeze({
+      ...value,
+      revision: (entry.snapshot?.revision ?? 0) + 1
+    });
+    entry.snapshot = snapshot;
     for (const listener of entry.listeners.values()) {
       try {
-        listener.publish(value);
+        listener.publish(snapshot);
       } catch {
         // A consumer cannot replace or terminate the shared transport owner.
       }
     }
   }
 
-  private disposeEntry(entry: PushEntry<TQuery, TValue>): void {
+  private releaseDemand(entry: PushEntry<TQuery, TValue>): void {
     if (!this.isCurrent(entry)) {
       return;
     }
-    this.entries.delete(entry.canonicalQuery);
-    entry.snapshot = null;
     entry.channelLease?.dispose();
     entry.channelLease = null;
+    entry.effectiveIntervalMs = null;
+    this.unusedEntries.delete(entry.canonicalQuery);
+    this.unusedEntries.set(entry.canonicalQuery, entry);
+    while (this.unusedEntries.size > MAX_UNSUBSCRIBED_SOURCE_ENTRIES) {
+      const oldest = this.unusedEntries.keys().next().value!;
+      this.unusedEntries.delete(oldest);
+      this.entries.delete(oldest);
+    }
   }
 
   private isCurrent(entry: PushEntry<TQuery, TValue>): boolean {

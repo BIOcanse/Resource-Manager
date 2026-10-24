@@ -51,8 +51,8 @@ export function DiskUsageWorkspace() {
   const [resultReadFailure, setResultReadFailure] = createSignal<{ kind: "result" | "layout"; retry: () => void } | null>(null);
   const [scanFailed, setScanFailed] = createSignal(false);
   const [refreshOnResume, setRefreshOnResume] = createSignal(false);
-  const [summary, setSummary] = createSignal<DiskUsageScanSummary | null>(null);
-  const [layout, setLayout] = createSignal<DiskUsageLayout | null>(null);
+  const [summary, setSummary] = createSignal<DiskUsageScanSummary | null | undefined>(undefined);
+  const [layout, setLayout] = createSignal<DiskUsageLayout | null | undefined>(undefined);
   const [selectedRootIndex, setSelectedRootIndex] = createSignal(0);
   const [selected, setSelected] = createSignal(-1);
   const [menu, setMenu] = createSignal<
@@ -300,6 +300,9 @@ export function DiskUsageWorkspace() {
         volumes={volumes()}
         scanning={scanning()}
         volumesReadState={volumesReadState()}
+        hasResult={Boolean(layout() && summary())}
+        resultReadState={resultReadFailure() ? "error"
+          : summary() === undefined || layout() === undefined ? "loading" : "ready"}
         onRetryVolumes={() => void readVolumes()}
         onScan={(scope, mode, target) => void startScan(scope, mode, target)}
       >

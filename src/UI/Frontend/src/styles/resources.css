@@ -305,6 +305,7 @@
 /* 行少时表格按行数收缩（行容器的高度由行数给出），行多时到上限后滚动；至少留 4 行高。 */
 .resource-table-viewport {
   position: relative;
+  height: var(--resource-table-viewport-height);
   min-height: 152px;
   max-height: var(--resource-table-viewport-height);
   overflow: auto;

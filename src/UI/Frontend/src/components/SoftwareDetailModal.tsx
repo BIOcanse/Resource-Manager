@@ -389,15 +389,13 @@ function GpuPlacementPolicySection(props: {
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     if (!frontendWork.frontendVisible() || intervalMs === undefined) {
-      setCpuTopology(null);
       return;
     }
     const unsubscribe = frontendRuntime.sources.cpuTopology.subscribeSnapshot(intervalMs,
       (snapshot) => setCpuTopology(snapshot.data));
     onCleanup(() => {
       unsubscribe();
-      setCpuTopology(null);
-    });
+          });
   });
   const [draft, setDraft] = createSignal<GpuPlacementSoftwarePolicy | null>(null);
   const [actionInProgress, setActionInProgress] = createSignal(false);

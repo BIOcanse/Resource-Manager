@@ -4,6 +4,7 @@ import { formatBytes, formatBytePair } from "../../presentation/byteUnits.ts";
 import { pickShellFolder } from "../../utils.ts";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../../text.ts";
+import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import type {
   DiskUsageScanMode,
   DiskUsageScanScope,
@@ -20,6 +21,8 @@ import type {
 export function DiskUsagePage(props: {
   volumes: DiskUsageVolume[];
   scanning: boolean;
+  hasResult: boolean;
+  resultReadState: "loading" | "ready" | "error";
   volumesReadState: "loading" | "ready" | "error";
   onRetryVolumes: () => void;
   onScan: (scope: DiskUsageScanScope, mode: DiskUsageScanMode, target: string) => void;
@@ -32,7 +35,7 @@ export function DiskUsagePage(props: {
   const [folder, setFolder] = createSignal("");
   // 有结果之后默认收起设置区；用户想重扫再展开。
   const [setupOpen, setSetupOpen] = createSignal(true);
-  const collapsed = () => Boolean(props.children) && !setupOpen();
+  const collapsed = () => props.hasResult && !setupOpen();
 
   const scannableVolumes = () => props.volumes.filter((volume) => volume.isReady);
   const selectedVolume = () =>
@@ -68,7 +71,7 @@ export function DiskUsagePage(props: {
       <div class="panel disk-usage-setup" classList={{ collapsed: collapsed() }}>
         <div class="panel-header">
           <div class="disk-usage-setup-actions">
-            <Show when={props.children}>
+            <Show when={props.hasResult}>
               <button
                 class="secondary"
                 type="button"
@@ -87,7 +90,7 @@ export function DiskUsagePage(props: {
             >
               {props.scanning
                 ? uiText.diskUsage.scanning
-                : props.children
+                : props.hasResult
                   ? uiText.diskUsage.rescan
                   : uiText.diskUsage.scan}
             </button>
@@ -166,6 +169,9 @@ export function DiskUsagePage(props: {
               <h2>{uiText.diskUsage.volumeColumnLabel}</h2>
             </div>
           </div>
+          <Show when={props.volumesReadState === "loading" && props.volumes.length === 0}>
+            <ContentState kind="waiting" title={uiText.observationNotice.loading(uiText.diskUsage.volumeColumnLabel)} />
+          </Show>
           <Show when={props.volumesReadState === "error"}>
             <div role="alert">
               <p>{uiText.diskUsage.volumesReadFailed}</p>
@@ -231,19 +237,17 @@ export function DiskUsagePage(props: {
         </div>
       </Show>
 
-      <Show
-        when={props.children}
-        fallback={(
-          <div class="panel disk-usage-result">
-            <div class="optimization-empty disk-usage-empty">
-              <strong>{uiText.diskUsage.emptyTitle}</strong>
-              <span>{uiText.diskUsage.emptyDetail}</span>
-            </div>
-          </div>
-        )}
-      >
-        {props.children}
+      <Show when={!props.hasResult && props.resultReadState !== "error"}>
+        <div class="panel disk-usage-result">
+          <ContentState
+            kind={props.resultReadState === "loading" ? "waiting" : "empty"}
+            title={props.resultReadState === "loading"
+              ? uiText.observationNotice.loading(uiText.diskUsage.title) : uiText.diskUsage.emptyTitle}
+            detail={props.resultReadState === "loading" ? undefined : uiText.diskUsage.emptyDetail}
+          />
+        </div>
       </Show>
+      {props.children}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import monitorDemandRetentionProbe, { monitorFirstTableValueProbe } from "./monitorDemandRetentionProbe.js";
+
 export default async function frontendUsabilityJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const failures = [];
   page.on("pageerror", (error) => failures.push(String(error)));
@@ -20,8 +22,10 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   };
   await page.setViewportSize({ width: 800, height: 500 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await setScenario({ capabilities: "ready", settings: "ready" });
+  await setScenario({ capabilities: "ready", settings: "ready", pausedSubscriptionPaths: ["/api/resource-monitor/subscribe"] });
   await page.reload({ waitUntil: "domcontentloaded" });
+  const firstTableValue = await monitorFirstTableValueProbe(page, baseUrl);
+  const demandRetention = await monitorDemandRetentionProbe(page, baseUrl);
   await page.evaluate(() => {
     window.__resourceManagerFocusTrace = [];
     const recordFocus = (event) => {
@@ -274,6 +278,8 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
 
   assert(failures.length === 0, `Browser page errors: ${JSON.stringify(failures)}`);
   return {
+    firstTableValue,
+    demandRetention,
     contextMenuKeyboard: true,
     metricDialogGeometry,
     dialogFocusLifecycle: true,

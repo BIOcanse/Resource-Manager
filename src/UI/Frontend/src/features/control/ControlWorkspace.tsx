@@ -158,11 +158,11 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const actual = () => actualSource()?.data ?? null;
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
-    if (!visible() || intervalMs === undefined) { setActualSource(null); return; }
+    if (!visible() || intervalMs === undefined) { return; }
     const unsubscribe = runtime.sources.controlActualState.subscribeSnapshot(
       intervalMs,
       setActualSource);
-    onCleanup(() => { unsubscribe(); setActualSource(null); });
+    onCleanup(unsubscribe);
   });
 
   const apply = async (objectId: string) => {

@@ -1,3 +1,4 @@
+import { MAX_UNSUBSCRIBED_SOURCE_ENTRIES } from "./sourceRetention.ts";
 import { RequestProblem } from "../request/RequestProblem.ts";
 import type { BackendSessionSnapshot } from "../session/backendSessionTypes.ts";
 import type {
@@ -58,7 +59,6 @@ export interface SourceActivityObservation {
 export interface SourceRegistryOptions {
   readonly schedule?: (callback: () => void, delayMs: number) => unknown;
   readonly cancelSchedule?: (handle: unknown) => void;
-  readonly recordRetentionMs?: number;
   readonly random?: () => number;
   readonly onListenerError?: (error: unknown, sourceKey: string) => void;
   readonly monotonicNow?: () => number;
@@ -94,17 +94,14 @@ interface SourceRecord {
   consecutiveFailures: number;
   automaticRefreshBlocked: boolean;
   refreshTimer: unknown | null;
-  cleanupTimer: unknown | null;
 }
-
-const defaultRecordRetentionMs = 30_000;
 
 export class SourceRegistry {
   private readonly records = new Map<string, SourceRecord>();
+  private readonly unusedRecords = new Map<string, SourceRecord>();
   private readonly backendSession: BackendSessionSource;
   private readonly schedule: (callback: () => void, delayMs: number) => unknown;
   private readonly cancelSchedule: (handle: unknown) => void;
-  private readonly recordRetentionMs: number;
   private readonly random: () => number;
   private readonly onListenerError: (error: unknown, sourceKey: string) => void;
   private readonly monotonicNow: () => number;
@@ -122,7 +119,6 @@ export class SourceRegistry {
       ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
     this.cancelSchedule = options.cancelSchedule
       ?? ((handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>));
-    this.recordRetentionMs = normalizeRetention(options.recordRetentionMs);
     this.random = options.random ?? Math.random;
     this.onListenerError = options.onListenerError
       ?? ((error, sourceKey) => console.error(
@@ -209,7 +205,6 @@ export class SourceRegistry {
     this.unsubscribeBackendSession();
     for (const record of this.records.values()) {
       this.clearRefreshTimer(record);
-      this.clearCleanupTimer(record);
       this.cancelAttempt(record, "SourceRegistry disposed.");
       this.publish(record, {
         status: "disposed",
@@ -223,6 +218,7 @@ export class SourceRegistry {
       record.leases.clear();
     }
     this.records.clear();
+    this.unusedRecords.clear();
   }
 
   private acquire<T>(
@@ -241,7 +237,7 @@ export class SourceRegistry {
       record = this.createRecord(registryKey, registration, untypedDescriptor);
       this.records.set(record.registryKey, record);
     }
-    this.clearCleanupTimer(record);
+    this.unusedRecords.delete(record.registryKey);
 
     const leaseId = ++this.nextLeaseId;
     const leaseState: LeaseState = {
@@ -299,7 +295,7 @@ export class SourceRegistry {
         record!.leases.delete(leaseId);
         this.reconcileDemand(record!, wasActive);
         if (record!.leases.size === 0) {
-          this.scheduleCleanup(record!);
+          this.retainUnusedRecord(record!);
         }
       }
     };
@@ -350,8 +346,7 @@ export class SourceRegistry {
       inFlight: null,
       consecutiveFailures: 0,
       automaticRefreshBlocked: false,
-      refreshTimer: null,
-      cleanupTimer: null
+      refreshTimer: null
     };
   }
 
@@ -359,13 +354,7 @@ export class SourceRegistry {
     const active = this.hasActiveDemand(record);
     if (!active) {
       this.clearRefreshTimer(record);
-      const hadAttempt = record.inFlight !== null;
       this.cancelAttempt(record, "Source has no active demand.");
-      if (!this.retainsLastGood(record)) {
-        this.publishIdle(record);
-      } else if (hadAttempt) {
-        this.restoreSettledSnapshot(record);
-      }
       return;
     }
     if (!wasActive) {
@@ -419,15 +408,15 @@ export class SourceRegistry {
     const attempt = ++record.nextAttempt;
     const startedAt = this.onActivity ? this.readMonotonicNow() : 0;
     const previous = this.readAcceptedSnapshot(record);
-    this.publish(record, {
-      status: previous ? "refreshing" : "loading",
-      data: previous?.data ?? null,
-      error: null,
-      backendEpoch: record.backendEpoch,
-      acceptedAttempt: previous?.acceptedAttempt ?? null,
-      domainRevision: previous?.domainRevision ?? null,
-      capturedAt: previous?.capturedAt ?? null
-    });
+    // A refresh changes sampling only. Keep the complete accepted value/status
+    // until its replacement settles, including an accepted empty or failure value.
+    if (record.snapshot.status === "idle") {
+      this.publish(record, {
+        status: "loading", data: null, error: null,
+        backendEpoch: record.backendEpoch, acceptedAttempt: null,
+        domainRevision: null, capturedAt: null
+      });
+    }
 
     let flight!: InFlightState;
     const promise = Promise.resolve()
@@ -441,7 +430,6 @@ export class SourceRegistry {
         if (domainRevision !== null
           && previousRevision !== null
           && compareDomainRevision(domainRevision, previousRevision) < 0) {
-          this.restoreSettledSnapshot(record);
           this.observeSourceActivity(
             record,
             flight,
@@ -503,7 +491,7 @@ export class SourceRegistry {
           record.inFlight = null;
           this.scheduleNextRefresh(record);
           if (record.leases.size === 0) {
-            this.scheduleCleanup(record);
+            this.retainUnusedRecord(record);
           }
         }
       });
@@ -622,52 +610,6 @@ export class SourceRegistry {
     });
   }
 
-  private restoreSettledSnapshot(record: SourceRecord): void {
-    if (!this.retainsLastGood(record) && !this.hasActiveDemand(record)) {
-      this.publishIdle(record);
-      return;
-    }
-    const retained = this.readAcceptedSnapshot(record);
-    if (retained) {
-      if (record.snapshot === retained
-        && record.snapshot.status === "ready") {
-        return;
-      }
-      this.publish(record, {
-        status: "ready",
-        data: retained.data,
-        error: null,
-        backendEpoch: retained.backendEpoch,
-        acceptedAttempt: retained.acceptedAttempt,
-        domainRevision: retained.domainRevision,
-        capturedAt: retained.capturedAt
-      });
-      return;
-    }
-
-    const session = this.backendSession.snapshot;
-    if (session.status !== "ready" || session.session?.epoch !== record.backendEpoch) {
-      return;
-    }
-    if (record.snapshot.status === "idle"
-      && record.snapshot.backendEpoch === record.backendEpoch) {
-      return;
-    }
-    this.publishIdle(record);
-  }
-
-  private publishIdle(record: SourceRecord): void {
-    this.publish(record, {
-      status: "idle",
-      data: null,
-      error: null,
-      backendEpoch: record.backendEpoch,
-      acceptedAttempt: null,
-      domainRevision: null,
-      capturedAt: null
-    });
-  }
-
   private readAcceptedSnapshot(record: SourceRecord): SourceSnapshot<unknown> | null {
     if (this.retainsLastGood(record)) {
       return record.lastGood?.backendEpoch === record.backendEpoch
@@ -725,19 +667,17 @@ export class SourceRegistry {
     }, delay);
   }
 
-  private scheduleCleanup(record: SourceRecord): void {
-    if (this.disposed || record.leases.size > 0 || record.inFlight || record.cleanupTimer) {
+  private retainUnusedRecord(record: SourceRecord): void {
+    if (this.disposed || record.leases.size > 0 || record.inFlight) {
       return;
     }
-    record.cleanupTimer = this.schedule(() => {
-      record.cleanupTimer = null;
-      if (record.leases.size === 0
-        && !record.inFlight
-        && this.records.get(record.registryKey) === record) {
-        this.clearRefreshTimer(record);
-        this.records.delete(record.registryKey);
-      }
-    }, this.recordRetentionMs);
+    this.unusedRecords.delete(record.registryKey);
+    this.unusedRecords.set(record.registryKey, record);
+    while (this.unusedRecords.size > MAX_UNSUBSCRIBED_SOURCE_ENTRIES) {
+      const oldest = this.unusedRecords.keys().next().value!;
+      this.unusedRecords.delete(oldest);
+      this.records.delete(oldest);
+    }
   }
 
   private cancelAttempt(record: SourceRecord, reason: string): void {
@@ -869,14 +809,6 @@ export class SourceRegistry {
     }
     this.cancelSchedule(record.refreshTimer);
     record.refreshTimer = null;
-  }
-
-  private clearCleanupTimer(record: SourceRecord): void {
-    if (record.cleanupTimer === null) {
-      return;
-    }
-    this.cancelSchedule(record.cleanupTimer);
-    record.cleanupTimer = null;
   }
 
   private throwIfDisposed(): void {
@@ -1043,12 +975,6 @@ function normalizeInterval(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.max(1, Math.floor(value))
     : null;
-}
-
-function normalizeRetention(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? Math.floor(value)
-    : defaultRecordRetentionMs;
 }
 
 function defaultMonotonicNow(): number {

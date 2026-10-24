@@ -148,6 +148,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 editingAvailable={dashboardAvailable()}
                 bars={monitor.activeResourceBars()}
                 snapshotBars={monitor.orderedSnapshotBars()}
+                observation={monitor.resourceBarsObservation()}
                 processDetails={monitor.resourceProcessDetails()}
                 processDetailsObservation={monitor.resourceProcessDetailsObservation()}
                 selection={monitor.resourceSelection()}
@@ -181,6 +182,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 metricObservation={monitor.snapshotObservation()}
                 columnSettings={monitor.activeResourceTableColumns()}
                 snapshot={monitor.resourceTableSnapshot()}
+                observation={activeResourceTableObservation()}
                 sortColumnId={monitor.resourceTableSort().columnId}
                 sortDirection={monitor.resourceTableSort().direction}
                 expandedSoftwareIds={monitor.expandedResourceTableRows()}

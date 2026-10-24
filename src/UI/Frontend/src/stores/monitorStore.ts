@@ -244,7 +244,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   });
   const currentMetricIds = createMemo(() => {
     const ids = new Set<string>();
-    for (const card of options.metricSnapshotActive() ? activeCards() : []) {
+    for (const card of activeCards()) {
       // 设备字段走按字段订阅，不进原有指标订阅。
       if (card.main && !fieldCardSlot(card.main, card.mainBinding)) {
         ids.add(card.main);
@@ -255,7 +255,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
         }
       });
     }
-    if (options.resourceTableActive() && resourceTableMode() === "performance") {
+    if (resourceTableMode() === "performance") {
       for (const metricId of defaultPerformanceMetricIds(catalog())) {
         ids.add(metricId);
       }
@@ -264,7 +264,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return [...ids];
   });
   const snapshotMetricIds = createMemo(() => {
-    if (options.smartMonitoringEnabled() || !options.metricSnapshotActive()) {
+    if (options.smartMonitoringEnabled()) {
       return currentMetricIds();
     }
     const catalogIds = allCatalogMetricIds(catalog());
@@ -312,19 +312,17 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
     intervalMs: options.resourceTableIntervalMs()
   }));
-  const snapshot = createMemo(() => metricSnapshotNeeded()
-    && metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
+  const snapshot = createMemo(() => metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? metricSourceSnapshot()?.source.data ?? null : null);
-  const snapshotObservation = createMemo(() => metricSnapshotNeeded() && metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
+  const snapshotObservation = createMemo(() => metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
-  const resourceTableSnapshot = createMemo(() => resourceTableNeeded()
-    && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
+  const resourceTableSnapshot = createMemo(() => tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
     ? tableSourceSnapshot()?.source.data?.table ?? null : null);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
-  const resourceTableObservation = createMemo(() => resourceTableNeeded() && tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
+  const resourceTableObservation = createMemo(() => tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
     ? pushObservation(tableSourceSnapshot()?.source ?? null) : loadingObservation());
   const orderedSnapshotBars = createMemo(() => {
     const bars = resourceBreakdownSnapshot()?.bars ?? [];
@@ -334,13 +332,17 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   });
   // 目录每 5 秒推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
   const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldCatalogDevice[]> | null>(null);
-  const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
+  const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<MonitorSourceBinding<readonly MetricFieldDevice[]> | null>(null);
   const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data ?? null, null, { equals: sameMetricFieldCatalog });
-  const fieldDevices = createMemo(() => fieldDevicesSnapshot()?.data ?? null);
   const fieldSlots = createMemo(() => fieldCardSlots(activeCards()));
+  const fieldQuery = createMemo(() => ({
+    fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort()
+  }));
+  const fieldDevices = createMemo(() => fieldDevicesSnapshot()?.queryKey === JSON.stringify(fieldQuery())
+    ? fieldDevicesSnapshot()?.source.data ?? null : null);
   const fieldSubscriptionKey = createMemo(() => JSON.stringify({
     active: options.metricSnapshotActive(),
-    fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort(),
+    fields: fieldQuery().fields,
     intervalMs: options.metricSnapshotIntervalMs()
   }));
   const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
@@ -382,7 +384,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     onCleanup(() => {
       accepting = false;
       unsubscribe();
-      setMetricSourceSnapshot(null);
     });
   });
   // 字段目录和监视读数共用后端发布的间隔。
@@ -392,7 +393,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       return;
     }
     const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(intervalMs, setFieldCatalogSnapshot);
-    onCleanup(() => { unsubscribe(); setFieldCatalogSnapshot(null); });
+    onCleanup(unsubscribe);
   });
   createEffect(() => {
     const binding = JSON.parse(fieldSubscriptionKey()) as {
@@ -409,13 +410,12 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       binding.intervalMs,
       (value) => {
         if (accepting) {
-          setFieldDevicesSnapshot(value);
+          setFieldDevicesSnapshot({ queryKey: JSON.stringify({ fields: binding.fields }), source: value });
         }
       });
     onCleanup(() => {
       accepting = false;
       unsubscribe();
-      setFieldDevicesSnapshot(null);
     });
   });
   createEffect(() => {
@@ -440,7 +440,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     onCleanup(() => {
       accepting = false;
       unsubscribe();
-      setTableSourceSnapshot(null);
     });
   });
   onCleanup(() => {
@@ -1177,7 +1176,7 @@ function moveItemBefore<T>(items: T[], key: (item: T) => string, sourceKey: stri
 }
 
 function pushObservation<T>(snapshot: SourceSnapshot<T> | null): ObservationState {
-  if (snapshot?.status === "ready" && snapshot.data !== null) {
+  if (snapshot?.status === "ready") {
     return readyObservation(snapshot.capturedAt ?? undefined);
   }
   if (snapshot && (snapshot.status === "error" || snapshot.status === "unavailable" || snapshot.status === "disposed")) {

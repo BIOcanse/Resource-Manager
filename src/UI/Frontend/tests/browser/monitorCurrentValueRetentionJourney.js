@@ -1,11 +1,16 @@
+import { monitorFirstTableValueProbe } from "./monitorDemandRetentionProbe.js";
 import assert from "node:assert/strict";
 
 export default async function monitorCurrentValueRetentionJourney(page, baseUrl) {
   const paths = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe"];
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  await page.setViewportSize({ width: 1067, height: 800 });
+  await patch({ pausedSubscriptionPaths: ["/api/resource-monitor/subscribe"] });
+  await page.setViewportSize({ width: 800, height: 500 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  const firstTableValue = await monitorFirstTableValueProbe(page, baseUrl);
+  await page.setViewportSize({ width: 1067, height: 800 });
+  await page.locator(".resource-breakdown-panel").scrollIntoViewIfNeeded();
   await waitForValues();
   const before = await values();
   assert(before.rows.length > 0);
@@ -28,6 +33,7 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await patch({ pausedSubscriptionPaths: paths });
   await page.waitForTimeout(100);
   const paused = await telemetry();
+  const retained = await values();
   const navigation = page.getByRole("navigation", { name: "页面切换" });
   await navigation.getByRole("button", { name: "组件与软件", exact: true }).click();
   await page.waitForFunction(async (paths) => {
@@ -35,19 +41,20 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
     return paths.every((path) => current[path]?.logicalInFlight === 0);
   }, paths);
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
+  await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();
-    return current["/api/metrics/subscribe"]?.logicalInFlight > 0
-      && current["/api/resource-monitor/subscribe"]?.logicalInFlight > 0;
+    return Object.entries(current["/api/resource-monitor/subscribe"]?.inFlightByQuery ?? {})
+      .some(([query, count]) => query.includes("scope=table") && count > 0);
   });
   const after = await values();
-  assert.deepEqual(after.rows, [], "Zero demand releases the source; reacquisition cannot replay old rows");
-  assert.deepEqual(after.bars, [], "Reacquisition cannot replay old resource bars");
-  assert(after.metrics.every((text) => !text.includes("%")), "Reacquisition cannot replay old metric values");
+  assert.deepEqual(after.rows, retained.rows, "Reacquisition immediately displays the latest rows");
+  assert.deepEqual(after.bars, retained.bars, "Resource bars survive demand release");
+  assert.deepEqual(after.metrics, retained.metrics, "Metrics survive demand release");
   const resumed = await telemetry();
   for (const path of paths) {
     assert.equal(resumed[path].publications, paused[path].publications,
-      "Empty current values must not depend on another backend callback");
+      "Current values must not depend on another backend callback");
   }
   for (const path of ["/api/metrics/snapshot", "/api/resource-monitor/snapshot"]) {
     assert.equal(resumed[path]?.started ?? 0, 0, "Frontend must not fill the gap with a direct GET");
@@ -56,8 +63,10 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await waitForValues();
   await patch({ resourceTableVariant: "empty" });
   await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
+  await page.locator(".resource-table-panel .content-state.empty").getByText("当前没有可显示的资源", { exact: true }).waitFor();
+  assert.equal(await page.locator("#resourceTableStatus").textContent(), "0", "A received zero-row value has a real zero count");
   assert.deepEqual(errors, []);
-  return { before, after, releasedValuesCleared: true, incompatibleQueryCleared: true, callbacksResumed: true, actualEmptyValueApplied: true };
+  return { firstTableValue, before, after, releasedValuesRetained: true, incompatibleQueryCleared: true, callbacksResumed: true, actualEmptyValueApplied: true };
 
   async function waitForValues() {
     await page.waitForFunction(() =>

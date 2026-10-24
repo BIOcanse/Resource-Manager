@@ -90,10 +90,6 @@ export function CpuTopologyDiagram(props: {
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel) || intervalMs === undefined) {
-      setTopology(null);
-      setResidency(null);
-      setNumaFields(null);
-      setFrequencyFields(null);
       return;
     }
     const stopTopology = frontendRuntime.sources.cpuTopology.subscribeSnapshot(

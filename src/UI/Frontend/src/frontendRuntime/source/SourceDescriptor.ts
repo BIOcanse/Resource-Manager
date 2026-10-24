@@ -10,6 +10,7 @@ export interface SourceDescriptor<T> {
   readonly mergeValue?: (previous: T | null, incoming: T) => T;
   readonly selectDomainRevision?: (value: T) => SourceDomainRevision;
   readonly selectCapturedAt?: (value: T) => string | null;
+  /** Allows existing failure-to-stale semantics only; demand release always retains current. */
   readonly retainLastGood?: boolean;
   readonly canRetainStale?: (error: unknown) => boolean;
 }
@@ -27,6 +28,7 @@ export interface SourceFamilyDescriptor<TQuery, TValue> {
   readonly mergeValue?: (previous: TValue | null, incoming: TValue) => TValue;
   readonly selectDomainRevision?: (value: TValue) => SourceDomainRevision;
   readonly selectCapturedAt?: (value: TValue) => string | null;
+  /** Allows existing failure-to-stale semantics only; demand release always retains current. */
   readonly retainLastGood?: boolean;
   readonly canRetainStale?: (error: unknown) => boolean;
 }

@@ -102,7 +102,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     const unsubscribe = options.selfSchedulingSource.subscribeSnapshot(
       intervalMs,
       (snapshot) => setSelfScheduling(snapshot.data));
-    onCleanup(() => { unsubscribe(); setSelfScheduling(null); });
+    onCleanup(unsubscribe);
   });
 
   // 本机状态和其他数据源一样，窗口隐藏即停止订阅，重新显示时再订阅。
@@ -117,7 +117,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     const unsubscribe = options.localSystemSource.subscribeSnapshot(
       intervalMs,
       (snapshot) => setLocalSystemStatus(snapshot.data));
-    onCleanup(() => { unsubscribe(); setLocalSystemStatus(null); });
+    onCleanup(unsubscribe);
   });
 
   createEffect(() => {

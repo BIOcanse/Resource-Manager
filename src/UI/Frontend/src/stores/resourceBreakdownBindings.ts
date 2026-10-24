@@ -56,10 +56,10 @@ function bindCurrent<TQuery, TValue>(
     let accepting = true;
     const unsubscribe = source.subscribeSnapshot(binding.query, binding.intervalMs, snapshot => {
       if (!accepting) return;
-      setCurrent({ key: bindingKey, snapshot });
+      setCurrent({ key: JSON.stringify(binding.query), snapshot });
       if (snapshot.data) untrack(() => onValue?.(snapshot.data!));
     });
-    onCleanup(() => { accepting = false; unsubscribe(); setCurrent(null); });
+    onCleanup(() => { accepting = false; unsubscribe(); });
   });
-  return createMemo(() => current()?.key === key() ? current()!.snapshot : null);
+  return createMemo(() => current()?.key === JSON.stringify(JSON.parse(key()).query) ? current()!.snapshot : null);
 }

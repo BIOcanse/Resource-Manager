@@ -55,13 +55,12 @@ export function useDeviceTopologyState(): DeviceTopologyStoreView {
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
     if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology) || intervalMs === undefined) {
-      setSource(null);
       return;
     }
     const unsubscribe = runtime.sources.deviceTopology.subscribeSnapshot(
       intervalMs,
       setSource);
-    onCleanup(() => { unsubscribe(); setSource(null); });
+    onCleanup(unsubscribe);
   });
   const observation = createMemo<ObservationState>(() => {
     const current = source();
