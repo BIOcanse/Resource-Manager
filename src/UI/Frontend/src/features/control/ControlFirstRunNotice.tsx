@@ -12,7 +12,7 @@ import { uiText } from "../../text.ts";
  * 所以话要在第一次就说完，而不是等用户去解锁更高一档才说。
  * Root 的风险在设置里切档位时单独说明。
  */
-export function ControlFirstRunNotice(props: { onAcknowledge: () => void }) {
+export function ControlFirstRunNotice(props: { onAcknowledge: () => void; busy?: boolean; failed?: boolean }) {
   const text = uiText.control.notice;
   const [step, setStep] = createSignal<"warranty" | "risk">("warranty");
 
@@ -36,7 +36,8 @@ export function ControlFirstRunNotice(props: { onAcknowledge: () => void }) {
               </p>
             </DialogBody>
             <div class="modal-actions">
-              <button type="button" onClick={props.onAcknowledge}>{text.accept}</button>
+              <Show when={props.failed}><p role="alert">{uiText.control.recovery.noticeAckFailed}</p></Show>
+              <button type="button" disabled={props.busy} onClick={props.onAcknowledge}>{text.accept}</button>
             </div>
           </>
         }

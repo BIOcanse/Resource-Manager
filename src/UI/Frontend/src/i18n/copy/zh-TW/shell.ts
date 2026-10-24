@@ -71,6 +71,24 @@ export const zhShellCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "重試",
+      noticeReadFailed: "無法讀取控制須知狀態。請重新讀取。",
+      noticeAckFailed: "確認控制須知失敗。請重試。",
+      accessLoading: "正在讀取調節權限。",
+      accessReadFailed: "無法讀取調節權限。請重新讀取。",
+      objectMissing: "裝置目前不在場。",
+      capabilityMissing: "裝置沒有這項功能。",
+      writerMissing: "此項尚未接入寫入通道。",
+      backendUnavailable: "此項寫入通道目前無法使用。",
+      releaseFailed: "無法釋放此項控制。",
+      unitMismatch: "設定的單位與裝置不符。",
+      writeFailed: "寫入失敗。",
+      writeRejected: "裝置拒絕了此項設定。詳情請見診斷。",
+      readOnly: "目前啟動設定僅允許讀取。",
+      accessRequired: (level: string) => `此項需要 ${level} 調節權限。`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `此項必須介於 ${minimum} 與 ${maximum} ${unit} 之間。`
+    },
     reassertionInterval: "重新套用間隔（秒）",
     stateUnavailable: "尚未讀取到權威控制設定，暫時無法套用。",
     retryRead: "重新讀取",

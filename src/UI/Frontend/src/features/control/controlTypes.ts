@@ -169,12 +169,20 @@ export interface ControlObjectDesiredState {
  */
 export interface ControlDesiredState {
   objects: readonly ControlObjectDesiredState[];
+  pendingReleases?: readonly ControlObjectDesiredState[];
+}
+
+export interface ControlApplyReason {
+  code: string;
+  arguments?: { requiredAccessLevel?: ControlAccessLevel | null; minimum?: number | null;
+    maximum?: number | null; unit?: string | null } | null;
 }
 
 export interface ControlApplyOutcome {
   objectId: string;
   capabilityId: string;
   status: "applied" | "unsupported" | "failed";
+  reason?: ControlApplyReason | null;
   message: string | null;
 }
 

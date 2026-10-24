@@ -78,6 +78,24 @@ const jaJpAppCopy: AppCopy = {
     }
   },
   control: {
+    recovery: {
+      retry: "再試行",
+      noticeReadFailed: "制御に関する注意事項の状態を読み取れません。再度読み込んでください。",
+      noticeAckFailed: "制御に関する注意事項を確認済みにできませんでした。再試行してください。",
+      accessLoading: "制御アクセスレベルを読み込み中です。",
+      accessReadFailed: "制御アクセスレベルを読み取れません。再度読み込んでください。",
+      objectMissing: "デバイスは現在接続されていません。",
+      capabilityMissing: "このデバイスには該当する機能がありません。",
+      writerMissing: "この項目の書き込みはまだ実装されていません。",
+      backendUnavailable: "書き込みチャネルは現在利用できません。",
+      releaseFailed: "この制御を解除できませんでした。",
+      unitMismatch: "設定の単位がデバイスと一致しません。",
+      writeFailed: "書き込みに失敗しました。",
+      writeRejected: "デバイスがこの設定を拒否しました。詳細は診断を参照してください。",
+      readOnly: "現在の起動プロファイルは読み取り専用です。",
+      accessRequired: (level: string) => `この項目には ${level} の制御アクセスが必要です。`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `この値は ${minimum}～${maximum} ${unit} の範囲で指定してください。`
+    },
     reassertionInterval: "再適用の間隔（秒）",
     stateUnavailable: "確定済みの制御設定を読み取れないため、適用を停止しています。",
     retryRead: "再読み込み",

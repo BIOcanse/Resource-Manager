@@ -22,6 +22,12 @@ public interface IControlPlane
 {
     Task<ControlStateView> ReadStateAsync(CancellationToken cancellationToken);
 
+    /// <summary>Revoke saved intent, replay eligibility and receipts without a hardware write.</summary>
+    Task ForgetInstanceAsync(string instanceId, CancellationToken cancellationToken);
+
+    /// <summary>Explicitly retry only failed/unsupported saved items and pending releases for this object.</summary>
+    Task<ControlStateView> RetryObjectAsync(string objectId, CancellationToken cancellationToken);
+
     /// <summary>
     /// 替换某个对象上的设定并立刻施加。
     /// 传空的 settings 就是把这个对象的设定清掉（回到不管它的状态）。

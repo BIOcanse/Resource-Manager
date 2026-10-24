@@ -31,9 +31,9 @@ public sealed class ControlWriteLayer(
     ILogger<ControlWriteLayer>? logger = null,
     StartupCapabilitySet? capabilities = null) : IControlWriteLayer
 {
-    private const string ObjectMissing = "这个设备现在不在了，设定暂时生效不了。";
-    private const string CapabilityMissing = "这个设备上没有这一项。";
-    private const string WriterMissing = "只读，写入未接入。";
+    private const string ObjectMissing = "control-object-missing";
+    private const string CapabilityMissing = "control-capability-missing";
+    private const string WriterMissing = "control-writer-missing";
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
@@ -49,7 +49,7 @@ public sealed class ControlWriteLayer(
             : null;
         if (rejection is not null)
             return new(desired.Objects.SelectMany(target => target.Settings.Select(setting =>
-                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, rejection))).ToArray(), DateTimeOffset.UtcNow);
+                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, rejection) { Reason = new(rejection) })).ToArray(), DateTimeOffset.UtcNow);
 
         var objects = catalog.ReadObjects().Objects
             .ToDictionary(static entry => entry.Id, StringComparer.Ordinal);
@@ -67,7 +67,7 @@ public sealed class ControlWriteLayer(
                         target.ObjectId,
                         setting.CapabilityId,
                         ControlApplyStatuses.Unsupported,
-                        ObjectMissing));
+                        ObjectMissing) { Reason = new(ObjectMissing) });
                 }
                 continue;
             }
@@ -102,7 +102,7 @@ public sealed class ControlWriteLayer(
         if (removed.Objects.Count == 0) return ControlApplyReport.Empty;
         if (capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners))
             return new(removed.Objects.SelectMany(target => target.Settings.Select(setting =>
-                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, "startup-profile-read-only"))).ToArray(), DateTimeOffset.UtcNow);
+                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, "startup-profile-read-only") { Reason = new("startup-profile-read-only") })).ToArray(), DateTimeOffset.UtcNow);
         var objects = catalog.ReadObjects().Objects.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var outcomes = new List<ControlApplyOutcome>();
         foreach (var removedObject in removed.Objects)
@@ -130,7 +130,7 @@ public sealed class ControlWriteLayer(
                 }
                 outcomes.Add(new ControlApplyOutcome(removedObject.ObjectId, setting.CapabilityId,
                     restored ? ControlApplyStatuses.Applied : ControlApplyStatuses.Failed,
-                    restored ? null : "未能释放此项控制。"));
+                    restored ? null : "control-release-failed") { Reason = restored ? null : new("control-release-failed") });
             }
         }
         return new ControlApplyReport(outcomes, DateTimeOffset.UtcNow);
@@ -162,7 +162,8 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Unsupported,
-                $"这一项需要切换到{ControlAccessLevels.DisplayName(capability.RequiredAccessLevel)}档才能调。");
+                "control-access-level-required",
+                new("control-access-level-required", new(RequiredAccessLevel: capability.RequiredAccessLevel)));
         }
 
         // 三、选后端。
@@ -172,7 +173,7 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Unsupported,
-                capability.UnavailableReason ?? WriterMissing);
+                capability.UnavailableReason ?? WriterMissing, new(WriterMissing));
         }
         if (!backend.Availability.CanWrite)
         {
@@ -180,7 +181,7 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Unsupported,
-                backend.Availability.Reason ?? CapabilityMissing);
+                backend.Availability.Reason ?? CapabilityMissing, new("control-backend-unavailable"));
         }
 
         // 四、适配单位。换不了就如实失败，不静默照着数字写下去。
@@ -197,20 +198,24 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Failed,
-                "这条设定的单位和这台机器上的这一项对不上。");
+                "control-unit-mismatch");
         }
 
         // 五、边界。**这是唯一一道边界闸**：范围由目录统一给出，这里只拦范围外的值。
         // 先前是各个写入器各夹各的，有的干脆没夹 —— 同一项从不同入口进来结论就不一样。
         if (OutOfRange(adapted, capability with { Range = backend.Availability.Range ?? capability.Range }) is { } rejected)
         {
-            return Outcome(controlObject, setting, ControlApplyStatuses.Failed, rejected);
+            return Outcome(controlObject, setting, ControlApplyStatuses.Failed, rejected.Code, rejected);
         }
 
         // 六、下发。七、归一由后端交回原始结果、这里统一成 ControlApplyOutcome。
-        return await backend.Writer
-            .WriteAsync(controlObject, capability, adapted, cancellationToken)
-            .ConfigureAwait(false);
+        var result = await backend.Writer.WriteAsync(controlObject, capability, adapted, cancellationToken).ConfigureAwait(false);
+        if (result.Status != ControlApplyStatuses.Applied && result.Reason is null)
+        {
+            logger?.LogWarning("Control writer rejected {Object} / {Capability}: {Detail}", result.ObjectId, result.CapabilityId, result.Message);
+            result = result with { Reason = new("control-write-rejected") };
+        }
+        return result;
     }
 
     /// <summary>
@@ -220,7 +225,7 @@ public sealed class ControlWriteLayer(
     /// 然后回一句"已应用" —— 那是改掉他的意图还不告诉他。
     /// 界面上的滑块用的就是这同一个范围，所以正常操作根本到不了这里。
     /// </summary>
-    private static string? OutOfRange(ControlSetting setting, ControlCapability capability)
+    private static ControlApplyReason? OutOfRange(ControlSetting setting, ControlCapability capability)
     {
         if (setting.Number is not { } number || capability.Range is not { } range)
         {
@@ -234,11 +239,8 @@ public sealed class ControlWriteLayer(
             return null;
         }
 
-        return $"这一项现在只能设在 {Format(range.Minimum)} 到 {Format(range.Maximum)} {range.Unit}。";
+        return new("control-out-of-range", new(Minimum: range.Minimum, Maximum: range.Maximum, Unit: range.Unit));
     }
-
-    private static string Format(double value)
-        => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// 把状态机里那个带单位的值换成后端要的量纲。
@@ -276,12 +278,16 @@ public sealed class ControlWriteLayer(
         return null;
     }
 
-    private static ControlApplyOutcome Outcome(
+    private ControlApplyOutcome Outcome(
         ControlObject controlObject,
         ControlSetting setting,
         string status,
-        string reason)
-        => new(controlObject.Id, setting.CapabilityId, status, reason);
+        string reason, ControlApplyReason? presentation = null)
+    {
+        logger?.LogWarning("Control rejected {Object} / {Capability}: {Detail}", controlObject.Id, setting.CapabilityId, reason);
+        return new(controlObject.Id, setting.CapabilityId, status, reason)
+        { Reason = presentation ?? new(reason.StartsWith("control-", StringComparison.Ordinal) ? reason : "control-write-rejected") };
+    }
 
     private readonly record struct Backend(
         IControlWriter Writer,

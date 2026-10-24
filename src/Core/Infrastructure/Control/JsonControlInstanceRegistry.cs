@@ -15,7 +15,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class JsonControlInstanceRegistry(
     IHostEnvironment environment,
     IControlObjectCatalog catalog,
-    IControlDesiredStateStore desiredStates,
+    IControlPlane plane,
     ILogger<JsonControlInstanceRegistry>? logger = null,
     StartupCapabilitySet? capabilities = null) : IControlInstanceRegistry
 {
@@ -51,6 +51,7 @@ public sealed class JsonControlInstanceRegistry(
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            await plane.ForgetInstanceAsync(instanceId, cancellationToken).ConfigureAwait(false);
             var file = Load();
             var kept = file.Instances
                 .Where(entry => !string.Equals(entry.Id, instanceId, StringComparison.Ordinal))
@@ -64,7 +65,6 @@ public sealed class JsonControlInstanceRegistry(
         }
 
         // 设定跟着实例一起走：实例没了，它的期望状态也不该继续留着。
-        await ForgetDesiredStateAsync(instanceId, cancellationToken).ConfigureAwait(false);
         return await SynchronizeAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -157,21 +157,6 @@ public sealed class JsonControlInstanceRegistry(
                 capability.Id,
                 Number: capability.Range!.DefaultValue))
             .ToArray();
-
-    private async Task ForgetDesiredStateAsync(
-        string instanceId,
-        CancellationToken cancellationToken)
-    {
-        var desired = await desiredStates.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var kept = desired.Objects
-            .Where(entry => !string.Equals(entry.ObjectId, instanceId, StringComparison.Ordinal))
-            .ToArray();
-        if (kept.Length != desired.Objects.Count)
-        {
-            await desiredStates.SaveAsync(new ControlDesiredState(kept), cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
 
     private ControlInstanceRegistryFile Load()
     {

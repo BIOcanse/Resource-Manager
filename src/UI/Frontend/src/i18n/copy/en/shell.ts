@@ -73,6 +73,24 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     }
   },
   control: {
+    recovery: {
+      retry: "Retry",
+      noticeReadFailed: "Could not read the control notice status. Read again.",
+      noticeAckFailed: "Could not acknowledge the control notice. Please retry.",
+      accessLoading: "Reading control access level.",
+      accessReadFailed: "Could not read the control access level. Read again.",
+      objectMissing: "The device is currently absent.",
+      capabilityMissing: "This capability is absent on the device.",
+      writerMissing: "Write support is not implemented for this item.",
+      backendUnavailable: "The write channel is currently unavailable.",
+      releaseFailed: "Could not release this control.",
+      unitMismatch: "The setting unit does not match the device.",
+      writeFailed: "The write failed.",
+      writeRejected: "The device rejected this setting. See diagnostics for details.",
+      readOnly: "The current startup profile is read-only.",
+      accessRequired: (level: string) => `This item requires ${level} control access.`,
+      outOfRange: (minimum: number, maximum: number, unit: string) => `This item must be between ${minimum} and ${maximum} ${unit}.`
+    },
     reassertionInterval: "Reapply interval (seconds)",
     stateUnavailable: "Authoritative control settings are unavailable. Apply is paused.",
     retryRead: "Read again",

@@ -17,6 +17,7 @@ import {
   getControlOverclockConsent,
   getControlPresets,
   getControlState,
+  retryControlObject,
   redetectControlPlatform,
   setControlOverclockConsent,
   refreshControlInstances,
@@ -28,9 +29,10 @@ import {
   initialSettingFor
 } from "./ControlCapabilityEditor";
 import { ControlFirstRunNotice } from "./ControlFirstRunNotice";
-import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
+import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason } from "./controlPresentation.ts";
 import {
   controlItemStatusOf,
+  canRetryControlObject,
   hasPendingChanges
 } from "./controlStateMachine.ts";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
@@ -94,6 +96,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
    * 比晚半秒弹出来糟得多。
    */
   const [noticeSeen, setNoticeSeen] = createSignal<boolean | null>(null);
+  const [noticeReadFailed, setNoticeReadFailed] = createSignal(false);
+  const [noticeAckFailed, setNoticeAckFailed] = createSignal(false);
+  const [acknowledging, setAcknowledging] = createSignal(false);
 
   /** 正在重新检测。按钮期间禁用，免得连点起一串子进程。 */
   const [detecting, setDetecting] = createSignal(false);
@@ -165,7 +170,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     const submitted = settingsOf(objectId);
     setSaving(true);
     try {
-      const next = await setControlObjectSettings(runtime.requestClient, objectId, submitted);
+      const changed = hasPendingChanges(submitted, savedObjects().find(entry => entry.objectId === objectId)?.settings ?? []);
+      const next = await (changed
+        ? setControlObjectSettings(runtime.requestClient, objectId, submitted)
+        : retryControlObject(runtime.requestClient, objectId));
       // Preserve other drafts and edits made while this request was in flight.
       const current = edited();
       const unchanged = !hasPendingChanges(settingsOf(objectId), submitted);
@@ -207,9 +215,8 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
         .then(setAccessLevel)
         .catch(() => undefined);
       void getControlNoticeAcknowledged(runtime.requestClient, controller.signal)
-        .then(setNoticeSeen)
-        // 问不到就当看过：拦住整页比漏说一次须知更糟。
-        .catch(() => setNoticeSeen(true));
+        .then(seen => { if (!controller.signal.aborted) { setNoticeSeen(seen); setNoticeReadFailed(false); } })
+        .catch(() => { if (!controller.signal.aborted) { setNoticeSeen(null); setNoticeReadFailed(true); } });
     };
 
     read();
@@ -252,13 +259,22 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
       <Show when={noticeSeen() === false}>
         {/* 挂到 body：页面入场动画给 .page 加了 transform，留在页内时固定定位的弹窗会以页面为容器，前 0.3 秒错位后再跳回中间。 */}
         <Portal>
-          <ControlFirstRunNotice onAcknowledge={() => {
-            setNoticeSeen(true);
-            void acknowledgeControlNotice(runtime.requestClient).catch(() => undefined);
+          <ControlFirstRunNotice busy={acknowledging()} failed={noticeAckFailed()} onAcknowledge={() => {
+            if (acknowledging()) return;
+            setAcknowledging(true);
+            setNoticeAckFailed(false);
+            void acknowledgeControlNotice(runtime.requestClient)
+              .then(() => setNoticeSeen(true))
+              .catch(() => setNoticeAckFailed(true))
+              .finally(() => setAcknowledging(false));
           }} />
         </Portal>
       </Show>
       <div class="panel">
+        <Show when={noticeReadFailed()}>
+          <p role="alert">{uiText.control.recovery.noticeReadFailed}</p>
+          <button type="button" class="secondary" onClick={reloadState}>{uiText.control.retryRead}</button>
+        </Show>
         <Show when={stateLoad() !== "ready"}>
           <p role={stateLoad() === "error" ? "alert" : "status"}>{uiText.control.stateUnavailable}</p>
           <button type="button" class="secondary" onClick={reloadState}>{uiText.control.retryRead}</button>
@@ -922,8 +938,8 @@ function ControlObjectCard(props: {
                   <span
                     class="control-capability-tag"
                     // 失败或不支持时，后端给的原因停在标签上就有（交还固件失败也走这里）。
-                    title={itemView(capability.id).message
-                      ? controlDisplayText(itemView(capability.id).message!) : undefined}
+                    title={itemStatus(capability.id) === "failed" || itemStatus(capability.id) === "unsupported"
+                      ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability.id)) ?? undefined : undefined}
                     classList={{
                       "control-capability-tag-live":
                         itemStatus(capability.id) === "edited"
@@ -979,13 +995,14 @@ function ControlObjectCard(props: {
           disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !props.takingOver)}
           onClick={props.onDiscard}>{uiText.control.discard}</button>
         <button type="button"
-          disabled={props.saving || !hasPendingChanges(edited(), saved())
+          disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !canRetryControlObject(props.state, props.object.id))
             || edited().some(setting => {
               const kind = props.object.capabilities.find(c => c.id === setting.capabilityId)?.valueKind;
               return kind === "number" ? typeof setting.number !== "number" || !Number.isFinite(setting.number)
                 : kind === "curve" && !setting.curve?.length;
             })}
-          onClick={props.onApply}>{uiText.control.apply}</button>
+          onClick={props.onApply}>{!hasPendingChanges(edited(), saved()) && canRetryControlObject(props.state, props.object.id)
+            ? uiText.control.recovery.retry : uiText.control.apply}</button>
       </div>
     </article>
   );

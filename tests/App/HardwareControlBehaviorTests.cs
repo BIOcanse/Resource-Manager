@@ -186,6 +186,9 @@ public sealed class HardwareControlBehaviorTests
 
     private sealed class ScheduledPlane : IControlPlane
     {
+        public Task ForgetInstanceAsync(string id, CancellationToken token) => Task.CompletedTask;
+        public Task<ControlStateView> RetryObjectAsync(string id, CancellationToken token) => throw new NotSupportedException();
+
         public int Initializations;
         public TaskCompletionSource Initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Reasserted = new(TaskCreationOptions.RunContinuationsAsynchronously);

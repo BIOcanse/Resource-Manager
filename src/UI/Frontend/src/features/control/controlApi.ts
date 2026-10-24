@@ -321,13 +321,26 @@ function readSetting(value: unknown, path: string): ControlSetting {
   };
 }
 
+function readReason(value: unknown, path: string): ControlApplyOutcome["reason"] {
+  if (value == null) return null;
+  const record = requireRecord(value, path);
+  const args = record.arguments == null ? null : requireRecord(record.arguments, `${path}.arguments`);
+  const number = (key: string) => args?.[key] == null ? null : requireFiniteNumber(args[key], `${path}.arguments.${key}`);
+  return { code: requireNonEmptyString(record.code, `${path}.code`), arguments: args ? {
+    requiredAccessLevel: args.requiredAccessLevel == null ? null
+      : requireOneOf(args.requiredAccessLevel, `${path}.arguments.requiredAccessLevel`, controlAccessLevels),
+    minimum: number("minimum"), maximum: number("maximum"), unit: optionalString(args.unit, `${path}.arguments.unit`)
+  } : null };
+}
+
 function readOutcome(value: unknown, path: string): ControlApplyOutcome {
   const record = requireRecord(value, path);
   return {
     objectId: requireNonEmptyString(record.objectId, `${path}.objectId`),
     capabilityId: requireNonEmptyString(record.capabilityId, `${path}.capabilityId`),
     status: requireOneOf(record.status, `${path}.status`, applyStatuses),
-    message: optionalString(record.message, `${path}.message`)
+    message: optionalString(record.message, `${path}.message`),
+    reason: readReason(record.reason, `${path}.reason`)
   };
 }
 
@@ -374,7 +387,8 @@ export const controlStateDecoder = defineResponseDecoder<ControlStateView>(
     const lastApply = requireRecord(record.lastApply, "$.lastApply");
     return {
       desired: {
-        objects: readDesiredObjects(desired.objects, "$.desired.objects")
+        objects: readDesiredObjects(desired.objects, "$.desired.objects"),
+        pendingReleases: readDesiredObjects(desired.pendingReleases ?? [], "$.desired.pendingReleases")
       },
       lastApply: {
         outcomes: requireArray(lastApply.outcomes, "$.lastApply.outcomes")
@@ -617,4 +631,12 @@ export function setControlObjectSettings(
       body: JSON.stringify(settings)
     }
   });
+}
+
+/** Explicit retry never submits the local draft. */
+export function retryControlObject(requestClient: Pick<RequestClient, "request">, objectId: string): Promise<ControlStateView> {
+  return requestClient.request({ key: `control.retry.${objectId}`,
+    url: `/api/control/state/${encodeURIComponent(objectId)}/retry`,
+    timeoutMs: controlHardwareRequestTimeoutMs, fallbackError: uiText.control.saveFailed,
+    decoder: controlStateDecoder, request: { method: "POST" } });
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { controlCapabilityLabel, controlDisplayText } from "../src/features/control/controlPresentation.ts";
+import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason } from "../src/features/control/controlPresentation.ts";
 import { createAppCopy } from "../src/i18n/copy/index.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
@@ -62,3 +62,23 @@ for (const { id } of languageOptions) {
   curveReceiptLanguages++;
 }
 console.log(`Control presentation: ${ids.size} capability IDs; curve receipt failures and real language switching passed in ${curveReceiptLanguages} selectable languages.`);
+
+const reasonCodes = ["control-object-missing", "control-capability-missing", "control-writer-missing",
+  "control-backend-unavailable", "control-release-failed", "control-unit-mismatch", "control-write-failed",
+  "control-write-rejected", "startup-profile-read-only", "control-access-level-required", "control-out-of-range"];
+for (const { id } of languageOptions) {
+  if (id === "system") continue;
+  const copy = (await loadAppCopy(id)).control;
+  for (const code of reasonCodes) {
+    const outcome = { objectId: "a", capabilityId: "bad", status: "failed" as const, message: "RAW_DIAGNOSTIC_原始原因",
+      reason: { code, arguments: { requiredAccessLevel: "root" as const, minimum: -17, maximum: 83, unit: "MHz" } } };
+    const rendered = controlOutcomeReason(outcome, copy)!;
+    assert.ok(rendered?.trim(), `${id}/${code}`);
+    assert.doesNotMatch(rendered, /RAW_DIAGNOSTIC|原始原因|undefined|\$\{/u, `${id}/${code}`);
+    if (code === "control-out-of-range") for (const value of ["-17", "83", "MHz"]) assert.ok(rendered.includes(value), `${id}/${code}/${value}`);
+    if (code === "control-access-level-required") assert.ok(rendered.includes(copy.accessLevel.name.root), id);
+    if (id !== "en-US") assert.notEqual(rendered, controlOutcomeReason(outcome, (await loadAppCopy("en-US")).control), `${id}/${code}: English inheritance`);
+  }
+  assert.equal(controlOutcomeReason({ objectId: "a", capabilityId: "x", status: "failed", message: "raw secret detail" }, copy), copy.recovery.writeRejected);
+}
+console.log("Stable control reasons and typed arguments render in all nine locales.");

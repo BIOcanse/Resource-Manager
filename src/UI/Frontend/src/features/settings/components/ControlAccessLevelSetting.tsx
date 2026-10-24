@@ -23,29 +23,38 @@ import { uiText } from "../../../text.ts";
 export function ControlAccessLevelSetting() {
   const runtime = useFrontendRuntime();
   const text = uiText.control.accessLevel;
-  const [level, setLevel] = createSignal<ControlAccessLevel>("normal");
+  const [level, setLevel] = createSignal<ControlAccessLevel | null>(null);
   const [pending, setPending] = createSignal<ControlAccessLevel | null>(null);
   const [failed, setFailed] = createSignal(false);
 
-  onMount(() => {
+  const [readState, setReadState] = createSignal<"loading" | "ready" | "error">("loading");
+  const [saving, setSaving] = createSignal(false);
+  const read = () => {
+    setReadState("loading");
+    setLevel(null);
     void getControlAccessLevel(runtime.requestClient)
-      .then(setLevel)
-      .catch(() => setFailed(true));
-  });
+      .then(value => { setLevel(value); setReadState("ready"); })
+      .catch(() => setReadState("error"));
+  };
+  onMount(read);
 
   const commit = (next: ControlAccessLevel) => {
     setPending(null);
+    setSaving(true);
     void setControlAccessLevel(runtime.requestClient, next)
       .then((applied) => { setLevel(applied); setFailed(false); })
-      .catch(() => setFailed(true));
+      .catch(() => setFailed(true))
+      .finally(() => setSaving(false));
   };
 
   const choose = (next: ControlAccessLevel) => {
-    if (next === level()) {
+    const current = level();
+    if (readState() !== "ready" || current === null || saving()) return;
+    if (next === current) {
       return;
     }
     // 往低处收不用问：不改动任何设定，只是把更危险的项重新锁上。
-    if (controlAccessLevels.indexOf(next) < controlAccessLevels.indexOf(level())) {
+    if (controlAccessLevels.indexOf(next) < controlAccessLevels.indexOf(current)) {
       commit(next);
       return;
     }
@@ -59,7 +68,8 @@ export function ControlAccessLevelSetting() {
         <span>{text.intro}</span>
       </div>
       <RadioGroupRoot
-        value={level()}
+        value={level() ?? ""}
+        disabled={readState() !== "ready" || saving()}
         ariaLabel={text.title}
         orientation="vertical"
         class="control-access-level-choices"
@@ -74,6 +84,13 @@ export function ControlAccessLevelSetting() {
           )}
         </For>
       </RadioGroupRoot>
+      <Show when={readState() !== "ready"}>
+        <p role={readState() === "error" ? "alert" : "status"}>{readState() === "error"
+          ? uiText.control.recovery.accessReadFailed : uiText.control.recovery.accessLoading}</p>
+        <Show when={readState() === "error"}>
+          <button type="button" class="secondary" onClick={read}>{uiText.control.retryRead}</button>
+        </Show>
+      </Show>
       <Show when={failed()}>
         <p class="control-access-level-failed">{text.saveFailed}</p>
       </Show>

@@ -77,7 +77,8 @@ public sealed class ControlWriterDispatchTests
             CancellationToken.None);
 
         Assert.Equal(ControlApplyStatuses.Unsupported, report.Outcomes[0].Status);
-        Assert.Contains("Root", report.Outcomes[0].Message);
+        Assert.Equal("control-access-level-required", report.Outcomes[0].Reason?.Code);
+        Assert.Equal(ControlAccessLevels.Root, report.Outcomes[0].Reason?.Arguments?.RequiredAccessLevel);
         Assert.Empty(writer.Written);
     }
 

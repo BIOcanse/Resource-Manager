@@ -110,6 +110,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
 
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
+        app.MapPost("/api/control/state/{objectId}/retry", async (
+            string objectId, IControlPlane plane, CancellationToken cancellationToken) =>
+            Results.Ok(await plane.RetryObjectAsync(objectId, cancellationToken)));
+
         // 整份应用。草稿应用和配置应用走同一条路 —— 用户面对的是一整套设定，
         // 不是一条条分别提交。这一份里没有的项会被恢复到硬件默认。
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
