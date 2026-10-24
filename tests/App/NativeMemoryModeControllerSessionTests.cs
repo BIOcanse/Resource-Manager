@@ -136,10 +136,10 @@ public sealed class NativeMemoryModeControllerSessionTests
         Assert.Equal(NativeMemoryMode.Normal, outputs[2].Mode);
         Assert.Equal(NativeMemoryModeDesiredSoftwareFlags.None, outputs[0].Flags);
         Assert.Equal(
-            NativeMemoryModeDesiredSoftwareFlags.BaseScoreClamped,
+            NativeMemoryModeDesiredSoftwareFlags.None,
             outputs[1].Flags);
         Assert.Equal(
-            NativeMemoryModeDesiredSoftwareFlags.BaseScoreClamped,
+            NativeMemoryModeDesiredSoftwareFlags.None,
             outputs[2].Flags);
         Assert.Equal(1U, snapshot.StrongestCount);
         Assert.Equal(1U, snapshot.OptimizeCount);
@@ -189,6 +189,48 @@ public sealed class NativeMemoryModeControllerSessionTests
         Assert.True(outputs[0].Flags.HasFlag(
             NativeMemoryModeDesiredSoftwareFlags.BaseScoreClamped));
         Assert.Equal(1U, snapshot.OptimizeCount);
+    }
+
+    [Theory]
+    [InlineData(2_380U, 19U, 0U)]
+    [InlineData(1_000U, 59U, 0U)]
+    [InlineData(500U, 49U, 10U)]
+    [InlineData(0U, 39U, 20U)]
+    public void MixedPopulationUsesEligibleCountsAndRestrictsLowestCpuScoresFirst(
+        uint freeRatio, uint optimizeCount, uint strongestCount)
+    {
+        const int protectedCount = 130;
+        const int count = 189;
+        var configuration = CreateConfiguration(count);
+        using var session = new NativeMemoryModeControllerSession(in configuration);
+        var software = Enumerable.Range(0, count).Select(index => CreateSoftware(
+            (ulong)index + 1,
+            (uint)index,
+            index < protectedCount ? 0 : count - index,
+            index < protectedCount ? 90 : (index - protectedCount) % 3 == 0 ? 10 : 60)).ToArray();
+        var outputs = new NativeMemoryModeDesiredSoftwareOutput[count];
+        var snapshot = default(NativeMemoryModeSnapshot);
+        var envelope = CreateEnvelope(freeRatio, allowUnrestricted: false, softwareCount: count);
+
+        Assert.Equal(NativeMemoryModeControllerStatus.Ok,
+            session.Plan(in envelope, software, outputs, ref snapshot));
+        Assert.Equal((uint)count, snapshot.OutputCount);
+        Assert.Equal(optimizeCount, snapshot.OptimizeCount);
+        Assert.Equal(strongestCount, snapshot.StrongestCount);
+        Assert.All(outputs.Take(protectedCount), row => Assert.Equal(NativeMemoryMode.Normal, row.Mode));
+        var strongest = software.Where(row => row.BaseScore < 21)
+            .OrderBy(row => row.CpuScore).Take((int)strongestCount).Select(row => row.SoftwareKey).ToHashSet();
+        var optimizing = software.Where(row => row.BaseScore < 81 && !strongest.Contains(row.SoftwareKey))
+            .OrderBy(row => row.CpuScore).Take((int)optimizeCount).Select(row => row.SoftwareKey).ToHashSet();
+        Assert.All(outputs, row => Assert.Equal(
+            strongest.Contains(row.SoftwareKey) ? NativeMemoryMode.PagedFrozen :
+            optimizing.Contains(row.SoftwareKey) ? NativeMemoryMode.Optimize : NativeMemoryMode.Normal,
+            row.Mode));
+        if (freeRatio == 2_380)
+        {
+            Assert.Equal(NativeMemoryMode.Normal, outputs[protectedCount].Mode);
+            Assert.Equal(NativeMemoryMode.Optimize, outputs[^1].Mode);
+        }
     }
 
     [Fact]
@@ -256,10 +298,10 @@ public sealed class NativeMemoryModeControllerSessionTests
         Assert.Equal(NativeMemoryMode.PagedFrozen, outputs[0].Mode);
     }
 
-    private static NativeMemoryModeConfiguration CreateConfiguration()
+    private static NativeMemoryModeConfiguration CreateConfiguration(uint maximumSoftwareCount = 3)
         => NativeMemoryModeConfigurationWriter.Create(
             generation: 1,
-            maximumSoftwareCount: 3,
+            maximumSoftwareCount: maximumSoftwareCount,
             ratioUnitsMaximum: 10_000,
             unrestrictedMinimumFreeRatioUnits: 6_000,
             normalMinimumFreeRatioUnits: 3_000,

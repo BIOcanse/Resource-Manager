@@ -81,14 +81,8 @@ test "base score tiers constrain modes after pressure ranking" {
     try std.testing.expectEqual(protocol.MemoryMode.optimize, mode(outputs[1]));
     try std.testing.expectEqual(protocol.MemoryMode.normal, mode(outputs[2]));
     try std.testing.expectEqual(@as(u8, 0), outputs[0].flags);
-    try std.testing.expectEqual(
-        protocol.DesiredSoftwareFlags.base_score_clamped,
-        outputs[1].flags,
-    );
-    try std.testing.expectEqual(
-        protocol.DesiredSoftwareFlags.base_score_clamped,
-        outputs[2].flags,
-    );
+    try std.testing.expectEqual(@as(u8, 0), outputs[1].flags);
+    try std.testing.expectEqual(@as(u8, 0), outputs[2].flags);
     try std.testing.expectEqual(@as(u32, 1), snapshot.strongest_count);
     try std.testing.expectEqual(@as(u32, 1), snapshot.optimize_count);
 }
@@ -119,7 +113,7 @@ test "protected low CPU rows do not consume optimize pressure quota" {
     try std.testing.expectEqual(@as(u32, 0), snapshot.strongest_count);
 }
 
-test "strongest and remaining restricted quotas refill over eligible tiers" {
+test "strongest quota uses only software allowed the strongest mode" {
     var config = testConfig(1, 4);
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
@@ -140,9 +134,57 @@ test "strongest and remaining restricted quotas refill over eligible tiers" {
     try std.testing.expectEqual(protocol.MemoryMode.normal, mode(outputs[0]));
     try std.testing.expectEqual(protocol.MemoryMode.optimize, mode(outputs[1]));
     try std.testing.expectEqual(protocol.MemoryMode.paged_frozen, mode(outputs[2]));
-    try std.testing.expectEqual(protocol.MemoryMode.paged_frozen, mode(outputs[3]));
-    try std.testing.expectEqual(@as(u32, 1), snapshot.optimize_count);
-    try std.testing.expectEqual(@as(u32, 2), snapshot.strongest_count);
+    try std.testing.expectEqual(protocol.MemoryMode.optimize, mode(outputs[3]));
+    try std.testing.expectEqual(@as(u32, 2), snapshot.optimize_count);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.strongest_count);
+}
+
+test "many protected low ranks do not push pressure onto higher eligible software" {
+    const count = 189;
+    const protected_count = 130;
+    var config = testConfig(1, count);
+    const session = try desired_state.Session.create(&config);
+    defer session.destroy();
+    var inputs: [count]protocol.SoftwareInput = undefined;
+    for (&inputs, 0..) |*row, index| {
+        row.* = if (index < protected_count)
+            inputWithBase(index + 1, 0, 90, index)
+        else
+            inputWithBase(index + 1, @floatFromInt(count - index), if ((index - protected_count) % 3 == 0) 10 else 60, index);
+    }
+    var outputs: [count]protocol.DesiredSoftwareOutput = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    for ([_]u32{ 2_380, 1_000, 500, 0 }, [_]u32{ 19, 59, 49, 39 }, [_]u32{ 0, 0, 10, 20 }) |free, optimize, strongest| {
+        var envelope = testEnvelope(1, 1, free, count, false);
+        try std.testing.expectEqual(protocol.Status.ok, desired_state.plan(session, &envelope, &inputs, count, &outputs, count, &snapshot));
+        try std.testing.expectEqual(optimize, snapshot.optimize_count);
+        try std.testing.expectEqual(strongest, snapshot.strongest_count);
+        for (outputs[0..protected_count]) |output| {
+            try std.testing.expectEqual(protocol.MemoryMode.normal, mode(output));
+        }
+        var low_rank: u32 = 0;
+        var remaining_rank: u32 = 0;
+        var index: usize = count;
+        while (index > protected_count) {
+            index -= 1;
+            const output = outputs[index];
+            try std.testing.expectEqual(@as(u32, @intCast(protected_count + count - 1 - index)), output.rank);
+            const strongest_expected = output.base_score < 21 and low_rank < strongest;
+            if (output.base_score < 21) low_rank += 1;
+            const expected: protocol.MemoryMode = if (strongest_expected)
+                .paged_frozen
+            else if (remaining_rank < optimize)
+                .optimize
+            else
+                .normal;
+            if (!strongest_expected) remaining_rank += 1;
+            try std.testing.expectEqual(expected, mode(output));
+        }
+        if (free == 2_380) {
+            try std.testing.expectEqual(protocol.MemoryMode.normal, mode(outputs[protected_count]));
+            try std.testing.expectEqual(protocol.MemoryMode.optimize, mode(outputs[count - 1]));
+        }
+    }
 }
 
 test "memory planning has no GPU completeness dependency" {

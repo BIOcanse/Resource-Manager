@@ -26,9 +26,14 @@ pub const Plan = struct {
     }
 };
 
+pub const EligibleCounts = struct {
+    optimize: u32 = 0,
+    strongest: u32 = 0,
+};
+
 pub fn plan(
     free_ratio_units: u32,
-    software_count: u32,
+    eligible: EligibleCounts,
     thresholds: Thresholds,
     allow_unrestricted: bool,
 ) Plan {
@@ -42,9 +47,7 @@ pub fn plan(
     std.debug.assert(thresholds.unrestricted_minimum_free_ratio_units <=
         thresholds.ratio_units_maximum);
 
-    if (software_count == 0) {
-        return .{ .baseline = .normal, .optimize_count = 0, .strongest_count = 0 };
-    }
+    std.debug.assert(eligible.strongest <= eligible.optimize);
     if (allow_unrestricted and free_ratio_units >=
         thresholds.unrestricted_minimum_free_ratio_units)
     {
@@ -60,7 +63,7 @@ pub fn plan(
             free_ratio_units;
         return .{
             .baseline = .normal,
-            .optimize_count = ceilShare(software_count, severity, width),
+            .optimize_count = ceilShare(eligible.optimize, severity, width),
             .strongest_count = 0,
         };
     }
@@ -68,13 +71,13 @@ pub fn plan(
     const strongest_severity = thresholds.strong_begin_free_ratio_units -
         free_ratio_units;
     const strongest_count = ceilShare(
-        software_count,
+        eligible.strongest,
         strongest_severity,
         thresholds.strong_begin_free_ratio_units,
     );
     return .{
         .baseline = .normal,
-        .optimize_count = software_count - strongest_count,
+        .optimize_count = eligible.optimize - strongest_count,
         .strongest_count = strongest_count,
     };
 }
@@ -95,25 +98,25 @@ test "pressure policy expands optimize and strongest sets without a fixed score 
         .strong_begin_free_ratio_units = 1_000,
     };
 
-    const ample = plan(7_000, 10, thresholds, true);
+    const ample = plan(7_000, allEligible(10), thresholds, true);
     try std.testing.expectEqual(Intensity.unrestricted, ample.baseline);
     try std.testing.expectEqual(@as(u32, 0), ample.optimize_count);
 
-    const normal = plan(4_000, 10, thresholds, true);
+    const normal = plan(4_000, allEligible(10), thresholds, true);
     try std.testing.expectEqual(Intensity.normal, normal.baseline);
 
-    const optimizing = plan(2_000, 10, thresholds, true);
+    const optimizing = plan(2_000, allEligible(10), thresholds, true);
     try std.testing.expectEqual(@as(u32, 5), optimizing.optimize_count);
     try std.testing.expectEqual(Intensity.optimize, optimizing.intensityAtRank(4));
     try std.testing.expectEqual(Intensity.normal, optimizing.intensityAtRank(5));
 
-    const critical = plan(500, 10, thresholds, true);
+    const critical = plan(500, allEligible(10), thresholds, true);
     try std.testing.expectEqual(@as(u32, 5), critical.strongest_count);
     try std.testing.expectEqual(@as(u32, 5), critical.optimize_count);
     try std.testing.expectEqual(Intensity.strongest, critical.intensityAtRank(4));
     try std.testing.expectEqual(Intensity.optimize, critical.intensityAtRank(5));
 
-    const empty = plan(0, 0, thresholds, true);
+    const empty = plan(0, allEligible(0), thresholds, true);
     try std.testing.expectEqual(@as(u32, 0), empty.strongest_count);
 }
 
@@ -135,7 +138,7 @@ test "full pressure grid is monotonic and always protects higher score ranks las
             while (true) {
                 const current = plan(
                     step,
-                    software_count,
+                    allEligible(software_count),
                     thresholds,
                     allow_unrestricted,
                 );
@@ -170,10 +173,40 @@ test "fixed point boundaries are exact" {
         .normal_minimum_free_ratio_units = 3_000,
         .strong_begin_free_ratio_units = 1_000,
     };
-    try std.testing.expectEqual(Intensity.strongest, plan(999, 10, thresholds, true).intensityAtRank(0));
-    try std.testing.expectEqual(@as(u32, 0), plan(1_000, 10, thresholds, true).strongest_count);
-    try std.testing.expect(plan(2_999, 10, thresholds, true).optimize_count > 0);
-    try std.testing.expectEqual(@as(u32, 0), plan(3_000, 10, thresholds, true).optimize_count);
-    try std.testing.expectEqual(Intensity.normal, plan(5_999, 10, thresholds, true).baseline);
-    try std.testing.expectEqual(Intensity.unrestricted, plan(6_000, 10, thresholds, true).baseline);
+    try std.testing.expectEqual(Intensity.strongest, plan(999, allEligible(10), thresholds, true).intensityAtRank(0));
+    try std.testing.expectEqual(@as(u32, 0), plan(1_000, allEligible(10), thresholds, true).strongest_count);
+    try std.testing.expect(plan(2_999, allEligible(10), thresholds, true).optimize_count > 0);
+    try std.testing.expectEqual(@as(u32, 0), plan(3_000, allEligible(10), thresholds, true).optimize_count);
+    try std.testing.expectEqual(Intensity.normal, plan(5_999, allEligible(10), thresholds, true).baseline);
+    try std.testing.expectEqual(Intensity.unrestricted, plan(6_000, allEligible(10), thresholds, true).baseline);
+}
+
+test "each pressure quota uses only its eligible population" {
+    const thresholds = Thresholds{
+        .ratio_units_maximum = 10_000,
+        .unrestricted_minimum_free_ratio_units = 6_000,
+        .normal_minimum_free_ratio_units = 3_000,
+        .strong_begin_free_ratio_units = 1_000,
+    };
+    const eligible = EligibleCounts{ .optimize = 59, .strongest = 20 };
+    const moderate = plan(2_380, eligible, thresholds, false);
+    try std.testing.expectEqual(@as(u32, 19), moderate.optimize_count);
+    try std.testing.expectEqual(@as(u32, 0), moderate.strongest_count);
+    const critical = plan(500, eligible, thresholds, false);
+    try std.testing.expectEqual(@as(u32, 10), critical.strongest_count);
+    try std.testing.expectEqual(@as(u32, 49), critical.optimize_count);
+    const full = plan(0, eligible, thresholds, false);
+    try std.testing.expectEqual(@as(u32, 20), full.strongest_count);
+    try std.testing.expectEqual(@as(u32, 39), full.optimize_count);
+    const middle_only = plan(0, .{ .optimize = 59 }, thresholds, false);
+    try std.testing.expectEqual(@as(u32, 0), middle_only.strongest_count);
+    try std.testing.expectEqual(@as(u32, 59), middle_only.optimize_count);
+    const protected_only = plan(0, .{}, thresholds, false);
+    try std.testing.expectEqual(@as(u32, 0), protected_only.strongest_count);
+    try std.testing.expectEqual(@as(u32, 0), protected_only.optimize_count);
+    try std.testing.expectEqual(Intensity.unrestricted, plan(8_000, .{}, thresholds, true).baseline);
+}
+
+fn allEligible(count: u32) EligibleCounts {
+    return .{ .optimize = count, .strongest = count };
 }

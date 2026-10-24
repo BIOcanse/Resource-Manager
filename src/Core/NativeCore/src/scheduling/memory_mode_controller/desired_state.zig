@@ -111,18 +111,7 @@ pub fn plan(
         output_pointer.?[0..envelope.output_capacity];
     if (outputs.len > 0) @memset(outputs, std.mem.zeroes(protocol.DesiredSoftwareOutput));
 
-    const policy = pressure_policy.plan(
-        envelope.memory_free_ratio_units,
-        envelope.software_count,
-        .{
-            .ratio_units_maximum = session.config.ratio_units_maximum,
-            .unrestricted_minimum_free_ratio_units = session.config.unrestricted_minimum_free_ratio_units,
-            .normal_minimum_free_ratio_units = session.config.normal_minimum_free_ratio_units,
-            .strong_begin_free_ratio_units = session.config.strong_begin_free_ratio_units,
-        },
-        (envelope.flags & protocol.EnvelopeFlags.allow_unrestricted) != 0,
-    );
-    const counts = emit(session, envelope, outputs[0..count], policy);
+    const counts = emit(session, envelope, outputs[0..count]);
 
     snapshot.* = .{
         .abi_version = protocol.abi_version,
@@ -190,8 +179,8 @@ fn emit(
     session: *Session,
     envelope: *const protocol.GenerationEnvelope,
     outputs: []protocol.DesiredSoftwareOutput,
-    policy: pressure_policy.Plan,
 ) EffectiveCounts {
+    var eligible = pressure_policy.EligibleCounts{};
     for (outputs, 0..) |*output, index| {
         session.rank_order[index] = @intCast(index);
         const row = session.software[index].row;
@@ -212,7 +201,22 @@ fn emit(
             .rank = 0,
             .source_index = row.source_index,
         };
+        if ((output.base_score_allowed_grades & protocol.MemoryGradeSet.optimization) != 0)
+            eligible.optimize += 1;
+        if (protocol.MemoryGradeSet.contains(output.base_score_allowed_grades, .level4))
+            eligible.strongest += 1;
     }
+    const policy = pressure_policy.plan(
+        envelope.memory_free_ratio_units,
+        eligible,
+        .{
+            .ratio_units_maximum = session.config.ratio_units_maximum,
+            .unrestricted_minimum_free_ratio_units = session.config.unrestricted_minimum_free_ratio_units,
+            .normal_minimum_free_ratio_units = session.config.normal_minimum_free_ratio_units,
+            .strong_begin_free_ratio_units = session.config.strong_begin_free_ratio_units,
+        },
+        (envelope.flags & protocol.EnvelopeFlags.allow_unrestricted) != 0,
+    );
     std.sort.heap(u32, session.rank_order[0..outputs.len], session, scoreBefore);
     var counts = EffectiveCounts{};
     for (session.rank_order[0..outputs.len], 0..) |slot, rank| {
@@ -244,8 +248,7 @@ fn emit(
         }
     }
 
-    const restricted_target = policy.strongest_count + policy.optimize_count;
-    var optimize_remaining = restricted_target - counts.strongest;
+    var optimize_remaining = policy.optimize_count;
     if (optimize_remaining != 0) {
         for (session.rank_order[0..outputs.len]) |slot| {
             if (optimize_remaining == 0) break;
