@@ -666,7 +666,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       type: "software",
       id: textOrEmpty(record.id),
       name,
-      kind: textOrEmpty(record.kind) || "other",
+      kind: record.kind,
       displayKind,
       state: userFacingState(record.state),
       message: userFacingMessage(record.message, displayKind),

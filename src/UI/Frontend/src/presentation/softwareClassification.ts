@@ -13,7 +13,7 @@ export function softwareIssueMessage(issue: SoftwareIssueTag) {
   return issue.kind === "Unclassified" ? uiText.management.unclassifiedReminder : issue.message;
 }
 
-export function runtimeDiscoveryLabel(kind: string | undefined) {
+export function runtimeDiscoveryLabel(kind: string) {
   switch (kind) {
     case "runtime_package": return uiText.management.discoveredPackage;
     case "runtime_product": return uiText.management.discoveredProduct;
