@@ -23,7 +23,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         }).ToArray() };
         var result = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), null);
         Assert.NotNull(result?.Gpu);
-        Assert.Null(result.Cpu);
+        Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, result.CpuOccupancySource);
         Assert.All(facts.Processes.SelectMany(p => p.Gpus), g => Assert.Equal(1536, g.ResidentMemoryBytes));
     }
 

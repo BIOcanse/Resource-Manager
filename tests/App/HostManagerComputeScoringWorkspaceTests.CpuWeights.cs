@@ -66,7 +66,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     [InlineData(10, 999, "core:0")]
     [InlineData(999, 100, "core:0")]
     [InlineData(10, 100, "unknown-core")]
-    public void UnmatchedCpuRowsCannotBecomeZeroScoredSoftware(int pid, ulong startKey, string core)
+    public void UnmatchedCpuRowsFallBackToProcessCpuUsageInsteadOfZeroScores(int pid, ulong startKey, string core)
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
@@ -76,8 +76,36 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var physical = CpuCoreResidencyTestValues.Create(91, DateTimeOffset.UtcNow,
             CpuCoreResidencyTestValues.Process(pid, startKey, (core, 100)));
         var result = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), physical);
-        Assert.Null(result?.Cpu);
-        Assert.NotNull(result?.Gpu);
+        Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, result?.CpuOccupancySource);
+        Assert.True(Assert.Single(result!.Cpu!.Scores, row =>
+            row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score > 0);
+        Assert.NotNull(result.Gpu);
+    }
+
+    [Fact]
+    public void MissingCoreResidencyScoresCpuFromProcessCpuUsage()
+    {
+        var configuration = CreateConfiguration();
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
+        var inventory = CreateInventory();
+        var facts = CreateFacts(inventory, 10);
+        var physical = CpuCoreResidencyTestValues.Create(91, DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(10, 100, ("core:0", facts.Processes[0].CpuUsagePercent)));
+
+        var weighted = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), physical);
+        var fallback = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), null);
+
+        Assert.Equal(HostManagerCpuOccupancySource.CoreResidency, weighted?.CpuOccupancySource);
+        Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, fallback?.CpuOccupancySource);
+        Assert.NotNull(fallback?.Memory);
+        // One core with equal weight: the process's machine share equals its weighted core use.
+        Assert.Equal(
+            Assert.Single(weighted!.Cpu!.Scores, row =>
+                row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score,
+            Assert.Single(fallback!.Cpu!.Scores, row =>
+                row.Kind == NativeComputeScoringOutputKind.ProcessCpu && row.ProcessId == 10).Score,
+            10);
     }
 
     [Fact]
@@ -90,7 +118,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var facts = CreateFacts(inventory, 10);
         Assert.NotNull(workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency())?.Cpu);
         var result = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), null);
-        Assert.Null(result?.Cpu);
+        Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, result?.CpuOccupancySource);
         Assert.NotNull(result?.Gpu);
     }
 }

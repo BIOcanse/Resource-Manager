@@ -148,6 +148,17 @@ internal sealed record HostManagerComputeScoringCycleResult(
 {
     internal HostManagerWelfareScoreSnapshot Welfare { get; init; }
     internal HostManagerComputeScoreDomainSnapshot? Memory { get; init; }
+    internal HostManagerCpuOccupancySource? CpuOccupancySource { get; init; }
+}
+
+/// <summary>Where the CPU domain's per-process occupancy came from this cycle.</summary>
+internal enum HostManagerCpuOccupancySource
+{
+    /// <summary>Per-physical-core residency weighted by core capacity.</summary>
+    CoreResidency,
+
+    /// <summary>Each process's CPU usage as a share of the whole machine.</summary>
+    ProcessCpuUsage
 }
 
 internal sealed record HostManagerComputeScoringShadowSnapshot(
