@@ -286,8 +286,9 @@ public sealed class ResourceManagerComputeScratchTests
                             pdh.Supply(8192);
                             registered += pdhIdentity!.Length;
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-                            // The 28 real workspaces above, then current plus pending query pools (2 * 64) and model workspaces (2).
-                            for (var index = 0; index < 130; index++)
+                            // The 28 real workspaces above, then current plus pending query pools (2 * 64), model workspaces (2),
+                            // portable registry output workspaces (2) and display normalization workspaces (2).
+                            for (var index = 0; index < 134; index++)
                             {
                                 var resource = owner.CreateScratch(8192);
                                 additionalResources.Add(resource);

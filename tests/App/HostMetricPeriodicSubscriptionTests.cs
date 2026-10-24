@@ -174,7 +174,12 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Equal(1234d, stream.Current[0].Value!.Number);
             Assert.Null(stream.Current[1].Value);
             Assert.NotEqual(FieldObservationStatus.Current, stream.Current[1].Status);
-            Assert.Equal(harness.Core.ReadCached(harness.Field), stream.Current[0]);
+            // The sampler keeps publishing every 100 ms, so the cache may already hold a newer publication
+            // of the same healthy field by the time it is read.
+            var cached = harness.Core.ReadCached(harness.Field)!;
+            Assert.Equal(stream.Current[0].Status, cached.Status);
+            Assert.Equal(stream.Current[0].Value, cached.Value);
+            Assert.True(cached.ObservedAt >= stream.Current[0].ObservedAt);
         }
         finally { await harness.Sampler.StopAsync(CancellationToken.None); }
     }
