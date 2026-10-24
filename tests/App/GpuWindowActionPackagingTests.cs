@@ -6,11 +6,13 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
 using Xunit.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
+[Collection(NativeLaunchPolicyProcessStateCollection.Name)]
 public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
 {
     [Fact]
@@ -57,37 +59,59 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
         Assert.Equal("true", (string?)file.Attribute("ExcludeFromSingleFile"));
     }
 
-    [Fact]
-    public async Task ProductDefaultPathStartsTheRealHelperWithoutAuthorizingAWindow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProductDefaultPathStartsTheRealHelperWithoutAuthorizingAWindow(bool simulateMissingNoGpFaultBit)
     {
-        var helper = Path.Combine(AppContext.BaseDirectory, "GpuPlacementShim", "ResourceManager.GpuWindowAction.exe");
-        Assert.True(File.Exists(helper), $"The mandatory product helper is missing: {helper}");
-        using var current = Process.GetCurrentProcess();
-        Assert.True(GetProcessTimes(current.SafeHandle, out var creation, out _, out _, out _));
-        var limits = new GpuWindowActionProcessLimits(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1), 4096, 4096);
-        await using var executor = new WindowsGpuWindowActionRuntime().Create(limits, CancellationToken.None,
-            checked((ulong)Environment.TickCount64 + 5000));
-        // This process owns no requested HWND; the helper must reject before requesting persistence.
-        var result = await executor.RunAsync(new(Environment.ProcessId, creation, ulong.MaxValue, GpuWindowActionMethod.Resize),
-            _ => throw new Xunit.Sdk.XunitException("An invalid HWND reached persistence."));
-        Assert.Equal(GpuWindowActionOutcome.NotExecuted, result.Outcome);
-        Assert.NotNull(result.Rejection);
-        Assert.Null(result.Prepared);
-        Assert.Null(result.Failure);
-        Assert.False(result.AuthorizationMayHaveBeenSent);
-        Assert.True(result.Cleanup.Complete);
-        Assert.Equal(0U, result.Cleanup.ExitCode);
-        Assert.Equal(0U, result.Cleanup.ActiveProcessCount);
-        Assert.False(result.Cleanup.TerminationRequested);
-        var worker = Assert.IsType<GpuWindowActionProcessIdentity>(executor.Worker);
-        Assert.Equal(Path.GetFullPath(helper), worker.ExecutablePath, ignoreCase: true);
-        using var image = File.OpenRead(helper);
-        output.WriteLine("packagedWindowHelper=" + JsonSerializer.Serialize(new
+        var originalErrorMode = GetErrorMode();
+        try
         {
-            path = helper, byteLength = image.Length, sha256 = Convert.ToHexString(SHA256.HashData(image)),
-            testHost = new { processId = Environment.ProcessId, creationFileTimeUtc = creation }, worker, result,
-            defaultProductPath = true, environmentOverrideUsed = false, userWindowUsed = false
-        }));
+            // Reproduce the process mode captured in the failing full run. This
+            // fixture owns host startup; a module initializer alone is too early.
+            if (simulateMissingNoGpFaultBit)
+                _ = SetErrorMode(originalErrorMode & ~0x0002U);
+            var errorModeBeforePolicy = GetErrorMode();
+            WindowsNativeLaunchErrorPolicy.InitializeForCurrentProcess();
+            var helper = Path.Combine(AppContext.BaseDirectory, "GpuPlacementShim", "ResourceManager.GpuWindowAction.exe");
+            Assert.True(File.Exists(helper), $"The mandatory product helper is missing: {helper}");
+            using var current = Process.GetCurrentProcess();
+            Assert.True(GetProcessTimes(current.SafeHandle, out var creation, out _, out _, out _));
+            var limits = new GpuWindowActionProcessLimits(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(1), 4096, 4096);
+            await using var executor = new WindowsGpuWindowActionRuntime().Create(limits, CancellationToken.None,
+                checked((ulong)Environment.TickCount64 + 5000));
+            // This process owns no requested HWND; the helper must reject before requesting persistence.
+            var result = await executor.RunAsync(new(Environment.ProcessId, creation, ulong.MaxValue, GpuWindowActionMethod.Resize),
+                _ => throw new Xunit.Sdk.XunitException("An invalid HWND reached persistence."));
+            var jobQuerySucceeded = IsProcessInJob(current.SafeHandle, IntPtr.Zero, out var inJob);
+            output.WriteLine("windowHelperResult=" + JsonSerializer.Serialize(new {
+                simulateMissingNoGpFaultBit, originalErrorMode, errorModeBeforePolicy,
+                processState = new { errorMode = GetErrorMode(), threadErrorMode = GetThreadErrorMode(), inJob, jobQuerySucceeded,
+                    currentDirectory = Environment.CurrentDirectory, baseDirectory = AppContext.BaseDirectory },
+                worker = executor.Worker, result }));
+            Assert.Equal(GpuWindowActionOutcome.NotExecuted, result.Outcome);
+            Assert.NotNull(result.Rejection);
+            Assert.Null(result.Prepared);
+            Assert.Null(result.Failure);
+            Assert.False(result.AuthorizationMayHaveBeenSent);
+            Assert.True(result.Cleanup.Complete);
+            Assert.Equal(0U, result.Cleanup.ExitCode);
+            Assert.Equal(0U, result.Cleanup.ActiveProcessCount);
+            Assert.False(result.Cleanup.TerminationRequested);
+            var worker = Assert.IsType<GpuWindowActionProcessIdentity>(executor.Worker);
+            Assert.Equal(Path.GetFullPath(helper), worker.ExecutablePath, ignoreCase: true);
+            using var image = File.OpenRead(helper);
+            output.WriteLine("packagedWindowHelper=" + JsonSerializer.Serialize(new
+            {
+                path = helper, byteLength = image.Length, sha256 = Convert.ToHexString(SHA256.HashData(image)),
+                testHost = new { processId = Environment.ProcessId, creationFileTimeUtc = creation }, worker, result,
+                defaultProductPath = true, environmentOverrideUsed = false, userWindowUsed = false
+            }));
+        }
+        finally
+        {
+            _ = SetErrorMode(originalErrorMode);
+        }
     }
 
     private static HashSet<string> QuotedNativeInputs(string actualRoot, string projectedRoot)
@@ -120,4 +144,17 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetProcessTimes(SafeProcessHandle process, out long creation, out long exit, out long kernel, out long user);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetErrorMode();
+
+    [DllImport("kernel32.dll")]
+    private static extern uint SetErrorMode(uint mode);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetThreadErrorMode();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsProcessInJob(SafeProcessHandle process, IntPtr job, out bool inJob);
 }

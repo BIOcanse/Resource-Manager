@@ -28,6 +28,7 @@ internal sealed class NpuEngineRecordedResources
     internal readonly List<Directory> Opened = [];
     internal IReadOnlySet<string> LastRequested = new HashSet<string>();
     internal uint LastMaximum;
+    internal readonly System.Collections.Concurrent.ConcurrentQueue<(string[] Targets, uint Maximum)> RequestHistory = new();
     internal NpuEngineTopologyRead Open(uint maximum, IWindowsNpuEngineDirectory? prior)
         => Unavailable ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, [])
             : WindowsNpuEngineTopology.OpenDirectory(bound =>
@@ -40,6 +41,7 @@ internal sealed class NpuEngineRecordedResources
         IReadOnlySet<string> requested, uint maximum, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Reads++; LastRequested = requested; LastMaximum = maximum;
+        RequestHistory.Enqueue((requested.ToArray(), maximum));
         var ticks = Ticks;
         Counter = checked(Counter + CounterStep); Ticks = checked(Ticks + TickStep);
         var rows = devices.Where(engine => requested.Contains(engine.ExactIdentityKey) && engine.EngineIndex != MissingEngine)
