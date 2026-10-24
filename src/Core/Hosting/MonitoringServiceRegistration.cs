@@ -116,10 +116,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<IntelGclMonitoringZone>(),
             new ResourceManager.ReadWrite.Windows.Metrics.Writes.WindowsMetricControlResources
             {
-                IntelCpuControl = provider.GetServices<IControlWriter>().OfType<IntelCpuControlWriter>().Single().Resource,
-                AmdCpuControl = provider.GetServices<IControlWriter>().OfType<AmdCpuControlWriter>().Single().Resource,
-                AmdDesktopGpuControl = provider.GetServices<IControlWriter>().OfType<AmdDesktopGpuControlWriter>().Single().Resource,
-                IntegratedGpuControl = provider.GetServices<IControlWriter>().OfType<IntegratedGpuControlWriter>().Single().Resource,
+                // Resolve only the resources consumed by capture. Enumerating all
+                // writers also constructs FanControlWriter, which consumes this sampler.
+                IntelCpuControl = provider.GetRequiredService<IntelCpuControlWriter>().Resource,
+                AmdCpuControl = provider.GetRequiredService<AmdCpuControlWriter>().Resource,
+                AmdDesktopGpuControl = provider.GetRequiredService<AmdDesktopGpuControlWriter>().Resource,
+                IntegratedGpuControl = provider.GetRequiredService<IntegratedGpuControlWriter>().Resource,
                 ControlResolveObjectId = (snapshot, family, resource, _, adapterKey) =>
                     provider.GetRequiredService<IControlObjectCatalog>() is WindowsControlObjectCatalog originalCatalog
                         ? Infrastructure.ReadWrite.HostReadWriteBackend.ResolveOriginalControlObjectId(
@@ -177,11 +179,15 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 处理器和核显的写入都经过辅助进程：它链接 GPL 的 ZenStates-Core，
         // 单独一个程序、单独一个许可证，主程序只跟它说话。
         services.AddSingleton<HardwareBridgeClient>();
-        services.AddSingleton<IControlWriter, AmdCpuControlWriter>();
-        services.AddSingleton<IControlWriter, IntelCpuControlWriter>();
-        services.AddSingleton<IControlWriter, AmdDesktopGpuControlWriter>();
+        services.AddSingleton<AmdCpuControlWriter>();
+        services.AddSingleton<IControlWriter>(static provider => provider.GetRequiredService<AmdCpuControlWriter>());
+        services.AddSingleton<IntelCpuControlWriter>();
+        services.AddSingleton<IControlWriter>(static provider => provider.GetRequiredService<IntelCpuControlWriter>());
+        services.AddSingleton<AmdDesktopGpuControlWriter>();
+        services.AddSingleton<IControlWriter>(static provider => provider.GetRequiredService<AmdDesktopGpuControlWriter>());
         // 核显和独显不是一条路（AMD 走 SMU、Intel 走显卡驱动的控制库），按接法分流。
-        services.AddSingleton<IControlWriter, IntegratedGpuControlWriter>();
+        services.AddSingleton<IntegratedGpuControlWriter>();
+        services.AddSingleton<IControlWriter>(static provider => provider.GetRequiredService<IntegratedGpuControlWriter>());
         // 风扇走独立的风扇控制核心：它按控制通道分类而不按品牌，
         // 而且自带一条规矩：退出时把风扇交还固件。
         services.AddSingleton<FanControlCoreClient>();

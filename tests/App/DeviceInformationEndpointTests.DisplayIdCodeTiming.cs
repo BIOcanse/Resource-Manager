@@ -24,7 +24,7 @@ public sealed partial class DeviceInformationEndpointTests
             var value = Hdr(fields.RootElement, DisplayIdCodeTimingTestData.Name).GetProperty("value");
             if(phase == 1) Assert.Equal(JsonValueKind.Null, value.ValueKind); else assertModeValue(value);
             if(phase == 1) Assert.Equal(Convert.ToBase64String(bytes), Hdr(fields.RootElement, "display_all_edid_raw_declared").GetProperty("value").GetString());
-            using var state = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state")); Assert.False(state.RootElement.TryGetProperty("informationFields", out _));
+            using var state = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state")); AssertInformationFieldsInStateMatchFieldsEndpoint(state.RootElement, fields.RootElement);
             Assert.Equal(reads, reader.ReadCount);
         }
         await app.StopAsync();

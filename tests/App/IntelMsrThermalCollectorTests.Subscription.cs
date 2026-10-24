@@ -75,7 +75,15 @@ public sealed partial class IntelMsrThermalCollectorTests
                 var stoppedReads = hardware.Reads.Count;
                 Assert.Equal(1.5, Value(await sampler.GetSnapshotAsync(request, timeout.Token)));
                 Assert.Equal(stoppedReads, hardware.Reads.Count);
-                await sampler.StartAsync(timeout.Token);
+            }
+            // Stop drains the worker and clears demand. Restart requires a new
+            // subscription; it must not resurrect the stopped stream's lease.
+            await sampler.StartAsync(timeout.Token);
+            var restartReads = hardware.Reads.Count;
+            await Task.Delay(150, timeout.Token);
+            Assert.Equal(restartReads, hardware.Reads.Count);
+            await using (var stream = sampler.SubscribeAsync("ratio-after-restart", request, TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
+            {
                 Assert.True(await stream.MoveNextAsync()); Assert.Null(Value(stream.Current));
                 Assert.True(await stream.MoveNextAsync()); Assert.Equal(1.5, Value(stream.Current));
             }

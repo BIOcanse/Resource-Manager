@@ -28,7 +28,7 @@ public sealed partial class DeviceInformationEndpointTests
                 Hdr(fields.RootElement, "display_all_edid_raw_declared").GetProperty("value").GetString());
             Assert.Equal(JsonValueKind.Null, Hdr(fields.RootElement, "display_all_resolution_actual").GetProperty("value").ValueKind);
             using var state = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-            Assert.False(state.RootElement.TryGetProperty("informationFields", out _)); Assert.Equal(reads, reader.ReadCount);
+            AssertInformationFieldsInStateMatchFieldsEndpoint(state.RootElement, fields.RootElement); Assert.Equal(reads, reader.ReadCount);
         }
         await app.StopAsync();
     }
