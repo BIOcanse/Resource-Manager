@@ -183,6 +183,17 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                     return;
                 }
             }
+            catch (Exception updateFailure) when (KernelEtwSessionKeywordControl.IsAccessDenied(updateFailure)
+                && previousRuntime.IsProcessing)
+            {
+                lock (stateGate)
+                {
+                    state = "Running";
+                    message = $"共享 kernel ETW 会话继续使用已启用的 keywords；订阅更新被拒绝：{updateFailure.Message}";
+                }
+                logger.LogWarning(updateFailure, "Shared kernel ETW keyword update was denied; retaining the running session and retrying reconciliation.");
+                return;
+            }
             catch (Exception updateFailure)
             {
                 // A partially applied update must go through the same proven-release
@@ -191,23 +202,31 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             }
         }
 
+        // Do not drop ownership or enabled flags until stop has actually released them.
+        if (currentSubscriptions.Length == 0 && previousRuntime is { IsProcessing: true })
+        {
+            previousRuntime.UpdateSubscriptions(currentSubscriptions,
+                new KernelEtwSessionContext(currentGeneration, currentStartedAt));
+        }
+        var previousStop = previousRuntime?.Stop(StopWait);
+        if (previousStop is not null && !previousStop.IsReleased)
+        {
+            RecordStopFailure(previousRuntime!, previousStop,
+                Volatile.Read(ref stopping) != 0 ? "shutdown"
+                    : currentSubscriptions.Length == 0 ? "last subscription release" : "restart");
+            return;
+        }
+
         lock (stateGate)
         {
             runtime = null;
             appliedConfigurationVersion = -1;
             enabledKeywords = KernelTraceEventParser.Keywords.None;
             startedAt = DateTimeOffset.MinValue;
-            state = currentSubscriptions.Length == 0 ? "Idle" : "Starting";
-            message = currentSubscriptions.Length == 0
+            state = Volatile.Read(ref stopping) != 0 ? "Stopped" : currentSubscriptions.Length == 0 ? "Idle" : "Starting";
+            message = Volatile.Read(ref stopping) != 0 ? "共享 kernel ETW 会话已随程序停止。" : currentSubscriptions.Length == 0
                 ? "共享 kernel ETW 会话等待订阅。"
                 : "共享 kernel ETW 会话正在合并订阅并启动。";
-        }
-
-        var previousStop = previousRuntime?.Stop(StopWait);
-        if (previousStop is not null && !previousStop.IsReleased)
-        {
-            RecordStopFailure(previousRuntime!, previousStop, "restart");
-            return;
         }
 
         if (Volatile.Read(ref stopping) != 0 || currentSubscriptions.Length == 0)
@@ -337,52 +356,12 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
 
         lock (reconciliationGate)
         {
-            IKernelEtwSessionRuntime? runtimeToStop;
-            bool releaseAlreadyUnproven;
-            string? existingReleaseFailure;
             lock (stateGate)
             {
-                runtimeToStop = runtime;
-                releaseAlreadyUnproven = restartBlockedByUnreleasedRuntime;
-                existingReleaseFailure = releaseAlreadyUnproven ? message : null;
-                runtime = null;
                 subscriptions.Clear();
                 configurationVersion++;
-                enabledKeywords = KernelTraceEventParser.Keywords.None;
-                startedAt = DateTimeOffset.MinValue;
-                appliedConfigurationVersion = -1;
-                state = "Stopping";
-                message = "共享 kernel ETW 会话正在释放。";
             }
-
-            var stopResult = runtimeToStop?.Stop(StopWait)
-                ?? (releaseAlreadyUnproven
-                    ? new KernelEtwSessionStopResult(
-                        SessionStopSucceeded: false,
-                        SessionDisposeSucceeded: false,
-                        ProcessingCompleted: true,
-                        Failures: [existingReleaseFailure ?? "A prior kernel ETW release remained unproven."])
-                    : KernelEtwSessionStopResult.Released);
-            lock (stateGate)
-            {
-                if (stopResult.IsReleased)
-                {
-                    state = "Stopped";
-                    message = "共享 kernel ETW 会话已随程序停止。";
-                }
-                else
-                {
-                    state = "StopFailed";
-                    message = CreateStopFailureMessage(stopResult, "shutdown");
-                }
-            }
-
-            if (!stopResult.IsReleased)
-            {
-                logger.LogError(
-                    "Shared kernel ETW shutdown did not prove release: {Failures}",
-                    string.Join(" | ", stopResult.Failures));
-            }
+            ReconcileCore();
         }
     }
 
@@ -394,11 +373,14 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         lock (stateGate)
         {
             runtime = unreleasedRuntime;
-            restartBlockedByUnreleasedRuntime = true;
+            restartBlockedByUnreleasedRuntime = !result.ControlDenied || !unreleasedRuntime.IsProcessing;
             appliedConfigurationVersion = -1;
-            enabledKeywords = KernelTraceEventParser.Keywords.None;
-            startedAt = DateTimeOffset.MinValue;
-            state = "StopFailed";
+            if (restartBlockedByUnreleasedRuntime)
+            {
+                enabledKeywords = KernelTraceEventParser.Keywords.None;
+                startedAt = DateTimeOffset.MinValue;
+            }
+            state = restartBlockedByUnreleasedRuntime ? "StopFailed" : "Running";
             message = CreateStopFailureMessage(result, operation);
         }
 

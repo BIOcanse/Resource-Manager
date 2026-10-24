@@ -10,6 +10,8 @@ namespace ResourceManager.ReadWrite.Windows.Processes;
 /// No worker, second window or physical-device resolver is installed.</summary>
 public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
 {
+    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.DiskIOInit | KernelTraceEventParser.Keywords.Process;
+
     private const long WindowMilliseconds = 2000;
     private const long RetentionMilliseconds = 8000;
     internal const int MaximumTrackedEvents = 131072;
@@ -31,7 +33,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     private volatile string message = "ETW DiskIO 物理磁盘归因按需启动。";
     public string State => state;
     public string Message => message;
-    public bool IsRunning { get { lock (subscriptionGate) return subscription is not null && broker.GetSnapshot() is { IsRunning: true } snapshot && snapshot.Generation == Volatile.Read(ref generation); } }
+    public bool IsRunning { get { lock (subscriptionGate) return subscription is not null && broker.GetSnapshot().ForKeywords(RequiredKeywords) is { IsRunning: true } snapshot && snapshot.Generation == Volatile.Read(ref generation); } }
 
     public EtwPhysicalDiskIoCaptureOwner(IKernelEtwSessionBroker broker, KernelEtwDiagnostics? diagnostics = null)
         : this(broker, diagnostics ?? new(), static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open) { }
@@ -45,14 +47,14 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         EnsureStarted();
         var now = DateTimeOffset.UtcNow;
         var tick = clock();
-        var before = broker.GetSnapshot();
+        var before = broker.GetSnapshot().ForKeywords(RequiredKeywords);
         RefreshBrokerState(before);
         var selected = SelectWindow(tick);
         var legacy = selected.Complete ? AggregateLegacy(selected.Events) : new Dictionary<int, PhysicalDiskProcessAttribution>();
         var scopes = selected.Disks.Select(number => new PhysicalDiskIoScope(selected.Generation, number)).ToArray();
         var observed = !includeObservedTraffic ? null : selected.Complete ? BuildObserved(selected.Events, now, selected.Generation) with { Disks = scopes }
             : new PhysicalDiskProcessIoWindow(now, WindowMilliseconds, []) { Complete = false, Disks = scopes };
-        var after = broker.GetSnapshot();
+        var after = broker.GetSnapshot().ForKeywords(RequiredKeywords);
         lock (eventGate)
         {
             if (!before.IsRunning || !after.IsRunning || before.Generation != after.Generation
@@ -62,7 +64,8 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                 legacy = new();
                 observed = includeObservedTraffic && after.IsRunning && after.Generation == selected.Generation
                     ? new PhysicalDiskProcessIoWindow(now, WindowMilliseconds, []) { Complete = false, Disks = scopes } : null;
-                state = after.IsRunning ? "Warming" : after.State; message = "ETW DiskIO 采样窗口不完整。";
+                state = after.IsRunning ? "Warming" : after.State;
+                message = after.IsRunning ? "ETW DiskIO 采样窗口不完整。" : after.Message;
             }
             else { state = "Running"; message = "ETW DiskIO 正在采集磁盘传输完成事件。"; }
             return new(now, legacy, new("etw-fileio-disk", state, message)) { ObservedTraffic = observed };
@@ -78,7 +81,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
             try
             {
                 subscription = broker.Subscribe(new("physical-disk-io-attribution",
-                    KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.DiskIOInit | KernelTraceEventParser.Keywords.Process,
+                    RequiredKeywords,
                     BindKernelEvents));
             }
             catch (Exception error) { state = "Unavailable"; message = error.Message; diagnostics.LogWarning(error, "Failed to start shared DiskIO source."); }

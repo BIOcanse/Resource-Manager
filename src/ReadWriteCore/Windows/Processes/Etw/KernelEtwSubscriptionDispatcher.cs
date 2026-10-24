@@ -67,9 +67,15 @@ internal sealed class KernelEtwSubscriptionDispatcher
         KernelEtwSessionContext context,
         Action<KernelTraceEventParser.Keywords>? updateKeywords)
     {
+        if (subscriptions.Count == 0)
+        {
+            // Withdrawing the last callbacks does not change the native flags.
+            // The owner attempts stop and retains this session if control is denied.
+            CancelAll();
+            return;
+        }
         var desiredKeywords = subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
             static (all, subscription) => all | subscription.Keywords);
-        // Zero subscribers are stopped by the broker, rather than keeping this session alive.
         var desiredFlags = KernelEtwSessionKeywordControl.CompileSystemTraceFlags(desiredKeywords);
         var previous = Volatile.Read(ref bindings);
         var retained = previous.ToDictionary(static binding => binding.LeaseId);
@@ -89,11 +95,34 @@ internal sealed class KernelEtwSubscriptionDispatcher
             added.Add(source);
         }
 
-        foreach (var removed in retained.Values) removed.Source.Cancel();
-        if (updateKeywords is not null
-            && desiredFlags != KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords))
-            updateKeywords(desiredKeywords);
+        try
+        {
+            if (updateKeywords is not null
+                && desiredFlags != KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords))
+                updateKeywords(desiredKeywords);
+        }
+        catch (Exception failure) when (KernelEtwSessionKeywordControl.IsAccessDenied(failure))
+        {
+            // The denied control call left the old flags enabled. Publish only requested
+            // callbacks covered by those flags, including newly added covered consumers.
+            var enabledFlags = KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords);
+            var available = new List<BoundSubscription>();
+            for (var index = 0; index < subscriptions.Count; index++)
+            {
+                if ((KernelEtwSessionKeywordControl.CompileSystemTraceFlags(subscriptions[index].Keywords)
+                    & ~enabledFlags) == 0)
+                {
+                    if (added.Contains(next[index].Source)) next[index].Source.Activate();
+                    available.Add(next[index]);
+                }
+                else next[index].Source.Cancel();
+            }
+            foreach (var removed in retained.Values) removed.Source.Cancel();
+            Volatile.Write(ref bindings, available.ToArray());
+            throw;
+        }
 
+        foreach (var removed in retained.Values) removed.Source.Cancel();
         foreach (var source in added) source.Activate();
         Volatile.Write(ref bindings, next);
         keywords = desiredKeywords;

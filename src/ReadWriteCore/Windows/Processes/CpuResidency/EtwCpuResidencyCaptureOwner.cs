@@ -16,6 +16,8 @@ internal sealed record CpuResidencyOwnerDiagnostics(string State, string Message
 /// No worker or global broker. EnsureStarted/Collect/Stop are explicit; borrowed broker is never disposed.</summary>
 public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 {
+    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
+
     private readonly IKernelEtwSessionBroker kernelEtwBroker;
     private readonly Func<CpuResidencyCaptureConfiguration> readConfiguration;
     private readonly KernelEtwDiagnostics logger;
@@ -89,7 +91,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                 return false;
             }
 
-            var broker = kernelEtwBroker.GetSnapshot();
+            var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
             return broker.IsRunning
                 && broker.Generation == session.Generation
                 && broker.EventsLost == Volatile.Read(ref session.EventsLost);
@@ -151,9 +153,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         {
             var created = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
                 "cpu-core-residency",
-                KernelTraceEventParser.Keywords.Process
-                | KernelTraceEventParser.Keywords.Thread
-                | KernelTraceEventParser.Keywords.ContextSwitch,
+                RequiredKeywords,
                 (kernel, context) => BindKernelEvents(kernel, context, expectedBindingEpoch)));
             var accepted = false;
             lock (subscriptionGate)
@@ -393,7 +393,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
     private void RefreshBrokerState(ResidencySessionState? expectedSession = null)
     {
-        var broker = kernelEtwBroker.GetSnapshot();
+        var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
         var session = Volatile.Read(ref activeSession);
         if (session is not null) RefreshEventLoss(session, broker);
         if (session is not null
@@ -440,7 +440,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var brokerBefore = kernelEtwBroker.GetSnapshot();
+            var brokerBefore = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
             if (observedSession is not null) RefreshEventLoss(observedSession, brokerBefore);
             CpuCoreResidencySnapshot? snapshot;
             string nextState;
@@ -461,7 +461,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                     ?? throw new InvalidOperationException("The running ETW session state is missing.");
                 var aggregate = currentSession.Buffer.Snapshot(
                     currentSession.Plan.PhysicalCoreByLogicalProcessor.Keys);
-                var brokerAfter = kernelEtwBroker.GetSnapshot();
+                var brokerAfter = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
                 if (!brokerAfter.IsRunning
                     || brokerAfter.Generation != currentSession.Generation
                     || brokerAfter.EventsLost != brokerBefore.EventsLost
@@ -562,7 +562,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
                 if (expectedSession is not null)
                 {
-                    var broker = kernelEtwBroker.GetSnapshot();
+                    var broker = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
                     if (!broker.IsRunning
                         || broker.Generation != expectedSession.Generation
                         || broker.EventsLost != expectedEventsLost
