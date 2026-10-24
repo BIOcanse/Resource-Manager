@@ -65,6 +65,8 @@ public sealed partial class NativeTransactionJournalOwnerTests
         Assert.Equal(71UL, Assert.Single(restored.Records).Identity.ActionId);
         using (var next = resource.Acquire()) Assert.NotEqual(allocation, next.AllocationNumber);
         var second = CreatePrepare(CreateIdentity(73), restored.Header.JournalRevision, 1001);
+        second.Identity.ProcessId++;
+        second.Identity.TargetId++;
         Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(second, CancellationToken.None));
         Assert.Equal(71UL, Assert.Single(saved.Records).Identity.ActionId); // The result is an independent copy.
         Assert.Equal(2, (await owner.ReadSnapshotAsync(CancellationToken.None)).Records.Count);

@@ -36,12 +36,14 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
     private const ulong PayloadMagic = 0x3144_414F_4C50_4D52;
     private const string SequenceFileName = "payload-sequence.bin";
     private const string OwnerLockFileName = "payload-store.lock";
+    private const string QuarantineDirectoryName = "quarantine";
     private const ulong MaximumSequence = (ulong)uint.MaxValue * uint.MaxValue;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly object disposeSync = new();
     private readonly string directoryPath;
     private readonly string sequencePath;
+    private readonly string quarantineDirectoryPath;
     private readonly int maximumPayloadCount;
     private readonly long maximumPayloadBytes;
     private readonly FileStream ownerLock;
@@ -76,6 +78,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
         this.maximumPayloadCount = maximumPayloadCount;
         this.maximumPayloadBytes = maximumPayloadBytes;
         sequencePath = Path.Combine(this.directoryPath, SequenceFileName);
+        quarantineDirectoryPath = Path.Combine(this.directoryPath, QuarantineDirectoryName);
         Directory.CreateDirectory(this.directoryPath);
         ownerLock = new FileStream(
             Path.Combine(this.directoryPath, OwnerLockFileName),
@@ -314,27 +317,23 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
     {
         var count = 0;
         long bytes = 0;
-        foreach (var path in Directory.EnumerateFiles(
-                     directoryPath,
-                     "payload-*.bin",
-                     SearchOption.TopDirectoryOnly))
+        QuarantineNonCanonicalPayloadFiles();
+        var paths = Directory
+            .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
+            .ToArray();
+        foreach (var path in paths)
         {
             var fileName = Path.GetFileName(path);
             if (fileName.Equals(SequenceFileName, StringComparison.Ordinal))
             {
                 continue;
             }
-            if (!TryParseCanonicalPayloadFileName(fileName))
-            {
-                throw new InvalidDataException(
-                    $"The payload store contains a non-canonical payload file name: {fileName}.");
-            }
 
             var fileLength = new FileInfo(path).Length;
             if (fileLength <= PayloadHeaderSize)
             {
-                throw new InvalidDataException(
-                    $"The payload store contains a truncated canonical payload file: {fileName}.");
+                QuarantinePayloadFile(path);
+                continue;
             }
             count = checked(count + 1);
             bytes = checked(bytes + fileLength - PayloadHeaderSize);
@@ -727,7 +726,40 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
 
     private bool ContainsCommittedBinaryFiles()
         => Directory.Exists(directoryPath) &&
-            Directory.EnumerateFiles(directoryPath, "*.bin", SearchOption.TopDirectoryOnly).Any();
+            (Directory.EnumerateFiles(directoryPath, "*.bin", SearchOption.TopDirectoryOnly).Any() ||
+             Directory.Exists(quarantineDirectoryPath) &&
+             Directory.EnumerateFiles(
+                 quarantineDirectoryPath,
+                 "*",
+                 SearchOption.TopDirectoryOnly).Any());
+
+    private void QuarantineNonCanonicalPayloadFiles()
+    {
+        var paths = Directory
+            .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
+            .ToArray();
+        foreach (var path in paths)
+        {
+            var fileName = Path.GetFileName(path);
+            if (!fileName.Equals(SequenceFileName, StringComparison.Ordinal) &&
+                !TryParseCanonicalPayloadFileName(fileName))
+            {
+                QuarantinePayloadFile(path);
+            }
+        }
+    }
+
+    private void QuarantinePayloadFile(string path)
+    {
+        Directory.CreateDirectory(quarantineDirectoryPath);
+        var destinationPath = Path.Combine(
+            quarantineDirectoryPath,
+            $"{Path.GetFileName(path)}.{Guid.NewGuid():N}.quarantined");
+        File.Move(path, destinationPath);
+        System.Diagnostics.Trace.TraceWarning(
+            "Quarantined invalid native transaction journal rollback payload: {0}",
+            destinationPath);
+    }
 
     private string ResolvePayloadPath(uint slot, uint generation)
         => Path.Combine(directoryPath, $"payload-{generation:D10}-{slot:D10}.bin");

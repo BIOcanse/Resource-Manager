@@ -1,5 +1,5 @@
+using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
-using ResourceManager.App.Infrastructure.Optimization.NativeScheduling;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -14,49 +14,22 @@ public sealed partial class HostManagerSmartCoordinator
                 HostManagerCycleEffectKind.NativeTransactionRecovery,
                 out var permit))
         {
-            return new NativeTransactionRecoveryResult(
-                nativeActionTransactions.JournalState !=
-                    HostManagerTransactionJournalRuntimeState.ReadyForExecution,
-                false);
+            return new NativeTransactionRecoveryResult(false, false);
         }
         permit.Require(HostManagerCycleEffectKind.NativeTransactionRecovery);
         await nativeActionTransactions.EnsureReadyAsync(cancellationToken);
-        if (nativeActionTransactions.JournalState == HostManagerTransactionJournalRuntimeState.ReadyForExecution)
+        HostManagerTransactionJournalAdmission? admission = null;
+        var acquired = nativeActionTransactions.JournalState switch
         {
-            if (!nativeActionTransactions.TryAcquireExecutionAdmission(out var executionAdmission) ||
-                executionAdmission is null)
-            {
-                return new NativeTransactionRecoveryResult(true, true);
-            }
-            await using (executionAdmission)
-            {
-                var readySnapshot =
-                    await executionAdmission.ReadSnapshotAsync(cancellationToken);
-                var readyOwnership = await nativeActionTransactions.AppliedOwnership
-                    .ReadSnapshotAsync(cancellationToken);
-                if (!processEffectValidationScopeAuthorityOwner
-                        .ReconcileDeclaredNativeHandoff(
-                            CreateAuthoritativeProcessEffectHandoffs(
-                                readySnapshot,
-                                readyOwnership)))
-                {
-                    return new NativeTransactionRecoveryResult(true, true);
-                }
-                await ReconcileNativePayloadsIfRequiredAsync(
-                    executionAdmission,
-                    readySnapshot,
-                    cancellationToken);
-                return new NativeTransactionRecoveryResult(false, false);
-            }
-        }
-        if (nativeActionTransactions.JournalState != HostManagerTransactionJournalRuntimeState.RecoveryRequired)
+            HostManagerTransactionJournalRuntimeState.ReadyForExecution =>
+                nativeActionTransactions.TryAcquireExecutionAdmission(out admission),
+            HostManagerTransactionJournalRuntimeState.RecoveryRequired =>
+                nativeActionTransactions.TryAcquireRecoveryAdmission(out admission),
+            _ => false
+        };
+        if (!acquired || admission is null)
         {
-            return new NativeTransactionRecoveryResult(true, true);
-        }
-        if (!nativeActionTransactions.TryAcquireRecoveryAdmission(out var admission) ||
-            admission is null)
-        {
-            return new NativeTransactionRecoveryResult(true, true);
+            return new NativeTransactionRecoveryResult(true, false);
         }
 
         await using (admission)
@@ -76,61 +49,90 @@ public sealed partial class HostManagerSmartCoordinator
                 admission,
                 snapshot,
                 cancellationToken);
-            var blocked = snapshot.Header.RecoveryBlockedCount != 0;
             var changed = false;
             foreach (var record in snapshot.Records)
             {
-                if (record.Phase == (uint)NativeTransactionJournalPhase.RecoveryBlocked)
-                {
-                    blocked = true;
-                    continue;
-                }
-                if (record.Phase == (uint)NativeTransactionJournalPhase.RecoveryRetryPending &&
+                if (record.Scope != (uint)NativeTransactionJournalScope.Resource &&
+                    record.Phase == (uint)NativeTransactionJournalPhase.RecoveryRetryPending &&
                     record.RetryNotBeforeUtcMilliseconds > CurrentUtcMilliseconds())
                 {
                     continue;
                 }
-                if (!permit.TryReserveRecovery(1, out _))
-                {
-                    blocked = true;
-                    break;
-                }
-
                 var outcome = await RecoverNativeTransactionRecordAsync(
+                    permit,
                     admission,
                     record,
                     cancellationToken);
-                changed |= outcome.Changed;
-                blocked |= outcome.Blocked;
-                snapshot = await admission.ReadSnapshotAsync(cancellationToken);
+                changed |= outcome;
             }
 
-            snapshot = await admission.ReadSnapshotAsync(cancellationToken);
-            blocked |= snapshot.Header.RecoveryBlockedCount != 0 ||
-                snapshot.Header.EffectInvocationUncertainCount != 0;
-            return new NativeTransactionRecoveryResult(blocked, changed);
+            if (changed)
+            {
+                var settled = await admission.ReadSnapshotAsync(cancellationToken);
+                await ReconcileNativePayloadsIfRequiredAsync(
+                    admission, settled, cancellationToken);
+            }
+            return new NativeTransactionRecoveryResult(false, changed);
         }
     }
 
-    private async Task<NativeTransactionRecoveryRecordResult> RecoverNativeTransactionRecordAsync(
+    private async Task<bool> RecoverNativeTransactionRecordAsync(
+        HostManagerCycleEffectPermit permit,
         HostManagerTransactionJournalAdmission admission,
         NativeTransactionJournalRecord record,
         CancellationToken cancellationToken)
     {
         if (record.Scope == (uint)NativeTransactionJournalScope.Resource)
         {
+            if (!permit.TryReserveRecovery(1, out _)) return false;
             return await RecoverResourceTransactionRecordAsync(
                 admission,
                 record,
                 cancellationToken);
         }
+        if (record.Phase == (uint)NativeTransactionJournalPhase.RecoveryBlocked &&
+            record.DomainMask == 0)
+        {
+            // The durable decoder retained a target identity, but no trustworthy effect proof.
+            return false;
+        }
         if (record.Phase == (uint)NativeTransactionJournalPhase.AuthoritativeResyncPending)
         {
+            if (!permit.TryReserveRecovery(1, out _)) return false;
             await RemoveRecoveredOwnershipAsync(record, cancellationToken);
             await CompleteAuthoritativeResyncAsync(admission, record, cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, false);
+            return true;
         }
 
+        var ownership = await nativeActionTransactions.AppliedOwnership.GetAsync(
+            CreateAppliedOwnershipPrimary(in record), cancellationToken);
+        var ownershipChanged = ownership.Status == NativeAppliedOwnershipStatus.Ok &&
+            !RecoveryPayloadMatchesOwnership(record, ownership.Record);
+        var exited = record.Phase == (uint)NativeTransactionJournalPhase.RecoveryBlocked &&
+            record.Scope == (uint)NativeTransactionJournalScope.Process &&
+            ProcessInstanceRecovery.IsConfirmedExited(
+                processPolicyWriter.ReadProcessInstanceForRecovery(
+                    checked((int)record.Identity.ProcessId)),
+                record.Identity.ProcessId,
+                record.Identity.ProcessStartKey);
+        if (ownershipChanged || exited)
+        {
+            if (!permit.TryReserveRecovery(1, out _)) return false;
+            await ApplyRecoveryOutcomeAsync(admission, record,
+                ownershipChanged ? NativeTransactionJournalRecoveryOutcome.OwnershipLost
+                    : NativeTransactionJournalRecoveryOutcome.ProcessExited,
+                0, 0, cancellationToken);
+            await RemoveRecoveredOwnershipAsync(record, cancellationToken);
+            await CompleteAuthoritativeResyncAsync(admission, record, cancellationToken);
+            admission.RequirePayloadReconciliation();
+            return true;
+        }
+        if (record.Phase == (uint)NativeTransactionJournalPhase.RecoveryBlocked)
+        {
+            return false;
+        }
+
+        if (!permit.TryReserveRecovery(1, out _)) return false;
         NativeTransactionJournalPayloadReference payloadReference;
         NativeTransactionJournalPayloadProvenance payloadProvenance;
         byte[] payload;
@@ -155,7 +157,7 @@ public sealed partial class HostManagerSmartCoordinator
                 0,
                 unchecked((uint)exception.HResult),
                 cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, true);
+            return true;
         }
 
         var effect = await RestoreRecoveredPayloadAsync(
@@ -206,247 +208,28 @@ public sealed partial class HostManagerSmartCoordinator
                     payloadProvenance,
                     cancellationToken);
             }
-            return new NativeTransactionRecoveryRecordResult(true, false);
+            return true;
         }
 
-        return new NativeTransactionRecoveryRecordResult(
-            true,
-            outcome == NativeTransactionJournalRecoveryOutcome.InvalidProof);
+        return true;
     }
 
-    private async Task<NativeTransactionRecoveryRecordResult>
-        RecoverResourceTransactionRecordAsync(
-            HostManagerTransactionJournalAdmission admission,
-            NativeTransactionJournalRecord record,
-            CancellationToken cancellationToken)
-    {
-        NativeTransactionJournalPayloadReference payloadReference;
-        NativeTransactionJournalPayloadProvenance payloadProvenance;
-        HostManagerResourceTransactionPayload payload;
-        HostManagerRetiredSelfResourceJournalDecision decision;
-        try
-        {
-            var snapshot = await admission.ReadSnapshotAsync(
-                cancellationToken);
-            payloadReference =
-                HostManagerTransactionJournalProjection.CreatePayloadReference(
-                    in record);
-            payloadProvenance =
-                HostManagerTransactionJournalProjection
-                    .CreatePayloadProvenance(in record);
-            payload = HostManagerResourceTransactionProjection.DecodePayload(
-                await admission.ReadPayloadAsync(
-                    payloadReference,
-                    payloadProvenance,
-                    cancellationToken));
-            HostManagerResourceTransactionProjection.RequireRecordMatches(
-                snapshot.Header,
-                record,
-                payload);
-            HostManagerRetiredSelfResourceJournalRecovery.RequireExactPayload(
-                payload);
-            decision = HostManagerRetiredSelfResourceJournalRecovery.Classify(
-                record);
-        }
-        catch (Exception exception) when (
-            exception is IOException
-                or InvalidDataException
-                or UnauthorizedAccessException)
-        {
-            await ApplyRecoveryOutcomeAsync(
-                admission,
-                record,
-                NativeTransactionJournalRecoveryOutcome.InvalidProof,
-                0,
-                unchecked((uint)exception.HResult),
-                cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, true);
-        }
-
-        if (decision is
-            HostManagerRetiredSelfResourceJournalDecision
-                .AcknowledgeSealedFeedback
-            or HostManagerRetiredSelfResourceJournalDecision
-                .AcknowledgeStateUncertain)
-        {
-            var snapshot = await admission.ReadSnapshotAsync(
-                cancellationToken);
-            var ack = HostManagerTransactionJournalProjection.CreateAck(
-                in record,
-                snapshot.Header.JournalRevision,
-                NativeTransactionJournalAckResult.Accepted,
-                Math.Max(
-                    CurrentUtcMilliseconds(),
-                    record.UpdatedAtUtcMilliseconds),
-                retryNotBeforeUtcMilliseconds: 0,
-                stableSystemStatus: 0,
-                stableSystemError: record.FeedbackSystemError);
-            RequireJournalStatus(
-                await admission.AcknowledgeAsync(ack, cancellationToken),
-                "resource-recovery-acknowledge-feedback");
-            var read = await admission.GetAsync(
-                record.Identity,
-                cancellationToken);
-            if (read.Status == NativeTransactionJournalStatus.NoData)
-            {
-                await DeleteRecoveredResourcePayloadExactAsync(
-                    admission,
-                    payloadReference,
-                    payloadProvenance,
-                    cancellationToken);
-                return new NativeTransactionRecoveryRecordResult(true, false);
-            }
-            if (read.Status != NativeTransactionJournalStatus.Ok)
-            {
-                throw new InvalidDataException(
-                    $"Resource recovery feedback read failed with {read.Status}.");
-            }
-            if (read.Record.Phase ==
-                (uint)NativeTransactionJournalPhase.AuthoritativeResyncPending)
-            {
-                await CompleteResourceAuthoritativeResyncAsync(
-                    admission,
-                    read.Record,
-                    payload.Selection.Authority.SourceSnapshotGeneration,
-                    cancellationToken);
-                await DeleteRecoveredResourcePayloadExactAsync(
-                    admission,
-                    payloadReference,
-                    payloadProvenance,
-                    cancellationToken);
-                return new NativeTransactionRecoveryRecordResult(true, false);
-            }
-            if (read.Record.Phase ==
-                    (uint)NativeTransactionJournalPhase.ReconciliationPending
-                && decision == HostManagerRetiredSelfResourceJournalDecision
-                    .AcknowledgeStateUncertain)
-            {
-                return new NativeTransactionRecoveryRecordResult(true, true);
-            }
-            throw new InvalidDataException(
-                "Retired Host-self feedback did not reach a terminal or explicitly uncertain journal phase.");
-        }
-        if (decision == HostManagerRetiredSelfResourceJournalDecision
-                .SettleKnownNoEffect)
-        {
-            await ApplyRecoveryOutcomeAsync(
-                admission,
-                record,
-                NativeTransactionJournalRecoveryOutcome.AlreadyRestored,
-                record.StableSystemStatus,
-                record.StableSystemError,
-                cancellationToken);
-            var transitioned = await RequireJournalRecordAsync(
-                admission,
-                record.Identity,
-                cancellationToken);
-            await CompleteResourceAuthoritativeResyncAsync(
-                admission,
-                transitioned,
-                payload.Selection.Authority.SourceSnapshotGeneration,
-                cancellationToken);
-            await DeleteRecoveredResourcePayloadExactAsync(
-                admission,
-                payloadReference,
-                payloadProvenance,
-                cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, false);
-        }
-        if (decision == HostManagerRetiredSelfResourceJournalDecision
-                .CompleteAuthoritativeResync)
-        {
-            await CompleteResourceAuthoritativeResyncAsync(
-                admission,
-                record,
-                payload.Selection.Authority.SourceSnapshotGeneration,
-                cancellationToken);
-            await DeleteRecoveredResourcePayloadExactAsync(
-                admission,
-                payloadReference,
-                payloadProvenance,
-                cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, false);
-        }
-        if (decision == HostManagerRetiredSelfResourceJournalDecision
-                .MarkEffectInvocationUncertain)
-        {
-            await ApplyRecoveryOutcomeAsync(
-                admission,
-                record,
-                NativeTransactionJournalRecoveryOutcome
-                    .EffectInvocationUncertain,
-                record.StableSystemStatus,
-                record.StableSystemError,
-                cancellationToken);
-            return new NativeTransactionRecoveryRecordResult(true, true);
-        }
-        if (decision == HostManagerRetiredSelfResourceJournalDecision
-                .PreserveBlocked)
-        {
-            return new NativeTransactionRecoveryRecordResult(false, true);
-        }
-        throw new InvalidDataException(
-            "The retired Host-self journal decision was not handled.");
-    }
-
-    private static async Task DeleteRecoveredResourcePayloadExactAsync(
-        HostManagerTransactionJournalAdmission admission,
-        NativeTransactionJournalPayloadReference reference,
-        NativeTransactionJournalPayloadProvenance provenance,
-        CancellationToken cancellationToken)
-    {
-        if (!await admission.DeletePayloadAsync(
-                reference,
-                provenance,
-                cancellationToken))
-        {
-            throw new IOException(
-                "The exact durable resource recovery payload was not deleted.");
-        }
-    }
-
-    private async Task CompleteResourceAuthoritativeResyncAsync(
+    private async Task<bool> RecoverResourceTransactionRecordAsync(
         HostManagerTransactionJournalAdmission admission,
         NativeTransactionJournalRecord record,
-        ulong authoritativeFactsGeneration,
         CancellationToken cancellationToken)
     {
-        if (authoritativeFactsGeneration == 0)
-        {
-            throw new InvalidDataException(
-                "Resource recovery has no authoritative source generation.");
-        }
-        var current = await RequireJournalRecordAsync(
+        // A trim releases memory; it has no original value or ownership to restore.
+        // Its former scheduler session cannot consume feedback after a restart.
+        await ApplyRecoveryOutcomeAsync(
             admission,
-            record.Identity,
+            record,
+            NativeTransactionJournalRecoveryOutcome.AlreadyRestored,
+            record.StableSystemStatus,
+            record.StableSystemError,
             cancellationToken);
-        if (current.Phase !=
-            (uint)NativeTransactionJournalPhase.AuthoritativeResyncPending)
-        {
-            throw new InvalidDataException(
-                "Resource recovery did not reach authoritative resync.");
-        }
-        var journal = await admission.ReadSnapshotAsync(
-            cancellationToken);
-        var evidence = HostManagerTransactionJournalProjection
-            .CreateRecoveryEvidence(
-                in current,
-                journal.Header.JournalRevision,
-                NativeTransactionJournalRecoveryOutcome
-                    .AuthoritativeResyncCompleted,
-                Math.Max(
-                    CurrentUtcMilliseconds(),
-                    current.UpdatedAtUtcMilliseconds),
-                retryNotBeforeUtcMilliseconds: 0,
-                stableSystemStatus: 0,
-                stableSystemError: current.StableSystemError,
-                authoritativeFactsGeneration:
-                    authoritativeFactsGeneration);
-        RequireJournalStatus(
-            await admission.ApplyRecoveryEvidenceAsync(
-                evidence,
-                cancellationToken),
-            "resource-authoritative-resync-completed");
+        admission.RequirePayloadReconciliation();
+        return true;
     }
 
     private async Task<TransactionEffectResult> RestoreRecoveredPayloadAsync(
@@ -603,16 +386,10 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var ownershipRecord = read.Record;
-        var payload = HostManagerAppliedOwnershipProjection.CreatePayloadReference(
-            in ownershipRecord);
-        if (payload.Slot != record.PayloadSlot ||
-            payload.Generation != record.PayloadGeneration ||
-            payload.Length != record.PayloadLength ||
-            payload.DigestLow != record.PayloadDigestLow ||
-            payload.DigestHigh != record.PayloadDigestHigh)
+        if (!RecoveryPayloadMatchesOwnership(record, ownershipRecord))
         {
-            throw new InvalidDataException(
-                "The recovery journal and applied ownership payload identities differ.");
+            // A later transaction owns this target. Only settle the older journal record.
+            return;
         }
 
         var snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
@@ -627,6 +404,15 @@ public sealed partial class HostManagerSmartCoordinator
                 cancellationToken),
             "recovery-remove");
     }
+
+    private static bool RecoveryPayloadMatchesOwnership(
+        NativeTransactionJournalRecord record,
+        NativeAppliedOwnershipRecord ownership)
+        => ownership.Payload.Slot == record.PayloadSlot &&
+            ownership.Payload.Generation == record.PayloadGeneration &&
+            ownership.Payload.Length == record.PayloadLength &&
+            ownership.Payload.DigestLow == record.PayloadDigestLow &&
+            ownership.Payload.DigestHigh == record.PayloadDigestHigh;
 
     private async Task CompleteAuthoritativeResyncAsync(
         HostManagerTransactionJournalAdmission admission,
@@ -683,7 +469,4 @@ public sealed partial class HostManagerSmartCoordinator
         bool IsBlocked,
         bool Changed);
 
-    private readonly record struct NativeTransactionRecoveryRecordResult(
-        bool Changed,
-        bool Blocked);
 }

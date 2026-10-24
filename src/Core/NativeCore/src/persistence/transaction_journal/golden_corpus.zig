@@ -34,8 +34,8 @@ pub fn processIdentity(generation: u64, action_id: u64) protocol.Identity {
         .host_session_incarnation = 23,
         .target_id = 29 + action_id,
         .software_id = 31,
-        .process_start_key = 37,
-        .process_id = 41,
+        .process_start_key = 37 + action_id,
+        .process_id = @intCast(41 + action_id),
         .reserved = 0,
     };
 }

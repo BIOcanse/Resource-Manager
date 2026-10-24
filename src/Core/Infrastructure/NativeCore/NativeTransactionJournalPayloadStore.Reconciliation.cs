@@ -26,9 +26,13 @@ internal sealed partial class NativeTransactionJournalPayloadStore
         {
             ThrowIfDisposed();
             var live = BuildLiveSet(liveReferences.Span);
+            var liveIdentities = live
+                .Select(static item => (item.Reference.Slot, item.Reference.Generation))
+                .ToHashSet();
             var allocationSequence = await ReadSequenceAsync(
                 allowMissingForEmptyStore: true,
                 cancellationToken);
+            QuarantineNonCanonicalPayloadFiles();
             var canonicalPaths = Directory
                 .EnumerateFiles(directoryPath, "payload-*.bin", SearchOption.TopDirectoryOnly)
                 .Where(path => !string.Equals(
@@ -37,41 +41,64 @@ internal sealed partial class NativeTransactionJournalPayloadStore
                     StringComparison.Ordinal))
                 .Order(StringComparer.Ordinal)
                 .ToArray();
-            var files = new List<CanonicalPayloadFile>(canonicalPaths.Length);
+            var livePayloadCount = 0;
+            long livePayloadBytes = 0;
+            var deleted = 0;
             foreach (var path in canonicalPaths)
             {
-                files.Add(await ReadCanonicalFileAsync(
-                    path,
-                    allocationSequence,
-                    cancellationToken));
-            }
-
-            ValidateLiveSet(live, files);
-            var deleted = 0;
-            foreach (var file in files)
-            {
-                if (live.ContainsKey(file.LiveReference.Reference))
+                CanonicalPayloadFile file;
+                try
                 {
+                    file = await ReadCanonicalFileAsync(
+                        path,
+                        cancellationToken);
+                }
+                catch (InvalidDataException)
+                {
+                    QuarantinePayloadFile(path);
+                    continue;
+                }
+                catch (EndOfStreamException)
+                {
+                    QuarantinePayloadFile(path);
+                    continue;
+                }
+                catch (FileNotFoundException)
+                {
+                    // A missing payload is handled by recovery for the record that references it.
                     continue;
                 }
 
-                if (WindowsNativeAtomicFileCommitter.DeleteExact(file.Path) ==
-                    WindowsNativeFileDeleteResult.Deleted)
+                var item = file.LiveReference;
+                if (ToSequence(item.Reference.Slot, item.Reference.Generation) > allocationSequence)
+                {
+                    throw new InvalidDataException(
+                        $"The canonical payload identity is newer than the durable allocation sequence: " +
+                        $"{Path.GetFileName(file.Path)}.");
+                }
+                if (live.Contains(item))
+                {
+                    livePayloadCount = checked(livePayloadCount + 1);
+                    livePayloadBytes = checked(
+                        livePayloadBytes + checked((long)item.Reference.Length));
+                }
+                else if (liveIdentities.Contains((item.Reference.Slot, item.Reference.Generation)))
+                {
+                    QuarantinePayloadFile(file.Path);
+                }
+                else if (WindowsNativeAtomicFileCommitter.DeleteExact(file.Path) ==
+                         WindowsNativeFileDeleteResult.Deleted)
                 {
                     deleted = checked(deleted + 1);
                 }
             }
 
-            var kept = files.Where(file => live.ContainsKey(file.LiveReference.Reference)).ToArray();
-            var keptBytes = kept.Aggregate(
-                0L,
-                static (total, file) => checked(total + checked((long)file.LiveReference.Reference.Length)));
-            EnsureUsageWithinBudget(kept.Length, keptBytes);
-            livePayloadCount = kept.Length;
-            livePayloadBytes = keptBytes;
+            EnsureUsageWithinBudget(livePayloadCount, livePayloadBytes);
+            this.livePayloadCount = livePayloadCount;
+            this.livePayloadBytes = livePayloadBytes;
             return new NativeTransactionJournalPayloadReconciliationResult(
-                kept.Length,
-                keptBytes,
+                livePayloadCount,
+                livePayloadBytes,
                 deleted);
         }
         finally
@@ -80,14 +107,10 @@ internal sealed partial class NativeTransactionJournalPayloadStore
         }
     }
 
-    private static Dictionary<
-        NativeTransactionJournalPayloadReference,
-        NativeTransactionJournalPayloadProvenance> BuildLiveSet(
+    private static HashSet<NativeTransactionJournalPayloadLiveReference> BuildLiveSet(
         ReadOnlySpan<NativeTransactionJournalPayloadLiveReference> liveReferences)
     {
-        var live = new Dictionary<
-            NativeTransactionJournalPayloadReference,
-            NativeTransactionJournalPayloadProvenance>(liveReferences.Length);
+        var live = new HashSet<NativeTransactionJournalPayloadLiveReference>(liveReferences.Length);
         foreach (var item in liveReferences)
         {
             if (!item.IsValid)
@@ -96,56 +119,15 @@ internal sealed partial class NativeTransactionJournalPayloadStore
                     "The rollback payload live-set contains an invalid reference.",
                     nameof(liveReferences));
             }
-            if (live.TryGetValue(item.Reference, out var existing) &&
-                existing != item.Provenance)
-            {
-                throw new InvalidDataException(
-                    "The rollback payload live-set contains conflicting provenance.");
-            }
-            live[item.Reference] = item.Provenance;
+            // Each record verifies its own provenance when reading. A conflicting claim
+            // must not hide an exact valid owner or stop unrelated payload allocation.
+            live.Add(item);
         }
         return live;
     }
 
-    private static void ValidateLiveSet(
-        IReadOnlyDictionary<
-            NativeTransactionJournalPayloadReference,
-            NativeTransactionJournalPayloadProvenance> live,
-        IReadOnlyList<CanonicalPayloadFile> files)
-    {
-        var observed = new Dictionary<
-            NativeTransactionJournalPayloadReference,
-            NativeTransactionJournalPayloadProvenance>(files.Count);
-        foreach (var file in files)
-        {
-            var item = file.LiveReference;
-            if (!observed.TryAdd(item.Reference, item.Provenance))
-            {
-                throw new InvalidDataException(
-                    "The payload store contains duplicate canonical references.");
-            }
-            if (live.TryGetValue(item.Reference, out var expected) &&
-                expected != item.Provenance)
-            {
-                throw new InvalidDataException(
-                    "A live rollback payload has different durable provenance.");
-            }
-        }
-
-        foreach (var item in live)
-        {
-            if (!observed.TryGetValue(item.Key, out var provenance) ||
-                provenance != item.Value)
-            {
-                throw new InvalidDataException(
-                    "A live rollback payload is missing or does not match its durable provenance.");
-            }
-        }
-    }
-
     private async Task<CanonicalPayloadFile> ReadCanonicalFileAsync(
         string path,
-        ulong allocationSequence,
         CancellationToken cancellationToken)
     {
         var fileName = Path.GetFileName(path);
@@ -169,11 +151,14 @@ internal sealed partial class NativeTransactionJournalPayloadStore
             BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(24, 8)),
             BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(32, 8)),
             BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(40, 8)));
-        ValidateReference(reference);
+        if (!reference.IsValid)
+        {
+            throw new InvalidDataException(
+                $"The canonical payload reference is invalid: {fileName}.");
+        }
         if (reference.Slot != slot ||
             reference.Generation != generation ||
-            stream.Length != checked((long)PayloadHeaderSize + checked((long)reference.Length)) ||
-            ToSequence(reference.Slot, reference.Generation) > allocationSequence)
+            stream.Length != checked((long)PayloadHeaderSize + checked((long)reference.Length)))
         {
             throw new InvalidDataException(
                 $"The canonical payload identity or length is invalid: {fileName}.");
@@ -186,7 +171,11 @@ internal sealed partial class NativeTransactionJournalPayloadStore
         var provenance = new NativeTransactionJournalPayloadProvenance(
             BinaryPrimitives.ReadUInt64LittleEndian(bindingHash[..8]),
             BinaryPrimitives.ReadUInt64LittleEndian(bindingHash.Slice(8, 8)));
-        ValidateProvenance(provenance);
+        if (!provenance.IsValid)
+        {
+            throw new InvalidDataException(
+                $"The canonical payload provenance is invalid: {fileName}.");
+        }
         ValidatePayloadHeader(header, reference, provenance);
 
         var payloadHash = await SHA256.HashDataAsync(stream, cancellationToken);

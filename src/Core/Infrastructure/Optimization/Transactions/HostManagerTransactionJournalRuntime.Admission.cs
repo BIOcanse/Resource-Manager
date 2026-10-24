@@ -58,16 +58,16 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
     public bool PayloadReconciliationRequired =>
         RequireRuntime().PayloadReconciliationRequired;
 
+    internal void RequirePayloadReconciliation()
+        => RequireRuntime().RequirePayloadReconciliation();
+
     public Task<NativeTransactionJournalStatus> PrepareAsync(
         NativeTransactionJournalPrepareInput input,
         CancellationToken cancellationToken)
         => ExecuteJournalOperationAsync(
             HostManagerTransactionJournalOperation.Prepare,
             cancellationToken,
-            () => journalOwner.PrepareAsync(input, cancellationToken),
-            runtime => runtime.ValidateExecutionConfigurationGeneration(
-                input.Identity.ConfigurationGeneration,
-                identity));
+            () => journalOwner.PrepareAsync(input, cancellationToken));
 
     public Task<NativeTransactionJournalStatus> PrepareBatchAsync(
         NativeTransactionJournalPrepareBatchInput batch,
@@ -76,16 +76,7 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
         => ExecuteJournalOperationAsync(
             HostManagerTransactionJournalOperation.PrepareBatch,
             cancellationToken,
-            () => journalOwner.PrepareBatchAsync(batch, inputs, cancellationToken),
-            runtime =>
-            {
-                foreach (var input in inputs.Span)
-                {
-                    runtime.ValidateExecutionConfigurationGeneration(
-                        input.Identity.ConfigurationGeneration,
-                        identity);
-                }
-            });
+            () => journalOwner.PrepareBatchAsync(batch, inputs, cancellationToken));
 
     public Task<NativeTransactionJournalStatus> MutateAsync(
         NativeTransactionJournalMutationInput input,
@@ -146,9 +137,6 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
             runtime =>
             {
                 runtime.RequirePayloadReconciliationComplete();
-                runtime.ValidateExecutionConfigurationGeneration(
-                    binding.ActionIdentity.ConfigurationGeneration,
-                    identity);
             });
 
     public Task<byte[]> ReadPayloadAsync(
@@ -311,6 +299,7 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
                 {
                     failed?.Invoke(currentRuntime, exception);
                     if (operationKind is not (
+                        HostManagerTransactionJournalOperation.ReadPayload or
                         HostManagerTransactionJournalOperation.DeletePayload or
                         HostManagerTransactionJournalOperation.ReconcilePayloads))
                     {

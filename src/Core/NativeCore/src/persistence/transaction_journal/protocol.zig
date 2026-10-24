@@ -2,6 +2,7 @@ const std = @import("std");
 const feedback_contract = @import("../../contracts/action_feedback_contract.zig");
 
 pub const abi_version: u32 = 0x0005_0000;
+pub const image_schema_version: u32 = 0x0005_0000;
 pub const image_magic: u64 = 0x524d_5458_4a4e_4c31;
 
 pub const Status = enum(i32) {
@@ -453,6 +454,20 @@ pub fn validIdentityForScope(value: *const Identity, scope_raw: u32) bool {
     };
 }
 
+pub fn isQuarantinedInvalidProof(value: *const Record) bool {
+    return value.phase == @intFromEnum(Phase.recovery_blocked) and
+        value.domain_mask == 0 and
+        value.grade_valid_mask == 0 and
+        value.grade_reserved == 0 and
+        value.process_from_grade == 0 and
+        value.process_to_grade == 0 and
+        value.cpu_from_grade == 0 and
+        value.cpu_to_grade == 0 and
+        value.gpu_from_grade == 0 and
+        value.gpu_to_grade == 0 and
+        value.recovery_reason_mask == RecoveryReason.invalid_proof;
+}
+
 pub fn sameIdentity(left: *const Identity, right: *const Identity) bool {
     return left.configuration_generation == right.configuration_generation and
         left.plan_epoch == right.plan_epoch and
@@ -482,21 +497,23 @@ pub fn identityLessThan(left: *const Identity, right: *const Identity) bool {
 
 pub fn validRecord(value: *const Record) Status {
     if (!validIdentityForScope(&value.identity, value.scope)) return .invalid_identity;
-    if (!validDisposition(value.disposition) or !validDomainForScope(value.scope, value.domain_mask))
-        return .invalid_argument;
-    if (!validGradeSet(
-        value.scope,
-        value.disposition,
-        value.domain_mask,
-        value.grade_valid_mask,
-        value.grade_reserved,
-        value.process_from_grade,
-        value.process_to_grade,
-        value.cpu_from_grade,
-        value.cpu_to_grade,
-        value.gpu_from_grade,
-        value.gpu_to_grade,
-    )) return .invalid_argument;
+    if (!validDisposition(value.disposition)) return .invalid_argument;
+    if (!isQuarantinedInvalidProof(value)) {
+        if (!validDomainForScope(value.scope, value.domain_mask)) return .invalid_argument;
+        if (!validGradeSet(
+            value.scope,
+            value.disposition,
+            value.domain_mask,
+            value.grade_valid_mask,
+            value.grade_reserved,
+            value.process_from_grade,
+            value.process_to_grade,
+            value.cpu_from_grade,
+            value.cpu_to_grade,
+            value.gpu_from_grade,
+            value.gpu_to_grade,
+        )) return .invalid_argument;
+    }
     if (!validAtomicGroup(
         value.atomic_group_id,
         value.group_member_index,
@@ -522,8 +539,7 @@ pub fn validRecord(value: *const Record) Status {
         value.updated_at_utc_ms < value.prepared_at_utc_ms or
         value.entry_revision == 0 or
         value.maximum_recovery_attempts == 0 or
-        value.retry_attempt_count > value.maximum_recovery_attempts or
-        value.recovery_deadline_utc_ms <= value.prepared_at_utc_ms)
+        value.retry_attempt_count > value.maximum_recovery_attempts)
     {
         return .invalid_time;
     }
@@ -531,8 +547,7 @@ pub fn validRecord(value: *const Record) Status {
     if ((phase == .recovery_retry_pending) != (value.retry_not_before_utc_ms != 0))
         return .invalid_time;
     if (phase == .recovery_retry_pending and
-        (value.retry_not_before_utc_ms < value.updated_at_utc_ms or
-            value.retry_not_before_utc_ms > value.recovery_deadline_utc_ms))
+        value.retry_not_before_utc_ms < value.updated_at_utc_ms)
     {
         return .invalid_time;
     }

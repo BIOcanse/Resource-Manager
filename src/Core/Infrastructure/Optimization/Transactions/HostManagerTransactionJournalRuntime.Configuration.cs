@@ -209,7 +209,11 @@ internal sealed partial class HostManagerTransactionJournalRuntime
                 AbiVersion = NativeTransactionJournalAbi.Version,
                 StructSize = NativeTransactionJournalSession
                     .SizeOf<NativeTransactionJournalOpenConfiguration>(),
-                MaximumRecordCapacity = RecordCapacity,
+                // Persisted capacity belongs to the durable image, not the new plan.
+                // Keep the resident budget as the bound on opening it.
+                MaximumRecordCapacity = checked((uint)Math.Min(uint.MaxValue,
+                    ResidentByteBudget / NativeTransactionJournalSession
+                        .SizeOf<NativeTransactionJournalRecord>())),
                 Flags = 0,
                 MaximumResidentBytes = ResidentByteBudget
             };
