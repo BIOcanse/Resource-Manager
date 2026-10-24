@@ -105,11 +105,16 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         string arguments)
         => LaunchInSession(sessionId, executablePath, arguments, null);
 
+    public uint LaunchNativeUi(uint sessionId, string expectedUserSid, string executablePath, string arguments)
+        => LaunchInSession(sessionId, executablePath, arguments,
+            new SecurityIdentifier(expectedUserSid).Value, allowCurrentUserLaunch: false);
+
     public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         => LaunchInSession(sessionId, executablePath, arguments,
             new SecurityIdentifier(expectedUserSid).Value);
 
-    private static uint LaunchInSession(uint sessionId, string executablePath, string arguments, string? expectedUserSid)
+    private static uint LaunchInSession(uint sessionId, string executablePath, string arguments, string? expectedUserSid,
+        bool allowCurrentUserLaunch = true)
     {
         var executable = NormalizeExecutablePath(executablePath);
         if (!File.Exists(executable))
@@ -120,7 +125,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         }
 
         if (expectedUserSid is not null
-            && TryLaunchInCurrentUserSession(sessionId, expectedUserSid, executable, arguments, out var currentSessionProcessId))
+            && TryLaunchInCurrentUserSession(sessionId, expectedUserSid, executable, arguments, out var currentSessionProcessId, allowCurrentUserLaunch))
             return currentSessionProcessId;
 
         if (!WTSQueryUserToken(sessionId, out var sessionToken))
@@ -216,9 +221,11 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         string expectedUserSid,
         string executable,
         string arguments,
-        out uint processId)
+        out uint processId,
+        bool allowCurrentUserLaunch = true)
     {
         processId = 0;
+        if (!allowCurrentUserLaunch) return false;
         using var identity = WindowsIdentity.GetCurrent();
         using var current = Process.GetCurrentProcess();
         if (identity.IsSystem || current.SessionId != sessionId

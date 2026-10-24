@@ -19,7 +19,6 @@ public sealed class HostManagerMemoryCleanupAttemptJournal : IDisposable
     private const long MaximumDocumentBytes = 4L * 1024 * 1024;
     private const string CanonicalFileName = "host-manager-memory-cleanup-attempts.json";
     private const string DurableStoreKind = "memory-cleanup-attempt-journal";
-    private const string StorageGenerationDirectory = "generation-00000001";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -220,13 +219,7 @@ public sealed class HostManagerMemoryCleanupAttemptJournal : IDisposable
         var normalizedStableRoot = Path.GetFullPath(stableInstallRoot);
         var packageRoot = Path.GetFullPath(
             PackagePathResolver.ResolvePackageRoot(contentRootPath));
-        var canonicalPath = Path.GetFullPath(Path.Combine(
-            normalizedStableRoot,
-            "UserData",
-            "HostManager",
-            "MemoryCleanup",
-            StorageGenerationDirectory,
-            CanonicalFileName));
+        var canonicalPath = HostManagerDurableStorePaths.ResolveMemoryCleanup(normalizedStableRoot).CanonicalPath;
         var legacySources = new List<HostManagerMemoryCleanupAttemptLegacySource>(capacity: 4);
         var distinctPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {

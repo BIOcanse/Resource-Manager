@@ -63,7 +63,9 @@ internal static class Program
                         Arguments = background ? "--background-startup" : "--show-existing",
                         WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
                     }) ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
-                }, text.LauncherServiceStartFailed);
+                }, text.LauncherServiceStartFailed,
+                () => NativeUiOpenSessionClient.OpenAsync(installation.Backend, background, CancellationToken.None)
+                    .GetAwaiter().GetResult());
             return 0;
         }
         catch (Exception exception)

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Domain.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.ServiceHosting;
 
@@ -10,6 +11,20 @@ public sealed class NativeUiLaunchHostedService(
 {
     private static readonly TimeSpan SessionScanInterval = TimeSpan.FromSeconds(5);
     private readonly InteractiveUserSessionActivationTracker activationTracker = new();
+
+    internal static uint OpenInterface(IInteractiveUserSessionBroker broker,
+        TrustedAdapterCallerIdentity? caller, uint expectedSession, string expectedSid,
+        string expectedLauncher, string nativeUiPath, bool background)
+    {
+        UserSessionCallerValidation.RequireLauncherSession(caller, expectedSession, expectedSid, expectedLauncher, broker);
+        if (broker.GetNativeUiProcessPresence(expectedSession, nativeUiPath) == NativeUiProcessPresence.Conflicting)
+            throw new UnauthorizedAccessException("A conflicting Native UI executable is present in the session.");
+
+        // Starting the single-instance UI with --show-existing activates an existing
+        // window as well. Explicit opening is independent of the login AutoStart setting.
+        return broker.LaunchNativeUi(expectedSession, expectedSid, nativeUiPath,
+            background ? "--background-startup" : "--show-existing");
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

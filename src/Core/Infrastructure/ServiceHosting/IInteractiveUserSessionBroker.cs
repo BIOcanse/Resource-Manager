@@ -22,6 +22,9 @@ public interface IInteractiveUserSessionBroker
         string executablePath,
         string arguments);
 
+    uint LaunchNativeUi(uint sessionId, string expectedUserSid, string executablePath, string arguments)
+        => throw new NotSupportedException("Identity-bound Native UI launching is unavailable.");
+
     uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         => throw new NotSupportedException("User shell launching is unavailable.");
 }

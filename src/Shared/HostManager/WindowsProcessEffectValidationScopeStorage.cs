@@ -50,7 +50,8 @@ internal static class WindowsProcessEffectValidationScopeStorage
 
     internal static WindowsProcessEffectValidationScopeStorageLease AcquireDirectory(
         string canonicalFilePath,
-        bool create)
+        bool create,
+        SecurityIdentifier? expectedOwner = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(canonicalFilePath);
         var fullFilePath = Path.GetFullPath(canonicalFilePath);
@@ -66,7 +67,7 @@ internal static class WindowsProcessEffectValidationScopeStorage
             var attributes = GetAttributesExact(directoryPath);
             if (attributes is null)
             {
-                new DirectoryInfo(directoryPath).Create(CreateDirectorySecurity());
+                new DirectoryInfo(directoryPath).Create(CreateDirectorySecurity(expectedOwner));
             }
         }
 
@@ -96,7 +97,7 @@ internal static class WindowsProcessEffectValidationScopeStorage
                     "The validation scope storage parent is not a regular directory.");
             }
             AssertFinalPath(handle, directoryPath);
-            VerifyHandleSecurity(handle, directoryPath);
+            VerifyHandleSecurity(handle, directoryPath, expectedOwner);
             return new(directoryPath, handle);
         }
         catch
@@ -108,7 +109,7 @@ internal static class WindowsProcessEffectValidationScopeStorage
 
     // Only used before the permanent authority namespace has ever been created.
     // An empty Program Files directory is not a closed validation scope.
-    internal static void InitializeUnclaimedEmptyDirectoryIfPresent(string canonicalFilePath)
+    internal static void InitializeUnclaimedEmptyDirectoryIfPresent(string canonicalFilePath, bool initialize = true)
     {
         var path = Path.GetDirectoryName(Path.GetFullPath(canonicalFilePath))!;
         if (GetAttributesExact(path) is null) return;
@@ -142,6 +143,7 @@ internal static class WindowsProcessEffectValidationScopeStorage
             .Any(rule => rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & writes) != 0
                 && rule.IdentityReference.Value != "S-1-3-0" && !trusted.Contains(rule.IdentityReference.Value)))
             throw new UnauthorizedAccessException("The empty validation directory permits an untrusted writer.");
+        if (!initialize) return;
         if (!SetKernelObjectSecurity(handle, OwnerSecurityInformation | DaclSecurityInformation | 0x80000000,
                 CreateDirectorySecurity().GetSecurityDescriptorBinaryForm()))
             throw new IOException("Could not initialize the empty validation directory ACL.", new Win32Exception(Marshal.GetLastWin32Error()));
@@ -183,7 +185,8 @@ internal static class WindowsProcessEffectValidationScopeStorage
 
     internal static FileStream OpenReadExact(
         WindowsProcessEffectValidationScopeStorageLease directory,
-        string canonicalPath)
+        string canonicalPath,
+        SecurityIdentifier? expectedOwner = null)
     {
         RequireContainedPath(directory, canonicalPath);
         var handle = CreateFile(
@@ -212,7 +215,7 @@ internal static class WindowsProcessEffectValidationScopeStorage
                     "The validation scope durable document is not a regular file.");
             }
             AssertFinalPath(handle, canonicalPath);
-            VerifyHandleSecurity(handle, canonicalPath);
+            VerifyHandleSecurity(handle, canonicalPath, expectedOwner);
             var stream = new FileStream(handle, FileAccess.Read, 4096, isAsync: false);
             handle = null!;
             return stream;
@@ -249,10 +252,11 @@ internal static class WindowsProcessEffectValidationScopeStorage
 
     internal static void ApplySecureFileAcl(
         WindowsProcessEffectValidationScopeStorageLease directory,
-        string path)
+        string path,
+        SecurityIdentifier? expectedOwner = null)
     {
         RequireContainedPath(directory, path);
-        new FileInfo(path).SetAccessControl(CreateFileSecurity());
+        new FileInfo(path).SetAccessControl(CreateFileSecurity(expectedOwner));
     }
 
     internal static void VerifyCommittedFile(
@@ -277,9 +281,9 @@ internal static class WindowsProcessEffectValidationScopeStorage
         }
     }
 
-    private static DirectorySecurity CreateDirectorySecurity()
+    private static DirectorySecurity CreateDirectorySecurity(SecurityIdentifier? owner = null)
     {
-        var current = GetCurrentSid();
+        var current = owner ?? GetCurrentSid();
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.SetOwner(current);
@@ -295,9 +299,9 @@ internal static class WindowsProcessEffectValidationScopeStorage
         return security;
     }
 
-    private static FileSecurity CreateFileSecurity()
+    private static FileSecurity CreateFileSecurity(SecurityIdentifier? owner = null)
     {
-        var current = GetCurrentSid();
+        var current = owner ?? GetCurrentSid();
         var security = new FileSecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         security.SetOwner(current);
@@ -311,9 +315,9 @@ internal static class WindowsProcessEffectValidationScopeStorage
         return security;
     }
 
-    private static void VerifyHandleSecurity(SafeFileHandle handle, string path)
+    private static void VerifyHandleSecurity(SafeFileHandle handle, string path, SecurityIdentifier? owner = null)
     {
-        var current = GetCurrentSid();
+        var current = owner ?? GetCurrentSid();
         var required = RequiredSids(current)
             .Select(static sid => sid.Value)
             .ToHashSet(StringComparer.Ordinal);

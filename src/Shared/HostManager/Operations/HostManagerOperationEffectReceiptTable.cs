@@ -50,6 +50,9 @@ internal sealed class HostManagerOperationEffectReceiptTable
 
     internal int Count => entries.Count;
 
+    internal bool HasOutstandingObligations
+        => entries.Values.Any(receipt => receipt.State != HostManagerOperationEffectReceiptState.Settled);
+
     internal HostManagerOperationEffectReceipt Require(
         NativeOperationHandle128 receiptId)
         => entries.TryGetValue(receiptId, out var receipt)

@@ -535,30 +535,14 @@ public sealed partial class HostManagerOperationCoordinatorOwner
 
     private string ResolveEnvelopePath(string relativePath)
     {
-        if (string.IsNullOrWhiteSpace(relativePath)
-            || Path.IsPathRooted(relativePath)
-            || relativePath.Contains('\\'))
+        try
         {
-            throw new InvalidOperationException(
-                "The compiled operation envelope path is not canonical.");
+            return ResourceManager.App.Infrastructure.Optimization.HostManagerDurableStorePaths.ResolveRelativePath(
+                hostManagerDataRoot, relativePath);
         }
-        var segments = relativePath.Split('/', StringSplitOptions.None);
-        if (segments.Any(static segment =>
-                string.IsNullOrEmpty(segment) || segment is "." or ".."))
+        catch (InvalidDataException exception)
         {
-            throw new InvalidOperationException(
-                "The compiled operation envelope path contains an invalid segment.");
+            throw new InvalidOperationException(exception.Message, exception);
         }
-        var result =
-            Path.GetFullPath(Path.Combine(hostManagerDataRoot, Path.Combine(segments)));
-        var prefix = Path.EndsInDirectorySeparator(hostManagerDataRoot)
-            ? hostManagerDataRoot
-            : hostManagerDataRoot + Path.DirectorySeparatorChar;
-        if (!result.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "The compiled operation envelope path escapes the Host Manager data root.");
-        }
-        return result;
     }
 }

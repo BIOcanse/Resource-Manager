@@ -43,7 +43,7 @@ internal static class InstallerWorkflow
                 PackageUserDirectoryAccess.Prepare(stage);
                 InstallStaged(stage, target);
             }
-            else previous.Run(stage, () => InstallStaged(stage, target));
+            else previous.Run(stage, () => InstallStaged(stage, target), target.Root);
         }
         finally { if (Directory.Exists(stage)) RemoveOwnTree(stage, parent, "ResourceManager.installing-"); }
     }

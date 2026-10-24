@@ -216,7 +216,14 @@ internal static class PackageSwitchTransaction
         throw new IOException("更新失败版本的保留目录已满。");
     }
 
-    internal static void CopyUserData(string installed, string next) => CopyMutableData(installed, next, includeDependencies: false);
+    internal static void CopyUserData(string installed, string next,
+        ResourceManager.App.Infrastructure.Optimization.IHostManagerUserDataArrival? hostManagerArrival = null,
+        string? finalInstallRoot = null)
+    {
+        CopyMutableData(installed, next, includeDependencies: false);
+        (hostManagerArrival ?? ResourceManager.App.Infrastructure.Optimization.HostManagerUserDataArrival.Instance)
+            .Prepare(next, finalInstallRoot ?? next, installed);
+    }
 
     private static void CopyMutableData(string installed, string next, bool includeDependencies = true)
     {
