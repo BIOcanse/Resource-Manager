@@ -43,10 +43,11 @@ $projects = @(
 foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
     if (Test-Path -LiteralPath $destination) { throw "Publish directory already exists: $destination" }
-    $layout = if ($project.SingleFile) {
-        @('-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true')
-    }
-    else { @('-p:PublishSingleFile=false') }
+    # @() keeps the one-switch folder layout an array; splatting a bare string passes its characters.
+    $layout = @(if ($project.SingleFile) {
+            '-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true'
+        }
+        else { '-p:PublishSingleFile=false' })
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
     # The Ledger native build only runs inside a registered workspace; the caller's build root is one.
     & dotnet publish $project.Project -c Release -r win-x64 --self-contained true @layout -p:PublishReadyToRun=true `
