@@ -131,13 +131,6 @@ public sealed partial class MainForm : Form
         PublishHostVisibility(forceHidden: true);
     }
 
-    internal Task HideToBackgroundAsync()
-    {
-        StopPolling();
-        Hide();
-        return Task.CompletedTask;
-    }
-
     /// <summary>语言切换后重新取一遍窗口内常驻文案；状态文案由外壳状态投影推送。</summary>
     public void ApplyInterfaceLanguage() => backendAvailabilityPanel.ApplyText();
 

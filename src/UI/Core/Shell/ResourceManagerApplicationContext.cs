@@ -306,25 +306,10 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested += OnDiagnosticsRequested;
         form.ExitRequested += OnExitRequested;
-        form.FormClosing += OnMainFormClosing;
         form.FormClosed += OnMainFormClosed;
         mainForm = form;
         ApplyBackendStateToForm(form);
         return form;
-    }
-
-    private async void OnMainFormClosing(object? sender, FormClosingEventArgs args)
-    {
-        if (exiting || args.CloseReason != CloseReason.UserClosing)
-        {
-            return;
-        }
-
-        args.Cancel = true;
-        if (sender is MainForm form)
-        {
-            await form.HideToBackgroundAsync();
-        }
     }
 
     private async Task<bool> EnsureBackendReadyAsync()
@@ -880,7 +865,6 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         form.FrontendConnectionStateChanged -= OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested -= OnDiagnosticsRequested;
         form.ExitRequested -= OnExitRequested;
-        form.FormClosing -= OnMainFormClosing;
         form.FormClosed -= OnMainFormClosed;
         if (!form.IsDisposed)
         {
