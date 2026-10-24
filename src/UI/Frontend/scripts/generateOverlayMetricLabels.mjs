@@ -32,7 +32,7 @@ for (const id of ids) {
   }
 }
 const output = JSON.stringify(labels, null, 2) + "\n";
-const destination = fileURLToPath(new URL("../../../Core/Resources/performance-overlay-metric-labels.json", import.meta.url));
+const destination = fileURLToPath(new URL("../../Core/Overlay/metric-labels.json", import.meta.url));
 if (process.argv.includes("--check")) {
   if (await readFile(destination, "utf8") !== output)
     throw new Error("Overlay metric labels differ from the frontend copy. Regenerate the manifest.");

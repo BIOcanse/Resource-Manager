@@ -3,7 +3,7 @@ namespace ResourceManager.NativeUi.Overlay;
 internal sealed record OverlaySnapshot(int Version, IReadOnlyList<OverlayTarget> Targets);
 
 internal sealed record OverlayTarget(
-    string SoftwareId, string DisplayName, int ProcessId, ulong ProcessStartKey,
+    string SoftwareId, int ProcessId, ulong ProcessStartKey,
     OverlaySettings Settings, IReadOnlyList<OverlayMetric> Metrics);
 
 internal sealed record OverlaySettings(
@@ -12,8 +12,7 @@ internal sealed record OverlaySettings(
     double RegionHeightRatio, string Anchor, int MarginPx);
 
 internal sealed record OverlayMetric(
-    string MetricId, double? Value, string Unit, string State, string? Reason,
-    IReadOnlyDictionary<string, string> Labels);
+    string MetricId, double? Value, string Unit, string State, string? Reason);
 
 internal readonly record struct OverlayTargetId(int ProcessId, ulong ProcessStartKey);
 

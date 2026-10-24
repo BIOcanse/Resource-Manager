@@ -112,7 +112,7 @@ public sealed class PerformanceOverlayDesktopTests
     {
         var settings = new OverlaySettings("test", true, mode, ["target.fps"],
             "windowRatio", 14, 0.25, 0.2, "bottomRight", 12);
-        return new OverlayTarget("test", "Generator", id.ProcessId, id.ProcessStartKey,
+        return new OverlayTarget("test", id.ProcessId, id.ProcessStartKey,
             settings, [PerformanceOverlayNativeUiTests.Metric()]);
     }
 

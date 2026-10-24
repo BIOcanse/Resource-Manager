@@ -9,6 +9,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PerformanceOverlayProjectionTests
 {
     [Fact]
+    public void BackendOverlayCarriesFactsWithoutALocaleTableOrDisplayNames()
+    {
+        var backend = typeof(PerformanceOverlayProjection).Assembly;
+        Assert.DoesNotContain(backend.GetManifestResourceNames(), static resource =>
+            resource.Contains("overlay-metric-labels", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(backend.GetType("ResourceManager.App.Application.Overlay.PerformanceOverlayMetricLabels"));
+        var setting = PerformanceOverlaySettings.Default("game") with { Enabled = true };
+        var result = PerformanceOverlayProjection.Create([setting], Snapshot(Process(10, 200, "game")),
+            null, null, null, DateTimeOffset.UnixEpoch);
+        Assert.Equal(2, result.Version);
+        using var json = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(result));
+        var target = json.RootElement.GetProperty("Targets")[0];
+        Assert.False(target.TryGetProperty("DisplayName", out _));
+        Assert.All(target.GetProperty("Metrics").EnumerateArray(), static metric =>
+            Assert.False(metric.TryGetProperty("Labels", out _)));
+    }
+
+    [Fact]
     public void EnabledRunningSoftwareIncludesEveryProcessAndExcludesDisabledOrAbsentSoftware()
     {
         var settings = new[]
@@ -89,7 +107,8 @@ public sealed class PerformanceOverlayProjectionTests
         Assert.Equal(50, target.Metrics[0].Value);
         Assert.Equal(20, target.Metrics[1].Value);
         Assert.Equal(50, target.Metrics[2].Value);
-        Assert.Equal(9, target.Metrics[0].Labels.Count);
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        Assert.DoesNotContain("Labels", json, StringComparison.Ordinal);
     }
 
     private static SchedulingProcessFact Process(int pid, ulong startKey, string softwareId) =>

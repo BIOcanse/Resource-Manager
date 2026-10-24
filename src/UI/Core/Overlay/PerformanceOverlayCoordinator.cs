@@ -50,7 +50,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
     internal void ApplySnapshot(OverlaySnapshot snapshot)
     {
         if (disposed) return;
-        if (snapshot.Version != 1) { Clear(); return; }
+        if (snapshot.Version != 2) { Clear(); return; }
         var current = OverlayTargetSelection.Current(snapshot);
         foreach (var id in targets.Keys.Where(id => !current.ContainsKey(id)).ToArray())
             Remove(id);

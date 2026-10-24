@@ -20,9 +20,12 @@ internal sealed class SchedulingProcessFactSnapshotState
     ];
 
     private readonly object gate;
-    private Dictionary<SchedulingProcessMetricMask, DatasetEntry> datasets = [];
-    private FoundationEntry? inventory;
-    private FoundationEntry? attribution;
+    private Dictionary<SchedulingProcessMetricMask, DatasetPublication> datasets = [];
+    // One row owns the identity, attribution and all current metric values for a
+    // process instance. Dataset entries contain publication metadata only.
+    private Dictionary<(int ProcessId, ulong ProcessStartKey), ProcessRow> processes = [];
+    private FoundationPublication? inventory;
+    private FoundationPublication? attribution;
     private ulong scheduleWorkspaceIncarnation;
     private ulong scheduleConfigurationGeneration;
 
@@ -46,7 +49,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             if (publicationDatasetIds.Contains(
                     SamplingDatasetIds.ProcessInventory))
             {
-                inventory ??= new FoundationEntry(
+                inventory ??= new FoundationPublication(
                     SamplingDatasetIds.ProcessInventory);
                 ApplyFoundation(
                     inventory,
@@ -54,13 +57,12 @@ internal sealed class SchedulingProcessFactSnapshotState
                     attemptedAt,
                     sample.HasSeparateFoundationPayloads
                         ? sample.InventoryProcesses
-                        : sample.Processes,
-                    static process => ProjectInventory(process));
+                        : sample.Processes);
             }
             if (publicationDatasetIds.Contains(
                     SamplingDatasetIds.ProcessAttribution))
             {
-                attribution ??= new FoundationEntry(
+                attribution ??= new FoundationPublication(
                     SamplingDatasetIds.ProcessAttribution);
                 ApplyFoundation(
                     attribution,
@@ -68,8 +70,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                     attemptedAt,
                     sample.HasSeparateFoundationPayloads
                         ? sample.AttributionProcesses
-                        : sample.Processes,
-                    static process => ProjectAttribution(process));
+                        : sample.Processes);
             }
 
             foreach (var bit in EnumerateBits(request.SchedulingMetricMask))
@@ -88,22 +89,19 @@ internal sealed class SchedulingProcessFactSnapshotState
                     continue;
                 }
 
-                var replacement = sample.Processes
-                    .Where(process => process.ValidMetricMask.HasFlag(bit))
-                    .Select(process => Project(process, bit))
-                    .ToDictionary(
-                        static process => (process.ProcessId, process.ProcessStartKey));
-                dataset.Processes = replacement;
+                ClearMetric(bit);
+                foreach (var process in sample.Processes.Where(process => process.ValidMetricMask.HasFlag(bit)))
+                {
+                    var key = (process.ProcessId, process.ProcessStartKey);
+                    var row = GetOrCreateProcess(process);
+                    processes[key] = row with { Fact = MergeMetric(row.Fact, process, bit) };
+                }
                 dataset.Status = SamplingObservationStatus.Current;
                 dataset.SourceGeneration = observation.SourceGeneration;
                 dataset.ObservedAtUtcTicks = observation.ObservedAtUtcTicks;
                 dataset.InventoryGeneration = observation.InventoryGeneration;
                 dataset.InventoryObservedAtUtcTicks =
                     observation.InventoryObservedAtUtcTicks;
-                dataset.EnumeratedCount = sample.EnumeratedCount;
-                dataset.ExcludedCount = sample.ExcludedCount;
-                dataset.SkippedCount = sample.SkippedCount;
-                dataset.OverflowCount = sample.OverflowCount;
                 dataset.TopologyGeneration = observation.TopologyGeneration;
                 dataset.TopologyFingerprint = observation.TopologyFingerprint;
                 dataset.LastSuccessAt = new DateTimeOffset(
@@ -116,12 +114,11 @@ internal sealed class SchedulingProcessFactSnapshotState
         }
     }
 
-    private static void ApplyFoundation(
-        FoundationEntry foundation,
+    private void ApplyFoundation(
+        FoundationPublication foundation,
         SchedulingProcessFactSnapshot sample,
         DateTimeOffset attemptedAt,
-        IReadOnlyList<SchedulingProcessFact> sourceProcesses,
-        Func<SchedulingProcessFact, SchedulingProcessFact> project)
+        IReadOnlyList<SchedulingProcessFact> sourceProcesses)
     {
         foundation.LastAttemptAt = attemptedAt;
         SchedulingProcessFoundationDatasetObservation? observation = null;
@@ -147,11 +144,31 @@ internal sealed class SchedulingProcessFactSnapshotState
         var observedAtUtcTicks = sample.HasSeparateFoundationPayloads
             ? observation!.ObservedAtUtcTicks
             : sample.ObservedAtUtcTicks;
-        foundation.Processes = sourceProcesses
-            .Select(project)
-            .ToDictionary(static process =>
-                (process.ProcessId, process.ProcessStartKey));
-        foundation.SoftwareBaseScores = sample.SoftwareBaseScores;
+        var present = sourceProcesses.Select(static process =>
+            (process.ProcessId, process.ProcessStartKey)).ToHashSet();
+        if (present.Count != sourceProcesses.Count)
+            throw new ArgumentException("A process foundation contains duplicate process instances.", nameof(sourceProcesses));
+        ClearFoundation(foundation.DatasetId, present);
+        foreach (var process in sourceProcesses)
+        {
+            var key = (process.ProcessId, process.ProcessStartKey);
+            var row = GetOrCreateProcess(process);
+            var identity = foundation.DatasetId == SamplingDatasetIds.ProcessInventory
+                ? row.Fact with
+                {
+                    ProcessName = ReuseText(row.Fact.ProcessName, process.ProcessName)!,
+                    ExecutablePath = ReuseText(row.Fact.ExecutablePath, process.ExecutablePath)
+                }
+                : ComposeIdentity(row.Fact, process);
+            processes[key] = row with
+            {
+                Fact = identity,
+                HasInventory = row.HasInventory || foundation.DatasetId == SamplingDatasetIds.ProcessInventory,
+                HasAttribution = row.HasAttribution || foundation.DatasetId == SamplingDatasetIds.ProcessAttribution
+            };
+        }
+        foundation.SoftwareBaseScores = foundation.DatasetId == SamplingDatasetIds.ProcessAttribution
+            ? sample.SoftwareBaseScores : [];
         foundation.Status = SamplingObservationStatus.Current;
         foundation.SourceGeneration = sourceGeneration;
         foundation.ObservedAtUtcTicks = observedAtUtcTicks;
@@ -247,7 +264,7 @@ internal sealed class SchedulingProcessFactSnapshotState
     }
 
     private static bool FoundationCommitted(
-        FoundationEntry? foundation,
+        FoundationPublication? foundation,
         SchedulingProcessFactSnapshot sample,
         string datasetId)
     {
@@ -273,6 +290,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         lock (gate)
         {
             datasets = prepared.datasets;
+            processes = prepared.processes;
             inventory = prepared.inventory;
             attribution = prepared.attribution;
             scheduleWorkspaceIncarnation = prepared.scheduleWorkspaceIncarnation;
@@ -290,7 +308,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         var publicationDatasetIds = ResolvePublicationDatasetIds(request);
         if (publicationDatasetIds.Contains(SamplingDatasetIds.ProcessInventory))
         {
-            inventory ??= new FoundationEntry(SamplingDatasetIds.ProcessInventory);
+            inventory ??= new FoundationPublication(SamplingDatasetIds.ProcessInventory);
             MarkFoundationFailed(
                 inventory,
                 attemptedAt,
@@ -299,7 +317,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         }
         if (publicationDatasetIds.Contains(SamplingDatasetIds.ProcessAttribution))
         {
-            attribution ??= new FoundationEntry(SamplingDatasetIds.ProcessAttribution);
+            attribution ??= new FoundationPublication(SamplingDatasetIds.ProcessAttribution);
             MarkFoundationFailed(
                 attribution,
                 attemptedAt,
@@ -317,14 +335,14 @@ internal sealed class SchedulingProcessFactSnapshotState
         }
     }
 
-    private static void MarkFoundationFailed(
-        FoundationEntry foundation,
+    private void MarkFoundationFailed(
+        FoundationPublication foundation,
         DateTimeOffset attemptedAt,
         string failureCode,
         string failureMessage)
     {
         foundation.LastAttemptAt = attemptedAt;
-        foundation.Processes.Clear();
+        ClearFoundation(foundation.DatasetId);
         foundation.SoftwareBaseScores = [];
         foundation.Status = SamplingObservationStatus.Unavailable;
         foundation.SourceGeneration = 0;
@@ -339,22 +357,18 @@ internal sealed class SchedulingProcessFactSnapshotState
         foundation.FailureMessage = failureMessage;
     }
 
-    private static void MarkDatasetFailed(
-        DatasetEntry dataset,
+    private void MarkDatasetFailed(
+        DatasetPublication dataset,
         DateTimeOffset attemptedAt,
         string failureCode,
         string failureMessage)
     {
-        dataset.Processes.Clear();
+        ClearMetric(dataset.Bit);
         dataset.Status = SamplingObservationStatus.Unavailable;
         dataset.SourceGeneration = 0;
         dataset.ObservedAtUtcTicks = 0;
         dataset.InventoryGeneration = 0;
         dataset.InventoryObservedAtUtcTicks = 0;
-        dataset.EnumeratedCount = 0;
-        dataset.ExcludedCount = 0;
-        dataset.SkippedCount = 0;
-        dataset.OverflowCount = 0;
         dataset.TopologyGeneration = 0;
         dataset.TopologyFingerprint = 0;
         dataset.LastAttemptAt = attemptedAt;
@@ -371,6 +385,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             datasets = datasets.ToDictionary(
                 static pair => pair.Key,
                 static pair => pair.Value.Clone()),
+            processes = new(processes),
             inventory = inventory?.Clone(),
             attribution = attribution?.Clone(),
             scheduleWorkspaceIncarnation = scheduleWorkspaceIncarnation,
@@ -387,9 +402,9 @@ internal sealed class SchedulingProcessFactSnapshotState
                 || !IsFoundationCurrent(inventory) || !IsFoundationCurrent(attribution))
                 return [];
 
-            return attribution.Processes
-                .Where(pair => inventory.Processes.ContainsKey(pair.Key))
-                .Select(static pair => pair.Value)
+            return processes.Values
+                .Where(static row => row.HasInventory && row.HasAttribution)
+                .Select(static row => row.Fact)
                 .GroupBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
                 .Select(static group =>
                 {
@@ -448,7 +463,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             }
 
             var currentMask = SchedulingProcessMetricMask.None;
-            var selected = new List<DatasetEntry>(requestedBits.Length);
+            var selected = new List<DatasetPublication>(requestedBits.Length);
             var observations = new Dictionary<
                 SchedulingProcessMetricMask,
                 SchedulingProcessDatasetObservation>();
@@ -483,40 +498,12 @@ internal sealed class SchedulingProcessFactSnapshotState
                 return null;
             }
 
-            var processBuilders = new Dictionary<
-                (int ProcessId, ulong ProcessStartKey),
-                MutableProcess>();
-            foreach (var dataset in selected)
-            {
-                foreach (var process in dataset.Processes.Values)
-                {
-                    var key = (process.ProcessId, process.ProcessStartKey);
-                    if (!inventory.Processes.TryGetValue(
-                            key,
-                            out var inventoryProcess))
-                    {
-                        continue;
-                    }
-                    if (!attribution.Processes.TryGetValue(
-                            key,
-                            out var attributionProcess))
-                    {
-                        continue;
-                    }
-                    if (!processBuilders.TryGetValue(key, out var builder))
-                    {
-                        builder = new MutableProcess(ComposeIdentity(
-                            inventoryProcess,
-                            attributionProcess));
-                        processBuilders.Add(key, builder);
-                    }
-                    builder.Merge(process);
-                }
-            }
-
             var generation = inventory.SourceGeneration;
-            var processes = processBuilders.Values
-                .Select(builder => builder.Build(generation))
+            var currentProcesses = processes.Values
+                .Where(row => row.HasInventory && row.HasAttribution
+                    && (row.Fact.ValidMetricMask & currentMask) != SchedulingProcessMetricMask.None)
+                .Select(row => Project(row.Fact, row.Fact.ValidMetricMask & currentMask)
+                    with { SourceGeneration = generation })
                 .OrderBy(static process => process.ProcessId)
                 .ThenBy(static process => process.ProcessStartKey)
                 .ToArray();
@@ -526,7 +513,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 ?? selected.FirstOrDefault(static dataset =>
                     dataset.Bit ==
                         SchedulingProcessMetricMask.GpuDedicatedMemory);
-            var emitted = checked((uint)processes.Length);
+            var emitted = checked((uint)currentProcesses.Length);
             return new SchedulingProcessFactSnapshot(
                 SamplingObservationStatus.Current,
                 generation,
@@ -536,11 +523,11 @@ internal sealed class SchedulingProcessFactSnapshotState
                 checked(inventory.SkippedCount
                     + (uint)Math.Max(
                         0,
-                        inventory.Processes.Count - processes.Length)),
+                        processes.Values.Count(static row => row.HasInventory) - currentProcesses.Length)),
                 inventory.OverflowCount,
                 request.RequestedMetricMask,
                 currentMask,
-                processes,
+                currentProcesses,
                 gpuDataset?.SourceGeneration ?? 0,
                 gpuDataset?.ObservedAtUtcTicks ?? 0,
                 gpuDataset?.TopologyGeneration ?? 0,
@@ -548,8 +535,10 @@ internal sealed class SchedulingProcessFactSnapshotState
                 inventory.ExcludedCount)
             {
                 HasSeparateFoundationPayloads = true,
-                InventoryProcesses = inventory.Processes.Values.ToArray(),
-                AttributionProcesses = attribution.Processes.Values.ToArray(),
+                InventoryProcesses = processes.Values.Where(static row => row.HasInventory)
+                    .Select(static row => ProjectInventory(row.Fact)).ToArray(),
+                AttributionProcesses = processes.Values.Where(static row => row.HasAttribution)
+                    .Select(static row => ProjectAttribution(row.Fact)).ToArray(),
                 SoftwareBaseScores = attribution.SoftwareBaseScores,
                 FoundationDatasetObservations = new Dictionary<
                     string,
@@ -567,7 +556,7 @@ internal sealed class SchedulingProcessFactSnapshotState
     }
 
     private static bool IsFoundationCurrent(
-        FoundationEntry foundation)
+        FoundationPublication foundation)
         => foundation.Status == SamplingObservationStatus.Current
             && foundation.FailureCode is null
             && foundation.LastSuccessAt is not null;
@@ -577,20 +566,80 @@ internal sealed class SchedulingProcessFactSnapshotState
         SchedulingProcessFact attributionProcess)
         => inventoryProcess with
         {
-            SoftwareId = attributionProcess.SoftwareId,
-            SoftwareName = attributionProcess.SoftwareName,
-            SoftwareKind = attributionProcess.SoftwareKind,
-            SoftwareDisplayKind = attributionProcess.SoftwareDisplayKind,
-            SoftwareRootPaths = attributionProcess.SoftwareRootPaths,
-            SoftwareCategorySource = attributionProcess.SoftwareCategorySource,
+            SoftwareId = ReuseText(inventoryProcess.SoftwareId, attributionProcess.SoftwareId)!,
+            SoftwareName = ReuseText(inventoryProcess.SoftwareName, attributionProcess.SoftwareName)!,
+            SoftwareKind = ReuseText(inventoryProcess.SoftwareKind, attributionProcess.SoftwareKind)!,
+            SoftwareDisplayKind = ReuseText(inventoryProcess.SoftwareDisplayKind, attributionProcess.SoftwareDisplayKind)!,
+            SoftwareRootPaths = inventoryProcess.SoftwareRootPaths.SequenceEqual(attributionProcess.SoftwareRootPaths, StringComparer.Ordinal)
+                ? inventoryProcess.SoftwareRootPaths : attributionProcess.SoftwareRootPaths,
+            SoftwareCategorySource = ReuseText(inventoryProcess.SoftwareCategorySource, attributionProcess.SoftwareCategorySource),
             BaseScore = attributionProcess.BaseScore
         };
 
-    private DatasetEntry GetOrCreate(SchedulingProcessMetricMask bit)
+    private static string? ReuseText(string? current, string? incoming)
+        => string.Equals(current, incoming, StringComparison.Ordinal) ? current : incoming;
+
+    private readonly record struct ProcessRow(
+        SchedulingProcessFact Fact,
+        bool HasInventory = false,
+        bool HasAttribution = false);
+
+    private ProcessRow GetOrCreateProcess(SchedulingProcessFact source)
+    {
+        var key = (source.ProcessId, source.ProcessStartKey);
+        if (!processes.TryGetValue(key, out var row))
+        {
+            row = new ProcessRow(ProjectInventory(source));
+            processes.Add(key, row);
+        }
+        return row;
+    }
+
+    private void ClearFoundation(
+        string datasetId,
+        HashSet<(int ProcessId, ulong ProcessStartKey)>? preserved = null)
+    {
+        foreach (var key in processes.Keys.ToArray())
+        {
+            if (preserved?.Contains(key) == true) continue;
+            var row = processes[key];
+            row = datasetId == SamplingDatasetIds.ProcessInventory
+                ? row with { HasInventory = false }
+                : row with { HasAttribution = false, Fact = row.Fact with
+                {
+                    SoftwareId = string.Empty, SoftwareName = string.Empty,
+                    SoftwareKind = string.Empty, SoftwareDisplayKind = string.Empty,
+                    SoftwareRootPaths = [], SoftwareCategorySource = null, BaseScore = 0
+                } };
+            StoreOrRemove(key, row);
+        }
+    }
+
+    private void ClearMetric(SchedulingProcessMetricMask bit)
+    {
+        foreach (var key in processes.Keys.ToArray())
+        {
+            var row = processes[key];
+            if (row.Fact.ValidMetricMask.HasFlag(bit))
+                row = row with { Fact = Project(row.Fact, row.Fact.ValidMetricMask & ~bit) };
+            StoreOrRemove(key, row);
+        }
+    }
+
+    private void StoreOrRemove((int ProcessId, ulong ProcessStartKey) key, ProcessRow row)
+    {
+        if (!row.HasInventory && !row.HasAttribution
+            && row.Fact.ValidMetricMask == SchedulingProcessMetricMask.None)
+            processes.Remove(key);
+        else
+            processes[key] = row;
+    }
+
+    private DatasetPublication GetOrCreate(SchedulingProcessMetricMask bit)
     {
         if (!datasets.TryGetValue(bit, out var dataset))
         {
-            dataset = new DatasetEntry(bit);
+            dataset = new DatasetPublication(bit);
             datasets.Add(bit, dataset);
         }
         return dataset;
@@ -603,65 +652,93 @@ internal sealed class SchedulingProcessFactSnapshotState
         scheduleConfigurationGeneration = schedule.ConfigurationGeneration;
     }
 
+    private static SchedulingProcessFact MergeMetric(
+        SchedulingProcessFact current,
+        SchedulingProcessFact incoming,
+        SchedulingProcessMetricMask bit)
+    {
+        var mask = current.ValidMetricMask | bit;
+        switch (bit)
+        {
+            case SchedulingProcessMetricMask.CpuUsage:
+                return current with { ValidMetricMask = mask, CpuUsagePercent = incoming.CpuUsagePercent };
+            case SchedulingProcessMetricMask.MemoryUsage:
+                return current with { ValidMetricMask = mask, MemoryUsedBytes = incoming.MemoryUsedBytes };
+            case SchedulingProcessMetricMask.RuntimeState:
+                return current with
+                {
+                    ValidMetricMask = mask, RuntimeState = incoming.RuntimeState,
+                    ForegroundFocused = incoming.ForegroundFocused, HasVisibleWindow = incoming.HasVisibleWindow,
+                    HasBackgroundWindow = incoming.HasBackgroundWindow, HasHiddenWindow = incoming.HasHiddenWindow
+                };
+            default:
+                var merged = new MutableProcess(current);
+                merged.Merge(current);
+                merged.Merge(Project(incoming, bit));
+                return merged.Build(current.SourceGeneration);
+        }
+    }
+
     private static SchedulingProcessFact Project(
         SchedulingProcessFact process,
         SchedulingProcessMetricMask bit)
         => process with
         {
             ValidMetricMask = bit,
-            CpuUsagePercent = bit == SchedulingProcessMetricMask.CpuUsage
+            CpuUsagePercent = bit.HasFlag(SchedulingProcessMetricMask.CpuUsage)
                 ? process.CpuUsagePercent
                 : 0,
-            MemoryUsedBytes = bit == SchedulingProcessMetricMask.MemoryUsage
+            MemoryUsedBytes = bit.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
                 ? process.MemoryUsedBytes
                 : 0,
-            Gpus = bit is SchedulingProcessMetricMask.GpuUsage
-                or SchedulingProcessMetricMask.GpuDedicatedMemory
+            Gpus = (bit & (SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory)) != 0
                     ? process.Gpus
-                        .Where(gpu => gpu.HasMetric(bit))
+                        .Where(gpu => (bit.HasFlag(SchedulingProcessMetricMask.GpuUsage) && gpu.HasMetric(SchedulingProcessMetricMask.GpuUsage))
+                            || (bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory) && gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory)))
                         .Select(gpu => gpu with
                         {
                             ValidMetricMask = gpu.ValidMetricMask & bit,
-                            PrivateMemoryBytes = bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                            PrivateMemoryBytes = bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                                 ? gpu.PrivateMemoryBytes : null,
-                            SharedMemoryBytes = bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                            SharedMemoryBytes = bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                                 ? gpu.SharedMemoryBytes : null,
-                            UsagePercent = bit == SchedulingProcessMetricMask.GpuUsage
+                            UsagePercent = bit.HasFlag(SchedulingProcessMetricMask.GpuUsage)
                                 ? gpu.UsagePercent
                                 : 0,
                             DedicatedMemoryUsedPercent =
-                                bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                                bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                                     ? gpu.DedicatedMemoryUsedPercent
                                     : 0,
                             UsageSourceGeneration =
-                                bit == SchedulingProcessMetricMask.GpuUsage
+                                bit.HasFlag(SchedulingProcessMetricMask.GpuUsage)
                                     ? gpu.UsageSourceGeneration
                                     : 0,
                             DedicatedMemorySourceGeneration =
-                                bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                                bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                                     ? gpu.DedicatedMemorySourceGeneration
                                     : 0,
                             UsageTopologyGeneration =
-                                bit == SchedulingProcessMetricMask.GpuUsage
+                                bit.HasFlag(SchedulingProcessMetricMask.GpuUsage)
                                     ? gpu.UsageTopologyGeneration
                                     : 0,
                             DedicatedMemoryTopologyGeneration =
-                                bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                                bit.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                                     ? gpu.DedicatedMemoryTopologyGeneration
                                     : 0
                         })
                         .ToArray()
                     : [],
-            RuntimeState = bit == SchedulingProcessMetricMask.RuntimeState
+            RuntimeState = bit.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                 ? process.RuntimeState
                 : HostManagerRuntimeStates.Unknown,
-            ForegroundFocused = bit == SchedulingProcessMetricMask.RuntimeState
+            ForegroundFocused = bit.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                 && process.ForegroundFocused,
-            HasVisibleWindow = bit == SchedulingProcessMetricMask.RuntimeState
+            HasVisibleWindow = bit.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                 && process.HasVisibleWindow,
-            HasBackgroundWindow = bit == SchedulingProcessMetricMask.RuntimeState
+            HasBackgroundWindow = bit.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                 && process.HasBackgroundWindow,
-            HasHiddenWindow = bit == SchedulingProcessMetricMask.RuntimeState
+            HasHiddenWindow = bit.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                 && process.HasHiddenWindow
         };
 
@@ -737,21 +814,15 @@ internal sealed class SchedulingProcessFactSnapshotState
     private static string DatasetId(SchedulingProcessMetricMask bit)
         => SchedulingProcessFactSnapshot.DatasetIdFor(bit);
 
-    private sealed class DatasetEntry(SchedulingProcessMetricMask bit)
+    private sealed class DatasetPublication(SchedulingProcessMetricMask bit)
     {
         public SchedulingProcessMetricMask Bit { get; } = bit;
-        public Dictionary<(int ProcessId, ulong ProcessStartKey), SchedulingProcessFact>
-            Processes { get; set; } = [];
         public SamplingObservationStatus Status { get; set; } =
             SamplingObservationStatus.Unavailable;
         public ulong SourceGeneration { get; set; }
         public long ObservedAtUtcTicks { get; set; }
         public ulong InventoryGeneration { get; set; }
         public long InventoryObservedAtUtcTicks { get; set; }
-        public uint EnumeratedCount { get; set; }
-        public uint ExcludedCount { get; set; }
-        public uint SkippedCount { get; set; }
-        public uint OverflowCount { get; set; }
         public ulong TopologyGeneration { get; set; }
         public ulong TopologyFingerprint { get; set; }
         public DateTimeOffset? LastAttemptAt { get; set; }
@@ -760,22 +831,15 @@ internal sealed class SchedulingProcessFactSnapshotState
         public string? FailureCode { get; set; }
         public string? FailureMessage { get; set; }
 
-        public DatasetEntry Clone()
+        public DatasetPublication Clone()
         {
-            return new DatasetEntry(Bit)
+            return new DatasetPublication(Bit)
             {
-                Processes = new Dictionary<
-                    (int ProcessId, ulong ProcessStartKey),
-                    SchedulingProcessFact>(Processes),
                 Status = Status,
                 SourceGeneration = SourceGeneration,
                 ObservedAtUtcTicks = ObservedAtUtcTicks,
                 InventoryGeneration = InventoryGeneration,
                 InventoryObservedAtUtcTicks = InventoryObservedAtUtcTicks,
-                EnumeratedCount = EnumeratedCount,
-                ExcludedCount = ExcludedCount,
-                SkippedCount = SkippedCount,
-                OverflowCount = OverflowCount,
                 TopologyGeneration = TopologyGeneration,
                 TopologyFingerprint = TopologyFingerprint,
                 LastAttemptAt = LastAttemptAt,
@@ -808,14 +872,11 @@ internal sealed class SchedulingProcessFactSnapshotState
             };
     }
 
-    private sealed class FoundationEntry(string datasetId)
+    private sealed class FoundationPublication(string datasetId)
     {
         public System.Collections.Immutable.ImmutableArray<SoftwareBaseScore> SoftwareBaseScores
             { get; set; } = [];
         public string DatasetId { get; } = datasetId;
-        public Dictionary<
-            (int ProcessId, ulong ProcessStartKey),
-            SchedulingProcessFact> Processes { get; set; } = [];
         public SamplingObservationStatus Status { get; set; } =
             SamplingObservationStatus.Unavailable;
         public ulong SourceGeneration { get; set; }
@@ -830,13 +891,10 @@ internal sealed class SchedulingProcessFactSnapshotState
         public string? FailureCode { get; set; }
         public string? FailureMessage { get; set; }
 
-        public FoundationEntry Clone()
+        public FoundationPublication Clone()
             => new(DatasetId)
             {
                 SoftwareBaseScores = SoftwareBaseScores,
-                Processes = new Dictionary<
-                    (int ProcessId, ulong ProcessStartKey),
-                    SchedulingProcessFact>(Processes),
                 Status = Status,
                 SourceGeneration = SourceGeneration,
                 ObservedAtUtcTicks = ObservedAtUtcTicks,

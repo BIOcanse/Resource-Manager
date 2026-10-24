@@ -34,6 +34,37 @@ public sealed class ResourceBreakdownAttributionCacheTests
     }
 
     [Fact]
+    public void RepeatedIdentityReadsShareExactStringsWhenAnotherFieldChanges()
+    {
+        var cache = new ProcessInstanceCache<WindowsResourceBreakdownSampler.CachedProcessAttribution>();
+        var original = WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, Child,
+            () => new string("child --type=utility".ToCharArray()));
+        for (var round = 0; round < 20; round++)
+        {
+            var incoming = Child with
+            {
+                Name = new string(Child.Name.ToCharArray()),
+                ExecutablePath = new string(Child.ExecutablePath!.ToCharArray()),
+                UserSid = new string(Sid.ToCharArray()),
+                WindowTitle = $"changing title {round}"
+            };
+            var current = WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, incoming,
+                () => throw new InvalidOperationException("Command line was already observed."));
+            Assert.Same(original.Name, current.Name);
+            Assert.Same(original.ExecutablePath, current.ExecutablePath);
+            Assert.Same(original.UserSid, current.UserSid);
+            Assert.Same(original.CommandLine, current.CommandLine);
+            Assert.Equal(incoming.WindowTitle, current.WindowTitle);
+            Assert.Same(current, WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, incoming,
+                () => throw new InvalidOperationException("Command line was already observed.")));
+        }
+        var changedSid = Child with { UserSid = Sid + "2" };
+        var changed = WindowsResourceBreakdownSampler.ReadRuntimeCommandLine(cache, changedSid, () => null);
+        Assert.Equal(changedSid.UserSid, changed.UserSid);
+        Assert.NotSame(original.UserSid, changed.UserSid);
+    }
+
+    [Fact]
     public async Task ServiceMembershipAndDisplayNameFollowTheServiceOwnersSnapshot()
     {
         var clock = new Clock();

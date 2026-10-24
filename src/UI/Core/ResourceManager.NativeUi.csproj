@@ -16,6 +16,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Overlay\metric-labels.json"
+                      LogicalName="ResourceManager.NativeUi.Overlay.metric-labels.json" />
     <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

@@ -7,15 +7,14 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 namespace ResourceManager.App.Application.Overlay;
 
 public sealed record PerformanceOverlayMetricItem(
-    string MetricId, double? Value, string Unit, string State, string? Reason,
-    IReadOnlyDictionary<string, string> Labels);
+    string MetricId, double? Value, string Unit, string State, string? Reason);
 
 public sealed record PerformanceOverlayFrameStream(
     string Source, ulong SwapChain, int PresentCount,
     bool Selected, DateTimeOffset LastPresentAt, FrameIntervalStatistics Statistics);
 
 public sealed record PerformanceOverlayTarget(
-    string SoftwareId, string DisplayName, int ProcessId, ulong ProcessStartKey,
+    string SoftwareId, int ProcessId, ulong ProcessStartKey,
     PerformanceOverlaySettings Settings,
     IReadOnlyList<PerformanceOverlayMetricItem> Metrics,
     IReadOnlyList<PerformanceOverlayFrameStream> FrameStreams);
@@ -93,15 +92,13 @@ public static class PerformanceOverlayProjection
                 systemDefinitions)).ToArray();
             return new PerformanceOverlayTarget(
                 process.SoftwareId,
-                string.IsNullOrWhiteSpace(process.SoftwareName)
-                    ? process.ProcessName : process.SoftwareName,
                 process.ProcessId,
                 process.ProcessStartKey,
                 selectedSettings,
                 metrics,
                 streamRows);
         }).ToArray();
-        return new PerformanceOverlaySnapshot(1, capturedAt, targets);
+        return new PerformanceOverlaySnapshot(2, capturedAt, targets);
     }
 
     private static PerformanceOverlayMetricItem ProjectMetric(
@@ -179,9 +176,9 @@ public static class PerformanceOverlayProjection
 
     private static PerformanceOverlayMetricItem Current(string id, double value, string unit) =>
         double.IsFinite(value)
-            ? new(id, value, unit, "current", null, PerformanceOverlayMetricLabels.ForMetric(id))
+            ? new(id, value, unit, "current", null)
             : Missing(id, unit, "metric-unavailable");
 
     private static PerformanceOverlayMetricItem Missing(string id, string unit, string reason) =>
-        new(id, null, unit, "unavailable", reason, PerformanceOverlayMetricLabels.ForMetric(id));
+        new(id, null, unit, "unavailable", reason);
 }

@@ -64,7 +64,7 @@ public sealed class PerformanceOverlayNativeUiTests
     [Fact]
     public void RendererOutputsGrayscalePremultipliedBgra()
     {
-        var target = new OverlayTarget("test", "Test", 42, 1337, Absolute, [Metric()]);
+        var target = new OverlayTarget("test", 42, 1337, Absolute, [Metric()]);
         var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(target, new Size(300, 120)));
         Assert.Equal(300 * 120 * 4, image.Pixels.Length);
         var translucent = false;
@@ -110,25 +110,25 @@ public sealed class PerformanceOverlayNativeUiTests
     {
         using var process = Process.GetCurrentProcess();
         var id = checked((ulong)process.StartTime.ToFileTimeUtc());
-        var target = new OverlayTarget("test", "Test", process.Id, id,
+        var target = new OverlayTarget("test", process.Id, id,
             Absolute, [Metric()]);
         using var dispatcher = new Control();
         using var coordinator = new PerformanceOverlayCoordinator(dispatcher);
-        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
         Assert.Equal(1, coordinator.TargetCount);
         Assert.True(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(1, []));
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, []));
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target with { ProcessStartKey = id + 1 }]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target with { ProcessStartKey = id + 1 }]));
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
-        Assert.True(coordinator.WindowRefreshTimerEnabled);
         coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
+        Assert.True(coordinator.WindowRefreshTimerEnabled);
+        coordinator.ApplySnapshot(new OverlaySnapshot(3, [target]));
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
         Assert.True(coordinator.WindowRefreshTimerEnabled);
         coordinator.Stop();
         Assert.False(coordinator.WindowRefreshTimerEnabled);
@@ -138,25 +138,29 @@ public sealed class PerformanceOverlayNativeUiTests
     public void StreamJsonAndNineMetricLabelsReachTheRenderer()
     {
         const string json = """
-            {"version":1,"targets":[{"softwareId":"test","displayName":"Test",
+            {"version":2,"targets":[{"softwareId":"test",
               "processId":42,"processStartKey":1337,
               "settings":{"softwareId":"test","enabled":true,"mode":"external",
                 "metrics":["target.fps"],"sizeMode":"absolutePixels","fontSizePx":14,
                 "regionWidthRatio":0.25,"regionHeightRatio":0.2,"anchor":"topLeft","marginPx":12},
               "metrics":[{"metricId":"target.fps","value":100,"unit":"FPS",
-                "state":"current","reason":null,
-                "labels":{"zh-CN":"zh-CN label","zh-TW":"zh-TW label",
-                  "en-US":"en-US label","ja-JP":"ja-JP label","ko-KR":"ko-KR label",
-                  "fr-FR":"fr-FR label","de-DE":"de-DE label",
-                  "es-ES":"es-ES label","ru-RU":"ru-RU label"}}]}]}
+                "state":"current","reason":null}]}]}
             """;
         var snapshot = JsonSerializer.Deserialize<OverlaySnapshot>(json,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var metric = Assert.Single(Assert.Single(snapshot!.Targets).Metrics);
+        var expectedLabels = new Dictionary<string, string>
+        {
+            ["zh-CN"] = "目标帧率", ["zh-TW"] = "目標影格率", ["en-US"] = "Target FPS",
+            ["ja-JP"] = "対象の FPS", ["ko-KR"] = "대상 FPS", ["fr-FR"] = "FPS du logiciel cible",
+            ["de-DE"] = "FPS der Zielsoftware", ["es-ES"] = "FPS del software de destino",
+            ["ru-RU"] = "FPS целевой программы"
+        };
+        Assert.Equal(AppLanguage.SupportedIds.Order(), expectedLabels.Keys.Order());
         foreach (var language in AppLanguage.SupportedIds)
-            Assert.StartsWith($"{language} label", OverlayBitmapRenderer.FormatLine(metric, language));
+            Assert.Equal($"{expectedLabels[language]}  100 FPS", OverlayBitmapRenderer.FormatLine(metric, language));
+        Assert.DoesNotContain("labels", JsonSerializer.Serialize(snapshot), StringComparison.OrdinalIgnoreCase);
     }
 
-    internal static OverlayMetric Metric() => new("target.fps", 100, "FPS", "current", null,
-        new Dictionary<string, string> { ["en-US"] = "FPS", ["zh-CN"] = "帧率" });
+    internal static OverlayMetric Metric() => new("target.fps", 100, "FPS", "current", null);
 }

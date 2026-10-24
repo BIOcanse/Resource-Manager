@@ -146,9 +146,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 continue;
             }
 
-            var processName = string.IsNullOrWhiteSpace(sample.Name)
-                ? $"PID {sample.ProcessId}"
-                : sample.Name;
+            var processName = sample.Name;
             var inventoryFact = new SchedulingProcessFact(
                 sample.ProcessId,
                 checked((ulong)sample.StartKey.Value),

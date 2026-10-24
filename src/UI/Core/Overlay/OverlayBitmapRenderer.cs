@@ -63,8 +63,7 @@ internal static class OverlayBitmapRenderer
 
     internal static string FormatLine(OverlayMetric metric, string language)
     {
-        var label = metric.Labels.GetValueOrDefault(language)
-            ?? metric.Labels.GetValueOrDefault("en-US") ?? metric.MetricId;
+        var label = OverlayMetricLabels.ForMetric(metric.MetricId, language);
         if (metric.Value is not { } number || !double.IsFinite(number)) return $"{label}  —";
         var unit = metric.Unit;
         if (unit.Equals("bytes", StringComparison.OrdinalIgnoreCase)

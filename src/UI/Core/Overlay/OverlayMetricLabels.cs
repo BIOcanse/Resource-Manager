@@ -1,38 +1,32 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace ResourceManager.App.Application.Overlay;
+namespace ResourceManager.NativeUi.Overlay;
 
 /// <summary>Labels are generated from the frontend's nine metric-copy owners.</summary>
-public static partial class PerformanceOverlayMetricLabels
+internal static partial class OverlayMetricLabels
 {
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Labels = Load();
 
-    public static IReadOnlyDictionary<string, string> ForMetric(string metricId)
+    internal static string ForMetric(string metricId, string language)
     {
         var match = IndexedMetricId().Match(metricId);
         var key = match.Success
             ? string.Concat(metricId.AsSpan(0, match.Groups["index"].Index),
                 "{index}", metricId.AsSpan(match.Groups["index"].Index + match.Groups["index"].Length))
             : metricId;
-        if (!Labels.TryGetValue(key, out var labels))
-            return new Dictionary<string, string>
-            {
-                ["zh-CN"] = metricId, ["zh-TW"] = metricId, ["en-US"] = metricId,
-                ["ja-JP"] = metricId, ["ko-KR"] = metricId, ["fr-FR"] = metricId,
-                ["de-DE"] = metricId, ["es-ES"] = metricId, ["ru-RU"] = metricId
-            };
-        if (!match.Success) return labels;
+        if (!Labels.TryGetValue(key, out var labels)) return metricId;
+        var label = labels.GetValueOrDefault(language)
+            ?? throw new InvalidDataException($"The overlay locale '{language}' has no metric '{key}'.");
+        if (!match.Success) return label;
         var index = match.Groups["index"].Value;
-        return labels.ToDictionary(
-            static pair => pair.Key,
-            pair => pair.Value.Replace("{index}", index, StringComparison.Ordinal));
+        return label.Replace("{index}", index, StringComparison.Ordinal);
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Load()
     {
-        using var stream = typeof(PerformanceOverlayMetricLabels).Assembly.GetManifestResourceStream(
-            "ResourceManager.Resources.performance-overlay-metric-labels.json")
+        using var stream = typeof(OverlayMetricLabels).Assembly.GetManifestResourceStream(
+            "ResourceManager.NativeUi.Overlay.metric-labels.json")
             ?? throw new InvalidOperationException("The overlay metric label resource is missing.");
         var parsed = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(stream)
             ?? throw new InvalidDataException("The overlay metric label resource is empty.");

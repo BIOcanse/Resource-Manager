@@ -55,6 +55,27 @@ public sealed partial class WindowsResourceBreakdownSampler
         var key = new ProcessInstanceKey(identity.ProcessId, identity.StartKey.Value);
         cache.TryGet(key, out var cached);
         identity = identity with { CommandLine = cached is not null ? cached.Identity.CommandLine : read() };
+        if (cached is not null)
+        {
+            // Keep one set of equal text values for this process instance, even
+            // when another identity field (for example its window title) changes.
+            var previous = cached.Identity;
+            static string? Reuse(string? previous, string? current)
+                => string.Equals(previous, current, StringComparison.Ordinal) ? previous : current;
+            identity = identity with
+            {
+                Name = Reuse(previous.Name, identity.Name)!,
+                ExecutablePath = Reuse(previous.ExecutablePath, identity.ExecutablePath),
+                FileDescription = Reuse(previous.FileDescription, identity.FileDescription),
+                ProductName = Reuse(previous.ProductName, identity.ProductName),
+                CompanyName = Reuse(previous.CompanyName, identity.CompanyName),
+                ApplicationUserModelId = Reuse(previous.ApplicationUserModelId, identity.ApplicationUserModelId),
+                WindowApplicationUserModelId = Reuse(previous.WindowApplicationUserModelId, identity.WindowApplicationUserModelId),
+                WindowTitle = Reuse(previous.WindowTitle, identity.WindowTitle),
+                UserSid = Reuse(previous.UserSid, identity.UserSid)
+            };
+            if (identity == previous) return previous;
+        }
         CacheRuntimeIdentity(cache, identity);
         return identity;
     }
