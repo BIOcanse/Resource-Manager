@@ -61,7 +61,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             return new(true, "recorded hint only");
         };
         var placementCapture = CapturePlacementOperations(fixture.Coordinator);
+        var cyclesBefore = fixture.ProcessPolicyWriter.IdealReadCycles;
         _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(cyclesBefore + 1, fixture.ProcessPolicyWriter.IdealReadCycles);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
@@ -69,6 +71,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.All(threads.Values, static t => Assert.Equal(15UL, t.AllowedMask));
         Assert.Equal((uint)NativePlacementKind.ThreadIdealProcessor, placementCapture.Desired[0].PlacementKind);
         _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(cyclesBefore + 2, fixture.ProcessPolicyWriter.IdealReadCycles);
         Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = fixture.RuntimePlan.Version + 1,
             CompiledAt = DateTimeOffset.UtcNow, OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Normal) });

@@ -21,6 +21,27 @@ public sealed class WindowsProcessDetailsInformationTests
     private static readonly DateTimeOffset ObservedAt = DateTimeOffset.UnixEpoch.AddSeconds(10);
 
     [Fact]
+    public void PlacementInventoryParsesAllTargetProcessesAndSkipsSyntheticIdleThreadsWithinExistingBounds()
+    {
+        var records = new[]
+        {
+            ThreadTable(0, [new(0, 0, 0)]), ThreadTable(4, [new(0, 0, 0)]),
+            ThreadTable(100, [new(77, 1, 0), new(78, 2, 1)]), ThreadTable(101, [new(79, 1, 0)])
+        };
+        for (var index = 0; index < records.Length - 1; index++)
+            WriteUInt32(records[index], 0, (uint)records[index].Length);
+        var bytes = records.SelectMany(static row => row).ToArray();
+        Assert.True(WindowsProcessSystemThreadParser.TryParsePlacementInventory(bytes, WindowsProcessDetailsOptions.Default, out var parsed));
+        Assert.Equal(new[] { 100, 101 }, parsed.Keys.Order().ToArray());
+        Assert.Equal(new uint[] { 77, 78 }, parsed[100].Select(static row => row.ThreadId));
+        Assert.Equal(79U, Assert.Single(parsed[101]).ThreadId);
+        Assert.False(WindowsProcessSystemThreadParser.TryParsePlacementInventory(bytes,
+            new WindowsProcessDetailsOptions(maximumProcesses: 3), out _));
+        Assert.False(WindowsProcessSystemThreadParser.TryParsePlacementInventory(bytes,
+            new WindowsProcessDetailsOptions(initialSystemInformationBufferBytes: 1, maximumSystemInformationBufferBytes: bytes.Length - 1), out _));
+    }
+
+    [Fact]
     public void OptionsExposeDefaultsAndRejectUnrepresentableOrInconsistentLimits()
     {
         Assert.Equal(131072, WindowsProcessDetailsOptions.Default.MaximumProcesses);

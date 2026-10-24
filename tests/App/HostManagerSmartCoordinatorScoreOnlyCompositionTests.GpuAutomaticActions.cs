@@ -416,7 +416,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         var placements = fixture.StateStore.Current.AppliedPlacements;
         var observations = typeof(HostManagerSmartCoordinator).GetMethod("CapturePlacementObservations", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(fixture.Coordinator, [placements]);
+            .Invoke(fixture.Coordinator, [placements, fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle()]);
         var byIdentity = desired.ToDictionary(item => HostManagerPlacementCoordinatorProjection.CreateIdentity(item.Placement, item.Record));
         var bounded = typeof(HostManagerSmartCoordinator).GetMethod("BuildBoundedPlacementCycle", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [placements, desired, byIdentity, observations, recovery, apply])!;

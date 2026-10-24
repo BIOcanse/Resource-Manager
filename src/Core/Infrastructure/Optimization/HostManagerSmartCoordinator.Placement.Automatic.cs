@@ -52,6 +52,7 @@ public sealed partial class HostManagerSmartCoordinator
             return placementEffects.Length == 0;
         }
 
+        var idealReads = processPolicyWriter.CreateThreadIdealProcessorReadCycle();
         IReadOnlyList<HostManagerPlacementDesired> fullDesired = [];
         var cpuReservationsAvailable = true;
         if (cpuPlacementEnabled || gpuPlacementEnabled)
@@ -85,6 +86,7 @@ public sealed partial class HostManagerSmartCoordinator
                 gpuPlacementEnabled,
                 cpuReservations);
             fullDesired = await CreateAutomaticPlacementDesiredAsync(
+                idealReads,
                 topology,
                 sample,
                 processes,
@@ -101,14 +103,15 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         return await RunPreparedAutomaticPlacementCycleAsync(effectAdmission, state, fullDesired,
-            placementEffects, cancellationToken);
+            placementEffects, cancellationToken, idealReads);
     }
 
     private async Task<bool> RunPreparedAutomaticPlacementCycleAsync(
         HostManagerCycleEffectAdmission effectAdmission, HostManagerRollbackStateDocument state,
         IReadOnlyList<HostManagerPlacementDesired> fullDesired,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placementEffects,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IThreadIdealProcessorReadCycle idealReads)
     {
         if (!effectAdmission.TryAcquire(HostManagerCycleEffectKind.NativeActionTransaction, out var permit))
             return false;
@@ -120,7 +123,7 @@ public sealed partial class HostManagerSmartCoordinator
         var appliedPlan = appliedPlacementCoordinatorPlan
             ?? throw new InvalidOperationException("The Host Manager placement coordinator plan is unavailable.");
         fullDesired = fullDesired.Where(item => !GpuActionFacts.BlocksEffect(state.AppliedPlacements, item.Placement, item.Record)).ToArray();
-        var observations = CapturePlacementObservations(placementEffects);
+        var observations = CapturePlacementObservations(placementEffects, idealReads);
         // A confirmed exited thread has no policy left to restore. Settle
         // its durable receipt before limiting actual restore writes by budget.
         var exitedCpuRecords = placementEffects.SelectMany(placement => placement.Records
@@ -346,6 +349,7 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private async Task<IReadOnlyList<HostManagerPlacementDesired>> CreateAutomaticPlacementDesiredAsync(
+        IThreadIdealProcessorReadCycle idealReads,
         CpuTopologySnapshot? topology,
         HostManagerSample sample,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
@@ -386,7 +390,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         if (cpuPlacementEnabled && cpuReservationsAvailable && topology is not null)
-            desired.AddRange(CreateIdealProcessorDesired(topology, hardwareScores ?? throw new InvalidDataException("CPU preference has no captured hardware score plan."),
+            desired.AddRange(CreateIdealProcessorDesired(idealReads, topology, hardwareScores ?? throw new InvalidDataException("CPU preference has no captured hardware score plan."),
                 processes, plan.Cpu, existingPlacements, cpuReservations,
                 maximumThreadCount));
 
@@ -752,7 +756,8 @@ public sealed partial class HostManagerSmartCoordinator
 
     private IReadOnlyDictionary<HostManagerPlacementNativeIdentity, HostManagerPlacementObservation>
         CapturePlacementObservations(
-        IReadOnlyList<HostManagerAppliedPlacementReceipt> placements)
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> placements,
+        IThreadIdealProcessorReadCycle idealReads)
     {
         var observations = new Dictionary<HostManagerPlacementNativeIdentity, HostManagerPlacementObservation>();
         foreach (var placement in placements)
@@ -770,7 +775,7 @@ public sealed partial class HostManagerSmartCoordinator
                     record);
                 var observation = record.Kind switch
                 {
-                    HostManagerAppliedRecordKinds.CpuThreadIdealProcessor => ObserveIdealProcessor(placement, record, receiptDigest, previousDigest),
+                    HostManagerAppliedRecordKinds.CpuThreadIdealProcessor => ObserveIdealProcessor(placement, record, receiptDigest, previousDigest, idealReads),
                     HostManagerAppliedRecordKinds.CpuAffinity => ObserveCpuPlacement(
                         placement,
                         record,

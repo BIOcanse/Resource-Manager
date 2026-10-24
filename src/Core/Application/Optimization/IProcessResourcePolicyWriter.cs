@@ -4,6 +4,9 @@ namespace ResourceManager.App.Application.Optimization;
 
 public interface IProcessResourcePolicyWriter
 {
+    IThreadIdealProcessorReadCycle CreateThreadIdealProcessorReadCycle()
+        => UnsupportedThreadIdealProcessorReadCycle.Instance;
+
     RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>> ReadProcessThreadIdealProcessors(
         int processId, ulong processStartKey, int maximumThreadCount)
         => RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Unavailable(50, "Thread ideal processor access is not supported by this writer.");
