@@ -34,7 +34,6 @@ import type {
   ByteUnitMode,
   AppFontSmoothing,
   FrontendRefreshIntervals,
-  AppGpuPerformanceUseCase,
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
   AppLogicRefreshIntervalPreset,
@@ -100,7 +99,6 @@ export interface SettingsStore {
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
-  updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateGpuOverflowThresholds: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
@@ -118,6 +116,7 @@ export interface SettingsStore {
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
   updateAutoStart: (enabled: boolean) => void;
   updateAutoUpdate: (enabled: boolean) => void;
+  updateCheckInterval: (hours: number) => void;
   updateEditableHotkey: (hotkey: AppEditableHotkeySettings) => void;
   updateLocalPublicService: (enabled: boolean) => void;
   updatePublicFileIndex: (enabled: boolean) => void;
@@ -167,11 +166,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     try {
       const snapshot = await source.refresh();
       projectSource(snapshot, "replace-draft");
-      if (snapshot.status === "ready" && snapshot.data) {
-        setSaveState("idle");
-        setRuntimeCapabilityConstrainedPaths([]);
-        setRuntimeFailureCode(null);
-      }
+
     } finally {
       nextProjectionMode = null;
     }
@@ -333,6 +328,11 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     syncShellSettings(loaded);
     lastProjectedSourceRevision = snapshot.revision;
     nextProjectionMode = null;
+    const outcome = classifySettingsApplicationOutcome(snapshot.data.runtimeApplicationDisposition);
+    setSaveState(outcome === "capability-constrained" ? "constrained"
+      : outcome === "persisted-pending" ? "partial" : "idle");
+    setRuntimeCapabilityConstrainedPaths(snapshot.data.runtimeCapabilityConstrainedPaths ?? []);
+    setRuntimeFailureCode(snapshot.data.runtimeFailureCode ?? null);
     setLoadState(nextLoadState);
   }
 
@@ -424,10 +424,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
       preciseGpuPlacementEnabled: enabled
-    })),
-    updateGpuPerformanceUseCases: (useCases) => updatePerformance((performance) => ({
-      ...performance,
-      gpuPerformanceUseCases: normalizeGpuPerformanceUseCases(useCases)
     })),
     updateAutomaticMemoryCleanupLines: (physicalMemoryPercent, virtualMemoryPercent) => updatePerformance((performance) => ({
       ...performance,
@@ -543,7 +539,11 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     })),
     updateAutoUpdate: (enabled) => updateDraft((currentSettings) => ({
       ...currentSettings,
-      update: { autoUpdateEnabled: enabled }
+      update: { ...currentSettings.update!, autoUpdateEnabled: enabled }
+    })),
+    updateCheckInterval: (hours) => updateDraft((currentSettings) => ({
+      ...currentSettings,
+      update: { ...currentSettings.update!, checkIntervalHours: normalizeInteger(hours, 1, 168, 6) }
     })),
     updateTaskManagerShortcutReplacement: (enabled) => updateSystemIntegration((systemIntegration) => ({
       ...systemIntegration,
@@ -621,7 +621,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.28",
+    version: "1.0.29",
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -633,7 +633,6 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
       virtualMemoryOptimizationTargetUsagePercent: 70,
-      gpuPerformanceUseCases: ["general"],
       smartMonitoringMode: "enabled",
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -672,14 +671,14 @@ export function defaultAppSettings(): AppSettings {
       endpoint: "http://127.0.0.1:1234",
       autoStartEnabled: false
     },
-    update: { autoUpdateEnabled: false }
+    update: { autoUpdateEnabled: false, checkIntervalHours: 6 }
   };
 }
 
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.28",
+    version: "1.0.29",
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
@@ -694,7 +693,6 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.virtualMemoryAutomaticCleanupPercent, defaults.performance!.virtualMemoryAutomaticCleanupPercent),
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.physicalMemoryOptimizationTargetUsagePercent, defaults.performance!.physicalMemoryOptimizationTargetUsagePercent),
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
-      gpuPerformanceUseCases: normalizeGpuPerformanceUseCases(settings?.performance?.gpuPerformanceUseCases),
       smartMonitoringMode: normalizeAdaptiveBooleanMode(settings?.performance?.smartMonitoringMode),
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),
@@ -718,7 +716,8 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       endpoint: normalizeLmStudioEndpoint(settings?.aiModelService?.endpoint),
       autoStartEnabled: settings?.aiModelService?.autoStartEnabled ?? defaults.aiModelService!.autoStartEnabled
     },
-    update: { autoUpdateEnabled: settings?.update?.autoUpdateEnabled === true }
+    update: { autoUpdateEnabled: settings?.update?.autoUpdateEnabled === true,
+      checkIntervalHours: normalizeInteger(settings?.update?.checkIntervalHours, 1, 168, 6) }
   };
 }
 
@@ -880,14 +879,6 @@ export function normalizeOptimizationMode(mode?: string | null): AppOptimization
   return normalizeOptimizationModeValue(mode);
 }
 
-export function normalizeGpuPerformanceUseCases(useCases?: readonly string[] | null): AppGpuPerformanceUseCase[] {
-  const supported = new Set<AppGpuPerformanceUseCase>(["general", "ai", "gaming"]);
-  const normalized = (useCases ?? [])
-    .filter((useCase): useCase is AppGpuPerformanceUseCase =>
-      typeof useCase === "string" && supported.has(useCase as AppGpuPerformanceUseCase))
-    .filter((useCase, index, values) => values.indexOf(useCase) === index);
-  return normalized.length > 0 ? normalized : ["general"];
-}
 
 function syncShellSettings(settings: AppSettings) {
   postShellMessage("editableHotkeys:reload");

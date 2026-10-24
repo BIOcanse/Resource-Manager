@@ -65,7 +65,6 @@ public static class AppSettingsMigrator
                 ReadByte(root, "performance", "virtualMemoryAutomaticCleanupPercent", defaults.Performance.VirtualMemoryAutomaticCleanupPercent),
                 ReadByte(root, "performance", "physicalMemoryOptimizationTargetUsagePercent", defaults.Performance.PhysicalMemoryOptimizationTargetUsagePercent),
                 ReadByte(root, "performance", "virtualMemoryOptimizationTargetUsagePercent", defaults.Performance.VirtualMemoryOptimizationTargetUsagePercent),
-                ReadGpuPerformanceUseCases(root, defaults.Performance.GpuPerformanceUseCases),
                 ReadString(root, "performance", "smartMonitoringMode", defaults.Performance.SmartMonitoringMode),
                 ReadLogicRefreshInterval(
                     root,
@@ -109,7 +108,8 @@ public static class AppSettingsMigrator
                 Endpoint: ReadString(root, "aiModelService", "endpoint", defaults.AiModelService.Endpoint),
                 AutoStartEnabled: ReadBoolean(root, "aiModelService", "autoStartEnabled", defaults.AiModelService.AutoStartEnabled)),
             new AppUpdateSettings(
-                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled)),
+                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled),
+                ReadInt32(root, "update", "checkIntervalHours", defaults.Update.CheckIntervalHours)),
             new AppHardwareControlSettings(
                 ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
             ReadReports(root));
@@ -169,6 +169,9 @@ public static class AppSettingsMigrator
             || update.ValueKind != JsonValueKind.Object
             || !update.TryGetProperty("autoUpdateEnabled", out var autoUpdateEnabled)
             || !IsBoolean(autoUpdateEnabled)
+            || !update.TryGetProperty("checkIntervalHours", out var checkInterval)
+            || checkInterval.ValueKind != JsonValueKind.Number
+            || !checkInterval.TryGetInt32(out var checkHours) || checkHours is < 1 or > 168
             || !root.TryGetProperty("performance", out var performance)
             || performance.ValueKind != JsonValueKind.Object)
         {
@@ -188,7 +191,8 @@ public static class AppSettingsMigrator
             || performance.TryGetProperty("samplingDispatchMode", out _)
             || !performance.TryGetProperty("gpuOverflowUsagePercent", out var gpuUsagePercent)
             || !performance.TryGetProperty("gpuOverflowDedicatedMemoryPercent", out var gpuMemoryPercent)
-            || !performance.TryGetProperty("gpuPerformanceUseCases", out var gpuPerformanceUseCases)
+            || performance.TryGetProperty("gpuPerformanceUseCases", out _)
+            || performance.TryGetProperty("gpuPerformanceProfile", out _)
             || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
             || performance.TryGetProperty("frontendHiddenRefreshMode", out _)
             || !performance.TryGetProperty("monitorRefreshIntervalMs", out var monitorRefreshIntervalMs)
@@ -218,7 +222,6 @@ public static class AppSettingsMigrator
         return !IsSupportedOptimizationMode(optimizationMode)
             || !IsSupportedGpuOverflowPercent(gpuUsagePercent)
             || !IsSupportedGpuOverflowPercent(gpuMemoryPercent)
-            || !IsSupportedGpuPerformanceUseCases(gpuPerformanceUseCases)
             || !IsSupportedAdaptiveBooleanMode(smartMonitoringMode)
             || !IsSupportedLogicRefreshInterval(monitorRefreshIntervalMs)
             || !IsSupportedLogicRefreshInterval(resourceTableRefreshIntervalMs)
@@ -313,55 +316,8 @@ public static class AppSettingsMigrator
             && milliseconds <= AppSettingsDefaults.MaxLogicRefreshIntervalMs;
     }
 
-    private static bool IsSupportedGpuPerformanceUseCases(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Array)
-        {
-            return false;
-        }
-
-        var any = false;
-        foreach (var item in value.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.String
-                || !AppGpuPerformanceUseCases.Supported.Contains(item.GetString() ?? string.Empty))
-            {
-                return false;
-            }
-
-            any = true;
-        }
-
-        return any;
-    }
-
     private static bool IsSupportedGpuOverflowPercent(JsonElement value)
         => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var percent) && percent is >= 1 and <= 100;
-
-    private static IReadOnlyList<string> ReadGpuPerformanceUseCases(
-        JsonElement root,
-        IReadOnlyList<string> fallback)
-    {
-        if (!root.TryGetProperty("performance", out var section)
-            || section.ValueKind != JsonValueKind.Object)
-        {
-            return fallback;
-        }
-
-        if (section.TryGetProperty("gpuPerformanceUseCases", out var useCases)
-            && useCases.ValueKind == JsonValueKind.Array)
-        {
-            return AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(
-                useCases.EnumerateArray()
-                    .Where(static item => item.ValueKind == JsonValueKind.String)
-                    .Select(static item => item.GetString() ?? string.Empty));
-        }
-
-        return section.TryGetProperty("gpuPerformanceProfile", out _)
-            ? AppSettingsNormalizer.NormalizeGpuPerformanceUseCase(
-                ReadString(root, "performance", "gpuPerformanceProfile", fallback[0]))
-            : fallback;
-    }
 
     private static AppPresetNumericSetting ReadLogicRefreshInterval(
         JsonElement root,

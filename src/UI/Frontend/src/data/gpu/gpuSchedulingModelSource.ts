@@ -15,7 +15,6 @@ import {
   requireString
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
-  AppGpuPerformanceUseCase,
   GpuPerformanceScoreItem,
   GpuPerformanceScoreOverrideResult,
   GpuPerformanceScoreSnapshot,
@@ -193,13 +192,6 @@ function decodeGpuPerformanceScoreItem(
 ): GpuPerformanceScoreItem {
   const path = `$.gpus[${index}]`;
   const item = requireRecord(value, path);
-  const useCases = item.gpuPerformanceUseCases === undefined
-    ? undefined
-    : requireArray(item.gpuPerformanceUseCases, `${path}.gpuPerformanceUseCases`)
-      .map((useCase, useCaseIndex) => requireOneOf(
-        useCase,
-        `${path}.gpuPerformanceUseCases[${useCaseIndex}]`,
-        ["general", "ai", "gaming"] as const)) as AppGpuPerformanceUseCase[];
   return Object.freeze({
     gpuId: requireNonEmptyString(item.gpuId, `${path}.gpuId`),
     index: requireNonNegativeSafeInteger(item.index, `${path}.index`),
@@ -207,13 +199,6 @@ function decodeGpuPerformanceScoreItem(
     rasterPerformanceScore: optionalNonNegativeNumber(
       item.rasterPerformanceScore,
       `${path}.rasterPerformanceScore`),
-    generationBonusScore: optionalNonNegativeNumber(
-      item.generationBonusScore,
-      `${path}.generationBonusScore`),
-    useCaseBonusScore: optionalNonNegativeNumber(
-      item.useCaseBonusScore,
-      `${path}.useCaseBonusScore`),
-    gpuPerformanceUseCases: useCases,
     defaultPerformanceScore: requireNonNegativeFiniteNumber(
       item.defaultPerformanceScore,
       `${path}.defaultPerformanceScore`),

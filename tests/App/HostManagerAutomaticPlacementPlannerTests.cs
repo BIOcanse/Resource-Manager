@@ -335,7 +335,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
                     CreateAdapter(2, 33, hardware.GpuInventory.ObservedAtUtcTicks)]
             }
         };
-        var scores = new CompiledHardwareScorePlan([], new Dictionary<string, double>
+        var scores = new CompiledHardwareScorePlan(new Dictionary<string, double>
         {
             [GpuPerformanceScoreIds.FromIndex(0)] = 50,
             [GpuPerformanceScoreIds.FromIndex(1)] = 100,
@@ -660,7 +660,6 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
 
     private static CompiledHardwareScorePlan CreateHardwareScores()
         => new(
-            [],
             new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
             {
                 [GpuPerformanceScoreIds.FromIndex(0)] = 50,

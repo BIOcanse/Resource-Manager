@@ -36,9 +36,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapGet("/api/settings/app", async (
             IAppSettingsStore settingsStore,
+            IRuntimeSpecializationCoordinator runtimeSpecialization,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await settingsStore.LoadReadOnlyAsync(cancellationToken));
+            return Results.Ok(runtimeSpecialization.ProjectAppSettingsRuntimeState(
+                await settingsStore.LoadReadOnlyAsync(cancellationToken)));
         }).AllowAnonymous();
 
         // What the 「报告判定」 settings section may edit, from the current runtime plan.

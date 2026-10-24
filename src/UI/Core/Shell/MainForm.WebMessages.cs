@@ -50,6 +50,9 @@ public sealed partial class MainForm
                 // Closing the window closes the frontend; the tray keeps running.
                 BeginInvoke(Close);
                 break;
+            case "update.applyExit":
+                BeginInvoke(() => ExitRequested?.Invoke(this, EventArgs.Empty));
+                break;
             case "taskManager.shortcutReplacement:on":
                 taskManagerShortcutReplacementChanged(true);
                 break;

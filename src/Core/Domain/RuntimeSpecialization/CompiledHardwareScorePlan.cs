@@ -5,14 +5,12 @@ using ResourceManager.App.Domain.Settings;
 namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
 public sealed record CompiledHardwareScorePlan(
-    IReadOnlyList<string> GpuPerformanceUseCases,
     IReadOnlyDictionary<string, double> GpuPerformanceScoresByGpuId,
     string CpuName,
     IReadOnlyDictionary<int, double> CpuPerformanceScoresByCoreIndex)
 {
     public string? GpuPerformanceScoreUnavailableReason { get; init; }
     public static CompiledHardwareScorePlan Default { get; } = new(
-        [AppGpuPerformanceUseCases.General],
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
         string.Empty,
         new Dictionary<int, double>());
@@ -27,8 +25,7 @@ public sealed record CompiledHardwareScorePlan(
             : GpuPerformanceScorePresetResolver.Resolve(
                 gpu.Name,
                 gpu.TotalMemoryBytes,
-                gpu.StandardGraphicsFrequencyMhz,
-                GpuPerformanceUseCases).Score;
+                gpu.StandardGraphicsFrequencyMhz).Score;
     }
 
     public double ResolveCpuPerformanceScore(int coreIndex, double fallbackScore)

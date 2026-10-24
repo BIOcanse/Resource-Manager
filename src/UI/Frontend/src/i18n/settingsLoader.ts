@@ -1,49 +1,50 @@
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, ByteUnitMode } from "../types.ts";
+import { retryableLocaleImport } from "./retryableLocaleImport.ts";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, ByteUnitMode } from "../types.ts";
 import { uiStyles } from "../presentation/uiStyles.ts";
 import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
 import { loadingUpdatesCopy } from "./settingsUpdateCopy.ts";
+import { createLanguageBundleLoader } from "./languageBundleLoader.ts";
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsTextBundle } from "./settingsTypes.ts";
 
 type SettingsLocaleModule = { default: SettingsCopy };
 type SettingsLocaleLoader = () => Promise<SettingsLocaleModule>;
 
 const localeLoaders = {
-  "zh-CN": () => import("./settingsLocales/zh-CN.ts"),
-  "zh-TW": () => import("./settingsLocales/zh-TW.ts"),
-  "en-US": () => import("./settingsLocales/en-US.ts"),
-  "ja-JP": () => import("./settingsLocales/ja-JP.ts"),
-  "ko-KR": () => import("./settingsLocales/ko-KR.ts"),
-  "fr-FR": () => import("./settingsLocales/fr-FR.ts"),
-  "de-DE": () => import("./settingsLocales/de-DE.ts"),
-  "es-ES": () => import("./settingsLocales/es-ES.ts"),
-  "es-MX": () => import("./settingsLocales/es-MX.ts"),
-  "pt-BR": () => import("./settingsLocales/pt-BR.ts"),
-  "pt-PT": () => import("./settingsLocales/pt-PT.ts"),
-  "ru-RU": () => import("./settingsLocales/ru-RU.ts"),
-  "uk-UA": () => import("./settingsLocales/uk-UA.ts"),
-  "pl-PL": () => import("./settingsLocales/pl-PL.ts"),
-  "tr-TR": () => import("./settingsLocales/tr-TR.ts"),
-  "it-IT": () => import("./settingsLocales/it-IT.ts"),
-  "nl-NL": () => import("./settingsLocales/nl-NL.ts"),
-  "sv-SE": () => import("./settingsLocales/sv-SE.ts"),
-  "fi-FI": () => import("./settingsLocales/fi-FI.ts"),
-  "da-DK": () => import("./settingsLocales/da-DK.ts"),
-  "nb-NO": () => import("./settingsLocales/nb-NO.ts"),
-  "cs-CZ": () => import("./settingsLocales/cs-CZ.ts"),
-  "hu-HU": () => import("./settingsLocales/hu-HU.ts"),
-  "ro-RO": () => import("./settingsLocales/ro-RO.ts"),
-  "el-GR": () => import("./settingsLocales/el-GR.ts"),
-  "he-IL": () => import("./settingsLocales/he-IL.ts"),
-  "ar-SA": () => import("./settingsLocales/ar-SA.ts"),
-  "hi-IN": () => import("./settingsLocales/hi-IN.ts"),
-  "id-ID": () => import("./settingsLocales/id-ID.ts"),
-  "vi-VN": () => import("./settingsLocales/vi-VN.ts"),
-  "th-TH": () => import("./settingsLocales/th-TH.ts")
+  "zh-CN": retryableLocaleImport(() => import("./settingsLocales/zh-CN.ts")),
+  "zh-TW": retryableLocaleImport(() => import("./settingsLocales/zh-TW.ts")),
+  "en-US": retryableLocaleImport(() => import("./settingsLocales/en-US.ts")),
+  "ja-JP": retryableLocaleImport(() => import("./settingsLocales/ja-JP.ts")),
+  "ko-KR": retryableLocaleImport(() => import("./settingsLocales/ko-KR.ts")),
+  "fr-FR": retryableLocaleImport(() => import("./settingsLocales/fr-FR.ts")),
+  "de-DE": retryableLocaleImport(() => import("./settingsLocales/de-DE.ts")),
+  "es-ES": retryableLocaleImport(() => import("./settingsLocales/es-ES.ts")),
+  "es-MX": retryableLocaleImport(() => import("./settingsLocales/es-MX.ts")),
+  "pt-BR": retryableLocaleImport(() => import("./settingsLocales/pt-BR.ts")),
+  "pt-PT": retryableLocaleImport(() => import("./settingsLocales/pt-PT.ts")),
+  "ru-RU": retryableLocaleImport(() => import("./settingsLocales/ru-RU.ts")),
+  "uk-UA": retryableLocaleImport(() => import("./settingsLocales/uk-UA.ts")),
+  "pl-PL": retryableLocaleImport(() => import("./settingsLocales/pl-PL.ts")),
+  "tr-TR": retryableLocaleImport(() => import("./settingsLocales/tr-TR.ts")),
+  "it-IT": retryableLocaleImport(() => import("./settingsLocales/it-IT.ts")),
+  "nl-NL": retryableLocaleImport(() => import("./settingsLocales/nl-NL.ts")),
+  "sv-SE": retryableLocaleImport(() => import("./settingsLocales/sv-SE.ts")),
+  "fi-FI": retryableLocaleImport(() => import("./settingsLocales/fi-FI.ts")),
+  "da-DK": retryableLocaleImport(() => import("./settingsLocales/da-DK.ts")),
+  "nb-NO": retryableLocaleImport(() => import("./settingsLocales/nb-NO.ts")),
+  "cs-CZ": retryableLocaleImport(() => import("./settingsLocales/cs-CZ.ts")),
+  "hu-HU": retryableLocaleImport(() => import("./settingsLocales/hu-HU.ts")),
+  "ro-RO": retryableLocaleImport(() => import("./settingsLocales/ro-RO.ts")),
+  "el-GR": retryableLocaleImport(() => import("./settingsLocales/el-GR.ts")),
+  "he-IL": retryableLocaleImport(() => import("./settingsLocales/he-IL.ts")),
+  "ar-SA": retryableLocaleImport(() => import("./settingsLocales/ar-SA.ts")),
+  "hi-IN": retryableLocaleImport(() => import("./settingsLocales/hi-IN.ts")),
+  "id-ID": retryableLocaleImport(() => import("./settingsLocales/id-ID.ts")),
+  "vi-VN": retryableLocaleImport(() => import("./settingsLocales/vi-VN.ts")),
+  "th-TH": retryableLocaleImport(() => import("./settingsLocales/th-TH.ts"))
 } satisfies Record<ConcreteAppLanguageMode, SettingsLocaleLoader>;
 
-const localeCache = new Map<ConcreteAppLanguageMode, Promise<SettingsTextBundle>>();
 
 export const loadingSettingsText: SettingsTextBundle = {
   updates: loadingUpdatesCopy,
@@ -63,8 +64,6 @@ export const loadingSettingsText: SettingsTextBundle = {
     smartMonitoringTitle: "",
     smartMonitoringDescription: "",
     adaptiveBooleanModeOptions: [],
-    gpuPerformanceUseCasesTitle: "",
-    gpuPerformanceUseCasesDescription: "",
     preciseGpuPlacementTitle: "",
     preciseGpuPlacementDescription: "",
     preciseGpuPlacementModeOptions: {
@@ -147,11 +146,6 @@ export const loadingSettingsText: SettingsTextBundle = {
       grayscale: { label: "", description: "" },
       disabled: { label: "", description: "" }
     },
-    gpuPerformanceUseCaseOptions: {
-      general: { label: "", description: "" },
-      ai: { label: "", description: "" },
-      gaming: { label: "", description: "" }
-    }
   },
   systemIntegration: {
     autoStartTitle: "",
@@ -291,30 +285,22 @@ export const loadingSettingsText: SettingsTextBundle = {
   barColorOptions: [],
   byteUnitOptions: [],
   fontSmoothingOptions: [],
-  gpuPerformanceUseCaseOptions: [],
   creditGroups: []
 };
 
 export const fallbackSettingsText = createSettingsTextBundle("zh-CN", createSettingsLocale("zh-CN"));
 
-export function loadSettingsText(language?: string | null): Promise<SettingsTextBundle> {
-  const concreteLanguage = resolveLanguageMode(language);
-  const cached = localeCache.get(concreteLanguage);
-  if (cached) {
-    return cached;
-  }
-
-  const loading = localeLoaders[concreteLanguage]()
+const bundles = createLanguageBundleLoader<SettingsTextBundle>((concreteLanguage) =>
+  localeLoaders[concreteLanguage]()
     .then((module) => createSettingsTextBundle(concreteLanguage, module.default))
-    .catch(() => {
-      if (concreteLanguage === "zh-CN") {
-        return fallbackSettingsText;
-      }
+    .catch((error: unknown) => {
+      console.error(`[i18n] Settings language bundle failed: ${concreteLanguage}`, error);
+      throw error;
+    })
+);
 
-      return loadSettingsText("zh-CN");
-    });
-  localeCache.set(concreteLanguage, loading);
-  return loading;
+export function loadSettingsText(language?: string | null): Promise<SettingsTextBundle> {
+  return bundles.load(resolveLanguageMode(language));
 }
 
 function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: SettingsCopy): SettingsTextBundle {
@@ -329,8 +315,6 @@ function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: Setti
     byteUnitOptions: (Object.entries(copy.appearance.byteUnitOptions) as Array<[ByteUnitMode, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     fontSmoothingOptions: (Object.entries(copy.appearance.fontSmoothingOptions) as Array<[AppFontSmoothing, { label: string; description: string }]>)
-      .map(([id, option]) => ({ id, label: option.label, description: option.description })),
-    gpuPerformanceUseCaseOptions: (Object.entries(copy.appearance.gpuPerformanceUseCaseOptions) as Array<[AppGpuPerformanceUseCase, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     creditGroups: createCreditGroups(copy)
   };

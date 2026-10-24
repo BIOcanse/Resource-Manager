@@ -6,7 +6,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.28";
+    public const string CurrentVersion = "1.0.29";
     public const int MinLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MinIntervalMs;
     public const int MaxLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MaxIntervalMs;
     public const int MonitorRefreshResponsiveIntervalMs = AppFrontendRefreshIntervalPolicy.MonitorResponsiveIntervalMs;
@@ -38,7 +38,6 @@ public static class AppSettingsDefaults
                 VirtualMemoryAutomaticCleanupPercent: VirtualMemoryAutomaticCleanupPercent,
                 PhysicalMemoryOptimizationTargetUsagePercent: PhysicalMemoryOptimizationTargetUsagePercent,
                 VirtualMemoryOptimizationTargetUsagePercent: VirtualMemoryOptimizationTargetUsagePercent,
-                GpuPerformanceUseCases: [AppGpuPerformanceUseCases.General],
                 SmartMonitoringMode: AppAdaptiveBooleanModes.Enabled,
                 MonitorRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.Monitor,
                 ResourceTableRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.ResourceTable,

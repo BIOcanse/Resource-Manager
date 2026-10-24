@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("ru-RU", {
   "updates": {
     "autoUpdateTitle": "Автоматические обновления",
-    "autoUpdateDescription": "Сохраняет предпочтение автообновления. Автоматическая установка ждёт доверенной подписи выпуска; ручное обновление доступно.",
+    "autoUpdateDescription": "Периодически проверяет, загружает и проверяет обновления. Применяет их после закрытия окон Resource Manager во всех сеансах рабочего стола или по кнопке «Применить сейчас».",
     "installedVersionTitle": "Установленная версия",
     "unknownVersion": "Неизвестно",
     "checking": "Проверка…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("ru-RU", {
     "versionsDescription": "От новых к старым; для каждой серии по умолчанию показан последний выпуск.",
     "lastChecked": "Последняя проверка: ",
     "selectedTarget": "Выбрана версия: ",
-    "prepare": "Подготовить и установить выбранное обновление",
+    "prepare": "Подготовить выбранное обновление",
     "confirmPrepare": (version: string) => `Подготовить версию ${version}? Менеджер проверит пакет, дождётся закрытия всех сеансов интерфейса, остановит службу, сохранит и перенесёт данные, затем проверит новую версию. При ошибке он восстановит предыдущую версию.`,
     "prepareFailed": "Не удалось подготовить обновление.",
     "waitingForExit": "Обновление готово. Для применения завершите все сеансы рабочего интерфейса Resource Manager через трей.",
@@ -88,8 +88,6 @@ export default createSettingsLocale("ru-RU", {
         "label": "Выкл."
       }
     ],
-    "gpuPerformanceUseCasesTitle": "Назначение GPU",
-    "gpuPerformanceUseCasesDescription": "Выберите основные задачи для корректного сравнения возможностей GPU. Можно выбрать несколько вариантов.",
     "preciseGpuPlacementTitle": "Точный выбор GPU",
     "preciseGpuPlacementDescription": "Позволяет точно выбирать GPU для поддерживаемых процессов рендеринга. Переключение во время работы зависит от совместимости и настраивается для каждого приложения.",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("ru-RU", {
         "description": "Отключить дополнительное сглаживание и напрямую растрировать символы"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "Общие задачи",
-        "description": "Всегда добавлять небольшой бонус поколения к базовой оценке растеризации"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "Повысить вес поколения и значительно учитывать экосистему NVIDIA, объём VRAM и пропускную способность"
-      },
-      "gaming": {
-        "label": "Игры",
-        "description": "Применять максимальный бонус поколения и небольшой бонус объёма VRAM"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "Замена сочетания клавиш диспетчера задач",

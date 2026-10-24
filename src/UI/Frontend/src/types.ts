@@ -83,7 +83,6 @@ export type AppOptimizationMode = "normal" | "limited" | "cpu" | "gpu"
   | "memory+cpu" | "memory+gpu" | "cpu+gpu" | "smart";
 export type ResourceManagerSelfCpuGrade = "normal" | "optimize";
 export type ResourceManagerSelfGpuGrade = "normal" | "optimize";
-export type AppGpuPerformanceUseCase = "general" | "ai" | "gaming";
 export type AppPresetNumericSettingMode = "aotu" | "preset" | "custom";
 export type AppLogicRefreshIntervalPreset = "responsive" | "balanced" | "lowPower" | "quiet";
 export type AppLogicRefreshIntervalKey =
@@ -252,6 +251,7 @@ export interface ReportRuleSetting {
 export interface ReportRuleSettingsResponse { rules: ReportRuleSetting[]; }
 
 export interface AppUpdateSettings {
+  checkIntervalHours: number;
   autoUpdateEnabled: boolean;
 }
 
@@ -264,7 +264,6 @@ export interface AppPerformanceSettings {
   virtualMemoryAutomaticCleanupPercent: number;
   physicalMemoryOptimizationTargetUsagePercent: number;
   virtualMemoryOptimizationTargetUsagePercent: number;
-  gpuPerformanceUseCases: AppGpuPerformanceUseCase[];
   smartMonitoringMode: AppAdaptiveBooleanMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;
@@ -1408,9 +1407,6 @@ export interface GpuPerformanceScoreItem {
   index: number;
   name: string;
   rasterPerformanceScore?: number;
-  generationBonusScore?: number;
-  useCaseBonusScore?: number;
-  gpuPerformanceUseCases?: AppGpuPerformanceUseCase[];
   defaultPerformanceScore: number;
   performanceScore: number;
   hasPerformanceOverride: boolean;

@@ -47,8 +47,16 @@ public static partial class ResourceManagerServiceCollectionExtensions
             startupCapabilities.Allows(StartupCapability.MutablePersistence)));
         services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>();
         services.AddHttpClient();
+        services.AddHttpClient(ProductUpdateSource.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ProductVersionCatalogService>();
         services.AddSingleton<ProductUpdateCoordinator>();
+        if (hostEnvironment.IsWindowsService && startupCapabilities.Allows(StartupCapability.MutablePersistence))
+        {
+            services.AddSingleton<IProductUiSessionPresence, ProductUiSessionPresence>();
+            services.AddHostedService<AutomaticProductUpdateService>();
+        }
 
         services
             .AddResourceManagerRuntimeSpecialization(startupCapabilities)

@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
 import { frontendBuildManifestPlugin } from "./build/frontendBuildManifest";
+import { retryableLocaleImportsPlugin } from "./build/retryableLocaleImports";
 
 export default defineConfig({
-  plugins: [solid(), frontendBuildManifestPlugin()],
+  plugins: [solid(), retryableLocaleImportsPlugin(), frontendBuildManifestPlugin()],
   build: {
     outDir: "../../Core/wwwroot",
     emptyOutDir: true,

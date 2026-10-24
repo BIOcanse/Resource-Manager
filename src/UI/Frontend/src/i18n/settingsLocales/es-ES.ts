@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("es-ES", {
   "updates": {
     "autoUpdateTitle": "Actualizaciones automáticas",
-    "autoUpdateDescription": "Guarda la preferencia de actualización. La instalación automática espera firmas de publicación fiables; las actualizaciones manuales están disponibles.",
+    "autoUpdateDescription": "Busca, descarga y verifica actualizaciones periódicamente. Se aplican automáticamente al cerrar las ventanas de Resource Manager en todas las sesiones de escritorio, o mediante Aplicar ahora.",
     "installedVersionTitle": "Versión instalada",
     "unknownVersion": "Desconocido",
     "checking": "Comprobando…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("es-ES", {
     "versionsDescription": "De más reciente a más antigua; cada serie muestra su última versión por defecto.",
     "lastChecked": "Última comprobación: ",
     "selectedTarget": "Versión seleccionada: ",
-    "prepare": "Preparar e instalar la actualización elegida",
+    "prepare": "Preparar actualización seleccionada",
     "confirmPrepare": (version: string) => `¿Preparar la versión ${version}? El gestor verifica el paquete, espera a que se cierren todas las sesiones de escritorio, detiene el servicio, conserva y migra los datos y verifica la nueva versión. Si falla, restaura la versión anterior.`,
     "prepareFailed": "No se puede preparar la actualización.",
     "waitingForExit": "Actualización lista. Sal de todas las sesiones de escritorio de Resource Manager desde la bandeja para aplicarla.",
@@ -88,8 +88,6 @@ export default createSettingsLocale("es-ES", {
         "label": "Desactivado"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "Usos de la GPU",
-    "gpuPerformanceUseCasesDescription": "Selecciona las tareas principales para comparar mejor las capacidades de las GPU. Puedes elegir varias.",
     "preciseGpuPlacementTitle": "Selección precisa de GPU",
     "preciseGpuPlacementDescription": "Permite elegir una GPU concreta para procesos de renderizado compatibles. El cambio durante la ejecución depende de la compatibilidad y se configura por aplicación.",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("es-ES", {
         "description": "Desactivar el suavizado adicional y rasterizar los glifos directamente"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "General",
-        "description": "Añadir siempre una pequeña bonificación de generación al rendimiento de rasterización"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "Aumentar el peso de la generación y valorar mucho el ecosistema NVIDIA, la capacidad de VRAM y el ancho de banda"
-      },
-      "gaming": {
-        "label": "Juegos",
-        "description": "Aplicar la mayor bonificación de generación y una pequeña por capacidad de VRAM"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "Sustituir el atajo del Administrador de tareas",

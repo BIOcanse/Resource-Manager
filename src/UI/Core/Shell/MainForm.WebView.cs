@@ -27,22 +27,38 @@ public sealed partial class MainForm
         return initialized;
     }
 
-    private async Task<bool> InitializeFrontendHostAsync()
+    private Task<bool> InitializeFrontendHostAsync()
+        => InitializeFrontendHostAsync(frontendHost.InitializeAsync,
+            ex =>
+            {
+                System.Diagnostics.Trace.WriteLine(ex);
+                WriteWebViewStartupFailure(ex);
+            },
+            () => ExitRequested?.Invoke(this, EventArgs.Empty),
+            () =>
+            {
+                if (backendContentEnabled)
+                    ShowFrontendUnavailable(NativeUiText.Current.WebViewInitializationFailed);
+            });
+
+    internal static async Task<bool> InitializeFrontendHostAsync(Func<Task> initialize,
+        Action<Exception> recordFailure, Action requestExit, Action showUnavailable)
     {
         try
         {
-            await frontendHost.InitializeAsync();
+            await initialize();
             return true;
+        }
+        catch (BrowserRuntimeInstallationDeclinedException ex)
+        {
+            recordFailure(ex);
+            requestExit();
+            return false;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Trace.WriteLine(ex);
-            WriteWebViewStartupFailure(ex);
-            if (backendContentEnabled)
-            {
-                ShowFrontendUnavailable(
-                    NativeUiText.Current.WebViewInitializationFailed);
-            }
+            recordFailure(ex);
+            showUnavailable();
             return false;
         }
     }

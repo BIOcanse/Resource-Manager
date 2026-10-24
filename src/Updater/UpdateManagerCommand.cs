@@ -131,8 +131,21 @@ public static class UpdateManagerCommand
         return result;
     }
 
-    public static void WriteResult(string[] args, bool success, string message)
+    public static string FormatFailure(Exception exception, ToolText text)
+        => exception is UpdatePlanException failure ? failure.Format(text) : text.OperationFailed;
+
+    public static void WriteFailure(string[] args, Exception exception, ToolText text)
     {
+        System.Diagnostics.Trace.WriteLine(exception);
+        var failure = exception as UpdatePlanException;
+        WriteResult(args, false, FormatFailure(exception, text), failure?.Code ?? "update.applyFailed",
+            failure?.Parameters, exception.ToString());
+    }
+
+    public static void WriteResult(string[] args, bool success, string message,
+        string? failureCode = null, string[]? failureParameters = null, string? diagnosticDetail = null)
+    {
+        var targetVersion = ReadResultTargetVersion(args, success);
         if ((args.Length == 3 && args[0] is "--apply" or "--repair" or "--adopt-and-apply" or "--resume-legacy" or "--import-user-data")
             || (args.Length == 2 && args[0] == "--recover"))
         {
@@ -147,7 +160,8 @@ public static class UpdateManagerCommand
                 if (File.Exists(resultPath)) ReleasePackageLayout.RejectReparse(resultPath);
                 var tempPath = resultPath + ".writing";
                 File.WriteAllText(tempPath,
-                    JsonSerializer.Serialize(new OperationResult(success, message, DateTimeOffset.UtcNow, args)));
+                    JsonSerializer.Serialize(new OperationResult(success, message, DateTimeOffset.UtcNow, args,
+                        failureCode, failureParameters, diagnosticDetail, targetVersion)));
                 File.Move(tempPath, resultPath, overwrite: true);
             }
             catch (IOException) { }
@@ -167,14 +181,37 @@ public static class UpdateManagerCommand
             var result = Path.Combine(directory, "last-update-result.json");
             if (File.Exists(result)) ReleasePackageLayout.RejectReparse(result);
             File.WriteAllText(result,
-                JsonSerializer.Serialize(new { success, message, finishedAt = DateTimeOffset.UtcNow }));
+                JsonSerializer.Serialize(new { success, message, finishedAt = DateTimeOffset.UtcNow,
+                    failureCode, failureParameters, diagnosticDetail, targetVersion }));
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
         catch (InvalidOperationException) { }
     }
 
-    public sealed record OperationResult(bool Success, string Message, DateTimeOffset FinishedAt, string[] Arguments);
+    public sealed record OperationResult(bool Success, string Message, DateTimeOffset FinishedAt, string[] Arguments,
+        string? FailureCode = null, string[]? FailureParameters = null, string? DiagnosticDetail = null,
+        string? TargetVersion = null);
+
+    private static string? ReadResultTargetVersion(string[] args, bool success)
+    {
+        if (args.Length != 3 || args[0] is not ("--apply" or "--repair" or "--adopt-and-apply" or "--resume-legacy"))
+            return null;
+        try
+        {
+            // A successful apply may already have removed its downloaded package.
+            var path = Path.Combine(success ? args[2] : args[1], "release-manifest.json");
+            if (!File.Exists(path) || new FileInfo(path).Length > 1_048_576) return null;
+            using var manifest = JsonDocument.Parse(File.ReadAllText(path));
+            return manifest.RootElement.TryGetProperty("version", out var version)
+                && version.ValueKind == JsonValueKind.String ? version.GetString() : null;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+        catch (JsonException) { return null; }
+        catch (ArgumentException) { return null; }
+        catch (InvalidOperationException) { return null; }
+    }
 
     public static OperationResult? ReadResult(string[] args, DateTimeOffset startedAt)
     {

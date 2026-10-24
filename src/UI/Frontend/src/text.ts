@@ -28,7 +28,7 @@ export function managementRoleLabel(role: string | null | undefined) {
     : uiText.managementRole.dependency;
 }
 
-export { applyLanguage, currentLanguage, currentSettingsText } from "./i18n/appTextStore.ts";
+export { applyLanguage, currentLanguage, currentSettingsText, languageLoadError } from "./i18n/appTextStore.ts";
 export {
   isRightToLeftLanguage,
   languageOptions,

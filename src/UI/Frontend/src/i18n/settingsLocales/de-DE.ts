@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("de-DE", {
   "updates": {
     "autoUpdateTitle": "Automatische Updates",
-    "autoUpdateDescription": "Speichert die Update-Präferenz. Automatische Installation wartet auf vertrauenswürdige Release-Signaturen; manuelle Updates sind verfügbar.",
+    "autoUpdateDescription": "Prüft, lädt und verifiziert Updates regelmäßig. Automatische Anwendung nach dem Schließen der Resource-Manager-Fenster in allen Desktop-Sitzungen oder über Jetzt anwenden.",
     "installedVersionTitle": "Installierte Version",
     "unknownVersion": "Unbekannt",
     "checking": "Wird geprüft…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("de-DE", {
     "versionsDescription": "Neueste zuerst; jede Reihe zeigt standardmäßig ihre neueste Version.",
     "lastChecked": "Zuletzt geprüft: ",
     "selectedTarget": "Gewählte Zielversion: ",
-    "prepare": "Gewähltes Update vorbereiten und installieren",
+    "prepare": "Ausgewähltes Update vorbereiten",
     "confirmPrepare": (version: string) => `Version ${version} vorbereiten? Der Updater prüft das Paket, wartet auf das Beenden aller Desktopsitzungen, stoppt den Dienst, erhält und migriert die Daten und prüft die neue Version. Bei einem Fehler stellt er die vorherige Version wieder her.`,
     "prepareFailed": "Update konnte nicht vorbereitet werden.",
     "waitingForExit": "Update bereit. Beenden Sie alle Resource-Manager-Desktop-Sitzungen über den Infobereich, um es anzuwenden.",
@@ -88,8 +88,6 @@ export default createSettingsLocale("de-DE", {
         "label": "Aus"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "GPU-Einsatzzwecke",
-    "gpuPerformanceUseCasesDescription": "Wählen Sie die wichtigsten Aufgaben für einen passenden Vergleich der GPU-Fähigkeiten. Mehrfachauswahl ist möglich.",
     "preciseGpuPlacementTitle": "Genaue GPU-Auswahl",
     "preciseGpuPlacementDescription": "Ermöglicht genaue GPU-Auswahl für unterstützte Renderprozesse. Wechsel während der Laufzeit hängen von der Prozesskompatibilität ab und bleiben pro App konfigurierbar.",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("de-DE", {
         "description": "Zusätzliche Textglättung abschalten und Zeichen direkt rastern"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "Allgemein",
-        "description": "Zum Rasterleistungswert immer einen kleinen Generationsbonus hinzufügen"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "Generation stärker gewichten und NVIDIA-Ökosystem, VRAM-Kapazität und Bandbreite hoch bewerten"
-      },
-      "gaming": {
-        "label": "Spiele",
-        "description": "Größten Generationsbonus und einen kleinen VRAM-Kapazitätsbonus anwenden"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "Task-Manager-Tastenkürzel ersetzen",

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Indexing;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.PublicResources;
@@ -26,12 +27,34 @@ using ResourceManager.App.Infrastructure.PublicResources;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
 using ResourceManager.App.Domain.SoftwareDiscovery;
+using ResourceManager.App.Infrastructure.Updates;
 
 namespace Resource_Manager_APP.Tests;
 
 [Collection(LocalResourceCapabilityHandlerProcessStateCollection.Name)]
 public sealed class NormalReadOnlyServiceGraphTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AutomaticUpdateServiceResolvesWithPublicationOwnerOnlyInWritableServiceGraph(bool writable)
+    {
+        using var host = Host.CreateDefaultBuilder()
+            .ConfigureServices(services => services.AddResourceManagerApp(
+                ["--no-native-ui"], writable ? StartupCapabilitySet.Full : StartupCapabilitySet.NormalReadOnly,
+                BackendHostEnvironment.Compile(isWindowsService: true, isLocalSystem: true)))
+            .Build();
+        var owners = host.Services.GetServices<IHostedService>().OfType<AutomaticProductUpdateService>().ToArray();
+        if (writable)
+        {
+            Assert.Single(owners);
+            Assert.NotNull(host.Services.GetRequiredService<RuntimePlanProvider>());
+            Assert.NotNull(host.Services.GetRequiredService<IProductUiSessionPresence>());
+        }
+        else Assert.Empty(owners);
+        // Resolve the production constructor without starting any hosted service.
+    }
+
     [Fact]
     public async Task NormalReadOnlyProfileDoesNotRegisterAutomaticWriteOwners()
     {
@@ -171,6 +194,7 @@ public sealed class NormalReadOnlyServiceGraphTests
                 .UseContentRoot(packageRoot)
                 .ConfigureServices(static services =>
                     services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
+                .ConfigureLogging(logging => logging.ClearProviders().AddConsole())
                 .Build();
             var before = EnumerateRelativePaths(packageRoot);
             var runtimeCoordinator = host.Services

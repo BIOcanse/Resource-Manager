@@ -29,15 +29,19 @@ internal sealed record UpdatePlan(
         WindowsServiceRegistration.RequireExpectedBinary(service, backend);
 
         var previous = ReadInstalledVersion(target, operation);
-        if (!ReleaseVersion.TryParse(previous, out var previousKey)
-            || !ReleaseVersion.TryParse(package.Version, out var targetKey)
-            || (operation == UpdateOperation.Update && targetKey!.CompareTo(previousKey) <= 0)
-            || (operation == UpdateOperation.Repair && targetKey!.CompareTo(previousKey) != 0))
-            throw new InvalidOperationException(operation == UpdateOperation.Update
-                ? "只能安装严格高于当前版本的发行版。"
-                : "修复包必须与登记的当前版本相同。升级请使用更新操作。");
+        RequireVersion(previous, package.Version, operation);
         CheckCompatibility(package.Root, target);
         return new UpdatePlan(package, target, previous, service.Running, operation);
+    }
+
+    internal static void RequireVersion(string previous, string target, UpdateOperation operation)
+    {
+        if (!ReleaseVersion.TryParse(previous, out var previousKey)
+            || !ReleaseVersion.TryParse(target, out var targetKey)
+            || (operation == UpdateOperation.Update && targetKey!.CompareTo(previousKey) <= 0)
+            || (operation == UpdateOperation.Repair && targetKey!.CompareTo(previousKey) != 0))
+            throw new UpdatePlanException(operation == UpdateOperation.Update
+                ? "update.versionNotNewer" : "update.repairVersionMismatch", previous, target);
     }
 
     public static string RequireRegisteredTarget(string installRoot)
@@ -89,37 +93,20 @@ internal sealed record UpdatePlan(
     }
 
     internal static void CheckCompatibility(string packageRoot, string target)
+        => UpdatePackageCompatibility.RequireCompatible(packageRoot, target, ReadDatabaseSchema);
+
+    private static int ReadDatabaseSchema(string databasePath)
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(packageRoot, "release-manifest.json")));
-        if (!document.RootElement.TryGetProperty("updateCompatibility", out var compatibility))
-            throw new InvalidDataException("发行包未声明数据兼容范围，不能用于更新。");
-        var minSettings = Version.Parse(compatibility.GetProperty("minimumSettingsSchema").GetString()!);
-        var maxSettings = Version.Parse(compatibility.GetProperty("maximumSettingsSchema").GetString()!);
-        var maxDatabase = compatibility.GetProperty("maximumDatabaseSchema").GetInt32();
-        var settingsPath = Path.Combine(target, "Config", "app-settings.json");
-        if (File.Exists(settingsPath))
+        var connectionString = new SqliteConnectionStringBuilder
         {
-            using var settings = JsonDocument.Parse(File.ReadAllText(settingsPath));
-            var current = Version.Parse(settings.RootElement.GetProperty("version").GetString()!);
-            if (current < minSettings || current > maxSettings)
-                throw new InvalidDataException("现有设置格式不在目标发行版可迁移范围内。");
-        }
-        var databasePath = Path.Combine(target, "UserData", "Database", "resource-manager.db");
-        if (File.Exists(databasePath))
-        {
-            var connectionString = new SqliteConnectionStringBuilder
-            {
-                DataSource = databasePath,
-                Mode = SqliteOpenMode.ReadOnly,
-                Pooling = false
-            }.ToString();
-            using var connection = new SqliteConnection(connectionString);
-            connection.Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA user_version;";
-            var schema = Convert.ToInt32(command.ExecuteScalar());
-            if (schema < 0 || schema > maxDatabase)
-                throw new InvalidDataException("现有数据库格式高于目标发行版支持范围。");
-        }
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString();
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return Convert.ToInt32(command.ExecuteScalar());
     }
 }

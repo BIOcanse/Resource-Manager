@@ -42,8 +42,6 @@ const zhCnSettingsCopy: SettingsCopy = {
       { id: "enabled", label: "开启" },
       { id: "disabled", label: "关闭" }
     ],
-    gpuPerformanceUseCasesTitle: "GPU 用途",
-    gpuPerformanceUseCasesDescription: "选择主要用途，以更合适地比较不同显卡的能力。可多选。",
     preciseGpuPlacementTitle: "精确 GPU 选择",
     preciseGpuPlacementDescription: "允许受支持的渲染进程精确选卡；运行时换卡仍取决于该进程的兼容能力。每个软件可单独设。",
     preciseGpuPlacementModeOptions: {
@@ -156,11 +154,6 @@ const zhCnSettingsCopy: SettingsCopy = {
       grayscale: { label: "灰度平滑", description: "灰度抗锯齿，更柔和，适合部分高分屏" },
       disabled: { label: "关闭", description: "关闭额外文字平滑，使用最直接的字形栅格化" }
     },
-    gpuPerformanceUseCaseOptions: {
-      general: { label: "综合", description: "光栅基础分始终叠加小幅 GPU 代际加成" },
-      ai: { label: "AI", description: "增大代际加成，并重点参考 NVIDIA 生态、显存容量和显存速度" },
-      gaming: { label: "游戏", description: "获得更高的代际加成，并小幅参考显存容量" }
-    }
   },
     systemIntegration: {
       taskManagerTitle: "任务管理器快捷键替换",
@@ -345,8 +338,6 @@ const enSettingsCopy: SettingsCopy = {
       { id: "enabled", label: "On" },
       { id: "disabled", label: "Off" }
     ],
-    gpuPerformanceUseCasesTitle: "GPU use cases",
-    gpuPerformanceUseCasesDescription: "Select the main workloads to compare GPU capabilities more appropriately. Multiple selections are allowed.",
     preciseGpuPlacementTitle: "Precise GPU selection",
     preciseGpuPlacementDescription: "Allow precise GPU selection for supported render processes. Runtime switching still depends on process compatibility, and each app remains configurable.",
     preciseGpuPlacementModeOptions: {
@@ -459,11 +450,6 @@ const enSettingsCopy: SettingsCopy = {
       grayscale: { label: "Grayscale", description: "Grayscale anti-aliasing, softer, can suit some high-DPI screens" },
       disabled: { label: "Off", description: "Disable additional text smoothing and use direct glyph rasterization" }
     },
-    gpuPerformanceUseCaseOptions: {
-      general: { label: "General", description: "Always add a small generation bonus to the raster-performance base score" },
-      ai: { label: "AI", description: "Increase generation weighting and strongly weight NVIDIA ecosystem, VRAM capacity, and bandwidth" },
-      gaming: { label: "Gaming", description: "Apply the largest generation bonus and a small VRAM-capacity bonus" }
-    }
   },
     systemIntegration: {
       taskManagerTitle: "Task Manager Shortcut Replacement",

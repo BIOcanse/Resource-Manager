@@ -104,7 +104,7 @@ public sealed class RuntimePlanCompiler(
         }
         var registeredSourceZoneIds = monitoringSourceZoneRegistry.GetSourceIds();
         var firmwareProviderPlan = firmwareProviderPlanCompiler.Compile();
-        var hardwareScores = CompileHardwareScores(settings.Performance.GpuPerformanceUseCases,
+        var hardwareScores = CompileHardwareScores(
             cpuTopology.CpuName, cpuOverrides.ScoresByCoreIndex, gpuPerformanceScoreOverrideStore);
         if (hardwareScores.GpuPerformanceScoreUnavailableReason is { } scoreError)
             logger?.LogWarning("{GpuPerformanceScoreUnavailableReason}", scoreError);
@@ -138,19 +138,16 @@ public sealed class RuntimePlanCompiler(
         };
     }
 
-    internal static CompiledHardwareScorePlan CompileHardwareScores(IReadOnlyList<string> useCases,
-        string cpuName, IReadOnlyDictionary<int, double> cpuScores, IGpuPerformanceScoreOverrideStore gpuStore)
+    internal static CompiledHardwareScorePlan CompileHardwareScores(string cpuName, IReadOnlyDictionary<int, double> cpuScores, IGpuPerformanceScoreOverrideStore gpuStore)
     {
         try
         {
-            return new(AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(useCases),
-                gpuStore.LoadScores(), cpuName, cpuScores);
+            return new(gpuStore.LoadScores(), cpuName, cpuScores);
         }
         catch (Exception error) when (error is System.Text.Json.JsonException or InvalidDataException or IOException
             or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            return new(AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(useCases),
-                new Dictionary<string, double>(), cpuName, cpuScores)
+            return new(new Dictionary<string, double>(), cpuName, cpuScores)
             {
                 GpuPerformanceScoreUnavailableReason = $"GPU performance overrides unavailable: {error.Message}"
             };

@@ -1,3 +1,4 @@
+import { canAnimateResourceBar } from "./resourceBarAnimation.ts";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 import {
@@ -33,8 +34,6 @@ interface ResourceSegmentPaintPlaneProps {
 interface ResourceBarPresentation {
   animations: string;
   barColor: string;
-  selfGpuGrade: string;
-  frontendFocused: string;
   frameRate: ResourceBarFrameRate;
 }
 
@@ -66,7 +65,7 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   const observer = new MutationObserver(refreshPresentation);
   observer.observe(document.body, {
     attributes: true,
-    attributeFilter: ["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused", "data-resource-bar-frame-rate"]
+    attributeFilter: ["data-animations", "data-bar-color", "data-resource-bar-frame-rate"]
   });
   const stopObservingAppearance = observeDocumentAppearance(refreshPresentation);
 
@@ -90,7 +89,7 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
     const shouldAnimate = Boolean(lastSignature)
       && signature !== lastSignature
       && geometrySignature === lastGeometrySignature
-      && canAnimateResourceBar(currentPresentation);
+      && canAnimateResourceBar(currentPresentation.animations);
 
     lastSignature = signature;
     lastGeometrySignature = geometrySignature;
@@ -489,20 +488,10 @@ function readResourceBarPresentation(): ResourceBarPresentation {
   return {
     animations: document.body.dataset.animations ?? "normal",
     barColor: document.body.dataset.barColor ?? "type",
-    selfGpuGrade: document.body.dataset.selfGpuGrade ?? "normal",
-    frontendFocused: document.body.dataset.frontendFocused ?? "yes",
     frameRate: parseResourceBarFrameRate(document.body.dataset.resourceBarFrameRate)
   };
 }
 
-function canAnimateResourceBar(presentation: ResourceBarPresentation) {
-  if (presentation.animations !== "normal") {
-    return false;
-  }
-
-  return presentation.selfGpuGrade !== "optimize"
-    || presentation.frontendFocused === "yes";
-}
 
 function easeBar(progress: number) {
   return progress * progress * (3 - 2 * progress);

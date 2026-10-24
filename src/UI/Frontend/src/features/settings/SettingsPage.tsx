@@ -15,7 +15,6 @@ import type {
   ByteUnitMode,
   AppEditableHotkeySettings,
   AppFontSmoothing,
-  AppGpuPerformanceUseCase,
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
   AppPresetNumericSetting,
@@ -49,7 +48,6 @@ interface SettingsPageProps {
   onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
-  onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
@@ -67,6 +65,7 @@ interface SettingsPageProps {
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
   onAutoUpdateChange: (enabled: boolean) => void;
+  onCheckIntervalChange: (hours: number) => void;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
   onLocalPublicServiceChange: (enabled: boolean) => void;
   onPublicFileIndexChange: (enabled: boolean) => void;
@@ -253,7 +252,6 @@ export function SettingsPage(props: SettingsPageProps) {
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
               onSmartMonitoringModeChange={props.onSmartMonitoringModeChange}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
-              onGpuPerformanceUseCasesChange={props.onGpuPerformanceUseCasesChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
               onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
@@ -310,6 +308,7 @@ export function SettingsPage(props: SettingsPageProps) {
               settings={props.settings.update}
               text={text()}
               onAutoUpdateChange={props.onAutoUpdateChange}
+              onCheckIntervalChange={props.onCheckIntervalChange}
             />
           </Show>
           <Show when={props.activeSection === "credits"}>

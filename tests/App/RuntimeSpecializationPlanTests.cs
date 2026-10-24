@@ -211,7 +211,6 @@ public sealed class RuntimeSpecializationPlanTests
     public void HardwareScorePlan_UsesCompiledCpuCoreOverrides()
     {
         var plan = new CompiledHardwareScorePlan(
-            [AppGpuPerformanceUseCases.General],
             new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
             "Test CPU",
             new Dictionary<int, double>

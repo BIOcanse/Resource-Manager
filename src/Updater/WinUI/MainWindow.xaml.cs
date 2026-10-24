@@ -134,7 +134,8 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            ShowResult(exception.Message, InfoBarSeverity.Error);
+            Trace.WriteLine(exception);
+            ShowResult(UpdateManagerCommand.FormatFailure(exception, text), InfoBarSeverity.Error);
         }
         finally
         {

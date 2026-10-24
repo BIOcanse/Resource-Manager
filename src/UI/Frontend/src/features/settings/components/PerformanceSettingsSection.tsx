@@ -9,7 +9,6 @@ import {
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
-  AppGpuPerformanceUseCase,
   AppLogicRefreshIntervalKey,
   AppLogicRefreshIntervalPreset,
   AppPerformanceSettings,
@@ -17,7 +16,7 @@ import type {
   AppPresetNumericSettingMode
 } from "../../../types";
 import { ControlAccessLevelSetting } from "./ControlAccessLevelSetting";
-import { MultiSegmentedControl, NumberField, SegmentedControl } from "./SettingsControls";
+import { NumberField, SegmentedControl } from "./SettingsControls";
 import { uiText } from "../../../text.ts";
 
 type GpuSchedulingMode = "basic" | "precise";
@@ -28,7 +27,6 @@ interface PerformanceSettingsSectionProps {
   preciseGpuPlacementAvailable: boolean;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
-  onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
@@ -135,18 +133,6 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           disabled={!props.preciseGpuPlacementAvailable}
           disabledTitle={uiText.misc.precisePlacementDisabled}
           onChange={(mode) => props.onPreciseGpuPlacementChange(mode === "precise")}
-        />
-      </div>
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{props.text.performance.gpuPerformanceUseCasesTitle}</strong>
-          <span>{props.text.performance.gpuPerformanceUseCasesDescription}</span>
-        </div>
-        <MultiSegmentedControl
-          values={performance().gpuPerformanceUseCases}
-          options={props.text.gpuPerformanceUseCaseOptions}
-          ariaLabel={props.text.performance.gpuPerformanceUseCasesTitle}
-          onChange={props.onGpuPerformanceUseCasesChange}
         />
       </div>
       <div class="settings-row">

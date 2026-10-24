@@ -92,5 +92,11 @@
   "ReinstallPreviousFormat": "이전 설치를 찾았습니다:\n{0}",
   "ReinstallStop": "사용자 데이터를 복사하기 전에 이전 화면과 백그라운드 서비스를 중지합니다.",
   "ReinstallIdentity": "이전 LocalSystem 서비스와 자동 시작, HKLM 및 App Paths 항목, 제거 등록, 시작 메뉴 바로 가기를 제거하고 새 설치에 등록합니다.",
-  "ReinstallData": "Config, UserData, Misc를 새 설치로 복사하고 이전 프로그램, 원본 데이터와 유지 관리 파일을 보존합니다. 기존 외부 실행 파일이 있으면 이전 폴더의 Internal로 옮깁니다. 독립 구성 요소는 구성 요소 관리에서 처리합니다."
+  "ReinstallData": "Config, UserData, Misc를 새 설치로 복사하고 이전 프로그램, 원본 데이터와 유지 관리 파일을 보존합니다. 기존 외부 실행 파일이 있으면 이전 폴더의 Internal로 옮깁니다. 독립 구성 요소는 구성 요소 관리에서 처리합니다.",
+  "WebViewInstallTitle": "WebView2가 필요합니다",
+  "WebViewInstallConsent": "Resource Manager의 화면을 표시하려면 Microsoft WebView2가 필요합니다. 설치를 선택하면 서명을 확인한 Microsoft 설치 프로그램을 다운로드하고 설치 창을 엽니다. 취소하면 WebView2를 설치하지 않고 Resource Manager를 종료합니다.",
+  "WebViewInstall": "설치",
+  "WebViewInstallCancelled": "WebView2 설치가 취소되어 Resource Manager를 종료합니다.",
+  "UpdateVersionNotNewerFormat": "패키지 {1}은 설치된 버전 {0}보다 최신이어야 합니다.",
+  "RepairVersionMismatchFormat": "복구 패키지 {1}은 설치된 버전 {0}과 같아야 합니다. 업그레이드하려면 업데이트를 사용하세요."
 }

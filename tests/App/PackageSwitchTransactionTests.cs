@@ -101,6 +101,13 @@ public sealed class PackageSwitchTransactionTests
             else
                 await PackageSwitchTransaction.ApplyAsync(plan, runtime, CancellationToken.None);
 
+            var transaction = Directory.GetDirectories(sandbox, "ResourceManager-update-*").Single();
+            using (var journal = JsonDocument.Parse(File.ReadAllText(Path.Combine(transaction, "update-transaction.json"))))
+            {
+                Assert.Equal(verified.Root, journal.RootElement.GetProperty("sourcePackageRoot").GetString());
+                Assert.Equal(failHealth ? "rolledBack" : "committed", journal.RootElement.GetProperty("stage").GetString());
+            }
+
             Assert.Equal("old-settings", File.ReadAllText(Path.Combine(installed, "Config", "app-settings.json")));
             WindowsIdentity.RunImpersonated(cacheToken, () =>
             {
@@ -160,7 +167,8 @@ public sealed class PackageSwitchTransactionTests
                 InstallRoot = installed,
                 PreviousVersion = "0.2.0",
                 targetVersion = "0.3.0",
-                serviceWasRunning = true
+                serviceWasRunning = true,
+                sourcePackageRoot = Path.Combine(sandbox, "selected-package")
             }));
             var runtime = new FakeUpdateRuntime(false);
             var recovered = await PackageSwitchTransaction.RecoverPendingAsync(
@@ -170,6 +178,9 @@ public sealed class PackageSwitchTransactionTests
             Assert.Equal("0.2.0", Assert.Single(runtime.WrittenVersions));
             Assert.Equal(1, runtime.StartCount);
             Assert.Empty(PackageSwitchTransaction.ListPending(installed));
+            using (var journal = JsonDocument.Parse(File.ReadAllText(Path.Combine(workspace, "update-transaction.json"))))
+                Assert.Equal(Path.Combine(sandbox, "selected-package"),
+                    journal.RootElement.GetProperty("sourcePackageRoot").GetString());
             if (nextWasPromoted)
                 Assert.True(File.Exists(Path.Combine(workspace, "failed", "Config", "app-settings.json")));
         }

@@ -164,20 +164,6 @@ public static class AppSystemIntegrationActionIds
     public const string ForceTerminateUnresponsiveAndForeground = "force-terminate-unresponsive-and-foreground";
 }
 
-public static class AppGpuPerformanceUseCases
-{
-    public const string General = "general";
-    public const string Ai = "ai";
-    public const string Gaming = "gaming";
-
-    public static readonly ISet<string> Supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        General,
-        Ai,
-        Gaming
-    };
-}
-
 public sealed record AppSettings(
     string Version,
     AppPerformanceSettings Performance,
@@ -206,7 +192,7 @@ public sealed record AppReportRuleOverride(
     double? ZeroActivityThreshold = null,
     IReadOnlyList<string>? ExecutableNames = null);
 
-public sealed record AppUpdateSettings(bool AutoUpdateEnabled);
+public sealed record AppUpdateSettings(bool AutoUpdateEnabled, int CheckIntervalHours = 6);
 
 public sealed record AppPresetNumericSetting(
     string Mode,
@@ -222,7 +208,6 @@ public sealed record AppPerformanceSettings(
     byte VirtualMemoryAutomaticCleanupPercent,
     byte PhysicalMemoryOptimizationTargetUsagePercent,
     byte VirtualMemoryOptimizationTargetUsagePercent,
-    IReadOnlyList<string> GpuPerformanceUseCases,
     string SmartMonitoringMode,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,

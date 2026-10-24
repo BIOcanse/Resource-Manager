@@ -11,7 +11,7 @@ export const loadingUpdatesCopy: UpdatesCopy = {
 
 export const enUpdatesCopy: UpdatesCopy = {
   autoUpdateTitle: "Automatic updates",
-  autoUpdateDescription: "Save the automatic update preference. Automatic installation waits for trusted release signing; manual updates are available.",
+  autoUpdateDescription: "Periodically check, download and verify updates. Apply automatically once Resource Manager windows are closed in all desktop sessions, or choose Apply now.",
   installedVersionTitle: "Installed version",
   unknownVersion: "Unknown",
   checking: "Checking…",
@@ -22,7 +22,7 @@ export const enUpdatesCopy: UpdatesCopy = {
   versionsDescription: "Newest first; each series shows its newest release by default.",
   lastChecked: "Last checked: ",
   selectedTarget: "Selected target: ",
-  prepare: "Prepare and install selected update",
+  prepare: "Prepare selected update",
   confirmPrepare: (version) => `Update to ${version}? The updater will verify the package, wait for all desktop sessions to exit, stop the service, preserve and migrate data, and check the new version. It restores the previous version on failure.`,
   prepareFailed: "Unable to prepare update.",
   waitingForExit: "Update ready. Exit every Resource Manager desktop session from the tray to apply it.",
@@ -46,7 +46,7 @@ export const enUpdatesCopy: UpdatesCopy = {
 
 export const zhCnUpdatesCopy: UpdatesCopy = {
   autoUpdateTitle: "自动更新",
-  autoUpdateDescription: "保存自动更新偏好。可信发布签名接入前不会自动安装；手动更新可用。",
+  autoUpdateDescription: "定期检查、下载并验证更新；关闭所有桌面会话中的资源管理器界面后自动应用，也可点击立即应用。",
   installedVersionTitle: "当前安装版本",
   unknownVersion: "无法识别",
   checking: "检查中…",
@@ -57,7 +57,7 @@ export const zhCnUpdatesCopy: UpdatesCopy = {
   versionsDescription: "从新到旧排列；每个系列默认显示最新一版。",
   lastChecked: "上次检查：",
   selectedTarget: "已选择目标版本：",
-  prepare: "准备并安装所选更新",
+  prepare: "准备所选更新",
   confirmPrepare: (version) => `将更新到 ${version}。更新器会校验发行包，等待你退出所有桌面界面，停止服务，保留并迁移数据，验证新版本；失败时恢复旧版。继续准备吗？`,
   prepareFailed: "无法准备更新。",
   waitingForExit: "更新包已准备。请从托盘退出所有 Resource Manager 桌面界面；更新器会随后切换版本。",

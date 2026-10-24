@@ -14,6 +14,12 @@ import type { ConcreteAppLanguageMode, SettingsTextBundle } from "./settingsType
 const [copy, setCopy] = createStore<AppCopy>(cloneCopy(createAppCopy("zh-CN")));
 const [settingsText, setSettingsText] = createSignal<SettingsTextBundle>(fallbackSettingsText);
 const [activeLanguage, setActiveLanguage] = createSignal<ConcreteAppLanguageMode>("zh-CN");
+export interface LanguageLoadError {
+  readonly language: ConcreteAppLanguageMode;
+  readonly cause: unknown;
+}
+const [languageLoadError, setLanguageLoadError] = createSignal<LanguageLoadError | null>(null);
+export { languageLoadError };
 
 export const uiText = copy;
 
@@ -36,15 +42,18 @@ export function createLanguageApplier(
     language: ConcreteAppLanguageMode,
     nextCopy: AppCopy,
     nextSettingsText: SettingsTextBundle
-  ) => void
+  ) => void,
+  onError: (error: LanguageLoadError | null) => void = () => undefined
 ) {
   let appliedLanguage: ConcreteAppLanguageMode | null = null;
-  let pendingLanguage: ConcreteAppLanguageMode | null = null;
+  let pendingRequest: object;
 
   return (language?: string | null): Promise<void> => {
     const resolved = resolveLanguageMode(language);
     // 切回已生效的语言也要取消其他语言的待完成载入。
-    pendingLanguage = resolved;
+    const request = {};
+    pendingRequest = request;
+    onError(null);
     if (resolved === appliedLanguage) {
       return Promise.resolve();
     }
@@ -54,11 +63,16 @@ export function createLanguageApplier(
       loaders.appCopy(resolved),
       loaders.settingsText(resolved)
     ]).then(([nextCopy, nextSettingsText]) => {
-      if (pendingLanguage !== resolved) {
+      if (pendingRequest !== request) {
         return;
       }
       commit(resolved, nextCopy, nextSettingsText);
       appliedLanguage = resolved;
+    }).catch((cause: unknown) => {
+      if (pendingRequest === request) {
+        onError({ language: resolved, cause });
+      }
+      throw cause;
     });
   };
 }
@@ -72,14 +86,15 @@ function applyLanguageBundle(
     setCopy(reconcile(cloneCopy(nextCopy)));
     setSettingsText(nextSettingsText);
     setActiveLanguage(language);
+    applyDocumentLanguage(language);
+    notifyShellLanguage(language);
   });
-  applyDocumentLanguage(language);
-  notifyShellLanguage(language);
 }
 
 const requestLanguage = createLanguageApplier(
   { appCopy: loadAppCopy, settingsText: loadSettingsText },
-  applyLanguageBundle
+  applyLanguageBundle,
+  setLanguageLoadError
 );
 
 export function applyLanguage(language?: string | null): Promise<void> {
