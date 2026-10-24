@@ -246,8 +246,9 @@ public sealed class HostManagerSchedulingAuthorityCutoverTests
             "TryApplyBatch(",
             recovery,
             StringComparison.Ordinal);
+        // A resource record settles as already restored; nothing replays the trim.
         Assert.Contains(
-            "HostManagerRetiredSelfResourceJournalRecovery",
+            "RecoverResourceTransactionRecordAsync(",
             recovery,
             StringComparison.Ordinal);
 
