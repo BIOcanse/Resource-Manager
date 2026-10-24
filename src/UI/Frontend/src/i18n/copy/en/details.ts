@@ -1,6 +1,6 @@
 import type { AppCopy } from "../zh/index.ts";
 
-export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
+export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuScheduling"> = {
   cpuTopology: {
     modelLabel: "CPU topology model",
     panel: "CPU scheduling model",
@@ -68,6 +68,41 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
       window: (window: string) => `Thread activity ${window}`,
       unavailable: "Thread activity temporarily unavailable",
       preparing: "Preparing thread activity"
+    }
+  },
+  cpuBaseline: {
+    title: "CPU baseline ratio",
+    description: "The CPU raw score is divided by this ratio. It is the share of the CPU a typical workload can fill: 0.5 on a dual-CCD processor, so a load that fills one CCD scores as full. The default comes from the built-in CPU dataset; a custom value takes precedence.",
+    unavailable: "The CPU topology has not been read yet, so there is no baseline ratio.",
+    readFailed: "Reading the CPU baseline ratio failed",
+    saveFailed: "Saving the CPU baseline ratio failed",
+    resetFailed: "Restoring the default CPU baseline ratio failed",
+    matchedModel: "Matched model",
+    noMatchedModel: "No match",
+    defaultRatio: "Default ratio",
+    defaultSource: "Default source",
+    datasetVersion: "Dataset version",
+    currentRatio: "Current ratio",
+    multiplier: "Score multiplier",
+    overrideActive: "Custom",
+    defaultActive: "Default",
+    ratioInput: "Custom ratio",
+    ratioHint: "Greater than 0, at most 1",
+    invalidRatio: "The ratio must be greater than 0 and at most 1.",
+    edit: "Edit",
+    save: "Save",
+    reset: "Restore default",
+    cancel: "Cancel",
+    savedNotApplied: "Saved, but updating the runtime plan failed, so it is not in effect yet. Save again to retry.",
+    retry: "Retry",
+    deliveryFailures: "In effect, but some runtime components did not receive the update.",
+    sources: {
+      "uncompensated": "Uncompensated",
+      "intel:homogeneous_physical_reference": "Intel homogeneous core reference",
+      "intel:measured_throughput_composition_estimate": "Intel measured throughput estimate",
+      "intel:specification_p_share_estimate": "Intel P-core share from specifications",
+      "amd:single-ccd": "AMD single CCD",
+      "amd:symmetric-dual-ccd": "AMD symmetric dual CCD"
     }
   },
   gpuScheduling: {
