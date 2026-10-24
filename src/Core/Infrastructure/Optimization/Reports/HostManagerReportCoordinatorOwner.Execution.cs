@@ -96,6 +96,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         workspace = replacement;
         appliedPlan = desired;
         coordinatorState = replacementState;
+        PruneRetainedMetadata(replacementState, replacementModel);
         Volatile.Write(ref readModel, replacementModel);
         replacement = null;
 
@@ -263,6 +264,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             state,
             committedInterrupts,
             cancellationToken);
+        PruneRetainedMetadata(state, model);
         Volatile.Write(ref readModel, model);
     }
 
@@ -476,6 +478,15 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             reportById.ToImmutable(),
             nativeReportById.ToImmutable(),
             nativeTrustById.ToImmutable());
+    }
+
+    private void PruneRetainedMetadata(CoordinatorState state, HostManagerReportReadModel model)
+    {
+        var retainedTargets = state.CanonicalRows.Values.Select(static row => row.TargetHandle)
+            .Concat(model.NativeReportById.Values.Select(static row => row.TargetHandle)).ToHashSet();
+        foreach (var target in targetCatalog.Keys.ToArray())
+            if (!retainedTargets.Contains(target)) targetCatalog.Remove(target);
+        state.PruneFactSequences();
     }
 
     private CommandStamp NextCommandStamp(DateTimeOffset now)
@@ -829,6 +840,15 @@ internal sealed class CoordinatorState
                 CanonicalRows[key] = row;
             }
         }
+    }
+
+    internal void PruneFactSequences()
+    {
+        var retained = CanonicalRows.Values
+            .Where(static row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation)
+            .Select(static row => (row.RuleHandle, row.TargetHandle)).ToHashSet();
+        foreach (var key in factSequences.Keys.ToArray())
+            if (!retained.Contains(key)) factSequences.Remove(key);
     }
 
     private static ulong Next(ulong value, string name)

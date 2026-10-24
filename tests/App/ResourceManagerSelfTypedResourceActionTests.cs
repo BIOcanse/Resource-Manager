@@ -38,16 +38,21 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         => Assert.Throws<ArgumentOutOfRangeException>(() =>
             ResourceManagerSelfLocalResourceManager.LedgerMode((LocalResourceSoftwareMemoryMode)255));
 
-    [Fact]
-    public async Task NormalSamplesOsWorkingSetsWithoutLedgerRegistrationsOrTrim()
+    [Theory]
+    [InlineData(LocalResourceSoftwareMemoryMode.Normal)]
+    [InlineData(LocalResourceSoftwareMemoryMode.Optimize)]
+    [InlineData(LocalResourceSoftwareMemoryMode.Unrestricted)]
+    public async Task ModesWithoutWorkingSetConsumerSkipOsCensus(LocalResourceSoftwareMemoryMode mode)
     {
         using var owner = new ResourceManagerLedgerOwner();
         var writer = CreateWriter();
-        using var manager = CreateManager(writer, owner);
+        using var manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore(), owner,
+            () => throw new InvalidOperationException("No working-set consumer is enabled."), (_, _) => 500);
+        manager.SetDesiredMemoryMode(mode);
         var result = await manager.TickAsync();
         Assert.False(manager.IsBackgroundWorkerRunning);
-        Assert.Equal(1000UL, result.BackendWorkingSetBytes);
-        Assert.Equal(2000UL, result.NativeUiWorkingSetBytes);
+        Assert.Null(result.BackendWorkingSetBytes);
+        Assert.Null(result.NativeUiWorkingSetBytes);
         Assert.Equal(0UL, result.Memory.RegisteredBytes);
         Assert.Equal(0UL, result.Ledger.Released);
         Assert.Empty(result.TrimResults);
@@ -86,8 +91,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         {
             var result = await manager.TickAsync();
             released += result.Ledger.Released;
-            Assert.Equal(1000UL, result.BackendWorkingSetBytes);
-            Assert.Equal(2000UL, result.NativeUiWorkingSetBytes);
+            Assert.Null(result.BackendWorkingSetBytes);
+            Assert.Null(result.NativeUiWorkingSetBytes);
             Assert.Empty(result.TrimResults);
             Assert.Empty(result.RecheckedTrimObservations);
         }
@@ -105,6 +110,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         using var manager = CreateManager(writer, owner);
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var failed = await manager.TickAsync();
+        Assert.Equal(1000UL, failed.BackendWorkingSetBytes);
+        Assert.Equal(2000UL, failed.NativeUiWorkingSetBytes);
         Assert.All(failed.TrimResults, trim => Assert.Equal(AdapterResourceActionStatus.Failed, trim.Status));
         Assert.Equal(0UL, failed.Ledger.Released);
     }
@@ -169,7 +176,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         var first = await manager.TickAsync();
         Assert.Equal(2, first.PendingTrimObservationCount);
         var previous = manager.LastTrimResults;
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
+        // Keep the census consumer enabled to exercise a failure after readback.
         refreshed = 300;
 
         var error = await Record.ExceptionAsync(() => manager.TickAsync(cancellation.Token));
