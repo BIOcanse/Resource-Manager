@@ -28,10 +28,10 @@ public sealed class InteractiveDesktopObservationStore
         if (observation.SessionId <= 0 || observation.PublisherProcessId <= 4
             || observation.PublisherCreationFileTimeUtc <= 0 || !Fresh(observation, now)
             || observation.Windows is null || observation.Windows.Count > InteractiveDesktopObservation.MaximumWindows
-            || observation.Windows.Any(window => window is null || window.ProcessId <= 0 || window.CreationFileTimeUtc <= 0)
+            || observation.Windows.Any(window => window is null || window.ProcessId <= 0 || window.CreationFileTimeUtc < 0)
             || observation.Windows.Select(window => window.ProcessId).Distinct().Count() != observation.Windows.Count
             || observation.ForegroundKnown && observation.Foreground is null
-            || observation.Foreground is { } foreground && (foreground.ProcessId <= 0 || foreground.CreationFileTimeUtc <= 0)
+            || observation.Foreground is { } foreground && (foreground.ProcessId <= 0 || foreground.CreationFileTimeUtc < 0)
             || !verifyPublisher(observation)) return false;
         // Own an immutable copy; caller collections cannot alter a published sample.
         observation = observation with { Windows = observation.Windows.ToArray() };
@@ -70,8 +70,8 @@ public sealed class InteractiveDesktopObservationStore
             if (!sample.ForegroundKnown) continue;
             windows[session.Value].TryGetValue(process.ProcessId, out var window);
             var foreground = sample.Foreground;
-            if (window is not null && window.CreationFileTimeUtc != process.StartKey
-                || foreground?.ProcessId == process.ProcessId && foreground.CreationFileTimeUtc != process.StartKey) continue;
+            if (window is not null && !SameInstance(window, process)
+                || foreground?.ProcessId == process.ProcessId && !SameInstance(foreground, process)) continue;
             var projected = WindowsProcessRuntimeStateSnapshot.Project([process],
                 foreground?.ProcessId == process.ProcessId ? process.ProcessId : null,
                 window is null ? new Dictionary<int, ProcessWindowPresence>() : new Dictionary<int, ProcessWindowPresence>
@@ -85,6 +85,12 @@ public sealed class InteractiveDesktopObservationStore
     internal bool? IsForeground(int processId, long creationFileTimeUtc)
         => Read([new(processId, creationFileTimeUtc)]).Processes.TryGetValue(new(processId, creationFileTimeUtc), out var fact)
             ? fact.ForegroundFocused : null;
+
+    // An unverified row carries only the PID; the start-time check above already limits it to the
+    // instance that existed when the desktop was observed.
+    private static bool SameInstance(DesktopProcessWindowObservation row, ProcessInstanceKey process)
+        => row.CreationFileTimeUtc == DesktopProcessWindowObservation.UnverifiedCreationTime
+            || row.CreationFileTimeUtc == process.StartKey;
 
     private static bool Fresh(InteractiveDesktopObservation sample, long now)
         => sample.ObservedAtUtcTicks > 0 && sample.ObservedAtUtcTicks <= now

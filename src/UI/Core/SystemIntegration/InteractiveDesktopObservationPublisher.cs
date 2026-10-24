@@ -52,18 +52,26 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
         var windows = new Dictionary<int, DesktopProcessWindowObservation>();
         DesktopProcessWindowObservation? ReadIdentity(int id)
         {
-            try
+            Process process;
+            try { process = Process.GetProcessById(id); }
+            catch (ArgumentException) { return null; } // Exited since enumeration; its windows went with it.
+            using (process)
             {
-                using var process = Process.GetProcessById(id);
                 // Process.SessionId refreshes the full process list; query this PID only.
-                if (!ProcessIdToSessionId(checked((uint)id), out var session))
-                { complete = false; return null; }
-                if (session != publisherSession) return null;
-                return new(id, process.StartTime.ToFileTimeUtc(), false, false, false);
+                if (ProcessIdToSessionId(checked((uint)id), out var session) && session != publisherSession)
+                    return null;
+                try
+                {
+                    return new(id, process.StartTime.ToFileTimeUtc(), false, false, false);
+                }
+                catch (Exception error) when (error is InvalidOperationException
+                    or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    // A process this user cannot open (a protected game or its anti-cheat) is still
+                    // reported by PID; the service matches it against its own process inventory.
+                    return new(id, DesktopProcessWindowObservation.UnverifiedCreationTime, false, false, false);
+                }
             }
-            catch (Exception error) when (error is ArgumentException or InvalidOperationException
-                or System.ComponentModel.Win32Exception or NotSupportedException)
-            { complete = false; return null; }
         }
         var foregroundWindow = GetForegroundWindow();
         DesktopProcessWindowObservation? foreground = null;

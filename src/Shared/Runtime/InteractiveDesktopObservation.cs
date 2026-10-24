@@ -2,7 +2,14 @@ namespace ResourceManager.Shared.Runtime;
 
 public sealed record DesktopProcessWindowObservation(
     int ProcessId, long CreationFileTimeUtc,
-    bool HasVisibleWindow, bool HasBackgroundWindow, bool HasHiddenWindow);
+    bool HasVisibleWindow, bool HasBackgroundWindow, bool HasHiddenWindow)
+{
+    /// <summary>
+    /// The publisher could not open the process (for example a protected game) and reports it by
+    /// PID only; the reader matches the PID to the instance that existed before the observation.
+    /// </summary>
+    public const long UnverifiedCreationTime = 0;
+}
 
 public sealed record InteractiveDesktopObservation(
     int PublisherProcessId, long PublisherCreationFileTimeUtc, int SessionId,
