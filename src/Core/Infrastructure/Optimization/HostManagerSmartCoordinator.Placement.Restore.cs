@@ -92,7 +92,8 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
                 graphicsPreferenceStore.DeleteValue(path);
             }
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException
+            or System.Security.SecurityException or IOException)
         {
             logger.LogDebug(ex, "Host Manager GPU preference restore write reported failure for {ExecutablePath}.", path);
             writeFailure = ex.Message;

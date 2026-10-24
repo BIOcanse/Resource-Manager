@@ -145,6 +145,7 @@ public sealed class UserDataArchiveTests
         private void Record(string step) { Events.Add(step); if (failure == step) throw new IOException(step); }
         public void RequireOwned(UninstallationPlan plan) => Record("owned");
         public void StopProduct(UninstallationPlan plan) => Record("stop");
+        public void RemoveLaunchInterception(UninstallationPlan plan) { }
         public void RemoveService(UninstallationPlan plan) => Record("service");
         public void RemoveRegistration(UninstallationPlan plan) => Record("registration");
         public void ProtectArchive(string path) => Record("protect");

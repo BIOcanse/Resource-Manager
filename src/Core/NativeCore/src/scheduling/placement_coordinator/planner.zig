@@ -56,6 +56,13 @@ pub fn plan(
     const validation = validateInputs(session, desired_rows, applied_rows);
     if (validation != .ok) return validation;
 
+    // Validation leaves the current desired/applied identities in scratch.
+    for (session.slots) |*slot| {
+        if (isSettledOwnershipLoss(slot.*) and session.findScratch(slot.target_key, slot.record_key) == null)
+            slot.* = .{};
+    }
+    _ = session.rebuildStateIndex();
+
     for (session.slots) |*slot| {
         slot.desired_seen = false;
         slot.applied_seen = false;
@@ -290,12 +297,6 @@ fn validateInputs(
     }
     session.beginScratch();
     var union_count: u32 = 0;
-    for (session.slots) |slot| {
-        if (!slot.active) continue;
-        if (!session.insertScratch(slot.target_key, slot.record_key, union_count))
-            return .invalid_argument;
-        union_count += 1;
-    }
     for (desired_rows) |row| {
         if (session.findScratch(row.target_key, row.record_key) != null) continue;
         if (union_count >= session.config.maximum_state_count or
@@ -310,7 +311,18 @@ fn validateInputs(
             return .buffer_too_small;
         union_count += 1;
     }
+    for (session.slots) |slot| {
+        if (!slot.active or session.findScratch(slot.target_key, slot.record_key) != null) continue;
+        if (isSettledOwnershipLoss(slot)) continue;
+        if (union_count >= session.config.maximum_state_count) return .buffer_too_small;
+        union_count += 1;
+    }
     return .ok;
+}
+
+fn isSettledOwnershipLoss(slot: state.Slot) bool {
+    return slot.active and slot.state == .blocked and slot.pending_action_id == 0 and
+        slot.pending_disposition == null and slot.pending_reason_mask == protocol.ActionReason.ownership_lost;
 }
 
 fn clearAbsentAppliedState(session: *state.Session) void {

@@ -117,12 +117,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
         ownedRuleCleanup.RemoveForPath(RegistryViews, normalizedPath);
     }
 
-    private void RemoveStaleOwnedRules(IReadOnlySet<string> desiredPaths)
-    {
-        ownedRuleCleanup.RemoveStale(RegistryViews, desiredPaths);
-    }
-
-    private sealed class WindowsIfeoOwnedRuleStore : IIfeoOwnedRuleStore
+    private sealed class WindowsIfeoOwnedRuleStore(string debuggerCommand) : IIfeoOwnedRuleStore
     {
         public IReadOnlyList<string> EnumerateImageNames(RegistryView view)
         {
@@ -133,18 +128,9 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
 
         public IfeoImageSnapshot? ReadImage(RegistryView view, string imageName)
         {
-            try
-            {
-                using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                using var imageKey = baseKey.OpenSubKey($@"{IfeoRoot}\{imageName}", writable: false);
-                return imageKey is null ? null : SnapshotImage(imageKey, imageName);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException
-                or System.Security.SecurityException
-                or IOException)
-            {
-                return null;
-            }
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var imageKey = baseKey.OpenSubKey($@"{IfeoRoot}\{imageName}", writable: false);
+            return imageKey is null ? null : SnapshotImage(imageKey, imageName);
         }
 
         public int DeleteOwnedRules(
@@ -166,36 +152,34 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             }
 
             var removed = 0;
+            var failures = new List<Exception>();
             foreach (var candidate in candidates)
             {
-                IfeoRuleSnapshot? current;
                 try
                 {
-                    using var ruleKey = imageKey.OpenSubKey(candidate.RuleName, writable: false);
-                    current = ruleKey is null ? null : SnapshotRule(ruleKey, candidate.RuleName);
+                    bool empty;
+                    using (var ruleKey = imageKey.OpenSubKey(candidate.RuleName, writable: true))
+                    {
+                        var current = ruleKey is null ? null : SnapshotRule(ruleKey, candidate.RuleName);
+                        if (current is null || !IfeoOwnedRuleCleanupCoordinator.MatchesCandidate(current, candidate, OwnerValue)) continue;
+                        // Remove redirection first; retain the marker if a write fails before settlement.
+                        foreach (var name in IfeoOwnedRuleCleanupCoordinator.OwnedValuesToRemove(current, debuggerCommand)
+                            .OrderBy(name => name == OwnerValueName ? 1 : 0))
+                            ruleKey!.DeleteValue(name, throwOnMissingValue: false);
+                        empty = ruleKey!.ValueCount == 0 && ruleKey.SubKeyCount == 0;
+                    }
+                    if (empty) imageKey.DeleteSubKey(candidate.RuleName, throwOnMissingSubKey: false);
+                    removed++;
                 }
-                catch (Exception ex) when (ex is UnauthorizedAccessException
-                    or System.Security.SecurityException
-                    or IOException)
-                {
-                    continue;
-                }
-
-                if (current is null
-                    || !IfeoOwnedRuleCleanupCoordinator.MatchesCandidate(current, candidate, OwnerValue))
-                {
-                    continue;
-                }
-
-                imageKey.DeleteSubKeyTree(candidate.RuleName, throwOnMissingSubKey: false);
-                removed++;
+                catch (Exception error) when (IfeoOwnedRuleCleanupCoordinator.IsRegistryFailure(error)) { failures.Add(error); }
             }
 
             if (settleParentOwnership)
             {
-                CleanupParentUseFilter(imageKey, imageName);
+                try { CleanupParentUseFilter(imageKey, imageName); }
+                catch (Exception error) when (IfeoOwnedRuleCleanupCoordinator.IsRegistryFailure(error)) { failures.Add(error); }
             }
-
+            if (failures.Count > 0) throw new AggregateException(failures);
             return removed;
         }
 
@@ -230,7 +214,8 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
                 OwnerValue.Equals(
                     imageKey.GetValue(ParentOwnerValueName) as string,
                     StringComparison.Ordinal),
-                rules);
+                rules,
+                imageKey.GetValue(UseFilterValueName) as int?);
         }
 
         private static IfeoRuleSnapshot SnapshotRule(RegistryKey ruleKey, string ruleName)
@@ -238,22 +223,15 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             return new IfeoRuleSnapshot(
                 ruleName,
                 ruleKey.GetValue(OwnerValueName) as string,
-                NormalizePath(ruleKey.GetValue(FilterFullPathValueName) as string));
+                NormalizePath(ruleKey.GetValue(FilterFullPathValueName) as string),
+                ruleKey.GetValue(DebuggerValueName) as string,
+                ruleKey.GetValue(RuleIdValueName) as string);
         }
 
         private static void CleanupParentUseFilter(RegistryKey imageKey, string imageName)
         {
-            IfeoImageSnapshot image;
-            try
-            {
-                image = SnapshotImage(imageKey, imageName);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException
-                or System.Security.SecurityException
-                or IOException)
-            {
-                return;
-            }
+            var image = SnapshotImage(imageKey, imageName);
+            if (!image.Complete) throw new IOException($"IFEO rules could not be fully read for {imageName}.");
 
             switch (IfeoOwnedRuleCleanupCoordinator.DecideParentCleanup(image, OwnerValue))
             {

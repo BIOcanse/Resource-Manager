@@ -372,6 +372,32 @@ test "placement coordinator requires explicit override after ownership loss" {
     try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.apply), actions[0].disposition);
 }
 
+test "placement coordinator reclaims unreferenced ownership loss before union capacity admission" {
+    var config = corpus.config(20);
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var desired: [8]protocol.DesiredInput = undefined;
+    var applied: [8]protocol.AppliedInput = undefined;
+    for (0..8) |index| {
+        desired[index] = corpus.desired(index + 1, index + 101, 23);
+        applied[index] = corpus.applied(index + 1, index + 101, 24, 25, 26);
+    }
+    var cycle = corpus.cycle(20, 1, 7000, 8, 8);
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &desired, 8, &applied, 8, &actions, 8));
+    try std.testing.expectEqual(@as(u32, 8), cycle.action_count);
+    var feedback: [8]protocol.FeedbackInput = undefined;
+    for (0..8) |index| feedback[index] = corpus.feedback(actions[index], .ownership_lost, 7010);
+    try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(session, &feedback, 8));
+    cycle = corpus.cycle(20, 2, 7100, 8, 0);
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &desired, 8, null, 0, &actions, 8));
+    try std.testing.expectEqual(@as(u32, 0), cycle.action_count);
+    for (0..8) |index| desired[index] = corpus.desired(index + 201, index + 301, 23);
+    cycle = corpus.cycle(20, 3, 7200, 8, 0);
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &desired, 8, null, 0, &actions, 8));
+    try std.testing.expectEqual(@as(u32, 8), cycle.action_count);
+}
+
 test "placement coordinator reconfigure accepts same generation and rollback but capacity changes require recreate" {
     var config = corpus.config(21);
     const session = try session_module.Session.create(&config);

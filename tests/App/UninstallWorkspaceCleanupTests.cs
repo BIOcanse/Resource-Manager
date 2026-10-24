@@ -5,6 +5,20 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class UninstallWorkspaceCleanupTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void LaunchCleanupFailureRetainsPayloadAndRegistrations(bool keepData)
+    {
+        using var fixture = new Fixture();
+        var runtime = new Runtime { FailLaunchCleanup = true };
+        Assert.Throws<IOException>(() => UninstallationWorkflow.Run(fixture.Plan, keepData, runtime));
+        Assert.True(runtime.Stopped);
+        Assert.False(runtime.ServiceRemoved);
+        Assert.False(runtime.RegistrationRemoved);
+        Assert.True(File.Exists(Path.Combine(fixture.Root, "Start.exe")));
+    }
+
     [Fact]
     public void KeepRemovesOwnedWorkspacesButLeavesOtherInstallation()
     {
@@ -73,10 +87,14 @@ public sealed class UninstallWorkspaceCleanupTests
     private sealed class Runtime : IUninstallationRuntime
     {
         public bool Stopped;
+        public bool FailLaunchCleanup;
+        public bool ServiceRemoved;
+        public bool RegistrationRemoved;
         public void RequireOwned(UninstallationPlan plan) { }
         public void StopProduct(UninstallationPlan plan) => Stopped = true;
-        public void RemoveService(UninstallationPlan plan) { }
-        public void RemoveRegistration(UninstallationPlan plan) { }
+        public void RemoveLaunchInterception(UninstallationPlan plan) { if (FailLaunchCleanup) throw new IOException("cleanup denied"); Assert.True(File.Exists(Path.Combine(plan.Root, "Start.exe"))); }
+        public void RemoveService(UninstallationPlan plan) => ServiceRemoved = true;
+        public void RemoveRegistration(UninstallationPlan plan) => RegistrationRemoved = true;
         public void ProtectArchive(string archive) { }
     }
 }

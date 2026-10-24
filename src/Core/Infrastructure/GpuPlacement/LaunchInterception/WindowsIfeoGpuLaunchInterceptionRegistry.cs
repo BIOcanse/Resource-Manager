@@ -30,12 +30,12 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
     private readonly IfeoOwnedRuleCleanupCoordinator ownedRuleCleanup;
 
     public WindowsIfeoGpuLaunchInterceptionRegistry()
-        : this(Path.Combine(AppContext.BaseDirectory, BrokerFileName), new WindowsIfeoOwnedRuleStore())
+        : this(Path.Combine(AppContext.BaseDirectory, BrokerFileName))
     {
     }
 
     internal WindowsIfeoGpuLaunchInterceptionRegistry(string brokerPath)
-        : this(brokerPath, new WindowsIfeoOwnedRuleStore())
+        : this(brokerPath, new WindowsIfeoOwnedRuleStore(BuildDebuggerCommand(brokerPath)))
     {
     }
 
@@ -56,6 +56,15 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
     }
 
     private GpuLaunchInterceptionStatus ApplyUnderGate(GpuPlacementProcessPolicy policy)
+    {
+        try { return ApplyPolicyUnderGate(policy); }
+        catch (Exception error) when (IfeoOwnedRuleCleanupCoordinator.IsRegistryFailure(error))
+        {
+            return Failed(policy, CleanupFailureStatus(error), error.Message);
+        }
+    }
+
+    private GpuLaunchInterceptionStatus ApplyPolicyUnderGate(GpuPlacementProcessPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
 
@@ -212,11 +221,22 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
                 .Select(static path => path!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            RemoveStaleOwnedRules(desiredPaths);
-            return desiredPolicies
-                .Select(ApplyUnderGate)
+            var failures = ownedRuleCleanup.RemoveStale(RegistryViews, desiredPaths);
+            return failures.Select(failure => new GpuLaunchInterceptionStatus(
+                    failure.ImageName, null, false, false,
+                    CleanupFailureStatus(failure.Error),
+                    $"{failure.View}/{failure.ImageName}: {failure.Error.Message}", []))
+                .Concat(desiredPolicies.Select(ApplyUnderGate))
                 .ToArray();
         }
+    }
+
+    private static string CleanupFailureStatus(Exception error)
+    {
+        var accessDenied = error is UnauthorizedAccessException or System.Security.SecurityException
+            || error is AggregateException aggregate && aggregate.Flatten().InnerExceptions.Any(
+                item => item is UnauthorizedAccessException or System.Security.SecurityException);
+        return accessDenied ? GpuLaunchInterceptionStatuses.RegistryAccessDenied : GpuLaunchInterceptionStatuses.RegistryError;
     }
 
     internal static IReadOnlyList<GpuPlacementProcessPolicy> SelectDesiredPolicies(
@@ -266,10 +286,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
                     removed,
                     $"已从 IFEO 注册表视图中移除 {removed} 条 Resource Manager 启动拦截规则。");
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException
-                or System.Security.SecurityException
-                or IOException
-                or Win32Exception)
+            catch (Exception ex) when (IfeoOwnedRuleCleanupCoordinator.IsRegistryFailure(ex))
             {
                 return new GpuLaunchInterceptionCleanupResult(false, 0, ex.Message);
             }
@@ -287,10 +304,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
         {
             RemoveOwnedRulesForPath(executablePath);
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException
-            or System.Security.SecurityException
-            or IOException
-            or Win32Exception)
+        catch (Exception ex) when (IfeoOwnedRuleCleanupCoordinator.IsRegistryFailure(ex))
         {
             // The original registration error is the actionable result. Reconciliation retries cleanup later.
         }

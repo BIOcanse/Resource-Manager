@@ -178,7 +178,8 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         bool runtimeGpuShimEnabled,
         CompiledGpuOverflowPolicy? overflow)
     {
-        if (!hardware.GpuInventory.IsCurrentComplete() || overflow is not { IsValid: true })
+        if (hardwareScores.GpuPerformanceScoreUnavailableReason is not null
+            || !hardware.GpuInventory.IsCurrentComplete() || overflow is not { IsValid: true })
         {
             return [];
         }

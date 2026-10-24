@@ -13,6 +13,16 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ExternalGpuPlacementTests
 {
     [Theory]
+    [InlineData("ResourceManager.GpuRendererExternal.exe", "controller.stop", "controller.cancel")]
+    [InlineData("ResourceManager.GpuPlacementExternal.exe", "stop", "stop.cancel")]
+    public void RecoveryUsesExecutionCancellationProtocol(string image, string stop, string cancel)
+    {
+        var paths = ExternalGpuControllerRecovery.SignalPaths("attempt", image);
+        Assert.Equal(Path.Combine("attempt", stop), paths.Stop);
+        Assert.Equal(Path.Combine("attempt", cancel), paths.Cancel);
+    }
+
+    [Theory]
     [InlineData("HYP.exe", "HYPHelper.exe")]
     [InlineData("chrome.exe", "chrome.exe")]
     public void ChromiumControllerPreservesSeparateHostAndGpuImages(string hostName, string gpuName)

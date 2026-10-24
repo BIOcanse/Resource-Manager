@@ -33,13 +33,20 @@ internal static class ExternalGpuControllerRecovery
                 // Pin the exact controller handle before signalling; PID reuse cannot redirect a wait.
                 _ = process.SafeHandle;
                 if (!ChromiumGpuProcessIdentity.Matches(process, identity)) continue;
-                var stop = Path.Combine(directory, Path.GetFileName(identity.ExecutablePath).Equals(
-                    WindowsExternalGpuPlacementRuntime.RendererFileName, StringComparison.OrdinalIgnoreCase) ? "controller.stop" : "stop");
-                Signal(stop + ".cancel");
+                var (stop, cancel) = SignalPaths(directory, identity.ExecutablePath);
+                Signal(cancel);
                 Signal(stop + ".recover");
                 await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
             }
         }
+    }
+
+    internal static (string Stop, string Cancel) SignalPaths(string directory, string image)
+    {
+        var qt = Path.GetFileName(image).Equals(WindowsExternalGpuPlacementRuntime.RendererFileName,
+            StringComparison.OrdinalIgnoreCase);
+        var stop = Path.Combine(directory, qt ? "controller.stop" : "stop");
+        return (stop, qt ? Path.Combine(directory, "controller.cancel") : stop + ".cancel");
     }
 
     private static void Signal(string path)

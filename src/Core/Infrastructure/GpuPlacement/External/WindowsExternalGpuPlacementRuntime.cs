@@ -155,8 +155,7 @@ public sealed class WindowsExternalGpuPlacementRuntime(
             return new([], "External GPU action has no remaining execution budget.", RunningGpuPlacementActionStatuses.Skipped);
         var id = Guid.NewGuid().ToString("N");
         var directory = Path.Combine(evidenceRoot, id);
-        var stop = Path.Combine(directory, qt ? "controller.stop" : "stop");
-        var cancel = qt ? Path.Combine(directory, "controller.cancel") : stop + ".cancel";
+        var (stop, cancel) = ExternalGpuControllerRecovery.SignalPaths(directory, controllerImage);
         var events = new ControllerEvents(expected.GpuProcess.ExecutablePath, expected.Renderer);
         Task completion;
         ExternalResidentSample? before;

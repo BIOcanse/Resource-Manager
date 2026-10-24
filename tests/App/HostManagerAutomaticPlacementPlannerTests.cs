@@ -11,6 +11,17 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerAutomaticPlacementPlannerTests
 {
     [Fact]
+    public void UnavailableGpuOverridesSuppressOnlyGpuPlacement()
+    {
+        var process = CreateProcess("renderer", 10, 40, 40, AutoPolicy());
+        var scores = CreateHardwareScores() with { GpuPerformanceScoreUnavailableReason = "invalid override file" };
+        var plan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), CreateHardware(), scores,
+            [process], CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 80));
+        Assert.Single(plan.Cpu);
+        Assert.Empty(plan.Gpu);
+    }
+
+    [Fact]
     public void DefaultAllCoresAddsNoSelectorAndExplicitSingleCcdKeepsItsExistingSelection()
     {
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(
