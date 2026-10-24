@@ -262,9 +262,9 @@ public sealed partial class WindowsResourceBreakdownSampler
                 SchedulingProcessMetricMask.GpuUsage)
             || schedulingMetricMask.HasFlag(
                 SchedulingProcessMetricMask.GpuDedicatedMemory);
-        return needsGpuInventory
-            ? MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(expanded)
-            : MetricSampleRequest.ForIds(expanded);
+        if (needsGpuInventory)
+            expanded.Add(SamplingDatasetIds.SystemGpuInventory);
+        return MetricSampleRequest.ForIds(expanded);
     }
 
     private static MetricSampleRequest CreateHardwareRequest(

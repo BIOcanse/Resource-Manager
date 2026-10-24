@@ -11,9 +11,10 @@ using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 namespace ResourceManager.ReadWrite.Windows.Metrics.Topology;
 
-public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyResources resources,
+public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTopologyResources resources,
     Func<CpuOsTopologyInformation?> readCpuTopology)
 {
+    private NativeMetricSnapshotCatalogTopologySnapshot? published;
     public NativeMetricSnapshotCatalogTopologySnapshot Capture() => Capture(0, 0);
 
     public NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount)
@@ -44,7 +45,10 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
             NumaStatus = numa.Status, NumaNodes = numa.Identities, IntelCpuCoreStatus = intel.CoreStatus,
             IntelCpuPackageStatus = intel.PackageStatus, IntelCpuLogicalProcessorStatus = intel.LogicalProcessorStatus,
             IntelCpuDieStatus = intel.DieStatus, IntelPlatformStatus = intel.PlatformStatus, IntelCpuIdentities = intel.Identities };
-        return WindowsNpuEngineTopology.AddDirectory(result, effectiveNpuEngineMaximumInstanceCount, resources.OpenNpuEngineDirectory, prior?.NpuEngineDirectory);
+        result = WindowsNpuEngineTopology.AddDirectory(result, effectiveNpuEngineMaximumInstanceCount, resources.OpenNpuEngineDirectory, prior?.NpuEngineDirectory);
+        if (prior is not null)
+            result = WindowsMetricCatalogTopologyPublication.RetainUnavailableOptionalIdentities(result, prior);
+        return Publish(result);
     }
 
     private static (IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> Rows, string? FailureCode) CaptureGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
@@ -121,8 +125,7 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
         try { inventory = resources.ReadGpuInventory(); }
         catch (Exception) { inventory = new(SamplingObservationStatus.Unavailable, 0, 0, 0, 0, 0, 0, []); }
         var gpu = CaptureGpuIdentities(inventory);
-        // Ordinal catalog metadata must be nonzero even when the independent GPU inventory has no generation.
-        var generation = Math.Max(1UL, inventory.Generation);
+        var generation = checked((published?.Generation ?? 0) + 1);
 
         var storage = resources.ReadStorageIdentities(generation);
         NativeMetricSnapshotOrdinalTopologyRead fans;

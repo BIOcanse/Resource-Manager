@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.ReadWrite.Fields;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -38,6 +39,7 @@ public sealed class DashboardMonitoringCatalogState
         // A bound field is subscribable even while its source has no current value.
         available.UnionWith(snapshot.FieldBindings.Keys);
         available.UnionWith(snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases));
+        available.Add(MetricDatasetIds.SystemGpuInventory);
         var selected = request.IsAll
             ? available
             : request.Ids

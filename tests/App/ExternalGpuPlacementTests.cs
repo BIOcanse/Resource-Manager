@@ -239,8 +239,13 @@ public sealed class ExternalGpuPlacementTests
 
     private sealed class ResidentSource(SchedulingProcessFact process, long usageAt = 100) : IMetricSnapshotObservationSource, ISchedulingProcessFactObservationSource
     {
-        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => new(DateTimeOffset.UtcNow, null!, null!, null!, [],
-            new(SamplingObservationStatus.Current, 1, DateTime.UtcNow.Ticks, 0, 0, 0, 1, []), new Dictionary<string, MetricValue>());
+        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
+        {
+            Assert.Equal(["system.gpu.inventory"], request.Ids);
+            Assert.False(request.IncludesAllGpuCoreMetrics);
+            return new(DateTimeOffset.UtcNow, null!, null!, null!, [],
+                new(SamplingObservationStatus.Current, 1, DateTime.UtcNow.Ticks, 0, 0, 0, 1, []), new Dictionary<string, MetricValue>());
+        }
         public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => new(SamplingObservationStatus.Current,
             1, DateTime.UtcNow.Ticks, 1, 1, 0, 0, request.RequestedMetricMask, process.ValidMetricMask, [process],
             GpuObservedAtUtcTicks: 999)

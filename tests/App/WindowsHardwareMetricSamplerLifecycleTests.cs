@@ -142,6 +142,25 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     }
 
     [Fact]
+    public void InventoryDemandSurvivesCatalogFilteringAndDueCaptureWithoutNumericProbe()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        var catalog = new DashboardMonitoringCatalogState();
+        var gpuItem = new MetricValue("gpu.0.usage", "GPU", "gpu", "0%", 0, "%", null, null);
+        catalog.PublishCatalogProbe(CreateCatalogSnapshot() with
+        { Items = new Dictionary<string, MetricValue> { [gpuItem.Id] = gpuItem } });
+        using var sampler = CreateSampler(subscriptions, catalog);
+        var inventory = MetricSampleRequest.ForIds([SamplingDatasetIds.SystemGpuInventory]);
+        Assert.Equal(inventory.CacheKey, catalog.SelectSubscribable(inventory).CacheKey);
+        var request = Assert.IsType<MetricSampleRequest>(typeof(WindowsHardwareMetricSampler)
+            .GetMethod("CreateMetricSampleRequest", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(sampler, [new[] { SamplingDatasetIds.SystemGpuInventory },
+                Array.Empty<NativeItemSamplingSubscriptionSourceView<MetricSampleRequest>>() ]));
+        Assert.Equal(inventory.CacheKey, request.CacheKey);
+        Assert.Equal([SamplingDatasetIds.SystemGpuInventory], sampler.GetPublicationItemIds(request));
+    }
+
+    [Fact]
     public void GpuMetricPublicationNotificationsExcludeInternalInventoryDependency()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();

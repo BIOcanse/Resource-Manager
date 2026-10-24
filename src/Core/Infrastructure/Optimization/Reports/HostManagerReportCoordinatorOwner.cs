@@ -8,6 +8,7 @@ using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.SystemHealth;
 using ResourceManager.App.Application.SoftwareIssues;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -37,8 +38,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 {
     private const int SampleIntervalSeconds = 10;
     private static readonly MetricSampleRequest ReportMetricRequest =
-        MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(
+        MetricSampleRequest.ForIds(
         [
+            SamplingDatasetIds.SystemGpuInventory,
             "cpu.temperature",
             "cpu.usage",
             "cpu.frequencyPercent"

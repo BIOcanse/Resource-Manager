@@ -994,6 +994,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             MetricSampleRequest request,
             TimeSpan refreshInterval)
         {
+            Assert.True(request.Includes(SamplingDatasetIds.SystemGpuInventory));
+            Assert.False(request.IncludesAllGpuCoreMetrics);
+            Assert.False(request.IncludesPrefix("gpu."));
             Interlocked.Increment(ref activeSubscriptions);
             return new CallbackLease(() =>
                 Interlocked.Decrement(ref activeSubscriptions), ReleaseFailure);

@@ -664,8 +664,9 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         Assert.Equal(8_000UL, Assert.Single(published.Gpus).UsedMemoryBytes);
         Assert.Equal(2UL, Assert.Single(published.GpuInventory.Adapters).AdapterKey);
         Assert.Equal(
-            SamplingObservationStatus.Partial,
+            SamplingObservationStatus.Current,
             published.GpuInventory.Status);
+        Assert.True(published.GpuInventory.IsCurrentComplete());
         Assert.Equal(
             SamplingObservationStatus.NotRequested,
             Assert.Single(published.GpuInventory.Adapters).UsageStatus);

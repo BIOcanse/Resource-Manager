@@ -26,10 +26,7 @@ public static class MetricDatasetIds
         var result = availableMetricIds
             .Select(ForSystemMetric)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (result.Any(IsGpuMetric))
-        {
-            result.Add(SystemGpuInventory);
-        }
+        result.Add(SystemGpuInventory);
         return result;
     }
 

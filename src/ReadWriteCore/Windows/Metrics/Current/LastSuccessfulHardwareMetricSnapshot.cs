@@ -904,14 +904,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 ObservedAtUtcTicks = source.ObservedAtUtcTicks
             };
         }).ToArray();
-        var complete = inventoryPublication.Observation.Status ==
-                SamplingObservationStatus.Current
-            && rows.All(static adapter =>
-                (!adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.Usage)
-                    || adapter.UsageStatus == SamplingObservationStatus.Current)
-                && (!adapter.CapabilityMask.HasFlag(
-                        SchedulingGpuCapabilityMask.DedicatedMemory)
-                    || adapter.CapacityStatus == SamplingObservationStatus.Current));
+        var complete = inventoryPublication.Observation.Status == SamplingObservationStatus.Current;
         return source with
         {
             Status = source.Status == SamplingObservationStatus.Unsupported

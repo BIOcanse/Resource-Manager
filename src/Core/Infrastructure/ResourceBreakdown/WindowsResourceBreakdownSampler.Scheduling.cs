@@ -425,7 +425,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             if (request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.GpuUsage)
                 && gpuRead.UsageStatus == SamplingObservationStatus.Current
                 && gpuRead.UsageGeneration > 0
-                && adapter.UsageStatus == SamplingObservationStatus.Current
                 && gpuRead.UsagePercent.TryGetValue(key, out var measuredUsage))
             {
                 validMask |= SchedulingProcessMetricMask.GpuUsage;
@@ -565,7 +564,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                             SchedulingGpuCapabilityMask.DedicatedMemory)
                         && adapter.CapacityStatus == SamplingObservationStatus.Current
                         && adapter.TotalDedicatedMemoryBytes > 0
-                    : adapter.UsageStatus == SamplingObservationStatus.Current)));
+                    : true)));
     }
 
     private static IEnumerable<SchedulingProcessMetricMask> EnumerateMetricBits()

@@ -1,6 +1,8 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.ReadWrite.Native;
 using ResourceManager.ReadWrite.Windows.Metrics.Capture;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
@@ -9,6 +11,74 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsHardwareMetricCaptureIsolationTests
 {
+    [Fact]
+    public async Task InventoryOnlyPublishesUsableProcessGpuIdentityWithoutSamplingAnyNumericSource()
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"inventory-only-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(0, "recorded NVIDIA", "gpu-recorded", 23, 9, 1, true)], [], [], workspace.CreateCatalogHandleMap());
+        workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
+        var inventoryReads = 0;
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        using var resources = RecordedResources(
+            () => throw new InvalidOperationException("unselected CPU"),
+            () => throw new InvalidOperationException("unselected memory"), () =>
+            {
+                inventoryReads++;
+                return new(SamplingObservationStatus.Current, 9, now, 1, 0, 0, 17,
+                    [new(0, "recorded NVIDIA", 0x10DE, 1, 1, new() { LowPart = 23 }, false,
+                        8UL * 1024 * 1024 * 1024, WindowsGpuAdapterKind.Dedicated)]);
+            });
+        var failures = new List<string>();
+        var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
+            TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (_, source) => failures.Add(source));
+        try
+        {
+            var request = MetricSampleRequest.ForIds([MetricDatasetIds.SystemGpuInventory]);
+            var queried = System.Collections.Immutable.ImmutableHashSet<string>.Empty;
+            var result = Assert.IsType<HardwareMetricSnapshot>(await capture.CaptureUnderGateAsync(request, workspace, 1,
+                null, commit => { commit(); return true; }, new("recorded"), default,
+                sourceQueriesCompleted: addresses => queried = addresses));
+            Assert.Equal(1, inventoryReads);
+            Assert.Empty(failures); // Unselected numeric callbacks throw and are logged if invoked.
+            Assert.Equal([MetricDatasetIds.SystemGpuInventory], queried);
+            var current = new LastSuccessfulHardwareMetricSnapshot();
+            current.Publish(result, request);
+            var inventory = current.Read()!.GpuInventory;
+            Assert.True(inventory.IsCurrentComplete(), System.Text.Json.JsonSerializer.Serialize(inventory));
+            var adapter = Assert.Single(inventory.Adapters);
+            Assert.Equal(23UL, adapter.AdapterKey);
+            Assert.Equal(SamplingObservationStatus.NotRequested, adapter.UsageStatus);
+            Assert.Equal(SchedulingGpuMetricMask.None, adapter.ValidMetricMask);
+            var read = SchedulingProcessGpuRead.NotRequested with
+            {
+                UsageStatus = SamplingObservationStatus.Current, UsageGeneration = 7, UsageObservedAtUtcTicks = now,
+                UsagePercent = new Dictionary<(ulong, int, ulong), double> { [(23, 41, 100)] = 35 }
+            };
+            var facts = WindowsResourceBreakdownSampler.CreateSchedulingGpuFacts(
+                new(SchedulingProcessMetricMask.GpuUsage, inventory), read, 41, 100);
+            var fact = Assert.Single(facts);
+            Assert.Equal(35, fact.UsagePercent);
+            Assert.Equal(inventory.Generation, fact.UsageTopologyGeneration);
+            var process = new SchedulingProcessFact(41, 100, "recorded", "", "recorded", "recorded", "other", "other",
+                35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, facts);
+            var processes = new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, now, 1, 1, 0, 0,
+                SchedulingProcessMetricMask.GpuUsage, SchedulingProcessMetricMask.GpuUsage, [process])
+            {
+                DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
+                {
+                    [SchedulingProcessMetricMask.GpuUsage] = SchedulingProcessDatasetObservation.CreateCurrent(
+                        SchedulingProcessMetricMask.GpuUsage, 7, now, 1, now,
+                        topologyGeneration: inventory.Generation, topologyFingerprint: inventory.TopologyFingerprint)
+                }
+            };
+            Assert.True(processes.IsGpuUsageCurrentComplete(inventory));
+        }
+        finally { capture.SampleGate.Dispose(); }
+    }
+
     [Theory]
     [InlineData("collection")]
     [InlineData("provider-cancellation")]
@@ -79,13 +149,14 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
     }
 
     private static WindowsHardwareMetricResources RecordedResources(
-        Func<NativeMetricSnapshotCpuCounterObservation> cpu, Func<MemoryMetrics> memory) => new()
+        Func<NativeMetricSnapshotCpuCounterObservation> cpu, Func<MemoryMetrics> memory,
+        Func<WindowsGpuAdapterInventoryRead>? gpu = null) => new()
     {
         CpuName = "recorded", MemoryDescription = "recorded", ReadCpuCounters = cpu, ReadMemory = memory,
         ReadVirtualMemory = () => throw new InvalidOperationException("unselected virtual memory"),
         ReadNumaAvailable = (_, _) => new Dictionary<string, ulong>(),
         ReadNumaIdentities = () => throw new InvalidOperationException("unselected NUMA directory"),
-        ReadGpuInventory = () => throw new InvalidOperationException("unselected GPU inventory"),
+        ReadGpuInventory = gpu ?? (() => throw new InvalidOperationException("unselected GPU inventory")),
         ReadCpuFrequency = () => throw new InvalidOperationException("unselected frequency"),
         ReadGpuUsage = _ => throw new InvalidOperationException("unselected GPU usage"),
         ReadNvmlAsync = (_, _, _) => throw new InvalidOperationException("unselected NVML"),

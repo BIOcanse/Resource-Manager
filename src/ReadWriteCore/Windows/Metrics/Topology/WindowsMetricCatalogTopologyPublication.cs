@@ -50,13 +50,14 @@ public static class WindowsMetricCatalogTopologyPublication
         var nvml = topology.NvmlFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable ? prior : topology.SystemFans;
         var igcl = topology.IgclFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable ? prior : topology.SystemFans;
         var oem = topology.NotebookOemFanStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable ? prior : topology.SystemFans;
-        return wmi.Where(static fan => fan.NotebookOemRole is null && fan.NvmlFan is null && fan.IgclFan is null)
+        var fans = wmi.Where(static fan => fan.NotebookOemRole is null && fan.NvmlFan is null && fan.IgclFan is null)
             .OrderBy(static fan => fan.DisplayIndex)
             .Concat(oem.Where(static fan => fan.NotebookOemRole is not null && fan.NvmlFan is null && fan.IgclFan is null)
                 .OrderBy(static fan => fan.DisplayIndex))
             .Concat(nvml.Where(static fan => fan.NvmlFan is not null).OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
             .Concat(igcl.Where(static fan => fan.IgclFan is not null).OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
-            .Select((fan, index) => fan with { DisplayIndex = index, TopologyGeneration = topology.Generation }).ToArray();
+            .Select((fan, index) => fan with { DisplayIndex = index }).ToArray();
+        return WindowsHardwareMetricTopologySource.StampOrdinals(fans, prior, topology.FanGeneration);
     }
 
     private static NativeMetricSnapshotCatalogTopologyStatus IntelStatus(

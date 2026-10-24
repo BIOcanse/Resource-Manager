@@ -97,6 +97,16 @@ public sealed class SamplingDatasetIdsTests
     }
 
     [Fact]
+    public void InventoryResolvesAloneEvenWhenNoGpuNumericMetricIsAvailable()
+    {
+        var inventory = SamplingDatasetIds.SystemGpuInventory;
+        var request = MetricSampleRequest.ForIds([inventory]);
+        Assert.Equal([inventory], SamplingDatasetIds.ResolveSystemDatasets(request, []));
+        Assert.Equal([inventory], SamplingDatasetIds.ResolveFailedSystemDatasets(request, []));
+        Assert.Contains(inventory, SamplingDatasetIds.ResolveAllSystemDatasets([]));
+    }
+
+    [Fact]
     public void ExplicitAllGpuCoreRequestResolvesIndependentGpuDatasets()
     {
         var datasets = SamplingDatasetIds.ResolveFailedSystemDatasets(
