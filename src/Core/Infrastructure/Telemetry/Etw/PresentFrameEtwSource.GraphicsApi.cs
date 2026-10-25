@@ -19,7 +19,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             var subscription = new GraphicsApiSubscription(this, process);
             lock (gate) graphicsApiSubscriptions.Add(subscription);
             leases++;
-            ReconcileDemand();
+            ReconcileDemand(frameLeases);
             return subscription;
         }
     }
@@ -84,7 +84,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             if (current is null) return null;
             lock (current.lifecycle)
             {
-                current.ReconcileDemand();
+                current.ReconcileDemand(current.frameLeases);
                 lock (current.gate) return !current.disposed && !current.failed && Active ? Api : null;
             }
         }

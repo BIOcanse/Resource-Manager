@@ -1,5 +1,4 @@
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.Adapter;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
@@ -48,11 +47,16 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
         AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwPresentFrames}");
 
     private readonly object lifecycle = new();
-    private readonly Func<string, TraceEventSession> createSession = static name =>
-        new(name) { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
+    private readonly Func<string, IPresentFrameEtwSession> createSession = name =>
+    {
+        ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
+            ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
+        return new TraceEventPresentFrameEtwSession(name);
+    };
+    private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
-    private TraceEventSession? session;
+    private IPresentFrameEtwSession? session;
     private Task? processor;
     private Timer? flushTimer;
     private int leases;
@@ -68,16 +72,21 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
-        Func<string, TraceEventSession> createSession) : this(logger) => this.createSession = createSession;
+        Func<string, IPresentFrameEtwSession> createSession, TimeProvider? timeProvider = null) : this(logger)
+    {
+        this.createSession = createSession;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public IDisposable AcquireSubscription()
     {
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            var previousFrameLeases = frameLeases;
             Interlocked.Increment(ref frameLeases);
             leases++;
-            ReconcileDemand();
+            ReconcileDemand(previousFrameLeases);
 
             return new Lease(this);
         }
@@ -87,7 +96,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     {
         lock (lifecycle)
         {
-            ReconcileDemand();
+            ReconcileDemand(frameLeases);
             if (session is not { } current)
             {
                 return null;
@@ -100,7 +109,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                     return null;
                 }
 
-                var now = DateTime.UtcNow.Ticks;
+                var now = timeProvider.GetUtcNow().UtcTicks;
                 var lost = current.EventsLost;
                 if (lost != observedEventsLost)
                 {
@@ -130,7 +139,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
 
         lock (lifecycle)
         {
-            ReconcileDemand();
+            ReconcileDemand(frameLeases);
             if (session is not { } current)
             {
                 return null;
@@ -147,7 +156,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                 if (lost != observedEventsLost)
                 {
                     observedEventsLost = lost;
-                    lastLossUtcTicks = DateTime.UtcNow.Ticks;
+                    lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
                     ledger.EventsLost();
                 }
 
@@ -164,11 +173,8 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
         lock (lifecycle)
         {
             mode = next;
-            if (next == ResourceManagerComputeZoneMode.Freeze)
-            {
-                Stop();
-            }
-            else ReconcileDemand();
+            if (next == ResourceManagerComputeZoneMode.Freeze) Stop();
+            else ReconcileDemand(frameLeases);
         }
     }
 
@@ -180,38 +186,23 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
             foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
             failed = false;
             observedEventsLost = 0;
-            lastLossUtcTicks = DateTime.UtcNow.Ticks;
+            lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
         }
 
         var name = ResourceManagerEtwSessionNames.Create(
             ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
         try
         {
-            ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
-                ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner, name);
             var current = createSession(name);
             session = current;
-            current.Source.Dynamic.All += OnEvent;
+            current.Bind(OnEvent);
             processor = Task.Factory.StartNew(() =>
             {
-                try { current.Source.Process(); }
+                try { current.Process(); }
                 catch (Exception error) { logger.LogWarning(error, "Present frame event stream ended."); }
                 finally { lock (gate) { if (ReferenceEquals(session, current)) failed = true; } }
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            current.EnableProvider(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable = [ProcessStart, ProcessStop] });
-            current.EnableProvider(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable =
-                    [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop] });
-            current.EnableProvider(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable = [Direct3D9PresentStart, Direct3D9PresentStop] });
-            current.EnableProvider(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable =
-                    [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
-                        GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc] });
-            current.EnableProvider(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable =
-                    [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged] });
+            UpdateProviders(current, previousFrameLeases: null);
             flushTimer = new Timer(_ => Flush(current), null, FlushInterval, FlushInterval);
         }
         catch (Exception error)
@@ -224,16 +215,59 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
 
     // Reads and subscription/mode changes are existing demand lifecycle points.
     // Retire a dead processor before starting a replacement; lease counts stay owned here.
-    private void ReconcileDemand()
+    private void ReconcileDemand(int previousFrameLeases)
     {
         if (disposed || leases == 0 || mode == ResourceManagerComputeZoneMode.Freeze) return;
         bool dead;
         lock (gate) dead = failed || processor is { IsCompleted: true };
         if (dead) Stop();
         if (session is null) Start();
+        else
+        {
+            try { UpdateProviders(session, previousFrameLeases); }
+            catch (Exception error)
+            {
+                lock (gate) failed = true;
+                logger.LogWarning(error, "Present frame session provider update failed.");
+                Stop();
+            }
+        }
     }
 
-    private void Flush(TraceEventSession current)
+    private void UpdateProviders(IPresentFrameEtwSession current, int? previousFrameLeases)
+    {
+        if (previousFrameLeases is null)
+        {
+            current.EnableProvider(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
+                [ProcessStart, ProcessStop]);
+            current.EnableProvider(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
+                [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]);
+            current.EnableProvider(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
+                [Direct3D9PresentStart, Direct3D9PresentStop]);
+        }
+        if (frameLeases > 0 && (previousFrameLeases is null or 0))
+        {
+            current.EnableProvider(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
+                [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
+                    GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc]);
+            current.EnableProvider(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
+                [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged]);
+            lock (gate)
+            {
+                // Events buffered before both providers were enabled cannot fill this window.
+                ledger = new PresentFrameLedger(ReadProcessStartKey);
+                lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
+            }
+        }
+        else if (frameLeases == 0 && previousFrameLeases > 0)
+        {
+            current.DisableProvider(GraphicsKernelProvider);
+            current.DisableProvider(Win32kProvider);
+            lock (gate) ledger = new PresentFrameLedger(ReadProcessStartKey);
+        }
+    }
+
+    private void Flush(IPresentFrameEtwSession current)
     {
         try
         {
@@ -255,7 +289,8 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                 ApplyGraphicsApiEvent(data);
                 // An API-only lease uses the supplied process birth identity. It does not
                 // invoke the frame ledger's process-handle fallback for other processes.
-                if (Volatile.Read(ref frameLeases) > 0) Apply(ledger, data);
+                if (Volatile.Read(ref frameLeases) > 0
+                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) Apply(ledger, data);
             }
             catch (Exception error)
             {
@@ -429,11 +464,11 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     {
         lock (lifecycle)
         {
+            var previousFrameLeases = frameLeases;
             Interlocked.Decrement(ref frameLeases);
-            if (leases > 0 && --leases == 0)
-            {
-                Stop();
-            }
+            if (leases > 0) leases--;
+            if (leases == 0) Stop();
+            else if (session is not null) ReconcileDemand(previousFrameLeases);
         }
     }
 
