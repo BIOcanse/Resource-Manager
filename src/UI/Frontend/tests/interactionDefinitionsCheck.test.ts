@@ -3,6 +3,7 @@ import { checkDefinition } from "../src/interactions/protocol/check.ts";
 import type { Definition, Geometry } from "../src/interactions/protocol/definition.ts";
 import { partLayer, resolveParams } from "../src/interactions/protocol/params.ts";
 import type { Value } from "../src/interactions/protocol/vec.ts";
+import { controlSliderDefinition } from "../src/interactions/components/controlSlider.ts";
 import { columnEdgeBound, columnResizeHandleDefinition } from "../src/interactions/components/columnResizeHandle.ts";
 import { curvePointDefinition } from "../src/interactions/components/curvePoint.ts";
 import { REORDER_BOUND, reorderItemDefinition } from "../src/interactions/components/reorderItem.ts";
@@ -12,6 +13,7 @@ import { switchToggleDefinition } from "../src/interactions/components/switchTog
 // 系统参数和产品一样不读（null）；几何取和产品呈现层同方向的两端，只为几何那几项检查，像素数不影响完备和确定。
 const definitions: readonly [Definition, Geometry][] = [
   [switchToggleDefinition, { center: "滑块中心", atMin: { x: 0, y: 0 }, atMax: { x: 20, y: 0 } }],
+  [controlSliderDefinition, { center: "滑块圆心", atMin: { x: 8, y: 0 }, atMax: { x: 192, y: 0 } }],
   [curvePointDefinition, { center: "点的圆心", atMin: { x: 0, y: 240 }, atMax: { x: 0, y: 0 } }],
   [columnResizeHandleDefinition, { center: "列的右边缘", atMin: { x: -columnEdgeBound, y: 0 }, atMax: { x: columnEdgeBound, y: 0 } }],
   [reorderItemDefinition as unknown as Definition, { center: "指针（排序项不跟手）", atMin: { x: -REORDER_BOUND, y: -REORDER_BOUND }, atMax: { x: REORDER_BOUND, y: REORDER_BOUND } }]

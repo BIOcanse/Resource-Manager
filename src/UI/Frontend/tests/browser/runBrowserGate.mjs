@@ -41,6 +41,7 @@ import controlAuditJourney from "./controlAuditJourney.js";
 import controlNumberInitialJourney from "./controlNumberInitialJourney.js";
 import controlSlowRequestJourney from "./controlSlowRequestJourney.js";
 import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
+import controlSliderInteractionJourney from "./controlSliderInteractionJourney.js";
 import metricFieldsJourney from "./metricFieldsJourney.js";
 import metricFieldCardsJourney from "./metricFieldCardsJourney.js";
 import metricPickerGpuNamesJourney from "./metricPickerGpuNamesJourney.js";
@@ -109,6 +110,7 @@ const allJourneys = [
   ["control-number-initial", controlNumberInitialJourney],
   ["control-slow-request", controlSlowRequestJourney],
   ["control-toggle-choice", controlToggleChoiceJourney],
+  ["control-slider-interaction", controlSliderInteractionJourney],
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
   ["metric-source-choice", async (...args) => (await import("./metricSourceChoiceJourney.js")).default(...args)],

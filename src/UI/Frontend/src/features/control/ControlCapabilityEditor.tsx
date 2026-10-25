@@ -7,6 +7,7 @@ import {
   stopsFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
+import { ControlNumberSlider } from "./ControlNumberSlider";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { curveSettingFromRead } from "./controlInitialSetting.ts";
 import { getControlObjectCurve } from "./controlApi.ts";
@@ -194,6 +195,11 @@ function NumberEditor(props: {
    * 草稿为 null 表示"没在编辑"，这时框里显示的是当前设定值。
    */
   const [draft, setDraft] = createSignal<string | null>(null);
+  /*
+   * 拖动滑条时滑块所在的值：只在数字框里显示，**不是设定值** —— 松开才写进期望状态，
+   * 取消就回到原来的值。null 表示没在拖。
+   */
+  const [preview, setPreview] = createSignal<number | null>(null);
 
   const commit = (text: string) => {
     const bounds = range();
@@ -246,19 +252,20 @@ function NumberEditor(props: {
       <Show when={range()}>
         {(bounds) => (
           <div class="control-editor-track">
-            <input
-              type="range"
-              aria-label={controlCapabilityLabel(props.capability)}
-              min={bounds().minimum}
-              max={bounds().maximum}
-              step={bounds().step}
-              // 值超出量程时**把手停在端点，值本身不动** —— 打字可以超出，
-              // 滑块只是画不出那么远。
+            {/*
+              拖动跟手、松开才写一次、Esc / 右键取消都在 ControlNumberSlider 里（交互协议的运行时）；
+              外观还是原来的原生 range。值超出量程时**把手停在端点，值本身不动** —— 打字可以超出，
+              滑块只是画不出那么远。
+            */}
+            <ControlNumberSlider
+              bounds={bounds()}
               value={sliderThumbValue(shown() ?? bounds().minimum, bounds())}
               disabled={props.disabled}
-              onInput={(event) => props.onChange({
+              ariaLabel={controlCapabilityLabel(props.capability)}
+              onPreview={setPreview}
+              onCommit={(number) => props.onChange({
                 capabilityId: props.capability.id,
-                number: snapControlNumber(Number(event.currentTarget.value), bounds()),
+                number,
                 // 单位跟着值走，别让后端去猜这个数字是瓦还是档。
                 unit: bounds().unit
               })}
@@ -310,7 +317,9 @@ function NumberEditor(props: {
                 量程由旁边的滑块表达，能不能真写进去由硬件说了算。
               */
               step={bounds().step}
-              value={draft() ?? (shown() === null ? "" : formatControlNumber(shown()!, bounds().step))}
+              value={draft() ?? (preview() !== null
+                ? formatControlNumber(preview()!, bounds().step)
+                : shown() === null ? "" : formatControlNumber(shown()!, bounds().step))}
               disabled={props.disabled}
               aria-label={controlCapabilityLabel(props.capability)}
               onInput={(event) => setDraft(event.currentTarget.value)}
