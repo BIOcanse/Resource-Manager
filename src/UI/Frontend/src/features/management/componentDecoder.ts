@@ -2,7 +2,7 @@ import type { ManagedComponent, ComponentCapability, ComponentProviderState } fr
 import { requireArray, requireRecord, requireString, requireStringArray, requireBoolean,
   requireOneOf, requireNullable, requireBackendMessage, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
-const states = ["active", "installed", "installed_unverified", "ready_to_install", "available", "manual_download_required", "provider_missing", "missing"] as const;
+const states = ["active", "installed", "installed_unverified", "payload_missing", "update_available", "ready_to_install", "available", "manual_download_required", "provider_missing", "missing"] as const;
 const providerStates = ["active", "installed", "missing", "runtime_available", "installed_unverified", "driver_missing", "runtime_active"] as const;
 const providerKinds = ["runtime", "cpu", "fan", "hardware_monitor", "provider", "gpu", "notebook_oem"] as const;
 

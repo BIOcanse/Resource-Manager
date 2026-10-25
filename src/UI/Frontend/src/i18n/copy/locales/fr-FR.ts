@@ -802,6 +802,8 @@ const frFrAppCopy: AppCopy = {
     unknownTime: "Heure inconnue",
     systemGraphicsUsage: "Utilisation graphique du système",
     state: {
+      payloadMissing: "Installé, fichiers d’exécution manquants",
+      updateAvailable: "Mise à jour disponible",
       available: "Disponible",
       installed: "Installé",
       installedUnverified: "Installé, en attente de confirmation",
@@ -2479,6 +2481,7 @@ const frFrAppCopy: AppCopy = {
     catalogError: "L’historique des versions est indisponible ; la version vérifiée reste utilisable.",
     elevationNote: "L'installation nécessite des droits d'administrateur.",
     agreeAndInstall: "J'ai lu et j'accepte, installer",
+    agreeAndUpdate: "J'ai lu et j'accepte, mettre à jour",
     startInstall: "Lancer l'installation",
     agreeAndOpen: "J'ai lu et j'accepte, ouvrir la page de téléchargement",
     openDownloadPage: "Ouvrir la page de téléchargement",
@@ -2561,6 +2564,8 @@ const frFrAppCopy: AppCopy = {
   backendMessage: {
     unknown: "L'état a été mis à jour.",
     dependency: {
+      payloadMissing: "L’environnement d’exécution est installé, mais des fichiers requis sont absents. Choisissez « Vérifier et réparer » pour les restaurer.",
+      updateAvailable: "Une mise à jour vérifiée est disponible pour ce composant. Choisissez « Mettre à jour » pour l’appliquer.",
       managedRootRemovable: "Supprime la racine Dependencies gérée de cette dépendance.",
       managedRootEmpty: "Cette dépendance n'a aucune installation gérée à nettoyer.",
       categoryTag: "Dépendance de composant",
@@ -2583,7 +2588,7 @@ const frFrAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `L'installateur de ${value} a été téléchargé dans le répertoire de dépendances géré.`,
       sharedRuntimeInstalled: "Le runtime WebView2 partagé est installé et détecté.",
       installerLaunched: "L'installateur s'est lancé visiblement. Terminez les invites d'installation du fournisseur avant d'utiliser ce fournisseur.",
-      runtimeFilesUnavailable: "Impossible de récupérer les fichiers nécessaires. Vérifiez la connexion et réessayez la vérification.",
+  runtimeFilesUnavailable: "Impossible de préparer les fichiers nécessaires. Vérifiez la connexion et l’espace de stockage disponible, puis réessayez cette action.",
       componentFilesExtracted: "Les fichiers du composant ont été extraits dans le dossier d'installation."
     },
     gpuPlacement: {

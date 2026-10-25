@@ -22,7 +22,7 @@ internal static class AmdSmuHardwareBinding
                 () => AmdSmuPawnIoSession.OpenSmn(new(modulePath,
                     CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2)))));
 
-    private static string? LocateModulePath(string contentRootPath, string moduleFileName = ModuleFileName)
+    internal static string? LocateModulePath(string contentRootPath, string moduleFileName = ModuleFileName)
     {
         return CandidateModulePaths(contentRootPath, moduleFileName)
             .Where(static path => !string.IsNullOrWhiteSpace(path))

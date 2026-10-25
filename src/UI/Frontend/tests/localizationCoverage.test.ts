@@ -52,6 +52,8 @@ const componentProviderStateCases = [
   ["active", "available"],
   ["installed", "installed"],
   ["installed_unverified", "installedUnverified"],
+  ["payload_missing", "payloadMissing"],
+  ["update_available", "updateAvailable"],
   ["ready_to_install", "readyToInstall"],
   ["manual_download_required", "manualDownload"],
   ["provider_missing", "unavailable"],

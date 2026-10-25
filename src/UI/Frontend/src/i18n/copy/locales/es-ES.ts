@@ -802,6 +802,8 @@ const esEsAppCopy: AppCopy = {
     unknownTime: "Hora desconocida",
     systemGraphicsUsage: "Uso gráfico del sistema",
     state: {
+      payloadMissing: "Instalado, faltan archivos de ejecución",
+      updateAvailable: "Actualización disponible",
       available: "Disponible",
       installed: "Instalado",
       installedUnverified: "Instalado, pendiente de confirmación",
@@ -2479,6 +2481,7 @@ const esEsAppCopy: AppCopy = {
     catalogError: "El historial de versiones no está disponible; la versión verificada sigue disponible.",
     elevationNote: "La instalación necesita permisos de administrador.",
     agreeAndInstall: "He leído y acepto, instalar",
+    agreeAndUpdate: "He leído y acepto, actualizar",
     startInstall: "Iniciar la instalación",
     agreeAndOpen: "He leído y acepto, abrir la página de descarga",
     openDownloadPage: "Abrir la página de descarga",
@@ -2561,6 +2564,8 @@ const esEsAppCopy: AppCopy = {
   backendMessage: {
     unknown: "El estado se ha actualizado.",
     dependency: {
+      payloadMissing: "El entorno de ejecución está instalado, pero faltan archivos necesarios. Seleccione «Verificar y reparar» para restaurarlos.",
+      updateAvailable: "Hay una actualización verificada para este componente. Seleccione «Actualizar» para aplicarla.",
       managedRootRemovable: "Elimina la raíz Dependencies gestionada de esta dependencia.",
       managedRootEmpty: "Esta dependencia no tiene ninguna instalación gestionada que limpiar.",
       categoryTag: "Dependencia de componente",
@@ -2583,7 +2588,7 @@ const esEsAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `El instalador de ${value} se ha descargado en el directorio de dependencias gestionado.`,
       sharedRuntimeInstalled: "El runtime compartido de WebView2 está instalado y detectado.",
       installerLaunched: "El instalador se ha abierto. Completa las indicaciones de instalación del proveedor antes de usarlo.",
-      runtimeFilesUnavailable: "No se pudieron obtener los archivos necesarios. Compruebe la conexión y vuelva a verificar.",
+  runtimeFilesUnavailable: "No se pudieron preparar los archivos necesarios. Compruebe la conexión y el espacio de almacenamiento disponible; después, vuelva a intentar esta acción.",
       componentFilesExtracted: "Los archivos del componente se extrajeron en la carpeta de instalación."
     },
     gpuPlacement: {

@@ -2,6 +2,8 @@ export const zhBackendMessagesCopy = {
   backendMessage: {
     unknown: "状态已更新。",
     dependency: {
+      payloadMissing: "运行库已安装，但所需运行文件不全。请选择“验证并修复”补齐文件。",
+      updateAvailable: "此组件有已验证的更新。选择“更新”即可应用。",
       managedRootRemovable: "删除该依赖的受管 Dependencies 根目录。",
       managedRootEmpty: "该依赖当前没有可清理的受管安装内容。",
       categoryTag: "组件依赖",
@@ -24,7 +26,7 @@ export const zhBackendMessagesCopy = {
       installerDownloadedVersion: (value: string) => `已下载 ${value} 的安装器到托管依赖目录。`,
       sharedRuntimeInstalled: "共享 WebView2 Runtime 已安装并通过检测。",
       installerLaunched: "安装器已可见启动。使用该 Provider 前需要完成厂商安装提示。",
-      runtimeFilesUnavailable: "无法取得所需运行文件，请检查网络后重试验证。",
+    runtimeFilesUnavailable: "无法准备所需文件。请检查网络连接和可用存储空间，然后重试此操作。",
       componentFilesExtracted: "组件文件已解压到安装目录。"
     },
     gpuPlacement: {

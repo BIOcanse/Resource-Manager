@@ -105,7 +105,13 @@ public sealed partial class ComponentManager
         bool providerActive,
         bool providerRuntimeAvailable)
     {
-        var state = providerActive
+        var effectiveInstalled = dependencyStatus.Installed || providerRuntimeAvailable || providerActive;
+        var payloadMissing = effectiveInstalled && !dependencyStatus.PayloadFilesPresent;
+        var state = payloadMissing
+            ? ComponentStatusStates.PayloadMissing
+            : dependencyStatus.UpdateAvailable
+                ? ComponentStatusStates.UpdateAvailable
+            : providerActive
             ? ComponentStatusStates.Active
             : providerRuntimeAvailable
                 ? ComponentStatusStates.InstalledUnverified
@@ -117,7 +123,11 @@ public sealed partial class ComponentManager
                     "manualDownloadRequired" => ComponentStatusStates.ManualDownloadRequired,
                     _ => dependencyStatus.State
                 };
-        var message = providerActive
+        var message = dependencyStatus.UpdateAvailable
+                ? BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.UpdateAvailable)
+            : payloadMissing
+                ? BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.PayloadMissing)
+            : providerActive
             ? BackendMessage.Create(
                 BackendMessageDomains.Dependency,
                 BackendMessageCodes.Dependency.ProviderVerified)
@@ -131,8 +141,6 @@ public sealed partial class ComponentManager
                         BackendMessageCodes.Dependency.ComponentFilesUnverified)
                     : dependencyStatus.Message;
 
-        var effectiveInstalled = dependencyStatus.Installed || providerRuntimeAvailable;
-
         return new ComponentStatus(
             definition,
             state,
@@ -142,9 +150,9 @@ public sealed partial class ComponentManager
             dependencyStatus.InstallerAvailable,
             effectiveInstalled,
             providerActive,
-            !effectiveInstalled && dependencyStatus.CanDownload,
-            !effectiveInstalled && (dependencyStatus.CanLaunchInstaller || dependencyStatus.CanDownload),
-            true,
+            (!effectiveInstalled || dependencyStatus.UpdateAvailable) && dependencyStatus.CanDownload,
+            dependencyStatus.UpdateAvailable || !effectiveInstalled && (dependencyStatus.CanLaunchInstaller || dependencyStatus.CanDownload),
+            !dependencyStatus.UpdateAvailable,
             providerStatus,
             message,
             dependencyStatus.InstallerSourceKind);

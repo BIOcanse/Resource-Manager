@@ -86,6 +86,7 @@ export const zhStoresCopy = {
     catalogError: "版本历史暂不可用；已验证版本仍可使用。",
     elevationNote: "安装过程需要管理员权限。",
     agreeAndInstall: "我已阅读并同意，开始安装",
+    agreeAndUpdate: "我已阅读并同意，开始更新",
     startInstall: "开始安装",
     agreeAndOpen: "我已阅读并同意，打开下载页",
     openDownloadPage: "打开下载页",

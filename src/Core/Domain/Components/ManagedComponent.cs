@@ -20,6 +20,8 @@ public static class ComponentStatusStates
     public const string Active = "active";
     public const string Installed = "installed";
     public const string InstalledUnverified = "installed_unverified";
+    public const string PayloadMissing = "payload_missing";
+    public const string UpdateAvailable = "update_available";
     public const string ReadyToInstall = "ready_to_install";
     public const string Available = "available";
     public const string ManualDownloadRequired = "manual_download_required";

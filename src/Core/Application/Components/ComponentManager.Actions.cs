@@ -40,7 +40,7 @@ public sealed partial class ComponentManager
         EnsureOptionalDependency(id);
         var statusBeforeInstall = await dependencyManager.GetStatusAsync(id, caller?.WindowsSid, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown component: {id}");
-        if (statusBeforeInstall.Installed)
+        if (statusBeforeInstall.Installed && !statusBeforeInstall.UpdateAvailable)
         {
             var currentStatus = await GetStatusAsync(id, cancellationToken);
             return new ComponentActionResult(
@@ -54,7 +54,25 @@ public sealed partial class ComponentManager
                 currentStatus);
         }
 
-        if (!statusBeforeInstall.InstallerAvailable)
+        var definition = statusBeforeInstall.Definition;
+        OptionalDependencyCatalog.EnsureTerms(definition, acknowledgeExternalTerms);
+        using var change = inventoryRevisionOwner?.BeginComponentChange(id);
+        if (statusBeforeInstall.UpdateAvailable && !string.IsNullOrWhiteSpace(versionChoice)
+            && versionChoice != DependencyVersionChoices.Verified)
+            throw new InvalidOperationException("Component updates require the catalog's verified release.");
+        if (statusBeforeInstall.Installed && statusBeforeInstall.UpdateAvailable && definition.PayloadSource is not null)
+        {
+            // Modules and helpers already have one payload owner; use its pinned replacement path.
+            var payload = await payloadAcquisition.InstallAsync(definition, cancellationToken);
+            if (!payload.Satisfied)
+                return new(id, "runtimeFilesUnavailable",
+                    BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
+                    Status: await GetStatusAsync(id, cancellationToken));
+            var updated = await ReadStatusAsync(id, caller?.WindowsSid, cancellationToken, contentChanged: payload.Changed);
+            return new(id, updated!.State, updated.Message, Status: updated);
+        }
+
+        if (!statusBeforeInstall.InstallerAvailable || definition.ReleaseSource is not null)
         {
             if (!statusBeforeInstall.CanDownload)
             {
@@ -65,7 +83,14 @@ public sealed partial class ComponentManager
         }
 
         var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
-        inventoryRevisionOwner?.ObserveComponentContentChanged();
+        if (definition.PayloadSource is { IncludeArchiveContents: false })
+        {
+            var payload = await payloadAcquisition.InstallAsync(definition, cancellationToken);
+            if (!payload.Satisfied)
+                return new(id, "runtimeFilesUnavailable",
+                    BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
+                    Status: await ReadStatusAsync(id, caller?.WindowsSid, cancellationToken, contentChanged: true));
+        }
         if (id.Equals(BrowserRuntimeCatalogIds.InstallComponentId, StringComparison.OrdinalIgnoreCase)
             && browserRuntimeCatalog is not null)
         {
@@ -79,7 +104,7 @@ public sealed partial class ComponentManager
                     "Could not refresh browser runtime inventory after component install {ComponentId}.", id);
             }
         }
-        var status = await GetStatusAsync(id, caller?.WindowsSid, cancellationToken);
+        var status = await ReadStatusAsync(id, caller?.WindowsSid, cancellationToken, contentChanged: true);
         return new ComponentActionResult(
             id,
             result.State,
@@ -93,12 +118,18 @@ public sealed partial class ComponentManager
         string id,
         CancellationToken cancellationToken)
     {
-        // 验证之前先把安装器之外的运行时文件补齐。
-        // 用户点「验证」的意思就是"把这条路弄通"，而不是"告诉我还差什么文件"。
         var definition = OptionalDependencyCatalog.Find(id);
+        var changed = false;
+        using var change = inventoryRevisionOwner?.BeginComponentChange(id);
         if (definition is not null)
         {
+            var dependency = await dependencyManager.GetStatusAsync(id, cancellationToken);
+            if (dependency?.UpdateAvailable == true)
+                return new(id, ComponentStatusStates.UpdateAvailable,
+                    BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.UpdateAvailable),
+                    Status: await GetStatusAsync(id, cancellationToken));
             var payload = await payloadAcquisition.EnsureAsync(definition, cancellationToken);
+            changed = payload.Changed;
             if (!payload.Satisfied)
             {
                 return new ComponentActionResult(id, "runtimeFilesUnavailable",
@@ -106,10 +137,9 @@ public sealed partial class ComponentManager
                         BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
                     Status: await GetStatusAsync(id, cancellationToken));
             }
-            inventoryRevisionOwner?.ObserveComponentContentChanged();
         }
 
-        var status = await GetStatusAsync(id, cancellationToken)
+        var status = await ReadStatusAsync(id, null, cancellationToken, contentChanged: changed)
             ?? throw new InvalidOperationException($"Unknown component: {id}");
         return new ComponentActionResult(
             id,

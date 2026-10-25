@@ -69,6 +69,185 @@ public sealed class ManagementInventoryRevisionOwnerTests
     }
 
     [Fact]
+    public void ExplicitComponentRepairPublishesOnceAndKeepsOtherScopesIndependent()
+    {
+        var owner = new ManagementInventoryRevisionOwner();
+        var missing = Component("dependency:one", ComponentStatusStates.PayloadMissing);
+        var repaired = missing with { State = ComponentStatusStates.Installed };
+        var otherUserRepaired = repaired with { State = ComponentStatusStates.InstalledUnverified };
+        var unrelated = Component("dependency:two", ComponentStatusStates.Installed);
+        owner.ObserveComponents(null, [missing, unrelated]);
+        owner.ObserveComponents("user:one", [missing, unrelated]);
+        owner.ObserveComponents("user:two", [missing, unrelated]);
+
+        owner.ObserveComponentContentChanged(null, repaired);
+        Assert.Equal("1", owner.Current.ComponentRevision);
+        owner.ObserveComponents(null, [repaired, unrelated]);
+        owner.ObserveComponent("user:one", repaired);
+        owner.ObserveComponents("user:one", [repaired, unrelated]);
+        owner.ObserveComponents("user:two", [otherUserRepaired, unrelated]);
+        Assert.Equal("1", owner.Current.ComponentRevision);
+
+        owner.ObserveComponents("user:two", [otherUserRepaired, unrelated with { State = ComponentStatusStates.Missing }]);
+        Assert.Equal("2", owner.Current.ComponentRevision);
+        owner.ObserveComponents("user:one", [repaired, unrelated]);
+        Assert.Equal("2", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
+    public void ComponentChangeLeaseSuppressesInFlightReadsAndCommitPublishesOnceAcrossScopes()
+    {
+        const string componentId = "dependency:one";
+        const string firstSid = "user:one";
+        const string secondSid = "user:two";
+        const string unseededSid = "user:unseeded";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "ReadyToInstall");
+        var changed = Component(componentId, "Installed");
+        var unrelated = Component("dependency:two", "Installed");
+        owner.ObserveComponents(null, [original, unrelated]);
+        owner.ObserveComponents(firstSid, [original, unrelated]);
+        owner.ObserveComponents(secondSid, [original, unrelated]);
+        var initial = owner.Current;
+
+        using (owner.BeginComponentChange(componentId))
+        {
+            Assert.Throws<InvalidOperationException>(() => owner.BeginComponentChange(componentId));
+            owner.ObserveComponents(null, [changed, unrelated]);
+            owner.ObserveComponent(firstSid, changed);
+            owner.ObserveComponents(unseededSid, [changed, unrelated]);
+            Assert.Equal(initial, owner.Current);
+
+            owner.ObserveComponentContentChanged(null, changed);
+            Assert.Equal("1", owner.Current.ComponentRevision);
+        }
+
+        owner.ObserveComponents(null, [changed, unrelated]);
+        owner.ObserveComponents(firstSid, [changed, unrelated]);
+        owner.ObserveComponents(secondSid, [changed, unrelated]);
+        owner.ObserveComponents(unseededSid, [changed, unrelated]);
+
+        Assert.Equal("1", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
+    public void StaleComponentObservationsAreIgnoredAfterCommittedChange()
+    {
+        const string componentId = "dependency:one";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "ReadyToInstall");
+        var changed = Component(componentId, "Installed");
+        owner.ObserveComponents(null, [original]);
+        var revisionBeforeRead = owner.Current.ComponentRevision;
+
+        using (owner.BeginComponentChange(componentId))
+        {
+            owner.ObserveComponentContentChanged(null, changed);
+        }
+
+        owner.ObserveComponent(null, original, revisionBeforeRead);
+        owner.ObserveComponents(null, [original], revisionBeforeRead);
+
+        Assert.Equal("1", owner.Current.ComponentRevision);
+        owner.ObserveComponents(null, [changed], owner.Current.ComponentRevision);
+        Assert.Equal("1", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
+    public void DisposedCommittedLeaseDoesNotReleaseNewComponentReservation()
+    {
+        const string componentId = "dependency:one";
+        var owner = new ManagementInventoryRevisionOwner();
+        var changed = Component(componentId, "Installed");
+        var completedLease = owner.BeginComponentChange(componentId);
+
+        owner.ObserveComponentContentChanged(null, changed);
+        var nextLease = owner.BeginComponentChange(componentId);
+        completedLease.Dispose();
+
+        Assert.Throws<InvalidOperationException>(() => owner.BeginComponentChange(componentId));
+        Assert.Equal("1", owner.Current.ComponentRevision);
+        nextLease.Dispose();
+    }
+
+    [Fact]
+    public void UnknownStatusComponentCommitSeedsLaterScopesWithoutAnotherRevision()
+    {
+        const string componentId = "dependency:one";
+        const string userSid = "user:one";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "ReadyToInstall");
+        var changed = Component(componentId, "Installed");
+        var unrelated = Component("dependency:two", "ReadyToInstall");
+        var changedUnrelated = Component("dependency:two", "Installed");
+        owner.ObserveComponents(null, [original, unrelated]);
+        owner.ObserveComponents(userSid, [original, unrelated]);
+
+        using (owner.BeginComponentChange(componentId))
+        {
+            owner.ObserveComponentContentChanged(componentId);
+        }
+
+        Assert.Equal("1", owner.Current.ComponentRevision);
+        owner.ObserveComponents(null, [changed, unrelated]);
+        owner.ObserveComponent(userSid, changed);
+        owner.ObserveComponents(userSid, [changed, unrelated]);
+        Assert.Equal("1", owner.Current.ComponentRevision);
+
+        owner.ObserveComponents(userSid, [changed, changedUnrelated]);
+        Assert.Equal("2", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
+    public void DisposingUncommittedComponentChangePreservesFingerprintAndReleasesComponentId()
+    {
+        const string componentId = "dependency:one";
+        const string unseededSid = "user:unseeded";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "ReadyToInstall");
+        var changed = Component(componentId, "Installed");
+        var unrelated = Component("dependency:two", "Installed");
+        owner.ObserveComponents(null, [original, unrelated]);
+        var initial = owner.Current;
+
+        var failedChange = owner.BeginComponentChange(componentId);
+        owner.ObserveComponents(null, [changed, unrelated]);
+        owner.ObserveComponent(null, changed);
+        owner.ObserveComponents(unseededSid, [changed, unrelated]);
+        failedChange.Dispose();
+
+        Assert.Equal(initial, owner.Current);
+        owner.ObserveComponents(null, [original, unrelated]);
+        owner.ObserveComponents(unseededSid, [original, unrelated]);
+        Assert.Equal(initial, owner.Current);
+        using var retry = owner.BeginComponentChange(componentId);
+    }
+
+    [Fact]
+    public void ComponentChangeLeaseStillObservesUnrelatedComponentChanges()
+    {
+        const string componentId = "dependency:one";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "ReadyToInstall");
+        var changed = Component(componentId, "Installed");
+        var unrelated = Component("dependency:two", "ReadyToInstall");
+        var changedUnrelated = Component("dependency:two", "Installed");
+        owner.ObserveComponents(null, [original, unrelated]);
+
+        using (owner.BeginComponentChange(componentId))
+        {
+            owner.ObserveComponents(null, [changed, changedUnrelated]);
+            Assert.Equal("1", owner.Current.ComponentRevision);
+
+            owner.ObserveComponentContentChanged(null, changed);
+            Assert.Equal("2", owner.Current.ComponentRevision);
+        }
+
+        owner.ObserveComponents(null, [changed, changedUnrelated]);
+        Assert.Equal("2", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
     public async Task SubscribeAsyncPublishesInitialCurrentValueAndOnlyChangedContent()
     {
         const string sid = "S-1-5-21-1";

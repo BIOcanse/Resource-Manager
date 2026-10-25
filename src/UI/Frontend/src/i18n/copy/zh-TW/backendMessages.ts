@@ -2,6 +2,8 @@ export const zhBackendMessagesCopy = {
   backendMessage: {
     unknown: "狀態已更新。",
     dependency: {
+      payloadMissing: "執行階段已安裝，但所需執行檔案不全。請選擇「驗證並修復」補齊檔案。",
+      updateAvailable: "此元件有已驗證的更新。選擇「更新」即可套用。",
       managedRootRemovable: "刪除該依賴的受管 Dependencies 根目錄。",
       managedRootEmpty: "該依賴當前沒有可清理的受管安裝內容。",
       categoryTag: "元件依賴",
@@ -24,7 +26,7 @@ export const zhBackendMessagesCopy = {
       installerDownloadedVersion: (value: string) => `已下載 ${value} 的安裝器到託管依賴目錄。`,
       sharedRuntimeInstalled: "共享 WebView2 Runtime 已安裝並透過檢測。",
       installerLaunched: "安裝器已可見啟動。使用該 Provider 前需要完成廠商安裝提示。",
-      runtimeFilesUnavailable: "無法取得所需執行檔案，請檢查網路後重試驗證。",
+    runtimeFilesUnavailable: "無法準備所需檔案。請檢查網路連線與可用儲存空間，然後重試此操作。",
       componentFilesExtracted: "元件檔案已解壓到安裝目錄。"
     },
     gpuPlacement: {

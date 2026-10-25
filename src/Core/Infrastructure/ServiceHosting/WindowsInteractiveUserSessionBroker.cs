@@ -14,6 +14,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
     private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint MaximumAllowed = 0x02000000;
     private const int WtsActive = 0;
+    private const int UserShellWaitTimeoutMilliseconds = 30 * 60 * 1000;
 
     public string? GetUserSid(uint sessionId)
     {
@@ -118,8 +119,40 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         => LaunchInSession(sessionId, executablePath, arguments,
             new SecurityIdentifier(expectedUserSid).Value);
 
+    public async Task<int> LaunchUserShellAndWaitAsync(
+        uint sessionId,
+        string expectedUserSid,
+        string executablePath,
+        string arguments,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        SafeWaitHandle? processWaitHandle = null;
+        try
+        {
+            _ = LaunchInSession(
+                sessionId,
+                executablePath,
+                arguments,
+                new SecurityIdentifier(expectedUserSid).Value,
+                retainProcessHandle: processHandle =>
+                    processWaitHandle = DuplicateProcessHandleForWaiting(processHandle));
+
+            var launchedProcessWaitHandle = processWaitHandle
+                ?? throw new InvalidOperationException("The interactive user process did not provide a wait handle.");
+            processWaitHandle = null;
+            return await WaitForProcessExitAsync(launchedProcessWaitHandle, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            processWaitHandle?.Dispose();
+        }
+    }
+
     private static uint LaunchInSession(uint sessionId, string executablePath, string arguments, string? expectedUserSid,
-        bool allowCurrentUserLaunch = true)
+        bool allowCurrentUserLaunch = true,
+        Action<IntPtr>? retainProcessHandle = null)
     {
         var executable = NormalizeExecutablePath(executablePath);
         if (!File.Exists(executable))
@@ -130,7 +163,14 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         }
 
         if (expectedUserSid is not null
-            && TryLaunchInCurrentUserSession(sessionId, expectedUserSid, executable, arguments, out var currentSessionProcessId, allowCurrentUserLaunch))
+            && TryLaunchInCurrentUserSession(
+                sessionId,
+                expectedUserSid,
+                executable,
+                arguments,
+                out var currentSessionProcessId,
+                allowCurrentUserLaunch,
+                retainProcessHandle))
             return currentSessionProcessId;
 
         if (!WTSQueryUserToken(sessionId, out var sessionToken))
@@ -204,6 +244,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
 
                     try
                     {
+                        retainProcessHandle?.Invoke(processInformation.ProcessHandle);
                         return processInformation.ProcessId;
                     }
                     finally
@@ -231,7 +272,8 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         string executable,
         string arguments,
         out uint processId,
-        bool allowCurrentUserLaunch = true)
+        bool allowCurrentUserLaunch = true,
+        Action<IntPtr>? retainProcessHandle = null)
     {
         processId = 0;
         if (!allowCurrentUserLaunch) return false;
@@ -249,7 +291,54 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
             UseShellExecute = false
         }) ?? throw new InvalidOperationException("The interactive user process did not start.");
         processId = checked((uint)process.Id);
+        retainProcessHandle?.Invoke(process.SafeHandle.DangerousGetHandle());
         return true;
+    }
+
+    internal static SafeWaitHandle DuplicateProcessHandleForWaiting(IntPtr processHandle)
+    {
+        var currentProcess = GetCurrentProcess();
+        if (!DuplicateHandle(
+                currentProcess,
+                processHandle,
+                currentProcess,
+                out var duplicateHandle,
+                0,
+                false,
+                DuplicateSameAccess))
+        {
+            throw CreateWin32Exception("DuplicateHandle");
+        }
+
+        return new SafeWaitHandle(duplicateHandle, ownsHandle: true);
+    }
+
+    internal static Task<int> WaitForProcessExitAsync(
+        SafeWaitHandle processWaitHandle,
+        CancellationToken cancellationToken,
+        int timeoutMilliseconds = UserShellWaitTimeoutMilliseconds)
+    {
+        ArgumentNullException.ThrowIfNull(processWaitHandle);
+        if (timeoutMilliseconds < 0) throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
+
+        return Task.Run(() =>
+        {
+            using var processWait = new EventWaitHandle(false, EventResetMode.ManualReset);
+            processWait.SafeWaitHandle = processWaitHandle;
+
+            var waitResult = WaitHandle.WaitAny(
+                [processWait, cancellationToken.WaitHandle],
+                timeoutMilliseconds);
+            if (waitResult == WaitHandle.WaitTimeout)
+                throw new TimeoutException("Timed out waiting for the interactive user process to exit.");
+            if (waitResult == 1)
+                throw new OperationCanceledException(cancellationToken);
+            if (waitResult != 0)
+                throw new InvalidOperationException($"Waiting for the interactive user process returned unexpected result {waitResult}.");
+            if (!GetExitCodeProcess(processWait.SafeWaitHandle, out var exitCode))
+                throw CreateWin32Exception("GetExitCodeProcess");
+            return unchecked((int)exitCode);
+        }, CancellationToken.None);
     }
 
     private static string NormalizeExecutablePath(string path)
@@ -378,4 +467,23 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
 
     private const int SecurityImpersonation = 2;
     private const int TokenPrimary = 1;
+    private const uint DuplicateSameAccess = 0x00000002;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DuplicateHandle(
+        IntPtr sourceProcessHandle,
+        IntPtr sourceHandle,
+        IntPtr targetProcessHandle,
+        out IntPtr targetHandle,
+        uint desiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+        uint options);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(SafeWaitHandle processHandle, out uint exitCode);
 }

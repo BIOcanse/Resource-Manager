@@ -86,6 +86,7 @@ export const zhStoresCopy = {
     catalogError: "版本歷程暫時無法使用；已驗證版本仍可使用。",
     elevationNote: "安裝過程需要管理員許可權。",
     agreeAndInstall: "我已閱讀並同意，開始安裝",
+    agreeAndUpdate: "我已閱讀並同意，開始更新",
     startInstall: "開始安裝",
     agreeAndOpen: "我已閱讀並同意，開啟下載頁",
     openDownloadPage: "開啟下載頁",

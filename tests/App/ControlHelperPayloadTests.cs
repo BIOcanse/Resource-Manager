@@ -35,12 +35,14 @@ public sealed partial class ControlHelperPayloadTests
         {
             using var handler = new ArchiveHandler(payload);
             using var client = new HttpClient(handler);
-            var acquisition = new DependencyPayloadAcquisition(client, new TestEnvironment(root));
-            var result = await acquisition.EnsureAsync(definition, CancellationToken.None);
+            var environment = new TestEnvironment(root);
+            using var bridge = new HardwareBridgeClient(environment);
+            var acquisition = new DependencyPayloadAcquisition(client, environment, bridge);
+            var result = await acquisition.InstallAsync(definition, CancellationToken.None);
             Assert.True(result.Satisfied, result.Message);
             foreach (var name in files)
                 Assert.True(File.Exists(Path.Combine(root, "Dependencies", id, name)), name);
-            await acquisition.EnsureAsync(definition, CancellationToken.None);
+            await acquisition.InstallAsync(definition, CancellationToken.None);
             Assert.Equal(1, handler.Requests);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -58,8 +60,9 @@ public sealed partial class ControlHelperPayloadTests
             using var handler = new ArchiveHandler(BuildArchive(files));
             using var client = new HttpClient(handler);
             var environment = new TestEnvironment(root);
+            using var installBridge = new HardwareBridgeClient(environment);
             var dependency = new OptionalDependencyManager(client, environment, new FileSystemChangeTracker(), new EmptyInventory(),
-                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance));
+                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance), installBridge);
             var manager = new ComponentManager(dependency, new Sampler(), new ProviderProbe(), new UnexpectedPayload());
             Assert.True((await manager.GetStatusAsync(id, default))!.CanInstall);
             var result = await manager.InstallAsync(id, true, null, default);
@@ -90,9 +93,14 @@ public sealed partial class ControlHelperPayloadTests
             using var handler = new ArchiveHandler(BuildArchive(files)) { Fail = fail };
             using var client = new HttpClient(handler);
             var environment = new TestEnvironment(root);
+            using var bridge = new HardwareBridgeClient(environment);
+            var moduleDirectory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", id)).FullName;
+            DependencyReleaseRecordStore.Write(DependencyReleaseRecordStore.InstalledPath(moduleDirectory),
+                new(definition.PayloadSource!.VerifiedTag, definition.PayloadSource.VerifiedAssetName,
+                    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(BuildArchive(files)))));
             var dependency = new OptionalDependencyManager(client, environment, new FileSystemChangeTracker(), new EmptyInventory(),
-                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance));
-            var manager = new ComponentManager(dependency, new Sampler(), new ProviderProbe(), new DependencyPayloadAcquisition(client, environment));
+                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance), bridge);
+            var manager = new ComponentManager(dependency, new Sampler(), new ProviderProbe(), new DependencyPayloadAcquisition(client, environment, bridge));
             var result = await manager.VerifyAsync(id, default);
             Assert.NotNull(result.Status);
             Assert.Equal(1, handler.Requests);
@@ -122,8 +130,10 @@ public sealed partial class ControlHelperPayloadTests
             var directory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", id)).FullName;
             foreach (var module in definition.PayloadSource.FileNames) File.WriteAllText(Path.Combine(directory, module), "module marker");
             using var client = new HttpClient(new ArchiveHandler([]));
-            var manager = new OptionalDependencyManager(client, new TestEnvironment(root), new FileSystemChangeTracker(), new EmptyInventory(),
-                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance));
+            var environment = new TestEnvironment(root);
+            using var bridge = new HardwareBridgeClient(environment);
+            var manager = new OptionalDependencyManager(client, environment, new FileSystemChangeTracker(), new EmptyInventory(),
+                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance), bridge);
             // A real system installation may be reused, but this module-only folder must not own that receipt.
             Assert.NotEqual("ManagedDependencies", (await manager.GetStatusAsync(id, default))!.DetectionSource);
             File.WriteAllText(Path.Combine(directory, "PawnIOLib.dll"), "runtime marker, never loaded");
@@ -137,6 +147,9 @@ public sealed partial class ControlHelperPayloadTests
 
     private static void DeleteOwnedPackage(string root, string id, string[] files, string installer)
     {
+        foreach (var receipt in new[] { DependencyReleaseRecordStore.InstalledPath(Path.Combine(root, "Dependencies", id)),
+                     DependencyReleaseRecordStore.DownloadPath(Path.Combine(root, "Misc", "DependencyInstallers", id, installer)) })
+            if (File.Exists(receipt)) File.Delete(receipt);
         foreach (var file in files)
         {
             var path = Path.Combine(root, "Dependencies", id, file);
@@ -174,18 +187,20 @@ public sealed partial class ControlHelperPayloadTests
         public ComponentProviderRuntimeProbeResult Probe(string id)
             => new(false, false, ComponentProviderStates.Missing, "fake unavailable", null);
     }
-    private sealed class Sampler : IMetricSampler
+    private sealed class Sampler(bool active = false) : IMetricSampler
     {
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(MetricSampleRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken cancellationToken)
             => Task.FromResult(new HardwareMetricSnapshot(DateTimeOffset.UtcNow,
                 new CpuMetrics("CPU", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0, "",
-                    new CpuSensorMetrics(new("", "", null), null, null, null, null)),
+                    new CpuSensorMetrics(new("AMD SMU / PawnIO", "", null), active ? 42 : null, null, null, null)),
                 new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false), new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false), [], null!, new Dictionary<string, MetricReadingValue>()));
     }
     private sealed class UnexpectedPayload : IDependencyPayloadAcquisition
     {
+        public Task<DependencyPayloadResult> InstallAsync(ResourceManager.App.Domain.Dependencies.OptionalDependencyDefinition definition, CancellationToken token)
+            => throw new InvalidOperationException("This fixture does not invoke payload installation.");
         public Task<DependencyPayloadResult> EnsureAsync(ResourceManager.App.Domain.Dependencies.OptionalDependencyDefinition definition, CancellationToken token)
             => throw new InvalidOperationException("Installation must use its complete archive; this fixture does not invoke verification.");
     }
@@ -198,8 +213,10 @@ public sealed partial class ControlHelperPayloadTests
         try
         {
             using var client = new HttpClient(new ArchiveHandler(BuildArchive(["../outside.txt"])));
-            var result = await new DependencyPayloadAcquisition(client, new TestEnvironment(root))
-                .EnsureAsync(definition, CancellationToken.None);
+            var environment = new TestEnvironment(root);
+            using var bridge = new HardwareBridgeClient(environment);
+            var result = await new DependencyPayloadAcquisition(client, environment, bridge)
+                .InstallAsync(definition, CancellationToken.None);
             Assert.False(result.Satisfied);
             Assert.False(File.Exists(Path.Combine(root, "Dependencies", "outside.txt")));
         }

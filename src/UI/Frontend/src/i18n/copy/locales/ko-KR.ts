@@ -802,6 +802,8 @@ const koKrAppCopy: AppCopy = {
     unknownTime: "시간 알 수 없음",
     systemGraphicsUsage: "시스템 그래픽 사용량",
     state: {
+      payloadMissing: "설치됨, 실행 파일 누락",
+      updateAvailable: "업데이트 사용 가능",
       available: "사용 가능",
       installed: "설치됨",
       installedUnverified: "설치됨, 확인 대기 중",
@@ -2479,6 +2481,7 @@ const koKrAppCopy: AppCopy = {
     catalogError: "버전 기록을 사용할 수 없습니다. 검증된 버전은 계속 사용할 수 있습니다.",
     elevationNote: "설치하려면 관리자 권한이 필요합니다.",
     agreeAndInstall: "읽고 동의함, 설치",
+    agreeAndUpdate: "읽고 동의함, 업데이트",
     startInstall: "설치 시작",
     agreeAndOpen: "읽고 동의함, 다운로드 페이지 열기",
     openDownloadPage: "다운로드 페이지 열기",
@@ -2561,6 +2564,8 @@ const koKrAppCopy: AppCopy = {
   backendMessage: {
     unknown: "상태가 업데이트되었습니다.",
     dependency: {
+      payloadMissing: "런타임은 설치되어 있지만 필요한 파일이 누락되었습니다. ‘검증 및 복구’를 선택하여 복원하세요.",
+      updateAvailable: "이 구성 요소에 검증된 업데이트가 있습니다. ‘업데이트’를 선택하면 적용됩니다.",
       managedRootRemovable: "이 종속 항목의 관리되는 Dependencies 루트를 삭제합니다.",
       managedRootEmpty: "이 종속 항목에는 정리할 관리 설치가 없습니다.",
       categoryTag: "구성 요소 종속 항목",
@@ -2583,7 +2588,7 @@ const koKrAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `${value} 설치 프로그램을 관리되는 종속 항목 디렉터리에 내려받았습니다.`,
       sharedRuntimeInstalled: "공유 WebView2 런타임이 설치되고 감지되었습니다.",
       installerLaunched: "설치 프로그램이 표시되었습니다. 이 공급자를 사용하기 전에 공급업체 설치 안내를 완료하세요.",
-      runtimeFilesUnavailable: "필요한 실행 파일을 가져오지 못했습니다. 연결을 확인하고 다시 검증하세요.",
+  runtimeFilesUnavailable: "필요한 파일을 준비하지 못했습니다. 연결과 사용 가능한 저장 공간을 확인한 뒤 이 작업을 다시 시도하세요.",
       componentFilesExtracted: "구성 요소 파일을 설치 폴더에 압축 해제했습니다."
     },
     gpuPlacement: {

@@ -1,4 +1,6 @@
 export const componentCatalog = {
+  "verifyAndRepair": "验证并修复",
+  "update": "更新",
   "installationCaption": "安装说明",
   "capabilitiesCaption": "能力",
   "unknownCapability": "未知能力",

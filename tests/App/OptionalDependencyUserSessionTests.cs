@@ -9,10 +9,11 @@ using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Dependencies;
 using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class OptionalDependencyUserSessionTests : IDisposable
+public sealed partial class OptionalDependencyUserSessionTests : IDisposable
 {
     private const string UserSid = "S-1-5-21-1-2-3-1001";
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-user-installer-{Guid.NewGuid():N}");
@@ -26,9 +27,12 @@ public sealed class OptionalDependencyUserSessionTests : IDisposable
         var directory = Directory.CreateDirectory(Path.Combine(testRoot, "Misc", "DependencyInstallers", id)).FullName;
         var installer = Path.Combine(directory, definition.InstallerFileName);
         await File.WriteAllBytesAsync(installer, []);
+        DependencyReleaseRecordStore.Write(DependencyReleaseRecordStore.DownloadPath(installer),
+            new(definition.ReleaseSource?.VerifiedTag ?? "unversioned", definition.InstallerFileName, DependencyReleaseRecordStore.Hash(installer)));
         var broker = new RecordedBroker();
+        using var bridge = new HardwareBridgeClient(new HostEnvironment(testRoot));
         var manager = new OptionalDependencyManager(new HttpClient(), new HostEnvironment(testRoot),
-            new NoTracking(), new EmptyInventory(), new NoSourceResolution(), broker);
+            new NoTracking(), new EmptyInventory(), new NoSourceResolution(), bridge, broker);
 
         // Stop at the recorded dispatch boundary, before any installer or readiness polling.
         await Assert.ThrowsAsync<OperationCanceledException>(() => manager.LaunchInstallerAsync(
@@ -57,6 +61,11 @@ public sealed class OptionalDependencyUserSessionTests : IDisposable
             Assert.Equal(UserSid, expectedUserSid);
             Requests.Add(UserShellExecuteRequest.Decode(arguments[(UserShellExecuteRequest.Argument.Length + 1)..]));
             throw new OperationCanceledException("Recorded launch boundary reached.");
+        }
+        public Task<int> LaunchUserShellAndWaitAsync(uint sessionId, string expectedUserSid, string executablePath, string arguments, CancellationToken token)
+        {
+            _ = LaunchUserShell(sessionId, expectedUserSid, executablePath, arguments);
+            throw new InvalidOperationException("The recorded boundary must throw.");
         }
     }
 

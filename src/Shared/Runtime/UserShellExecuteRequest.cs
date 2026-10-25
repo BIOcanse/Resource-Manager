@@ -2,7 +2,11 @@ using System.Text.Json;
 
 namespace ResourceManager.Shared.Runtime;
 
-public sealed record UserShellExecuteRequest(string FileName, string Arguments, string? Verb = null)
+public sealed record UserShellExecuteRequest(
+    string FileName,
+    string Arguments,
+    string? Verb = null,
+    bool WaitForExit = false)
 {
     public const string Argument = "--user-shell-execute";
     private const int MaximumEncodedLength = 24_000;

@@ -51,12 +51,15 @@ public sealed partial class ControlHelperPayloadTests
             using var handler = new ArchiveHandler(payload);
             using var client = new HttpClient(handler);
             var environment = new TestEnvironment(root);
+            using var installBridge = new HardwareBridgeClient(environment);
             var dependency = new OptionalDependencyManager(client, environment, new FileSystemChangeTracker(), new EmptyInventory(),
-                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance));
+                new DependencyInstallerSourceResolver(client, NullLogger<DependencyInstallerSourceResolver>.Instance), installBridge);
             var manager = new ComponentManager(dependency, new Sampler(), new ProviderProbe(),
-                new DependencyPayloadAcquisition(client, environment));
+                new DependencyPayloadAcquisition(client, environment, installBridge));
             if (verify)
             {
+                Assert.True((await new DependencyPayloadAcquisition(client, environment, installBridge).InstallAsync(definition, default)).Satisfied);
+                File.Delete(Path.Combine(root, "Dependencies", id, "LICENSE"));
                 var result = await manager.VerifyAsync(id, default);
                 // This checks delivery, not hardware readiness. The provider probe is deliberately unavailable.
                 Assert.True(result.Status!.Installed);
@@ -67,7 +70,7 @@ public sealed partial class ControlHelperPayloadTests
             {
                 Assert.Equal("filesExtracted", (await manager.InstallAsync(id, true, null, default)).State);
             }
-            Assert.Equal(1, handler.Requests);
+            Assert.Equal(verify ? 2 : 1, handler.Requests);
             var directory = Path.Combine(root, "Dependencies", id);
             foreach (var entry in archive.Entries.Where(entry => !string.IsNullOrEmpty(entry.Name)))
             {

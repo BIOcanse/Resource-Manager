@@ -802,6 +802,8 @@ const deDeAppCopy: AppCopy = {
     unknownTime: "Zeit unbekannt",
     systemGraphicsUsage: "Grafiknutzung des Systems",
     state: {
+      payloadMissing: "Installiert, Laufzeitdateien fehlen",
+      updateAvailable: "Update verfügbar",
       available: "Verfügbar",
       installed: "Installiert",
       installedUnverified: "Installiert, Bestätigung ausstehend",
@@ -2479,6 +2481,7 @@ const deDeAppCopy: AppCopy = {
     catalogError: "Der Versionsverlauf ist nicht verfügbar; die geprüfte Version kann weiterhin verwendet werden.",
     elevationNote: "Die Installation erfordert Administratorrechte.",
     agreeAndInstall: "Gelesen und akzeptiert, installieren",
+    agreeAndUpdate: "Gelesen und akzeptiert, aktualisieren",
     startInstall: "Installation starten",
     agreeAndOpen: "Gelesen und akzeptiert, Downloadseite öffnen",
     openDownloadPage: "Downloadseite öffnen",
@@ -2561,6 +2564,8 @@ const deDeAppCopy: AppCopy = {
   backendMessage: {
     unknown: "Der Status wurde aktualisiert.",
     dependency: {
+      payloadMissing: "Die Laufzeit ist installiert, aber benötigte Dateien fehlen. Wählen Sie „Prüfen und reparieren“, um sie wiederherzustellen.",
+      updateAvailable: "Für diese Komponente ist ein geprüftes Update verfügbar. Wählen Sie „Aktualisieren“, um es anzuwenden.",
       managedRootRemovable: "Löscht das verwaltete Dependencies-Stammverzeichnis dieser Abhängigkeit.",
       managedRootEmpty: "Diese Abhängigkeit hat keine verwaltete Installation zum Aufräumen.",
       categoryTag: "Komponentenabhängigkeit",
@@ -2583,7 +2588,7 @@ const deDeAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `Das Installationsprogramm für ${value} wurde in das verwaltete Abhängigkeitsverzeichnis geladen.`,
       sharedRuntimeInstalled: "Die gemeinsame WebView2-Laufzeit ist installiert und wird erkannt.",
       installerLaunched: "Das Installationsprogramm wurde sichtbar gestartet. Schließen Sie die Installationsschritte des Anbieters ab, bevor Sie diesen Provider verwenden.",
-      runtimeFilesUnavailable: "Die benötigten Laufzeitdateien konnten nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+  runtimeFilesUnavailable: "Die benötigten Dateien konnten nicht vorbereitet werden. Prüfen Sie die Verbindung und den verfügbaren Speicherplatz und versuchen Sie diese Aktion erneut.",
       componentFilesExtracted: "Die Komponentendateien wurden in das Installationsverzeichnis entpackt."
     },
     gpuPlacement: {

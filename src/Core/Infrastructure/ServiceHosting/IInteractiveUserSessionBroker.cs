@@ -27,4 +27,12 @@ public interface IInteractiveUserSessionBroker
 
     uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         => throw new NotSupportedException("User shell launching is unavailable.");
+
+    Task<int> LaunchUserShellAndWaitAsync(
+        uint sessionId,
+        string expectedUserSid,
+        string executablePath,
+        string arguments,
+        CancellationToken cancellationToken)
+        => Task.FromException<int>(new NotSupportedException("User shell completion is unavailable."));
 }

@@ -10,6 +10,8 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
     unknownTime: "Time unknown",
     systemGraphicsUsage: "System graphics usage",
     state: {
+      payloadMissing: "Installed, runtime files missing",
+      updateAvailable: "Update available",
       available: "Available",
       installed: "Installed",
       installedUnverified: "Installed, waiting for confirmation",

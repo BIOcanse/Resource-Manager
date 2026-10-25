@@ -142,6 +142,68 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
         }
     }
 
+    /// <summary>Drain the owned session and hold new requests until the caller finishes replacing its files.</summary>
+    public async ValueTask<IAsyncDisposable> SuspendForInstallationAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var inputShutdownStarted = false;
+        try
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            stopping = true;
+            var running = process;
+            if (running is not null)
+            {
+                await inputGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (!running.HasExited)
+                    {
+                        // Closing stdin is irreversible. Keep this process as the sole owner
+                        // until it exits if the caller cancels or the drain times out below.
+                        inputShutdownStarted = true;
+                        running.StandardInput.Close();
+                    }
+                }
+                finally { inputGate.Release(); }
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(options.RequestTimeout);
+                await running.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                if (errorOutput is { } diagnostics)
+                    await diagnostics.Completion.WaitAsync(options.DiagnosticDrainTimeout, cancellationToken).ConfigureAwait(false);
+                running.Dispose();
+                process = null;
+            }
+            description = null;
+            errorOutput = null;
+            return new InstallationLease(this);
+        }
+        catch
+        {
+            // Before stdin is closed, a failed suspension can resume this helper. After
+            // EOF, stopping remains set so EnsureStarted cannot start a replacement early.
+            if (!inputShutdownStarted && !disposed) stopping = false;
+            gate.Release();
+            throw;
+        }
+    }
+
+    private sealed class InstallationLease(HardwareBridgeProcessClient owner) : IAsyncDisposable
+    {
+        private HardwareBridgeProcessClient? current = owner;
+        public ValueTask DisposeAsync()
+        {
+            var client = Interlocked.Exchange(ref current, null);
+            if (client is not null)
+            {
+                client.stopping = false;
+                client.gate.Release();
+            }
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private Process? EnsureStarted()
     {
         if (process is { HasExited: false })

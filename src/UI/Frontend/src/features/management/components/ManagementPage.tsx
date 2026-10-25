@@ -1,4 +1,4 @@
-import { componentCapabilityLabel, componentInstallNote } from "../../../presentation/componentPresentation.ts";
+import { componentCapabilityLabel, componentInstallNote, componentNeedsUpdate, componentVerifyLabel } from "../../../presentation/componentPresentation.ts";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Check, Info, MoreHorizontal, Settings } from "lucide-solid";
 import { sharedBrowserRuntimeComponentId } from "../../browserRuntimes/browserRuntimeTypes";
@@ -11,7 +11,7 @@ import {
   FrontendVisibilityDemandBinding,
   useFrontendVisibilityDemand
 } from "../../../frontendWork/useFrontendVisibilityDemand";
-import { componentDisplayName, componentPurpose } from "../../../presentation/userFacingText";
+import { componentDisplayName, componentPurpose, userFacingState } from "../../../presentation/userFacingText";
 import type { SoftwareContextMenuTarget } from "../../../components/SoftwareContextMenu";
 import {
   browserRuntimeManagementSubpageId,
@@ -261,6 +261,10 @@ function ComponentCard(props: {
           {componentDisplayName(props.component.definition?.id)}
         </strong>
         <div class="management-card-purpose">{componentPurpose(props.component.definition?.id)}</div>
+        <Show when={props.component.state === "payload_missing" || props.component.state === "update_available"}>
+          <ManagementStatusTag label={userFacingState(props.component.state)} />
+          <div class="management-card-purpose">{renderBackendMessage(props.component.message)}</div>
+        </Show>
       </div>
       <div class="component-actions">
         <Show
@@ -268,7 +272,7 @@ function ComponentCard(props: {
           fallback={<ManagementStatusTag label={activeLabel()} pending />}
         >
           <Show
-            when={isComponentInstalled(props.component)}
+            when={!componentNeedsUpdate(props.component) && isComponentInstalled(props.component)}
             fallback={
               <button
                 class="management-action-button"
@@ -283,7 +287,7 @@ function ComponentCard(props: {
           >
             <Show
               when={dependencySoftware()?.operations?.canUninstall}
-              fallback={<ManagementStatusTag label={uiText.management.installed} />}
+              fallback={<Show when={props.component.state !== "payload_missing" && props.component.state !== "update_available"}><ManagementStatusTag label={uiText.management.installed} /></Show>}
             >
               <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
                 {uiText.management.uninstall}
@@ -296,7 +300,7 @@ function ComponentCard(props: {
             disabled={!props.runtimeEffectsEnabled || Boolean(activeLabel())}
             title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly}
             onClick={() => props.onVerify(props.component)}>
-            {uiText.management.verify}
+            {componentVerifyLabel(props.component.state)}
           </button>
         </Show>
         <DetailsButton
@@ -482,6 +486,9 @@ function contextMenuEventForElement(element: HTMLElement) {
  * 能自动获取就是"下载并安装"，只能人工获取就是"获取安装器"。
  */
 function componentInstallLabel(component: ManagedComponent) {
+  if (componentNeedsUpdate(component)) {
+    return uiText.componentCatalog.update;
+  }
   if (component.installerAvailable) {
     return uiText.management.install;
   }

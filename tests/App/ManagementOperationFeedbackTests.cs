@@ -60,6 +60,30 @@ public sealed class ManagementOperationFeedbackTests
         Assert.Null(typeof(HostManagerOperationWireSnapshot).GetProperty("Diagnostic"));
     }
 
+    [Fact]
+    public async Task ComponentInstallAcquisitionFailureSettlesWithTypedDependencyFeedback()
+    {
+        var executor = ComponentOperationEffectExecutor.ForInstall(new ResultComponent(
+            "runtimeFilesUnavailable",
+            BackendMessageCodes.Dependency.RuntimeFilesUnavailable));
+
+        var completion = await executor.ExecuteStartAsync(Ticket(true), new Sink(), default);
+
+        Assert.Equal(HostManagerOperationEffectOutcome.TerminalFailure, completion.Outcome);
+        var feedback = Assert.IsType<HostManagerOperationFeedback>(HostManagerOperationFeedback.Read(completion.Message));
+        Assert.Null(feedback.ResultCode);
+        Assert.Equal(BackendMessageDomains.Dependency, feedback.Message.Domain);
+        Assert.Equal(BackendMessageCodes.Dependency.RuntimeFilesUnavailable, feedback.Message.Code);
+        Assert.Null(feedback.Diagnostic);
+
+        var wire = HostManagerOperationWireProjection.Project(Operation(null, completion.Message));
+        Assert.Equal("failed", wire.State);
+        Assert.Null(wire.ResultCode);
+        Assert.Null(wire.ResultMessage);
+        Assert.Equal(BackendMessageDomains.Dependency, wire.ErrorMessage!.Domain);
+        Assert.Equal(BackendMessageCodes.Dependency.RuntimeFilesUnavailable, wire.ErrorMessage.Code);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]

@@ -187,7 +187,9 @@ public sealed class AmdSmuHardwareBindingTests
     private sealed class RecordedPayload(bool satisfied) : IDependencyPayloadAcquisition
     {
         public Task<DependencyPayloadResult> EnsureAsync(OptionalDependencyDefinition definition, CancellationToken cancellationToken)
-            => Task.FromResult(new DependencyPayloadResult(satisfied, "recorded payload result"));
+            => Task.FromResult(new DependencyPayloadResult(satisfied, "recorded payload result", Changed: satisfied));
+        public Task<DependencyPayloadResult> InstallAsync(OptionalDependencyDefinition definition, CancellationToken cancellationToken)
+            => EnsureAsync(definition, cancellationToken);
     }
 
     private sealed class MissingProvider : IProviderRuntimeProbe
@@ -218,7 +220,9 @@ public sealed class AmdSmuHardwareBindingTests
                 "runtime", null, "recorded", BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.InstalledInManagedRoot)));
         public Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<OptionalDependencyDownloadResult> DownloadAsync(string id, bool acknowledgeExternalTerms, string? versionChoice,
-            CancellationToken cancellationToken, IProgress<DependencyDownloadProgress>? progress = null) => throw new NotSupportedException();
+            CancellationToken cancellationToken, IProgress<DependencyDownloadProgress>? progress = null)
+            => Task.FromResult(new OptionalDependencyDownloadResult(id, "downloaded", "recorded.exe", 0,
+                BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.InstallerDownloaded)));
         public Task<OptionalDependencyLaunchResult> LaunchInstallerAsync(string id, bool acknowledgeExternalTerms, string? versionChoice,
             CancellationToken cancellationToken, SoftwareOperationCaller? caller = null)
         {

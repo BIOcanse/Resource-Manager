@@ -802,6 +802,8 @@ const ruRuAppCopy: AppCopy = {
     unknownTime: "Время неизвестно",
     systemGraphicsUsage: "Графическая нагрузка системы",
     state: {
+      payloadMissing: "Установлено, отсутствуют файлы",
+      updateAvailable: "Доступно обновление",
       available: "Доступно",
       installed: "Установлено",
       installedUnverified: "Установлено, ожидает подтверждения",
@@ -2479,6 +2481,7 @@ const ruRuAppCopy: AppCopy = {
     catalogError: "История версий недоступна; проверенную версию по-прежнему можно использовать.",
     elevationNote: "Для установки нужны права администратора.",
     agreeAndInstall: "Прочитал и принимаю, установить",
+    agreeAndUpdate: "Прочитал и принимаю, обновить",
     startInstall: "Начать установку",
     agreeAndOpen: "Прочитал и принимаю, открыть страницу загрузки",
     openDownloadPage: "Открыть страницу загрузки",
@@ -2561,6 +2564,8 @@ const ruRuAppCopy: AppCopy = {
   backendMessage: {
     unknown: "Состояние обновлено.",
     dependency: {
+      payloadMissing: "Среда выполнения установлена, но необходимые файлы отсутствуют. Выберите «Проверить и восстановить», чтобы вернуть их.",
+      updateAvailable: "Для этого компонента доступно проверенное обновление. Выберите «Обновить», чтобы применить его.",
       managedRootRemovable: "Удаляет управляемый корневой каталог Dependencies этой зависимости.",
       managedRootEmpty: "У этой зависимости нет управляемой установки для очистки.",
       categoryTag: "Зависимость компонента",
@@ -2583,7 +2588,7 @@ const ruRuAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `Установщик ${value} загружен в управляемый каталог зависимостей.`,
       sharedRuntimeInstalled: "Общая среда выполнения WebView2 установлена и обнаружена.",
       installerLaunched: "Установщик запущен. Завершите шаги установки поставщика, прежде чем использовать его.",
-      runtimeFilesUnavailable: "Не удалось получить необходимые файлы. Проверьте соединение и повторите проверку.",
+  runtimeFilesUnavailable: "Не удалось подготовить необходимые файлы. Проверьте подключение и наличие свободного места, затем повторите это действие.",
       componentFilesExtracted: "Файлы компонента распакованы в папку установки."
     },
     gpuPlacement: {

@@ -33,6 +33,7 @@ import {
   type ObservationState
 } from "../observation/observationState";
 import { renderBackendMessage } from "../presentation/backendMessage.ts";
+import { componentNeedsUpdate } from "../presentation/componentPresentation.ts";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
   compareUInt64Decimal,
@@ -484,6 +485,11 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
+    if (componentNeedsUpdate(component)) {
+      setAcquisitionRequest({ component, versions: [], loading: false, manual: false });
+      return;
+    }
+
     // 安装器已经在缓存里：不用联网，也没有版本可选，但确认这一步不能省。
     // 厂商、条款、是否需要提权都只在这个弹窗里说过，跳过它等于替用户按了「装」。
     if (component.installerAvailable && !component.installed) {
@@ -533,7 +539,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
-    await runComponentInstall(request.component, versionChoice);
+    await runComponentInstall(request.component,
+      componentNeedsUpdate(request.component) ? "verified" : versionChoice);
   }
 
   /** 手动获取：同时打开来源页和安装器缓存目录，并说清楚下一步做什么。 */

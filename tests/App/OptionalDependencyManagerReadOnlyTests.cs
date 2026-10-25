@@ -6,6 +6,7 @@ using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Dependencies;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -35,12 +36,13 @@ public sealed class OptionalDependencyManagerReadOnlyTests : IDisposable
     {
         Directory.CreateDirectory(testRoot);
         var before = EnumerateRelativePaths();
+        using var bridge = new HardwareBridgeClient(new TestHostEnvironment(testRoot));
         var manager = new OptionalDependencyManager(
             new HttpClient(),
             new TestHostEnvironment(testRoot),
             new UnexpectedFileChangeTracker(),
             new EmptyInstalledSoftwareInventory(),
-            new UnexpectedInstallerSourceResolver());
+            new UnexpectedInstallerSourceResolver(), bridge);
 
         var statuses = await manager.GetStatusesAsync(CancellationToken.None);
         var status = await manager.GetStatusAsync(

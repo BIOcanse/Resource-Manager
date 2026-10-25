@@ -88,6 +88,7 @@ export const enStoresCopy: Pick<AppCopy, "stores" | "componentAcquisition"> = {
     catalogError: "Release history is unavailable; the verified version remains usable.",
     elevationNote: "The installation needs administrator permission.",
     agreeAndInstall: "I have read and agree, install",
+    agreeAndUpdate: "I have read and agree, update",
     startInstall: "Start installation",
     agreeAndOpen: "I have read and agree, open the download page",
     openDownloadPage: "Open the download page",

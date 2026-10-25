@@ -25,7 +25,8 @@ public sealed partial class OptionalDependencyManager
         if (definition.ReleaseSource is not null)
         {
             var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
-            if (BuildStatus(definition, installedSoftware).Installed)
+            var status = BuildStatus(definition, installedSoftware);
+            if (status.Installed && (!status.UpdateAvailable || !IsVerifiedChoice(versionChoice)))
                 throw new InvalidOperationException("无法可靠识别已安装组件版本；不能判断升级方向，已停止版本选择。");
         }
 
@@ -37,7 +38,10 @@ public sealed partial class OptionalDependencyManager
         var installerSource = await installerSourceResolver.ResolveAsync(definition, versionChoice, cancellationToken);
 
         var paths = GetPaths(definition);
+        DependencyInstallPaths.RejectLinks(paths.InstallerDirectory);
         Directory.CreateDirectory(paths.InstallerDirectory);
+        DependencyInstallPaths.RejectLinks(paths.InstallerDirectory);
+        DependencyInstallPaths.ValidateTree(paths.InstallerDirectory);
 
         var trackingScope = new FileChangeTrackingScope(
             $"dependency-download:{definition.Id}",
@@ -46,6 +50,8 @@ public sealed partial class OptionalDependencyManager
 
         var destination = Path.Combine(paths.InstallerDirectory, definition.InstallerFileName);
         var temporary = destination + ".download";
+        DependencyInstallPaths.RejectLinks(destination);
+        DependencyInstallPaths.RejectLinks(temporary);
 
         long bytesWritten = 0;
         try
@@ -94,6 +100,9 @@ public sealed partial class OptionalDependencyManager
         }
 
         File.Move(temporary, destination, overwrite: true);
+        DependencyReleaseRecordStore.Write(DependencyReleaseRecordStore.DownloadPath(destination),
+            new(installerSource.Version ?? "unversioned", installerSource.AssetName ?? definition.InstallerFileName,
+                DependencyReleaseRecordStore.Hash(destination)));
         var length = new FileInfo(destination).Length;
         progress?.Report(new DependencyDownloadProgress(definition.Id, length, length, 100, null));
         var after = await fileChangeTracker.CaptureAsync(trackingScope, cancellationToken);
@@ -114,4 +123,7 @@ public sealed partial class OptionalDependencyManager
                     installerSource.Version),
             fileChanges);
     }
+
+    private static bool IsVerifiedChoice(string? choice)
+        => string.IsNullOrWhiteSpace(choice) || choice == DependencyVersionChoices.Verified;
 }

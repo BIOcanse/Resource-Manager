@@ -135,7 +135,10 @@ public sealed record OptionalDependencyStatus(
     /// <summary>这条状态要说的话：域 + 码 + 事实参数，措辞由前端按当前语言决定。</summary>
     BackendMessage Message,
     /// <summary>安装器来源形态，界面据此如实标注按钮。</summary>
-    string InstallerSourceKind = DependencyInstallerSourceKinds.Manual);
+    string InstallerSourceKind = DependencyInstallerSourceKinds.Manual,
+    /// <summary>组件受管目录中声明的运行文件是否全部存在；不代表运行库或读数已验证。</summary>
+    bool PayloadFilesPresent = true,
+    bool UpdateAvailable = false);
 
 public sealed record OptionalDependencyDownloadRequest(
     bool AcknowledgeExternalTerms,

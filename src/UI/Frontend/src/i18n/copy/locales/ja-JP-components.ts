@@ -1,5 +1,7 @@
 import type { AppCopy } from "../index.ts";
 export const componentCatalog: AppCopy["componentCatalog"] = {
+  "verifyAndRepair": "検証して修復",
+  "update": "更新",
   "installationCaption": "インストールに関する注意",
   "capabilitiesCaption": "機能",
   "unknownCapability": "不明な機能",

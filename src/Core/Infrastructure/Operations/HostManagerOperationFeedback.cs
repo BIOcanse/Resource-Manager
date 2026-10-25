@@ -29,6 +29,10 @@ internal sealed record HostManagerOperationFeedback(
             _ => BackendMessageCodes.Operation.UnexpectedFailure
         }, error.Message);
 
+    internal static string Failure(BackendMessage message)
+        => Prefix + JsonSerializer.Serialize(new HostManagerOperationFeedback(
+            null, message), OperationFeedbackJsonContext.Default.HostManagerOperationFeedback);
+
     internal static string Reason(byte code, string? diagnostic = null)
         => Prefix + JsonSerializer.Serialize(new HostManagerOperationFeedback(
             null, BackendMessage.Create(BackendMessageDomains.Operation, code), diagnostic), OperationFeedbackJsonContext.Default.HostManagerOperationFeedback);

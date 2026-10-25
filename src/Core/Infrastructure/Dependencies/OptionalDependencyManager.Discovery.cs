@@ -58,7 +58,7 @@ public sealed partial class OptionalDependencyManager
             }
 
             return definition.InstalledProbeRelativePaths.All(path =>
-                File.Exists(Path.Combine(installDirectory, path)));
+                DependencyInstallPaths.IsRegularFile(Path.Combine(installDirectory, path)));
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PathTooLongException)
         {

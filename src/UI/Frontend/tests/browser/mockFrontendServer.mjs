@@ -67,6 +67,7 @@ const defaultScenario = {
   softwareIssues: true,
   operations: "empty",
   operationCanceled: false,
+  componentPayloadFailure: false,
   managementInventoryRevisions: {
     softwareRevision: "0",
     componentRevision: "0",
@@ -911,7 +912,9 @@ function fixtureOperations() {
     {
       ...active, id: "000000000000000000000000000000a3", domainKey: "component:failed-runtime",
       state: "failed", completedAt: active.updatedAt, cancelRequested: false, progress: null,
-      errorMessage: { domain: 6, code: 1, args: [] }
+      errorMessage: scenario.componentPayloadFailure
+        ? { domain: 1, code: 24, args: [] }
+        : { domain: 6, code: 1, args: [] }
     }
   ];
 }
@@ -1200,7 +1203,8 @@ function applyScenarioPatch(patch) {
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
   if (Object.hasOwn(patch, "operations")
-    || Object.hasOwn(patch, "operationCanceled")) {
+    || Object.hasOwn(patch, "operationCanceled")
+    || Object.hasOwn(patch, "componentPayloadFailure")) {
     commitOperationsValue();
   }
   if (Number.isSafeInteger(patch.localSystemIntervalMs)

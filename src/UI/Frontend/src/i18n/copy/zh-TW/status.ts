@@ -9,6 +9,8 @@ export const zhStatusCopy = {
     systemGraphicsUsage: "系統圖形佔用",
     // 后端状态值统一映射到这些用户状态
     state: {
+      payloadMissing: "已安裝，執行檔案缺失",
+      updateAvailable: "有可用更新",
       available: "可用",
       installed: "已安裝",
       installedUnverified: "已安裝，等待確認",

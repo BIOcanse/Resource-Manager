@@ -60,6 +60,12 @@ internal sealed class ComponentOperationEffectExecutor(
                     versionChoice,
                     cancellationToken,
                     progressAdapter).ConfigureAwait(false);
+            if (result.State == "runtimeFilesUnavailable")
+            {
+                return new(
+                    HostManagerOperationEffectOutcome.TerminalFailure,
+                    HostManagerOperationFeedback.Failure(result.Message));
+            }
             return new(HostManagerOperationEffectOutcome.Succeeded, HostManagerOperationFeedback.Result(result.State, result.Message));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

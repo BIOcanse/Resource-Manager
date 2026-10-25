@@ -1,5 +1,6 @@
 import { componentDisplayName } from "../../../presentation/userFacingText.ts";
-import { componentVersionFailure } from "../../../presentation/componentPresentation.ts";
+import { componentNeedsUpdate, componentVersionFailure } from "../../../presentation/componentPresentation.ts";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import { Show, createSignal } from "solid-js";
 import {
   DialogActions,
@@ -44,8 +45,12 @@ export function ComponentAcquisitionDialog(props: {
     return request.component.definition?.requiresExternalTermsAcknowledgement === true;
   }
 
+  function isUpdate(request: ComponentAcquisitionRequest) {
+    return componentNeedsUpdate(request.component);
+  }
+
   function selectableVersions(request: ComponentAcquisitionRequest) {
-    return request.component.installed
+    return isUpdate(request) || request.component.installed
       ? []
       : request.versions.filter((option) => option.available);
   }
@@ -90,7 +95,9 @@ export function ComponentAcquisitionDialog(props: {
           <DialogBody class="feedback-body">
             <div id="componentAcquisitionDescription" class="feedback-description">
               <p>
-                {requiresTerms(request)
+                {isUpdate(request)
+                  ? renderBackendMessage(request.component.message)
+                  : requiresTerms(request)
                   ? request.manual
                     ? uiText.componentAcquisition.manualIntro
                     : uiText.componentAcquisition.installIntro
@@ -124,7 +131,7 @@ export function ComponentAcquisitionDialog(props: {
                 </Show>
               </div>
 
-              <Show when={!request.manual}>
+              <Show when={!request.manual && !isUpdate(request)}>
                 <Show
                   when={!request.loading}
                   fallback={<p>{uiText.componentAcquisition.loadingVersions}</p>}
@@ -139,7 +146,7 @@ export function ComponentAcquisitionDialog(props: {
                     </fieldset>
                   </Show>
                 </Show>
-                <Show when={request.catalogStatus === "error" || request.catalogStatus === "partial" || request.catalogStatus === "unavailable"}>
+                <Show when={!isUpdate(request) && (request.catalogStatus === "error" || request.catalogStatus === "partial" || request.catalogStatus === "unavailable")}>
                   <p role="status">{catalogMessage(request.catalogStatus!)}</p>
                 </Show>
               </Show>
@@ -167,10 +174,14 @@ export function ComponentAcquisitionDialog(props: {
               {requiresTerms(request)
                 ? request.manual
                   ? uiText.componentAcquisition.agreeAndOpen
-                  : uiText.componentAcquisition.agreeAndInstall
+                  : isUpdate(request)
+                    ? uiText.componentAcquisition.agreeAndUpdate
+                    : uiText.componentAcquisition.agreeAndInstall
                 : request.manual
                   ? uiText.componentAcquisition.openDownloadPage
-                  : uiText.componentAcquisition.startInstall}
+                  : isUpdate(request)
+                    ? uiText.componentCatalog.update
+                    : uiText.componentAcquisition.startInstall}
             </button>
           </DialogActions>
         </DialogRoot>

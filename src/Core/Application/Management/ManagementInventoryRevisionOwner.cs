@@ -14,6 +14,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
     private readonly Dictionary<string, string> softwareFingerprints = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, string>> componentFingerprintsByScope = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> completeComponentScopes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object> activeComponentChanges = new(StringComparer.OrdinalIgnoreCase);
     private string? browserRuntimeFingerprint;
     private ulong softwareRevision;
     private ulong componentRevision;
@@ -82,7 +83,80 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         publicationSignal.Publish();
     }
 
-    public void ObserveComponents(string? windowsSid, IReadOnlyList<ComponentStatus> components)
+    public void ObserveComponentContentChanged(string componentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(componentId);
+        lock (gate)
+        {
+            activeComponentChanges.Remove(componentId);
+            foreach (var entry in componentFingerprintsByScope)
+            {
+                entry.Value.Remove(componentId);
+                completeComponentScopes.Remove(entry.Key);
+            }
+            componentRevision = checked(componentRevision + 1);
+        }
+
+        publicationSignal.Publish();
+    }
+
+    // Publish the explicit content change and its resulting status as one revision.
+    // This also invalidates bindings when repaired bytes leave the status unchanged.
+    public void ObserveComponentContentChanged(string? windowsSid, ComponentStatus component)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        var scope = NormalizeScope(windowsSid);
+        var fingerprint = Fingerprint(component);
+        lock (gate)
+        {
+            var changeWasActive = activeComponentChanges.Remove(component.Definition.Id);
+            // Shared component bytes changed for every user. Other scopes must
+            // re-observe their own runtime facts without publishing this repair twice.
+            foreach (var entry in componentFingerprintsByScope)
+            {
+                if (string.Equals(entry.Key, scope, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // A lease may have seeded a scope while omitting this active ID, so
+                // invalidate every other observed scope even when there was no ID to remove.
+                if (entry.Value.Remove(component.Definition.Id) || changeWasActive)
+                {
+                    completeComponentScopes.Remove(entry.Key);
+                }
+            }
+            if (!componentFingerprintsByScope.TryGetValue(scope, out var fingerprints))
+            {
+                fingerprints = new(StringComparer.OrdinalIgnoreCase);
+                componentFingerprintsByScope.Add(scope, fingerprints);
+            }
+            fingerprints[component.Definition.Id] = fingerprint;
+            componentRevision = checked(componentRevision + 1);
+        }
+        publicationSignal.Publish();
+    }
+
+    public IDisposable BeginComponentChange(string componentId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(componentId);
+        // The token prevents an older disposed lease from clearing a newer reservation.
+        var token = new object();
+        lock (gate)
+        {
+            if (!activeComponentChanges.TryAdd(componentId, token))
+            {
+                throw new InvalidOperationException($"A component change is already active for '{componentId}'.");
+            }
+        }
+
+        return new ComponentChangeLease(this, componentId, token);
+    }
+
+    public void ObserveComponents(
+        string? windowsSid,
+        IReadOnlyList<ComponentStatus> components,
+        string? observedComponentRevision = null)
     {
         ArgumentNullException.ThrowIfNull(components);
         var scope = NormalizeScope(windowsSid);
@@ -93,14 +167,22 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         var publish = false;
         lock (gate)
         {
-            if (!componentFingerprintsByScope.TryGetValue(scope, out var previous))
+            if (!IsCurrentComponentObservationLocked(observedComponentRevision))
+            {
+                return;
+            }
+
+            var hasPrevious = componentFingerprintsByScope.TryGetValue(scope, out var previous);
+            var hasUnseededActiveComponent = PreserveActiveComponentFingerprintsLocked(
+                next, hasPrevious ? previous : null);
+            if (!hasPrevious)
             {
                 componentFingerprintsByScope.Add(scope, next);
                 completeComponentScopes.Add(scope);
             }
             else if (!completeComponentScopes.Contains(scope))
             {
-                publish = KnownComponentFingerprintsChanged(previous, next);
+                publish = KnownComponentFingerprintsChanged(previous!, next);
                 componentFingerprintsByScope[scope] = next;
                 completeComponentScopes.Add(scope);
                 if (publish)
@@ -108,11 +190,16 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
                     componentRevision = checked(componentRevision + 1);
                 }
             }
-            else if (!ComponentFingerprintsEqual(previous, next))
+            else if (!ComponentFingerprintsEqual(previous!, next))
             {
                 componentFingerprintsByScope[scope] = next;
                 componentRevision = checked(componentRevision + 1);
                 publish = true;
+            }
+
+            if (hasUnseededActiveComponent)
+            {
+                completeComponentScopes.Remove(scope);
             }
         }
 
@@ -122,7 +209,10 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         }
     }
 
-    public void ObserveComponent(string? windowsSid, ComponentStatus component)
+    public void ObserveComponent(
+        string? windowsSid,
+        ComponentStatus component,
+        string? observedComponentRevision = null)
     {
         ArgumentNullException.ThrowIfNull(component);
         var scope = NormalizeScope(windowsSid);
@@ -131,6 +221,12 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         var publish = false;
         lock (gate)
         {
+            if (!IsCurrentComponentObservationLocked(observedComponentRevision)
+                || activeComponentChanges.ContainsKey(id))
+            {
+                return;
+            }
+
             if (!componentFingerprintsByScope.TryGetValue(scope, out var fingerprints))
             {
                 fingerprints = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -151,6 +247,58 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         if (publish)
         {
             publicationSignal.Publish();
+        }
+    }
+
+    private bool IsCurrentComponentObservationLocked(string? observedComponentRevision)
+        => observedComponentRevision is null
+            || string.Equals(observedComponentRevision,
+                componentRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                StringComparison.Ordinal);
+
+    private bool PreserveActiveComponentFingerprintsLocked(
+        Dictionary<string, string> next,
+        Dictionary<string, string>? previous)
+    {
+        var hasUnseededActiveComponent = false;
+        foreach (var id in activeComponentChanges.Keys)
+        {
+            if (previous is not null && previous.TryGetValue(id, out var fingerprint))
+            {
+                next[id] = fingerprint;
+            }
+            else
+            {
+                next.Remove(id);
+                hasUnseededActiveComponent = true;
+            }
+        }
+
+        return hasUnseededActiveComponent;
+    }
+
+    private void EndComponentChange(string componentId, object token)
+    {
+        lock (gate)
+        {
+            if (activeComponentChanges.TryGetValue(componentId, out var activeToken)
+                && ReferenceEquals(activeToken, token))
+            {
+                activeComponentChanges.Remove(componentId);
+            }
+        }
+    }
+
+    private sealed class ComponentChangeLease(
+        ManagementInventoryRevisionOwner owner,
+        string componentId,
+        object token) : IDisposable
+    {
+        private ManagementInventoryRevisionOwner? current = owner;
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref current, null)?.EndComponentChange(componentId, token);
         }
     }
 

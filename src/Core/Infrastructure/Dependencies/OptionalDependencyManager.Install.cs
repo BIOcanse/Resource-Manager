@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.Shared.BrowserRuntimes;
@@ -26,7 +27,9 @@ public sealed partial class OptionalDependencyManager
 
         var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(caller?.WindowsSid, cancellationToken);
         var status = BuildStatus(definition, installedSoftware);
-        if (definition.ReleaseSource is not null && status.Installed && !string.IsNullOrWhiteSpace(versionChoice))
+        if (definition.ReleaseSource is not null && status.Installed
+            && (!status.UpdateAvailable && !string.IsNullOrWhiteSpace(versionChoice)
+                || status.UpdateAvailable && !IsVerifiedChoice(versionChoice)))
             throw new InvalidOperationException("无法可靠识别已安装组件版本；不能判断升级方向，已停止版本选择。");
         if (string.IsNullOrWhiteSpace(status.InstallerPath) || !File.Exists(status.InstallerPath))
         {
@@ -34,6 +37,20 @@ public sealed partial class OptionalDependencyManager
         }
 
         var sharedRuntime = definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase);
+        DependencyInstallPaths.RejectLinks(status.InstallerPath);
+        DependencyInstallPaths.RejectLinks(DependencyReleaseRecordStore.DownloadPath(status.InstallerPath));
+        DependencyInstallPaths.RejectLinks(status.InstallDirectory);
+        DependencyInstallPaths.ValidateTree(Path.GetDirectoryName(status.InstallerPath)!);
+        if (Directory.Exists(status.InstallDirectory)) DependencyInstallPaths.ValidateTree(status.InstallDirectory);
+        var release = DependencyReleaseRecordStore.Read(DependencyReleaseRecordStore.DownloadPath(status.InstallerPath), logger)
+            ?? throw new InvalidDataException("The cached installer has no download provenance; download it again.");
+        using var asset = new FileStream(status.InstallerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (!string.Equals(release.AssetSha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(asset)), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The cached asset SHA-256 differs from its download record.");
+        asset.Position = 0;
+        if (definition.ReleaseSource is { } pinned && status.UpdateAvailable
+            && !DependencyReleaseRecordStore.Matches(release, pinned.VerifiedTag, pinned.VerifiedAssetName))
+            throw new InvalidDataException("The selected update is not the catalog's verified release.");
         Func<System.Diagnostics.ProcessStartInfo, bool, CancellationToken, ValueTask>? launch = null;
         var extension = Path.GetExtension(status.InstallerPath);
         var visibleInstaller = extension.Equals(".exe", StringComparison.OrdinalIgnoreCase)
@@ -41,36 +58,54 @@ public sealed partial class OptionalDependencyManager
         if (visibleInstaller)
         {
             UserSessionCallerValidation.RequireActiveUser(caller, sessionBroker);
-            launch = (start, waitForExit, token) =>
+            launch = async (start, waitForExit, token) =>
             {
                 token.ThrowIfCancellationRequested();
-                if (waitForExit)
-                    throw new InvalidOperationException("A visible user-session installer cannot be synchronously waited by the service.");
                 var shellRequest = new UserShellExecuteRequest(
                     start.FileName,
                     start.Arguments,
-                    string.IsNullOrWhiteSpace(start.Verb) ? null : start.Verb);
-                _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
-                    NativeUiLaunchHostedService.ResolveNativeUiPath(),
-                    UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
-                return ValueTask.CompletedTask;
+                    string.IsNullOrWhiteSpace(start.Verb) ? null : start.Verb, WaitForExit: waitForExit);
+                var arguments = UserShellExecuteRequest.Argument + " " + shellRequest.Encode();
+                if (waitForExit)
+                {
+                    var exitCode = await sessionBroker.LaunchUserShellAndWaitAsync(caller!.WindowsSessionId, caller.WindowsSid,
+                        NativeUiLaunchHostedService.ResolveNativeUiPath(), arguments, token);
+                    if (exitCode != 0) throw new InvalidOperationException($"The dependency installer returned exit code {exitCode}.");
+                }
+                else
+                    _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
+                        NativeUiLaunchHostedService.ResolveNativeUiPath(), arguments);
             };
         }
 
+        var archiveInstall = extension.Equals(".zip", StringComparison.OrdinalIgnoreCase);
+        if (archiveInstall)
+        {
+            using var archive = new ZipArchive(asset, ZipArchiveMode.Read, leaveOpen: true);
+            using var transaction = new DependencyPayloadTransaction(status.InstallDirectory, replaceRelease: true, logger);
+            transaction.Prepare(archive, definition.PayloadSource?.FileNames ?? definition.InstalledProbeRelativePaths,
+                [], includeContents: true, definition.ReleaseSource is null ? null : release, cancellationToken);
+            await using var session = definition.Id == "hardware-bridge"
+                ? await hardwareBridge.SuspendForInstallationAsync(cancellationToken) : null;
+            transaction.Publish(cancellationToken);
+            return new(definition.Id, "filesExtracted", status.InstallerPath,
+                BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.ComponentFilesExtracted));
+        }
         var installed = await new DependencyPackageInstaller(launch).InstallAsync(
             new(definition.Id, status.InstallerPath),
             new(status.InstallDirectory, definition.RequiresElevation,
-                BuildInstallerArguments(definition, status.InstallDirectory), WaitForExit: sharedRuntime && !visibleInstaller),
+                BuildInstallerArguments(definition, status.InstallDirectory), WaitForExit: definition.ReleaseSource is not null && visibleInstaller),
             cancellationToken);
-        if (installed.Status == "filesExtracted")
+        if (installed.Status == "installerCompleted")
         {
-            return new OptionalDependencyLaunchResult(
-                definition.Id,
-                "filesExtracted",
-                status.InstallerPath,
-                BackendMessage.Create(
-                    BackendMessageDomains.Dependency,
-                    BackendMessageCodes.Dependency.ComponentFilesExtracted));
+            var softwareAfterInstall = await installedSoftwareInventory.GetInstalledSoftwareAsync(caller?.WindowsSid, cancellationToken);
+            if (!IsDependencyInstalledAt(definition, status.InstallDirectory)
+                && ResolveExternalInstall(definition, softwareAfterInstall, status.InstallDirectory) is null)
+                throw new InvalidOperationException("The installer exited successfully but its installed runtime could not be verified.");
+            if (definition.PayloadSource is null && IsDependencyInstalledAt(definition, status.InstallDirectory))
+                DependencyReleaseRecordStore.Write(DependencyReleaseRecordStore.InstalledPath(status.InstallDirectory), release);
+            return new(definition.Id, "installerCompleted", status.InstallerPath,
+                BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.ComponentFilesUnverified));
         }
 
         if (sharedRuntime)

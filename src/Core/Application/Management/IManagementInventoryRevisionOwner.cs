@@ -16,9 +16,21 @@ public interface IManagementInventoryRevisionOwner
 
     void ObserveComponentContentChanged();
 
-    void ObserveComponents(string? windowsSid, IReadOnlyList<ComponentStatus> components);
+    void ObserveComponentContentChanged(string componentId);
 
-    void ObserveComponent(string? windowsSid, ComponentStatus component);
+    void ObserveComponentContentChanged(string? windowsSid, ComponentStatus component);
+
+    IDisposable BeginComponentChange(string componentId);
+
+    void ObserveComponents(
+        string? windowsSid,
+        IReadOnlyList<ComponentStatus> components,
+        string? observedComponentRevision = null);
+
+    void ObserveComponent(
+        string? windowsSid,
+        ComponentStatus component,
+        string? observedComponentRevision = null);
 
     void ObserveBrowserRuntimeSnapshot(BrowserRuntimeSnapshot snapshot);
 

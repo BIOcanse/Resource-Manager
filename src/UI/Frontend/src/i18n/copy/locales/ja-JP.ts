@@ -802,6 +802,8 @@ const jaJpAppCopy: AppCopy = {
     unknownTime: "時刻不明",
     systemGraphicsUsage: "システムのグラフィックス使用量",
     state: {
+      payloadMissing: "インストール済み、実行ファイルが不足",
+      updateAvailable: "更新あり",
       available: "利用可能",
       installed: "インストール済み",
       installedUnverified: "インストール済み、確認待ち",
@@ -2479,6 +2481,7 @@ const jaJpAppCopy: AppCopy = {
     catalogError: "バージョン履歴を利用できません。検証済みバージョンは引き続き使用できます。",
     elevationNote: "インストールには管理者権限が必要です。",
     agreeAndInstall: "読んで同意し、インストールする",
+    agreeAndUpdate: "確認して同意し、更新する",
     startInstall: "インストールを開始",
     agreeAndOpen: "読んで同意し、ダウンロード ページを開く",
     openDownloadPage: "ダウンロードページを開く",
@@ -2561,6 +2564,8 @@ const jaJpAppCopy: AppCopy = {
   backendMessage: {
     unknown: "状態が更新されました。",
     dependency: {
+      payloadMissing: "ランタイムはインストールされていますが、必要なファイルが不足しています。「検証して修復」で復元してください。",
+      updateAvailable: "このコンポーネントに検証済みの更新があります。「更新」を選ぶと適用されます。",
       managedRootRemovable: "この依存関係の管理された Dependencies ルートを削除します。",
       managedRootEmpty: "この依存関係にはクリーンアップできる管理下のインストールがありません。",
       categoryTag: "コンポーネント依存関係",
@@ -2583,7 +2588,7 @@ const jaJpAppCopy: AppCopy = {
       installerDownloadedVersion: (value: string) => `${value} のインストーラーを管理下の依存関係ディレクトリにダウンロードしました。`,
       sharedRuntimeInstalled: "共有 WebView2 ランタイムがインストールされ、検出されました。",
       installerLaunched: "インストーラーが表示されました。このプロバイダーを使う前にベンダーのインストール手順を完了してください。",
-      runtimeFilesUnavailable: "必要な実行ファイルを取得できませんでした。接続を確認して検証を再試行してください。",
+  runtimeFilesUnavailable: "必要なファイルを準備できませんでした。接続と空き容量を確認してから、この操作を再試行してください。",
       componentFilesExtracted: "コンポーネントのファイルをインストール先に展開しました。"
     },
     gpuPlacement: {

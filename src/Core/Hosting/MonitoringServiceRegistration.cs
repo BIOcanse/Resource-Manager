@@ -141,7 +141,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
             Infrastructure.ReadWrite.HostReadWriteDependencies.Create(
                 provider.GetRequiredService<IHttpClientFactory>().CreateClient("read-write-dependencies"),
                 provider.GetRequiredService<Application.Components.IProviderRuntimeProbe>(),
-                Infrastructure.Paths.PackagePathResolver.ResolvePackageRoot(provider.GetRequiredService<IHostEnvironment>().ContentRootPath)));
+                Infrastructure.Paths.PackagePathResolver.ResolvePackageRoot(provider.GetRequiredService<IHostEnvironment>().ContentRootPath),
+                provider.GetRequiredService<HardwareBridgeClient>(),
+                provider.GetRequiredService<Application.Management.IManagementInventoryRevisionOwner>()));
         services.AddSingleton<ResourceManager.ReadWrite.ReadWriteCore>(provider => new(
             provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Reads,
             provider.GetRequiredService<ResourceManager.ReadWrite.Dependencies.IReadWriteDependencies>()));

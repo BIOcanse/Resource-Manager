@@ -43,12 +43,13 @@ public sealed partial class ComponentManager : IComponentManager
         string? windowsSid,
         CancellationToken cancellationToken)
     {
+        var observedRevision = inventoryRevisionOwner?.Current.ComponentRevision;
         var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
         var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
         var statuses = ComponentCatalog.Definitions
             .Select(definition => BuildStatus(definition, dependencyStatuses, snapshot))
             .ToArray();
-        inventoryRevisionOwner?.ObserveComponents(windowsSid, statuses);
+        inventoryRevisionOwner?.ObserveComponents(windowsSid, statuses, observedRevision);
         return statuses;
     }
 
@@ -59,6 +60,13 @@ public sealed partial class ComponentManager : IComponentManager
         string id,
         string? windowsSid,
         CancellationToken cancellationToken)
+        => await ReadStatusAsync(id, windowsSid, cancellationToken);
+
+    private async Task<ComponentStatus?> ReadStatusAsync(
+        string id,
+        string? windowsSid,
+        CancellationToken cancellationToken,
+        bool contentChanged = false)
     {
         var definition = ComponentCatalog.Find(id);
         if (definition is null)
@@ -66,10 +74,25 @@ public sealed partial class ComponentManager : IComponentManager
             return null;
         }
 
-        var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
-        var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
-        var status = BuildStatus(definition, dependencyStatuses, snapshot);
-        inventoryRevisionOwner?.ObserveComponent(windowsSid, status);
+        var observedRevision = inventoryRevisionOwner?.Current.ComponentRevision;
+        ComponentStatus status;
+        try
+        {
+            // Once bytes are committed, cancellation cannot abandon their revision publication.
+            var readToken = contentChanged ? CancellationToken.None : cancellationToken;
+            var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, readToken);
+            var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, readToken);
+            status = BuildStatus(definition, dependencyStatuses, snapshot);
+        }
+        catch when (contentChanged)
+        {
+            inventoryRevisionOwner?.ObserveComponentContentChanged(id);
+            throw;
+        }
+        if (contentChanged)
+            inventoryRevisionOwner?.ObserveComponentContentChanged(windowsSid, status);
+        else
+            inventoryRevisionOwner?.ObserveComponent(windowsSid, status, observedRevision);
         return status;
     }
 }

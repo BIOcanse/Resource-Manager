@@ -1,4 +1,14 @@
 import { uiText } from "../text.ts";
+import type { ManagedComponent } from "../types.ts";
+
+export function componentVerifyLabel(state: string | undefined) {
+  return state === "payload_missing" ? uiText.componentCatalog.verifyAndRepair : uiText.management.verify;
+}
+
+export function componentNeedsUpdate(component: ManagedComponent) {
+  return component.state === "update_available"
+    || (component.installed === true && component.canInstall === true);
+}
 
 const noteKeys: Record<string, keyof typeof uiText.componentCatalog.installNotes> = {
   "shared-webview2-runtime": "webRuntime",

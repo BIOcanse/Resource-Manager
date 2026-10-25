@@ -18,7 +18,12 @@ internal static class UserShellProcessLauncher
         {
             var request = UserShellExecuteRequest.Decode(args[1]);
             var executable = ResolveExecutable(request.FileName, allowDirectory: request.Verb == "properties");
-            if (request.Verb == "properties") return ExecuteProperties(executable) ? 0 : 2;
+            if (request.Verb == "properties")
+            {
+                if (request.WaitForExit) return 2;
+                return ExecuteProperties(executable) ? 0 : 2;
+            }
+            if (request.WaitForExit && IsHttpUri(executable)) return 2;
 
             var start = new ProcessStartInfo
             {
@@ -27,10 +32,10 @@ internal static class UserShellProcessLauncher
                 Verb = request.Verb ?? string.Empty
             };
             if (!IsHttpUri(executable)) start.WorkingDirectory = Path.GetDirectoryName(executable);
-            return ExecuteShellStart(() => Process.Start(start));
+            return ExecuteShellStart(() => Process.Start(start), request.WaitForExit);
         }
         catch (Exception error) when (error is IOException or ArgumentException or FormatException
-            or System.Text.Json.JsonException or System.ComponentModel.Win32Exception)
+            or System.Text.Json.JsonException or System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             return 2;
         }
@@ -75,9 +80,16 @@ internal static class UserShellProcessLauncher
         return ShellExecuteExW(ref info);
     }
 
-    internal static int ExecuteShellStart(Func<Process?> startProcess)
+    internal static int ExecuteShellStart(Func<Process?> startProcess, bool waitForExit = false)
     {
         using var launched = startProcess();
+        if (waitForExit)
+        {
+            if (launched is null) return 2;
+            launched.WaitForExit();
+            return launched.ExitCode;
+        }
+
         return 0;
     }
 

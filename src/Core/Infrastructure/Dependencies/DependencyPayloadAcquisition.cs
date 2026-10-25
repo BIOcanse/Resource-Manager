@@ -1,104 +1,70 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
-using ResourceManager.ReadWrite.Dependencies;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
-/// <summary>
-/// 取组件安装器之外还需要的运行时文件。
-///
-/// 只在文件**确实缺**的时候下载：这些文件不会自己变，重复下载没有意义，
-/// 而且组件页每刷新一次就联网一次是不能接受的。
-///
-/// 下载地址按已验证标签确定性拼出来，和已验证安装器同一口径 ——
-/// 不调 GitHub API，所以断网或被限流时不会把整条路带塌，只是这次取不到。
-/// </summary>
+/// <summary>Explicit installation replaces a release; verification repairs only missing files of a recorded current release.</summary>
 public sealed class DependencyPayloadAcquisition(
     HttpClient httpClient,
     IHostEnvironment environment,
+    HardwareBridgeClient hardwareBridge,
     ILogger<DependencyPayloadAcquisition>? logger = null) : IDependencyPayloadAcquisition
 {
-    /// <summary>
-    /// 确保这个组件的运行时文件都在。已经在就什么都不做。
-    /// </summary>
-    public async Task<DependencyPayloadResult> EnsureAsync(
-        OptionalDependencyDefinition definition,
-        CancellationToken cancellationToken)
+    internal Func<string, Stream>? OpenStagedFile { get; init; }
+    internal Func<CancellationToken, ValueTask<IAsyncDisposable>>? SuspendHelper { get; init; }
+
+    public Task<DependencyPayloadResult> EnsureAsync(OptionalDependencyDefinition definition, CancellationToken cancellationToken)
+        => AcquireAsync(definition, replaceRelease: false, cancellationToken);
+
+    public Task<DependencyPayloadResult> InstallAsync(OptionalDependencyDefinition definition, CancellationToken cancellationToken)
+        => AcquireAsync(definition, replaceRelease: true, cancellationToken);
+
+    private async Task<DependencyPayloadResult> AcquireAsync(OptionalDependencyDefinition definition, bool replaceRelease, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        if (definition.PayloadSource is not { } source)
-        {
-            return new DependencyPayloadResult(true, "这个组件不需要额外的运行时文件。");
-        }
-
-        var directory = ResolvePayloadDirectory(definition.Id);
-        var missing = source.FileNames
-            .Where(name => !File.Exists(Path.Combine(directory, name)))
-            .ToArray();
-        if (missing.Length == 0)
-        {
-            return new DependencyPayloadResult(true, "运行时文件已就位。");
-        }
-
+        if (definition.PayloadSource is not { } source) return new(true, "This component has no separate payload.");
         try
         {
-            Directory.CreateDirectory(directory);
-            var extracted = await DownloadAndExtractAsync(
-                source,
-                directory,
-                missing,
-                cancellationToken).ConfigureAwait(false);
-            var stillMissing = source.FileNames
-                .Where(name => !File.Exists(Path.Combine(directory, name)))
-                .ToArray();
-            return stillMissing.Length == 0
-                ? new DependencyPayloadResult(true, $"已取回 {string.Join("、", extracted)}。")
-                // 归档里没有我们要的文件：上游改了资产内容，如实说，别假装成功。
-                : new DependencyPayloadResult(false, $"归档里没有找到：{string.Join("、", stillMissing)}。");
+            var directory = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "Dependencies", definition.Id);
+            DependencyInstallPaths.RejectLinks(directory);
+            if (Directory.Exists(directory)) DependencyInstallPaths.ValidateTree(directory);
+            var missing = source.FileNames.Where(name => !File.Exists(DependencyInstallPaths.InRoot(directory, name))).ToArray();
+            var installed = DependencyReleaseRecordStore.Read(DependencyReleaseRecordStore.InstalledPath(directory), logger);
+            var current = DependencyReleaseRecordStore.MatchesPin(installed, definition);
+            if (missing.Length == 0 && (current || !replaceRelease)) return new(true, "No missing files require repair.");
+            if (!replaceRelease && !current) return new(false, "A confirmed pinned installation is required before same-release repair.");
+
+            var url = $"https://github.com/{source.Owner}/{source.Repository}/releases/download/{source.VerifiedTag}/{source.VerifiedAssetName}";
+            using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, token).ConfigureAwait(false);
+            buffer.Position = 0;
+            var record = new DependencyReleaseRecord(source.VerifiedTag, source.VerifiedAssetName, Convert.ToHexString(SHA256.HashData(buffer)));
+            if (!replaceRelease && !string.Equals(record.AssetSha256, installed!.AssetSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The repair archive differs from the recorded installed asset.");
+            buffer.Position = 0;
+            using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
+            using var transaction = new DependencyPayloadTransaction(directory, replaceRelease, logger);
+            transaction.Prepare(archive, source.FileNames, missing, source.IncludeArchiveContents, record, token, OpenStagedFile);
+            // A LICENSE-only repair neither writes the executable nor ends its session.
+            var writesHelper = definition.Id == "hardware-bridge" && (replaceRelease
+                || missing.Any(name => name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)));
+            await using var session = writesHelper
+                ? await (SuspendHelper is null ? hardwareBridge.SuspendForInstallationAsync(token) : SuspendHelper(token)).ConfigureAwait(false) : null;
+            transaction.Publish(token);
+            return new(true, "The requested payload files were published.", Changed: true);
         }
-        catch (Exception error) when (error is HttpRequestException
-            or IOException
-            or InvalidDataException
-            or UnauthorizedAccessException
-            or TaskCanceledException)
+        catch (Exception error) when (error is HttpRequestException or IOException or InvalidDataException
+            or UnauthorizedAccessException or OperationCanceledException or TimeoutException)
         {
-            logger?.LogWarning(error, "取 {Component} 的运行时文件失败。", definition.Id);
-            return new DependencyPayloadResult(false, $"取运行时文件失败：{error.Message}");
+            logger?.LogWarning(error, "Component payload acquisition failed for {ComponentId}", definition.Id);
+            return new(false, $"Component payload acquisition failed: {error.Message}");
         }
     }
-
-    private async Task<IReadOnlyList<string>> DownloadAndExtractAsync(
-        DependencyPayloadSource source,
-        string directory,
-        IReadOnlyList<string> wanted,
-        CancellationToken cancellationToken)
-    {
-        var url = $"https://github.com/{source.Owner}/{source.Repository}/releases/download/"
-            + $"{source.VerifiedTag}/{source.VerifiedAssetName}";
-
-        using var response = await httpClient
-            .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        // 辅助程序的独立发行包也走同一条获取通道。
-        await using var stream = await response.Content
-            .ReadAsStreamAsync(cancellationToken)
-            .ConfigureAwait(false);
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
-        buffer.Position = 0;
-
-        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
-        return DependencyPackageInstaller.ExtractArchive(archive, directory,
-            source.IncludeArchiveContents ? null : [.. wanted], cancellationToken);
-    }
-
-    private string ResolvePayloadDirectory(string componentId)
-        => Path.Combine(
-            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-            "Dependencies",
-            componentId);
 }

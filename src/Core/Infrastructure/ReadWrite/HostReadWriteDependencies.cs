@@ -1,17 +1,24 @@
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Infrastructure.Dependencies;
 using ResourceManager.ReadWrite.Dependencies;
+using System.IO.Compression;
+using System.Security.Cryptography;
 
 namespace ResourceManager.App.Infrastructure.ReadWrite;
 
 internal static class HostReadWriteDependencies
 {
     internal static DependencyActions Create(HttpClient client, IProviderRuntimeProbe providers, string packageRoot,
+        HardwareBridgeClient hardwareBridge, IManagementInventoryRevisionOwner inventoryRevisionOwner,
         Func<string, DependencyStatus>? nativeProbe = null, DependencyPackageInstaller? installer = null)
     {
+        var resolvedPackageRoot = Path.GetFullPath(packageRoot);
         nativeProbe ??= ReadWriteNativeDependencyProbe.Query;
         installer ??= new DependencyPackageInstaller();
         var bindings = new List<DependencyBinding>
@@ -45,13 +52,97 @@ internal static class HostReadWriteDependencies
         foreach (var (source, component) in components)
         {
             var definition = OptionalDependencyCatalog.Find(component);
-            var directory = Path.Combine(packageRoot, "Dependencies", component);
+            var directory = Path.Combine(resolvedPackageRoot, "Dependencies", component);
             bindings.Add(new(source, () => QueryProvider(source, component, directory, providers, definition),
-                definition is null ? null : (package, cancellationToken) => installer.InstallAsync(package,
-                    new(directory, definition.RequiresElevation, ArchiveFiles: definition.PayloadSource is { IncludeArchiveContents: false } payload
-                        ? [.. payload.FileNames] : null), cancellationToken)));
+                definition is null ? null : (package, cancellationToken) => InstallSelectedPackageAsync(
+                    package, component, definition, resolvedPackageRoot, directory,
+                    hardwareBridge, inventoryRevisionOwner, installer, cancellationToken)));
         }
         return new(client, bindings);
+    }
+
+    private static async ValueTask<DependencyActionResult> InstallSelectedPackageAsync(
+        DependencyPackage package,
+        string componentId,
+        OptionalDependencyDefinition definition,
+        string packageRoot,
+        string installDirectory,
+        HardwareBridgeClient hardwareBridge,
+        IManagementInventoryRevisionOwner inventoryRevisionOwner,
+        DependencyPackageInstaller installer,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var packagePath = Path.GetFullPath(package.LocalPath);
+        var cacheRoot = Path.Combine(packageRoot, "Misc", "DependencyInstallers");
+        DependencyInstallPaths.RejectLinks(packageRoot);
+        DependencyInstallPaths.RejectLinks(packagePath);
+        DependencyInstallPaths.RejectLinks(cacheRoot);
+        DependencyInstallPaths.RejectLinks(installDirectory);
+        if (Directory.Exists(installDirectory)) DependencyInstallPaths.ValidateTree(installDirectory);
+
+        using var asset = new FileStream(packagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (IsWithinDirectory(packagePath, cacheRoot))
+        {
+            DependencyInstallPaths.ValidateTree(cacheRoot);
+            var sidecar = DependencyReleaseRecordStore.DownloadPath(packagePath);
+            DependencyInstallPaths.RejectLinks(sidecar);
+            var release = DependencyReleaseRecordStore.Read(sidecar)
+                ?? throw new InvalidDataException("The cached package has no valid download record.");
+            var actualSha256 = Convert.ToHexString(SHA256.HashData(asset));
+            if (!string.Equals(release.AssetSha256, actualSha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The cached asset SHA-256 differs from its download record.");
+            asset.Position = 0;
+        }
+
+        if (Path.GetExtension(packagePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            using var archive = new ZipArchive(asset, ZipArchiveMode.Read, leaveOpen: true);
+            return await InstallSelectedZipAsync(package, componentId, definition, installDirectory,
+                archive, hardwareBridge, inventoryRevisionOwner, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await installer.InstallAsync(package,
+            new(installDirectory, definition.RequiresElevation,
+                ArchiveFiles: definition.PayloadSource is { IncludeArchiveContents: false } payload
+                    ? [.. payload.FileNames] : null),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask<DependencyActionResult> InstallSelectedZipAsync(
+        DependencyPackage package,
+        string componentId,
+        OptionalDependencyDefinition definition,
+        string installDirectory,
+        ZipArchive archive,
+        HardwareBridgeClient hardwareBridge,
+        IManagementInventoryRevisionOwner inventoryRevisionOwner,
+        CancellationToken cancellationToken)
+    {
+        using var change = inventoryRevisionOwner.BeginComponentChange(componentId);
+        using var transaction = new DependencyPayloadTransaction(installDirectory, replaceRelease: true);
+        var payload = definition.PayloadSource;
+        transaction.Prepare(
+            archive,
+            payload?.FileNames ?? definition.InstalledProbeRelativePaths,
+            [],
+            payload?.IncludeArchiveContents == true,
+            null,
+            cancellationToken);
+
+        await using var helperSession = componentId.Equals("hardware-bridge", StringComparison.OrdinalIgnoreCase)
+            ? await hardwareBridge.SuspendForInstallationAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+        transaction.Publish(cancellationToken);
+        inventoryRevisionOwner.ObserveComponentContentChanged(componentId);
+        return new DependencyActionResult(package.DependencyId, "filesExtracted", null);
+    }
+
+    private static bool IsWithinDirectory(string path, string directory)
+    {
+        var root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
     }
 
     private static DependencyStatus QueryProvider(string source, string component, string directory,

@@ -116,4 +116,10 @@ public static class OptionalDependencyCatalog
     {
         return Definitions.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
     }
+
+    public static void EnsureTerms(OptionalDependencyDefinition definition, bool acknowledgeExternalTerms)
+    {
+        if (definition.RequiresExternalTermsAcknowledgement && !acknowledgeExternalTerms)
+            throw new InvalidOperationException("继续前需要确认外部厂商条款。");
+    }
 }

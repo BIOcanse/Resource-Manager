@@ -4,6 +4,8 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
   backendMessage: {
     unknown: "The state was updated.",
     dependency: {
+      payloadMissing: "The runtime is installed, but required payload files are missing. Choose Verify and repair to restore them.",
+      updateAvailable: "A verified update is available for this component. Choose Update to apply it.",
       managedRootRemovable: "Deletes the managed Dependencies root of this dependency.",
       managedRootEmpty: "This dependency has no managed installation to clean up.",
       categoryTag: "Component dependency",
@@ -26,7 +28,7 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       installerDownloadedVersion: (value: string) => `The installer for ${value} was downloaded into the managed dependency directory.`,
       sharedRuntimeInstalled: "The shared WebView2 runtime is installed and detected.",
       installerLaunched: "The installer started visibly. Finish the vendor's installation prompts before using this provider.",
-      runtimeFilesUnavailable: "Required runtime files could not be obtained. Check the connection and retry verification.",
+    runtimeFilesUnavailable: "Required files could not be prepared. Check the connection and available storage, then retry this action.",
       componentFilesExtracted: "The component files were extracted into the install directory."
     },
     gpuPlacement: {

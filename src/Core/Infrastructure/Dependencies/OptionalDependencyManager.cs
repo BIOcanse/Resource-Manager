@@ -4,6 +4,7 @@ using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -15,6 +16,8 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     private readonly IDependencyInstallerSourceResolver installerSourceResolver;
     private readonly IInteractiveUserSessionBroker sessionBroker;
     private readonly string packageRoot;
+    private readonly HardwareBridgeClient hardwareBridge;
+    private readonly ILogger<OptionalDependencyManager>? logger;
 
     public OptionalDependencyManager(
         HttpClient httpClient,
@@ -22,12 +25,16 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
         IFileChangeTracker fileChangeTracker,
         IInstalledSoftwareInventory installedSoftwareInventory,
         IDependencyInstallerSourceResolver installerSourceResolver,
-        IInteractiveUserSessionBroker? sessionBroker = null)
+        HardwareBridgeClient hardwareBridge,
+        IInteractiveUserSessionBroker? sessionBroker = null,
+        ILogger<OptionalDependencyManager>? logger = null)
     {
         this.httpClient = httpClient;
         this.fileChangeTracker = fileChangeTracker;
         this.installedSoftwareInventory = installedSoftwareInventory;
         this.installerSourceResolver = installerSourceResolver;
+        this.hardwareBridge = hardwareBridge;
+        this.logger = logger;
         this.sessionBroker = sessionBroker ?? new WindowsInteractiveUserSessionBroker();
         packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
     }

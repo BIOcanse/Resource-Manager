@@ -111,6 +111,12 @@ public static class BackendMessageCodes
 
         /// <summary>无法取得组件声明的运行文件；检查网络后可重试验证。参数：无。</summary>
         public const byte RuntimeFilesUnavailable = 24;
+
+        /// <summary>运行库已安装，但组件声明的运行文件不全；验证可补齐。参数：无。</summary>
+        public const byte PayloadMissing = 25;
+
+        /// <summary>受管组件的发布记录缺失或与当前固定发布不同，可显式更新。参数：无。</summary>
+        public const byte UpdateAvailable = 26;
     }
 
     public static class Software

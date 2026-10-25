@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
@@ -75,10 +76,7 @@ public sealed partial class OptionalDependencyManager
 
     private static void EnsureTerms(OptionalDependencyDefinition definition, bool acknowledgeExternalTerms)
     {
-        if (definition.RequiresExternalTermsAcknowledgement && !acknowledgeExternalTerms)
-        {
-            throw new InvalidOperationException("继续前需要确认外部厂商条款。");
-        }
+        OptionalDependencyCatalog.EnsureTerms(definition, acknowledgeExternalTerms);
     }
 
     private static DependencyDownloadProgress CreateProgress(

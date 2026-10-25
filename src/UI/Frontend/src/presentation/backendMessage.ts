@@ -47,7 +47,9 @@ function dependencyRenderers(): Record<number, Renderer> {
     21: () => copy.sharedRuntimeInstalled,
     22: () => copy.installerLaunched,
     23: () => copy.componentFilesExtracted,
-    24: () => copy.runtimeFilesUnavailable
+    24: () => copy.runtimeFilesUnavailable,
+    25: () => copy.payloadMissing,
+    26: () => copy.updateAvailable
   };
 }
 

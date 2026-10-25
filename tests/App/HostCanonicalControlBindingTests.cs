@@ -4,6 +4,7 @@ using ResourceManager.ReadWrite.Dependencies;
 using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Control;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Control;
@@ -12,6 +13,8 @@ using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.ReadWrite;
 using ResourceManager.ReadWrite;
 using ResourceManager.App.Domain.Monitoring;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using ResourceManager.ReadWrite.Vendors.Intel;
 using ResourceManager.ReadWrite.Windows.Cpu.Models;
 using ResourceManager.ReadWrite.Windows.Gpu;
@@ -168,8 +171,10 @@ public sealed partial class MetricCatalogueSubscriptionTests
         using var client = new HttpClient();
         var providers = new CanonicalDependencyProviders();
         var nativeQueries = new List<string>();
+        var packageRoot = Path.Combine(Path.GetTempPath(), "recorded-not-created-" + Guid.NewGuid().ToString("N"));
+        using var bridge = new HardwareBridgeClient(new HostDependencyEnvironment(packageRoot), static _ => null);
         var dependencies = HostReadWriteDependencies.Create(client, providers,
-            Path.Combine(Path.GetTempPath(), "recorded-not-created-" + Guid.NewGuid().ToString("N")), source =>
+            packageRoot, bridge, new ManagementInventoryRevisionOwner(), source =>
             {
                 nativeQueries.Add(source);
                 return new(source, DependencyAvailability.Missing, "recorded-missing");
@@ -184,6 +189,14 @@ public sealed partial class MetricCatalogueSubscriptionTests
         Assert.Equal(new[] { "amd-adlx-provider", "hardware-bridge", "intel-msr-pawnio-provider" }, providers.Queries);
         Assert.Equal(new[] { "intel.igcl" }, nativeQueries);
         Assert.DoesNotContain("amd-smu-pawnio-provider", providers.Queries);
+    }
+
+    private sealed class HostDependencyEnvironment(string root) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Development";
+        public string ApplicationName { get; set; } = "Resource Manager tests";
+        public string ContentRootPath { get; set; } = root;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private sealed class CanonicalDependencyProviders : IProviderRuntimeProbe
