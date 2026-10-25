@@ -412,7 +412,7 @@ const koKrAppCopy: AppCopy = {
     volumeKind: {
       physical: "물리 드라이브",
       virtual: "가상 드라이브",
-      removable: "이동식",
+      external: "외장 드라이브",
       network: "네트워크 위치",
       optical: "광학 드라이브",
       unknown: "유형 알 수 없음"

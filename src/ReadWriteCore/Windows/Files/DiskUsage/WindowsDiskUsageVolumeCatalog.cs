@@ -11,15 +11,19 @@ namespace ResourceManager.App.Infrastructure.DiskUsage;
 /// 本机卷清单。
 ///
 /// 盘符、文件系统、容量直接来自 <see cref="DriveInfo"/>；
-/// 介质来源分三步定：网络/可移动/光驱由驱动器类型直接给出；
+/// 介质来源分三步定：网络/可移动/光驱由驱动器类型直接给出，可移动归外接盘；
 /// subst 出来的盘符由 QueryDosDevice 认出来；
-/// 剩下的固定盘去存储管理空间查总线类型，虚拟磁盘和存储空间都在总线类型里写明了。
+/// 剩下的固定盘去存储管理空间查总线类型：虚拟磁盘和存储空间在总线类型里写明了，
+/// USB、1394 上的固定盘（移动固态盘）是外接盘。
 /// 查不到就是 <see cref="DiskUsageVolumeKinds.Unknown"/>，不猜。
 /// </summary>
 public sealed class WindowsDiskUsageVolumeCatalog : IDiskUsageVolumeCatalog
 {
     // StorageBusType：14 虚拟、15 文件支持的虚拟盘（VHD/VHDX）、16 存储空间、9 iSCSI。
     private static readonly HashSet<uint> VirtualBusTypes = [9, 14, 15, 16];
+
+    // StorageBusType：7 USB、4 1394。SD（12）和 MMC（13）不算：机身内置的 eMMC 也报 MMC。
+    private static readonly HashSet<uint> ExternalBusTypes = [4, 7];
 
     public IReadOnlyList<DiskUsageVolume> ReadVolumes()
     {
@@ -60,12 +64,20 @@ public sealed class WindowsDiskUsageVolumeCatalog : IDiskUsageVolumeCatalog
         IReadOnlyDictionary<string, uint> busTypesByLetter)
     {
         var driveType = SafeDriveType(drive);
+        var substituted = driveType == DriveType.Fixed && IsSubstitutedDrive(volumeId);
+        uint? busType = busTypesByLetter.TryGetValue(volumeId, out var bus) ? bus : null;
+        return ClassifyVolumeKind(driveType, substituted, busType);
+    }
+
+    /// <summary>由驱动器类型、是否 subst、所在磁盘的总线类型定出介质来源。</summary>
+    internal static string ClassifyVolumeKind(DriveType driveType, bool substituted, uint? busType)
+    {
         switch (driveType)
         {
             case DriveType.Network:
                 return DiskUsageVolumeKinds.Network;
             case DriveType.Removable:
-                return DiskUsageVolumeKinds.Removable;
+                return DiskUsageVolumeKinds.External;
             case DriveType.CDRom:
                 return DiskUsageVolumeKinds.Optical;
             case DriveType.Ram:
@@ -76,18 +88,23 @@ public sealed class WindowsDiskUsageVolumeCatalog : IDiskUsageVolumeCatalog
                 return DiskUsageVolumeKinds.Unknown;
         }
 
-        if (IsSubstitutedDrive(volumeId))
+        if (substituted)
         {
             return DiskUsageVolumeKinds.Virtual;
         }
 
-        if (!busTypesByLetter.TryGetValue(volumeId, out var busType))
+        if (busType is not { } bus)
         {
             return DiskUsageVolumeKinds.Unknown;
         }
 
-        return VirtualBusTypes.Contains(busType)
-            ? DiskUsageVolumeKinds.Virtual
+        if (VirtualBusTypes.Contains(bus))
+        {
+            return DiskUsageVolumeKinds.Virtual;
+        }
+
+        return ExternalBusTypes.Contains(bus)
+            ? DiskUsageVolumeKinds.External
             : DiskUsageVolumeKinds.Physical;
     }
 

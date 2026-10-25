@@ -287,7 +287,7 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     volumeKind: {
       physical: "Physical drive",
       virtual: "Virtual drive",
-      removable: "Removable",
+      external: "External drive",
       network: "Network location",
       optical: "Optical drive",
       unknown: "Unknown source"

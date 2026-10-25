@@ -24,7 +24,7 @@ import type {
 const volumeKinds = [
   "physical",
   "virtual",
-  "removable",
+  "external",
   "network",
   "optical",
   "unknown"

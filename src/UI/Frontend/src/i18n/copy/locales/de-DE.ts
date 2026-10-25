@@ -412,7 +412,7 @@ const deDeAppCopy: AppCopy = {
     volumeKind: {
       physical: "Physisches Laufwerk",
       virtual: "Virtuelles Laufwerk",
-      removable: "Wechselmedium",
+      external: "Externes Laufwerk",
       network: "Netzwerkpfad",
       optical: "Optisches Laufwerk",
       unknown: "Unbekannte Quelle"

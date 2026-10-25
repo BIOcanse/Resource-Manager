@@ -9,7 +9,7 @@
 export type DiskUsageVolumeKind =
   | "physical"
   | "virtual"
-  | "removable"
+  | "external"
   | "network"
   | "optical"
   | "unknown";

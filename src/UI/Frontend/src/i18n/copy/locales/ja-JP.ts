@@ -412,7 +412,7 @@ const jaJpAppCopy: AppCopy = {
     volumeKind: {
       physical: "物理ドライブ",
       virtual: "仮想ドライブ",
-      removable: "リムーバブル",
+      external: "外付けドライブ",
       network: "ネットワークの場所",
       optical: "光学ドライブ",
       unknown: "不明な種類"

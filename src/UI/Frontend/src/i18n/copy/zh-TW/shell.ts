@@ -286,7 +286,7 @@ export const zhShellCopy = {
     volumeKind: {
       physical: "物理磁碟",
       virtual: "虛擬磁碟",
-      removable: "可移動",
+      external: "行動硬碟",
       network: "網路位置",
       optical: "光碟機",
       unknown: "來源未知"

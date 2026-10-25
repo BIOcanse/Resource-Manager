@@ -412,7 +412,7 @@ const frFrAppCopy: AppCopy = {
     volumeKind: {
       physical: "Lecteur physique",
       virtual: "Lecteur virtuel",
-      removable: "Amovible",
+      external: "Disque externe",
       network: "Emplacement réseau",
       optical: "Lecteur optique",
       unknown: "Source inconnue"

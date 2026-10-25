@@ -412,7 +412,7 @@ const ruRuAppCopy: AppCopy = {
     volumeKind: {
       physical: "Физический диск",
       virtual: "Виртуальный диск",
-      removable: "Съёмный",
+      external: "Внешний диск",
       network: "Сетевое расположение",
       optical: "Оптический привод",
       unknown: "Неизвестный источник"

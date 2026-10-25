@@ -412,7 +412,7 @@ const esEsAppCopy: AppCopy = {
     volumeKind: {
       physical: "Unidad física",
       virtual: "Unidad virtual",
-      removable: "Extraíble",
+      external: "Unidad externa",
       network: "Ubicación de red",
       optical: "Unidad óptica",
       unknown: "Origen desconocido"

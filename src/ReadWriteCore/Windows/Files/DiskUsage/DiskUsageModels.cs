@@ -9,8 +9,11 @@ public static class DiskUsageVolumeKinds
     /// <summary>虚拟磁盘：挂载的 VHD/VHDX、存储空间、iSCSI，或 subst 出来的盘符。</summary>
     public const string Virtual = "virtual";
 
-    /// <summary>可移动介质：U 盘、读卡器。</summary>
-    public const string Removable = "removable";
+    /// <summary>
+    /// 外接盘（移动硬盘）：经 USB 或 1394 接入的盘，以及驱动器类型为可移动的介质（U 盘、读卡器）。
+    /// USB 移动固态盘的驱动器类型是固定盘，只能靠总线类型认出来。
+    /// </summary>
+    public const string External = "external";
 
     /// <summary>网络映射盘。</summary>
     public const string Network = "network";
