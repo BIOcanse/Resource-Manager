@@ -41,6 +41,7 @@ import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext
 import { RadioGroupRoot, RadioGroupItem } from "../../ui/primitives/RadioGroup";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { uiText } from "../../text.ts";
+import { currentLanguage } from "../../i18n/appTextStore.ts";
 import { controlAccessLevelAllows } from "./controlTypes.ts";
 import type {
   ControlAccessLevel,
@@ -698,11 +699,18 @@ function ControlObjectCard(props: {
         控制归属。切回固件是**一直保留的出路** —— 任何时候都能把这块硬件还给它
         自己的固件，而不是只能靠一项项撤销设定。
       */}
+      {/*
+        风扇是三选一：固件管理／固件写入／软件管理。选中的那种下面说一句它是什么意思
+        （尤其程序退出后还算不算数），用户选之前就该知道。
+        软件管理会连带同通道别的风扇时，在选之前点名说是哪几把；同通道没有别的风扇时只说会连带。
+      */}
       <Show when={isFan()}>
+      <div class="control-ownership control-fan-ownership">
         <Show when={props.object.softwareTakeoverCoversAllFans}>
-          <p class="control-curve-note" role="note">{uiText.control.term["takeover-all-fans"]}
-            <Show when={props.takenOverWith.length > 0}> {uiText.control.takeoverCoversOthers(props.takenOverWith.join("、"))}</Show>
-          </p>
+          <p class="control-curve-note" role="note">{props.takenOverWith.length > 0
+            ? uiText.control.takeoverCoversOthers(
+              new Intl.ListFormat(currentLanguage(), { type: "conjunction" }).format(props.takenOverWith))
+            : uiText.control.term["takeover-all-fans"]}</p>
         </Show>
         <RadioGroupRoot class="settings-segmented-control control-ownership-choice control-fan-modes"
           ariaLabel={uiText.control.ownership.label} value={selectedMode() ?? ""} onChange={id => {
@@ -720,10 +728,20 @@ function ControlObjectCard(props: {
             </RadioGroupItem>
           }</For>
         </RadioGroupRoot>
+        <Show when={mode()}>{(chosen) =>
+          <p class="control-capability-reason control-fan-mode-hint">
+            {uiText.control.fanModeHint[chosen().id]}
+          </p>
+        }</Show>
         <For each={modes().filter(mode => !mode.available)}>{entry =>
-          <p class="control-capability-reason">{uiText.control.term[entry.id]}: {controlReasonText(entry.unavailableReason)}</p>
+          <p class="control-capability-reason">
+            {uiText.control.fanModeUnavailable(uiText.control.term[entry.id], controlReasonText(entry.unavailableReason))}
+          </p>
         }</For>
-        <Show when={mixed()}><p role="alert">{controlReasonText({code: "fan-management-modes-mixed"})}</p></Show>
+        <Show when={mixed()}>
+          <p class="control-curve-note" role="alert">{controlReasonText({code: "fan-management-modes-mixed"})}</p>
+        </Show>
+      </div>
       </Show>
       <Show when={!isFan()}>
       <div class="control-ownership">

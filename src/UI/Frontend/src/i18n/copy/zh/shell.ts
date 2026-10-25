@@ -207,7 +207,13 @@ export const zhShellCopy = {
     detecting: "检测中",
     readings: "只读数值",
     takeoverCoversOthers: (others: string) =>
-      `这台机器上「交给软件管」是整机一个开关：选了软件接管，${others} 也会一起脱离固件自动控制，停在当时的转速上，除非也给它设一条曲线。`,
+      `这台机器上软件管理是整机一个开关：选了软件管理，${others} 也会一起脱离固件自动控制，停在当时的转速上，除非也给它设一条曲线。`,
+    fanModeHint: {
+      "firmware-management": "固件按自己的策略调速，本程序只读取转速。",
+      "firmware-write": "曲线写进固件，由固件按表调速。关掉本程序、重启之后依然有效，直到改回固件管理。",
+      "software-management": "本程序每 0.1 秒计算一次转速并写下去。程序不在时风扇交还固件。"
+    },
+    fanModeUnavailable: (mode: string, reason: string) => `${mode}：${reason}`,
     createCurve: "新建曲线",
     readingFirmwareCurve: "正在读取固件当前曲线…",
     fixedStepsCurveNote: "这台机器的固件表只让改每一档的转速，温度断点是固件定死的，改不了。",

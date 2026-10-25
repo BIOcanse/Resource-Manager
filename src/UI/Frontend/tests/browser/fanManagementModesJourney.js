@@ -43,7 +43,9 @@ export default async function fanManagementModesJourney(page, baseUrl) {
   await card.getByRole("note").filter({hasText:"所有风扇"}).waitFor();
   assert.doesNotMatch(await card.locator("header").innerText(),/uniwill-wmi-ec|takeover-all-fans|curve-firmware/);
   assert.equal(await limited.getByRole("radio",{name:"固件写入",exact:true}).isDisabled(),true);
-  await limited.getByText("此通道不支持写入固件曲线。",{exact:false}).waitFor();
+  await limited.getByText("固件写入：此通道不支持写入固件曲线。",{exact:true}).waitFor();
+  assert.equal(await card.getByRole("note").count(),1);
+  await card.locator(".control-fan-mode-hint").filter({hasText:"本程序只读取转速"}).waitFor();
   await mixed.getByRole("alert").filter({hasText:"重新选择"}).waitFor();
   assert.equal(await mixed.getByRole("button",{name:"应用",exact:true}).isDisabled(),true);
   assert.equal(await mixed.locator('.control-ownership-choice [aria-checked="true"]').count(),0);
@@ -53,6 +55,7 @@ export default async function fanManagementModesJourney(page, baseUrl) {
     await card.locator(".control-readings dd").filter({hasText:"2500"}).waitFor();
     assert.equal(await card.locator(".control-capabilities").getByText("转速",{exact:true}).count(),0);
     assert.equal(await card.locator(".control-capability").count(),mode==="固件写入"?1:mode==="软件管理"?3:0);
+    await card.locator(".control-fan-mode-hint").filter({hasText:mode==="固件写入"?"直到改回固件管理":mode==="软件管理"?"程序不在时风扇交还固件":"本程序只读取转速"}).waitFor();
     if(mode!=="固件管理") {
       await card.getByRole("checkbox",{name:"转速曲线",exact:true}).check();
       await card.locator(".fan-curve-chart").waitFor();

@@ -222,7 +222,14 @@ const koKrAppCopy: AppCopy = {
     detect: "하드웨어 다시 감지",
     detecting: "감지 중",
     readings: "읽기 전용 측정값",
-    takeoverCoversOthers: (others        ) => `이 컴퓨터에서 소프트웨어 팬 제어는 전체에 적용되는 전환입니다. 전환하면 ${others}도 펌웨어 제어에서 벗어나며, 별도로 곡선을 지정하지 않으면 현재 속도를 유지합니다.`,
+    takeoverCoversOthers: (others        ) =>
+      `이 컴퓨터에서는 소프트웨어 관리가 모든 팬에 한꺼번에 적용됩니다. 선택하면 ${others}도 펌웨어 제어에서 벗어나 곡선을 설정하지 않는 한 현재 속도를 유지합니다.`,
+    fanModeHint: {
+      "firmware-management": "펌웨어가 자체 정책으로 속도를 조절하며, 이 앱은 읽기만 합니다.",
+      "firmware-write": "곡선을 펌웨어에 기록하고 펌웨어가 그 표에 따라 조절합니다. 앱을 닫거나 다시 시작해도 펌웨어 관리로 되돌릴 때까지 유지됩니다.",
+      "software-management": "이 앱이 0.1초마다 속도를 계산해 기록합니다. 앱이 실행 중이 아니면 팬은 펌웨어로 돌아갑니다."
+    },
+    fanModeUnavailable: (mode, reason) => `${mode}: ${reason}`,
     createCurve: "새 곡선",
     readingFirmwareCurve: "펌웨어 곡선 읽는 중…",
     fixedStepsCurveNote: "이 펌웨어 표에서는 단계별 속도만 변경할 수 있습니다. 온도 분기점은 펌웨어에서 고정됩니다.",

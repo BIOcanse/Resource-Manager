@@ -222,7 +222,14 @@ const jaJpAppCopy: AppCopy = {
     detect: "ハードウェアを再検出",
     detecting: "検出中",
     readings: "読み取り専用の測定値",
-    takeoverCoversOthers: (others        ) => `このコンピューターではソフトウェアによるファン制御への切り替えが全体に適用されます。切り替えると ${others} もファームウェア制御から外れ、カーブを設定しない限り現在の回転数を維持します。`,
+    takeoverCoversOthers: (others        ) =>
+      `このコンピューターではソフトウェア管理がすべてのファンに一括で適用されます。選ぶと ${others} もファームウェア制御から外れ、カーブを設定しない限り現在の回転数を維持します。`,
+    fanModeHint: {
+      "firmware-management": "ファームウェアが独自の方針で回転数を調整します。このアプリは読み取るだけです。",
+      "firmware-write": "カーブをファームウェアに書き込み、ファームウェアがその表に従って調整します。アプリを閉じても再起動しても、ファームウェア管理に戻すまで有効です。",
+      "software-management": "このアプリが 0.1 秒ごとに回転数を計算して書き込みます。アプリが動いていないときはファームウェアに戻ります。"
+    },
+    fanModeUnavailable: (mode, reason) => `${mode}：${reason}`,
     createCurve: "新しい曲線",
     readingFirmwareCurve: "ファームウェアの曲線を読み取り中…",
     fixedStepsCurveNote: "このファームウェア表では各段階の回転速度のみ変更できます。温度の境界値はファームウェアで固定されています。",

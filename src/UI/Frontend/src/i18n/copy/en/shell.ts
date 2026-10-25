@@ -208,7 +208,13 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     detecting: "Detecting",
     readings: "Read-only readings",
     takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
+      `On this machine, software management is one switch for all fans: choosing it also takes ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
+    fanModeHint: {
+      "firmware-management": "The firmware sets the speed by its own policy; this app only reads it.",
+      "firmware-write": "The curve is written into the firmware, which then follows that table. It stays in effect after this app closes or the PC restarts, until you switch back to firmware management.",
+      "software-management": "This app computes and writes the speed every 0.1 s. When the app is not running, the fan returns to the firmware."
+    },
+    fanModeUnavailable: (mode: string, reason: string) => `${mode}: ${reason}`,
     createCurve: "New curve",
     readingFirmwareCurve: "Reading the firmware curve…",
     fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",

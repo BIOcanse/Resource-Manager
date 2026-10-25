@@ -222,7 +222,14 @@ const frFrAppCopy: AppCopy = {
     detect: "Détecter à nouveau le matériel",
     detecting: "Détection en cours",
     readings: "Mesures en lecture seule",
-    takeoverCoversOthers: (others        ) => `Sur cet ordinateur, le contrôle logiciel des ventilateurs est un réglage global : il retire aussi ${others} du contrôle du micrologiciel. Sans courbe dédiée, leur vitesse actuelle est conservée.`,
+    takeoverCoversOthers: (others        ) =>
+      `Sur cet ordinateur, la gestion logicielle est un seul interrupteur pour tous les ventilateurs : la choisir retire aussi ${others} du contrôle du micrologiciel, à leur vitesse actuelle, sauf si vous leur donnez une courbe.`,
+    fanModeHint: {
+      "firmware-management": "Le micrologiciel règle la vitesse selon sa propre stratégie ; cette application ne fait que la lire.",
+      "firmware-write": "La courbe est écrite dans le micrologiciel, qui suit ensuite cette table. Elle reste en vigueur après la fermeture de l’application ou un redémarrage, jusqu’au retour à la gestion du micrologiciel.",
+      "software-management": "Cette application calcule et écrit la vitesse toutes les 0,1 s. Quand l’application ne tourne pas, le ventilateur revient au micrologiciel."
+    },
+    fanModeUnavailable: (mode, reason) => `${mode} : ${reason}`,
     createCurve: "Nouvelle courbe",
     readingFirmwareCurve: "Lecture de la courbe du micrologiciel…",
     fixedStepsCurveNote: "Cette table ne permet de modifier que la vitesse de chaque palier ; les seuils de température sont fixés par le micrologiciel.",

@@ -101,8 +101,9 @@ export interface ControlCapability {
 }
 
 export interface ControlFanManagementItem { capabilityId: string; curveExecution: string | null; }
+export type ControlFanManagementModeId = "firmware-management" | "firmware-write" | "software-management";
 export interface ControlFanManagementMode {
-  id: string; available: boolean; unavailableKind: ControlUnavailableKind | null;
+  id: ControlFanManagementModeId; available: boolean; unavailableKind: ControlUnavailableKind | null;
   unavailableReason: ControlApplyReason | null; items: readonly ControlFanManagementItem[];
 }
 export interface ControlObject {

@@ -207,7 +207,13 @@ export const zhShellCopy = {
     detecting: "檢測中",
     readings: "只讀數值",
     takeoverCoversOthers: (others: string) =>
-      `這臺機器上「交給軟體管」是整機一個開關：選了軟體接管，${others} 也會一起脫離韌體自動控制，停在當時的轉速上，除非也給它設一條曲線。`,
+      `這臺機器上軟體管理是整機一個開關：選了軟體管理，${others} 也會一起脫離韌體自動控制，停在當時的轉速上，除非也給它設一條曲線。`,
+    fanModeHint: {
+      "firmware-management": "韌體依自己的策略調速，本程式只讀取轉速。",
+      "firmware-write": "曲線寫入韌體，由韌體依表調速。關閉本程式、重新開機後依然有效，直到改回韌體管理。",
+      "software-management": "本程式每 0.1 秒計算一次轉速並寫入。程式不在執行時，風扇交還韌體。"
+    },
+    fanModeUnavailable: (mode: string, reason: string) => `${mode}：${reason}`,
     createCurve: "新建曲線",
     readingFirmwareCurve: "正在讀取韌體當前曲線…",
     fixedStepsCurveNote: "這臺機器的韌體表只讓改每一檔的轉速，溫度斷點是韌體定死的，改不了。",

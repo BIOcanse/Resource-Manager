@@ -222,7 +222,14 @@ const deDeAppCopy: AppCopy = {
     detect: "Hardware erneut erkennen",
     detecting: "Erkennung läuft",
     readings: "Nur lesbare Messwerte",
-    takeoverCoversOthers: (others        ) => `Auf diesem Computer gilt die Softwaresteuerung für alle Lüfter: Auch ${others} werden von der Firmwaresteuerung getrennt und behalten ohne eigene Kurve ihre aktuelle Drehzahl.`,
+    takeoverCoversOthers: (others        ) =>
+      `Auf diesem Computer gilt die Software-Verwaltung für alle Lüfter: Wenn Sie sie wählen, werden auch ${others} von der Firmwaresteuerung getrennt und behalten ohne eigene Kurve ihre aktuelle Drehzahl.`,
+    fanModeHint: {
+      "firmware-management": "Die Firmware regelt die Drehzahl nach ihrer eigenen Strategie; diese App liest sie nur.",
+      "firmware-write": "Die Kurve wird in die Firmware geschrieben, die dann dieser Tabelle folgt. Sie bleibt nach dem Beenden der App und nach einem Neustart wirksam, bis Sie zur Firmware-Verwaltung zurückwechseln.",
+      "software-management": "Diese App berechnet die Drehzahl alle 0,1 s und schreibt sie. Läuft die App nicht, übernimmt wieder die Firmware."
+    },
+    fanModeUnavailable: (mode, reason) => `${mode}: ${reason}`,
     createCurve: "Neue Kurve",
     readingFirmwareCurve: "Firmware-Kurve wird gelesen…",
     fixedStepsCurveNote: "In dieser Firmware-Tabelle kann nur die Geschwindigkeit pro Stufe geändert werden; die Temperaturschwellen sind durch die Firmware festgelegt.",

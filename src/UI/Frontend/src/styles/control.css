@@ -880,6 +880,17 @@
   color: var(--color-text-muted);
 }
 
+/* 风扇的说明、三选一和它下面那几句各占一行。 */
+.control-fan-ownership {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.control-fan-ownership > p {
+  margin: 0;
+}
+
 /* Fan ownership is one three-way choice at every card width. */
 .settings-segmented-control.control-fan-modes {
   display: grid;
@@ -887,7 +898,9 @@
   width: fit-content;
   max-width: 100%;
 }
-.control-fan-modes .settings-segment {
+.settings-segmented-control.control-fan-modes .settings-segment {
+  /* 窄屏的两列分段样式会给段加分隔边；三段一行用组背景的 1px 间隙分隔，不要那些边。 */
+  border: 0;
   min-width: 0;
   display: flex;
   align-items: center;

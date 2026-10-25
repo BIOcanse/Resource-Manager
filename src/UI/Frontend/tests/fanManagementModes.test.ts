@@ -24,6 +24,17 @@ for (const { id } of languageOptions) {
     if (id !== "en-US" && !["windows", "nvidia", "amd", "intel"].includes(term) && !(id === "de-DE" && term === "portable")) assert.notEqual(text, english.term[term], `${id}: English term ${term}`);
     checks++;
   }
+  for (const mode of modes) {
+    const hint = copy.fanModeHint[mode as keyof typeof copy.fanModeHint];
+    assert.ok(hint?.trim(), `${id}: missing mode hint ${mode}`);
+    if (id !== "en-US") assert.notEqual(hint, english.fanModeHint[mode as keyof typeof english.fanModeHint], `${id}: English mode hint ${mode}`);
+    checks++;
+  }
+  const unavailable = copy.fanModeUnavailable("M", "R");
+  assert.ok(unavailable.startsWith("M") && unavailable.endsWith("R") && unavailable.length > 2, `${id}: unavailable line ${unavailable}`);
+  const takeover = copy.takeoverCoversOthers("X");
+  assert.ok(takeover.includes("X") && takeover.toLocaleLowerCase(id).includes(copy.term["software-management"].toLocaleLowerCase(id)),`${id}: takeover note names the software management mode`);
+  checks += 2;
   for (const code of reasons) {
     const text = copy.presentation.text[code];
     assert.ok(text?.trim(), `${id}: missing mode reason ${code}`);

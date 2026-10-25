@@ -222,7 +222,14 @@ const esEsAppCopy: AppCopy = {
     detect: "Detectar hardware de nuevo",
     detecting: "Detectando",
     readings: "Lecturas de solo lectura",
-    takeoverCoversOthers: (others        ) => `En este equipo, el control por software de los ventiladores se activa para todo el sistema: también retira ${others} del control del firmware. Mantienen su velocidad actual si no se les asigna una curva.`,
+    takeoverCoversOthers: (others        ) =>
+      `En este equipo, la gestión por software es un único interruptor para todos los ventiladores: al elegirla, ${others} también deja el control del firmware y se queda a la velocidad actual salvo que le asigne una curva.`,
+    fanModeHint: {
+      "firmware-management": "El firmware ajusta la velocidad según su propia política; esta aplicación solo la lee.",
+      "firmware-write": "La curva se escribe en el firmware, que sigue esa tabla. Sigue vigente al cerrar la aplicación o reiniciar el equipo, hasta que vuelva a la gestión del firmware.",
+      "software-management": "Esta aplicación calcula y escribe la velocidad cada 0,1 s. Cuando la aplicación no se ejecuta, el ventilador vuelve al firmware."
+    },
+    fanModeUnavailable: (mode, reason) => `${mode}: ${reason}`,
     createCurve: "Nueva curva",
     readingFirmwareCurve: "Leyendo la curva del firmware…",
     fixedStepsCurveNote: "Esta tabla solo permite cambiar la velocidad de cada tramo; los puntos de temperatura los fija el firmware.",
