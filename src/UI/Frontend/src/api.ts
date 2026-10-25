@@ -28,8 +28,6 @@ import type {
   MetricDefinition,
   PortableSoftwareRootConfirmationResult,
   ResourceBarSettings,
-  ResourceTableColumnSettings,
-  ResourceTableViewMode,
   AppOptimizationMode,
   SoftwareRecord,
   SystemProcessIdentity,
@@ -38,11 +36,8 @@ import type {
 } from "./types";
 import {
   decodeResourceBreakdownWireSnapshot,
-  decodeResourceMonitorWireSnapshot,
-  type ResourceBreakdownWireSnapshot,
-  type ResourceMonitorWireSnapshot
+  type ResourceBreakdownWireSnapshot
 } from "./api/resourceBreakdownWire";
-import { decodeResourceFacts, projectResourceFacts, resourceTableMetricId } from "./features/resourceTable/resourceFacts.ts";
 import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
 import { decodeHostManagerSmartCoordinatorStatus } from
   "./data/optimization/hostManagerSmartStatusSource.ts";
@@ -253,46 +248,6 @@ export async function getResourceBreakdown(
   const snapshot = await getJson<ResourceBreakdownWireSnapshot>(
     `/api/resource-breakdown/snapshot?${params.toString()}`);
   return decodeResourceBreakdownWireSnapshot(snapshot);
-}
-
-export async function getResourceMonitor(
-  bars: ResourceBarSettings[] | null,
-  sampleMetricIds: string[] | null,
-  columns: ResourceTableColumnSettings[] | null,
-  sortColumnId: string,
-  sortDirection: string,
-  expandedSoftwareIds: string[],
-  processDetailSoftwareIds: string[],
-  tableMode: ResourceTableViewMode)
-{
-  const params = new URLSearchParams();
-  bars?.forEach((bar) => {
-    params.append("ids", bar.metricId);
-    params.append("modes", `${bar.metricId}:${bar.scaleMode}`);
-  });
-  sampleMetricIds?.forEach((id) => params.append("sampleIds", id));
-  processDetailSoftwareIds.forEach((id) => params.append("processDetails", id));
-  const snapshot = await getJson<ResourceMonitorWireSnapshot>(
-    `/api/resource-monitor/snapshot?${params.toString()}`);
-  return decodeResourceMonitorWireSnapshot(snapshot);
-}
-
-export async function getResourceTable(
-  columns: ResourceTableColumnSettings[] | null,
-  sortColumnId: string,
-  sortDirection: string,
-  expandedSoftwareIds: string[],
-  tableMode: ResourceTableViewMode)
-{
-  const params = new URLSearchParams();
-  const visibleColumns = columns?.filter((column) => column.visible).map((column) => column.id) ?? [];
-  visibleColumns.map(resourceTableMetricId).filter((id): id is string => id !== null)
-    .forEach(metricId => params.append("items", metricId));
-  params.set("processDetailLevel", "full");
-  const snapshot = await getJson<unknown>(
-    `/api/resource-facts/snapshot?${params.toString()}`);
-  const facts = decodeResourceFacts(snapshot).facts!;
-  return projectResourceFacts(facts, columns ?? [], tableMode, sortColumnId, sortDirection === "asc" ? "asc" : "desc");
 }
 
 export async function getComponents() {
