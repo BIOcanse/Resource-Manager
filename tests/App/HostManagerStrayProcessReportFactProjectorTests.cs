@@ -187,8 +187,7 @@ public sealed class HostManagerStrayProcessReportFactProjectorTests
     internal static ResourceBreakdownSnapshot Memory(int seconds, double memoryMiB = 50)
     {
         var time = Origin.AddSeconds(seconds);
-        return new ResourceBreakdownSnapshot(time, [new ResourceBreakdownBar(ResourceBreakdownMetricIds.MemoryUsage,
-            "", "B", ResourceBreakdownScaleModes.Capacity, 1, 1, 1,
+        return new ResourceBreakdownSnapshot(time, [new ResourceBreakdownBar(ResourceBreakdownMetricIds.MemoryUsage, "B", ResourceBreakdownScaleModes.Capacity, 1, 1, 1,
             [new ResourceSoftwareSegment("tool", "tool", SoftwareKinds.Other, SoftwareKinds.Other,
                 memoryMiB * 1024 * 1024, 1, 1, [new ResourceProcessSegment(424242, "pwsh", @"C:\Tools\pwsh.exe",
                     memoryMiB * 1024 * 1024, 1, 1) { ProcessStartKey = 1234 }])])])

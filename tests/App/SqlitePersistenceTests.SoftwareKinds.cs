@@ -63,7 +63,7 @@ public sealed partial class SqlitePersistenceTests
 
             var now = DateTimeOffset.UtcNow;
             var snapshot = new ResourceBreakdownSnapshot(now,
-                [new ResourceBreakdownBar(ResourceBreakdownMetricIds.MemoryUsage, "Memory", "B",
+                [new ResourceBreakdownBar(ResourceBreakdownMetricIds.MemoryUsage, "B",
                     ResourceBreakdownScaleModes.Capacity, 4_000, 10_000, 40,
                     [new ResourceSoftwareSegment(fact.SoftwareId, fact.SoftwareName, fact.SoftwareKind,
                         fact.SoftwareDisplayKind, 4_000, 40, 1,

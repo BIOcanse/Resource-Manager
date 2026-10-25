@@ -9,14 +9,13 @@ public sealed partial class WindowsResourceBreakdownSampler
 {
     private static ResourceBreakdownBar CreateDiskThroughputBar(
         string metricId,
-        string label,
         PhysicalDiskIoAttributionSnapshot diskAttribution,
         ProcessAttributionSnapshot processAttribution,
         CompiledBaseScorePlan baseScorePlan,
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
         if (diskAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
-            return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
+            return CreateUnavailableBar(metricId, "B/s", ResourceBreakdownScaleModes.Active,
                 diskAttribution.ProviderState.ObservationStatus, diskAttribution.ProviderState.ObservationStatus);
         var valuesByProcess = CreateDiskProcessValues(metricId, diskAttribution, processAttribution);
         var total = valuesByProcess
@@ -24,7 +23,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             .Sum(static item => item.Value);
         return CreateBar(
             metricId,
-            label,
             "B/s",
             ResourceBreakdownScaleModes.Active,
             Math.Max(1, total),
@@ -41,14 +39,13 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static ResourceBreakdownBar CreateNetworkThroughputBar(
         string metricId,
-        string label,
         NetworkAttributionSnapshot networkAttribution,
         ProcessAttributionSnapshot processAttribution,
         CompiledBaseScorePlan baseScorePlan,
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
         if (networkAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
-            return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
+            return CreateUnavailableBar(metricId, "B/s", ResourceBreakdownScaleModes.Active,
                 networkAttribution.ProviderState.ObservationStatus, networkAttribution.ProviderState.ObservationStatus);
         var valuesByProcess = CreateNetworkProcessValues(metricId, networkAttribution, processAttribution);
         var total = valuesByProcess
@@ -56,7 +53,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             .Sum(static item => item.Value);
         return CreateBar(
             metricId,
-            label,
             "B/s",
             ResourceBreakdownScaleModes.Active,
             Math.Max(1, total),

@@ -154,7 +154,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             ResourceManager.ReadWrite.ProcessFields.ProcessMetricReadMask.CommandLine).CommandLine;
     }
 
-    private sealed record ProcessAttributionSnapshot(
+    internal sealed record ProcessAttributionSnapshot(
         IReadOnlyList<ProcessResourceSample> Processes,
         IReadOnlyDictionary<int, ProcessResourceSample> ProcessById,
         IReadOnlyDictionary<int, RuntimeSoftwareAttribution> AttributionByProcessId,

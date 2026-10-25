@@ -15,7 +15,6 @@ const wire: ResourceBreakdownWireSnapshot = {
   softwareCatalog: [["software:test", "Test App", "other", "other"]],
   bars: [{
     metricId: "memory.usage",
-    label: "内存占用",
     unit: "B",
     scaleMode: "capacity",
     totalValue: 64,
@@ -57,13 +56,9 @@ assert.equal(sharedBar.software[0].sharedValue, 24);
 assert.equal(sharedBar.software[0].processes[0].sharedValue, 24);
 assert.equal(sharedBar.software[0].value, 64);
 
-// The backend publishes facts only, so a bar label may be empty; the frontend names the bar by its metric ID.
-const unlabeledWire = structuredClone(wire);
-unlabeledWire.bars[0].label = "";
-const unlabeledBar = decodeResourceBreakdownWireSnapshot(unlabeledWire).bars![0];
-assert.equal(unlabeledBar.metricId, "memory.usage");
-assert.equal(unlabeledBar.label, "");
-assert.ok(localizedMetricLabel(unlabeledBar.metricId, unlabeledBar.label).length > 0);
+// The backend publishes facts only; the frontend names the bar by its metric ID.
+assert.equal("label" in (bar as object), false);
+assert.ok(localizedMetricLabel(bar?.metricId).length > 0);
 
 const emptyValueWire: ResourceBreakdownWireSnapshot = {
   ...wire,

@@ -498,7 +498,6 @@ public sealed class HostedResourcePublicationStateTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.CpuUsage,
-                    "CPU 占用率",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     value,
@@ -513,7 +512,6 @@ public sealed class HostedResourcePublicationStateTests
         SamplingObservationStatus observationStatus =
             SamplingObservationStatus.Current)
         => new(
-            metricId,
             metricId,
             "%",
             ResourceBreakdownScaleModes.Capacity,

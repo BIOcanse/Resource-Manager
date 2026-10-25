@@ -11,7 +11,7 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class WindowsResourceBreakdownSampler
 {
-    private ResourceBreakdownBar? CreateBar(
+    internal static ResourceBreakdownBar? CreateBar(
         string metricId,
         string scaleMode,
         ProcessAttributionSnapshot processAttribution,
@@ -20,7 +20,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         ProcessGpuBreakdownRead gpuAttribution,
         PhysicalDiskIoAttributionSnapshot diskAttribution,
         NetworkAttributionSnapshot networkAttribution,
-        ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationReading? residentReading)
+        ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationReading? residentReading,
+        IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
         if (metricId.Equals("cpu.usage", StringComparison.OrdinalIgnoreCase))
         {
@@ -28,7 +29,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    "CPU 占用率",
                     "%",
                     scaleMode,
                     CpuObservationStatus(hardwareSnapshot.Cpu));
@@ -36,7 +36,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                string.Empty,
                 "%",
                 scaleMode,
                 100,
@@ -57,7 +56,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    "物理内存实际占用",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus));
@@ -65,7 +63,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                string.Empty,
                 "B",
                 scaleMode,
                 hardwareSnapshot.Memory.TotalBytes,
@@ -87,7 +84,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    "虚拟内存提交量",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus));
@@ -95,7 +91,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                string.Empty,
                 "B",
                 scaleMode,
                 hardwareSnapshot.VirtualMemory.TotalBytes,
@@ -114,7 +109,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateDiskThroughputBar(
                 metricId,
-                "磁盘 I/O",
                 diskAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -125,7 +119,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateDiskThroughputBar(
                 metricId,
-                "磁盘读取",
                 diskAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -136,7 +129,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateDiskThroughputBar(
                 metricId,
-                "磁盘写入",
                 diskAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -147,7 +139,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "外部网络流量",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -158,7 +149,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "外部网络接收",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -169,7 +159,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "外部网络发送",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -180,7 +169,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "普通网络流量",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -191,7 +179,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "普通网络接收",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -202,7 +189,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             return CreateNetworkThroughputBar(
                 metricId,
-                "普通网络发送",
                 networkAttribution,
                 processAttribution,
                 baseScorePlan,
@@ -227,7 +213,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    $"GPU{gpuIndex} 占用率",
                     "%",
                     scaleMode,
                     GpuObservationStatus(
@@ -276,7 +261,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                string.Empty,
                 "%",
                 scaleMode,
                 100,
@@ -298,7 +282,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var gpu = hardwareSnapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex);
             var used = TryGetCurrentHardwareMetric(hardwareSnapshot, metricId, out var reading)
                 ? reading.NumericValue : null;
-            var bar = CreateUnattributedMemoryUsageBar(metricId, $"GPU{gpuIndex} 显存实际驻留", scaleMode,
+            var bar = CreateUnattributedMemoryUsageBar(metricId, scaleMode,
                 used, gpu?.TotalMemoryBytes);
             var adapter = hardwareSnapshot.GpuInventory.Adapters.FirstOrDefault(item => item.Index == gpuIndex);
             return CreateGpuResidentPartition(bar,
@@ -332,7 +316,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static ResourceBreakdownBar CreateUnavailableBar(
         string metricId,
-        string label,
         string unit,
         string scaleMode,
         SamplingObservationStatus observationStatus,
@@ -340,7 +323,6 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         return new ResourceBreakdownBar(
             metricId,
-            label,
             unit,
             scaleMode,
             null,

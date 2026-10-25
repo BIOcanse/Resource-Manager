@@ -22,7 +22,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             .ToDictionary(static p => p.ProcessId, static p => p.StartKey!.Value);
 
     internal static ResourceBreakdownBar CreateUnattributedMemoryUsageBar(
-        string metricId, string label, string scaleMode, double? usedBytes, double? capacityBytes)
+        string metricId, string scaleMode, double? usedBytes, double? capacityBytes)
     {
         var percent = usedBytes.HasValue && capacityBytes is > 0 ? usedBytes / capacityBytes * 100 : null;
         var unknown = RuntimeSoftwareAttribution.Unattributed;
@@ -31,7 +31,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             ? [new(unknown.Id, unknown.Name, unknown.Kind, unknown.DisplayKind,
                 usedBytes.Value, percent ?? 0, 0, [])]
             : [];
-        return new(metricId, label, "B", scaleMode, usedBytes, capacityBytes, percent, segments,
+        return new(metricId, "B", scaleMode, usedBytes, capacityBytes, percent, segments,
             usedBytes.HasValue ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable,
             SamplingObservationStatus.Unavailable);
     }

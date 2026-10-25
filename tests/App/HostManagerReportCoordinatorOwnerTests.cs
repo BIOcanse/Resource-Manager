@@ -864,7 +864,6 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
-                    "Memory",
                     "B",
                     ResourceBreakdownScaleModes.Capacity,
                     value,

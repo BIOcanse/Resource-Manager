@@ -11,7 +11,7 @@ public sealed class GpuResidentUsageBarTests
     [InlineData(ResourceBreakdownScaleModes.Capacity)]
     public void DeviceReadingIsNeverReplacedByAllocationTotalsOrInventedSharedResidency(string scale)
     {
-        var bar = WindowsResourceBreakdownSampler.CreateUnattributedMemoryUsageBar("gpu.1.vram", "GPU1", scale,
+        var bar = WindowsResourceBreakdownSampler.CreateUnattributedMemoryUsageBar("gpu.1.vram", scale,
             7L << 30, 8L << 30);
         Assert.Equal(7L << 30, bar.TotalValue);
         Assert.Equal(8L << 30, bar.CapacityValue);
@@ -29,7 +29,7 @@ public sealed class GpuResidentUsageBarTests
     [Fact]
     public void MissingDeviceReadingIsNotZeroOrAnAllocationFallback()
     {
-        var bar = WindowsResourceBreakdownSampler.CreateUnattributedMemoryUsageBar("gpu.1.vram", "GPU1", "capacity", null, 8L << 30);
+        var bar = WindowsResourceBreakdownSampler.CreateUnattributedMemoryUsageBar("gpu.1.vram", "capacity", null, 8L << 30);
         Assert.Null(bar.TotalValue);
         Assert.Null(bar.TotalSystemPercent);
         Assert.Empty(bar.Software);
@@ -40,7 +40,7 @@ public sealed class GpuResidentUsageBarTests
     public void PageFileOccupancyDoesNotInventPrivateCommitAttribution()
     {
         var bar = WindowsResourceBreakdownSampler.CreateUnattributedMemoryUsageBar(
-            "virtualMemory.usage", "Page file", "capacity", 2L << 30, 16L << 30);
+            "virtualMemory.usage", "capacity", 2L << 30, 16L << 30);
         Assert.Equal(12.5, bar.TotalSystemPercent);
         var segment = Assert.Single(bar.Software);
         Assert.Equal("unattributed", segment.SoftwareId);

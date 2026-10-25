@@ -158,7 +158,6 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
         {
             writer.WriteStartObject();
             writer.WriteString("metricId", bar.MetricId);
-            writer.WriteString("label", bar.Label);
             writer.WriteString("unit", bar.Unit);
             writer.WriteString("scaleMode", bar.ScaleMode);
             WriteNullableNumber(writer, "totalValue", bar.TotalValue);

@@ -367,7 +367,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     }
 
 
-    private readonly record struct ProcessResourceSample(
+    internal readonly record struct ProcessResourceSample(
         int ProcessId,
         int? ParentProcessId,
         long? StartKey,

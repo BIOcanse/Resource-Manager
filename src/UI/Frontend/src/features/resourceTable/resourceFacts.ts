@@ -33,7 +33,7 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
   const metrics = requireArray(frame.metrics, "$.metrics").map((value, index): ResourceBreakdownBar => {
     const path = `$.metrics[${index}]`;
     const metric = requireRecord(value, path);
-    return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), label: "", unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
+    return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
       totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
       software: requireArray(metric.software, `${path}.software`).map((value, index) => {

@@ -13,7 +13,6 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
       softwareCatalog: [["software:test", "Test App", "other", "other"]],
       bars: [{
         metricId: "memory.usage",
-        label: "内存占用",
         unit: "B",
         scaleMode: "capacity",
         totalValue: 64,

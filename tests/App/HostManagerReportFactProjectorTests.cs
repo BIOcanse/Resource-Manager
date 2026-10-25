@@ -159,7 +159,6 @@ public sealed class HostManagerReportFactProjectorTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
-                    "Memory",
                     "B",
                     ResourceBreakdownScaleModes.Capacity,
                     4_000,
@@ -269,7 +268,7 @@ public sealed class HostManagerReportFactProjectorTests
             CreateSoftware("game", "Game", SoftwareKinds.Game, 20, 104),
             CreateSoftware("resource-manager:self", "Self", SoftwareKinds.Adapted, 20, 105) };
         var resources = new ResourceBreakdownSnapshot(now, [new ResourceBreakdownBar(
-            ResourceBreakdownMetricIds.MemoryUsage, "", "B", ResourceBreakdownScaleModes.Capacity, 100, 100, 100, entries)])
+            ResourceBreakdownMetricIds.MemoryUsage, "B", ResourceBreakdownScaleModes.Capacity, 100, 100, 100, entries)])
         {
             Datasets = [new ResourceBreakdownDatasetSamplingState(SamplingDatasetIds.ProcessMemoryUsage,
                 ResourceBreakdownSamplingStatuses.Ready, 77, 100, now, now, now, null, null, null)]

@@ -384,7 +384,6 @@ public sealed class ResourceBreakdownSnapshotStateTests
         SamplingObservationStatus attributionStatus = SamplingObservationStatus.Current)
         => new(
             metricId,
-            metricId,
             "%",
             ResourceBreakdownScaleModes.Capacity,
             total,

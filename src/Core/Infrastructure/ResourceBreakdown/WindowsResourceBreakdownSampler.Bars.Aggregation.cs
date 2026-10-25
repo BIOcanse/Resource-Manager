@@ -13,7 +13,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 {
     private static ResourceBreakdownBar CreateBar(
         string metricId,
-        string label,
         string unit,
         string scaleMode,
         double capacityValue,
@@ -149,11 +148,11 @@ public sealed partial class WindowsResourceBreakdownSampler
         var residualValue = totalValue - groupedTotalValue;
         if (residualValue > Math.Max(1, totalValue * 0.001))
         {
-            softwareGroups.Add(CreateResidualSoftwareSegment(metricId, label, residualValue, capacityValue, isBytes, isBytesPerSecond, knownProcessIds, residualBreakdownProvider));
+            softwareGroups.Add(CreateResidualSoftwareSegment(metricId, residualValue, capacityValue, isBytes, isBytesPerSecond, knownProcessIds, residualBreakdownProvider));
         }
         else if (softwareGroups.Count == 0 && totalValue > 0)
         {
-            softwareGroups.Add(CreateResidualSoftwareSegment(metricId, label, totalValue, capacityValue, isBytes, isBytesPerSecond, knownProcessIds, residualBreakdownProvider));
+            softwareGroups.Add(CreateResidualSoftwareSegment(metricId, totalValue, capacityValue, isBytes, isBytesPerSecond, knownProcessIds, residualBreakdownProvider));
         }
 
         var orderedSoftwareGroups = softwareGroups
@@ -162,7 +161,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         var totalSystemPercent = capacityValue > 0 ? totalValue * 100 / capacityValue : 0;
         return new ResourceBreakdownBar(
             metricId,
-            label,
             unit,
             scaleMode,
             totalValue,
@@ -266,7 +264,6 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static ResourceSoftwareSegment CreateResidualSoftwareSegment(
         string metricId,
-        string label,
         double totalValue,
         double capacityValue,
         bool isBytes,
@@ -277,7 +274,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         var systemPercent = capacityValue > 0 ? totalValue * 100 / capacityValue : 0;
         var categories = residualBreakdownProvider.CreateResidualSegments(new ResourceResidualBreakdownRequest(
             metricId,
-            label,
             totalValue,
             capacityValue,
             SanitizePercent(systemPercent),
@@ -295,13 +291,4 @@ public sealed partial class WindowsResourceBreakdownSampler
             0);
     }
 
-    private static string NormalizeResidualMetricLabel(string metricId, string label)
-    {
-        if (!string.IsNullOrWhiteSpace(label))
-        {
-            return label.Trim();
-        }
-
-        return metricId;
-    }
 }

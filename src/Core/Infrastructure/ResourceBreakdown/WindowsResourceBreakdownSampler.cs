@@ -903,7 +903,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 gpuAttribution,
                 diskAttribution,
                 networkAttribution,
-                allocationReading);
+                allocationReading,
+                residualBreakdownProvider);
             if (bar is not null)
             {
                 bars.Add(bar);

@@ -59,7 +59,6 @@ assert.equal(resourceTrackPercentAtClientX(500, 100, 200), 100);
 function bar(metricId: string, softwareIds: string[]): ResourceBreakdownBar {
   return {
     metricId,
-    label: metricId,
     unit: "%",
     scaleMode: "capacity",
     totalValue: 0,

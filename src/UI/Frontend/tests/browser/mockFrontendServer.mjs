@@ -1605,7 +1605,6 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
     bars: [
       {
         metricId: "cpu.usage",
-        label: "处理器",
         unit: "%",
         scaleMode: "capacity",
         totalValue: cpuValue,
@@ -1621,7 +1620,6 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
       },
       {
         metricId: "memory.usage",
-        label: "内存",
         unit: scenario.resourceSharedMemory ? "B" : "GB",
         scaleMode: "capacity",
         totalValue: scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,

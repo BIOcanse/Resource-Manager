@@ -148,7 +148,7 @@ public sealed class TargetedRecordingServiceTests : IDisposable
                     { ProcessStartKey = ExitAfterFirstSample ? 9876 : TestProcessStartKey }])]
                 : [];
             return new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow,
-                [new ResourceBreakdownBar("cpu.usage", "CPU", "%", "capacity", 100, 100, 100, software)]);
+                [new ResourceBreakdownBar("cpu.usage", "%", "capacity", 100, 100, 100, software)]);
         }
     }
 

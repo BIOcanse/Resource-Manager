@@ -170,7 +170,6 @@ public sealed record ResourceBreakdownSnapshot(
 
 public sealed record ResourceBreakdownBar(
     string MetricId,
-    string Label,
     string Unit,
     string ScaleMode,
     double? TotalValue,

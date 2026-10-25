@@ -507,7 +507,6 @@ export interface ResourceSoftwareSegment {
 export interface ResourceBreakdownBar {
   sharedValue?: number | null;
   metricId: string;
-  label: string;
   unit: string;
   scaleMode: ResourceScaleMode;
   totalValue: number | null;

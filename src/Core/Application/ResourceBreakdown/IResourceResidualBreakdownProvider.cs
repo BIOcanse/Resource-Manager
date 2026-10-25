@@ -9,7 +9,6 @@ public interface IResourceResidualBreakdownProvider
 
 public sealed record ResourceResidualBreakdownRequest(
     string MetricId,
-    string Label,
     double Value,
     double CapacityValue,
     double SystemPercent,

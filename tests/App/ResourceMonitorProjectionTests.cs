@@ -65,7 +65,6 @@ public sealed class ResourceMonitorProjectionTests
             [
                 new ResourceBreakdownBar(
                     "gpu.0.usage",
-                    "GPU0 占用率",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     null,
@@ -113,7 +112,6 @@ public sealed class ResourceMonitorProjectionTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.CpuUsage,
-                    "CPU 占用率",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     25,
@@ -122,7 +120,6 @@ public sealed class ResourceMonitorProjectionTests
                     []),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
-                    "内存占用",
                     "B",
                     ResourceBreakdownScaleModes.Capacity,
                     64,
@@ -340,7 +337,6 @@ public sealed class ResourceMonitorProjectionTests
         var bars = Enumerable.Range(0, 6)
             .Select(barIndex => new ResourceBreakdownBar(
                 $"metric.{barIndex}",
-                $"Metric {barIndex}",
                 "B",
                 ResourceBreakdownScaleModes.Capacity,
                 100,
@@ -380,7 +376,6 @@ public sealed class ResourceMonitorProjectionTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
-                    "内存占用",
                     "B",
                     ResourceBreakdownScaleModes.Capacity,
                     3,
@@ -392,7 +387,6 @@ public sealed class ResourceMonitorProjectionTests
                     ]),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.CpuUsage,
-                    "CPU 占用率",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     5,

@@ -8,7 +8,7 @@ using ResourceManager.App.Endpoints.Transport;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class BackendFrontendWireAcceptanceTests
+public sealed partial class BackendFrontendWireAcceptanceTests
 {
     private const long JavaScriptMaximumSafeInteger = 9_007_199_254_740_991;
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
@@ -141,7 +141,6 @@ public sealed class BackendFrontendWireAcceptanceTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.CpuUsage,
-                    "CPU",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     12,
@@ -174,7 +173,7 @@ public sealed class BackendFrontendWireAcceptanceTests
             new HashSet<string>(["software:test"], StringComparer.OrdinalIgnoreCase));
     }
 
-    private static async Task<JsonElement> DecodeAsync(string kind, object payload)
+    private static async Task<JsonElement> DecodeAsync(string kind, object payload, string[]? metricIds = null)
     {
         var repositoryRoot = TestRepositoryPaths.FindRoot();
         var clientRoot = Path.Combine(
@@ -197,6 +196,7 @@ public sealed class BackendFrontendWireAcceptanceTests
         // exactly as the package.json test scripts run them.
         startInfo.ArgumentList.Add("--experimental-transform-types");
         startInfo.ArgumentList.Add("--experimental-strip-types");
+        startInfo.ArgumentList.Add("--conditions=browser");
         startInfo.ArgumentList.Add(decoderPath);
 
         using var process = Process.Start(startInfo)
@@ -204,7 +204,7 @@ public sealed class BackendFrontendWireAcceptanceTests
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         await process.StandardInput.WriteAsync(JsonSerializer.Serialize(
-            new { kind, payload },
+            new { kind, payload, metricIds },
             WebJson));
         process.StandardInput.Close();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));

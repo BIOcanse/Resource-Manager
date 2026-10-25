@@ -1,19 +1,25 @@
 import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import {
-  decodeResourceMonitorWireSnapshot
+  decodeResourceMonitorWireSnapshot,
+  decodeResourceProcessDetailsWireSnapshot
 } from "../src/api/resourceBreakdownWire.ts";
+import { languageOptions } from "../src/i18n/settingsLanguages.ts";
+import { applyLanguage, currentLanguage } from "../src/i18n/appTextStore.ts";
+import { localizedMetricLabel } from "../src/presentation/metricLabels.ts";
 import { metricSnapshotDecoder } from
   "../src/data/monitor/monitorSourceDecoders.ts";
 
 type DecodeRequest = {
-  kind: "metric" | "monitor" | "facts";
+  kind: "metric" | "monitor" | "facts" | "details";
   payload: unknown;
+  metricIds?: string[];
 };
 
 const request = JSON.parse(readFileSync(0, "utf8")) as DecodeRequest;
 const rawPayload = request.payload as Record<string, unknown>;
 const rawTable = request.kind === "monitor"
-  ? rawPayload.table as Record<string, unknown>
+  ? (rawPayload.table ?? {}) as Record<string, unknown>
   : rawPayload;
 const rawBreakdown = request.kind === "monitor"
   ? rawPayload.breakdown as Record<string, unknown>
@@ -31,8 +37,24 @@ const breakdownProcess = monitor?.breakdown.bars
   ?.flatMap((bar) => bar.software)
   .flatMap((software) => software.processes)[0];
 const tableProcess = table?.rows.find((row) => row.kind === "process");
+const details = request.kind === "details"
+  ? decodeResourceProcessDetailsWireSnapshot(request.payload) : null;
+const decodedMetrics = details?.metrics ?? monitor?.facts?.metrics ?? monitor?.breakdown.bars ?? [];
+const localizedNames: Record<string, string[]> = {};
+for (const language of languageOptions.filter(option => option.id !== "system")) {
+  await applyLanguage(language.id);
+  assert.equal(currentLanguage(), language.id);
+  localizedNames[language.id] = (request.metricIds ?? []).map(id => {
+    const label = localizedMetricLabel(id);
+    assert.ok(label.trim().length > 0 && label !== id, `${language.id}: missing name for ${id}`);
+    return label;
+  });
+}
 
 process.stdout.write(JSON.stringify({
+  decodedMetricIds: decodedMetrics.map(metric => metric.metricId),
+  localizedNames,
+  processCount: decodedMetrics.flatMap(metric => metric.software).flatMap(software => software.processes).length,
   factsProcessStartKey: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.processStartKey ?? null,
   factsProcessSharedValue: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.sharedValue ?? null,
   monitorVersion: monitor === null ? null : 8,

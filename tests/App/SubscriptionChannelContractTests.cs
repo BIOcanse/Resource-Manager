@@ -403,7 +403,6 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
             [
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
-                    "Memory",
                     "B",
                     ResourceBreakdownScaleModes.Capacity,
                     3,
@@ -412,7 +411,6 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
                     [softwareA, softwareB]),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.CpuUsage,
-                    "CPU",
                     "%",
                     ResourceBreakdownScaleModes.Capacity,
                     5,

@@ -198,7 +198,7 @@ public sealed class JsonMetadataContractTests
         var software = new ResourceSoftwareSegment("software:test", "中文<&>", "other", "other", 12, 12, 1, [process])
             { SharedValue = 4 };
         var source = new ResourceBreakdownSnapshot(capturedAt,
-            [new ResourceBreakdownBar(ResourceBreakdownMetricIds.CpuUsage, "CPU", "%", ResourceBreakdownScaleModes.Capacity,
+            [new ResourceBreakdownBar(ResourceBreakdownMetricIds.CpuUsage, "%", ResourceBreakdownScaleModes.Capacity,
                 12, 100, 12, [software], SamplingObservationStatus.Current, SamplingObservationStatus.Current)])
         {
             Sampling = ResourceBreakdownSamplingState.Ready(capturedAt),

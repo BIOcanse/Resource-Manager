@@ -60,7 +60,7 @@ public sealed class ResourceFactsPublicationTests
         var process = new ResourceProcessSegment(42, "example.exe", null, 12, 12, 100, "user", "x64")
             { ProcessStartKey = long.MaxValue, SharedValue = 4 };
         var software = new ResourceSoftwareSegment("example", "Example", "other", "other", 12, 12, 1, [process]) { SharedValue = 4 };
-        var bars = new[] { "cpu.usage", "gpu.1.vram" }.Select(id => new ResourceBreakdownBar(id, "obsolete UI label", "%", "capacity", 12, 100, 12, [software]) { SharedValue = 4 }).ToArray();
+        var bars = new[] { "cpu.usage", "gpu.1.vram" }.Select(id => new ResourceBreakdownBar(id, "%", "capacity", 12, 100, 12, [software]) { SharedValue = 4 }).ToArray();
         return new ResourceBreakdownSnapshot(time, bars) { Datasets = bars.Select(bar =>
             new ResourceBreakdownDatasetSamplingState(SamplingDatasetIds.ForProcessMetric(bar.MetricId), "ready", 1, 1, time, time, time, null, null, null)).ToArray() };
     }

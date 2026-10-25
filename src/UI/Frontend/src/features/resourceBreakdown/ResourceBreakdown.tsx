@@ -744,14 +744,7 @@ function resourceBarOptions(catalog: MetricDefinition[]) {
 }
 
 function resourceBreakdownLabel(bar: ResourceBreakdownBar) {
-  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(bar.metricId);
-  if (!match) {
-    return localizedMetricLabel(bar.metricId, bar.label);
-  }
-
-  return match[2].toLowerCase() === "vram"
-    ? uiText.resourceBreakdown.gpuVramLabel(match[1])
-    : uiText.resourceBreakdown.gpuUsageLabel(match[1]);
+  return localizedMetricLabel(bar.metricId);
 }
 
 function isResourceBarMetric(metricId: string) {
