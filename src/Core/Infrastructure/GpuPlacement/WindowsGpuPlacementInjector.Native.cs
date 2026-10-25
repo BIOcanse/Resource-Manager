@@ -20,6 +20,7 @@ public sealed partial class WindowsGpuPlacementInjector
         public const uint WaitObject0 = 0;
         public const uint WaitTimeout = 258;
         public const int ErrorNoMoreFiles = 18;
+        public const int ErrorBadLength = 24;
         public const uint Th32csSnapModule = 0x00000008;
         public const uint Th32csSnapModule32 = 0x00000010;
         public const ushort ImageFileMachineUnknown = 0;

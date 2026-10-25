@@ -23,17 +23,28 @@ public sealed partial class WindowsGpuPlacementInjector
         return null;
     }
 
+    // A module snapshot fails with ERROR_BAD_LENGTH while the target is loading or unloading modules;
+    // the documented answer is to take the snapshot again. Bounded, and any other failure throws at once.
+    private const int ModuleSnapshotAttempts = 10;
+
+    internal static SafeKernelHandle OpenModuleSnapshot(int processId)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var snapshot = NativeMethods.CreateToolhelp32Snapshot(
+                NativeMethods.Th32csSnapModule | NativeMethods.Th32csSnapModule32, (uint)processId);
+            if (!snapshot.IsInvalid) return snapshot;
+            var error = Marshal.GetLastWin32Error();
+            snapshot.Dispose();
+            if (error != NativeMethods.ErrorBadLength || attempt == ModuleSnapshotAttempts) throw new Win32Exception(error);
+        }
+    }
+
     internal static RemoteModule? FindRemoteModule(
         int processId,
         string moduleName)
     {
-        using var snapshot = NativeMethods.CreateToolhelp32Snapshot(
-            NativeMethods.Th32csSnapModule | NativeMethods.Th32csSnapModule32,
-            (uint)processId);
-        if (snapshot.IsInvalid)
-        {
-            throw new Win32Exception(Marshal.GetLastWin32Error());
-        }
+        using var snapshot = OpenModuleSnapshot(processId);
 
         var entry = new NativeMethods.ModuleEntry32
         {
@@ -62,9 +73,7 @@ public sealed partial class WindowsGpuPlacementInjector
 
     private static GpuGraphicsApi ReadApiObservationCandidates(int processId)
     {
-        using var snapshot = NativeMethods.CreateToolhelp32Snapshot(
-            NativeMethods.Th32csSnapModule | NativeMethods.Th32csSnapModule32, (uint)processId);
-        if (snapshot.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        using var snapshot = OpenModuleSnapshot(processId);
         var entry = new NativeMethods.ModuleEntry32 { Size = (uint)Marshal.SizeOf<NativeMethods.ModuleEntry32>() };
         var names = new List<string>();
         if (NativeMethods.Module32First(snapshot, ref entry))
