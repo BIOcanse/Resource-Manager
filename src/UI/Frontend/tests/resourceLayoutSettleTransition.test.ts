@@ -3,10 +3,13 @@ import { TaskRegistry } from "../src/frontendRuntime/task/TaskRegistry.ts";
 import type { TaskDelay } from "../src/frontendRuntime/task/waitForTaskDelay.ts";
 import {
   createResourceLayoutSettleController,
-  resourceLayoutSettleDurationMs,
+  resourceLayoutSettleMarginMs,
   shouldRunResourceLayoutSettleTransition,
   startResourceLayoutSettleTransition
 } from "../src/features/resourceBreakdown/resourceLayoutSettleTransition.ts";
+
+// 平滑手感的 --motion-bar，不是标准的 360：延时要跟着传进来的值走。
+const barDurationMs = 480;
 
 assert.equal(
   shouldRunResourceLayoutSettleTransition(false, "normal", "none"),
@@ -38,14 +41,14 @@ assert.equal(
     { segment: { softwareId: "b", value: 1 }, index: 1, left: 50, right: 100, width: 50 }
   ];
 
-  assert.equal(update(firstLayout, "normal"), null);
-  assert.equal(update(structuredClone(firstLayout), "normal"), null,
+  assert.equal(update(firstLayout, "normal", barDurationMs), null);
+  assert.equal(update(structuredClone(firstLayout), "normal", barDurationMs), null,
     "An unchanged callback must not hide fixed-type dividers");
   assert.deepEqual(mutations, []);
-  const animated = update(changedLayout, "normal");
+  const animated = update(changedLayout, "normal", barDurationMs);
   assert.ok(animated);
   assert.deepEqual(mutations, [true]);
-  const disabled = update(changedLayout, "none");
+  const disabled = update(changedLayout, "none", barDurationMs);
   assert.ok(disabled);
   assert.equal((await animated.completion).status, "superseded");
   assert.deepEqual(await disabled.completion, {
@@ -76,7 +79,7 @@ function deferred() {
   const signals: AbortSignal[] = [];
   let delayIndex = 0;
   const delay: TaskDelay = (signal, durationMs) => {
-    assert.equal(durationMs, resourceLayoutSettleDurationMs);
+    assert.equal(durationMs, barDurationMs + resourceLayoutSettleMarginMs, "The settle delay follows --motion-bar plus the margin");
     signals.push(signal);
     return gates[delayIndex++].promise;
   };
@@ -87,9 +90,9 @@ function deferred() {
     mutations.push(value);
   };
 
-  const first = startResourceLayoutSettleTransition(scope, true, setMoving, delay);
+  const first = startResourceLayoutSettleTransition(scope, true, barDurationMs, setMoving, delay);
   assert.equal(moving, true);
-  const second = startResourceLayoutSettleTransition(scope, true, setMoving, delay);
+  const second = startResourceLayoutSettleTransition(scope, true, barDurationMs, setMoving, delay);
   assert.equal((await first.completion).status, "superseded");
   assert.equal(signals[0].aborted, true);
   assert.equal(moving, true);
@@ -121,9 +124,9 @@ function deferred() {
     mutations.push(value);
   };
 
-  const animated = startResourceLayoutSettleTransition(scope, true, setMoving, delay);
+  const animated = startResourceLayoutSettleTransition(scope, true, barDurationMs, setMoving, delay);
   assert.equal(moving, true);
-  const disabled = startResourceLayoutSettleTransition(scope, false, setMoving, delay);
+  const disabled = startResourceLayoutSettleTransition(scope, false, barDurationMs, setMoving, delay);
   assert.equal((await animated.completion).status, "superseded");
   assert.equal(moving, false);
   assert.equal(delayCalls, 1);
@@ -145,6 +148,7 @@ function deferred() {
   const run = startResourceLayoutSettleTransition(
     scope,
     true,
+    barDurationMs,
     (value) => mutations.push(value),
     async () => gate.promise);
   assert.deepEqual(mutations, [true]);

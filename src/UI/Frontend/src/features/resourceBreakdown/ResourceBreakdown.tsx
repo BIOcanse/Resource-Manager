@@ -40,6 +40,7 @@ import {
   resolveActiveDescendantTarget
 } from "../../ui/primitives/activeDescendantListbox.ts";
 import { positionResourceTooltip } from "./resourceTooltipPlacement.ts";
+import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
 import {
   resourceSegmentAtPercent,
   resourceTrackPercentAtClientX
@@ -340,7 +341,8 @@ function ResourceBreakdownItem(props: {
     layoutTaskScope,
     setMoving);
   createEffect(() => {
-    updateLayoutSettle(layout(), props.animationMode);
+    // 时长读 body 上的令牌：手感在根元素上，窗口缩放时 body 把它置 0，画布读到的是同一个值。
+    updateLayoutSettle(layout(), props.animationMode, readMotionDurationMs(document.body, "--motion-bar"));
   });
 
   const selectAtPoint = (event: MouseEvent) => {

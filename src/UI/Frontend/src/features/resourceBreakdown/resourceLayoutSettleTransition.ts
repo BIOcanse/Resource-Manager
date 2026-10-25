@@ -6,7 +6,8 @@ import {
   type TaskDelay
 } from "../../frontendRuntime/task/waitForTaskDelay.ts";
 
-export const resourceLayoutSettleDurationMs = 440;
+// 分段过渡走 --motion-bar（随手感变），分隔线等它走完再多等这一段余量才回来。
+export const resourceLayoutSettleMarginMs = 80;
 export const resourceLayoutSettleTaskKey = defineTaskKey<void>(
   "resource-breakdown.layout-settle");
 
@@ -27,13 +28,14 @@ export function createResourceLayoutSettleController(
   delay: TaskDelay = waitForTaskDelay
 ): (
   layout: Layout,
-  animationMode: ResourceLayoutAnimationMode
+  animationMode: ResourceLayoutAnimationMode,
+  barDurationMs: number
 ) => TaskRun<void> | null {
   let initialized = false;
   let previousLayout: Layout = [];
   let previousMode: ResourceLayoutAnimationMode = "normal";
 
-  return (layout, animationMode) => {
+  return (layout, animationMode, barDurationMs) => {
     if (!initialized) {
       initialized = true;
       previousLayout = layout;
@@ -55,6 +57,7 @@ export function createResourceLayoutSettleController(
       ? startResourceLayoutSettleTransition(
           scope,
           animationMode === "normal",
+          barDurationMs,
           setMoving,
           delay)
       : null;
@@ -64,6 +67,7 @@ export function createResourceLayoutSettleController(
 export function startResourceLayoutSettleTransition(
   scope: TaskScope,
   animated: boolean,
+  barDurationMs: number,
   setMoving: (moving: boolean) => void,
   delay: TaskDelay = waitForTaskDelay
 ): TaskRun<void> {
@@ -81,7 +85,7 @@ export function startResourceLayoutSettleTransition(
     if (!context.commit(() => setMoving(true))) {
       return;
     }
-    await delay(context.signal, resourceLayoutSettleDurationMs);
+    await delay(context.signal, barDurationMs + resourceLayoutSettleMarginMs);
     context.commit(() => setMoving(false));
   });
 }

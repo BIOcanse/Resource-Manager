@@ -7,6 +7,7 @@ import {
   type ResourceBarFrameRate
 } from "../../presentation/resourceBarFrameRate";
 import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
+import { readMotionDurationMs, readMotionEase } from "../../presentation/motionTokens.ts";
 
 export interface ResourcePaintSegment {
   key: string;
@@ -48,7 +49,6 @@ interface PaintOptions {
   drawDividers: boolean;
 }
 
-const animationDurationMs = 360;
 const paintOverscanPx = 4;
 const dividerColor = "var(--divider)";
 
@@ -148,11 +148,14 @@ function animateSegments(
   setLastDrawnSegments: (segments: ResourcePaintSegment[]) => void)
 {
   const fromByKey = new Map(fromSegments.map((segment) => [segment.key, segment]));
+  // 时长和曲线与上面交互层的数据条过渡（motion.css）是同一对令牌，这一段开始时读一次；时长 0 时直接画末帧。
+  const durationMs = readMotionDurationMs(canvas, "--motion-bar");
+  const easeBar = readMotionEase(canvas, "--ease-bar");
   const startedAt = performance.now();
   const pixelWidth = paintPixelWidth(geometry);
   // 每秒一次的小幅变化常常落在同样的像素上：这时中间帧与末帧逐像素相同，直接画末帧。
   // 末帧画分隔线而中间帧不画，所以有分隔线时仍按原样过渡。
-  if (!paintOptions.drawDividers
+  if (durationMs <= 0 || !paintOptions.drawDividers
     && segmentPixelKey(toSegments.map((target) => fromByKey.get(target.key) ?? target), pixelWidth)
       === segmentPixelKey(toSegments, pixelWidth)) {
     drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
@@ -163,7 +166,7 @@ function animateSegments(
   let drawnAt: number | null = null;
 
   const step = (now: number) => {
-    const progress = clampNumber((now - startedAt) / animationDurationMs, 0, 1);
+    const progress = clampNumber((now - startedAt) / durationMs, 0, 1);
     // 自选帧率时没到点的中间帧整帧跳过；画面和 lastDrawnSegments 都停在上次画出的那一帧。
     if (progress < 1 && !shouldDrawResourceBarFrame(presentation.frameRate, drawnAt, now)) {
       setAnimationFrame(requestAnimationFrame(step));
@@ -492,10 +495,6 @@ function readResourceBarPresentation(): ResourceBarPresentation {
   };
 }
 
-
-function easeBar(progress: number) {
-  return progress * progress * (3 - 2 * progress);
-}
 
 function lerpNumber(from: number, to: number, progress: number) {
   return from + (to - from) * progress;
