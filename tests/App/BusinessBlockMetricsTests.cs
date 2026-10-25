@@ -88,8 +88,14 @@ public sealed class BusinessBlockMetricsTests
             Assert.True(worker.Join(TimeSpan.FromSeconds(5)));
             Assert.Null(workerError);
 
-            var staleRead = metrics.Read();
-            Assert.Single(staleRead.ActiveThreads);
+            var completedRead = metrics.Read();
+            Assert.Empty(completedRead.ActiveThreads);
+            Assert.True(completedRead.AllocationCoverageComplete);
+            Assert.True(completedRead.TotalCpuTime > TimeSpan.Zero);
+            Assert.Equal(sample.SampledAt, completedRead.SampledAt);
+            Assert.Equal(sample.IntervalCpuTime, completedRead.IntervalCpuTime);
+            Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreads, completedRead.Coverage);
+
             metrics.Sample(DateTimeOffset.UtcNow);
             var final = metrics.Read();
             Assert.Empty(final.ActiveThreads);
@@ -130,19 +136,25 @@ public sealed class BusinessBlockMetricsTests
             var allocation = new byte[5 * 1024 * 1024];
             GC.KeepAlive(allocation);
             Thread.Sleep(250);
+
+            var active = metrics.Read();
+            Assert.False(active.AllocationCoverageComplete);
+            Assert.Equal(0, active.TotalAllocatedBytes);
         }
 
-        metrics.Sample(DateTimeOffset.UtcNow);
         var facts = metrics.Read();
 
-        Assert.True(facts.IntervalAllocatedBytes >= 5 * 1024 * 1024);
-        Assert.True(facts.IntervalCpuTime < TimeSpan.FromMilliseconds(150));
+        Assert.True(facts.TotalAllocatedBytes >= 5 * 1024 * 1024);
+        Assert.True(facts.TotalCpuTime < TimeSpan.FromMilliseconds(150));
         Assert.True(facts.AllocationCoverageComplete);
         Assert.Equal(BusinessBlockAttributionCoverage.SynchronousSegments, facts.Coverage);
+
+        metrics.Sample(DateTimeOffset.UtcNow);
+        Assert.True(metrics.Read().IntervalAllocatedBytes >= 5 * 1024 * 1024);
     }
 
     [Fact]
-    public void ReadIsPureAndSamplesPublishIntervalsAndReleaseExitedThreads()
+    public void ReadReturnsFreshCumulativeFactsWithoutAdvancingSampleBaselines()
     {
         var metrics = new BusinessBlockMetrics();
         var start = DateTimeOffset.UtcNow;
@@ -154,6 +166,12 @@ public sealed class BusinessBlockMetricsTests
             GC.KeepAlive(allocation);
             Thread.SpinWait(20_000);
         }
+
+        var beforeFirstSample = metrics.Read();
+        Assert.True(beforeFirstSample.TotalAllocatedBytes >= 32 * 1024);
+        Assert.Equal(TimeSpan.Zero, beforeFirstSample.IntervalCpuTime);
+        Assert.Equal(0, beforeFirstSample.IntervalAllocatedBytes);
+        Assert.Equal(start, beforeFirstSample.SampledAt);
 
         var firstSampleAt = NextSampleAfter(start);
         metrics.Sample(firstSampleAt);
@@ -175,8 +193,11 @@ public sealed class BusinessBlockMetricsTests
         }
 
         var beforeNextSample = metrics.Read();
-        Assert.Equal(firstRead.TotalAllocatedBytes, beforeNextSample.TotalAllocatedBytes);
+        Assert.True(beforeNextSample.TotalAllocatedBytes >= firstRead.TotalAllocatedBytes + 64 * 1024);
+        Assert.True(beforeNextSample.TotalCpuTime >= firstRead.TotalCpuTime);
         Assert.Equal(firstRead.SampledAt, beforeNextSample.SampledAt);
+        Assert.Equal(firstRead.IntervalCpuTime, beforeNextSample.IntervalCpuTime);
+        Assert.Equal(firstRead.IntervalAllocatedBytes, beforeNextSample.IntervalAllocatedBytes);
 
         using var registered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -190,7 +211,10 @@ public sealed class BusinessBlockMetricsTests
                     var allocation = new byte[2 * 1024 * 1024];
                     GC.KeepAlive(allocation);
                     registered.Set();
-                    release.Wait();
+                    while (!release.IsSet)
+                    {
+                        Thread.SpinWait(20_000);
+                    }
                 }
             }
             catch (Exception exception)
@@ -211,19 +235,27 @@ public sealed class BusinessBlockMetricsTests
 
             var activeSampleAt = NextSampleAfter(firstSampleAt);
             metrics.Sample(activeSampleAt);
+            var firstActiveRead = metrics.Read();
+            Assert.Equal(activeSampleAt, firstActiveRead.SampledAt);
+            Assert.Equal("release-check", Assert.Single(firstActiveRead.ActiveThreads).SessionName);
+            Assert.False(firstActiveRead.AllocationCoverageComplete);
+            Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreadsAndSynchronousSegments, firstActiveRead.Coverage);
+
+            Thread.Sleep(100);
             var activeRead = metrics.Read();
             Assert.Equal(activeSampleAt, activeRead.SampledAt);
-            Assert.Equal("release-check", Assert.Single(activeRead.ActiveThreads).SessionName);
+            Assert.True(activeRead.TotalCpuTime > firstActiveRead.TotalCpuTime);
+            Assert.True(activeRead.ActiveThreads.Single().CpuTime > firstActiveRead.ActiveThreads.Single().CpuTime);
             Assert.False(activeRead.AllocationCoverageComplete);
-            Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreadsAndSynchronousSegments, activeRead.Coverage);
-            var duplicateActiveRead = metrics.Read();
-            Assert.Equal(activeRead.TotalCpuTime, duplicateActiveRead.TotalCpuTime);
-            Assert.Equal(activeRead.ActiveThreads.Single(), duplicateActiveRead.ActiveThreads.Single());
 
             release.Set();
             Assert.True(worker.Join(TimeSpan.FromSeconds(5)));
             Assert.Null(workerError);
-            Assert.Single(metrics.Read().ActiveThreads);
+            var completedRead = metrics.Read();
+            Assert.Empty(completedRead.ActiveThreads);
+            Assert.True(completedRead.AllocationCoverageComplete);
+            Assert.True(completedRead.TotalAllocatedBytes >= firstRead.TotalAllocatedBytes + 64 * 1024 + 2 * 1024 * 1024);
+            Assert.Equal(activeSampleAt, completedRead.SampledAt);
 
             var finalSampleAt = NextSampleAfter(activeSampleAt);
             metrics.Sample(finalSampleAt);
@@ -261,7 +293,7 @@ public sealed class BusinessBlockMetricsTests
         {
             new BusinessBlockRegistration("busy", Array.Empty<string>(), _ => block!)
         };
-        var options = Options.Create(new BusinessBlockOptions { MetricsInterval = TimeSpan.FromMilliseconds(20) });
+        var options = Options.Create(new BusinessBlockOptions { MetricsInterval = null });
         await using var controller = new BusinessBlockController(
             services,
             registrations,
@@ -282,16 +314,23 @@ public sealed class BusinessBlockMetricsTests
             try
             {
                 var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - thread.CpuTicksAtRegistration;
+                var beforeRead = controller.Read();
+                await Task.Delay(100);
                 var snapshot = controller.Read();
                 var blockFacts = Assert.Single(snapshot.Blocks);
                 var metrics = blockFacts.Metrics;
                 var threadFacts = Assert.Single(metrics.ActiveThreads);
                 var independentAfter = NativeThreadTimes.GetCpuTicks(threadHandle) - thread.CpuTicksAtRegistration;
+                var previousMetrics = Assert.Single(beforeRead.Blocks).Metrics;
 
                 Assert.Equal("busy", blockFacts.Id);
                 Assert.True(metrics.TotalCpuTime > TimeSpan.Zero);
+                Assert.True(metrics.TotalCpuTime > previousMetrics.TotalCpuTime);
+                Assert.False(metrics.AllocationCoverageComplete);
                 Assert.True(threadFacts.CpuTime > TimeSpan.Zero);
                 Assert.Equal(threadFacts.CpuTime, metrics.TotalCpuTime);
+                Assert.Equal(previousMetrics.SampledAt, metrics.SampledAt);
+                Assert.True(snapshot.At > beforeRead.At);
                 Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreads, metrics.Coverage);
                 Assert.Equal(thread.NativeThreadId, threadFacts.NativeThreadId);
                 Assert.Equal("BusinessBlockMetrics.ControllerBusy", threadFacts.Name);

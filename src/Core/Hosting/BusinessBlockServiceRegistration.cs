@@ -24,14 +24,14 @@ public static partial class ResourceManagerServiceCollectionExtensions
         where TService : class, IHostedService
     {
         services.TryAddSingleton<TService>();
-        return services.AddHostedServiceAlias<TService>();
+        return services.AddHostedServiceAlias<TService>(constructService: true);
     }
 
     internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services, Func<IServiceProvider, TService> factory)
         where TService : class, IHostedService
     {
         services.TryAddSingleton(factory);
-        return services.AddHostedServiceAlias<TService>();
+        return services.AddHostedServiceAlias<TService>(constructService: true);
     }
 
     internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services)
@@ -39,17 +39,23 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.AddBusinessBlockController();
         var id = typeof(TService).Name;
-        if (services.Any(value => value.ServiceType == typeof(BusinessBlockRegistration)
-            && value.ImplementationInstance is BusinessBlockRegistration existing && existing.Id == id)) return;
+        for (var index = 0; index < services.Count; index++)
+            if (services[index].ImplementationInstance is BusinessBlockRegistration existing && existing.Id == id)
+            {
+                services[index] = ServiceDescriptor.Singleton(existing with { HostedService = true });
+                return;
+            }
         string[] dependencies = [];
         services.AddSingleton(new BusinessBlockRegistration(id, dependencies,
-            provider => new HostedBusinessBlock(() => provider.GetRequiredService<TService>())));
+            provider => new HostedBusinessBlock(() => provider.GetRequiredService<TService>())) { HostedService = true });
     }
 
     private static IServiceCollection AddObservedEtwBusinessBlocks(this IServiceCollection services)
     {
         services.AddSingleton(new BusinessBlockRegistration("present-etw", [],
             _ => throw new InvalidOperationException("Present activation remains inside the legacy producer in step 1.")) { ObservationOnly = true });
+        services.AddSingleton(new BusinessBlockRegistration("gpu-allocation-etw", [],
+            _ => throw new InvalidOperationException("GPU allocation activation remains inside the legacy producer in step 1.")) { ObservationOnly = true });
         // This method is the complete production composition, after all capability-gated declarations.
         // Standalone aliases intentionally declare no production prerequisites.
         for (var index = 0; index < services.Count; index++)
@@ -57,7 +63,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             if (services[index].ImplementationInstance is not BusinessBlockRegistration registration) continue;
             string[] prerequisites = registration.Id switch
             {
-                "RuntimeSpecializationCoordinator" or "present-etw" => [],
+                "RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" => [],
                 "WindowsHardwareMetricSampler" or "GpuTelemetryWorkerSupervisor" or "CpuTopologySnapshotProvider" or "DeviceTopologySnapshotProvider"
                     => ["HostManagerSamplingSubscriptionOwner"],
                 "WindowsResourceBreakdownSampler" => ["WindowsHardwareMetricSampler", "HostManagerSamplingSubscriptionOwner", "KernelEtwSessionBroker"],
@@ -70,7 +76,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 "SqliteLegacyDataImportHostedService" => ["ResourceManagerDatabaseInitializer", "SqlitePortableSoftwareRegistry"],
                 _ => []
             };
-            if (registration.Id is not ("RuntimeSpecializationCoordinator" or "present-etw"))
+            if (registration.Id is not ("RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw"))
                 prerequisites = ["RuntimeSpecializationCoordinator", .. prerequisites];
             services[index] = ServiceDescriptor.Singleton(registration with { Dependencies = prerequisites });
         }
@@ -95,6 +101,7 @@ internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockController con
             "kernel-etw" => "KernelEtwSessionBroker",
             "vidmm-etw" => "DxgkrnlVidMmEtwTelemetryZone",
             "present-etw" => "present-etw",
+            "gpu-allocation-etw" => "gpu-allocation-etw",
             _ => throw new ArgumentOutOfRangeException(nameof(blockId), blockId, "Undeclared ETW business block.")
         };
 }

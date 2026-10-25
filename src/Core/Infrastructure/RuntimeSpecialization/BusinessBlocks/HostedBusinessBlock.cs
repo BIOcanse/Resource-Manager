@@ -2,29 +2,42 @@ using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
-/// <summary>
-/// Step-1 compatibility boundary. The existing service retains its internal loops and resource policy.
-/// Its hosted lifetime ends only when Generic Host requests stop, exactly as before this adapter.
-/// </summary>
+/// <summary>Observes the existing hosted lifetime without adding a default stop budget.</summary>
 internal sealed class HostedBusinessBlock(Func<IHostedService> resolve) : IBusinessBlock, IBusinessBlockStartup
 {
     private readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<BusinessBlockResult> stopped = new();
     private CancellationToken startupCancellation;
-    private CancellationTokenSource? stopDeadline;
+    private IHostedService? service;
     public Task Started => started.Task;
-    internal Exception? StopFailure { get; private set; }
 
     internal void SetStartCancellation(CancellationToken cancellation) => startupCancellation = cancellation;
-    internal void SetStopDeadline(CancellationToken cancellation, TimeSpan? timeout)
+
+    // Called at the host's original stop turn, even when its token has already expired.
+    // The synchronous prefix invokes the real StopAsync before another service's turn.
+    internal Task StopAsync(CancellationToken hostCancellation, TimeSpan? deadline)
+        => StopCoreAsync(hostCancellation, deadline);
+
+    private async Task StopCoreAsync(CancellationToken hostCancellation, TimeSpan? deadline)
     {
-        stopDeadline?.Dispose();
-        stopDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        if (timeout is { } deadline) stopDeadline.CancelAfter(deadline);
+        using var configuredDeadline = deadline is not null
+            ? CancellationTokenSource.CreateLinkedTokenSource(hostCancellation) : null;
+        if (deadline is { } timeout) configuredDeadline!.CancelAfter(timeout);
+        try
+        {
+            service ??= resolve();
+            await service.StopAsync(configuredDeadline?.Token ?? hostCancellation).ConfigureAwait(false);
+            stopped.TrySetResult(BusinessBlockResult.Stopped);
+        }
+        catch (Exception error)
+        {
+            stopped.TrySetResult(BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop));
+            throw;
+        }
     }
 
     public async Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
     {
-        IHostedService service;
         try
         {
             service = resolve();
@@ -34,25 +47,18 @@ internal sealed class HostedBusinessBlock(Func<IHostedService> resolve) : IBusin
         catch (Exception error)
         {
             started.TrySetException(error);
-            return BusinessBlockResult.Failed(error);
+            return BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Start);
         }
-        var stop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var notification = stopNotification.Register(() => stop.TrySetResult());
-        await stop.Task.ConfigureAwait(false);
-        try
-        {
-            await service.StopAsync(stopDeadline?.Token ?? CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception error) { StopFailure = error; return BusinessBlockResult.Failed(error); }
-        finally { stopDeadline?.Dispose(); }
-        // BackgroundService.StopAsync may return at its cancellation deadline while ExecuteTask still runs.
-        // Keep the real execution outstanding so the controller reports timeout rather than false release.
+        var result = await stopped.Task.ConfigureAwait(false);
+        if (result.Outcome == BusinessBlockOutcome.Failed) return result;
+        // This observes actual execution for diagnostics. Host stop awaits StopAsync above,
+        // not this completion, so an expired host budget does not become a new wait.
         if (service is BackgroundService { ExecuteTask: { } execution })
         {
             try { await execution.ConfigureAwait(false); }
             catch (OperationCanceledException) when (stopNotification.IsCancellationRequested) { }
             catch (Exception error) { return BusinessBlockResult.Failed(error); }
         }
-        return BusinessBlockResult.Stopped;
+        return result;
     }
 }

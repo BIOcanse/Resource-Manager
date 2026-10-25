@@ -60,7 +60,7 @@ public sealed class BusinessBlockHostingTests
     }
 
     [Fact]
-    public void QueryDoesNotConstructOrStartLazyHostedServices()
+    public void QueryDoesNotConstructOrStartHostedServices()
     {
         var constructed = 0;
         using var host = Host.CreateDefaultBuilder()
@@ -75,7 +75,6 @@ public sealed class BusinessBlockHostingTests
 
         var query = host.Services.GetRequiredService<IBusinessBlockQuery>();
         var snapshot = query.Read();
-        _ = host.Services.GetServices<IHostedService>().ToArray();
 
         Assert.Equal(0, constructed);
         var block = Assert.Single(snapshot.Blocks);

@@ -7,6 +7,7 @@ public sealed record BusinessBlockRegistration(
     string Id, IReadOnlyList<string> Dependencies, Func<IServiceProvider, IBusinessBlock> Create)
 {
     public bool ObservationOnly { get; init; }
+    internal bool HostedService { get; init; }
 }
 
 // Legacy hosted StartAsync must finish before Generic Host advances to its next service.

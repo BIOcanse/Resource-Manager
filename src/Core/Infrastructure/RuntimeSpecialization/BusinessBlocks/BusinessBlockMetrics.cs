@@ -6,8 +6,8 @@ using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 /// <summary>
-/// Collects CPU time and managed allocations for one business block. Sampling is
-/// caller-owned; reads return the latest sampled facts without changing baselines.
+/// Collects CPU time and managed allocations for one business block. Reads return
+/// fresh cumulative facts without advancing the baselines used by explicit samples.
 /// </summary>
 public sealed class BusinessBlockMetrics
 {
@@ -22,7 +22,9 @@ public sealed class BusinessBlockMetrics
     private long intervalCpuTicks;
     private long intervalAllocatedBytes;
     private DateTimeOffset lastSampleAt;
-    private BusinessBlockMetricFacts latestFacts;
+    private DateTimeOffset lastIntervalStartedAt;
+    private long lastSampleIntervalCpuTicks;
+    private long lastSampleIntervalAllocatedBytes;
     private bool observedSynchronousSegments;
     private bool observedDedicatedThreads;
 
@@ -30,7 +32,7 @@ public sealed class BusinessBlockMetrics
     {
         var now = DateTimeOffset.UtcNow;
         lastSampleAt = now;
-        latestFacts = CreateFacts(now, now, 0, 0, 0, 0, true, [], BusinessBlockAttributionCoverage.None);
+        lastIntervalStartedAt = now;
     }
 
     /// <summary>
@@ -138,6 +140,7 @@ public sealed class BusinessBlockMetrics
     /// <summary>
     /// Samples dedicated-thread CPU counters and publishes interval facts. Allocation
     /// counters for active threads are only available when those threads unregister.
+    /// Read leaves the baselines used here unchanged.
     /// </summary>
     public void Sample(DateTimeOffset now)
     {
@@ -168,43 +171,52 @@ public sealed class BusinessBlockMetrics
                 AddCpuTicks(delta);
             }
 
-            var activeFacts = activeThreads.Count == 0
-                ? Array.Empty<BusinessBlockThreadMetricFacts>()
-                : new BusinessBlockThreadMetricFacts[activeThreads.Count];
-            var index = 0;
-            foreach (var state in activeThreads.Values)
-            {
-                activeFacts[index++] = new BusinessBlockThreadMetricFacts(
-                    state.NativeThreadId,
-                    state.Name,
-                    state.SessionName,
-                    state.RegisteredAt,
-                    TimeSpan.FromTicks(state.CpuTicks));
-            }
-
-            latestFacts = CreateFacts(
-                lastSampleAt,
-                now,
-                totalCpuTicks,
-                totalAllocatedBytes,
-                intervalCpuTicks,
-                intervalAllocatedBytes,
-                activeThreads.Count == 0 && activeSegmentThreads.Count == 0,
-                activeFacts,
-                GetCoverage());
-
+            lastIntervalStartedAt = lastSampleAt;
             lastSampleAt = now;
+            lastSampleIntervalCpuTicks = intervalCpuTicks;
+            lastSampleIntervalAllocatedBytes = intervalAllocatedBytes;
             intervalCpuTicks = 0;
             intervalAllocatedBytes = 0;
         }
     }
 
-    /// <summary>Returns the last published snapshot without sampling or changing counters.</summary>
+    /// <summary>
+    /// Returns cumulative facts as of this call. Active registered-thread CPU is read
+    /// live; neither these reads nor their thread facts advance a sampling baseline.
+    /// Interval fields and SampledAt continue to describe the last explicit sample.
+    /// </summary>
     public BusinessBlockMetricFacts Read()
     {
         lock (gate)
         {
-            return latestFacts;
+            var activeFacts = activeThreads.Count == 0
+                ? Array.Empty<BusinessBlockThreadMetricFacts>()
+                : new BusinessBlockThreadMetricFacts[activeThreads.Count];
+            var liveCpuTicks = 0L;
+            var index = 0;
+            foreach (var state in activeThreads.Values)
+            {
+                var cpuTicks = NativeMethods.GetThreadCpuTicks(state.Handle);
+                var delta = GetDelta(cpuTicks, state.LastCpuTicks, "A registered thread CPU counter moved backwards.");
+                liveCpuTicks = checked(liveCpuTicks + delta);
+                activeFacts[index++] = new BusinessBlockThreadMetricFacts(
+                    state.NativeThreadId,
+                    state.Name,
+                    state.SessionName,
+                    state.RegisteredAt,
+                    TimeSpan.FromTicks(checked(state.CpuTicks + delta)));
+            }
+
+            return CreateFacts(
+                lastIntervalStartedAt,
+                lastSampleAt,
+                checked(totalCpuTicks + liveCpuTicks),
+                totalAllocatedBytes,
+                lastSampleIntervalCpuTicks,
+                lastSampleIntervalAllocatedBytes,
+                activeThreads.Count == 0 && activeSegmentThreads.Count == 0,
+                activeFacts,
+                GetCoverage());
         }
     }
 
@@ -225,7 +237,9 @@ public sealed class BusinessBlockMetrics
             observedSynchronousSegments = false;
             observedDedicatedThreads = false;
             lastSampleAt = now;
-            latestFacts = CreateFacts(now, now, 0, 0, 0, 0, true, [], BusinessBlockAttributionCoverage.None);
+            lastIntervalStartedAt = now;
+            lastSampleIntervalCpuTicks = 0;
+            lastSampleIntervalAllocatedBytes = 0;
         }
     }
 

@@ -1,9 +1,13 @@
 using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration) : IDisposable
+public sealed class GpuAllocationCollector(
+    ILogger<GpuAllocationCollector> logger,
+    IConfiguration configuration,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IDisposable
 {
     internal static readonly Guid Provider = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
     private static readonly Guid BoundaryProvider = EventSource.GetGuid(typeof(GpuAllocationBoundary));
@@ -13,7 +17,9 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
     private readonly object lifecycle = new();
     private readonly object gate = new();
     private readonly SemaphoreSlim captureGate = new(1, 1);
-    private readonly IGpuAllocationSessionFactory sessionFactory = new TraceEventGpuAllocationSessionFactory(logger);
+    private readonly IGpuAllocationSessionFactory sessionFactory = new TraceEventGpuAllocationSessionFactory(
+        logger,
+        consumerThreadObserver);
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly TimeSpan deliveryBudget = TimeSpan.FromSeconds(5);
     private readonly HashSet<Lease> leases = [];

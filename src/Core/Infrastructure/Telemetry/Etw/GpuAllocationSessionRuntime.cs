@@ -1,5 +1,6 @@
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -23,7 +24,9 @@ internal interface IGpuAllocationSession
     KernelEtwSessionStopResult Stop(TimeSpan timeout);
 }
 
-internal sealed class TraceEventGpuAllocationSessionFactory(ILogger logger) : IGpuAllocationSessionFactory
+internal sealed class TraceEventGpuAllocationSessionFactory(
+    ILogger logger,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IGpuAllocationSessionFactory
 {
     public IGpuAllocationSession Create(string sessionName)
     {
@@ -36,7 +39,7 @@ internal sealed class TraceEventGpuAllocationSessionFactory(ILogger logger) : IG
             session.StopOnDispose = true;
             session.BufferSizeMB = 16;
             session.EnableProviderTimeoutMSec = 2000;
-            return new TraceEventGpuAllocationSession(session);
+            return WrapSession(session);
         }
         catch (Exception failure)
         {
@@ -49,11 +52,21 @@ internal sealed class TraceEventGpuAllocationSessionFactory(ILogger logger) : IG
             throw;
         }
     }
+
+    internal TraceEventGpuAllocationSession WrapSession(TraceEventSession session)
+        => new(session, consumerThreadObserver);
 }
 
-internal sealed class TraceEventGpuAllocationSession(TraceEventSession session) : IGpuAllocationSession
+internal sealed class TraceEventGpuAllocationSession(
+    TraceEventSession session,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IGpuAllocationSession
 {
-    private readonly TraceEventSessionProcessingRuntime processing = new(session);
+    internal const string ConsumerBlockId = "gpu-allocation-etw";
+
+    private readonly TraceEventSessionProcessingRuntime processing = new(
+        session,
+        consumerThreadObserver: consumerThreadObserver,
+        blockId: ConsumerBlockId);
     public bool IsProcessing => processing.IsProcessing;
     public int EventsLost => processing.EventsLost;
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler)

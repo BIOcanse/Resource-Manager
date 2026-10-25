@@ -4,10 +4,17 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Hosting;
 
-internal sealed class NonOwningHostedService<TService>(IServiceProvider provider) : BackgroundService
+internal sealed class NonOwningHostedService<TService> : BackgroundService
     where TService : class, IHostedService
 {
+    private readonly IServiceProvider provider;
     private TService? service;
+
+    internal NonOwningHostedService(IServiceProvider provider, bool constructService = false)
+    {
+        this.provider = provider;
+        if (constructService) service = provider.GetRequiredService<TService>();
+    }
 
     internal TService Service
         => service ??= provider.GetRequiredService<TService>();
@@ -58,12 +65,12 @@ internal sealed class NonOwningHostedService<TService>(IServiceProvider provider
 internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(
-        this IServiceCollection services)
+        this IServiceCollection services, bool constructService = false)
         where TService : class, IHostedService
     {
         ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services);
-        services.AddSingleton<IHostedService>(static provider =>
-            new NonOwningHostedService<TService>(provider));
+        services.AddSingleton<IHostedService>(provider =>
+            new NonOwningHostedService<TService>(provider, constructService));
         return services;
     }
 }

@@ -34,16 +34,26 @@ public sealed class BusinessBlockMetricFacts
         Coverage = coverage;
     }
 
+    /// <summary>Start of the latest sample interval, or the reset baseline if no sample has occurred since reset.</summary>
     public DateTimeOffset IntervalStartedAt { get; }
 
+    /// <summary>
+    /// Time of the most recent explicit Sample call, or the last Reset baseline if
+    /// no sample has occurred since reset. Read does not advance this timestamp.
+    /// The enclosing business-block snapshot's At records the current read time.
+    /// </summary>
     public DateTimeOffset SampledAt { get; }
 
+    /// <summary>Cumulative observed CPU from completed synchronous scopes and live registered threads as of the containing read.</summary>
     public TimeSpan TotalCpuTime { get; }
 
+    /// <summary>Cumulative observed managed allocations; active scopes and registrations are excluded until they end.</summary>
     public long TotalAllocatedBytes { get; }
 
+    /// <summary>CPU interval value from the most recent explicit sample.</summary>
     public TimeSpan IntervalCpuTime { get; }
 
+    /// <summary>Managed-allocation interval value from the most recent explicit sample.</summary>
     public long IntervalAllocatedBytes { get; }
 
     /// <summary>

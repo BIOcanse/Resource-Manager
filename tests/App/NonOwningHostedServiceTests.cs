@@ -68,7 +68,7 @@ public sealed class NonOwningHostedServiceTests
     }
 
     [Fact]
-    public async Task PlainHostedServiceKeepsLazyStartAndSingleDisposal()
+    public async Task ConvertedDirectHostedServiceIsConstructedDuringEnumerationAndDisposedOnce()
     {
         var created = 0;
         PlainService? service = null;
@@ -83,17 +83,18 @@ public sealed class NonOwningHostedServiceTests
         try
         {
             var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
-            Assert.Equal(0, created);
+            Assert.Equal(1, created);
             var owner = Assert.IsType<NonOwningHostedService<PlainService>>(
                 Assert.Single(hostedServices));
+            var constructedService = service!;
+            Assert.Same(constructedService, owner.Service);
+            Assert.Equal(0, constructedService.StartCount);
             await host.StartAsync();
-            service = host.Services.GetRequiredService<PlainService>();
             Assert.Equal(1, created);
-            Assert.Same(service, owner.Service);
-            Assert.Equal(1, service.StartCount);
+            Assert.Equal(1, constructedService.StartCount);
             await host.StopAsync();
-            Assert.Equal(1, service.StopCount);
-            Assert.Equal(0, service.DisposeCount);
+            Assert.Equal(1, constructedService.StopCount);
+            Assert.Equal(0, constructedService.DisposeCount);
         }
         finally
         {

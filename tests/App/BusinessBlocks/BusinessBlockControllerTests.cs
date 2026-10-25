@@ -41,7 +41,7 @@ public sealed class BusinessBlockControllerTests
         Assert.Equal(BusinessBlockOutcome.Failed, failedResult.Outcome);
         Assert.Equal(BusinessBlockState.Failed, Facts(controller, "failed").State);
         Assert.Contains(controller.Read().History, transition =>
-            transition.BlockId == "failed" && transition.Failure == "block failed");
+            transition.BlockId == "failed" && transition.FailureType == typeof(InvalidOperationException).FullName && transition.FailureStage == BusinessBlockFailureStage.Run);
 
         Assert.Equal(1, done.RunCount);
         Assert.Equal(1, stopped.RunCount);
@@ -398,7 +398,7 @@ public sealed class BusinessBlockControllerTests
         Assert.False(Facts(controller, "worker").ExecutionOutstanding);
         Assert.Contains(controller.Read().History, transition =>
             transition.BlockId == "worker" && transition.To == BusinessBlockState.Failed &&
-            transition.Outcome == BusinessBlockTransitionOutcome.Failed && transition.Failure == error.Message);
+            transition.Outcome == BusinessBlockTransitionOutcome.Failed && transition.FailureType == error.GetType().FullName && transition.FailureStage == BusinessBlockFailureStage.Start);
     }
 
     [Fact]

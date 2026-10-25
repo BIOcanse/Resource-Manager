@@ -67,7 +67,8 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
                 var needed = Ordered(roots).Select(entry => entry.Registration.Id).ToHashSet(StringComparer.Ordinal);
                 for (var index = ordered.Count - 1; index >= 0; index--)
                     if (!needed.Contains(ordered[index].Registration.Id)
-                        && !ReferenceEquals(originalRuns[ordered[index].Registration.Id], ordered[index].Run))
+                        && !ReferenceEquals(originalRuns[ordered[index].Registration.Id], ordered[index].Run)
+                        && (ordered[index].Block is not HostedBusinessBlock hosted || hosted.Started.IsCompletedSuccessfully))
                         await StopOneAsync(ordered[index], reason with
                         { Kind = BusinessBlockRequestKind.Dependency, ConfigurationOrDependency = "start-failed:" + id }, CancellationToken.None).ConfigureAwait(false);
                 throw;
@@ -107,7 +108,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         try { block = entry.Registration.Create(services); }
         catch (Exception error)
         {
-            lock (sync) Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed, error.GetType().FullName, error.Message);
+            lock (sync) Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed, error.GetType().FullName, BusinessBlockFailureStage.Start, error);
             ScheduleFailurePolicy(entry);
             throw;
         }
@@ -131,19 +132,17 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         try { result = await block.RunAsync(entry.Stop!.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (entry.Stop!.IsCancellationRequested) { result = BusinessBlockResult.Stopped; }
         catch (Exception error) { result = BusinessBlockResult.Failed(error); }
-        // A legacy StopAsync can return before its private consumer exits. The controller
-        // owns that registered execution too, so the same deadline must cover its drain.
+        // A legacy StopAsync can return before its private consumer exits. Keep that
+        // execution visible without extending the hosted service's shutdown wait.
         Task consumersReleased;
         lock (sync) consumersReleased = entry.ConsumersReleased?.Task ?? Task.CompletedTask;
         var failureReportedBeforeDrain = result.Outcome == BusinessBlockOutcome.Failed && !consumersReleased.IsCompleted;
         if (failureReportedBeforeDrain)
         {
-            lock (sync) Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed, result.FailureType, result.Failure);
+            lock (sync) Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed, result.FailureType, result.FailureStage, result.Error);
             ScheduleFailurePolicy(entry);
         }
         await consumersReleased.ConfigureAwait(false);
-        // Let StartOne publish its task before a synchronous completion is observed.
-        await Task.Yield();
         lock (sync)
         {
             var outcome = entry.HasReportedFailure ? BusinessBlockTransitionOutcome.Failed : result.Outcome switch
@@ -155,7 +154,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
             entry.Metrics.Sample(DateTimeOffset.UtcNow);
             if (!failureReportedBeforeDrain || entry.State != BusinessBlockState.Failed || entry.Outcome != BusinessBlockTransitionOutcome.Failed)
                 Transition(entry, outcome == BusinessBlockTransitionOutcome.Failed ? BusinessBlockState.Failed : BusinessBlockState.Stopped,
-                    entry.Stop!.IsCancellationRequested ? entry.Reason! : reason, outcome, result.FailureType, result.Failure);
+                    entry.Stop!.IsCancellationRequested ? entry.Reason! : reason, outcome, result.FailureType, result.FailureStage, result.Error);
         }
         if (result.Outcome == BusinessBlockOutcome.Failed) ScheduleFailurePolicy(entry);
         return result;
@@ -164,7 +163,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
     public async Task StopAsync(string id, BusinessBlockReason reason, CancellationToken cancellationToken = default)
     {
         Validate(reason);
-        await requests.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await requests.WaitAsync().ConfigureAwait(false);
         try
         {
             _ = Get(id);
@@ -185,42 +184,77 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
     private async Task StopOneAsync(Entry entry, BusinessBlockReason reason, CancellationToken cancellationToken)
     {
         Task<BusinessBlockResult>? run;
+        HostedBusinessBlock? hosted;
         lock (sync)
         {
             run = entry.Run;
-            if (run is null || run.IsCompleted) return;
+            if (entry.Block is null && entry.Registration.HostedService)
+                entry.Block = entry.Registration.Create(services);
+            hosted = entry.Block as HostedBusinessBlock;
+            if (hosted is null && (run is null || run.IsCompleted)) return;
+            entry.Stop ??= new();
             Transition(entry, BusinessBlockState.Stopping, reason);
-            // The legacy adapter uses the same stop deadline as the controller.
-            if (entry.Block is HostedBusinessBlock hosted) hosted.SetStopDeadline(cancellationToken, entry.Policy.StopDeadline);
         }
-        // Async notification keeps a misbehaving cancellation callback inside the same stop deadline.
-        var completion = Task.WhenAll(entry.Stop!.CancelAsync(), run);
-        lock (sync) entry.StopCompletion = completion;
+        // Mark notification before calling the hosted service, so normal background
+        // cancellation is observed as a stop. Invoke its StopAsync before any wait.
+        var notification = entry.Stop!.CancelAsync();
+        var completion = hosted is not null
+            ? hosted.StopAsync(cancellationToken, entry.Policy.StopDeadline)
+            : Task.WhenAll(notification, run!);
+        // Track actual stop work, not an extra aggregate whose continuation could lag
+        // a completed stop. Run is already tracked separately by the state/query.
+        lock (sync) entry.StopCompletion = hosted is null ? notification : completion;
         try
         {
-            if (entry.Policy.StopDeadline is { } deadline)
-                await completion.WaitAsync(deadline, cancellationToken).ConfigureAwait(false);
-            else await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
-            if (entry.Block is HostedBusinessBlock { StopFailure: { } failure })
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        }
-        catch (TimeoutException error)
-        {
-            lock (sync) Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.StopTimeout, error.GetType().FullName, error.Message);
-            if (entry.Policy.OnTimeout == BusinessBlockTimeoutPolicy.ContinueWaiting)
-                await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (entry.Policy.StopDeadline is not { } deadline)
+            {
+                // Legacy hosted services govern their cleanup with the exact host token.
+                // Adding our own canceled wait would change that service's contract.
+                if (hosted is not null) await completion.ConfigureAwait(false);
+                else await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                using var deadlineStop = new CancellationTokenSource();
+                var deadlineElapsed = Task.Delay(deadline, deadlineStop.Token);
+                try
+                {
+                    var wait = completion.WaitAsync(cancellationToken);
+                    if (await Task.WhenAny(wait, deadlineElapsed).ConfigureAwait(false) == deadlineElapsed)
+                    {
+                        var error = new TimeoutException("The configured business-block stop deadline elapsed.");
+                        lock (sync) Transition(entry, BusinessBlockState.Failed, reason,
+                            BusinessBlockTransitionOutcome.StopTimeout, error.GetType().FullName,
+                            BusinessBlockFailureStage.StopDeadline, error);
+                        if (entry.Policy.OnTimeout == BusinessBlockTimeoutPolicy.MarkFailed) return;
+                    }
+                    // Await the service result outside deadline classification. Its own
+                    // TimeoutException remains a service failure, including after ContinueWaiting.
+                    await wait.ConfigureAwait(false);
+                }
+                finally { deadlineStop.Cancel(); }
+            }
+            if (hosted is not null && (run is null || run.IsCompleted))
+                lock (sync)
+                    if (entry.State == BusinessBlockState.Stopping)
+                    {
+                        var failed = entry.HasReportedFailure || run is { IsCompletedSuccessfully: true }
+                            && run.Result.Outcome == BusinessBlockOutcome.Failed;
+                        Transition(entry, failed ? BusinessBlockState.Failed : BusinessBlockState.Stopped, reason,
+                            failed ? BusinessBlockTransitionOutcome.Failed : BusinessBlockTransitionOutcome.Stopped);
+                    }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
             lock (sync)
                 if (entry.Outcome != BusinessBlockTransitionOutcome.Failed)
-                    Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed, error.GetType().FullName, error.Message);
+                    Transition(entry, BusinessBlockState.Failed, reason, BusinessBlockTransitionOutcome.Failed,
+                        error.GetType().FullName, hosted is null ? BusinessBlockFailureStage.StopNotification : BusinessBlockFailureStage.Stop, error);
             ScheduleFailurePolicy(entry);
             throw;
         }
     }
-
     public Task<BusinessBlockResult> GetCompletion(string id)
     {
         lock (sync) return Get(id).Run ?? throw new InvalidOperationException($"{id} has not run.");
@@ -241,7 +275,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
             entry.HasReportedFailure = true;
             var reason = entry.Reason ?? new(BusinessBlockRequestKind.Dependency, blockId, operation, 0);
             Transition(entry, BusinessBlockState.Failed, reason with { ConfigurationOrDependency = operation },
-                BusinessBlockTransitionOutcome.Failed, error.GetType().FullName, error.Message);
+                BusinessBlockTransitionOutcome.Failed, error.GetType().FullName, BusinessBlockFailureStage.ReportedFailure, error);
         }
         ScheduleFailurePolicy(entry);
     }
@@ -411,10 +445,11 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
     }
 
     private void Transition(Entry entry, BusinessBlockState next, BusinessBlockReason reason,
-        BusinessBlockTransitionOutcome outcome = BusinessBlockTransitionOutcome.None, string? failureType = null, string? failure = null)
+        BusinessBlockTransitionOutcome outcome = BusinessBlockTransitionOutcome.None, string? failureType = null,
+        BusinessBlockFailureStage? failureStage = null, Exception? error = null)
     {
         var transition = new BusinessBlockTransition(++sequence, DateTimeOffset.UtcNow, entry.Registration.Id, entry.State, next,
-            reason, outcome, failureType, failure);
+            reason, outcome, failureType, failureStage);
         entry.State = next;
         entry.Reason = reason;
         entry.Outcome = outcome;
@@ -423,39 +458,26 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
             if (history.Count == options.HistoryLimit) history.Dequeue();
             history.Enqueue(transition);
         }
-        logger.LogInformation("Business block {BlockId}: {From} -> {To}; source={Source}, owner={Owner}, cause={Cause}, plan={PlanVersion}, outcome={Outcome}, failureType={FailureType}, failure={Failure}",
+        logger.LogInformation(error, "Business block {BlockId}: {From} -> {To}; source={Source}, owner={Owner}, cause={Cause}, plan={PlanVersion}, outcome={Outcome}, failureType={FailureType}, stage={FailureStage}",
             transition.BlockId, transition.From, transition.To, reason.Kind, reason.Owner, reason.ConfigurationOrDependency,
-            reason.PlanVersion, outcome, transition.FailureType, transition.Failure);
+            reason.PlanVersion, outcome, transition.FailureType, transition.FailureStage);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (disposed) return;
+        if (disposed) return ValueTask.CompletedTask;
         disposed = true;
+        // Disposal observes no new business shutdown budget and never retries StopAsync.
+        // In-flight work remains visible; Generic Host and the original service own cleanup.
         samplingStop.Cancel();
-        if (samplingTask is not null) await samplingTask.ConfigureAwait(false);
-        await requests.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            var ordered = Ordered(entries.Keys);
-            for (var index = ordered.Count - 1; index >= 0; index--)
-            {
-                var entry = ordered[index];
-                // A prior timeout keeps the real task visible; disposal must not pretend to release it.
-                if (entry.Outcome != BusinessBlockTransitionOutcome.StopTimeout)
-                    await StopOneAsync(entry, new(BusinessBlockRequestKind.Configuration, "controller-dispose", "process-lifetime", entry.Reason?.PlanVersion ?? 0), CancellationToken.None).ConfigureAwait(false);
-            }
-        }
-        finally { requests.Release(); }
         foreach (var entry in entries.Values)
         {
-            if (entry.FailurePolicyTask is { } policy) await policy.ConfigureAwait(false);
             if ((entry.Run is null || entry.Run.IsCompleted) && (entry.StopCompletion is null || entry.StopCompletion.IsCompleted))
                 entry.Stop?.Dispose();
         }
         samplingStop.Dispose();
+        return ValueTask.CompletedTask;
     }
-
     private sealed class Entry(BusinessBlockRegistration registration, BusinessBlockPolicy policy)
     {
         public BusinessBlockRegistration Registration { get; } = registration;
