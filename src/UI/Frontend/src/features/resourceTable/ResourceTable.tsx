@@ -1,8 +1,8 @@
 import {
   resourceTableCellText,
   resourceTableColumnLabel,
-  resourceMetricBasis,
-  softwareDisplayName
+  resourceTableRowName as rowName,
+  resourceMetricBasis
 } from "../../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
@@ -923,7 +923,7 @@ function createSoftwareContextTargetFromRow(
             processStartKey: row.processStartKey
           }]
         : [],
-    processNames: row.kind === "process" ? [row.name] : row.processNames ?? [],
+    processNames: row.processNames ?? [],
     executablePaths: row.executablePaths ?? [],
     canExpand: mode === "software" && row.kind === "software" && Boolean(row.softwareId) && (row.processCount ?? 0) > 0,
     expanded: row.softwareId ? expandedSoftwareIds[row.softwareId] === true : false
@@ -1224,21 +1224,6 @@ function resourceTableColumnFlexWeight(columnId: string) {
   if (columnId === "memory" || columnId.endsWith(".vram")) return 1.2;
   if (columnId === "pid" || columnId === "architecture") return 0.7;
   return 1;
-}
-
-// 行名：汇总行用固定文案；软件与进程行用后端给的名字；
-// 没有名字的行（例如「未归属进程」）按它的分组标识出名。
-function rowName(row: ResourceTableRow | undefined) {
-  if (row?.kind === "summary") {
-    return uiText.resourceTable.summaryRow.name;
-  }
-
-  // 软件行的分组标识装在 status 里，其余由共用规则处理。
-  return softwareDisplayName({
-    softwareId: row?.softwareId,
-    name: row?.name,
-    displayKind: row?.status
-  });
 }
 
 // 状态列：汇总行装的是采样状态标识，软件行装的是分组标识，进程行装的是进程状态。

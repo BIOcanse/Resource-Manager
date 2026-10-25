@@ -236,7 +236,7 @@ function decodeProcess(value: unknown, path: string): ResourceProcessSegment {
       row[10],
       `${path}[10]`,
       requirePositiveIntegerString),
-    name: requireNonEmptyString(row[1], `${path}[1]`),
+    name: requireString(row[1], `${path}[1]`),
     executablePath: requireNullable(row[2], `${path}[2]`, requireString),
     value: requireFiniteNumber(row[3], `${path}[3]`),
     systemPercent: requireFiniteNumber(row[4], `${path}[4]`),

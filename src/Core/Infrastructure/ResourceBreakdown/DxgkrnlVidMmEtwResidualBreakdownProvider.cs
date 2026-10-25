@@ -13,6 +13,12 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
 
     private readonly DxgkrnlVidMmEtwTelemetryZone etwZone = etwZone;
     private readonly StaticResourceResidualBreakdownProvider fallback = new();
+    private readonly Func<TimeSpan, IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence>> readEvidence = etwZone.ReadEvidence;
+
+    internal DxgkrnlVidMmEtwResidualBreakdownProvider(
+        DxgkrnlVidMmEtwTelemetryZone etwZone,
+        Func<TimeSpan, IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence>> readEvidence) : this(etwZone)
+        => this.readEvidence = readEvidence;
 
     public IReadOnlyList<ResourceTableProviderState> GetStates(IReadOnlyList<ResourceTableColumn> columns)
     {
@@ -45,7 +51,7 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
         }
 
         var now = DateTimeOffset.UtcNow;
-        var candidates = etwZone.ReadEvidence(EvidenceWindow)
+        var candidates = readEvidence(EvidenceWindow)
             .Where(evidence => evidence.ValueBytes > 0
                 && now - evidence.ObservedAt <= EvidenceWindow
                 && evidence.ProcessId > 4
@@ -79,7 +85,7 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
             remaining -= value;
             rows.Add(new ResourceProcessSegment(
                 candidate.ProcessId,
-                $"{candidate.ProcessName}（DXGKrnl/VidMm）",
+                candidate.ProcessName,
                 null,
                 value,
                 Percent(value, request.CapacityValue),

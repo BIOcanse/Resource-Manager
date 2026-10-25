@@ -117,7 +117,9 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var residual = Assert.Single(bar.Software,
             segment => segment.SoftwareId == "resource-residual:virtualMemory.usage");
         Assert.Equal(totalCommit - process.Value, residual.Value);
-        Assert.Contains("系统提交", Assert.Single(residual.Processes).Name);
+        var category = Assert.Single(residual.Processes);
+        Assert.Empty(category.Name);
+        Assert.Equal(ResourceProcessAttributionKinds.SystemResidual, category.AttributionKind);
     }
 
     [Fact]

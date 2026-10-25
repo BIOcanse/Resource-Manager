@@ -3,14 +3,74 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.ProcessAttribution;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed partial class BackendFrontendWireAcceptanceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResidualProvidersFeedProductionDecodersAndLocalizedNames(bool etwEvidence)
+    {
+        var metricIds = etwEvidence ? new[] { "gpu.12.vram" }
+            : new[] { "cpu.usage", "memory.usage", "virtualMemory.usage", "gpu.12.vram" };
+        var scores = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
+        var attribution = new WindowsResourceBreakdownSampler.ProcessAttributionSnapshot(
+            [], new Dictionary<int, WindowsResourceBreakdownSampler.ProcessResourceSample>(),
+            new Dictionary<int, ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution>(), scores, []);
+        // The source is never started. Only its evidence read is replaced; the real provider still
+        // filters, groups, scales and constructs both ETW and remaining system-residual rows.
+        using var source = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance);
+        var reads = 0;
+        var etw = new DxgkrnlVidMmEtwResidualBreakdownProvider(source, window =>
+        {
+            reads++;
+            Assert.Equal(TimeSpan.FromSeconds(45), window);
+            return [new(4747, "evidence-worker", 2 << 20, "fixture", DateTimeOffset.UtcNow) { ProcessStartKey = 123456 }];
+        });
+        IResourceResidualBreakdownProvider provider = etwEvidence ? etw : new StaticResourceResidualBreakdownProvider();
+        var bars = metricIds.Select(id => WindowsResourceBreakdownSampler.CreateBar(
+            id, "B", ResourceBreakdownScaleModes.Capacity, 8 << 20, 4 << 20, [],
+            attribution, scores, provider, isBytes: true)).ToArray();
+        var snapshot = new ResourceBreakdownSnapshot(CapturedAt, bars)
+        {
+            Datasets = metricIds.Select(SamplingDatasetIds.ForProcessMetric).Distinct().Select(id =>
+                new ResourceBreakdownDatasetSamplingState(id, ResourceBreakdownSamplingStatuses.Ready,
+                    1, 1, CapturedAt, CapturedAt, CapturedAt, CapturedAt.AddSeconds(5), null, null)).ToArray()
+        };
+        Assert.Equal(etwEvidence ? 1 : 0, reads);
+        var processes = bars.SelectMany(bar => bar.Software).SelectMany(software => software.Processes).ToArray();
+        Assert.All(processes, process => Assert.Equal(
+            process.AttributionKind == ResourceProcessAttributionKinds.SystemResidual ? "" : "evidence-worker", process.Name));
+        Assert.Equal(etwEvidence ? 2 : 4, processes.Length);
+        var softwareIds = bars.SelectMany(bar => bar.Software).Select(software => software.SoftwareId).ToHashSet();
+        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, metricIds, softwareIds);
+        object[] payloads = [new ResourceMonitorWireSnapshot(ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire),
+            ResourceFactsSnapshot.Create(snapshot, metricIds), ResourceProcessDetailsWireSnapshot.Create(snapshot, metricIds, softwareIds)];
+        string[] kinds = ["monitor", "facts", "details"];
+        for (var index = 0; index < kinds.Length; index++)
+        {
+            var decoded = await DecodeAsync(kinds[index], payloads[index], metricIds);
+            AssertDecodedMetrics(decoded, metricIds, metricIds.Length);
+            var rows = decoded.GetProperty("decodedProcesses").EnumerateArray().ToArray();
+            Assert.Equal(processes.Select(process => process.Name), rows.Select(row => row.GetProperty("name").GetString()));
+            Assert.Equal(processes.Select(process => process.AttributionKind), rows.Select(row => row.GetProperty("attributionKind").GetString()));
+            foreach (var language in decoded.GetProperty("localizedProcessNames").EnumerateObject())
+            {
+                Assert.Equal(processes.Length, language.Value.GetArrayLength());
+                Assert.All(language.Value.EnumerateArray(), value => Assert.False(string.IsNullOrWhiteSpace(value.GetString())));
+            }
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -24,6 +84,9 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         var snapshot = BuildSamplerBars(metricIds, available);
         Assert.Equal(metricIds, snapshot.Bars.Select(bar => bar.MetricId));
         Assert.All(snapshot.Bars, bar => Assert.Equal(available, bar.TotalValue.HasValue));
+        Assert.All(snapshot.Bars.SelectMany(bar => bar.Software)
+            .Where(software => software.SoftwareId == RuntimeAttributionIds.ResourceManagerSelf),
+            software => Assert.Empty(software.Name));
         var softwareIds = snapshot.Bars.SelectMany(bar => bar.Software)
             .Select(software => software.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -71,7 +134,11 @@ public sealed partial class BackendFrontendWireAcceptanceTests
             true, true, true, 12, true, false, null, null, null, null, null, null, null, null, 12, true);
         var attribution = new WindowsResourceBreakdownSampler.ProcessAttributionSnapshot(
             [process], new Dictionary<int, WindowsResourceBreakdownSampler.ProcessResourceSample> { [4242] = process },
-            new Dictionary<int, ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution>(), scores, []);
+            new Dictionary<int, RuntimeSoftwareAttribution>
+            {
+                [4242] = new(RuntimeAttributionIds.ResourceManagerSelf, ResourceManagerSelfDescriptor.DisplayName,
+                    SoftwareKinds.Adapted, SoftwareDisplayKinds.Adapted, [])
+            }, scores, []);
         var state = new HardwareSensorProviderState("fixture", HardwareSensorProviderStates.Unavailable, null);
         var hardware = new HardwareMetricSnapshot(CapturedAt,
             new CpuMetrics("CPU", 25, available, CpuMetricObservationStatus.Complete, 1, 1, 3000, 5000, 60,

@@ -1,6 +1,7 @@
 import type { ResourceBreakdownBar, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
 import { requireArray, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
+import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
 
 export interface ResourceFacts {
   capturedAt?: string;
@@ -93,9 +94,10 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
         let child = processRows.get(key);
         if (!child) {
           const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
-          child = { ...row(`process:${key}`, "process", process.name, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
+          const displayName = resourceProcessDisplayName(process, metric.metricId);
+          child = { ...row(`process:${key}`, "process", displayName, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
             softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
-            processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: [process.name], executablePaths: process.executablePath ? [process.executablePath] : [] };
+            processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
           child.values.pid = { value: processId, displayValue: processId?.toString() ?? "--", unit: "", attributionKind: process.attributionKind };
           child.values.user = { displayValue: process.userName || "--", unit: "" };
           child.values.architecture = { displayValue: process.architecture || "--", unit: "" };

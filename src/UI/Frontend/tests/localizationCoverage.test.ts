@@ -28,6 +28,7 @@ interface FunctionCase<T> {
   requiresTranslation: boolean;
 }
 const appCases: FunctionCase<AppCopy>[] = [
+  { path: "resourceBreakdown.etwResidualProcess", render: copy => copy.resourceBreakdown.etwResidualProcess("worker.exe"), parameters: ["worker.exe", "DXGKrnl/VidMm"], requiresTranslation: true },
   { path: "smartReport.processTarget", render: copy => copy.smartReport.processTarget("Tool-A", 42), parameters: ["Tool-A", "42"], requiresTranslation: true },
   { path: "optimization.evaluationFailed", render: copy => copy.optimization.evaluationFailed(), parameters: [], requiresTranslation: true },
   { path: "optimization.rulesUnavailable", render: copy => copy.optimization.rulesUnavailable(3), parameters: ["3"], requiresTranslation: true },

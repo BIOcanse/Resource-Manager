@@ -9,7 +9,7 @@ import { backendMessageDomains } from "./backendMessage.ts";
 import { userFacingMetricUnavailableReason } from "./userFacingText.ts";
 import { formatFieldValue } from "./fieldValueFormat.ts";
 import { formatLegacyMetricNumber } from "./legacyMetricNumber.ts";
-import type { MetricDefinition, MetricValue, ResourceTableValue } from "../types.ts";
+import type { MetricDefinition, MetricValue, ResourceProcessSegment, ResourceTableRow, ResourceTableValue } from "../types.ts";
 
 // 后端按稳定指标 id 提供事实，用户看到的名称由当前语言的文案包决定。
 // 不认识的 id 由前端适配器提供字段名，保证新增指标不会显示空白。
@@ -108,6 +108,31 @@ export function softwareDisplayName(software: {
 
   const group = (software.displayKind ?? "").trim() as keyof typeof uiText.softwareKind;
   return uiText.softwareKind[group] ?? "";
+}
+
+/** Synthetic attribution names belong to the UI; real process names remain factual. */
+export function resourceProcessDisplayName(
+  process: Pick<ResourceProcessSegment, "name" | "attributionKind">,
+  metricId: string
+): string {
+  const text = uiText.resourceBreakdown;
+  if (process.attributionKind === "system-residual") {
+    if (/^gpu\.\d+\.vram$/.test(metricId)) return text.residualVram;
+    if (metricId === "memory.usage") return text.residualMemory;
+    if (metricId === "virtualMemory.usage") return text.residualCommit;
+    return text.residualSystem;
+  }
+  if (process.attributionKind === "etw-residual-process") {
+    return text.etwResidualProcess(process.name);
+  }
+  return process.name;
+}
+
+/** Process rows already carry the localized fact projection; only software rows use group naming. */
+export function resourceTableRowName(row: ResourceTableRow | undefined): string {
+  if (row?.kind === "summary") return uiText.resourceTable.summaryRow.name;
+  if (row?.kind === "process") return row.name;
+  return softwareDisplayName({ softwareId: row?.softwareId, name: row?.name, displayKind: row?.status });
 }
 
 function normalizeMetricId(id: string): { pattern: string; index: string | null } {

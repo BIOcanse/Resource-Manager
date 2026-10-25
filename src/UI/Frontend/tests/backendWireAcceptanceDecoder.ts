@@ -6,7 +6,7 @@ import {
 } from "../src/api/resourceBreakdownWire.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { applyLanguage, currentLanguage } from "../src/i18n/appTextStore.ts";
-import { localizedMetricLabel } from "../src/presentation/metricLabels.ts";
+import { localizedMetricLabel, resourceProcessDisplayName } from "../src/presentation/metricLabels.ts";
 import { metricSnapshotDecoder } from
   "../src/data/monitor/monitorSourceDecoders.ts";
 
@@ -40,7 +40,10 @@ const tableProcess = table?.rows.find((row) => row.kind === "process");
 const details = request.kind === "details"
   ? decodeResourceProcessDetailsWireSnapshot(request.payload) : null;
 const decodedMetrics = details?.metrics ?? monitor?.facts?.metrics ?? monitor?.breakdown.bars ?? [];
+const decodedProcesses = decodedMetrics.flatMap(metric => metric.software
+  .flatMap(software => software.processes.map(process => ({ metricId: metric.metricId, ...process }))));
 const localizedNames: Record<string, string[]> = {};
+const localizedProcessNames: Record<string, string[]> = {};
 for (const language of languageOptions.filter(option => option.id !== "system")) {
   await applyLanguage(language.id);
   assert.equal(currentLanguage(), language.id);
@@ -49,11 +52,20 @@ for (const language of languageOptions.filter(option => option.id !== "system"))
     assert.ok(label.trim().length > 0 && label !== id, `${language.id}: missing name for ${id}`);
     return label;
   });
+  localizedProcessNames[language.id] = decodedProcesses.map(process => {
+    const label = resourceProcessDisplayName(process, process.metricId);
+    assert.ok(label.trim().length > 0 && label !== process.attributionKind,
+      `${language.id}: missing process name for ${process.attributionKind}/${process.metricId}`);
+    if (process.attributionKind === "system-residual") assert.equal(process.name, "");
+    return label;
+  });
 }
 
 process.stdout.write(JSON.stringify({
   decodedMetricIds: decodedMetrics.map(metric => metric.metricId),
   localizedNames,
+  decodedProcesses,
+  localizedProcessNames,
   processCount: decodedMetrics.flatMap(metric => metric.software).flatMap(software => software.processes).length,
   factsProcessStartKey: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.processStartKey ?? null,
   factsProcessSharedValue: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.sharedValue ?? null,

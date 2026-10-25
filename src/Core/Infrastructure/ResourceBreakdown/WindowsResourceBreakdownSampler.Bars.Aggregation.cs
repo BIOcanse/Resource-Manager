@@ -11,7 +11,7 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class WindowsResourceBreakdownSampler
 {
-    private static ResourceBreakdownBar CreateBar(
+    internal static ResourceBreakdownBar CreateBar(
         string metricId,
         string unit,
         string scaleMode,
@@ -232,7 +232,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
         return new ResourceSoftwareSegment(
             group.Software.Id,
-            group.Software.Name,
+            group.Software.Id == RuntimeAttributionIds.ResourceManagerSelf ? string.Empty : group.Software.Name,
             group.Software.Kind,
             group.Software.DisplayKind,
             totalValue,

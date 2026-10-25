@@ -32,7 +32,7 @@ export function enrichSoftwareContextTarget(
     processNames: uniqueStrings([
       ...(target.processNames ?? []),
       ...(softwareRow?.processNames ?? []),
-      ...processRows.flatMap(row => row.processNames?.length ? row.processNames : [row.name])
+      ...processRows.flatMap(row => row.processNames ?? [row.name])
     ]),
     executablePaths: uniqueStrings([
       ...(target.executablePaths ?? []),

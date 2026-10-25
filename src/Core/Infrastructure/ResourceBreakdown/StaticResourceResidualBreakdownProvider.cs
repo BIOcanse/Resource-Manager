@@ -16,7 +16,7 @@ public sealed class StaticResourceResidualBreakdownProvider : IResourceResidualB
         [
             new ResourceProcessSegment(
                 -1,
-                CategoryLabel(request.MetricId),
+                string.Empty,
                 null,
                 request.Value,
                 request.SystemPercent,
@@ -27,24 +27,4 @@ public sealed class StaticResourceResidualBreakdownProvider : IResourceResidualB
         ];
     }
 
-    private static string CategoryLabel(string metricId)
-    {
-        if (metricId.StartsWith(ResourceBreakdownMetricIds.GpuPrefix, StringComparison.OrdinalIgnoreCase)
-            && metricId.EndsWith(".vram", StringComparison.OrdinalIgnoreCase))
-        {
-            return "GPU 驱动 / WDDM / 桌面合成保留（未细分）";
-        }
-
-        if (metricId.Equals(ResourceBreakdownMetricIds.MemoryUsage, StringComparison.OrdinalIgnoreCase))
-        {
-            return "系统 / 内核 / 驱动保留（未细分）";
-        }
-
-        if (metricId.Equals(ResourceBreakdownMetricIds.VirtualMemoryUsage, StringComparison.OrdinalIgnoreCase))
-        {
-            return "系统提交 / 内核保留（未细分）";
-        }
-
-        return "系统 / 驱动保留（未细分）";
-    }
 }

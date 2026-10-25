@@ -1,4 +1,4 @@
-import { localizedMetricLabel, resourceMetricBasis, softwareDisplayName } from "../../presentation/metricLabels.ts";
+import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, softwareDisplayName } from "../../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
@@ -657,7 +657,7 @@ function ResourceProcessPanel(props: {
           </Show>}
         >
           <ResourceSegmentPaintPlane
-            segments={resourceProcessPaintSegments(layout())}
+            segments={resourceProcessPaintSegments(layout(), props.bar.metricId)}
             logicalSegmentCount={layout().length}
             segmentTop={trackGeometry.segmentTop()}
             segmentHeight={trackGeometry.segmentHeight()}
@@ -726,7 +726,7 @@ function resourceProcessTooltip(bar: ResourceBreakdownBar, process: ResourceProc
     : isEtwResidualProcess(process)
       ? `\n${uiText.resourceBreakdown.etwSupplement}`
       : "";
-  return `${process.name} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${resourceMemoryDetail(bar, process)}${extra}`;
+  return `${resourceProcessDisplayName(process, bar.metricId)} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${resourceMemoryDetail(bar, process)}${extra}`;
 }
 
 function isSystemResidualProcess(process: ResourceProcessSegment) {
@@ -899,14 +899,14 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
   }));
 }
 
-function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProcessSegment>[]): ResourcePaintSegment[] {
+function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProcessSegment>[], metricId: string): ResourcePaintSegment[] {
   return items.map((item) => ({
     key: processKey(item.segment),
     sharedFraction: item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
     left: item.left,
     right: item.right,
     color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length].bg,
-    label: item.width >= 10 ? item.segment.name : undefined,
+    label: item.width >= 10 ? resourceProcessDisplayName(item.segment, metricId) : undefined,
     labelColor: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length].text
   }));
 }
