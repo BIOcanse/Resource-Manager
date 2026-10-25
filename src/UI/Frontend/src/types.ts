@@ -947,12 +947,24 @@ export interface GpuPlacementSoftwareSettingsSnapshot {
 /** 后端为该软件登记的叠加层注入模块：都没有、只有一部分、全部。只读，来自后端的启动模块选择。 */
 export type OverlayInjectionModules = "none" | "partial" | "complete";
 
+/** 浮窗一项选的来源：一台设备上的一个后端原始字段（和卡片的“字段@设备”同一个东西）。 */
+export interface OverlayMetricSource {
+  fieldName: string;
+  deviceIdentity: string;
+}
+
 export interface PerformanceOverlaySettings {
   softwareId: string;
   injectionModules: OverlayInjectionModules;
   enabled: boolean;
   mode: "external" | "injected";
   metrics: string[];
+  /**
+   * 每一项的来源，按项目的指标 id 存（docs/metric_item_source_choice_2026-10-25.md）。没有这一项是“自动选择”：
+   * 按部件地址订阅，后端按本机选来源；有就只读这个字段（原生壳按 fields= 订阅），读不到显示不可用。
+   * 和 metrics 一起存在前端偏好缓存里，不进后端设置。
+   */
+  metricSources: Record<string, OverlayMetricSource>;
   sizeMode: "absolutePixels" | "windowRatio";
   fontSizePx: number;
   regionWidthRatio: number;

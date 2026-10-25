@@ -65,11 +65,18 @@ internal sealed record FrontendRefresh
     }
 }
 
+// The source an overlay item reads instead of its part address: one backend raw field on one
+// device (docs/metric_item_source_choice_2026-10-25.md). Absent means automatic.
+internal sealed record FrontendOverlayMetricSource(string FieldName, string DeviceIdentity);
+
 internal sealed record FrontendOverlayPresentation
 {
     public bool Enabled { get; init; }
     public string Mode { get; init; } = "external";
     public IReadOnlyList<string> Metrics { get; init; } = FrontendPoints.MetricOrder;
+    // Per-item source choices keyed by the item's metric ID; items without one are automatic.
+    public IReadOnlyDictionary<string, FrontendOverlayMetricSource> MetricSources { get; init; } =
+        new Dictionary<string, FrontendOverlayMetricSource>(StringComparer.Ordinal);
     public string SizeMode { get; init; } = FrontendPoints.SizeMode;
     public int FontSizePx { get; init; } = FrontendPoints.FontSizePx;
     public double RegionWidthRatio { get; init; } = FrontendPoints.RegionWidthRatio;
@@ -86,9 +93,15 @@ internal sealed record FrontendOverlayPresentation
             || FontSizePx is < 8 or > 72 || MarginPx is < 0 or > 256
             || !double.IsFinite(RegionWidthRatio) || RegionWidthRatio is < 0.05 or > 1
             || !double.IsFinite(RegionHeightRatio) || RegionHeightRatio is < 0.05 or > 1
-            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight"))
+            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight")
+            || MetricSources is null
+            || MetricSources.Any(pair => !Metrics.Contains(pair.Key, StringComparer.Ordinal) || pair.Value is null
+                || string.IsNullOrWhiteSpace(pair.Value.FieldName) || string.IsNullOrWhiteSpace(pair.Value.DeviceIdentity)))
             throw new InvalidDataException("Invalid frontend overlay cache.");
     }
+
+    internal FrontendOverlayMetricSource? SourceFor(string metricId) =>
+        MetricSources.TryGetValue(metricId, out var source) ? source : null;
 }
 
 // 新版本提示的两条途径（界面内提示、Windows 系统通知）各自的开关，以及界面内提示已提示过的版本。

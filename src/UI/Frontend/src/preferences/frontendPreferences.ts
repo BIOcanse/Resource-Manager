@@ -60,7 +60,7 @@ export function pointPreferences(): FrontendPreferencesCache {
 
 export function pointOverlayPresentation(): OverlayPresentation {
   return {
-    enabled: false, mode: "external", metrics: [...points.MetricOrder], fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
+    enabled: false, mode: "external", metrics: [...points.MetricOrder], metricSources: {}, fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
     regionWidthRatio: points.RegionWidthRatio, regionHeightRatio: points.RegionHeightRatio,
     anchor: points.Anchor, marginPx: points.MarginPx
   };

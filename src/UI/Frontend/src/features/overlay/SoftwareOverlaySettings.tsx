@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
@@ -7,6 +7,12 @@ import { MetricModal } from "../monitor/MetricModal.tsx";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText, currentSettingsText } from "../../text.ts";
 import type { ManagedComponent, MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
+import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
+import { fieldCardDefinitions } from "../monitor/fieldCards.ts";
+import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import { overlaySourceChoices, overlaySourceIndex, overlaySourcesFor, withOverlaySource } from "./overlaySources.ts";
 
 export function SoftwareOverlaySettings(props: { softwareId: string; active: boolean }) {
   const [saved, setSaved] = createSignal<PerformanceOverlaySettings | null>(null);
@@ -18,6 +24,18 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const [pickerOpen, setPickerOpen] = createSignal(false);
   const [pickerMetrics, setPickerMetrics] = createSignal<string[]>([]);
   const [error, setError] = createSignal("");
+  // 先选项目、再选来源：来源是部件地址的后端候选，候选字段要在字段目录里（和卡片选择器一样）。
+  const runtime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
+  const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldCatalogDevice[]>([]);
+  createEffect(() => {
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!props.active || intervalMs === undefined) return;
+    const unsubscribe = runtime.sources.metricFieldCatalog.subscribeSnapshot(intervalMs,
+      (snapshot) => setFieldDevices(snapshot.data ?? []));
+    onCleanup(unsubscribe);
+  });
+  const sourceCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldDevices())]);
   let requestId = 0;
   const dirty = createMemo(() => JSON.stringify(saved()) !== JSON.stringify(draft()));
   // 后端登记的注入模块和这里的选择不一致（外部改过，或上次只保存了一半）：显示提示，并允许保存来对齐。
@@ -160,7 +178,17 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
                 <button class="secondary" type="button" disabled={saving() || index() === current().metrics.length - 1}
                   aria-label={uiText.performanceOverlay.moveDown} onClick={() => moveMetric(index(), 1)}>↓</button>
                 <button class="secondary" type="button" disabled={saving()} aria-label={uiText.performanceOverlay.removeMetric}
-                  onClick={() => update({ metrics: current().metrics.filter((metric) => metric !== id) })}>×</button>
+                  onClick={() => {
+                    const metrics = current().metrics.filter((metric) => metric !== id);
+                    update({ metrics, metricSources: overlaySourcesFor(current().metricSources, metrics) });
+                  }}>×</button>
+                <OverlayMetricSourceChoice
+                  disabled={saving()}
+                  metricId={id}
+                  label={localizedMetricLabel(id, catalog().find((item) => item.id === id)?.label)}
+                  catalog={sourceCatalog()}
+                  current={current().metricSources[id]}
+                  onChange={(source) => update({ metricSources: withOverlaySource(current().metricSources, current().metrics, id, source) })} />
               </li>}
             </For>
           </ol>
@@ -211,8 +239,48 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
         onSelect={(id) => setPickerMetrics((current) => current.includes(id)
           ? current.filter((item) => item !== id) : [...current, id])}
         onClose={() => setPickerOpen(false)}
-        onConfirm={() => { update({ metrics: pickerMetrics() }); setPickerOpen(false); }}
+        onConfirm={() => {
+          update({ metrics: pickerMetrics(), metricSources: overlaySourcesFor(draft()?.metricSources ?? {}, pickerMetrics()) });
+          setPickerOpen(false);
+        }}
         onDependencyPrompt={(_metric, dependency) => setError(uiText.metricPicker.needsInstall(dependency.name))} />
     </section>
+  );
+}
+
+/** 一项的来源：只有不止一个来源时摆出来，第一项是自动选择（写出后端现在选的来源）。统一分段样式。 */
+function OverlayMetricSourceChoice(props: {
+  metricId: string;
+  label: string;
+  catalog: readonly MetricDefinition[];
+  current: PerformanceOverlaySettings["metricSources"][string] | undefined;
+  disabled: boolean;
+  onChange: (source: PerformanceOverlaySettings["metricSources"][string] | null) => void;
+}) {
+  const choices = createMemo(() => overlaySourceChoices(props.metricId, props.catalog));
+  const groupLabel = () => uiText.resourceTable.columnSourceLabel(props.label);
+  return (
+    <Show when={choices().length > 0}>
+      <div class="overlay-settings-metric-source">
+        <strong>{uiText.metricPicker.sourceLabel}</strong>
+        <RadioGroupRoot class="segmented overlay-settings-metric-source-choices" ariaLabel={groupLabel()} disabled={props.disabled}
+          value={(() => { const index = overlaySourceIndex(choices(), props.current); return index < 0 ? "" : `source-${index}`; })()}
+          onChange={(value) => {
+            const choice = choices()[Number(value.slice("source-".length))];
+            if (choice) props.onChange(choice.source);
+          }}>
+          <Index each={choices()}>
+            {(choice, index) => (
+              <RadioGroupItem value={`source-${index}`} class="segment" title={choice().label}>
+                {choice().label}
+                <Show when={choice().preferred}>
+                  <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
+                </Show>
+              </RadioGroupItem>
+            )}
+          </Index>
+        </RadioGroupRoot>
+      </div>
+    </Show>
   );
 }

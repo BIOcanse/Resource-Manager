@@ -48,4 +48,6 @@ test("overlay editors and the picker cannot mutate the draft during a save", () 
   assert.match(overlay, /current && !saving\(\) \?/);
   assert.match(overlay, /if \(!current \|\| saving\(\)\) return/);
   assert.match(overlay, /open=\{pickerOpen\(\) && !saving\(\)\}/);
+  // 每一项的来源选择在保存时同样不可改。
+  assert.match(overlay, /<OverlayMetricSourceChoice[^>]*disabled=\{saving\(\)\}/s);
 });

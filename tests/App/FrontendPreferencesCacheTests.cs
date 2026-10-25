@@ -381,6 +381,34 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(JsonValueKind.Null, Owner().Read().Dashboard!.Value.GetProperty("resourceBars")[0].GetProperty("source").ValueKind);
     }
 
+    [Fact]
+    public void OverlayMetricSourcesSurviveTheCacheAndMustBelongToAnItem()
+    {
+        // An overlay item's chosen source is frontend data next to the item order; absent means automatic.
+        static FrontendPreferences WithSources(Dictionary<string, FrontendOverlayMetricSource> sources) => new()
+        {
+            Overlays = new Dictionary<string, FrontendOverlayPresentation>
+                { ["game"] = new() { Metrics = ["target.fps", "cpu.temperature"], MetricSources = sources } }
+        };
+        var owner = Owner();
+        owner.SaveOverlay("game", WithSources(new() { ["cpu.temperature"] = new("cpu_amd_tctl_temperature_celsius", "cpu|0") }));
+        var saved = Owner().Overlay("game");
+        Assert.Equal(new FrontendOverlayMetricSource("cpu_amd_tctl_temperature_celsius", "cpu|0"), saved.SourceFor("cpu.temperature"));
+        Assert.Null(saved.SourceFor("target.fps"));
+        Assert.Contains("\"metricSources\"", File.ReadAllText(Cache));
+        foreach (var invalid in new Dictionary<string, FrontendOverlayMetricSource>[]
+        {
+            new() { ["gpu.0.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|0") },
+            new() { ["cpu.temperature"] = new(" ", "cpu|0") },
+            new() { ["cpu.temperature"] = new("cpu_amd_tctl_temperature_celsius", "") }
+        })
+            Assert.Throws<InvalidDataException>(() => owner.SaveOverlay("game", WithSources(invalid)));
+        Assert.Equal("cpu|0", Owner().Overlay("game").SourceFor("cpu.temperature")!.DeviceIdentity);
+        // A cache written before sources existed reads every item as automatic.
+        File.WriteAllText(Cache, """{"overlays":{"old":{"metrics":["target.fps"]}}}""");
+        Assert.Empty(Owner().Overlay("old").MetricSources);
+    }
+
     private FrontendPreferencesOwner Owner() => new(Cache, App, Overlay);
     private static string Serialize(FrontendPreferences value) => JsonSerializer.Serialize(value, FrontendPreferencesOwner.Json);
 

@@ -1,5 +1,7 @@
 import type { MetricDefinition, MetricSourceCandidate } from "../../types";
 import { metricOfferedInPicker } from "../../presentation/metricPresentation.ts";
+import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
+import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind, fieldCardId } from "./fieldCards.ts";
 
 /*
@@ -25,6 +27,18 @@ export interface MetricSourceChoice {
   readonly source: MetricDefinition | null;
   /** 后端核定的本机首选。 */
   readonly preferred: boolean;
+}
+
+/** 一个来源的名字：字段名加设备名。 */
+export function metricSourceName(source: MetricDefinition): string {
+  return `${localizedMetricLabel(source.id, source.label)} · ${source.group}`;
+}
+
+/** 来源选项的名字：自动选择写出后端现在选的来源（还没选中时只写“自动选择”）。卡片选择器和浮窗共用。 */
+export function metricSourceChoiceLabel(choice: MetricSourceChoice): string {
+  return choice.automatic
+    ? uiText.metricPicker.sourceAutomatic(choice.source ? metricSourceName(choice.source) : null)
+    : metricSourceName(choice.source!);
 }
 
 /**

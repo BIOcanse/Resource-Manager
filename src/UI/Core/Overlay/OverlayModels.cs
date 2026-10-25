@@ -1,10 +1,26 @@
 namespace ResourceManager.NativeUi.Overlay;
 
-internal sealed record OverlaySnapshot(int Version, IReadOnlyList<OverlayTarget> Targets);
+internal sealed record OverlaySnapshot(int Version, IReadOnlyList<OverlayTarget> Targets)
+{
+    // Raw field values requested with fields= (the backend's raw-field value contract).
+    public IReadOnlyList<OverlayDeviceFields> Fields { get; init; } = [];
+}
 
 internal sealed record OverlayTarget(
     string SoftwareId, int ProcessId, ulong ProcessStartKey,
-    OverlaySettings Settings, IReadOnlyList<OverlayMetric> Metrics);
+    OverlaySettings Settings, IReadOnlyList<OverlayMetric> Metrics)
+{
+    // The raw fields of the subscription this target arrived on; items with a chosen source read them.
+    public IReadOnlyList<OverlayDeviceFields> Fields { get; init; } = [];
+}
+
+internal sealed record OverlayDeviceFields(string DeviceIdentity, IReadOnlyList<OverlayFieldValue> Fields);
+
+// Status is the backend SamplingObservationStatus number; only Current (1) carries a value.
+internal sealed record OverlayFieldValue(string Name, string Unit, double? NumericValue, string? IntegerValue, int Status)
+{
+    internal const int CurrentStatus = 1;
+}
 
 internal sealed record OverlaySettings(string SoftwareId, bool Enabled, string Mode);
 

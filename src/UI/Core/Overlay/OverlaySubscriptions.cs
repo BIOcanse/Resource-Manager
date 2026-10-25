@@ -7,14 +7,22 @@ internal sealed record OverlaySubscription(string Id, string Path);
 
 internal static class OverlaySubscriptions
 {
+    // Items with a chosen source are read as raw fields (fields=) instead of their part address (ids=).
+    // Like the dashboard's field cards the fields are requested by name; each item picks its own device.
     internal static OverlaySubscription[] Create(FrontendPreferences preferences, StartupModuleOperationsDocument? operations = null) =>
         preferences.Overlays.Where(pair => OverlayStartupModules.Enabled(pair.Key, pair.Value, operations ?? new(1, [])))
             .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Where(static pair => pair.Value.Metrics.Count > 0)
-            .Select((pair, index) => new OverlaySubscription($"overlay-{index}",
-                "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(pair.Key)
-                + string.Concat(pair.Value.Metrics.OrderBy(static id => id, StringComparer.Ordinal)
-                    .Select(static id => "&ids=" + Uri.EscapeDataString(id)))))
+            .Select(static pair => (SoftwareId: pair.Key,
+                Ids: pair.Value.Metrics.Where(id => pair.Value.SourceFor(id) is null)
+                    .OrderBy(static id => id, StringComparer.Ordinal).ToArray(),
+                Fields: pair.Value.Metrics.Select(pair.Value.SourceFor).OfType<FrontendOverlayMetricSource>()
+                    .Select(static source => source.FieldName).Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal).ToArray()))
+            .Where(static item => item.Ids.Length + item.Fields.Length > 0)
+            .Select((item, index) => new OverlaySubscription($"overlay-{index}",
+                "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(item.SoftwareId)
+                + string.Concat(item.Ids.Select(static id => "&ids=" + Uri.EscapeDataString(id)))
+                + string.Concat(item.Fields.Select(static field => "&fields=" + Uri.EscapeDataString(field)))))
             .ToArray();
 
     // The controller observes operational settings without sampling. Only the

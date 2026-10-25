@@ -158,5 +158,45 @@ public sealed class PerformanceOverlayNativeUiTests
         Assert.DoesNotContain("labels", JsonSerializer.Serialize(snapshot), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void ChosenSourceShowsItsRawFieldUnderTheItemLabelAndNeverThePartAddress()
+    {
+        // The overlay stream's raw-field values (fields=) and the item's chosen field on one device.
+        const string json = """
+            {"version":2,"targets":[{"softwareId":"test","processId":42,"processStartKey":1337,
+              "settings":{"softwareId":"test","enabled":true,"mode":"external"},
+              "metrics":[{"metricId":"cpu.temperature","value":70,"unit":"°C","state":"current","reason":null}]}],
+             "fields":[{"deviceIdentity":"gpu|1","device":{"kind":"gpu_adapter"},"fields":[
+               {"name":"gpu_amd_edge_temperature_celsius","unit":"°C","numericValue":50,"integerValue":null,"status":1,
+                "sourceId":"amd.adlx","valueKind":"float64"},
+               {"name":"memory_all_physical_available_bytes","unit":"B","numericValue":null,"integerValue":"9007199254740993",
+                "status":1,"sourceId":"windows.memory","valueKind":"unsigned64"}]},
+               {"deviceIdentity":"gpu|0","fields":[{"name":"gpu_amd_edge_temperature_celsius","unit":"°C","numericValue":null,
+                "integerValue":null,"status":3,"sourceId":"amd.adlx","valueKind":"float64"}]}]}
+            """;
+        var snapshot = JsonSerializer.Deserialize<OverlaySnapshot>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var target = Assert.Single(snapshot.Targets) with { Fields = snapshot.Fields };
+        FrontendOverlayPresentation Choose(string device, string field) => new()
+        {
+            Metrics = ["cpu.temperature"],
+            MetricSources = new Dictionary<string, FrontendOverlayMetricSource> { ["cpu.temperature"] = new(field, device) }
+        };
+        const string language = "en-US";
+        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 50, "°C", "current", null), language)],
+            OverlayBitmapRenderer.Lines(target, Choose("gpu|1", "gpu_amd_edge_temperature_celsius"), language));
+        // The same field on another device is that device's own value: unavailable there, not borrowed.
+        var unavailable = OverlayBitmapRenderer.FormatLine(new("cpu.temperature", null, "°C", "unavailable", null), language);
+        Assert.Equal([unavailable], OverlayBitmapRenderer.Lines(target, Choose("gpu|0", "gpu_amd_edge_temperature_celsius"), language));
+        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", null, "", "unavailable", null), language)],
+            OverlayBitmapRenderer.Lines(target, Choose("gpu|9", "gpu_amd_edge_temperature_celsius"), language));
+        // Exact integers are read from their decimal text.
+        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 9007199254740993d, "B", "current", null), language)],
+            OverlayBitmapRenderer.Lines(target, Choose("gpu|1", "memory_all_physical_available_bytes"), language));
+        // Automatic keeps the part address value.
+        Assert.Equal([OverlayBitmapRenderer.FormatLine(new("cpu.temperature", 70, "°C", "current", null), language)],
+            OverlayBitmapRenderer.Lines(target, new() { Metrics = ["cpu.temperature"] }, language));
+        Assert.DoesNotContain("70", OverlayBitmapRenderer.Lines(target, Choose("gpu|0", "gpu_amd_edge_temperature_celsius"), language)[0]);
+    }
+
     internal static OverlayMetric Metric() => new("target.fps", 100, "FPS", "current", null);
 }

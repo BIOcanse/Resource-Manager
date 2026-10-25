@@ -85,6 +85,36 @@
   flex: 1;
 }
 
+/* 一项的来源（先选项目、再选来源）：在这一项下面占一整行，选项是统一分段样式。 */
+.overlay-settings-metrics li {
+  flex-wrap: wrap;
+}
+
+.overlay-settings-metric-source {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+
+.overlay-settings-metric-source-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.overlay-settings-metric-source-choices .segment {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+.overlay-settings-metric-source-choices .metric-source-choice-mark {
+  margin-left: 6px;
+  opacity: 0.75;
+}
+
 .overlay-settings [role="note"] {
   border-left: 3px solid var(--warn);
   padding: 0.5rem 0.75rem;

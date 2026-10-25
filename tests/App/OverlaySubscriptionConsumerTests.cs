@@ -35,6 +35,42 @@ public sealed class OverlaySubscriptionConsumerTests
     }
 
     [Fact]
+    public void ItemsWithAChosenSourceSubscribeTheirRawFieldInsteadOfThePartAddress()
+    {
+        // docs/metric_item_source_choice_2026-10-25.md: a chosen source reads only that raw field.
+        var preferences = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
+        {
+            ["game"] = new()
+            {
+                Enabled = true,
+                Metrics = ["target.fps", "gpu.0.temperature", "cpu.temperature"],
+                MetricSources = new Dictionary<string, FrontendOverlayMetricSource>
+                {
+                    ["gpu.0.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|0"),
+                    ["cpu.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|1")
+                }
+            },
+            ["fields-only"] = new()
+            {
+                Enabled = true,
+                Metrics = ["cpu.temperature"],
+                MetricSources = new Dictionary<string, FrontendOverlayMetricSource>
+                    { ["cpu.temperature"] = new("cpu_amd_tctl_temperature_celsius", "cpu|0") }
+            }
+        } };
+        var plan = OverlaySubscriptions.Create(preferences);
+        Assert.Equal(2, plan.Length);
+        var fieldsOnly = plan.Single(item => item.Path.Contains("softwareId=fields-only"));
+        Assert.DoesNotContain("&ids=", fieldsOnly.Path);
+        Assert.EndsWith("&fields=cpu_amd_tctl_temperature_celsius", fieldsOnly.Path);
+        var game = plan.Single(item => item.Path.Contains("softwareId=game"));
+        Assert.EndsWith("&ids=target.fps&fields=gpu_amd_edge_temperature_celsius", game.Path);
+        Assert.DoesNotContain("temperature&ids", game.Path);
+        Assert.DoesNotContain("ids=gpu.0.temperature", game.Path);
+        Assert.DoesNotContain("ids=cpu.temperature", game.Path);
+    }
+
+    [Fact]
     public async Task ChangingCachedSelectionReplacesDemandAndDisablingReleasesIt()
     {
         var preferences = new FrontendPreferences();

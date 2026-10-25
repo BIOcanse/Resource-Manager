@@ -24,11 +24,7 @@ internal static class OverlayBitmapRenderer
             || (long)targetSize.Width * targetSize.Height * 4 > PerformanceOverlaySharedMemory.MaximumPixelBytes)
             return null;
 
-        var language = NativeUiText.Language;
-        var lines = presentation.Metrics.Select(id => target.Metrics.FirstOrDefault(metric =>
-                metric.MetricId.Equals(id, StringComparison.OrdinalIgnoreCase)))
-            .Where(static metric => metric is not null)
-            .Select(metric => FormatLine(metric!, language)).ToArray();
+        var lines = Lines(target, presentation, NativeUiText.Language);
         if (lines.Length == 0) return null;
         using var bitmap = new Bitmap(targetSize.Width, targetSize.Height, PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(bitmap);
@@ -63,6 +59,28 @@ internal static class OverlayBitmapRenderer
         }
         finally { bitmap.UnlockBits(data); }
         return new OverlayImage(targetSize.Width, targetSize.Height, pixels);
+    }
+
+    // One line per item in the user's order. An item with a chosen source shows that raw field on
+    // that device under the item's own label; when it cannot be read the line shows no value
+    // instead of falling back to the part address.
+    internal static string[] Lines(OverlayTarget target, FrontendOverlayPresentation presentation, string language) =>
+        presentation.Metrics.Select(id => presentation.SourceFor(id) is { } source
+                ? SourceMetric(id, source, target)
+                : target.Metrics.FirstOrDefault(metric => metric.MetricId.Equals(id, StringComparison.OrdinalIgnoreCase)))
+            .Where(static metric => metric is not null)
+            .Select(metric => FormatLine(metric!, language)).ToArray();
+
+    private static OverlayMetric SourceMetric(string id, FrontendOverlayMetricSource source, OverlayTarget target)
+    {
+        var field = target.Fields.FirstOrDefault(device => device.DeviceIdentity == source.DeviceIdentity)?
+            .Fields.FirstOrDefault(value => value.Name == source.FieldName);
+        if (field is null || field.Status != OverlayFieldValue.CurrentStatus)
+            return new(id, null, field?.Unit ?? "", "unavailable", null);
+        var value = field.IntegerValue is { } integer
+            && double.TryParse(integer, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed : field.NumericValue;
+        return new(id, value, field.Unit, value is null ? "unavailable" : "current", null);
     }
 
     internal static string FormatLine(OverlayMetric metric, string language)

@@ -99,7 +99,9 @@ export async function getPerformanceOverlaySettings(softwareId: string): Promise
   if (presentation.mode === "injected") {
     presentation.enabled = injectionModules === "complete";
   }
-  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics] };
+  // 来源出现之前写的缓存没有 metricSources：点的默认值是空表，每一项都是自动选择。
+  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics],
+    metricSources: { ...presentation.metricSources } };
 }
 
 function startupModuleSelectionPath(softwareId: string) {
@@ -149,7 +151,8 @@ export async function savePerformanceOverlaySettings(settings: PerformanceOverla
   } catch (error) {
     throw modulesChanged ? new OverlayPreferencesSaveError(error) : error;
   }
-  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics] };
+  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics],
+    metricSources: { ...presentation.metricSources } };
 }
 
 export async function resetPerformanceOverlayPresentation(softwareId: string) {

@@ -26,7 +26,7 @@ import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { metricSourceChoices, type MetricSourceChoice } from "./metricSources.ts";
+import { metricSourceChoiceLabel, metricSourceChoices, type MetricSourceChoice } from "./metricSources.ts";
 
 interface MetricModalProps {
   open: boolean;
@@ -146,10 +146,7 @@ export function MetricModal(props: MetricModalProps) {
     const index = sourceChoices().findIndex((choice) => choice.metricId === props.selectedMetricId);
     return index < 0 ? "" : `source-${index}`;
   };
-  const sourceName = (source: MetricDefinition) => `${localizedMetricLabel(source.id, source.label)} · ${source.group}`;
-  const sourceLabel = (choice: MetricSourceChoice) => choice.automatic
-    ? uiText.metricPicker.sourceAutomatic(choice.source ? sourceName(choice.source) : null)
-    : sourceName(choice.source!);
+  const sourceLabel = metricSourceChoiceLabel;
   const enabledMetricIds = createMemo(() => filteredMetrics()
     .filter((metric) => !metricUnavailable(metric))
     .map((metric) => metric.id));

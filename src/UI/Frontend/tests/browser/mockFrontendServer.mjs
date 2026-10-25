@@ -414,8 +414,10 @@ async function handleApi(request, response, url) {
     return json(response, 200, smartCoordinatorStatus());
   }
   if (path === "/api/performance-overlay/metrics/catalog" && request.method === "GET") {
-    return json(response, 200, ["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow", "target.cpu", "target.gpu", "target.memory", "target.vram"]
-      .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")));
+    // 浮窗目录和后端一样也带部件地址的候选来源（MetricCatalog.ForPerformanceOverlay 继承同一份）。
+    return json(response, 200, [...["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow", "target.cpu", "target.gpu", "target.memory", "target.vram"]
+      .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")),
+      ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])]);
   }
   if (path === "/api/startup-modules/settings" && request.method === "GET") {
     return json(response, 200, { version: 1, software: [...startupModuleSelections.values()] });
