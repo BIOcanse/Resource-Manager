@@ -13,7 +13,7 @@ import { MetricDependencyState, MetricModal } from "./features/monitor/MetricMod
 import { StandardContextMenu } from "./components/StandardContextMenu";
 import { FrontendWorkProvider } from "./frontendWork/FrontendWorkContext";
 import { useFrontendWorkController } from "./frontendWork/useFrontendWorkController";
-import { frontendWorkIds } from "./frontendWork/frontendWorkIds";
+import { frontendVisibilitySourceKinds, frontendWorkIds } from "./frontendWork/frontendWorkIds";
 import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
 import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
@@ -151,8 +151,8 @@ export default function App() {
   const resourceTableIntervalMs = createMemo(() =>
     pageRefresh.cpuRuntimePlan()?.resourceTable ?? null);
   const monitor: MonitorStore = createMonitorStore({
-    visibleDashboardCardIds: () => frontendWork.activeVisibilityDemandIds().filter(id => id.startsWith("monitor.card."))
-      .map(id => decodeURIComponent(id.slice("monitor.card.".length))),
+    visibleDashboardCardIds: () =>
+      frontendWork.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard),
     onMetricDependenciesRequested: () => void management.refreshComponents(),
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
     processFieldCatalogSource: frontendRuntime.sources.processFieldCatalog,

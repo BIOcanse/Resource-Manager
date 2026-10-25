@@ -2,14 +2,15 @@ import { onCleanup, onMount } from "solid-js";
 import type { FrontendWorkId } from "./frontendWorkIds";
 import { bindFrontendVisibilityDemand } from "./frontendVisibilityDemandRegistration";
 import { useFrontendWork } from "./FrontendWorkContext";
+import type { FrontendVisibilitySourceDemand } from "./frontendVisibilitySurface.ts";
 
 export function useFrontendVisibilityDemand(
-  demandId: string,
+  demand: string | FrontendVisibilitySourceDemand,
   workIds: readonly FrontendWorkId[]
 ) {
   const mainController = useFrontendWork();
   onMount(() => {
-    const unregister = mainController.registerVisibilityDemand(demandId, workIds);
+    const unregister = mainController.registerVisibilityDemand(demand, workIds);
     onCleanup(unregister);
   });
 }

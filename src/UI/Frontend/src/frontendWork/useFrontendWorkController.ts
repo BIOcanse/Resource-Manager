@@ -1,8 +1,9 @@
 import { createSelector, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
 import { subscribeShellHostMessages } from "../utils.ts";
 import { FrontendVisibilityDemandController } from "./FrontendVisibilityDemandController.ts";
-import type { FrontendWorkId } from "./frontendWorkIds";
+import type { FrontendVisibilitySourceKind, FrontendWorkId } from "./frontendWorkIds";
 import {
+  type FrontendVisibilitySourceDemand,
   frontendVisibilityDemandsAttribute,
   frontendVisibilitySurfaceAttribute,
   frontendVisibilitySurfaceSelector,
@@ -26,11 +27,12 @@ interface FrontendVisibilitySurfaceRuntime {
 
 export interface FrontendWorkController {
   frontendVisible: Accessor<boolean>;
-  activeVisibilityDemandIds: Accessor<readonly string[]>;
+  /** 某类带来源需求当前可见的来源 ID，按需求 ID 排序。 */
+  activeVisibilitySourceIds: (kind: FrontendVisibilitySourceKind) => readonly string[];
   activeWorkIds: Accessor<readonly FrontendWorkId[]>;
   isNeeded: (workId: FrontendWorkId) => boolean;
   registerVisibilityDemand: (
-    demandId: string,
+    demand: string | FrontendVisibilitySourceDemand,
     workIds: readonly FrontendWorkId[]
   ) => () => void;
   refreshVisibilitySurfaces: () => void;
@@ -39,8 +41,8 @@ export interface FrontendWorkController {
 export function useFrontendWorkController(): FrontendWorkController {
   const [frontendVisible, setFrontendVisible] = createSignal(
     document.visibilityState === "visible");
-  const [activeVisibilityDemandIds, setActiveVisibilityDemandIds] =
-    createSignal<readonly string[]>([]);
+  const [activeSourceDemands, setActiveSourceDemands] =
+    createSignal<readonly FrontendVisibilitySourceDemand[]>([]);
   const [activeWorkIds, setActiveWorkIds] = createSignal<readonly FrontendWorkId[]>([]);
   const visibilityDemandControllers = new Map<string, FrontendVisibilityDemandController>();
   const visibilitySurfaces = new Map<HTMLElement, FrontendVisibilitySurfaceRuntime>();
@@ -58,12 +60,14 @@ export function useFrontendWorkController(): FrontendWorkController {
 
   const controller: FrontendWorkController = {
     frontendVisible,
-    activeVisibilityDemandIds,
+    activeVisibilitySourceIds: (kind) => activeSourceDemands()
+      .filter((demand) => demand.kind === kind)
+      .map((demand) => demand.sourceId),
     activeWorkIds,
     isNeeded,
-    registerVisibilityDemand(demandId, workIds) {
+    registerVisibilityDemand(demand, workIds) {
       const demandController = new FrontendVisibilityDemandController(
-        demandId,
+        demand,
         workIds,
         changeWorkReference);
       if (visibilityDemandControllers.has(demandController.demandId)) {
@@ -275,12 +279,14 @@ export function useFrontendWorkController(): FrontendWorkController {
   }
 
   function publishControllerState() {
-    const nextActiveDemandIds = Array.from(visibilityDemandControllers.values())
-      .filter((demandController) => demandController.active)
-      .map((demandController) => demandController.demandId)
-      .sort();
-    if (!sameOrderedValues(activeVisibilityDemandIds(), nextActiveDemandIds)) {
-      setActiveVisibilityDemandIds(nextActiveDemandIds);
+    const nextActiveSourceDemands = Array.from(visibilityDemandControllers.values())
+      .filter((demandController) => demandController.active && demandController.source)
+      .map((demandController) => demandController.source!)
+      .sort((left, right) => left.demandId < right.demandId ? -1 : left.demandId > right.demandId ? 1 : 0);
+    if (!sameOrderedValues(
+      activeSourceDemands().map((demand) => demand.demandId),
+      nextActiveSourceDemands.map((demand) => demand.demandId))) {
+      setActiveSourceDemands(nextActiveSourceDemands);
     }
 
     const previousWorkIds = activeWorkIds();

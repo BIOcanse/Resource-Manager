@@ -48,7 +48,9 @@ const surfaceSource = readSource("frontendWork/frontendVisibilitySurface.ts");
 const registrationSource = readSource("frontendWork/frontendVisibilityDemandRegistration.ts");
 assert.match(controllerSource, /new FrontendVisibilityDemandController/);
 assert.match(controllerSource, /registerVisibilityDemand/);
-assert.match(controllerSource, /activeVisibilityDemandIds/);
+assert.match(controllerSource, /activeVisibilitySourceIds/);
+// 看板卡片的可见 ID 由控制器按来源类别直接交出，不能在消费端从需求 ID 字符串拼接或反解。
+assert.doesNotMatch(readSource("App.tsx"), /monitor\.card\.|decodeURIComponent/);
 assert.match(
   readSource("frontendWork/FrontendVisibilityDemandController.ts"),
   /requires at least one work ID/);
@@ -177,7 +179,7 @@ for (const relativePath of [
 }
 
 const dashboardSource = readSource("features/monitor/Dashboard.tsx");
-assert.match(dashboardSource, /frontendVisibilityDemandId\("monitor\.card",/,
+assert.match(dashboardSource, /frontendVisibilitySourceDemand\(frontendVisibilitySourceKinds\.monitorCard, card\.id\)/,
   "each dashboard card must declare its own visible demand");
 assert.match(dashboardSource, /useFrontendVisibilityDemand/);
 assert.match(dashboardSource, /frontendVisibilitySurface/);

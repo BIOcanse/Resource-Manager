@@ -1,19 +1,22 @@
 import type { FrontendWorkId } from "./frontendWorkIds";
+import type { FrontendVisibilitySourceDemand } from "./frontendVisibilitySurface.ts";
 
 export type FrontendWorkReferenceChange = (workId: FrontendWorkId, delta: 1 | -1) => void;
 
 export class FrontendVisibilityDemandController {
   readonly demandId: string;
+  readonly source: FrontendVisibilitySourceDemand | null;
   readonly workIds: readonly FrontendWorkId[];
   private activeValue = false;
   private readonly changeWorkReference: FrontendWorkReferenceChange;
 
   constructor(
-    demandId: string,
+    demand: string | FrontendVisibilitySourceDemand,
     workIds: readonly FrontendWorkId[],
     changeWorkReference: FrontendWorkReferenceChange
   ) {
-    const normalizedDemandId = demandId.trim();
+    this.source = typeof demand === "string" ? null : demand;
+    const normalizedDemandId = (typeof demand === "string" ? demand : demand.demandId).trim();
     if (!normalizedDemandId) {
       throw new Error("Frontend visibility demand requires a non-empty demand ID.");
     }

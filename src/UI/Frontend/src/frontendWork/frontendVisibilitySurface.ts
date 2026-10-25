@@ -1,3 +1,5 @@
+import type { FrontendVisibilitySourceKind } from "./frontendWorkIds.ts";
+
 export const frontendVisibilitySurfaceAttribute = "data-frontend-visibility-surface";
 export const frontendVisibilitySurfaceSelector = `[${frontendVisibilitySurfaceAttribute}]`;
 export const frontendVisibilityDemandsAttribute = "data-frontend-visibility-demands";
@@ -25,6 +27,28 @@ export function frontendVisibilitySurface(
   return {
     "data-frontend-visibility-surface": normalizedSurfaceId,
     "data-frontend-visibility-demands": normalizedDemandIds.join(" ")
+  };
+}
+
+/**
+ * 带来源 ID 的可见需求：需求 ID 由类别和来源 ID 生成，来源 ID 原样随需求交给控制器，
+ * 需要“哪些来源可见”的消费端直接拿来源 ID，不再从需求 ID 字符串反解。
+ */
+export interface FrontendVisibilitySourceDemand {
+  readonly demandId: string;
+  readonly kind: FrontendVisibilitySourceKind;
+  readonly sourceId: string;
+}
+
+export function frontendVisibilitySourceDemand(
+  kind: FrontendVisibilitySourceKind,
+  sourceId: string
+): FrontendVisibilitySourceDemand {
+  const normalizedSourceId = normalizeIdentifier(sourceId, "Frontend visibility source");
+  return {
+    demandId: `${kind}.${encodeURIComponent(normalizedSourceId)}`,
+    kind,
+    sourceId: normalizedSourceId
   };
 }
 

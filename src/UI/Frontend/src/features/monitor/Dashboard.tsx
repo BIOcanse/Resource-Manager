@@ -10,7 +10,8 @@ import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
-import { frontendVisibilityDemandId, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { frontendVisibilitySourceDemand, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { frontendVisibilitySourceKinds, frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { dashboardMetricAvailable } from "../../preferences/dashboardPreferences.ts";
 import type { DashboardMetricBinding } from "../../types";
 
@@ -51,11 +52,11 @@ export function Dashboard(props: DashboardProps) {
     <section class="dashboard" aria-label={uiText.dashboard.panel}>
       <For each={props.cards}>
         {(card, cardIndex) => {
-          const demandId = frontendVisibilityDemandId("monitor.card", card.id);
-          useFrontendVisibilityDemand(demandId, ["monitor.metrics"]);
+          const demand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, card.id);
+          useFrontendVisibilityDemand(demand, [frontendWorkIds.monitorMetrics]);
           return (
           <article
-            {...frontendVisibilitySurface(demandId, [demandId])}
+            {...frontendVisibilitySurface(demand.demandId, [demand.demandId])}
             class="metric-card"
             classList={{ editing: props.editMode }}
             data-card-id={card.id}

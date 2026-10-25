@@ -16,6 +16,14 @@ export const frontendWorkIds = {
 
 export type FrontendWorkId = typeof frontendWorkIds[keyof typeof frontendWorkIds];
 
+// 消费端需要拿到“当前可见的来源 ID”的需求类别；需求 ID 由 frontendVisibilitySourceDemand 生成。
+export const frontendVisibilitySourceKinds = {
+  monitorCard: "monitor.card"
+} as const;
+
+export type FrontendVisibilitySourceKind =
+  typeof frontendVisibilitySourceKinds[keyof typeof frontendVisibilitySourceKinds];
+
 const knownFrontendWorkIds = new Set<FrontendWorkId>(Object.values(frontendWorkIds));
 
 export function isFrontendWorkId(value: string): value is FrontendWorkId {

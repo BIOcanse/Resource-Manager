@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { batch, createEffect, createRoot } from "solid-js";
-import { frontendWorkIds } from "../src/frontendWork/frontendWorkIds.ts";
-import { frontendVisibilitySurfaceSelector } from "../src/frontendWork/frontendVisibilitySurface.ts";
+import { frontendVisibilitySourceKinds, frontendWorkIds } from "../src/frontendWork/frontendWorkIds.ts";
+import { frontendVisibilitySourceDemand, frontendVisibilitySurfaceSelector } from "../src/frontendWork/frontendVisibilitySurface.ts";
 
 /*
  * 某项工作是否需要（isNeeded）只随这一项变化。
@@ -17,8 +17,11 @@ class FakeSurface {
   getClientRects() { return [{}]; }
   getBoundingClientRect() { return { top: 0, left: 0, right: 10, bottom: 10 }; }
 }
+// 卡片 ID 里带需要编码的字符：消费端拿到的必须是原样的卡片 ID。
+const cardDemand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, "gpu 0/usage");
+const hiddenCardDemand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, "memory");
 const surfaces = [
-  new FakeSurface({ "data-frontend-visibility-surface": "card", "data-frontend-visibility-demands": "monitor.card.cpu" }),
+  new FakeSurface({ "data-frontend-visibility-surface": "card", "data-frontend-visibility-demands": cardDemand.demandId }),
   new FakeSurface({ "data-frontend-visibility-surface": "table", "data-frontend-visibility-demands": "monitor.table" })
 ];
 const root = {
@@ -53,7 +56,8 @@ let unregisterCard = () => undefined as void;
 let unregisterTable = () => undefined as void;
 const dispose = createRoot((disposeRoot) => {
   controller = useFrontendWorkController();
-  unregisterCard = controller.registerVisibilityDemand("monitor.card.cpu", [frontendWorkIds.monitorMetrics]);
+  unregisterCard = controller.registerVisibilityDemand(cardDemand, [frontendWorkIds.monitorMetrics]);
+  controller.registerVisibilityDemand(hiddenCardDemand, [frontendWorkIds.monitorMetrics]);
   unregisterTable = controller.registerVisibilityDemand("monitor.table", [frontendWorkIds.monitorTable]);
   createEffect(() => {
     metricsNeeded = controller.isNeeded(frontendWorkIds.monitorMetrics);
@@ -63,6 +67,8 @@ const dispose = createRoot((disposeRoot) => {
 });
 await flush();
 assert.equal(metricsNeeded, true, "visible card needs metrics");
+assert.deepEqual(controller.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard), ["gpu 0/usage"],
+  "only the visible card is handed over, with its own id");
 assert.deepEqual(controller.activeWorkIds(), [frontendWorkIds.monitorMetrics, frontendWorkIds.monitorTable]);
 const baseline = metricsRuns;
 
@@ -75,7 +81,7 @@ assert.equal(metricsRuns, baseline, "an unrelated work change must not re-run a 
 // 看板设置刷新后卡片重建：同一需求 ID 先注销再注册，需要始终成立。
 batch(() => {
   unregisterCard();
-  unregisterCard = controller.registerVisibilityDemand("monitor.card.cpu", [frontendWorkIds.monitorMetrics]);
+  unregisterCard = controller.registerVisibilityDemand(cardDemand, [frontendWorkIds.monitorMetrics]);
 });
 await flush();
 assert.equal(metricsNeeded, true);
@@ -86,6 +92,7 @@ unregisterCard();
 await flush();
 assert.equal(metricsNeeded, false);
 assert.equal(metricsRuns, baseline + 1);
+assert.deepEqual(controller.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard), []);
 
 dispose();
 
