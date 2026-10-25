@@ -92,7 +92,6 @@ export const zhRuntimeErrorsCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric} 需要 ${component}`,
     currentState: (state: string) => `當前狀態：${state}`,
     goToComponents: "是否前往“元件與軟體”完成安裝或檢查？",
-    noRunnableAction: "當前沒有可執行的操作",
     cancelTaskFailed: "無法取消任務"
   },
   misc: {
@@ -117,7 +116,6 @@ export const zhRuntimeErrorsCopy = {
     publicServicesNotRunning: "當前啟動配置未執行公共服務。以下專案顯示已儲存配置，不表示對應服務正在執行。",
     publicServicesDisabled: "當前啟動模式未啟用公共服務",
     saveOrRevertFirst: "請先儲存或還原當前修改，再重新載入設定。",
-    noContextAction: "當前專案沒有可執行的操作。",
     installStartFailed: "安裝操作啟動失敗",
     uninstallStartFailed: "解除安裝操作啟動失敗",
     migrationStartFailed: "遷移操作啟動失敗",

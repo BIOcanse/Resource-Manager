@@ -6,7 +6,9 @@ import { uiText } from "../text.ts";
 export interface SoftwareContextMenuTarget {
   kind: "process" | "software";
   name: string;
-  softwareId?: string | null;
+  // 资源表的软件行和进程行、组件页的软件条目都带稳定软件标识，“转到详细信息”因此恒可用，
+  // 菜单永远至少有一项可执行。
+  softwareId: string;
   softwareName?: string | null;
   processIds?: number[];
   processTargets?: SystemProcessIdentity[];
@@ -37,7 +39,6 @@ export function createSoftwareContextMenuModel(
 {
   const hasProcess = normalizedProcessTargets(target).length > 0;
   const fileLocation = primaryFileLocation(target);
-  const canGoToDetails = Boolean(target.softwareId);
   const systemActionUnavailableTitle = actions.allowSystemActions
     ? undefined
     : uiText.contextMenu.viewOnly;
@@ -46,9 +47,6 @@ export function createSoftwareContextMenuModel(
     x,
     y,
     returnFocusTarget,
-    unavailableReason: actions.allowSystemActions
-      ? uiText.contextMenu.nothingToDo
-      : uiText.contextMenu.viewOnlyNothingToDo,
     items: [
       {
         id: "expand",
@@ -77,8 +75,6 @@ export function createSoftwareContextMenuModel(
         id: "details",
         label: uiText.contextMenu.goToDetails,
         separatorBefore: true,
-        disabled: !canGoToDetails,
-        title: canGoToDetails ? undefined : uiText.contextMenu.noStableIdentity,
         onSelect: () => actions.onGoToDetails(target)
       },
       {

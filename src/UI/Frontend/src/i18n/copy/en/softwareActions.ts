@@ -15,7 +15,6 @@ export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
     dumpMessage: (count: number) => `This creates a full memory dump for ${count} processes; the files can be large.`,
     dumpDone: "Memory dump created",
     dumpFailed: "Creating the memory dump failed",
-    noStableSoftwareIdentity: "This software has no stable identity, so its processes cannot be marked.",
     markedProcesses: (name: string) => `Switched to the process view and marked the processes of ${name}.`,
     noInstallDirectory: "No install directory or process path to open.",
     openedFileLocation: "Opened the file location",

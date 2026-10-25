@@ -773,8 +773,6 @@ const jaJpAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "この起動プロファイルは表示専用で、システム操作は実行しません。",
-    nothingToDo: "この項目には展開、場所の表示、実行のいずれもありません。",
-    viewOnlyNothingToDo: "この起動プロファイルは表示専用で、この項目には展開や詳細の操作がありません。",
     collapse: "折りたたむ",
     expand: "展開",
     noExpandableGroup: "この一覧に展開できるプロセス グループはありません。",
@@ -783,7 +781,6 @@ const jaJpAppCopy: AppCopy = {
     createDump: "メモリ ダンプ ファイルの作成",
     noDumpProcess: "メモリ ダンプを作成できるプロセスがありません。",
     goToDetails: "詳細へ移動",
-    noStableIdentity: "このソフトウェアには安定した識別子がないため、プロセスを目印にできません。",
     openFileLocation: "ファイルの場所を開く",
     noFileLocation: "開けるインストール ディレクトリやプロセス パスがありません。",
     onlineSearch: "オンラインで検索",
@@ -1981,7 +1978,6 @@ const jaJpAppCopy: AppCopy = {
     dumpMessage: (count: number) => `${count} 件のプロセスの完全メモリ ダンプを作成します。ファイルが大きくなる場合があります。`,
     dumpDone: "メモリ ダンプを作成しました",
     dumpFailed: "メモリ ダンプの作成に失敗しました",
-    noStableSoftwareIdentity: "このソフトウェアには安定した識別子がないため、プロセスを目印にできません。",
     markedProcesses: (name: string) => `プロセス表示に切り替え、${name} のプロセスに目印を付けました。`,
     noInstallDirectory: "開けるインストール ディレクトリやプロセス パスがありません。",
     openedFileLocation: "ファイルの場所を開きました",
@@ -2434,7 +2430,6 @@ const jaJpAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric}には${component}が必要です`,
     currentState: (state: string) => `現在の状態: ${state}`,
     goToComponents: "「コンポーネントとソフトウェア」を開いてインストールまたは確認しますか?",
-    noRunnableAction: "現在利用できる操作はありません",
     cancelTaskFailed: "タスクをキャンセルできませんでした"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const jaJpAppCopy: AppCopy = {
     publicServicesNotRunning: "この起動プロファイルは公開サービスを実行しません。以下の項目は保存された構成であり、実行中のサービスではありません。",
     publicServicesDisabled: "この起動プロファイルは公開サービスを有効にしません",
     saveOrRevertFirst: "設定を再読み込みする前に、現在の変更を保存するか元に戻してください。",
-    noContextAction: "この項目には利用できる操作がありません。",
     installStartFailed: "インストールの開始に失敗しました",
     uninstallStartFailed: "アンインストールの開始に失敗しました",
     migrationStartFailed: "移行の開始に失敗しました",

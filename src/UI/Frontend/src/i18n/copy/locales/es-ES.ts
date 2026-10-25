@@ -773,8 +773,6 @@ const esEsAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "Este perfil de inicio es de solo lectura y no ejecuta acciones del sistema.",
-    nothingToDo: "Esta entrada no tiene nada que expandir, localizar ni ejecutar.",
-    viewOnlyNothingToDo: "Este perfil de inicio es de solo lectura y esta entrada no tiene acción de expansión ni de detalle.",
     collapse: "Contraer",
     expand: "Expandir",
     noExpandableGroup: "Esta lista no tiene ningún grupo de procesos expandible.",
@@ -783,7 +781,6 @@ const esEsAppCopy: AppCopy = {
     createDump: "Crear archivo de volcado de memoria",
     noDumpProcess: "No hay ningún proceso disponible para un volcado de memoria.",
     goToDetails: "Ir a los detalles",
-    noStableIdentity: "Este software no tiene una identidad estable, por lo que sus procesos no se pueden marcar.",
     openFileLocation: "Abrir la ubicación del archivo",
     noFileLocation: "No hay ningún directorio de instalación ni ruta de proceso que abrir.",
     onlineSearch: "Buscar en línea",
@@ -1981,7 +1978,6 @@ const esEsAppCopy: AppCopy = {
     dumpMessage: (count: number) => `Esto crea un volcado de memoria completo para ${count} procesos; los archivos pueden ser grandes.`,
     dumpDone: "Volcado de memoria creado",
     dumpFailed: "No se pudo crear el volcado de memoria",
-    noStableSoftwareIdentity: "Este software no tiene una identidad estable, por lo que sus procesos no se pueden marcar.",
     markedProcesses: (name: string) => `Se cambió a la vista por procesos y se marcaron los procesos de ${name}.`,
     noInstallDirectory: "No hay ningún directorio de instalación ni ruta de proceso que abrir.",
     openedFileLocation: "Se abrió la ubicación del archivo",
@@ -2434,7 +2430,6 @@ const esEsAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric} necesita ${component}`,
     currentState: (state: string) => `Estado actual: ${state}`,
     goToComponents: "¿Abrir «Software» para instalarlo o comprobarlo?",
-    noRunnableAction: "Ahora mismo no hay ninguna acción disponible",
     cancelTaskFailed: "No se pudo cancelar la tarea"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const esEsAppCopy: AppCopy = {
     publicServicesNotRunning: "Este perfil de inicio no ejecuta servicios públicos. Los elementos de abajo muestran la configuración guardada, no servicios en ejecución.",
     publicServicesDisabled: "Este perfil de inicio no activa los servicios públicos",
     saveOrRevertFirst: "Guarda o descarta los cambios actuales antes de volver a cargar la configuración.",
-    noContextAction: "Este elemento no tiene ninguna acción disponible.",
     installStartFailed: "No se pudo iniciar la instalación",
     uninstallStartFailed: "No se pudo iniciar la desinstalación",
     migrationStartFailed: "No se pudo iniciar la migración",

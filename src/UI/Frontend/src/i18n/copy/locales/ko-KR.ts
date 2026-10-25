@@ -773,8 +773,6 @@ const koKrAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "이 시작 프로필은 보기 전용이며 시스템 작업을 실행하지 않습니다.",
-    nothingToDo: "이 항목에는 펼치기, 위치 표시, 실행할 것이 없습니다.",
-    viewOnlyNothingToDo: "이 시작 프로필은 보기 전용이며 이 항목에는 펼치기나 자세히 보기 작업이 없습니다.",
     collapse: "접기",
     expand: "펼치기",
     noExpandableGroup: "이 목록에는 펼칠 수 있는 프로세스 그룹이 없습니다.",
@@ -783,7 +781,6 @@ const koKrAppCopy: AppCopy = {
     createDump: "메모리 덤프 파일 만들기",
     noDumpProcess: "메모리 덤프를 만들 수 있는 프로세스가 없습니다.",
     goToDetails: "자세히 보기로 이동",
-    noStableIdentity: "이 소프트웨어에는 안정적인 식별자가 없어 프로세스를 표시할 수 없습니다.",
     openFileLocation: "파일 위치 열기",
     noFileLocation: "열 수 있는 설치 디렉터리나 프로세스 경로가 없습니다.",
     onlineSearch: "온라인 검색",
@@ -1981,7 +1978,6 @@ const koKrAppCopy: AppCopy = {
     dumpMessage: (count: number) => `프로세스 ${count}개의 전체 메모리 덤프를 만듭니다. 파일이 클 수 있습니다.`,
     dumpDone: "메모리 덤프를 만들었습니다",
     dumpFailed: "메모리 덤프를 만들지 못했습니다",
-    noStableSoftwareIdentity: "이 소프트웨어에는 안정적인 식별자가 없어 프로세스를 표시할 수 없습니다.",
     markedProcesses: (name: string) => `프로세스 보기로 전환하고 ${name}의 프로세스를 표시했습니다.`,
     noInstallDirectory: "열 수 있는 설치 디렉터리나 프로세스 경로가 없습니다.",
     openedFileLocation: "파일 위치를 열었습니다",
@@ -2434,7 +2430,6 @@ const koKrAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric}에는 ${component}이(가) 필요합니다`,
     currentState: (state: string) => `현재 상태: ${state}`,
     goToComponents: "“구성 요소 및 소프트웨어”를 열어 설치하거나 확인할까요?",
-    noRunnableAction: "지금 사용할 수 있는 작업이 없습니다",
     cancelTaskFailed: "작업을 취소하지 못했습니다"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const koKrAppCopy: AppCopy = {
     publicServicesNotRunning: "이 시작 프로필은 공용 서비스를 실행하지 않습니다. 아래 항목은 저장된 구성이며 실행 중인 서비스가 아닙니다.",
     publicServicesDisabled: "이 시작 프로필은 공용 서비스를 사용하도록 설정하지 않습니다",
     saveOrRevertFirst: "설정을 다시 불러오기 전에 현재 변경 내용을 저장하거나 되돌리세요.",
-    noContextAction: "이 항목에는 사용할 수 있는 작업이 없습니다.",
     installStartFailed: "설치를 시작하지 못했습니다",
     uninstallStartFailed: "제거를 시작하지 못했습니다",
     migrationStartFailed: "마이그레이션을 시작하지 못했습니다",

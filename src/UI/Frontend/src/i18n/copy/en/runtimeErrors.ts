@@ -97,7 +97,6 @@ export const enRuntimeErrorsCopy: Pick<
     metricNeedsComponent: (metric: string, component: string) => `${metric} needs ${component}`,
     currentState: (state: string) => `Current state: ${state}`,
     goToComponents: "Open “Software” to install or check it?",
-    noRunnableAction: "No action available right now",
     cancelTaskFailed: "The task could not be canceled"
   },
   misc: {
@@ -122,7 +121,6 @@ export const enRuntimeErrorsCopy: Pick<
     publicServicesNotRunning: "This startup profile does not run public services. The items below show saved configuration, not running services.",
     publicServicesDisabled: "This startup profile does not enable public services",
     saveOrRevertFirst: "Save or revert the current changes before reloading the settings.",
-    noContextAction: "This item has no available action.",
     installStartFailed: "Starting the install failed",
     uninstallStartFailed: "Starting the uninstall failed",
     migrationStartFailed: "Starting the migration failed",

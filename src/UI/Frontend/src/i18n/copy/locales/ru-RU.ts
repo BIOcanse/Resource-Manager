@@ -773,8 +773,6 @@ const ruRuAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "Этот профиль запуска доступен только для просмотра и не выполняет системных действий.",
-    nothingToDo: "Для этой записи нечего разворачивать, находить или запускать.",
-    viewOnlyNothingToDo: "Этот профиль запуска доступен только для просмотра, и у этой записи нет действий разворачивания или просмотра сведений.",
     collapse: "Свернуть",
     expand: "Развернуть",
     noExpandableGroup: "В этом списке нет разворачиваемых групп процессов.",
@@ -783,7 +781,6 @@ const ruRuAppCopy: AppCopy = {
     createDump: "Создать файл дампа памяти",
     noDumpProcess: "Нет процесса, для которого можно создать дамп памяти.",
     goToDetails: "Перейти к сведениям",
-    noStableIdentity: "У этой программы нет устойчивого идентификатора, поэтому её процессы нельзя отметить.",
     openFileLocation: "Открыть расположение файла",
     noFileLocation: "Нет каталога установки или пути к процессу, который можно открыть.",
     onlineSearch: "Поиск в Интернете",
@@ -1981,7 +1978,6 @@ const ruRuAppCopy: AppCopy = {
     dumpMessage: (count: number) => `Будет создан полный дамп памяти для ${count} процессов; файлы могут быть большими.`,
     dumpDone: "Дамп памяти создан",
     dumpFailed: "Не удалось создать дамп памяти",
-    noStableSoftwareIdentity: "У этой программы нет устойчивого идентификатора, поэтому её процессы нельзя отметить.",
     markedProcesses: (name: string) => `Выполнен переход к представлению по процессам, процессы ${name} отмечены.`,
     noInstallDirectory: "Нет каталога установки или пути к процессу, который можно открыть.",
     openedFileLocation: "Расположение файла открыто",
@@ -2434,7 +2430,6 @@ const ruRuAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `Для «${metric}» требуется ${component}`,
     currentState: (state: string) => `Текущее состояние: ${state}`,
     goToComponents: "Открыть «Программы», чтобы установить или проверить?",
-    noRunnableAction: "Сейчас нет доступных действий",
     cancelTaskFailed: "Не удалось отменить задачу"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const ruRuAppCopy: AppCopy = {
     publicServicesNotRunning: "Этот профиль запуска не запускает публичные службы. Элементы ниже показывают сохранённую конфигурацию, а не работающие службы.",
     publicServicesDisabled: "Этот профиль запуска не включает публичные службы",
     saveOrRevertFirst: "Сохраните или отмените текущие изменения, прежде чем перезагружать параметры.",
-    noContextAction: "Для этого элемента нет доступных действий.",
     installStartFailed: "Не удалось начать установку",
     uninstallStartFailed: "Не удалось начать удаление",
     migrationStartFailed: "Не удалось начать перенос",

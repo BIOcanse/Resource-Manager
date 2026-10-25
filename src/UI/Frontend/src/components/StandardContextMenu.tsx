@@ -1,5 +1,4 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
-import { uiText } from "../text.ts";
 
 export interface StandardContextMenuItem {
   id: string;
@@ -15,8 +14,8 @@ export interface StandardContextMenuModel {
   id: string;
   x: number;
   y: number;
+  // 至少一项可执行：唯一的生产者 createSoftwareContextMenuModel 的“转到详细信息”恒可用。
   items: StandardContextMenuItem[];
-  unavailableReason?: string;
   returnFocusTarget?: HTMLElement | null;
 }
 
@@ -31,13 +30,11 @@ interface ContextMenuFocusSession {
 export function StandardContextMenu(props: {
   model: StandardContextMenuModel | null;
   onClose: () => void;
-  onUnavailable?: (reason: string) => void;
 }) {
   let menu: HTMLDivElement | undefined;
   const [position, setPosition] = createSignal({ x: 0, y: 0 });
   const [activeIndex, setActiveIndex] = createSignal(-1);
   let focusSession: ContextMenuFocusSession | null = null;
-  let reportedUnavailableModelId: string | undefined;
 
   createEffect(() => {
     const model = props.model;
@@ -112,24 +109,7 @@ export function StandardContextMenu(props: {
       return;
     }
 
-    const firstEnabledIndex = firstEnabledMenuItemIndex(model.items);
-    setActiveIndex(firstEnabledIndex);
-    if (firstEnabledIndex < 0) {
-      if (reportedUnavailableModelId !== model.id) {
-        reportedUnavailableModelId = model.id;
-        queueMicrotask(() => {
-          if (props.model?.id !== model.id) {
-            return;
-          }
-
-          props.onUnavailable?.(model.unavailableReason ?? uiText.misc.noContextAction);
-          closeMenu("return-focus");
-        });
-      }
-      return;
-    }
-
-    reportedUnavailableModelId = undefined;
+    setActiveIndex(firstEnabledMenuItemIndex(model.items));
     requestAnimationFrame(() => focusActiveMenuItem());
   });
 
@@ -217,7 +197,7 @@ export function StandardContextMenu(props: {
   };
 
   return (
-    <Show when={props.model && hasEnabledMenuItem(props.model.items) ? props.model : null}>
+    <Show when={props.model}>
       {(model) => (
         <div
           ref={menu}
@@ -272,10 +252,6 @@ export function StandardContextMenu(props: {
 
 function firstEnabledMenuItemIndex(items: readonly StandardContextMenuItem[]) {
   return items.findIndex((item) => !item.disabled);
-}
-
-function hasEnabledMenuItem(items: readonly StandardContextMenuItem[]) {
-  return firstEnabledMenuItemIndex(items) >= 0;
 }
 
 function lastEnabledMenuItemIndex(items: readonly StandardContextMenuItem[]) {

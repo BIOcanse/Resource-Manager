@@ -13,7 +13,6 @@ export const zhSoftwareActionsCopy = {
     dumpMessage: (count: number) => `将为 ${count} 个进程创建完整内存转储，文件可能很大。`,
     dumpDone: "内存转储完成",
     dumpFailed: "创建内存转储文件失败",
-    noStableSoftwareIdentity: "当前软件没有稳定的软件标识，无法标记进程。",
     markedProcesses: (name: string) => `已转到进程级，并标记 ${name} 的进程。`,
     noInstallDirectory: "没有可打开的安装目录或进程路径。",
     openedFileLocation: "已打开文件所在的位置",

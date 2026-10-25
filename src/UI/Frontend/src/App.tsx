@@ -451,11 +451,6 @@ export default function App() {
       <StandardContextMenu
         model={softwareActions.contextMenu()}
         onClose={softwareActions.closeContextMenu}
-        onUnavailable={(message) => showToast({
-          tone: "info",
-          title: uiText.appShellExtras.noRunnableAction,
-          message
-        })}
       />
       <TaskCenterDialog
         open={taskCenterOpen()}

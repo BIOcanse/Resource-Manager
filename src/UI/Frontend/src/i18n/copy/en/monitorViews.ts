@@ -59,8 +59,6 @@ export const enMonitorViewsCopy: Pick<
   },
   contextMenu: {
     viewOnly: "This startup profile is view-only and does not run system actions.",
-    nothingToDo: "This entry has nothing to expand, locate, or run.",
-    viewOnlyNothingToDo: "This startup profile is view-only and this entry has no expand or detail action.",
     collapse: "Collapse",
     expand: "Expand",
     noExpandableGroup: "This list has no expandable process group.",
@@ -69,7 +67,6 @@ export const enMonitorViewsCopy: Pick<
     createDump: "Create memory dump file",
     noDumpProcess: "No process available for a memory dump.",
     goToDetails: "Go to details",
-    noStableIdentity: "This software has no stable identity, so its processes cannot be marked.",
     openFileLocation: "Open file location",
     noFileLocation: "No install directory or process path to open.",
     onlineSearch: "Search online",

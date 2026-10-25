@@ -773,8 +773,6 @@ const frFrAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "Ce profil de démarrage est en lecture seule et n'exécute pas d'actions système.",
-    nothingToDo: "Cette entrée n'a rien à développer, à localiser ou à exécuter.",
-    viewOnlyNothingToDo: "Ce profil de démarrage est en lecture seule et cette entrée n'a aucune action de développement ou de détail.",
     collapse: "Réduire",
     expand: "Développer",
     noExpandableGroup: "Cette liste ne contient aucun groupe de processus développable.",
@@ -783,7 +781,6 @@ const frFrAppCopy: AppCopy = {
     createDump: "Créer un fichier de vidage mémoire",
     noDumpProcess: "Aucun processus disponible pour un vidage mémoire.",
     goToDetails: "Aller aux détails",
-    noStableIdentity: "Ce logiciel n'a pas d'identité stable, ses processus ne peuvent donc pas être marqués.",
     openFileLocation: "Ouvrir l'emplacement du fichier",
     noFileLocation: "Aucun répertoire d'installation ni chemin de processus à ouvrir.",
     onlineSearch: "Rechercher en ligne",
@@ -1981,7 +1978,6 @@ const frFrAppCopy: AppCopy = {
     dumpMessage: (count: number) => `Cela crée un vidage mémoire complet pour ${count} processus ; les fichiers peuvent être volumineux.`,
     dumpDone: "Vidage mémoire créé",
     dumpFailed: "Échec de la création du vidage mémoire",
-    noStableSoftwareIdentity: "Ce logiciel n'a pas d'identité stable, ses processus ne peuvent donc pas être marqués.",
     markedProcesses: (name: string) => `Basculé sur la vue par processus et marqué les processus de ${name}.`,
     noInstallDirectory: "Aucun répertoire d'installation ni chemin de processus à ouvrir.",
     openedFileLocation: "Emplacement du fichier ouvert",
@@ -2434,7 +2430,6 @@ const frFrAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric} nécessite ${component}`,
     currentState: (state: string) => `État actuel : ${state}`,
     goToComponents: "Ouvrir « Logiciels » pour l'installer ou le vérifier ?",
-    noRunnableAction: "Aucune action disponible pour l'instant",
     cancelTaskFailed: "La tâche n'a pas pu être annulée"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const frFrAppCopy: AppCopy = {
     publicServicesNotRunning: "Ce profil de démarrage n'exécute pas de services publics. Les éléments ci-dessous montrent la configuration enregistrée, pas des services en cours d'exécution.",
     publicServicesDisabled: "Ce profil de démarrage n'active pas les services publics",
     saveOrRevertFirst: "Enregistrez ou annulez les modifications en cours avant de recharger les paramètres.",
-    noContextAction: "Cet élément n'a aucune action disponible.",
     installStartFailed: "Échec du démarrage de l'installation",
     uninstallStartFailed: "Échec du démarrage de la désinstallation",
     migrationStartFailed: "Échec du démarrage de la migration",

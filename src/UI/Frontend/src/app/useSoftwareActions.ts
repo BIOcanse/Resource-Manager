@@ -228,9 +228,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   }
 
   function expandSoftwareContextTarget(target: SoftwareContextMenuTarget) {
-    if (target.softwareId) {
-      monitor.toggleResourceTableExpand(target.softwareId);
-    }
+    monitor.toggleResourceTableExpand(target.softwareId);
   }
 
   async function terminateSoftwareContextTarget(target: SoftwareContextMenuTarget) {
@@ -290,11 +288,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   }
 
   function goToProcessDetailsForSoftware(target: SoftwareContextMenuTarget) {
-    if (!target.softwareId) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noStableSoftwareIdentity });
-      return;
-    }
-
     setActivePage("monitor");
     monitor.changeResourceTableMode("process");
     setHighlightedSoftwareId(target.softwareId);

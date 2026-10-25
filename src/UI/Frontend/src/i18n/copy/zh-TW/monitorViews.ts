@@ -55,8 +55,6 @@ export const zhMonitorViewsCopy = {
   },
   contextMenu: {
     viewOnly: "當前啟動配置只提供檢視，不執行系統操作。",
-    nothingToDo: "當前條目沒有可展開、定位或執行的操作。",
-    viewOnlyNothingToDo: "當前啟動配置只提供檢視，並且該條目沒有可用的展開或詳情操作。",
     collapse: "摺疊",
     expand: "展開",
     noExpandableGroup: "當前列表沒有可展開的程序組。",
@@ -65,7 +63,6 @@ export const zhMonitorViewsCopy = {
     createDump: "建立記憶體轉儲檔案",
     noDumpProcess: "沒有可建立轉儲的程序。",
     goToDetails: "轉到詳細資訊",
-    noStableIdentity: "當前軟體沒有穩定的軟體標識，無法標記程序。",
     openFileLocation: "開啟檔案所在的位置",
     noFileLocation: "沒有可開啟的安裝目錄或程序路徑。",
     onlineSearch: "線上搜尋",

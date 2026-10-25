@@ -588,7 +588,9 @@ function VirtualResourceTable(props: {
   };
 
   const openRowContextMenu = (row: ResourceTableRow, element: HTMLElement) => {
-    if (!props.onSoftwareContextMenu || (row.kind !== "software" && row.kind !== "process")) {
+    // 汇总行没有软件标识，不开菜单；软件行和进程行都带软件标识（resourceFacts 解码时必填）。
+    const softwareId = row.softwareId;
+    if (!props.onSoftwareContextMenu || (row.kind !== "software" && row.kind !== "process") || !softwareId) {
       return;
     }
     const index = rows().findIndex((candidate) => candidate.id === row.id);
@@ -598,7 +600,7 @@ function VirtualResourceTable(props: {
     }
     props.onSoftwareContextMenu(
       contextMenuEventForElement(element),
-      createSoftwareContextTargetFromRow(row, props.mode, props.expandedSoftwareIds),
+      createSoftwareContextTargetFromRow(row, softwareId, props.mode, props.expandedSoftwareIds),
       element);
   };
 
@@ -947,6 +949,7 @@ function resourceTableEditorColumns(
 
 function createSoftwareContextTargetFromRow(
   row: ResourceTableRow,
+  softwareId: string,
   mode: ResourceTableViewMode,
   expandedSoftwareIds: Record<string, boolean>): SoftwareContextMenuTarget
 {
@@ -959,7 +962,7 @@ function createSoftwareContextTargetFromRow(
   return {
     kind: row.kind === "process" ? "process" : "software",
     name: row.kind === "process" ? row.name : displayName,
-    softwareId: row.softwareId,
+    softwareId,
     softwareName: row.softwareName ?? (row.kind === "software" ? displayName : undefined),
     processIds,
     processTargets: row.kind === "process"
@@ -972,8 +975,8 @@ function createSoftwareContextTargetFromRow(
         : [],
     processNames: row.processNames ?? [],
     executablePaths: row.executablePaths ?? [],
-    canExpand: mode === "software" && row.kind === "software" && Boolean(row.softwareId) && (row.processCount ?? 0) > 0,
-    expanded: row.softwareId ? expandedSoftwareIds[row.softwareId] === true : false
+    canExpand: mode === "software" && row.kind === "software" && (row.processCount ?? 0) > 0,
+    expanded: expandedSoftwareIds[softwareId] === true
   };
 }
 

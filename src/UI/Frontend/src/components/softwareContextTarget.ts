@@ -16,7 +16,6 @@ export function enrichSoftwareContextTarget(
   const processRows = matchingRows.filter(row => row.kind === "process");
   return {
     ...target,
-    softwareId: target.softwareId ?? softwareRow?.softwareId,
     softwareName: target.softwareName ?? softwareRow?.softwareName ?? softwareRow?.name,
     processIds: [...new Set([
       ...(target.processIds ?? []),

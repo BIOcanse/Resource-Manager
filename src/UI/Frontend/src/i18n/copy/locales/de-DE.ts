@@ -773,8 +773,6 @@ const deDeAppCopy: AppCopy = {
   },
   contextMenu: {
     viewOnly: "Dieses Startprofil ist schreibgeschützt und führt keine Systemaktionen aus.",
-    nothingToDo: "Für diesen Eintrag gibt es nichts zu erweitern, zu finden oder auszuführen.",
-    viewOnlyNothingToDo: "Dieses Startprofil ist schreibgeschützt und dieser Eintrag hat keine Erweiterungs- oder Detailaktion.",
     collapse: "Reduzieren",
     expand: "Erweitern",
     noExpandableGroup: "Diese Liste enthält keine erweiterbare Prozessgruppe.",
@@ -783,7 +781,6 @@ const deDeAppCopy: AppCopy = {
     createDump: "Speicherabbilddatei erstellen",
     noDumpProcess: "Kein Prozess für ein Speicherabbild verfügbar.",
     goToDetails: "Zu den Details",
-    noStableIdentity: "Diese Software hat keine stabile Identität, daher können ihre Prozesse nicht markiert werden.",
     openFileLocation: "Dateipfad öffnen",
     noFileLocation: "Kein Installationsverzeichnis und kein Prozesspfad zum Öffnen vorhanden.",
     onlineSearch: "Online suchen",
@@ -1981,7 +1978,6 @@ const deDeAppCopy: AppCopy = {
     dumpMessage: (count: number) => `Dies erstellt ein vollständiges Speicherabbild für ${count} Prozesse; die Dateien können groß werden.`,
     dumpDone: "Speicherabbild erstellt",
     dumpFailed: "Das Erstellen des Speicherabbilds ist fehlgeschlagen",
-    noStableSoftwareIdentity: "Diese Software hat keine stabile Identität, daher können ihre Prozesse nicht markiert werden.",
     markedProcesses: (name: string) => `Zur Prozessansicht gewechselt und die Prozesse von ${name} markiert.`,
     noInstallDirectory: "Kein Installationsverzeichnis und kein Prozesspfad zum Öffnen vorhanden.",
     openedFileLocation: "Dateipfad geöffnet",
@@ -2434,7 +2430,6 @@ const deDeAppCopy: AppCopy = {
     metricNeedsComponent: (metric: string, component: string) => `${metric} benötigt ${component}`,
     currentState: (state: string) => `Aktueller Status: ${state}`,
     goToComponents: "„Software“ öffnen, um es zu installieren oder zu prüfen?",
-    noRunnableAction: "Derzeit ist keine Aktion verfügbar",
     cancelTaskFailed: "Die Aufgabe konnte nicht abgebrochen werden"
   },
   misc: {
@@ -2459,7 +2454,6 @@ const deDeAppCopy: AppCopy = {
     publicServicesNotRunning: "Dieses Startprofil führt keine öffentlichen Dienste aus. Die Einträge unten zeigen die gespeicherte Konfiguration, keine laufenden Dienste.",
     publicServicesDisabled: "Dieses Startprofil aktiviert keine öffentlichen Dienste",
     saveOrRevertFirst: "Speichern oder verwerfen Sie die aktuellen Änderungen, bevor Sie die Einstellungen neu laden.",
-    noContextAction: "Für diesen Eintrag ist keine Aktion verfügbar.",
     installStartFailed: "Das Starten der Installation ist fehlgeschlagen",
     uninstallStartFailed: "Das Starten der Deinstallation ist fehlgeschlagen",
     migrationStartFailed: "Das Starten der Migration ist fehlgeschlagen",

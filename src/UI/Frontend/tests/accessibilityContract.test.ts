@@ -158,8 +158,12 @@ assert.match(standardContextMenu, /returnFocusTarget\?: HTMLElement \| null/);
 assert.match(standardContextMenu, /interface ContextMenuFocusSession/);
 assert.match(standardContextMenu, /closeMenu\("return-focus"\)/);
 assert.match(standardContextMenu, /scheduleFocusRestore\(/);
-assert.match(standardContextMenu, /hasEnabledMenuItem\(props\.model\.items\) \? props\.model : null/);
-assert.match(standardContextMenu, /props\.onUnavailable\?\.\(model\.unavailableReason/);
+// 菜单唯一的生产者保证至少一项可执行（目标必带软件标识，“转到详细信息”恒可用），
+// “全部禁用只弹提示”的分支没有调用方能走到，已删除，不能再长回来。
+assert.doesNotMatch(standardContextMenu, /onUnavailable|unavailableReason|hasEnabledMenuItem/);
+const softwareContextMenu = readSource("components/SoftwareContextMenu.tsx");
+assert.match(softwareContextMenu, /^\s+softwareId: string;\r?$/m);
+assert.match(softwareContextMenu, /id: "details",\s*label: uiText\.contextMenu\.goToDetails,\s*separatorBefore: true,\s*onSelect:/);
 assert.match(standardSelect, /event\.key === "Tab"/);
 assert.match(standardSelect, /tabIndex=\{!props\.searchable && index\(\) === activeIndex\(\) \? 0 : -1\}/);
 assert.match(

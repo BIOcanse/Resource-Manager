@@ -13,7 +13,6 @@ export const zhSoftwareActionsCopy = {
     dumpMessage: (count: number) => `將為 ${count} 個程序建立完整記憶體轉儲，檔案可能很大。`,
     dumpDone: "記憶體轉儲完成",
     dumpFailed: "建立記憶體轉儲檔案失敗",
-    noStableSoftwareIdentity: "當前軟體沒有穩定的軟體標識，無法標記程序。",
     markedProcesses: (name: string) => `已轉到程序級，並標記 ${name} 的程序。`,
     noInstallDirectory: "沒有可開啟的安裝目錄或程序路徑。",
     openedFileLocation: "已開啟檔案所在的位置",

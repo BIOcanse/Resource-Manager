@@ -54,8 +54,6 @@ export const zhMonitorViewsCopy = {
   },
   contextMenu: {
     viewOnly: "当前启动配置只提供查看，不执行系统操作。",
-    nothingToDo: "当前条目没有可展开、定位或执行的操作。",
-    viewOnlyNothingToDo: "当前启动配置只提供查看，并且该条目没有可用的展开或详情操作。",
     collapse: "折叠",
     expand: "展开",
     noExpandableGroup: "当前列表没有可展开的进程组。",
@@ -64,7 +62,6 @@ export const zhMonitorViewsCopy = {
     createDump: "创建内存转储文件",
     noDumpProcess: "没有可创建转储的进程。",
     goToDetails: "转到详细信息",
-    noStableIdentity: "当前软件没有稳定的软件标识，无法标记进程。",
     openFileLocation: "打开文件所在的位置",
     noFileLocation: "没有可打开的安装目录或进程路径。",
     onlineSearch: "在线搜索",
