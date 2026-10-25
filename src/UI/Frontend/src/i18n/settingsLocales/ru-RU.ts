@@ -194,6 +194,8 @@ export default createSettingsLocale("ru-RU", {
     "themeDescription": "Выберите палитру текущего стиля. «Системная» следует светлой или тёмной теме Windows.",
     "animationTitle": "Анимация",
     "animationDescription": "Выберите полную анимацию, её отключение или упрощённые эффекты для снижения нагрузки интерфейса.",
+    "motionFeelTitle": "Характер анимации",
+    "motionFeelDescription": "Меняет темп и кривые всех анимаций интерфейса, в том числе то, как перетаскиваемые элементы встают на место и возвращаются. Без анимации ничего не движется.",
     "resourceBarFrameRateTitle": "Частота кадров анимации полос",
     "resourceBarFrameRateDescription": "Сколько кадров в секунду рисуют переходы полос ресурсов. «Как у экрана» использует частоту обновления монитора; «Вручную» ограничивает кадры и снижает нагрузку. Действует только при обычной анимации.",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("ru-RU", {
     "settingsLanguageTitle": "Язык интерфейса",
     "settingsLanguageDescription": "Меняет язык всего интерфейса, включая трей и заголовок окна. Системный режим использует язык интерфейса Windows.",
     "languageSelectLabel": "Язык",
+    "motionFeelOptions": {
+      "standard": "Стандартный",
+      "smooth": "Плавный",
+      "crisp": "Чёткий"
+    },
     "uiStyleOptions": {
       "standard": "Стандартный",
       "soft": "Мягкий",

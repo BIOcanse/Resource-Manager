@@ -4,7 +4,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { motionFeels } from "../src/presentation/motionFeel.ts";
+import { motionFeels, motionFeelIds, motionFeel } from "../src/presentation/motionFeel.ts";
+import { globalLayer, PARAM_SPECS, partLayer, resolveParams } from "../src/interactions/protocol/params.ts";
+import { columnResizeHandleDefinition } from "../src/interactions/components/columnResizeHandle.ts";
+import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
+import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
+import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
 
 const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../src/styles/motion.css"), "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, "");
@@ -46,4 +51,63 @@ for (const [index, feel] of motionFeels.entries()) {
 const feelSelectors = [...css.matchAll(/data-motion-feel="([^"]+)"/g)].map((match) => match[1]);
 assert.deepEqual([...new Set(feelSelectors)].sort(), motionFeels.slice(1).map((feel) => feel.id).sort());
 
-console.log(`motionFeelContract: ${motionFeels.length} feels match motion.css`);
+// 磁石全局层：到位时间和回点时间跟这种手感的 --motion-medium 一致。标准不覆盖，引擎的来源值本来就是 180。
+const engineSource = (id: string) => {
+  const spec = PARAM_SPECS.find((entry) => entry.id === id);
+  assert.ok(spec && (spec.source.kind === "token" || spec.source.kind === "protocol"), `engine param ${id} has a fixed source value`);
+  return spec.source.value;
+};
+for (const [index, feel] of motionFeels.entries()) {
+  const medium = feel.durationsMs["--motion-medium"];
+  if (index === 0) {
+    assert.deepEqual(feel.lodestone, {}, "standard leaves the Lodestone global layer empty");
+    assert.equal(engineSource("settleTime"), medium, "engine settleTime source equals the standard --motion-medium");
+    assert.equal(engineSource("springTime"), medium, "engine springTime source equals the standard --motion-medium");
+  } else {
+    assert.deepEqual(Object.keys(feel.lodestone).sort(), ["settleTime", "springTime"], `${feel.id} overrides only the settle and spring times`);
+    assert.equal(feel.lodestone.settleTime, medium, `${feel.id} Lodestone settleTime equals --motion-medium`);
+    assert.equal(feel.lodestone.springTime, medium, `${feel.id} Lodestone springTime equals --motion-medium`);
+  }
+}
+
+// 范围小的覆盖大的：手感只在全局层，组件定义写的值不受它影响（列宽把手的到位时间 0、开关的松手吸能 0），
+// 定义没写的项（开关的回点时间）跟手感走。
+for (const feel of motionFeels) {
+  const column = resolveParams(null, [globalLayer({ ...feel.lodestone }), partLayer("列宽把手", columnResizeHandleDefinition.params ?? {})]);
+  assert.equal(column.settleTime.value, 0, `${feel.id}: the column handle keeps its own settleTime 0`);
+  const toggle = resolveParams(null, [globalLayer({ ...feel.lodestone }), partLayer("设置开关", switchToggleDefinition.params ?? {})]);
+  assert.equal(toggle.releaseAbsorb.value, 0, `${feel.id}: the switch keeps its own releaseAbsorb 0`);
+  assert.equal(toggle.springTime.value, feel.durationsMs["--motion-medium"], `${feel.id}: the switch spring follows the feel`);
+}
+
+// 前端自由点 appearance-motion_feel：选项就是目录，默认是标准；不认识的值取点的默认值。
+const points = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "../preferences.points.json"), "utf8")).points as Array<{ name: string; options?: string[]; value: unknown }>;
+const point = points.find((entry) => entry.name === "appearance-motion_feel");
+assert.ok(point, "preferences.points.json declares appearance-motion_feel");
+assert.deepEqual(point.options, [...motionFeelIds], "point options are the catalog in order");
+assert.equal(point.value, "standard", "the point default is standard");
+assert.equal(motionFeel(undefined).id, "standard");
+assert.equal(motionFeel("bouncy").id, "standard");
+assert.equal(motionFeel("crisp").id, "crisp");
+
+// 九语：行标题、说明和三个选项名都有；不是基础语言原文（繁中对简中，其余对英文），非中日文不含汉字。
+const languages: ConcreteAppLanguageMode[] = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"];
+const texts = new Map(await Promise.all(languages.map(async (language) => [language, await loadSettingsText(language)] as const)));
+for (const language of languages) {
+  const text = texts.get(language)!;
+  assert.equal(text.language, language, `${language}: settings text fell back to another language`);
+  const strings = [text.appearance.motionFeelTitle, text.appearance.motionFeelDescription, ...text.motionFeelOptions.map((option) => option.label)];
+  assert.deepEqual(text.motionFeelOptions.map((option) => option.id), [...motionFeelIds], `${language}: options follow the catalog`);
+  for (const value of strings) {
+    assert.ok(typeof value === "string" && value.trim().length > 0, `${language}: empty motion feel text`);
+    if (!/^(?:zh|ja)-/.test(language)) assert.doesNotMatch(value, /\p{Script=Han}/u, `${language}: motion feel text contains Han: ${value}`);
+  }
+  const base = language === "zh-CN" || language === "en-US" ? null : texts.get(language === "zh-TW" ? "zh-CN" : "en-US")!;
+  if (base) {
+    assert.notEqual(text.appearance.motionFeelDescription, base.appearance.motionFeelDescription, `${language}: description left in the base language`);
+    if (language !== "zh-TW") assert.notEqual(text.appearance.motionFeelTitle, base.appearance.motionFeelTitle, `${language}: title left in the base language`);
+    assert.notDeepEqual(text.motionFeelOptions, base.motionFeelOptions, `${language}: option names left in the base language`);
+  }
+}
+
+console.log(`motionFeelContract: ${motionFeels.length} feels match motion.css, the Lodestone layer and nine languages`);

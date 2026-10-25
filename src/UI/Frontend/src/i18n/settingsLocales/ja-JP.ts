@@ -194,6 +194,8 @@ export default createSettingsLocale("ja-JP", {
     "themeDescription": "現在のスタイルの配色から選びます。「システム」は Windows のライト/ダーク設定に従います。",
     "animationTitle": "アニメーション",
     "animationDescription": "通常のアニメーション、アニメーションなし、または負荷を抑えた簡易表示を選びます。",
+    "motionFeelTitle": "操作感",
+    "motionFeelDescription": "画面全体のアニメーションの速さとカーブを変えます。ドラッグする部品の収まり方や戻り方も変わります。アニメーションなしを選んでいるときは動きません。",
     "resourceBarFrameRateTitle": "リソースバーのアニメーションのフレームレート",
     "resourceBarFrameRateDescription": "リソースバーの切り替えアニメーションを 1 秒間に何フレーム描くかを決めます。画面に合わせるとディスプレイのリフレッシュレートで描きます。カスタムではフレーム数を抑えて負荷を減らせます。標準アニメーションのときだけ有効です。",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("ja-JP", {
     "settingsLanguageTitle": "表示言語",
     "settingsLanguageDescription": "トレイとウィンドウタイトルを含む画面全体の言語を変更します。システム設定では Windows の表示言語を使用します。",
     "languageSelectLabel": "言語",
+    "motionFeelOptions": {
+      "standard": "標準",
+      "smooth": "なめらか",
+      "crisp": "きびきび"
+    },
     "uiStyleOptions": {
       "standard": "標準",
       "soft": "ソフト",

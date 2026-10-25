@@ -32,6 +32,7 @@ export namespace ResourceManager {
       readonly UiStyle: __fpDeepReadonly<"standard" | "soft" | "outline" | "terminal">;
       readonly Theme: __fpDeepReadonly<"system" | "light" | "dark" | "lowContrast" | "paper" | "graphite" | "blueprint" | "phosphor" | "amber" | "ice">;
       readonly AnimationMode: __fpDeepReadonly<"auto" | "none" | "normal" | "ultra">;
+      readonly MotionFeel: __fpDeepReadonly<"standard" | "smooth" | "crisp">;
       readonly BarFrameRateMode: __fpDeepReadonly<"display" | "custom">;
       readonly BarColorMode: __fpDeepReadonly<"type" | "distinct">;
       readonly FontSmoothing: __fpDeepReadonly<"auto" | "system" | "grayscale" | "disabled">;

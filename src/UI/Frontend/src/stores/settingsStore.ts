@@ -54,6 +54,8 @@ import type {
   SettingsSection
 } from "../types";
 import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
+import { motionFeel } from "../presentation/motionFeel.ts";
+import type { MotionFeelId } from "../presentation/motionFeel.ts";
 import {
   normalizeResourceBarFrameRate,
   normalizeResourceBarFrameRateMode
@@ -113,6 +115,7 @@ export interface SettingsStore {
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
   updateAnimations: (animations: AppAnimationMode) => void;
+  updateMotionFeel: (feel: MotionFeelId) => void;
   updateResourceBarFrameRateMode: (mode: AppResourceBarFrameRateMode) => void;
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
@@ -548,6 +551,15 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         appearance: {
           ...normalizeAppSettings(currentSettings).appearance!,
           animations
+        }
+      }));
+    },
+    updateMotionFeel: (feel) => {
+      updateDraft((currentSettings) => ({
+        ...currentSettings,
+        appearance: {
+          ...normalizeAppSettings(currentSettings).appearance!,
+          motionFeel: motionFeel(feel).id
         }
       }));
     },
@@ -994,6 +1006,7 @@ function normalizeAppearanceSettings(
   return {
     ...normalizeUiAppearance(settings?.uiStyle, settings?.theme),
     animations: normalizeAnimationMode(settings?.animations),
+    motionFeel: motionFeel(settings?.motionFeel).id,
     resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(settings?.resourceBarFrameRateMode),
     resourceBarFrameRate: normalizeResourceBarFrameRate(settings?.resourceBarFrameRate),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),

@@ -26,16 +26,18 @@ public static class @FrontendPoints
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290002UL)]
     public static readonly string @AnimationMode = @FrontendPointsValues.@__fpValue_AnimationMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290003UL)]
-    public static readonly string @BarFrameRateMode = @FrontendPointsValues.@__fpValue_BarFrameRateMode;
+    public static readonly string @MotionFeel = @FrontendPointsValues.@__fpValue_MotionFeel;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290004UL)]
-    public static readonly string @BarColorMode = @FrontendPointsValues.@__fpValue_BarColorMode;
+    public static readonly string @BarFrameRateMode = @FrontendPointsValues.@__fpValue_BarFrameRateMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290005UL)]
-    public static readonly string @FontSmoothing = @FrontendPointsValues.@__fpValue_FontSmoothing;
+    public static readonly string @BarColorMode = @FrontendPointsValues.@__fpValue_BarColorMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290006UL)]
-    public static readonly string @Language = @FrontendPointsValues.@__fpValue_Language;
+    public static readonly string @FontSmoothing = @FrontendPointsValues.@__fpValue_FontSmoothing;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290007UL)]
-    public static readonly string @ByteUnitMode = @FrontendPointsValues.@__fpValue_ByteUnitMode;
+    public static readonly string @Language = @FrontendPointsValues.@__fpValue_Language;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290008UL)]
+    public static readonly string @ByteUnitMode = @FrontendPointsValues.@__fpValue_ByteUnitMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290009UL)]
     public static readonly string @ReadingSourceMode = @FrontendPointsValues.@__fpValue_ReadingSourceMode;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002D0000UL)]
     public static readonly PointRefreshSetting @Monitor = @FrontendPointsValues.@__fpValue_Monitor;
@@ -71,9 +73,9 @@ public static class @FrontendPoints
     public static readonly global::System.Text.Json.JsonElement @DashboardLayoutDefaults = @FrontendPointsValues.@__fpValue_DashboardLayoutDefaults;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200350001UL)]
     public static readonly PointDashboardLayoutLimits @DashboardLayoutLimits = @FrontendPointsValues.@__fpValue_DashboardLayoutLimits;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350000UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200390000UL)]
     public static readonly string @UpdateInApp = @FrontendPointsValues.@__fpValue_UpdateInApp;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200350001UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200390001UL)]
     public static readonly string @UpdateSystem = @FrontendPointsValues.@__fpValue_UpdateSystem;
 }
 public sealed class @FrontendPointsRuntime

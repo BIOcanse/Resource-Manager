@@ -194,6 +194,8 @@ export default createSettingsLocale("fr-FR", {
     "themeDescription": "Choisissez une palette du style actuel. Système suit le réglage clair ou sombre de Windows.",
     "animationTitle": "Animations",
     "animationDescription": "Choisissez des animations complètes, aucune animation ou des effets simplifiés pour réduire le coût de l’interface.",
+    "motionFeelTitle": "Ressenti des animations",
+    "motionFeelDescription": "Modifie le rythme et les courbes de toutes les animations de l’interface, y compris la façon dont les contrôles déplacés se placent et reviennent. Sans animation, rien ne bouge.",
     "resourceBarFrameRateTitle": "Fréquence d’images des barres de ressources",
     "resourceBarFrameRateDescription": "Nombre d’images par seconde dessinées pendant les transitions des barres. Suivre l’écran utilise la fréquence de rafraîchissement du moniteur ; Personnalisé limite les images pour réduire la charge. S’applique uniquement avec les animations normales.",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("fr-FR", {
     "settingsLanguageTitle": "Langue de l’interface",
     "settingsLanguageDescription": "Change la langue de toute l’interface, y compris la zone de notification et le titre de fenêtre. Le mode système utilise la langue d’affichage Windows.",
     "languageSelectLabel": "Langue",
+    "motionFeelOptions": {
+      "standard": "Standard",
+      "smooth": "Fluide",
+      "crisp": "Vif"
+    },
     "uiStyleOptions": {
       "standard": "Standard",
       "soft": "Doux",

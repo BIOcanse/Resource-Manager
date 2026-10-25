@@ -44,6 +44,7 @@ export function pointPreferences(): FrontendPreferencesCache {
   return {
     overlaySelectionVersion: 1, appearance: {
       uiStyle: points.UiStyle, theme: points.Theme, animations: points.AnimationMode,
+      motionFeel: points.MotionFeel,
       resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
       barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
       byteUnitMode: points.ByteUnitMode, readingSourceMode: points.ReadingSourceMode

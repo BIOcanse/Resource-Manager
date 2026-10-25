@@ -1,6 +1,7 @@
 import { createEffect, on, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Definition } from "../protocol/definition.ts";
+import type { ParamOverrides } from "../protocol/params.ts";
 import { attachDom, expectRelease } from "../protocol/domInput.ts";
 import { Runtime } from "../protocol/runtime.ts";
 import type { AnimationMode, Composite, Host, Instance, Platform, Presentation } from "../protocol/runtime.ts";
@@ -60,6 +61,14 @@ export function interactionRuntime(): Runtime {
 /** 动画档位沿用 body[data-animations]，由 App 按外观设置解析后交给这里。 */
 export function setInteractionAnimationMode(mode: AnimationMode): void {
   interactionRuntime().setAnimationMode(mode, performance.now());
+}
+
+/**
+ * 全局层整层换成这一组覆盖（协议第 5 节“整层替换”）：手感切换用它，由 presentation/documentAppearance.ts 和动效令牌一起发布。
+ * 组件定义写的值在本部件这一层，不受影响。
+ */
+export function setInteractionGlobalOverrides(overrides: Readonly<ParamOverrides>): void {
+  interactionRuntime().setOverrides(null, { ...overrides }, performance.now());
 }
 
 /** 挂上的组件实例：挂载后才有，卸载后回到 null。组合的区域路由用它找子组件。 */

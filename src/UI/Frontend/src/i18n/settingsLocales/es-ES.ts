@@ -194,6 +194,8 @@ export default createSettingsLocale("es-ES", {
     "themeDescription": "Elige una paleta del estilo actual. Sistema sigue el ajuste claro u oscuro de Windows.",
     "animationTitle": "Animaciones",
     "animationDescription": "Elige animaciones completas, ninguna animación o efectos simplificados para reducir la carga de la interfaz.",
+    "motionFeelTitle": "Sensación de movimiento",
+    "motionFeelDescription": "Cambia el ritmo y las curvas de todas las animaciones de la interfaz, incluido cómo se asientan y vuelven los controles que se arrastran. Sin animaciones, nada se mueve.",
     "resourceBarFrameRateTitle": "Fotogramas de las barras de recursos",
     "resourceBarFrameRateDescription": "Cuántos fotogramas por segundo dibujan las transiciones de las barras. Seguir la pantalla usa la frecuencia de actualización del monitor; Personalizado limita los fotogramas para reducir la carga. Solo se aplica con animaciones normales.",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("es-ES", {
     "settingsLanguageTitle": "Idioma de la interfaz",
     "settingsLanguageDescription": "Cambia el idioma de toda la interfaz, incluida la bandeja y el título de ventana. Sistema usa el idioma de visualización de Windows.",
     "languageSelectLabel": "Idioma",
+    "motionFeelOptions": {
+      "standard": "Estándar",
+      "smooth": "Suave",
+      "crisp": "Ágil"
+    },
     "uiStyleOptions": {
       "standard": "Estándar",
       "soft": "Suave",

@@ -42,6 +42,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onUiStyleChange={settings.updateUiStyle}
         onThemeChange={settings.updateTheme}
         onAnimationsChange={settings.updateAnimations}
+        onMotionFeelChange={settings.updateMotionFeel}
         onResourceBarFrameRateModeChange={settings.updateResourceBarFrameRateMode}
         onResourceBarFrameRateChange={settings.updateResourceBarFrameRate}
         onBarColorModeChange={settings.updateBarColorMode}

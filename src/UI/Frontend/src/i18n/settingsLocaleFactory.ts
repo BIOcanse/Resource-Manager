@@ -89,6 +89,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     themeDescription: "选择当前风格提供的配色。跟随系统会按 Windows 的浅色或深色设置切换。",
     animationTitle: "动画效果",
     animationDescription: "选择完整动画、关闭动画，或进一步简化视觉以降低界面开销。",
+    motionFeelTitle: "手感",
+    motionFeelDescription: "改变整个界面动画的节奏和曲线，拖动控件的到位、回弹也一起变。动画效果选无动画时仍然不动。",
     resourceBarFrameRateTitle: "资源条动画帧率",
     resourceBarFrameRateDescription: "资源条过渡动画每秒画几帧。跟随屏幕按显示器刷新率画；自定义可限制帧数以降低开销。只在正常动画下生效。",
     resourceBarFrameRateModeOptions: [
@@ -113,6 +115,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "界面语言",
     settingsLanguageDescription: "切换整个界面的语言，包括桌面外壳的托盘与窗口标题；跟随系统会使用 Windows 显示语言。",
     languageSelectLabel: "语言",
+    motionFeelOptions: { standard: "标准", smooth: "平滑", crisp: "利落" },
     uiStyleOptions: {
       standard: "标准",
       soft: "柔和",
@@ -510,6 +513,8 @@ const enSettingsCopy: SettingsCopy = {
     themeDescription: "Choose one of the current style's palettes. System follows the Windows light or dark setting.",
     animationTitle: "Motion",
     animationDescription: "Choose full motion, no motion, or simplified visuals for lower interface overhead.",
+    motionFeelTitle: "Motion feel",
+    motionFeelDescription: "Changes the pace and curves of every animation in the interface, including how dragged controls settle and spring back. With No motion selected, nothing moves.",
     resourceBarFrameRateTitle: "Resource Bar Frame Rate",
     resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Applies only with Normal motion.",
     resourceBarFrameRateModeOptions: [
@@ -534,6 +539,7 @@ const enSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "Interface language",
     settingsLanguageDescription: "Changes the language of the whole interface, including the desktop shell tray and window title. System uses the Windows display language.",
     languageSelectLabel: "Language",
+    motionFeelOptions: { standard: "Standard", smooth: "Smooth", crisp: "Crisp" },
     uiStyleOptions: {
       standard: "Standard",
       soft: "Soft",

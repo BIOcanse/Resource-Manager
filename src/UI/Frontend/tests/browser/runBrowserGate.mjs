@@ -55,6 +55,7 @@ import columnResizeInteractionJourney from "./columnResizeInteractionJourney.js"
 import fanCurveInteractionJourney from "./fanCurveInteractionJourney.js";
 import switchInteractionJourney from "./switchInteractionJourney.js";
 import reorderInteractionJourney from "./reorderInteractionJourney.js";
+import motionFeelJourney from "./motionFeelJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
 import realtimeActionBudgetSettingsJourney from "./realtimeActionBudgetSettingsJourney.js";
@@ -141,6 +142,7 @@ const allJourneys = [
   ["fan-curve-interaction", fanCurveInteractionJourney],
   ["switch-interaction", switchInteractionJourney],
   ["reorder-interaction", reorderInteractionJourney],
+  ["motion-feel", motionFeelJourney],
   ["r2-remediation", r2RemediationJourney]
 ];
 const journeyFilter = process.env.RM_BROWSER_JOURNEY?.trim();

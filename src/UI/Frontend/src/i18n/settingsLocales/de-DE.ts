@@ -194,6 +194,8 @@ export default createSettingsLocale("de-DE", {
     "themeDescription": "Wählen Sie ein Farbschema des aktuellen Stils. System folgt der hellen oder dunklen Windows-Einstellung.",
     "animationTitle": "Animationen",
     "animationDescription": "Wählen Sie volle Animationen, keine Animationen oder vereinfachte Effekte für geringere Oberflächenlast.",
+    "motionFeelTitle": "Bewegungsgefühl",
+    "motionFeelDescription": "Ändert Tempo und Kurven aller Animationen der Oberfläche, auch wie gezogene Bedienelemente einrasten und zurückfedern. Ohne Animationen bewegt sich nichts.",
     "resourceBarFrameRateTitle": "Bildrate der Ressourcenleisten",
     "resourceBarFrameRateDescription": "Wie viele Bilder pro Sekunde die Übergänge der Ressourcenleisten zeichnen. Bildschirm folgen nutzt die Bildwiederholrate des Monitors; Benutzerdefiniert begrenzt die Bilder und senkt die Last. Gilt nur bei normalen Animationen.",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("de-DE", {
     "settingsLanguageTitle": "Oberflächensprache",
     "settingsLanguageDescription": "Ändert die Sprache der gesamten Oberfläche einschließlich Infobereich und Fenstertitel. System verwendet die Windows-Anzeigesprache.",
     "languageSelectLabel": "Sprache",
+    "motionFeelOptions": {
+      "standard": "Standard",
+      "smooth": "Weich",
+      "crisp": "Knackig"
+    },
     "uiStyleOptions": {
       "standard": "Standard",
       "soft": "Weich",

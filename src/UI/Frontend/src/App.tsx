@@ -18,6 +18,7 @@ import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
 import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
 import { normalizeUiAppearance } from "./presentation/uiStyles";
+import { motionFeel } from "./presentation/motionFeel.ts";
 import { resolveResourceBarFrameRate } from "./presentation/resourceBarFrameRate.ts";
 import { createManagementStore } from "./stores/managementStore";
 import { createMonitorStore, type MonitorStore } from "./stores/monitorStore";
@@ -277,7 +278,7 @@ export default function App() {
     }
 
     const appearance = settings.settings().appearance;
-    publishCommittedDocumentAppearance(normalizeUiAppearance(appearance?.uiStyle, appearance?.theme));
+    publishCommittedDocumentAppearance(normalizeUiAppearance(appearance?.uiStyle, appearance?.theme), motionFeel(appearance?.motionFeel));
   });
 
   createEffect(() => {

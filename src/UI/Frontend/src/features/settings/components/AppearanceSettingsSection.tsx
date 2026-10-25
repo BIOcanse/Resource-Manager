@@ -22,6 +22,8 @@ import type {
 } from "../../../types";
 import { NumberField, SegmentedControl } from "./SettingsControls";
 import { pointPreferences } from "../../../preferences/frontendPreferences.ts";
+import { motionFeel } from "../../../presentation/motionFeel.ts";
+import type { MotionFeelId } from "../../../presentation/motionFeel.ts";
 
 interface AppearanceSettingsSectionProps {
   onResetPreferences: () => void;
@@ -30,6 +32,7 @@ interface AppearanceSettingsSectionProps {
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
+  onMotionFeelChange: (feel: MotionFeelId) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -88,6 +91,18 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           options={props.text.animationOptions}
           ariaLabel={props.text.appearance.animationTitle}
           onChange={props.onAnimationsChange}
+        />
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.appearance.motionFeelTitle}</strong>
+          <span>{props.text.appearance.motionFeelDescription}</span>
+        </div>
+        <SegmentedControl
+          value={motionFeel(appearance().motionFeel).id}
+          options={props.text.motionFeelOptions}
+          ariaLabel={props.text.appearance.motionFeelTitle}
+          onChange={props.onMotionFeelChange}
         />
       </div>
       <div class="settings-row">

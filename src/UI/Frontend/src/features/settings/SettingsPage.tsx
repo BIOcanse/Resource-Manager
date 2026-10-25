@@ -8,6 +8,7 @@ import { PerformanceSettingsSection } from "./components/PerformanceSettingsSect
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
+import type { MotionFeelId } from "../../presentation/motionFeel.ts";
 import type {
   AppAnimationMode,
   AppBarColorMode,
@@ -56,6 +57,7 @@ interface SettingsPageProps {
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
+  onMotionFeelChange: (feel: MotionFeelId) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -274,6 +276,7 @@ export function SettingsPage(props: SettingsPageProps) {
               onUiStyleChange={props.onUiStyleChange}
               onThemeChange={props.onThemeChange}
               onAnimationsChange={props.onAnimationsChange}
+              onMotionFeelChange={props.onMotionFeelChange}
               onResourceBarFrameRateModeChange={props.onResourceBarFrameRateModeChange}
               onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}

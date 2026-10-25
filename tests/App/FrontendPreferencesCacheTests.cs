@@ -224,6 +224,24 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
+    public void MotionFeelIsAFrontendChoiceThatSurvivesRestartAndOlderCachesReadTheDefault()
+    {
+        // 手感是 2026-10-25 加的前端自由点：之前写下的缓存没有这一项，读成点的默认值，其余选择不变。
+        var saved = JsonSerializer.SerializeToNode(new FrontendPreferences { Appearance = new() { Theme = "dark" } },
+            FrontendPreferencesOwner.Json)!.AsObject();
+        saved["appearance"]!.AsObject().Remove("motionFeel");
+        File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
+        var owner = Owner();
+        Assert.Equal(FrontendPoints.MotionFeel, owner.Read().Appearance.MotionFeel);
+        Assert.Equal("dark", owner.Read().Appearance.Theme);
+
+        owner.SaveGlobal(owner.Read() with { Appearance = new() { Theme = "dark", MotionFeel = "smooth" } });
+        Assert.Equal("smooth", Owner().Read().Appearance.MotionFeel);
+        Assert.Throws<InvalidDataException>(() => owner.Save(new() { Appearance = new() { MotionFeel = "bouncy" } }));
+        Assert.Equal("smooth", Owner().Read().Appearance.MotionFeel);
+    }
+
+    [Fact]
     public void InvalidLegacyValuesCannotPreventFrontendStartup()
     {
         File.WriteAllText(App, """{"appearance":{"theme":"invalid"}}""");

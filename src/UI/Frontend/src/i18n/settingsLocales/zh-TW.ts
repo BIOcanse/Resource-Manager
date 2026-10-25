@@ -193,6 +193,8 @@ export default createSettingsLocale("zh-TW", {
     "themeDescription": "選擇目前風格提供的配色。跟隨系統會依 Windows 的淺色或深色設定切換。",
     "animationTitle": "動畫效果",
     "animationDescription": "選擇完整動畫、關閉動畫，或進一步簡化視覺以降低介面開銷。",
+    "motionFeelTitle": "手感",
+    "motionFeelDescription": "改變整個介面動畫的節奏和曲線，拖曳控制項的到位、回彈也一起變。動畫效果選無動畫時仍然不動。",
     "resourceBarFrameRateTitle": "資源條動畫幀率",
     "resourceBarFrameRateDescription": "資源條過渡動畫每秒繪製幾幀。跟隨螢幕依顯示器更新率繪製；自定義可限制幀數以降低開銷。只在正常動畫下生效。",
     "resourceBarFrameRateModeOptions": [
@@ -233,6 +235,11 @@ export default createSettingsLocale("zh-TW", {
     "settingsLanguageTitle": "介面語言",
     "settingsLanguageDescription": "切換整個介面的語言，包括桌面外殼的托盤與視窗標題；跟隨系統會使用 Windows 顯示語言。",
     "languageSelectLabel": "語言",
+    "motionFeelOptions": {
+      "standard": "標準",
+      "smooth": "平滑",
+      "crisp": "俐落"
+    },
     "uiStyleOptions": {
       "standard": "標準",
       "soft": "柔和",

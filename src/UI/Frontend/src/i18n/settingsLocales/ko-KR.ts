@@ -194,6 +194,8 @@ export default createSettingsLocale("ko-KR", {
     "themeDescription": "현재 스타일의 색 구성 중에서 선택합니다. 시스템은 Windows의 밝게/어둡게 설정을 따릅니다.",
     "animationTitle": "애니메이션",
     "animationDescription": "전체 애니메이션, 애니메이션 없음 또는 UI 부하를 줄이는 간소화된 효과를 선택합니다.",
+    "motionFeelTitle": "조작감",
+    "motionFeelDescription": "인터페이스 전체 애니메이션의 속도와 곡선을 바꿉니다. 끌어서 움직이는 컨트롤이 자리 잡고 되돌아가는 방식도 함께 바뀝니다. 애니메이션 없음을 선택하면 움직이지 않습니다.",
     "resourceBarFrameRateTitle": "리소스 막대 애니메이션 프레임 속도",
     "resourceBarFrameRateDescription": "리소스 막대 전환 애니메이션을 초당 몇 프레임 그릴지 정합니다. 화면에 맞춤은 모니터 주사율로 그리고, 사용자 지정은 프레임 수를 제한해 부하를 줄입니다. 일반 애니메이션일 때만 적용됩니다.",
     "resourceBarFrameRateModeOptions": [
@@ -234,6 +236,11 @@ export default createSettingsLocale("ko-KR", {
     "settingsLanguageTitle": "인터페이스 언어",
     "settingsLanguageDescription": "트레이와 창 제목을 포함한 전체 인터페이스의 언어를 변경합니다. 시스템을 선택하면 Windows 표시 언어를 사용합니다.",
     "languageSelectLabel": "언어",
+    "motionFeelOptions": {
+      "standard": "표준",
+      "smooth": "부드럽게",
+      "crisp": "경쾌하게"
+    },
     "uiStyleOptions": {
       "standard": "표준",
       "soft": "부드럽게",

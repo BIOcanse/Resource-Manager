@@ -119,6 +119,13 @@ export default async function localizationJourney(page, baseUrl) {
     const settings = await loadSettingsText(option.id);
     await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
+    // 手感这一行：标题、说明和三个选项名都是这种语言的。
+    await page.getByText(settings.appearance.motionFeelDescription, { exact: true }).waitFor();
+    const feelGroup = page.getByRole("radiogroup", { name: settings.appearance.motionFeelTitle, exact: true });
+    const feelLabels = (await feelGroup.getByRole("radio").allTextContents()).map(text => text.trim());
+    if (JSON.stringify(feelLabels) !== JSON.stringify(settings.motionFeelOptions.map(option => option.label))) {
+      throw new Error(`${option.id}: motion feel options are ${JSON.stringify(feelLabels)}`);
+    }
 
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
     await page.getByText(settings.performance.gpuOverflowTitle, { exact: true }).waitFor();

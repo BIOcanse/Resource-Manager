@@ -1,4 +1,5 @@
 import type { MetricFieldReading } from "./data/metricFields/metricFieldSource.ts";
+import type { MotionFeelId } from "./presentation/motionFeel.ts";
 
 export type PageId =
   | "monitor"
@@ -362,6 +363,8 @@ export interface AppAppearanceSettings {
   // 当前风格下的配色。
   theme: AppPalette;
   animations?: AppAnimationMode;
+  // 手感：动画怎么走（目录 presentation/motionFeel.ts）；动画档位决定走不走。
+  motionFeel?: MotionFeelId;
   resourceBarFrameRateMode?: AppResourceBarFrameRateMode;
   // custom 时的帧/秒（10–240）；display 时保留不用。
   resourceBarFrameRate?: number;
