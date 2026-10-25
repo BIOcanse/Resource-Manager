@@ -38,63 +38,52 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : Results.Json(summary);
         });
 
-        // 方格布局。默认从根开始；钻进子树时带上 node。
-        //
-        // 其余参数描述客户端此刻看到的东西：画布的物理像素尺寸、滚轮倍数、
-        // 以及看得见的那块单位空间矩形。发哪些方格由它们决定 ——
-        // 看不见的不发，在屏幕上小于一个像素门槛的也不发。
-        // 一个都不传就按整张图、不缩放算，所以这些参数都是可选的。
-        app.MapGet("/api/disk-usage/layout", (
+        // 返回所选子树的有界事实页；读取只取得当前结果，不启动或等待扫描。
+        app.MapGet("/api/disk-usage/tree", (
             HttpContext context,
             HttpResponse response,
             IOwnedDiskUsageTreeStore store,
+            int rootIndex,
+            int maxNodes,
+            int maxBytes,
             int? node,
-            int? rootIndex,
-            float? pixelWidth,
-            float? pixelHeight,
-            float? scale,
-            float? minX,
-            float? minY,
-            float? maxX,
-            float? maxY) =>
+            int? cursor) =>
         {
             DisableResponseCache(response);
             if (!TryGetResultOwner(context, out var owner)) return Results.Unauthorized();
-            using var reading = store.TryAcquire(owner);
-            var current = reading?.Result;
-            if (current is null || current.Tree.Roots.Count == 0)
+            try
             {
+                DiskUsageTreeBinaryWriter.ValidateBounds(maxNodes, maxBytes);
+                if (rootIndex < 0)
+                    throw new ArgumentException("The requested disk-usage root is unavailable.");
+                using var reading = store.TryAcquire(owner);
+                var current = reading?.Result;
+                if (current is null || current.Tree.Roots.Count == 0)
+                    return Results.Bytes(DiskUsageTreeBinaryWriter.WriteEmpty(), "application/octet-stream");
+
+                var tree = current.Tree;
+                if (rootIndex >= tree.Roots.Count)
+                    throw new ArgumentException("The requested disk-usage root is unavailable.");
+                var scanRoot = tree.Roots[rootIndex];
+                var queryRoot = node ?? scanRoot;
+                if ((uint)queryRoot >= (uint)tree.Count)
+                    throw new ArgumentException("The requested disk-usage node is unavailable.");
+                var ancestor = queryRoot;
+                while (ancestor != scanRoot)
+                {
+                    var parent = tree.ParentOf(ancestor);
+                    if (parent < scanRoot || parent >= ancestor)
+                        throw new ArgumentException("The requested node is outside the selected scan root.");
+                    ancestor = parent;
+                }
                 return Results.Bytes(
-                    DiskUsageLayoutBinaryWriter.WriteEmpty(),
+                    DiskUsageTreeBinaryWriter.Write(tree, queryRoot, maxNodes, maxBytes, cursor),
                     "application/octet-stream");
             }
-
-            var tree = current.Tree;
-            if (node is not null && rootIndex is not null)
+            catch (ArgumentException error)
             {
-                return Results.BadRequest(new EndpointErrorPayload("Select a tree node or a scan root, not both."));
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
-            if (node is null && rootIndex is { } selectedRoot
-                && (selectedRoot < 0 || selectedRoot >= tree.Roots.Count))
-            {
-                return Results.BadRequest(new EndpointErrorPayload("The requested disk-usage root is unavailable."));
-            }
-            var rootNode = node is { } requested && requested >= 0 && requested < tree.Count
-                ? requested
-                : rootIndex is { } index ? tree.Roots[index] : tree.Roots[0];
-            var view = DiskUsageViewWindow.Normalize(
-                pixelWidth, pixelHeight, scale, minX, minY, maxX, maxY);
-            var layout = DiskUsageTreemapLayout.Create(tree, rootNode, view);
-            // 方格数据走二进制：一次布局是十来个并列数组、几万到十万项，
-            // 用 JSON 光是序列化和解析就要几秒。格式见 DiskUsageLayoutBinaryWriter。
-            return Results.Bytes(
-                DiskUsageLayoutBinaryWriter.Write(
-                    tree,
-                    layout,
-                    view,
-                    tree.PathOf(rootNode),
-                    tree.SizeOf(rootNode)),
-                "application/octet-stream");
         });
 
         // 单个节点的事实：右键菜单和选中提示要的就是这些。

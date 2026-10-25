@@ -14,9 +14,9 @@ import {
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../../text.ts";
 import type { DiskUsageVolume, DiskUsageVolumeKind } from "./diskUsageTypes.ts";
-import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
+
 import type {
-  DiskUsageLayout,
+
   DiskUsageNode,
   DiskUsageScanSummary
 } from "./diskUsageLayoutTypes.ts";
@@ -98,112 +98,11 @@ export const diskUsageSummaryDecoder =
       };
     });
 
-/** 二进制布局的头部常量。必须和 DiskUsageLayoutBinaryWriter 对上。 */
-const layoutMagic = 0x5544_4d52;
-const layoutVersion = 1;
-const layoutHeaderBytes = 64;
-
-/**
- * 方格布局。走二进制，不走 JSON。
- *
- * 一次布局是十来个并列数组、几万到十万项。JSON 光是序列化和解析就要好几秒，
- * 而这些本来就是定长数值 —— 这里直接在同一块 ArrayBuffer 上开定型数组视图，
- * 不逐项转换，也不为每个方格建对象。
- * 头部固定 64 字节、各列从宽到窄排，就是为了让每一列的偏移都满足对齐要求。
- */
-export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | null>(
-  "disk-usage.layout.v2",
-  (value) => {
-    if (!(value instanceof ArrayBuffer) || value.byteLength < layoutHeaderBytes) {
-      throw new ResponseDecodeError("$", "a disk usage layout buffer");
-    }
-    const header = new DataView(value);
-    if (header.getUint32(0, true) !== layoutMagic) {
-      throw new ResponseDecodeError("$.magic", "the disk usage layout magic");
-    }
-    if (header.getUint32(4, true) !== layoutVersion) {
-      throw new ResponseDecodeError("$.version", `version ${layoutVersion}`);
-    }
-
-    const length = header.getUint32(8, true);
-    const rootNodeId = header.getInt32(12, true);
-    // 还没扫过：后端给的是只有头部的空布局。
-    if (length === 0 || rootNodeId < 0) {
-      return null;
-    }
-
-    const view = {
-      minX: header.getFloat32(32, true),
-      minY: header.getFloat32(36, true),
-      maxX: header.getFloat32(40, true),
-      maxY: header.getFloat32(44, true),
-      pixelWidth: header.getFloat32(48, true),
-      pixelHeight: header.getFloat32(52, true),
-      scale: header.getFloat32(56, true)
-    };
-    const rootPathBytes = header.getUint32(60, true);
-
-    let offset = layoutHeaderBytes;
-    const sizes = new Float64Array(value, offset, length);
-    offset += 8 * length;
-    const nodeIds = new Int32Array(value, offset, length);
-    offset += 4 * length;
-    const parentIds = new Int32Array(value, offset, length);
-    offset += 4 * length;
-    const depths = new Int32Array(value, offset, length);
-    offset += 4 * length;
-    const fileCountsRaw = new Int32Array(value, offset, length);
-    offset += 4 * length;
-    const x = new Float32Array(value, offset, length);
-    offset += 4 * length;
-    const y = new Float32Array(value, offset, length);
-    offset += 4 * length;
-    const width = new Float32Array(value, offset, length);
-    offset += 4 * length;
-    const height = new Float32Array(value, offset, length);
-    offset += 4 * length;
-    const directoryFlags = new Uint8Array(value, offset, length);
-    offset += length;
-    // 名字那几列之前补齐到 4 的倍数，否则 Uint32Array 开不出来。
-    offset += (4 - (offset % 4)) % 4;
-    const nameByteLengths = new Uint32Array(value, offset, length);
-    offset += 4 * length;
-
-    const decoder = new TextDecoder();
-    const names = new Array<string>(length);
-    const indexByNodeId = new Map<number, number>();
-    const fileCounts = new Float64Array(length);
-    for (let index = 0; index < length; index++) {
-      const nameLength = nameByteLengths[index];
-      names[index] = nameLength === 0
-        ? ""
-        : decoder.decode(new Uint8Array(value, offset, nameLength));
-      offset += nameLength;
-      indexByNodeId.set(nodeIds[index], index);
-      fileCounts[index] = fileCountsRaw[index];
-    }
-
-    return {
-      rootNodeId,
-      rootPath: rootPathBytes === 0
-        ? ""
-        : decoder.decode(new Uint8Array(value, offset, rootPathBytes)),
-      rootSizeBytes: header.getFloat64(24, true),
-      omittedCount: header.getUint32(16, true),
-      nodeIds,
-      parentIds,
-      depths,
-      x,
-      y,
-      width,
-      height,
-      directoryFlags,
-      sizes,
-      names,
-      fileCounts,
-      indexByNodeId,
-      view
-    };
+/** Fact buffers transfer directly to the page-owned worker for decoding. */
+export const diskUsageTreeDecoder = defineResponseDecoder<ArrayBuffer>(
+  "disk-usage.tree.v3", (value) => {
+    if (!(value instanceof ArrayBuffer)) throw new ResponseDecodeError("$", "a disk tree buffer");
+    return value;
   });
 
 export const diskUsageNodeDecoder = defineResponseDecoder<DiskUsageNode>(
@@ -238,37 +137,25 @@ export function getDiskUsageSummary(
   });
 }
 
-export function getDiskUsageLayout(
+export function getDiskUsageTree(
   requestClient: Pick<RequestClient, "request">,
-  nodeId?: number,
   signal?: AbortSignal,
-  view?: DiskUsageViewWindow,
-  rootIndex?: number
-): Promise<DiskUsageLayout | null> {
+  rootIndex = 0,
+  nodeId?: number,
+  cursor?: number
+): Promise<ArrayBuffer> {
   const parameters = new URLSearchParams();
-  if (typeof nodeId === "number") {
-    parameters.set("node", String(nodeId));
-  }
-  if (typeof rootIndex === "number") {
-    parameters.set("rootIndex", String(rootIndex));
-  }
-  if (view) {
-    parameters.set("pixelWidth", view.pixelWidth.toFixed(1));
-    parameters.set("pixelHeight", view.pixelHeight.toFixed(1));
-    parameters.set("scale", view.scale.toFixed(4));
-    parameters.set("minX", view.minX.toFixed(6));
-    parameters.set("minY", view.minY.toFixed(6));
-    parameters.set("maxX", view.maxX.toFixed(6));
-    parameters.set("maxY", view.maxY.toFixed(6));
-  }
-  const query = parameters.size > 0 ? `?${parameters}` : "";
+  parameters.set("rootIndex", String(rootIndex));
+  parameters.set("maxNodes", "400000");
+  parameters.set("maxBytes", "33554432");
+  if (nodeId !== undefined) parameters.set("node", String(nodeId));
+  if (cursor !== undefined) parameters.set("cursor", String(cursor));
   return requestClient.request({
-    key: "disk-usage.layout",
-    url: `/api/disk-usage/layout${query}`,
+    key: "disk-usage.tree",
+    url: `/api/disk-usage/tree?${parameters}`,
     fallbackError: uiText.diskUsage.emptyTitle,
-    decoder: diskUsageLayoutDecoder,
+    decoder: diskUsageTreeDecoder,
     signal,
-    // 方格数据走二进制，见 diskUsageLayoutDecoder。
     request: { method: "GET", binary: true }
   });
 }

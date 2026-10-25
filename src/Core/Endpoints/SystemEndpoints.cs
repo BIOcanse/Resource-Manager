@@ -28,7 +28,6 @@ using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Endpoints.Transport;
 

@@ -8,7 +8,6 @@ using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Application.Software;
@@ -21,10 +20,8 @@ using ResourceManager.App.Domain.LocalSystem;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
-using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Endpoints.Transport;
 
 namespace ResourceManager.App.Endpoints;
@@ -63,16 +60,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpRequest request,
             HttpResponse response,
             IResourceBreakdownSampler breakdownSampler,
-            IServiceProvider services,
             IRuntimePlanProvider runtimePlanProvider,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
             var monitoringPlan = runtimePlanProvider.Current.Monitoring;
             var scope = ParseResourceMonitorScope(request);
-            var metricIds = scope == ResourceMonitorScope.Table
-                ? []
-                : ParseResourceMetricIds(request, monitoringPlan);
+            var metricIds = ParseResourceMetricIds(request, monitoringPlan);
             var scaleModes = ParseResourceScaleModes(request, monitoringPlan);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
             if (scope == ResourceMonitorScope.Details)
@@ -89,69 +83,79 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     processDetailSoftwareIds));
             }
 
-            var requestedSampleMetricIds = ParseResourceSampleMetricIds(request);
-            var tableRequest = ParseResourceTableRequest(request, monitoringPlan);
-            var sampleMetricIds = AddTableRequiredMetricIds(
-                requestedSampleMetricIds.Count > 0 ? requestedSampleMetricIds : metricIds,
-                scope == ResourceMonitorScope.Bars ? [] : tableRequest.ColumnIds);
             var sampledBreakdown = await breakdownSampler.GetSnapshotAsync(
                 new ResourceBreakdownSampleRequest(
-                    sampleMetricIds,
+                    metricIds,
                     scaleModes,
-                    ResolveProcessSampleDetailLevel(request, tableRequest)),
+                    ProcessSampleDetailLevel.ResourceTableBasic),
                 cancellationToken);
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
                 processDetailSoftwareIds);
-            var table = scope == ResourceMonitorScope.Bars
-                ? ResourceTableWireSnapshot.Empty
-                : ResourceTableWireSnapshot.Create(services
-                    .GetRequiredService<IResourceTableProjector>()
-                    .Project(sampledBreakdown, tableRequest));
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
-                MaxTimestamp(
-                    breakdownWire.CapturedAt,
-                    table.CapturedAt),
-                breakdownWire,
-                table));
+                breakdownWire.CapturedAt,
+                breakdownWire));
         }).AllowAnonymous();
 
-        app.MapGet("/api/resource-table/snapshot", async (
+        app.MapGet("/api/resource-facts/snapshot", async (
             HttpRequest request,
             HttpResponse response,
             IResourceBreakdownSampler breakdownSampler,
-            IResourceTableProjector tableProjector,
-            IRuntimePlanProvider runtimePlanProvider,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var monitoringPlan = runtimePlanProvider.Current.Monitoring;
-            var tableRequest = ParseResourceTableRequest(request, monitoringPlan);
-            var metricIds = AddTableRequiredMetricIds(ParseResourceMetricIds(request, monitoringPlan), tableRequest.ColumnIds);
-            var scaleModes = ParseResourceScaleModes(request, monitoringPlan);
+            ResourceBreakdownSampleRequest sampleRequest;
+            try
+            {
+                sampleRequest = ParseResourceFactsRequest(request.Query);
+            }
+            catch (ArgumentException error)
+            {
+                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+            }
+            if (sampleRequest.MetricIds.Count == 0)
+            {
+                return Results.Ok(ResourceFactsSnapshot.Empty);
+            }
             var breakdown = await breakdownSampler.GetSnapshotAsync(
-                new ResourceBreakdownSampleRequest(
-                    metricIds,
-                    scaleModes,
-                    ResolveProcessSampleDetailLevel(request, tableRequest)),
+                sampleRequest,
                 cancellationToken);
-            return Results.Ok(ResourceTableWireSnapshot.Create(
-                tableProjector.Project(breakdown, tableRequest)));
+            return Results.Ok(ResourceFactsSnapshot.Create(breakdown, sampleRequest.MetricIds));
         }).AllowAnonymous();
 
         return app;
     }
 
-    private static DateTimeOffset? MaxTimestamp(
-        DateTimeOffset? left,
-        DateTimeOffset? right)
-        => left is null
-            ? right
-            : right is null || left >= right
-                ? left
-                : right;
+    private static ResourceBreakdownSampleRequest ParseResourceFactsRequest(IQueryCollection query)
+    {
+        var items = query.TryGetValue("items", out var values)
+            ? values.SelectMany(static value => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [];
+        foreach (var item in items)
+        {
+            if (!IsResourceFactsItemSupported(item))
+            {
+                throw new ArgumentException($"Resource facts item '{item}' is unsupported.");
+            }
+        }
+        return new(items,
+            new Dictionary<string, string>(),
+            query.TryGetValue("processDetailLevel", out var detail)
+                ? ParseProcessSampleDetailLevel(detail.ToString()) ?? ProcessSampleDetailLevel.ResourceTableBasic
+                : ProcessSampleDetailLevel.ResourceTableBasic);
+    }
+
+    private static bool IsResourceFactsItemSupported(string item)
+        => ResourceBreakdownScaleModes.SupportsCapacity(item)
+            || item.ToLowerInvariant() is ResourceBreakdownMetricIds.DiskIo
+                or ResourceBreakdownMetricIds.DiskRead or ResourceBreakdownMetricIds.DiskWrite
+                or ResourceBreakdownMetricIds.NetworkTraffic or ResourceBreakdownMetricIds.NetworkReceive
+                or ResourceBreakdownMetricIds.NetworkSend or ResourceBreakdownMetricIds.NetworkRawTraffic
+                or ResourceBreakdownMetricIds.NetworkRawReceive or ResourceBreakdownMetricIds.NetworkRawSend;
 
     private static ResourceMonitorScope ParseResourceMonitorScope(HttpRequest request)
         => ParseResourceMonitorScope(request.Query);
@@ -167,7 +171,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         return value.ToString().Trim().ToLowerInvariant() switch
         {
             "bars" => ResourceMonitorScope.Bars,
-            "table" => ResourceMonitorScope.Table,
             "details" => ResourceMonitorScope.Details,
             _ => ResourceMonitorScope.Combined
         };
@@ -177,7 +180,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         Combined = 0,
         Bars = 1,
-        Table = 2,
         Details = 3
     }
 }

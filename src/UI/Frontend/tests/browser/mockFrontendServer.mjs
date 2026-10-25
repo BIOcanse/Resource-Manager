@@ -40,6 +40,7 @@ const defaultScenario = {
   diskUsageScanLifecycle: false,
   diskUsageScanCompletionDelayMs: 900,
   diskUsageMultiRoot: false,
+  diskUsagePaged: false,
   diskUsageRootIndexOneDelayMs: 0,
   deviceTopologyDelayMs: 0,
   deviceTopologyInvalid: false,
@@ -85,9 +86,10 @@ const defaultScenario = {
 const scenario = structuredClone(defaultScenario);
 const emptyDiskUsageLayout = Buffer.alloc(64);
 emptyDiskUsageLayout.writeUInt32LE(0x55444d52, 0);
-emptyDiskUsageLayout.writeUInt32LE(1, 4);
+emptyDiskUsageLayout.writeUInt32LE(3, 4);
 emptyDiskUsageLayout.writeUInt32LE(0, 8);
 emptyDiskUsageLayout.writeInt32LE(-1, 12);
+emptyDiskUsageLayout.writeInt32LE(-1, 16);
 const diskUsageSummary = {
   scope: "allVolumes",
   mode: "fast",
@@ -106,22 +108,13 @@ const diskUsageSummary = {
 const diskUsageLayouts = new Map([
   ["root-c", createDiskUsageLayout("C:\\", 0, 18_000_000, [
     diskUsageTile(0, -1, 0, 18_000_000, "", true, 17),
-    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4)
+    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4),
+    diskUsageTile(5, 1, 2, 3_000_000, "Archive", true, 2)
   ])],
   ["root-d", createDiskUsageLayout("D:\\", 2, 73_000_000, [
     diskUsageTile(2, -1, 0, 73_000_000, "", true, 17),
-    diskUsageTile(3, 2, 1, 22_000_000, "Projects", true, 4)
-  ])],
-  ["child-c", createDiskUsageLayout("C:\\Projects", 1, 8_000_000, [
-    diskUsageTile(1, 0, 0, 8_000_000, "", true, 4),
-    diskUsageTile(5, 1, 1, 3_000_000, "Archive", true, 2)
-  ])],
-  ["child-d", createDiskUsageLayout("D:\\Projects", 3, 22_000_000, [
-    diskUsageTile(3, 2, 0, 22_000_000, "", true, 4),
-    diskUsageTile(4, 3, 1, 9_000_000, "Archive", true, 2)
-  ])],
-  ["nested-d", createDiskUsageLayout("D:\\Projects\\Archive", 4, 9_000_000, [
-    diskUsageTile(4, 3, 0, 9_000_000, "", true, 2)
+    diskUsageTile(3, 2, 1, 22_000_000, "Projects", true, 4),
+    diskUsageTile(4, 3, 2, 9_000_000, "Archive", true, 2)
   ])]
 ]);
 const requestTelemetry = Object.create(null);
@@ -132,6 +125,7 @@ let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
 let diskScanOperation = null;
+let diskScanSequence = 0;
 let diskScanCompletionTimer = null;
 let targetedRecordingCompletionTimer = null;
 let targetedRecordingSequence = 0;
@@ -480,17 +474,21 @@ async function handleApi(request, response, url) {
     return json(response, 200,
       scenario.diskUsageMultiRoot === true ? diskUsageSummary : null);
   }
-  if (path === "/api/disk-usage/layout" && request.method === "GET") {
-    if (scenario.diskUsageResultFailure) return json(response, 503, { error: "fixture layout read failure" });
+  if (path === "/api/disk-usage/tree" && request.method === "GET") {
+    const rootIndex = url.searchParams.get("rootIndex");
+    const allowed = ["rootIndex", "node", "cursor", "maxNodes", "maxBytes"];
+    if (!["0", "1"].includes(rootIndex)
+        || url.searchParams.get("maxNodes") !== "400000"
+        || url.searchParams.get("maxBytes") !== "33554432"
+        || [...url.searchParams.keys()].some(key => !allowed.includes(key))) {
+      return json(response, 400, { error: "tree requires rootIndex and explicit node/byte budgets, without view parameters" });
+    }
+    if (scenario.diskUsageResultFailure) return json(response, 503, { error: "fixture tree read failure" });
     if (scenario.diskUsageMultiRoot === true) {
-      const nodeId = url.searchParams.get("node");
-      const rootIndex = url.searchParams.get("rootIndex");
       if (rootIndex === "1") {
         await delay(normalizeDelay(scenario.diskUsageRootIndexOneDelayMs));
       }
-      const layout = nodeId !== null
-        ? diskUsageLayouts.get(layoutKeyForNode(nodeId))
-        : diskUsageLayouts.get(rootIndex === "1" ? "root-d" : "root-c");
+      const layout = diskUsageQueryBuffer(rootIndex, url.searchParams.get("node"), url.searchParams.get("cursor"));
       if (!layout) {
         return json(response, 404, { error: "recorded disk layout was not found" });
       }
@@ -520,7 +518,7 @@ async function handleApi(request, response, url) {
     }
     const createdAt = now();
     diskScanOperation = {
-      id: "000000000000000000000000000000d5",
+      id: `d5${(++diskScanSequence).toString(16).padStart(30, "0")}`,
       kind: "disk-usage.scan",
       domainKey: null,
       title: "Disk usage scan",
@@ -554,7 +552,8 @@ async function handleApi(request, response, url) {
       diskUsageSummary.scannedBytes = 92_000_000;
       diskUsageLayouts.set("root-c", createDiskUsageLayout("C:\\", 0, 19_000_000, [
         diskUsageTile(0, -1, 0, 19_000_000, "", true, 17),
-        diskUsageTile(1, 0, 1, 9_000_000, "Projects", true, 4)
+        diskUsageTile(1, 0, 1, 9_000_000, "Projects", true, 4),
+        diskUsageTile(5, 1, 2, 3_000_000, "Archive", true, 2)
       ]));
       commitOperationsValue();
     }, Math.max(0, Math.min(5000, Math.floor(Number(scenario.diskUsageScanCompletionDelayMs) || 900))));
@@ -712,12 +711,9 @@ async function handleApi(request, response, url) {
       capturedAt,
       new Set(url.searchParams.getAll("processDetails")));
     return json(response, 200, {
-      version: 9,
+      version: 10,
       capturedAt,
-      breakdown,
-      table: resourceTable(
-        url.searchParams.get("mode") === "process",
-        capturedAt)
+      breakdown
     });
   }
   if (path === "/api/resource-breakdown/snapshot") {
@@ -728,8 +724,8 @@ async function handleApi(request, response, url) {
         resourceSlotCapturedAt,
         new Set(url.searchParams.getAll("processDetails"))));
   }
-  if (path === "/api/resource-table/snapshot") {
-    return json(response, 200, resourceTable(url.searchParams.get("mode") === "process"));
+  if (path === "/api/resource-facts/snapshot") {
+    return json(response, 200, resourceFacts(url, resourceSlotCapturedAt));
   }
   if (path === "/api/local-system/status") {
     return json(response, 200, { capturedAt: now(), bootedAt: now(), uptimeSeconds: 3600 });
@@ -998,43 +994,49 @@ function diskUsageTile(nodeId, parentNodeId, depth, sizeBytes, name, isDirectory
   };
 }
 
-function createDiskUsageLayout(rootPath, rootNodeId, rootSizeBytes, tiles) {
+function createDiskUsageLayout(rootPath, rootNodeId, rootSizeBytes, tiles, nextCursor = -1) {
+  const children = new Map();
+  for (const tile of tiles) {
+    if (tile.nodeId === rootNodeId) continue;
+    const siblings = children.get(tile.parentNodeId) ?? [];
+    siblings.push(tile);
+    children.set(tile.parentNodeId, siblings);
+  }
+  const nextSiblings = new Map();
+  for (const siblings of children.values()) {
+    for (let index = 0; index < siblings.length; index++) nextSiblings.set(siblings[index].nodeId, siblings[index + 1]?.nodeId ?? -1);
+  }
+  tiles = tiles.map(tile => ({
+    ...tile,
+    childSizeTotal: tile.childSizeTotal ?? (children.get(tile.nodeId) ?? []).reduce((sum, child) => sum + child.sizeBytes, 0),
+    firstChildId: tile.firstChildId ?? children.get(tile.nodeId)?.[0]?.nodeId ?? -1,
+    nextSiblingId: tile.nextSiblingId ?? nextSiblings.get(tile.nodeId) ?? -1
+  }));
   const encodedNames = tiles.map((tile) => Buffer.from(tile.name, "utf8"));
   const rootPathBytes = Buffer.from(rootPath, "utf8");
   const count = tiles.length;
-  const columnsBytes = (8 * count) + (4 * count * 4) + (4 * count * 4) + count;
+  const columnsBytes = (8 * count * 2) + (4 * count * 5) + count;
   const padding = (4 - (columnsBytes % 4)) % 4;
   const namesBytes = encodedNames.reduce((total, name) => total + name.length, 0);
   const buffer = Buffer.alloc(64 + columnsBytes + padding + (4 * count) + namesBytes + rootPathBytes.length);
   buffer.writeUInt32LE(0x55444d52, 0);
-  buffer.writeUInt32LE(1, 4);
+  buffer.writeUInt32LE(3, 4);
   buffer.writeUInt32LE(count, 8);
   buffer.writeInt32LE(rootNodeId, 12);
-  buffer.writeUInt32LE(0, 16);
+  buffer.writeInt32LE(nextCursor, 16);
   buffer.writeDoubleLE(rootSizeBytes, 24);
-  buffer.writeFloatLE(0, 32);
-  buffer.writeFloatLE(0, 36);
-  buffer.writeFloatLE(1, 40);
-  buffer.writeFloatLE(1, 44);
-  buffer.writeFloatLE(1000, 48);
-  buffer.writeFloatLE(700, 52);
-  buffer.writeFloatLE(1, 56);
   buffer.writeUInt32LE(rootPathBytes.length, 60);
 
   let offset = 64;
-  for (let index = 0; index < count; index++) {
-    buffer.writeDoubleLE(tiles[index].sizeBytes, offset + (index * 8));
+  for (const field of ["sizeBytes", "childSizeTotal"]) {
+    for (let index = 0; index < count; index++) {
+      buffer.writeDoubleLE(tiles[index][field], offset + (index * 8));
+    }
+    offset += 8 * count;
   }
-  offset += 8 * count;
-  for (const field of ["nodeId", "parentNodeId", "depth", "fileCount"]) {
+  for (const field of ["nodeId", "parentNodeId", "fileCount", "firstChildId", "nextSiblingId"]) {
     for (let index = 0; index < count; index++) {
       buffer.writeInt32LE(tiles[index][field], offset + (index * 4));
-    }
-    offset += 4 * count;
-  }
-  for (const field of ["x", "y", "width", "height"]) {
-    for (let index = 0; index < count; index++) {
-      buffer.writeFloatLE(tiles[index][field], offset + (index * 4));
     }
     offset += 4 * count;
   }
@@ -1054,16 +1056,29 @@ function createDiskUsageLayout(rootPath, rootNodeId, rootSizeBytes, tiles) {
   return buffer;
 }
 
-function layoutKeyForNode(nodeId) {
-  switch (nodeId) {
-    case "0": return "root-c";
-    case "1": return "child-c";
-    case "2": return "root-d";
-    case "3": return "child-d";
-    case "4": return "nested-d";
-    case "5": return "child-c";
-    default: return undefined;
-  }
+function diskUsageQueryBuffer(rootIndex, node, cursor) {
+  const cRoot = rootIndex === "0";
+  const rootNodeId = cRoot ? 0 : 2;
+  const projectId = cRoot ? 1 : 3;
+  const archiveId = cRoot ? 5 : 4;
+  const rootPath = cRoot ? "C:\\" : "D:\\";
+  const full = diskUsageLayouts.get(cRoot ? "root-c" : "root-d");
+  const projectSize = cRoot ? full.readDoubleLE(24) - 10_000_000 : 22_000_000;
+  const archiveSize = cRoot ? 3_000_000 : 9_000_000;
+  if (node === String(projectId)) return createDiskUsageLayout(`${rootPath}Projects`, projectId, projectSize, [
+    diskUsageTile(projectId, rootNodeId, 0, projectSize, "Projects", true, 4),
+    diskUsageTile(archiveId, projectId, 1, archiveSize, "Archive", true, 2)
+  ]);
+  if (node === String(archiveId)) return createDiskUsageLayout(`${rootPath}Projects\\Archive`, archiveId, archiveSize, [
+    diskUsageTile(archiveId, projectId, 0, archiveSize, "Archive", true, 2)
+  ]);
+  if (node !== null && node !== String(rootNodeId)) return undefined;
+  if (scenario.diskUsagePaged && cRoot && cursor === null) return createDiskUsageLayout(rootPath, rootNodeId, full.readDoubleLE(24), [
+    diskUsageTile(rootNodeId, -1, 0, full.readDoubleLE(24), "", true, 17),
+    { ...diskUsageTile(projectId, rootNodeId, 1, projectSize, "Projects", true, 4), firstChildId: archiveId, childSizeTotal: archiveSize }
+  ], archiveId);
+  if (cursor !== null && cursor !== String(archiveId)) return undefined;
+  return full;
 }
 
 function trackRequest(response, path, query) {
@@ -1239,6 +1254,7 @@ function resetScenario() {
   diskScanCompletionTimer = null;
   targetedRecordingCompletionTimer = null;
   diskScanOperation = null;
+  diskScanSequence = 0;
   targetedRecordingSequence = 0;
   targetedRecordings.clear();
   cpuBaselineOverrideRatio = null;
@@ -1247,7 +1263,8 @@ function resetScenario() {
   diskUsageSummary.completedAt = "2026-10-09T12:00:00.000Z";
   diskUsageLayouts.set("root-c", createDiskUsageLayout("C:\\", 0, 18_000_000, [
     diskUsageTile(0, -1, 0, 18_000_000, "", true, 17),
-    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4)
+    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4),
+    diskUsageTile(5, 1, 2, 3_000_000, "Archive", true, 2)
   ]));
   for (const key of Object.keys(scenario)) {
     delete scenario[key];
@@ -1635,7 +1652,27 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
   };
 }
 
-function resourceTable(processMode, capturedAt = now()) {
+function resourceFacts(url, capturedAt = now()) {
+  const count = scenario.resourceTableVariant === "empty" ? 0 : normalizeFixtureCount(scenario.resourceTableRowCount, scenario.resourceTableVariant === "many" ? 80 : 1, 1000);
+  const software = Array.from({ length: count }, (_, index) => ({ softwareId: `frontend-harness.software${index ? `.${index}` : ""}`,
+    name: index ? `示例软件 ${index}` : "示例软件", kind: "other", attributionKind: "running" }));
+  const processes = software.map((_, index) => ({ processId: 4242 + index, processStartKey: String(132000000000000000n + BigInt(4242 + index)),
+    name: `example-${index}.exe`, executablePath: "C:\\FrontendHarness\\example.exe", userName: "测试用户", architecture: "x64", attributionKind: "process" }));
+  const items = new Set(url.searchParams.getAll("items"));
+  const metrics = [...items].map(metricId => {
+    const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
+    const value = memory ? 536870912 : 12;
+    const sharedValue = memory ? 134217728 : null;
+    return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
+      totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, sharedValue,
+      software: software.map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
+        baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
+        processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };
+  });
+  return { version: 1, capturedAt, software, processes, metrics };
+}
+
+function obsoleteResourceTableFixture(processMode, capturedAt = now()) {
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
@@ -2049,6 +2086,7 @@ const subscriptionChannelSelectors = new Set([
   "/api/metrics/fields/catalog/subscribe",
   "/api/metrics/gpu-specialized/subscribe",
   "/api/resource-monitor/subscribe",
+  "/api/resource-facts/subscribe",
   "/api/adapters/resource-manager/scheduling/subscribe",
   "/api/local-system/status/subscribe",
   "/api/device-topology/state/subscribe",
@@ -2133,18 +2171,18 @@ function subscriptionPayloadFactory(url) {
     case "/api/resource-monitor/subscribe": {
       if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt);
       const processDetails = new Set(url.searchParams.getAll("processDetails"));
-      const processMode = url.searchParams.get("mode") === "process";
       return (publishedAt) => {
         resourceSlotCapturedAt = publishedAt;
         const capturedAt = resourceSlotCapturedAt;
         return {
-          version: 9,
+          version: 10,
           capturedAt,
-          breakdown: resourceBreakdown(capturedAt, processDetails),
-          table: resourceTable(processMode, capturedAt)
+          breakdown: resourceBreakdown(capturedAt, processDetails)
         };
       };
     }
+    case "/api/resource-facts/subscribe":
+      return publishedAt => resourceFacts(url, publishedAt);
     case "/api/device-topology/state/subscribe":
       return (publishedAt) => fixtureDeviceTopologyState(publishedAt);
     case "/api/cpu/topology/subscribe":

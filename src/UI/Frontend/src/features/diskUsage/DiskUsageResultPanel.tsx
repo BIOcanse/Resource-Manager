@@ -32,6 +32,13 @@ export function DiskUsageResultPanel(props: {
   resetNonce: number;
   onNavigateUp: () => void;
   canNavigateUp: boolean;
+  queryPageNumber: number;
+  queryPartial: boolean;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  onNextPage: () => void;
+  onPreviousPage: () => void;
+  queryBusy: boolean;
 }) {
   const [hover, setHover] = createSignal<{ node: number; x: number; y: number } | null>(null);
   const hovered = () => {
@@ -84,6 +91,21 @@ export function DiskUsageResultPanel(props: {
           </Show>
         </div>
       </div>
+
+      <Show when={props.queryPartial || props.hasPreviousPage}>
+        <div class="disk-usage-query-pages" aria-busy={props.queryBusy}>
+          <p role="note">{uiText.diskUsage.partialQuery}</p>
+          <div class="disk-usage-view-actions">
+            <button class="secondary" type="button" disabled={!props.hasPreviousPage || props.queryBusy} onClick={props.onPreviousPage}>
+              {uiText.diskUsage.previousPage}
+            </button>
+            <span role="status">{uiText.diskUsage.queryPage(props.queryPageNumber)}</span>
+            <button class="secondary" type="button" disabled={!props.hasNextPage || props.queryBusy} onClick={props.onNextPage}>
+              {uiText.diskUsage.nextPage}
+            </button>
+          </div>
+        </div>
+      </Show>
 
       <Show when={props.summary.skipped.length > 0}>
         <div class="disk-usage-warning" role="note">

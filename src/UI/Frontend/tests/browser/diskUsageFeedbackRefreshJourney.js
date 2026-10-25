@@ -196,38 +196,32 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
       const lateRootResponse = page.waitForResponse(response => {
         if (response.request().method() !== "GET") return false;
         const url = new URL(response.url());
-        return url.pathname === "/api/disk-usage/layout"
+        return url.pathname === "/api/disk-usage/tree"
           && url.searchParams.get("rootIndex") === "1";
       });
       await chooseDiskRoot(app, "D:\\");
       await page.waitForFunction(async () => {
         const response = await fetch("/__test/requests");
         const telemetry = await response.json();
-        return (telemetry["/api/disk-usage/layout"]?.inFlightByQuery["?rootIndex=1"] ?? 0) > 0;
+        return Object.entries(telemetry["/api/disk-usage/tree"]?.inFlightByQuery ?? {}).some(
+          ([query, count]) => new URLSearchParams(query).get("rootIndex") === "1" && count > 0);
       }, null, { timeout: 5000 });
-      // 先登记等待响应再点击：响应可能在请求返回后立刻到达，晚登记会错过。
-      const resetResponse = page.waitForResponse(response => {
-        const request = response.request();
-        if (request.method() !== "GET") return false;
-        const url = new URL(request.url());
-        return url.pathname === "/api/disk-usage/layout"
-          && url.searchParams.get("node") === "0";
-      });
       await page.getByRole("button", { name: app.diskUsage.resetView, exact: true }).click();
-      await resetResponse;
       await lateRootResponse;
+      await waitForDiskRoot("D:\\", dTotals);
+      await chooseDiskRoot(app, "C:\\");
       await waitForDiskRoot("C:\\", cTotals);
       await patchScenario({ diskUsageRootIndexOneDelayMs: 0 });
     }
 
     const beforeSecondRoot = await readRequestTelemetry();
-    const previousRootQueryCount = beforeSecondRoot["/api/disk-usage/layout"]?.queries.length ?? 0;
+    const previousRootQueryCount = beforeSecondRoot["/api/disk-usage/tree"]?.queries.length ?? 0;
     const selectedRoot = await chooseDiskRoot(app, "D:\\");
     await waitForDiskRoot("D:\\", dTotals);
     assert((await selectedRoot.innerText()).trim() === "D:\\",
       `${option.id}: the selector did not retain the D: selection`);
     const afterSecondRoot = await readRequestTelemetry();
-    const newRootQueries = afterSecondRoot["/api/disk-usage/layout"]?.queries
+    const newRootQueries = afterSecondRoot["/api/disk-usage/tree"]?.queries
       .slice(previousRootQueryCount) ?? [];
     assert(newRootQueries.some(query => new URLSearchParams(query).get("rootIndex") === "1"),
       `${option.id}: selecting D: did not request rootIndex=1`);
@@ -242,13 +236,13 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
       return { x: rect.width / 2, y: rect.height / 2 };
     });
     await canvas.dblclick({ position: center });
-    await waitForDiskRoot("D:\\Projects", diskRootTotals(app, 22_000_000));
+    await waitForDiskRoot("D:\\Projects\\Archive", diskRootTotals(app, 9_000_000));
     await page.getByRole("button", { name: app.diskUsage.navigateUp, exact: true })
       .waitFor({ state: "visible", timeout: 5000 });
     await canvas.click({ position: center });
 
     const beforeReturn = await readRequestTelemetry();
-    const previousReturnQueryCount = beforeReturn["/api/disk-usage/layout"]?.queries.length ?? 0;
+    const previousReturnQueryCount = beforeReturn["/api/disk-usage/tree"]?.queries.length ?? 0;
     const returnedRoot = await chooseDiskRoot(app, "C:\\");
     await waitForDiskRoot("C:\\", cTotals);
     assert((await returnedRoot.innerText()).trim() === "C:\\",
@@ -259,19 +253,11 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
     }).count() === 0,
     `${option.id}: switching roots retained the old drill-up action`);
 
-    const canvasNodeRequest = page.waitForRequest(request => {
-      if (request.method() !== "GET") return false;
-      const url = new URL(request.url());
-      return url.pathname === "/api/disk-usage/layout"
-        && url.searchParams.get("node") === "4";
-    }, { timeout: 300 }).then(() => true, () => false);
     await canvas.focus();
     await canvas.press("Enter");
-    const staleSelectionRequested = await canvasNodeRequest;
-    assert(!staleSelectionRequested,
-      `${option.id}: switching roots left a selected node from the previous tree`);
+    await waitForDiskRoot("C:\\", cTotals);
     const afterReturn = await readRequestTelemetry();
-    const returnQueries = afterReturn["/api/disk-usage/layout"]?.queries
+    const returnQueries = afterReturn["/api/disk-usage/tree"]?.queries
       .slice(previousReturnQueryCount) ?? [];
     assert(returnQueries.some(query => new URLSearchParams(query).get("rootIndex") === "0"),
       `${option.id}: switching back to C: did not request rootIndex=0`);
@@ -313,6 +299,13 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
     return response.json();
   });
   const scanTelemetry = requestTelemetry["/api/disk-usage/scan"];
+  assert(!requestTelemetry["/api/disk-usage/layout"], "Treemap requested a server layout");
+  assert(requestTelemetry["/api/disk-usage/tree"].queries.every(query => {
+    const parameters = new URLSearchParams(query);
+    return parameters.has("rootIndex") && parameters.get("maxNodes") === "400000"
+      && parameters.get("maxBytes") === "33554432"
+      && [...parameters.keys()].every(key => ["rootIndex", "node", "cursor", "maxNodes", "maxBytes"].includes(key));
+  }), "Scan-tree reads included presentation state");
   assert(scanResponses.length === languages.length
     && scanResponses.every(status => status === 503),
   `Unexpected scan response sequence: ${JSON.stringify(scanResponses)}`);

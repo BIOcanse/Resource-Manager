@@ -2,6 +2,8 @@ import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.j
 import productUpdatesJourney from "./productUpdatesJourney.js";
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
 import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
+import diskUsageLocalTreemapJourney from "./diskUsageLocalTreemapJourney.js";
+import diskUsagePagedTreeJourney from "./diskUsagePagedTreeJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
@@ -63,6 +65,8 @@ const allJourneys = [
   ["frontend-refresh-intervals", frontendRefreshIntervalsJourney],
   ["management-inventory-revisions", managementInventoryRevisionJourney],
   ["disk-usage-read-recovery", diskUsageReadRecoveryJourney],
+  ["disk-usage-local-treemap", diskUsageLocalTreemapJourney],
+  ["disk-usage-paged-tree", diskUsagePagedTreeJourney],
   ["overlay-settings", overlaySettingsJourney],
   ["management-feedback", managementFeedbackJourney],
   ["frontend-audit", frontendAuditJourney],

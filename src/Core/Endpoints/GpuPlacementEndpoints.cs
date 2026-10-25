@@ -25,7 +25,6 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 
 namespace ResourceManager.App.Endpoints;

@@ -1,0 +1,166 @@
+import type { ResourceBreakdownBar, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
+import { requireArray, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
+import { createMemo, type Accessor } from "solid-js";
+
+export interface ResourceFacts {
+  capturedAt?: string;
+  metrics: ResourceBreakdownBar[];
+}
+
+/** Decode the neutral attribution catalogs; all table identities are created below. */
+export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
+  const frame = requireRecord(value);
+  if (requireSafeInteger(frame.version, "$.version") !== 1) throw new ResponseDecodeError("$.version", "resource facts version 1");
+  const capturedAt = requireNullable(frame.capturedAt, "$.capturedAt", requireString) ?? undefined;
+  const software = new Map(requireArray(frame.software, "$.software").map((value, index) => {
+    const path = `$.software[${index}]`;
+    const item = requireRecord(value, path);
+    const softwareId = requireNonEmptyString(item.softwareId, `${path}.softwareId`);
+    return [softwareId, { softwareId, name: requireString(item.name, `${path}.name`),
+      kind: requireString(item.kind, `${path}.kind`), displayKind: requireString(item.attributionKind, `${path}.attributionKind`) }] as const;
+  }));
+  const processes = requireArray(frame.processes, "$.processes").map((value, index) => {
+    const path = `$.processes[${index}]`;
+    const item = requireRecord(value, path);
+    const startKey = requireNullable(item.processStartKey, `${path}.processStartKey`, requireString);
+    if (startKey !== null && !/^[1-9]\d*$/.test(startKey)) throw new ResponseDecodeError(`${path}.processStartKey`, "positive integer string");
+    return { processId: requireSafeInteger(item.processId, `${path}.processId`), processStartKey: startKey,
+      name: requireString(item.name, `${path}.name`), executablePath: requireNullable(item.executablePath, `${path}.executablePath`, requireString),
+      userName: requireNullable(item.userName, `${path}.userName`, requireString), architecture: requireNullable(item.architecture, `${path}.architecture`, requireString),
+      attributionKind: requireString(item.attributionKind, `${path}.attributionKind`) };
+  });
+  const nullableNumber = (item: Record<string, unknown>, key: string, path: string) => requireNullable(item[key], `${path}.${key}`, requireFiniteNumber);
+  const metrics = requireArray(frame.metrics, "$.metrics").map((value, index): ResourceBreakdownBar => {
+    const path = `$.metrics[${index}]`;
+    const metric = requireRecord(value, path);
+    return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), label: "", unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
+      totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
+      totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
+      software: requireArray(metric.software, `${path}.software`).map((value, index) => {
+        const childPath = `${path}.software[${index}]`;
+        const child = requireRecord(value, childPath);
+        const identity = software.get(requireString(child.softwareId, `${childPath}.softwareId`));
+        if (!identity) throw new ResponseDecodeError(`${childPath}.softwareId`, "known software identity");
+        return { ...identity, value: requireFiniteNumber(child.value, `${childPath}.value`), systemPercent: requireFiniteNumber(child.systemPercent, `${childPath}.systemPercent`),
+          processCount: requireSafeInteger(child.processCount, `${childPath}.processCount`), baseScore: requireFiniteNumber(child.baseScore, `${childPath}.baseScore`),
+          sharedValue: nullableNumber(child, "sharedValue", childPath),
+          processes: requireArray(child.processes, `${childPath}.processes`).map((value, index) => {
+            const processPath = `${childPath}.processes[${index}]`;
+            const process = requireRecord(value, processPath);
+            const identity = processes[requireSafeInteger(process.processIndex, `${processPath}.processIndex`)];
+            if (!identity) throw new ResponseDecodeError(`${processPath}.processIndex`, "known process identity");
+            return { ...identity, value: requireFiniteNumber(process.value, `${processPath}.value`), systemPercent: requireFiniteNumber(process.systemPercent, `${processPath}.systemPercent`),
+              softwarePercent: requireFiniteNumber(process.softwarePercent, `${processPath}.softwarePercent`), baseScore: requireFiniteNumber(process.baseScore, `${processPath}.baseScore`), sharedValue: nullableNumber(process, "sharedValue", processPath) };
+          }) };
+      }) };
+  });
+  const facts = { capturedAt, metrics };
+  return { capturedAt, facts, breakdown: { capturedAt, bars: [] }, table: { capturedAt, columns: [], rows: [], sort: { columnId: "impact", direction: "desc" } } };
+}
+
+export function resourceTableMetricId(columnId: string): string | null {
+  return ({ cpu: "cpu.usage", memory: "memory.usage", disk: "disk.io", network: "network.traffic" } as Record<string, string>)[columnId]
+    ?? (/^gpu\.\d+\.(usage|vram)$/.test(columnId) ? columnId : null);
+}
+
+export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", locale?: string): ResourceTableSnapshot {
+  const options = settings;
+  const columns = options.filter(column => column.visible).map(column => ({ ...column, unit: facts.metrics.find(metric => resourceTableMetricId(column.id) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? 100 }));
+  const softwareRows = new Map<string, ResourceTableRow>();
+  const processRows = new Map<string, ResourceTableRow>();
+  const children = new Map<string, ResourceTableRow[]>();
+  const metadata = new Map<string, { ids: Set<number>; names: Set<string>; paths: Set<string> }>();
+  const summary = row("summary:total", "summary", "", facts.metrics.length > 0 ? "ready" : "empty");
+  const cell = (value: number | null, percent: number | null, unit: string, sharedValue?: number | null): ResourceTableValue => ({ value, percent, unit, displayValue: "", sharedValue });
+  for (const metric of facts.metrics) {
+    const columnId = ({ "cpu.usage": "cpu", "memory.usage": "memory", "disk.io": "disk", "network.traffic": "network" } as Record<string, string>)[metric.metricId]
+      ?? (/^gpu\.\d+\.(usage|vram)$/.test(metric.metricId) ? metric.metricId : null);
+    if (columnId) summary.values[columnId] = metric.totalValue !== null && metric.totalSystemPercent !== null && metric.capacityValue !== null
+      ? cell(metric.totalValue, metric.totalSystemPercent, metric.unit, metric.sharedValue)
+      : { ...cell(null, null, metric.unit), availability: "Unavailable" };
+    for (const software of metric.software) {
+      let group = softwareRows.get(software.softwareId);
+      if (!group) {
+        group = { ...row(`software:${software.softwareId}`, "software", software.name, software.displayKind), softwareId: software.softwareId, processIds: [], processNames: [], executablePaths: [] };
+        softwareRows.set(software.softwareId, group);
+        metadata.set(software.softwareId, { ids: new Set(), names: new Set(), paths: new Set() });
+      }
+      group.processCount = Math.max(group.processCount, software.processCount);
+      if (columnId) group.values[columnId] = cell(software.value, software.systemPercent, metric.unit, software.sharedValue);
+      for (const process of software.processes) {
+        const identity = process.processStartKey ? `${process.processId}:${process.processStartKey}` : `${process.attributionKind}:${process.processId}:${process.name}`;
+        const key = `${software.softwareId}:${identity}`;
+        let child = processRows.get(key);
+        if (!child) {
+          const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
+          child = { ...row(`process:${key}`, "process", process.name, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
+            softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
+            processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: [process.name], executablePaths: process.executablePath ? [process.executablePath] : [] };
+          child.values.pid = { value: processId, displayValue: processId?.toString() ?? "--", unit: "", attributionKind: process.attributionKind };
+          child.values.user = { displayValue: process.userName || "--", unit: "" };
+          child.values.architecture = { displayValue: process.architecture || "--", unit: "" };
+          processRows.set(key, child);
+          const siblings = children.get(software.softwareId) ?? [];
+          siblings.push(child);
+          children.set(software.softwareId, siblings);
+          const seen = metadata.get(software.softwareId)!;
+          if (processId && !seen.ids.has(processId)) {
+            seen.ids.add(processId);
+            group.processIds!.push(processId);
+          }
+          const processName = process.name.toLowerCase();
+          if (process.name.trim() && !seen.names.has(processName)) {
+            seen.names.add(processName);
+            group.processNames!.push(process.name);
+          }
+          const processPath = process.executablePath?.toLowerCase();
+          if (process.executablePath?.trim() && processPath && !seen.paths.has(processPath)) {
+            seen.paths.add(processPath);
+            group.executablePaths!.push(process.executablePath);
+          }
+        }
+        if (columnId) child.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
+      }
+    }
+  }
+  const weights: Record<string, number> = { cpu: 1, memory: .9, disk: .45, network: .25 };
+  const visibleIds = new Set(columns.map(column => column.id));
+  for (const item of [summary, ...softwareRows.values(), ...processRows.values()]) {
+    item.impactScore = Object.entries(item.values).reduce((sum, [key, value]) => sum + (value.percent ?? 0) * (weights[key] ?? (key.startsWith("gpu.") ? 1 : 0)), 0);
+    // Identity text remains searchable, while numeric cells follow local visibility.
+    for (const key of Object.keys(item.values)) if (resourceTableMetricId(key) !== null && !visibleIds.has(key)) delete item.values[key];
+  }
+  // CurrentCultureIgnoreCase distinguishes accents, ignores case and leaves equal keys stable.
+  const textOrder = new Intl.Collator(locale, { sensitivity: "accent" });
+  const compare = (textKeys: boolean) => (left: ResourceTableRow, right: ResourceTableRow) => {
+    const key = (item: ResourceTableRow): string | number => textKeys && sortColumnId === "name" ? item.name : textKeys && sortColumnId === "status" ? item.status : sortColumnId === "impact" ? item.impactScore : textKeys && ["user", "architecture"].includes(sortColumnId) ? item.values[sortColumnId]?.displayValue ?? "" : item.values[sortColumnId]?.value ?? -Number.MAX_VALUE;
+    const a = key(left), b = key(right);
+    const result = typeof a === "string" && typeof b === "string" ? textOrder.compare(a, b) : a === b ? 0 : a < b ? -1 : 1;
+    return result * (direction === "asc" ? 1 : -1) || textOrder.compare(left.name, right.name);
+  };
+  const rows = mode === "process" ? [...processRows.values()].sort(compare(true)) : [...softwareRows.values()].sort(compare(true)).flatMap(group => [group, ...(children.get(group.softwareId!) ?? []).sort(compare(false))]);
+  return { capturedAt: facts.capturedAt, columns, rows: [summary, ...rows], sort: { columnId: sortColumnId, direction }, viewMode: mode };
+}
+
+/** Widths are consumed by the table's column memo, independently of fact rows. */
+export function createResourceFactsProjection(
+  facts: Accessor<ResourceFacts | null>,
+  settings: Accessor<readonly ResourceTableColumnSettings[]>,
+  mode: Accessor<ResourceTableViewMode>,
+  sort: Accessor<{ columnId: string; direction: "asc" | "desc" }>,
+  project: typeof projectResourceFacts = projectResourceFacts
+): Accessor<ResourceTableSnapshot | null> {
+  const columns = createMemo(() => settings().map(({ id, visible }) => ({ id, visible })), undefined, {
+    equals: (previous, next) => previous.length === next.length
+      && previous.every((column, index) => column.id === next[index].id && column.visible === next[index].visible)
+  });
+  return createMemo(() => {
+    const current = facts();
+    const order = sort();
+    return current ? project(current, columns(), mode(), order.columnId, order.direction) : null;
+  });
+}
+
+function row(id: string, kind: string, name: string, status: string): ResourceTableRow {
+  return { id, kind, name, status, depth: 0, processCount: 0, impactScore: 0, values: {} };
+}

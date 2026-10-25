@@ -98,7 +98,7 @@ export function buildResourceBreakdownUrl(query: ResourceBreakdownQuery): string
 
 export function buildResourceMonitorUrl(query: ResourceMonitorQuery): string {
   return buildResourceMonitorUrlForPath(
-    "/api/resource-monitor/snapshot",
+    query.scope === "table" ? "/api/resource-facts/snapshot" : "/api/resource-monitor/snapshot",
     query);
 }
 
@@ -108,7 +108,7 @@ export function buildResourceMonitorSubscriptionUrl(
 ): string {
   const params = buildResourceMonitorParams(query);
   params.set("intervalMs", String(Math.max(1, Math.round(intervalMs))));
-  return appendQuery("/api/resource-monitor/subscribe", params);
+  return appendQuery(query.scope === "table" ? "/api/resource-facts/subscribe" : "/api/resource-monitor/subscribe", params);
 }
 
 function buildResourceMonitorUrlForPath(
@@ -120,20 +120,16 @@ function buildResourceMonitorUrlForPath(
 
 function buildResourceMonitorParams(query: ResourceMonitorQuery): URLSearchParams {
   const params = new URLSearchParams();
+  if (query.scope === "table") {
+    appendValues(params, "items", query.sampleMetricIds);
+    params.set("processDetailLevel", "full");
+    return params;
+  }
   appendBars(params, query.bars);
-  appendValues(params, "sampleIds", query.sampleMetricIds);
-  appendValues(params, "columns", query.visibleColumnIds);
-  const scope = query.scope === "bars" || query.scope === "table"
+  const scope = query.scope === "bars"
     ? query.scope
     : "combined";
   params.set("scope", scope);
-  params.set(
-    "sort",
-    `${query.sortColumnId}:${query.sortDirection === "asc" ? "asc" : "desc"}`);
-  params.set("mode", query.tableMode === "process" ? "process" : "software");
-  if (scope !== "bars") {
-    params.set("includeProcesses", "all");
-  }
   appendValues(params, "processDetails", query.processDetailSoftwareIds);
   return params;
 }
@@ -142,9 +138,13 @@ export function normalizeResourceMonitorQuery(
   query: ResourceMonitorQuery
 ): ResourceMonitorQuery {
   const breakdown = normalizeResourceBreakdownQuery(query);
+  if (query.scope === "table") {
+    return Object.freeze({ bars: [], scope: "table", sampleMetricIds: normalizeSet(query.sampleMetricIds),
+      visibleColumnIds: [], sortColumnId: "", sortDirection: "desc", processDetailSoftwareIds: [], tableMode: "software" });
+  }
   return Object.freeze({
     bars: breakdown.bars,
-    scope: query.scope === "bars" || query.scope === "table"
+    scope: query.scope === "bars"
       ? query.scope
       : "combined",
     sampleMetricIds: normalizeSet(query.sampleMetricIds),

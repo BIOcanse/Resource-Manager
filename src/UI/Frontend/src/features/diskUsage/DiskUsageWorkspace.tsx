@@ -7,10 +7,11 @@ import { DiskUsageContextMenu } from "./DiskUsageContextMenu";
 import { DiskUsagePage } from "./DiskUsagePage";
 import { DiskUsageResultPanel } from "./DiskUsageResultPanel";
 import { tileFactsOf } from "./diskUsageLayoutFacts.ts";
+import { DiskUsageLayoutWorker } from "./diskUsageLayoutWorker.ts";
 import { needsMoreDetail } from "./diskUsageViewport.ts";
 import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import {
-  getDiskUsageLayout,
+  getDiskUsageTree,
   getDiskUsageNode,
   getDiskUsageSummary,
   getDiskUsageVolumes
@@ -33,11 +34,8 @@ import { uiText } from "../../text.ts";
  *
  * 它是这一页的状态所有者：卷清单、扫描进行中与否、当前布局、选中项、右键菜单。
  *
- * 画图和悬停要的事实全部来自布局本身，不按需去后端取。
- * 先前按需取的写法有个环：取名字既读又写同一个信号，而读发生在绘制里，
- * 于是每取回一个名字就重画一遍几万个方格，重画又发起更多请求，界面直接卡死。
- * 只有右键菜单还去取一次单节点 —— 它要的 fileCount 不在布局里，
- * 而且那是用户点出来的一次请求，不在热路径上。
+ * 后端只发布扫描事实。事实缓冲区交给本页的 Worker，布局、剪枝、缩放和钻取都留在前端。
+ * 画图与悬停纯查表；右键菜单另读单节点的分配字节等事实。
  */
 export function DiskUsageWorkspace() {
   const runtime = useFrontendRuntime();
@@ -58,10 +56,15 @@ export function DiskUsageWorkspace() {
   const [menu, setMenu] = createSignal<
     { node: DiskUsageNode; x: number; y: number } | null>(null);
   const [drillStack, setDrillStack] = createSignal<number[]>([]);
+  const [queryBusy, setQueryBusy] = createSignal(false);
+  const [queryCursors, setQueryCursors] = createSignal<(number | undefined)[]>([undefined]);
+  const [queryPage, setQueryPage] = createSignal(0);
   let workspaceController: AbortController | null = null;
   let workspaceGeneration = 0;
   let layoutToken = 0;
   let volumesToken = 0;
+  let layoutWorker: DiskUsageLayoutWorker | null = null;
+  let requestedLayoutRoot: number | null = null;
 
   function cancelled(cause: unknown, signal?: AbortSignal) {
     return signal?.aborted || (cause instanceof Error && cause.name === "AbortError");
@@ -83,6 +86,7 @@ export function DiskUsageWorkspace() {
   }
 
   onMount(() => {
+    layoutWorker = new DiskUsageLayoutWorker();
     const controller = new AbortController();
     workspaceGeneration++;
     workspaceController = controller;
@@ -123,6 +127,8 @@ export function DiskUsageWorkspace() {
       unsubscribeOperations();
       window.removeEventListener("focus", refreshVolumes);
       controller.abort();
+      layoutWorker?.dispose();
+      layoutWorker = null;
     });
   });
 
@@ -137,7 +143,7 @@ export function DiskUsageWorkspace() {
     wasFrontendVisible = visible;
   });
 
-  // 当前这一份布局是按哪个视图算出来的。用来判断新视图值不值得再要一份。
+  // 当前布局对应的前端视图，决定是否需要 Worker 细化。
   let shownView: DiskUsageViewWindow | null = null;
   // 每次换布局都加一号，回来的响应对不上号就丢掉 —— 慢的那个不能盖住快的那个。
   // 这个数一变，方格图就把视口拨回整图。
@@ -151,11 +157,11 @@ export function DiskUsageWorkspace() {
    */
   function onViewChanged(view: DiskUsageViewWindow) {
     const current = layout();
-    if (!current || resultReadFailure()) {
+    if (!current || resultReadFailure() || queryBusy()
+        || (requestedLayoutRoot !== null && requestedLayoutRoot !== current.rootNodeId)) {
       return;
     }
-    // 视图被推出图外时看得见的那块是空的，没什么可要的。
-    // 这种范围发过去后端会收拢成整张图，反而和我们记下的对不上。
+    // 视图被推出图外时看得见的那块是空的，不需要细化。
     if (view.maxX <= view.minX || view.maxY <= view.minY) {
       return;
     }
@@ -165,24 +171,40 @@ export function DiskUsageWorkspace() {
     requestLayout(current.rootNodeId, view);
   }
 
-  /** 取一份布局换上去。以后端回给我们的那个视图为准记下来。 */
-  function requestLayout(rootNodeId: number, view?: DiskUsageViewWindow) {
+  /** 在本地 Worker 计算布局；钻取完成后才复位画布。 */
+  function requestLayout(rootNodeId: number, view?: DiskUsageViewWindow, reset = false, nextDrillStack?: number[]) {
+    // An incomplete branch needs a neutral subtree query; view refinement stays local.
+    if (reset && factsOf(rootNodeId)?.subtreeComplete === false) {
+      void refreshResult(workspaceController?.signal, rootNodeId, selectedRootIndex(), undefined, nextDrillStack);
+      return;
+    }
     const token = ++layoutToken;
+    requestedLayoutRoot = rootNodeId;
     const signal = workspaceController?.signal;
-    void getDiskUsageLayout(runtime.requestClient, rootNodeId, signal, view)
+    void layoutWorker!.layout(rootNodeId, view)
       .then((next) => {
+        if (token !== layoutToken || signal?.aborted) return;
+        if (next && "queryNodeId" in next) {
+          void refreshResult(signal, next.queryNodeId, selectedRootIndex(), undefined, nextDrillStack);
+          return;
+        }
         if (token !== layoutToken || signal?.aborted || (next && next.rootNodeId !== rootNodeId)) {
           return;
         }
-        // 记后端实际用的那份，不是我们请求的那份。
+        // 布局与视口都由本页 Worker 计算，不发给后端。
         shownView = next?.view ?? null;
         setLayout(next);
+        if (nextDrillStack) setDrillStack(nextDrillStack);
+        if (reset) setResetNonce((value) => value + 1);
         setResultReadFailure((failure) => failure?.kind === "result" ? failure : null);
       })
       .catch((cause: unknown) => {
         if (token !== layoutToken || cancelled(cause, signal)) return;
         setResultReadFailure((failure) => failure?.kind === "result" ? failure
-          : { kind: "layout", retry: () => requestLayout(rootNodeId, view) });
+          : { kind: "layout", retry: () => requestLayout(rootNodeId, view, reset, nextDrillStack) });
+      })
+      .finally(() => {
+        if (token === layoutToken) requestedLayoutRoot = null;
       });
   }
 
@@ -198,6 +220,10 @@ export function DiskUsageWorkspace() {
     if (!current) {
       return;
     }
+    if (queryBusy() || (requestedLayoutRoot !== null && requestedLayoutRoot !== current.rootNodeId)) {
+      setResetNonce((value) => value + 1);
+      return;
+    }
     shownView = null;
     requestLayout(current.rootNodeId);
     setResetNonce((value) => value + 1);
@@ -206,34 +232,45 @@ export function DiskUsageWorkspace() {
   async function refreshResult(
     signal: AbortSignal | undefined = workspaceController?.signal,
     nodeId?: number,
-    rootIndex = selectedRootIndex()
+    rootIndex = selectedRootIndex(),
+    cursor?: number,
+    nextDrillStack?: number[],
+    cursors: (number | undefined)[] = [undefined],
+    page = 0
   ) {
     const generation = workspaceGeneration;
     const token = ++layoutToken;
+    setQueryBusy(true);
     try {
-      const [nextSummary, nextLayout] = await Promise.all([
+      const [nextSummary, treeBuffer] = await Promise.all([
         getDiskUsageSummary(runtime.requestClient, signal),
-        getDiskUsageLayout(
-          runtime.requestClient,
-          nodeId,
-          signal,
-          undefined,
-          nodeId === undefined ? rootIndex : undefined)
+        getDiskUsageTree(runtime.requestClient, signal, rootIndex, nodeId, cursor)
       ]);
       if (token !== layoutToken
           || generation !== workspaceGeneration
           || signal?.aborted) return;
+      const nextLayout = await layoutWorker!.replaceTree(treeBuffer);
+      if (token !== layoutToken || generation !== workspaceGeneration || signal?.aborted) return;
       // 换了根就不能再拿旧根的视图做比较，清掉让它重新细化一次。
       shownView = null;
       setSummary(nextSummary);
       setLayout(nextLayout);
+      if (nextDrillStack) setDrillStack(nextDrillStack);
       if (rootIndex !== selectedRootIndex()) setDrillStack([]);
+      setQueryCursors(cursors);
+      setQueryPage(page);
       setSelectedRootIndex(rootIndex);
       setSelected(-1);
       setResultReadFailure(null);
+      setResetNonce((value) => value + 1);
     } catch (cause) {
       if (token !== layoutToken || generation !== workspaceGeneration || cancelled(cause, signal)) return;
-      setResultReadFailure({ kind: "result", retry: () => void refreshResult(workspaceController?.signal, nodeId, rootIndex) });
+      setResultReadFailure({ kind: "result", retry: () => void refreshResult(workspaceController?.signal, nodeId, rootIndex, cursor, nextDrillStack, cursors, page) });
+    } finally {
+      if (token === layoutToken) {
+        setQueryBusy(false);
+        requestedLayoutRoot = null;
+      }
     }
   }
 
@@ -268,21 +305,25 @@ export function DiskUsageWorkspace() {
 
   function drillInto(nodeId: number) {
     const current = layout();
-    if (!current) {
+    if (!current || queryBusy() || (requestedLayoutRoot !== null && requestedLayoutRoot !== current.rootNodeId)) {
       return;
     }
-    setDrillStack((stack) => [...stack, current.rootNodeId]);
-    void refreshResult(undefined, nodeId);
+    shownView = null;
+    setSelected(-1);
+    requestLayout(nodeId, undefined, true, [...drillStack(), current.rootNodeId]);
   }
 
   function navigateUp() {
     const stack = drillStack();
-    if (stack.length === 0) {
+    const current = layout();
+    if (stack.length === 0 || queryBusy() || !current
+        || (requestedLayoutRoot !== null && requestedLayoutRoot !== current.rootNodeId)) {
       return;
     }
     const parent = stack[stack.length - 1];
-    setDrillStack(stack.slice(0, -1));
-    void refreshResult(undefined, parent);
+    shownView = null;
+    setSelected(-1);
+    requestLayout(parent, undefined, true, stack.slice(0, -1));
   }
 
   function selectRoot(rootIndex: number) {
@@ -292,6 +333,18 @@ export function DiskUsageWorkspace() {
     }
     setMenu(null);
     void refreshResult(undefined, undefined, rootIndex);
+  }
+
+  function changeQueryPage(forward: boolean) {
+    const current = layout();
+    if (!current || queryBusy() || current.rootNodeId !== current.queryRootNodeId) return;
+    const page = queryPage() + (forward ? 1 : -1);
+    if (page < 0 || (forward && current.nextCursorNodeId < 0)) return;
+    const cursors = forward
+      ? [...queryCursors().slice(0, page), current.nextCursorNodeId]
+      : queryCursors();
+    void refreshResult(workspaceController?.signal, current.queryRootNodeId, selectedRootIndex(),
+      cursors[page], drillStack(), cursors, page);
   }
 
   return (
@@ -332,7 +385,7 @@ export function DiskUsageWorkspace() {
               }
             }}
             onContextMenu={(nodeId, x, y) => {
-              // 右键菜单要的 fileCount 不在布局里，这里才去取一次。
+              // 右键菜单还需要分配字节等单节点事实。
               void getDiskUsageNode(runtime.requestClient, nodeId)
                 .then((node) => setMenu({ node, x, y }))
                 .catch(() => undefined);
@@ -342,6 +395,13 @@ export function DiskUsageWorkspace() {
             resetNonce={resetNonce()}
             onNavigateUp={navigateUp}
             canNavigateUp={drillStack().length > 0}
+            queryPageNumber={layout()!.rootNodeId === layout()!.queryRootNodeId ? queryPage() + 1 : 1}
+            queryPartial={layout()!.subtreeComplete[0] === 0}
+            hasNextPage={layout()!.rootNodeId === layout()!.queryRootNodeId && layout()!.nextCursorNodeId >= 0}
+            hasPreviousPage={layout()!.rootNodeId === layout()!.queryRootNodeId && queryPage() > 0}
+            queryBusy={queryBusy()}
+            onNextPage={() => changeQueryPage(true)}
+            onPreviousPage={() => changeQueryPage(false)}
           />
         </Show>
       </DiskUsagePage>

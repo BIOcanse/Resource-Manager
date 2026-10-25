@@ -26,31 +26,6 @@ public sealed class BackendFrontendWireAcceptanceTests
     }
 
     [Fact]
-    public async Task ProductionSerializerFeedsProductionDecodersWithoutInternalSamplingMetadata()
-    {
-        var breakdown = CreateBreakdownWire();
-        var table = ResourceTableWireSnapshot.Create(CreateTable());
-        var monitor = new ResourceMonitorWireSnapshot(
-            ResourceMonitorWireSnapshot.CurrentVersion,
-            CapturedAt,
-            breakdown,
-            table);
-
-        var monitorResult = await DecodeAsync("monitor", monitor);
-        Assert.Equal(8, monitorResult.GetProperty("monitorVersion").GetInt32());
-        Assert.Equal(long.MaxValue.ToString(), monitorResult.GetProperty("tableProcessStartKey").GetString());
-        Assert.Equal(long.MaxValue.ToString(), monitorResult.GetProperty("breakdownProcessStartKey").GetString());
-        Assert.False(monitorResult.GetProperty("hasTableSamplingMetadata").GetBoolean());
-        Assert.False(monitorResult.GetProperty("hasBreakdownSamplingMetadata").GetBoolean());
-        Assert.False(monitorResult.GetProperty("hasProviderStates").GetBoolean());
-
-        var tableResult = await DecodeAsync("table", table);
-        Assert.Equal(long.MaxValue.ToString(), tableResult.GetProperty("tableProcessStartKey").GetString());
-        Assert.False(tableResult.GetProperty("hasTableSamplingMetadata").GetBoolean());
-        Assert.False(tableResult.GetProperty("hasProviderStates").GetBoolean());
-    }
-
-    [Fact]
     public async Task MetricV4SerializerFeedsProductionDecoderWithEmptyValue()
     {
         var attemptedAt = CapturedAt.AddSeconds(5);
@@ -138,6 +113,15 @@ public sealed class BackendFrontendWireAcceptanceTests
         Assert.False(result.GetProperty("hasMetricSamplingMetadata").GetBoolean());
     }
 
+    [Fact]
+    public async Task NeutralFactsSerializerFeedsProductionDecoderWithLosslessProcessIdentity()
+    {
+        var facts = ResourceFactsSnapshot.Create(ResourceFactsPublicationTests.Snapshot(), ["cpu.usage", "gpu.1.vram"]);
+        var result = await DecodeAsync("facts", facts);
+        Assert.Equal(long.MaxValue.ToString(), result.GetProperty("factsProcessStartKey").GetString());
+        Assert.Equal(4, result.GetProperty("factsProcessSharedValue").GetDouble());
+    }
+
     private static ResourceBreakdownWireSnapshot CreateBreakdownWire()
     {
         var process = new ResourceProcessSegment(
@@ -196,54 +180,6 @@ public sealed class BackendFrontendWireAcceptanceTests
             snapshot,
             [ResourceBreakdownMetricIds.CpuUsage],
             new HashSet<string>(["software:test"], StringComparer.OrdinalIgnoreCase));
-    }
-
-    private static ResourceTableSnapshot CreateTable()
-    {
-        var row = new ResourceTableRow(
-            "process:4242",
-            null,
-            0,
-            ResourceTableRowKinds.Process,
-            "example.exe",
-            "running",
-            "software:test",
-            4242,
-            1,
-            12,
-            new Dictionary<string, ResourceTableValue>
-            {
-                [ResourceTableColumnIds.Cpu] = new(12, 12, "12%", "%", "current", 12)
-            },
-            new Dictionary<string, double>())
-        {
-            SoftwareName = "Test App",
-            ProcessIds = [4242],
-            ProcessNames = ["example.exe"],
-            ExecutablePaths = [@"C:\Apps\example.exe"],
-            ProcessStartKey = long.MaxValue.ToString()
-        };
-        return new ResourceTableSnapshot(
-            CapturedAt,
-            ResourceTableProjectionStatuses.Ready,
-            [
-                new ResourceTableDatasetInput(
-                    "process.cpu.usage",
-                    ResourceBreakdownSamplingStatuses.Ready,
-                    ulong.MaxValue,
-                    JavaScriptMaximumSafeInteger,
-                    CapturedAt,
-                    CapturedAt,
-                    CapturedAt,
-                    CapturedAt.AddSeconds(5),
-                    null,
-                    null)
-            ],
-            [ResourceTableColumnCatalog.KnownColumns().Single(column => column.Id == ResourceTableColumnIds.Cpu)],
-            [row],
-            [],
-            new ResourceTableSort(ResourceTableColumnIds.Cpu, "desc"),
-            ResourceTableViewModes.Process);
     }
 
     private static async Task<JsonElement> DecodeAsync(string kind, object payload)

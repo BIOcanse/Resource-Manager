@@ -31,6 +31,7 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/metrics/subscribe")]
     [InlineData("/api/metrics/gpu-specialized/subscribe")]
     [InlineData("/api/resource-monitor/subscribe")]
+    [InlineData("/api/resource-facts/subscribe")]
     [InlineData("/api/performance-overlay/subscribe")]
     [InlineData("/api/control/actual/subscribe")]
     [InlineData("/api/adapters/resource-manager/scheduling/subscribe")]
@@ -181,6 +182,124 @@ public sealed class SubscriptionChannelContractTests
 
 public sealed class ResourceMonitorDetailsSubscriptionTests
 {
+    [Theory]
+    [InlineData("")]
+    [InlineData("?items=&intervalMs=1000")]
+    [InlineData("?items=,%20,&intervalMs=1000")]
+    public async Task EmptyFactsSelectionPublishesCurrentTypedEmptyWithoutSamplingDemand(string query)
+    {
+        var source = new ResourceMonitorSource(CreateSnapshot(DateTimeOffset.UnixEpoch));
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        using var direct = JsonDocument.Parse(await client.GetStringAsync(
+            "/api/resource-facts/snapshot" + query));
+        Assert.Equal(1, direct.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(JsonValueKind.Null, direct.RootElement.GetProperty("capturedAt").ValueKind);
+        foreach (var property in new[] { "software", "processes", "metrics" })
+        {
+            Assert.Empty(direct.RootElement.GetProperty(property).EnumerateArray());
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        {
+            Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
+                new { id = "empty-facts", path = "/api/resource-facts/subscribe" + query } } })
+        };
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        var line = await reader.ReadLineAsync(timeout.Token);
+        Assert.NotNull(line);
+        using var frame = JsonDocument.Parse(line!);
+        Assert.Equal("empty-facts", frame.RootElement.GetProperty("subscriptionId").GetString());
+        Assert.Equal(direct.RootElement.GetRawText(), frame.RootElement.GetProperty("value").GetRawText());
+        Assert.Empty(source.SnapshotRequests);
+        Assert.Empty(source.PushRequests);
+        await timeout.CancelAsync();
+        response.Dispose();
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task UnsupportedFactsItemsRejectEntireGetAndChannelBeforeAnySourceDemand()
+    {
+        var source = new ResourceMonitorSource(CreateSnapshot(DateTimeOffset.UnixEpoch));
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        var unsupported = ProcessMetricFieldRegistry.Definitions.Select(static field => field.Name)
+            .Append("unknown.fact")
+            .ToArray();
+        Assert.Contains("process_all_working_set_actual", unsupported);
+        foreach (var item in unsupported)
+        {
+            foreach (var items in new[] { item, "memory.usage," + item })
+            {
+                var query = "?items=" + Uri.EscapeDataString(items);
+                using var direct = await client.GetAsync("/api/resource-facts/snapshot" + query);
+                Assert.Equal(System.Net.HttpStatusCode.BadRequest, direct.StatusCode);
+                using var directError = JsonDocument.Parse(await direct.Content.ReadAsStringAsync());
+                Assert.Contains(item, directError.RootElement.GetProperty("error").GetString());
+                Assert.Contains("unsupported", directError.RootElement.GetProperty("error").GetString());
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+                {
+                    Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
+                        new { id = "supported-facts", path = "/api/resource-facts/subscribe?items=memory.usage" },
+                        new { id = "rejected-facts", path = "/api/resource-facts/subscribe" + query } } })
+                };
+                using var response = await client.SendAsync(request);
+                Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+                using var channelError = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                Assert.Equal("One or more subscription queries are invalid.",
+                    channelError.RootElement.GetProperty("error").GetString());
+            }
+        }
+        Assert.Empty(source.SnapshotRequests);
+        Assert.Empty(source.PushRequests);
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task ResourceFactsReadCurrentOnlyAndSubscribeThroughExistingDemandOwner()
+    {
+        var time = DateTimeOffset.Parse("2026-10-24T12:00:00Z");
+        var source = new ResourceMonitorSource(CreateSnapshot(time));
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        using var direct = JsonDocument.Parse(await client.GetStringAsync(
+            "/api/resource-facts/snapshot?items=memory.usage&processDetailLevel=full"));
+        Assert.Equal(1, direct.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(2, direct.RootElement.GetProperty("processes").GetArrayLength());
+        Assert.False(direct.RootElement.TryGetProperty("rows", out _));
+        var currentRequest = Assert.Single(source.SnapshotRequests);
+        Assert.Equal(["memory.usage"], currentRequest.MetricIds);
+        Assert.Empty(currentRequest.ScaleModes);
+        Assert.Equal(ProcessSampleDetailLevel.ResourceTableFull, currentRequest.ProcessDetailLevel);
+        using var old = await client.GetAsync("/api/resource-table/snapshot");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, old.StatusCode);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        {
+            Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
+                new { id = "facts", path = "/api/resource-facts/subscribe?items=memory.usage&intervalMs=1700&processDetailLevel=full" } } })
+        };
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        using var frame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+        Assert.Equal(direct.RootElement.GetRawText(), frame.RootElement.GetProperty("value").GetRawText());
+        var subscription = Assert.Single(source.PushRequests);
+        Assert.Equal("resource-facts:facts", subscription.ChannelKey);
+        Assert.Equal(TimeSpan.FromMilliseconds(1700), subscription.Interval);
+        Assert.Equal(currentRequest.MetricIds, subscription.Request.MetricIds);
+        Assert.Equal(currentRequest.ProcessDetailLevel, subscription.Request.ProcessDetailLevel);
+        Assert.Single(source.SnapshotRequests);
+        await timeout.CancelAsync();
+        response.Dispose();
+        await app.StopAsync();
+    }
+
     [Fact]
     public async Task DetailsScopeUsesTheExistingPushSourceAndReturnsOnlyRequestedCurrentProcesses()
     {
@@ -205,7 +324,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
 
         using var bars = JsonDocument.Parse(await client.GetStringAsync(
             "/api/resource-monitor/snapshot?scope=bars&ids=memory.usage"));
-        Assert.Empty(bars.RootElement.GetProperty("table").GetProperty("rows").EnumerateArray());
+        Assert.False(bars.RootElement.TryGetProperty("table", out _));
         Assert.Equal(2, source.SnapshotRequests.Count);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -357,7 +476,6 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IResourceBreakdownSampler>(source);
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(source);
-        builder.Services.AddSingleton<IResourceTableProjector>(new ThrowingTableProjector());
         builder.Services.AddSingleton<IRuntimePlanProvider>(new DefaultRuntimePlanProvider());
         var app = builder.Build();
         foreach (var method in new[]
@@ -426,7 +544,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         public Task<ResourceBreakdownSnapshot> CaptureSnapshotAsync(
             ResourceBreakdownSampleRequest request,
             CancellationToken cancellationToken)
-            => GetSnapshotAsync(request, cancellationToken);
+            => throw new InvalidOperationException("Reading current facts must never trigger sampling.");
 
         public async IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(
             string subscriptionId,
@@ -435,6 +553,11 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             PushRequests.Enqueue(new PushRequest(subscriptionId, request, interval));
+            // Match the production source: an empty selection ends without publishing.
+            if (request.MetricIds.Count == 0)
+            {
+                yield break;
+            }
             await Task.Yield();
             yield return snapshot;
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
@@ -446,11 +569,5 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         ResourceBreakdownSampleRequest Request,
         TimeSpan Interval);
 
-    private sealed class ThrowingTableProjector : IResourceTableProjector
-    {
-        public ResourceTableSnapshot Project(
-            ResourceBreakdownSnapshot breakdown,
-            ResourceTableRequest request)
-            => throw new InvalidOperationException("This test host must not project a resource table.");
-    }
+
 }

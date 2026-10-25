@@ -14,6 +14,7 @@ export interface DiskUsageTileFacts {
   isDirectory: boolean;
   sizeBytes: number;
   fileCount: number;
+  subtreeComplete: boolean;
 }
 
 /** 路径最多往上走这么多层。防的是父子引用成环时转不出来。 */
@@ -33,7 +34,8 @@ export function tileFactsOf(
     fullPath: pathOf(layout, index),
     isDirectory: layout.directoryFlags[index] === 1,
     sizeBytes: layout.sizes[index],
-    fileCount: layout.fileCounts[index]
+    fileCount: layout.fileCounts[index],
+    subtreeComplete: layout.subtreeComplete[index] === 1
   };
 }
 

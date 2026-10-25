@@ -279,8 +279,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
 internal sealed record ResourceMonitorWireSnapshot(
     int Version,
     DateTimeOffset? CapturedAt,
-    ResourceBreakdownWireSnapshot Breakdown,
-    ResourceTableWireSnapshot Table)
+    ResourceBreakdownWireSnapshot Breakdown)
 {
-    internal const int CurrentVersion = 9;
+    internal const int CurrentVersion = 10;
 }

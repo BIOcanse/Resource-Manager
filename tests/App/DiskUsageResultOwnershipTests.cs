@@ -50,7 +50,7 @@ public sealed class DiskUsageResultOwnershipTests
     }
 
     [Fact]
-    public async Task LayoutCanSelectEveryRootAndASecondSessionCannotReadTheResult()
+    public async Task TreeCanSelectEveryScanRootAndASecondSessionCannotReadTheResult()
     {
         using var ledger = new ResourceManagerLedgerOwner();
         var store = new DiskUsageTreeStore(ledger);
@@ -67,25 +67,75 @@ public sealed class DiskUsageResultOwnershipTests
         Assert.Equal(new[] { "C:\\", "D:\\" }, summary.RootElement.GetProperty("roots")
             .EnumerateArray().Select(static root => root.GetString()).ToArray());
 
-        using var secondRoot = await ownerClient.GetAsync("/api/disk-usage/layout?rootIndex=1");
+        using var firstRoot = await ownerClient.GetAsync("/api/disk-usage/tree?rootIndex=0&maxNodes=65536&maxBytes=8388608");
+        var firstFacts = await firstRoot.Content.ReadAsByteArrayAsync();
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(firstFacts.AsSpan(12)));
+        Assert.Equal(2u, BinaryPrimitives.ReadUInt32LittleEndian(firstFacts.AsSpan(8)));
+        Assert.Equal(41d, BinaryPrimitives.ReadDoubleLittleEndian(firstFacts.AsSpan(24)));
+        using var secondRoot = await ownerClient.GetAsync("/api/disk-usage/tree?rootIndex=1&maxNodes=65536&maxBytes=8388608");
         Assert.Equal(System.Net.HttpStatusCode.OK, secondRoot.StatusCode);
-        var layout = await secondRoot.Content.ReadAsByteArrayAsync();
-        Assert.Equal(2, BinaryPrimitives.ReadInt32LittleEndian(layout.AsSpan(12)));
-        Assert.Equal(73d, BinaryPrimitives.ReadDoubleLittleEndian(layout.AsSpan(24)));
-        var rootPathLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(layout.AsSpan(60)));
-        Assert.Equal("D:\\", Encoding.UTF8.GetString(layout, layout.Length - rootPathLength, rootPathLength));
+        Assert.Equal("application/octet-stream", secondRoot.Content.Headers.ContentType!.MediaType);
+        var facts = await secondRoot.Content.ReadAsByteArrayAsync();
+        Assert.Equal(3u, BinaryPrimitives.ReadUInt32LittleEndian(facts.AsSpan(4)));
+        Assert.Equal(2u, BinaryPrimitives.ReadUInt32LittleEndian(facts.AsSpan(8)));
+        Assert.Equal(2, BinaryPrimitives.ReadInt32LittleEndian(facts.AsSpan(12)));
+        Assert.Equal(73d, BinaryPrimitives.ReadDoubleLittleEndian(facts.AsSpan(24)));
+        Assert.Equal(2, BinaryPrimitives.ReadInt32LittleEndian(facts.AsSpan(96)));
+        Assert.Equal(3, BinaryPrimitives.ReadInt32LittleEndian(facts.AsSpan(100)));
+        var rootPathLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(facts.AsSpan(60)));
+        Assert.Equal("D:\\", Encoding.UTF8.GetString(facts, facts.Length - rootPathLength, rootPathLength));
 
-        using var invalidRoot = await ownerClient.GetAsync("/api/disk-usage/layout?rootIndex=2");
+        using var invalidRoot = await ownerClient.GetAsync("/api/disk-usage/tree?rootIndex=2&maxNodes=65536&maxBytes=8388608");
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, invalidRoot.StatusCode);
+        using var negativeRoot = await ownerClient.GetAsync("/api/disk-usage/tree?rootIndex=-1&maxNodes=65536&maxBytes=8388608");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, negativeRoot.StatusCode);
+        using var missingRoot = await ownerClient.GetAsync("/api/disk-usage/tree");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, missingRoot.StatusCode);
+        using var removedLayout = await ownerClient.GetAsync("/api/disk-usage/layout?rootIndex=0");
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, removedLayout.StatusCode);
+
+        var selected = await ownerClient.GetByteArrayAsync(
+            "/api/disk-usage/tree?rootIndex=1&maxNodes=2&maxBytes=1024&node=3");
+        Assert.Equal(3, BinaryPrimitives.ReadInt32LittleEndian(selected.AsSpan(12)));
+        Assert.Equal(1u, BinaryPrimitives.ReadUInt32LittleEndian(selected.AsSpan(8)));
+        var selectedPathLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(selected.AsSpan(60)));
+        Assert.Equal(Path.Combine("D:\\", "private-two.txt"),
+            Encoding.UTF8.GetString(selected, selected.Length - selectedPathLength, selectedPathLength));
+        var page = await ownerClient.GetByteArrayAsync(
+            "/api/disk-usage/tree?rootIndex=1&maxNodes=2&maxBytes=1024&cursor=3");
+        Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(page.AsSpan(16)));
+
+        foreach (var query in new[]
+        {
+            "rootIndex=1", "rootIndex=1&maxNodes=2", "rootIndex=1&maxBytes=1024",
+            "rootIndex=1&maxNodes=1&maxBytes=1024", "rootIndex=1&maxNodes=400001&maxBytes=1024",
+            "rootIndex=1&maxNodes=2&maxBytes=1023", $"rootIndex=1&maxNodes=2&maxBytes={DiskUsageTreeBinaryWriter.MaximumBytes + 1}",
+            "rootIndex=1&maxNodes=2&maxBytes=1024&node=1", "rootIndex=0&maxNodes=2&maxBytes=1024&node=3",
+            "rootIndex=1&maxNodes=2&maxBytes=1024&node=-1", "rootIndex=1&maxNodes=2&maxBytes=1024&node=4",
+            "rootIndex=1&maxNodes=2&maxBytes=1024&cursor=1", "rootIndex=1&maxNodes=2&maxBytes=1024&cursor=2",
+            "rootIndex=1&maxNodes=2&maxBytes=1024&cursor=-1", "rootIndex=1&maxNodes=2&maxBytes=1024&cursor=4"
+        })
+        {
+            using var invalid = await ownerClient.GetAsync("/api/disk-usage/tree?" + query);
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, invalid.StatusCode);
+        }
+
+        // View state has no input binding and cannot change the published facts.
+        var sameFacts = await ownerClient.GetByteArrayAsync(
+            "/api/disk-usage/tree?rootIndex=1&maxNodes=65536&maxBytes=8388608&pixelWidth=1&pixelHeight=1&scale=100&minX=1&maxX=1");
+        Assert.Equal(facts, sameFacts);
 
         using var otherSummary = JsonDocument.Parse(await otherClient.GetStringAsync("/api/disk-usage/summary"));
         Assert.Equal(JsonValueKind.Null, otherSummary.RootElement.ValueKind);
-        using var otherLayout = await otherClient.GetAsync("/api/disk-usage/layout");
-        var hiddenLayout = await otherLayout.Content.ReadAsByteArrayAsync();
-        Assert.Equal(0u, BinaryPrimitives.ReadUInt32LittleEndian(hiddenLayout.AsSpan(8)));
-        Assert.Equal(-1, BinaryPrimitives.ReadInt32LittleEndian(hiddenLayout.AsSpan(12)));
+        using var otherTree = await otherClient.GetAsync("/api/disk-usage/tree?rootIndex=0&maxNodes=65536&maxBytes=8388608");
+        var hiddenTree = await otherTree.Content.ReadAsByteArrayAsync();
+        Assert.Equal(DiskUsageTreeBinaryWriter.WriteEmpty(), hiddenTree);
         using var hiddenNode = await otherClient.GetAsync("/api/disk-usage/node/1");
         Assert.Equal(System.Net.HttpStatusCode.NotFound, hiddenNode.StatusCode);
+
+        store.Clear();
+        Assert.Equal(DiskUsageTreeBinaryWriter.WriteEmpty(),
+            await ownerClient.GetByteArrayAsync("/api/disk-usage/tree?rootIndex=0&maxNodes=65536&maxBytes=8388608"));
     }
 
     [Fact]

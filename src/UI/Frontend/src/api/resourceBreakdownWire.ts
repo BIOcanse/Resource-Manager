@@ -5,15 +5,11 @@ import type {
   ResourceProcessDetailsSnapshot,
   ResourceProcessSegment,
   ResourceScaleMode,
-  ResourceSoftwareSegment,
-  ResourceTableColumn,
-  ResourceTableRow,
-  ResourceTableSnapshot,
-  ResourceTableValue
+  ResourceSoftwareSegment
 } from "../types";
+import { decodeResourceFacts, projectResourceFacts } from "../features/resourceTable/resourceFacts.ts";
 import {
   requireArray,
-  requireBoolean,
   requireFiniteNumber,
   requireNonEmptyString,
   requireNullable,
@@ -76,16 +72,11 @@ export interface ResourceBreakdownWireSnapshot {
 }
 
 export interface ResourceMonitorWireSnapshot {
-  version: 9;
+  version: 10;
   capturedAt: string | null;
   breakdown: ResourceBreakdownWireSnapshot;
-  table: ResourceTableWireSnapshot;
 }
 
-export interface ResourceTableWireSnapshot extends
-  Omit<ResourceTableSnapshot, "capturedAt"> {
-  capturedAt: string | null;
-}
 
 const scaleModes = ["capacity", "active"] as const;
 
@@ -116,15 +107,16 @@ export function decodeResourceMonitorWireSnapshot(
   value: unknown
 ): ResourceMonitorSnapshot {
   const snapshot = requireRecord(value);
-  if (requireSafeInteger(snapshot.version, "$.version") !== 9) {
-    throw new ResponseDecodeError("$.version", "resource monitor wire version 9");
+  if (snapshot.version === 1) return decodeResourceFacts(value);
+  if (requireSafeInteger(snapshot.version, "$.version") !== 10) {
+    throw new ResponseDecodeError("$.version", "resource monitor wire version 10");
   }
   const capturedAt = requireNullable(
     snapshot.capturedAt,
     "$.capturedAt",
     requireTimestamp);
   const breakdown = decodeResourceBreakdownWireSnapshot(snapshot.breakdown);
-  const table = decodeResourceTableWireSnapshot(snapshot.table, "$.table");
+  const table = projectResourceFacts({ capturedAt: capturedAt ?? undefined, metrics: [] }, [], "software", "impact", "desc");
   return {
     capturedAt: capturedAt ?? undefined,
     breakdown,
@@ -258,88 +250,6 @@ function decodeProcess(value: unknown, path: string): ResourceProcessSegment {
   };
 }
 
-export function decodeResourceTableWireSnapshot(
-  value: unknown,
-  path = "$"
-): ResourceTableSnapshot {
-  const table = requireRecord(value, path);
-  const capturedAt = requireNullable(
-    table.capturedAt,
-    `${path}.capturedAt`,
-    requireTimestamp);
-  const sort = requireRecord(table.sort, `${path}.sort`);
-  return {
-    capturedAt: capturedAt ?? undefined,
-    columns: requireArray(table.columns, `${path}.columns`)
-      .map((column, index) => decodeTableColumn(column, `${path}.columns[${index}]`)),
-    rows: requireArray(table.rows, `${path}.rows`)
-      .map((row, index) => decodeTableRow(row, `${path}.rows[${index}]`)),
-    sort: {
-      columnId: requireNonEmptyString(sort.columnId, `${path}.sort.columnId`),
-      direction: requireNonEmptyString(sort.direction, `${path}.sort.direction`)
-    },
-    viewMode: optionalString(table.viewMode, `${path}.viewMode`)
-  };
-}
-
-function decodeTableColumn(value: unknown, path: string): ResourceTableColumn {
-  const column = requireRecord(value, path);
-  return {
-    id: requireNonEmptyString(column.id, `${path}.id`),
-    unit: requireString(column.unit, `${path}.unit`),
-    visible: requireBoolean(column.visible, `${path}.visible`),
-    sortable: requireBoolean(column.sortable, `${path}.sortable`),
-    width: requireFiniteNumber(column.width, `${path}.width`)
-  };
-}
-
-function decodeTableRow(value: unknown, path: string): ResourceTableRow {
-  const row = requireRecord(value, path);
-  const valuesRecord = requireRecord(row.values, `${path}.values`);
-  const values: Record<string, ResourceTableValue> = {};
-  for (const [key, cell] of Object.entries(valuesRecord)) {
-    values[key] = decodeTableValue(cell, `${path}.values.${key}`);
-  }
-
-  return {
-    id: requireNonEmptyString(row.id, `${path}.id`),
-    parentId: optionalNullableString(row.parentId, `${path}.parentId`),
-    depth: requireSafeInteger(row.depth, `${path}.depth`),
-    kind: requireNonEmptyString(row.kind, `${path}.kind`),
-    // 汇总行与「未归属进程」这类行没有软件名，名字由前端按行类别或分组标识出。
-    name: requireString(row.name, `${path}.name`),
-    status: requireString(row.status, `${path}.status`),
-    softwareName: optionalNullableString(row.softwareName, `${path}.softwareName`),
-    softwareId: optionalNullableString(row.softwareId, `${path}.softwareId`),
-    processId: optionalNullableNumber(row.processId, `${path}.processId`),
-    processStartKey: optionalNullablePositiveIntegerString(
-      row.processStartKey,
-      `${path}.processStartKey`),
-    processCount: requireSafeInteger(row.processCount, `${path}.processCount`),
-    processIds: optionalNumberArray(row.processIds, `${path}.processIds`),
-    processNames: optionalStringArray(row.processNames, `${path}.processNames`),
-    executablePaths: optionalStringArray(row.executablePaths, `${path}.executablePaths`),
-    impactScore: requireFiniteNumber(row.impactScore, `${path}.impactScore`),
-    values,
-    sortKeys: optionalNumberRecord(row.sortKeys, `${path}.sortKeys`)
-  };
-}
-
-function decodeTableValue(value: unknown, path: string): ResourceTableValue {
-  const cell = requireRecord(value, path);
-  return {
-    value: optionalNullableFiniteNumber(cell.value, `${path}.value`),
-    percent: optionalNullableFiniteNumber(cell.percent, `${path}.percent`),
-    // 文本单元（进程号、用户、架构）的文本；数值单元为空串，靠 unit + value 自己格式化。
-    displayValue: requireString(cell.displayValue, `${path}.displayValue`),
-    unit: requireString(cell.unit, `${path}.unit`),
-    availability: optionalNullableString(cell.availability, `${path}.availability`),
-    heatPercent: optionalNullableFiniteNumber(cell.heatPercent, `${path}.heatPercent`),
-    sharedValue: optionalNullableFiniteNumber(cell.sharedValue, `${path}.sharedValue`),
-    attributionKind: optionalString(cell.attributionKind, `${path}.attributionKind`)
-  };
-}
-
 function requireTuple(value: unknown, path: string, length: number, optionalLength = length): unknown[] {
   const row = requireArray(value, path);
   if (row.length !== length && row.length !== optionalLength) {
@@ -364,64 +274,9 @@ function requirePositiveIntegerString(value: unknown, path: string): string {
   return text;
 }
 
-function optionalString(value: unknown, path: string): string | undefined {
-  return value === undefined ? undefined : requireString(value, path);
-}
-
-function optionalNullableString(
-  value: unknown,
-  path: string
-): string | null | undefined {
-  return value === undefined ? undefined : requireNullable(value, path, requireString);
-}
-
-function optionalNullableNumber(
-  value: unknown,
-  path: string
-): number | null | undefined {
-  return value === undefined ? undefined : requireNullable(value, path, requireSafeInteger);
-}
-
-function optionalNullablePositiveIntegerString(
-  value: unknown,
-  path: string
-): string | null | undefined {
-  return value === undefined
-    ? undefined
-    : requireNullable(value, path, requirePositiveIntegerString);
-}
-
 function optionalNullableFiniteNumber(
   value: unknown,
   path: string
 ): number | null | undefined {
   return value === undefined ? undefined : requireNullable(value, path, requireFiniteNumber);
-}
-
-function optionalStringArray(value: unknown, path: string): string[] | undefined {
-  return value === undefined
-    ? undefined
-    : requireArray(value, path).map(
-      (item, index) => requireString(item, `${path}[${index}]`));
-}
-
-function optionalNumberArray(value: unknown, path: string): number[] | undefined {
-  return value === undefined
-    ? undefined
-    : requireArray(value, path).map(
-      (item, index) => requireSafeInteger(item, `${path}[${index}]`));
-}
-
-function optionalNumberRecord(
-  value: unknown,
-  path: string
-): Record<string, number> | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const record = requireRecord(value, path);
-  return Object.fromEntries(Object.entries(record).map(([key, item]) => [
-    key,
-    requireFiniteNumber(item, `${path}.${key}`)
-  ]));
 }

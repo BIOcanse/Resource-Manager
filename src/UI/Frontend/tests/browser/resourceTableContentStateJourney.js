@@ -40,7 +40,7 @@ export default async function resourceTableContentStateJourney(
   await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
   const rowAction = page.getByRole("button", { name: "更多操作：示例软件" }).first();
   await rowAction.waitFor({ state: "visible", timeout: 7000 });
-  const heat = await page.locator('.resource-table-row[aria-hidden="false"] .value-cell')
+  const heat = await page.locator('.resource-table-row.software-row[aria-hidden="false"] .value-cell')
     .evaluateAll((cells) => cells.map((cell) => ({
       text: cell.textContent.trim(),
       width: cell.style.getPropertyValue("--heat"),
@@ -55,6 +55,10 @@ export default async function resourceTableContentStateJourney(
   if (memory?.privateWidth !== "75%" || !memory.background.includes("211, 171, 48") ||
       !/^512 (?:MB|MiB)$/.test(memory.text) || !/共享分摊 128(?:\.0)? (?:MB|MiB)/.test(memory.title))
     throw new Error(`Shared bytes must be a yellow quarter with exact tooltip: ${JSON.stringify(heat)}`);
+  const summary = await page.locator('.resource-table-row.summary-row[aria-hidden="false"] .value-cell').allTextContents();
+  if (summary.length !== 2 || !summary[0].includes("12.0%") || !/^512 (?:MB|MiB)$/.test(summary[1])) {
+    throw new Error(`Frontend summary did not retain authoritative totals: ${JSON.stringify(summary)}`);
+  }
   await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" })
     .fill("no-such-resource");

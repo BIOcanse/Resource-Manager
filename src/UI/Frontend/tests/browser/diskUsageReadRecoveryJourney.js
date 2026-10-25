@@ -33,7 +33,7 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     const navigation = page.locator(".shell-pages");
     await patch({ diskUsageVolumesFailure: true, diskUsageResultFailure: true, diskUsageMultiRoot: true });
     let releaseInitialReads;
-    const initialReadPattern = /\/api\/disk-usage\/(?:volumes|summary|layout)(?:\?|$)/;
+    const initialReadPattern = /\/api\/disk-usage\/(?:volumes|summary|tree)(?:\?|$)/;
     if (checked.length === 0) {
       const gate = new Promise(resolve => { releaseInitialReads = resolve; });
       await page.route(initialReadPattern, async route => { await gate; await route.continue(); });
@@ -77,31 +77,31 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     await workspace.locator(".disk-usage-volume").first().waitFor();
     await patch({ diskUsageVolumesFailure: true, diskUsageResultFailure: true });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    // A completed scan invalidates authoritative facts; reset/zoom only lays out local facts.
+    await patch({ diskUsageScanLifecycle: true, diskUsageScanCompletionDelayMs: 200 });
+    await workspace.locator(".disk-usage-setup-actions button").last().click();
+    await resultError.getByText(copy.diskUsage.retainedResultStale, { exact: true }).waitFor();
     await workspace.getByRole("button", { name: copy.diskUsage.resetView, exact: true }).click();
     await volumes.getByText(copy.diskUsage.retainedVolumesStale, { exact: true }).waitFor();
     await resultError.getByText(copy.diskUsage.retainedResultStale, { exact: true }).waitFor();
     assert(await workspace.locator(".disk-usage-result").count() === 1, `${language}: failed zoom discarded retained result`);
     assert(await workspace.locator(".disk-usage-volume").count() > 0, `${language}: failed volume read discarded retained list`);
+    assert(await workspace.getByText(copy.diskUsage.scanFailed, { exact: true }).count() === 0, "Successful scan was reported as failed");
     await patch({ diskUsageVolumesFailure: false, diskUsageResultFailure: false });
+    // Restoring the service and laying out retained facts must not heal the failed scan read.
+    const treeReads = [];
+    const trackTreeRead = request => {
+      if (new URL(request.url()).pathname === "/api/disk-usage/tree") treeReads.push(request.url());
+    };
+    page.on("request", trackTreeRead);
+    await workspace.getByRole("button", { name: copy.diskUsage.resetView, exact: true }).click();
+    page.off("request", trackTreeRead);
+    assert(treeReads.length === 0, "Reset retried a scan-tree read without explicit retry");
+    await resultError.getByText(copy.diskUsage.retainedResultStale, { exact: true }).waitFor();
     await volumes.getByRole("button", { name: copy.diskUsage.retryRead, exact: true }).click();
     await resultError.getByRole("button", { name: copy.diskUsage.retryRead, exact: true }).click();
     await resultError.waitFor({ state: "hidden" });
     await volumes.getByRole("alert").waitFor({ state: "hidden" });
-
-    // Scan success must not hide a failure to read its new result.
-    if (checked.length === 0) {
-      await patch({ diskUsageResultFailure: true, diskUsageScanLifecycle: true, diskUsageScanCompletionDelayMs: 200 });
-      await workspace.locator(".disk-usage-setup-actions button").last().click();
-      await resultError.getByText(copy.diskUsage.retainedResultStale, { exact: true }).waitFor();
-      assert(await workspace.getByText(copy.diskUsage.scanFailed, { exact: true }).count() === 0, "Successful scan was reported as failed");
-      await patch({ diskUsageResultFailure: false });
-      const zoomRead = page.waitForResponse(response => new URL(response.url()).pathname === "/api/disk-usage/layout");
-      await workspace.getByRole("button", { name: copy.diskUsage.resetView, exact: true }).click();
-      assert((await zoomRead).ok(), "The independent layout retry failed");
-      await resultError.getByText(copy.diskUsage.retainedResultStale, { exact: true }).waitFor();
-      await resultError.getByRole("button", { name: copy.diskUsage.retryRead, exact: true }).click();
-      await resultError.waitFor({ state: "hidden" });
-    }
     checked.push(language);
   }
   assert(errors.length === 0, errors.join("\n"));

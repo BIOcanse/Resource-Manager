@@ -1245,6 +1245,7 @@ function rowName(row: ResourceTableRow | undefined) {
 function rowStatus(row: ResourceTableRow | undefined) {
   const value = String(row?.status ?? "").trim();
   if (row?.kind === "summary") {
+    if (value === "empty") return uiText.status.noData;
     const copy = uiText.resourceTable.summaryRow.status as Record<string, string | undefined>;
     return copy[value] ?? uiText.resourceTableView.unknownStatus;
   }

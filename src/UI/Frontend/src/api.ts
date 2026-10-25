@@ -39,10 +39,10 @@ import type {
 import {
   decodeResourceBreakdownWireSnapshot,
   decodeResourceMonitorWireSnapshot,
-  decodeResourceTableWireSnapshot,
   type ResourceBreakdownWireSnapshot,
   type ResourceMonitorWireSnapshot
 } from "./api/resourceBreakdownWire";
+import { decodeResourceFacts, projectResourceFacts, resourceTableMetricId } from "./features/resourceTable/resourceFacts.ts";
 import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
 import { decodeHostManagerSmartCoordinatorStatus } from
   "./data/optimization/hostManagerSmartStatusSource.ts";
@@ -271,11 +271,6 @@ export async function getResourceMonitor(
     params.append("modes", `${bar.metricId}:${bar.scaleMode}`);
   });
   sampleMetricIds?.forEach((id) => params.append("sampleIds", id));
-  const visibleColumns = columns?.filter((column) => column.visible).map((column) => column.id) ?? [];
-  visibleColumns.forEach((columnId) => params.append("columns", columnId));
-  params.set("sort", `${sortColumnId}:${sortDirection === "asc" ? "asc" : "desc"}`);
-  params.set("mode", tableMode === "process" ? "process" : "software");
-  expandedSoftwareIds.forEach((id) => params.append("expanded", id));
   processDetailSoftwareIds.forEach((id) => params.append("processDetails", id));
   const snapshot = await getJson<ResourceMonitorWireSnapshot>(
     `/api/resource-monitor/snapshot?${params.toString()}`);
@@ -291,13 +286,13 @@ export async function getResourceTable(
 {
   const params = new URLSearchParams();
   const visibleColumns = columns?.filter((column) => column.visible).map((column) => column.id) ?? [];
-  visibleColumns.forEach((columnId) => params.append("columns", columnId));
-  params.set("sort", `${sortColumnId}:${sortDirection === "asc" ? "asc" : "desc"}`);
-  params.set("mode", tableMode === "process" ? "process" : "software");
-  expandedSoftwareIds.forEach((id) => params.append("expanded", id));
+  visibleColumns.map(resourceTableMetricId).filter((id): id is string => id !== null)
+    .forEach(metricId => params.append("items", metricId));
+  params.set("processDetailLevel", "full");
   const snapshot = await getJson<unknown>(
-    `/api/resource-table/snapshot?${params.toString()}`);
-  return decodeResourceTableWireSnapshot(snapshot);
+    `/api/resource-facts/snapshot?${params.toString()}`);
+  const facts = decodeResourceFacts(snapshot).facts!;
+  return projectResourceFacts(facts, columns ?? [], tableMode, sortColumnId, sortDirection === "asc" ? "asc" : "desc");
 }
 
 export async function getComponents() {

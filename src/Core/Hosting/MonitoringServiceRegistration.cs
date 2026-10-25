@@ -24,7 +24,6 @@ using ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.NetworkTelemetry;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
@@ -301,7 +300,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ISchedulingProcessFactObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ResourceManager.App.Application.ProcessAttribution.IRuntimeSoftwareObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>();
-        services.AddSingleton<IResourceTableProjector, ResourceTableProjector>();
         return services;
     }
 

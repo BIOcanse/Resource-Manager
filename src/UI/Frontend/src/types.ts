@@ -581,6 +581,7 @@ export interface ResourceTableSnapshot {
 }
 
 export interface ResourceMonitorSnapshot {
+  facts?: import("./features/resourceTable/resourceFacts.ts").ResourceFacts;
   capturedAt?: string;
   breakdown: ResourceBreakdownSnapshot;
   table: ResourceTableSnapshot;

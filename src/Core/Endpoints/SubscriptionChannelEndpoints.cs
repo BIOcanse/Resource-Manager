@@ -13,7 +13,6 @@ using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
-using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -242,6 +241,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CompileGpuSubscription(subscription, services, interval)),
             ["/api/resource-monitor/subscribe"] = new((subscription, services, interval) =>
                 CompileResourceSubscription(subscription, services, interval)),
+            ["/api/resource-facts/subscribe"] = new((subscription, services, interval) =>
+                CompileResourceFactsSubscription(subscription, services, interval)),
             ["/api/performance-overlay/subscribe"] = new((subscription, services, interval) =>
                 CompilePerformanceOverlaySubscription(subscription, services, interval)),
             ["/api/adapters/resource-manager/scheduling/subscribe"] =
@@ -423,9 +424,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var monitoringPlan = services.GetRequiredService<IRuntimePlanProvider>()
             .Current.Monitoring;
         var scope = ParseResourceMonitorScope(subscription.Query);
-        var metricIds = scope == ResourceMonitorScope.Table
-            ? []
-            : ParseResourceMetricIds(subscription.Query, monitoringPlan);
+        var metricIds = ParseResourceMetricIds(subscription.Query, monitoringPlan);
         var scaleModes = ParseResourceScaleModes(
             subscription.Query,
             monitoringPlan);
@@ -457,23 +456,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }
 
-        var requestedSampleMetricIds = ParseResourceSampleMetricIds(
-            subscription.Query);
-        var tableRequest = ParseResourceTableRequest(
-            subscription.Query,
-            monitoringPlan);
-        var sampleMetricIds = AddTableRequiredMetricIds(
-            requestedSampleMetricIds.Count > 0
-                ? requestedSampleMetricIds
-                : metricIds,
-            scope == ResourceMonitorScope.Bars ? [] : tableRequest.ColumnIds);
         var sampleRequest = new ResourceBreakdownSampleRequest(
-            sampleMetricIds,
+            metricIds,
             scaleModes,
-            ResolveProcessSampleDetailLevel(subscription.Query, tableRequest));
-        var tableProjector = scope == ResourceMonitorScope.Bars
-            ? null
-            : services.GetRequiredService<IResourceTableProjector>();
+            ProcessSampleDetailLevel.ResourceTableBasic);
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             await foreach (var sampledBreakdown in source.SubscribeAsync(
@@ -486,18 +472,34 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     sampledBreakdown,
                     metricIds,
                     processDetailSoftwareIds);
-                var table = scope == ResourceMonitorScope.Bars
-                    ? ResourceTableWireSnapshot.Empty
-                    : ResourceTableWireSnapshot.Create(tableProjector!
-                        .Project(sampledBreakdown, tableRequest));
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(
                         ResourceMonitorWireSnapshot.CurrentVersion,
-                        MaxTimestamp(breakdownWire.CapturedAt, table.CapturedAt),
-                        breakdownWire,
-                        table),
+                        breakdownWire.CapturedAt,
+                        breakdownWire),
                     cancellationToken);
+            }
+        });
+    }
+
+    private static CompiledFrontendSubscription CompileResourceFactsSubscription(
+        ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
+    {
+        var request = ParseResourceFactsRequest(subscription.Query);
+        if (request.MetricIds.Count == 0)
+        {
+            return subscription.Compile(async (writer, cancellationToken) =>
+                await writer.WriteAsync(subscription.Id, ResourceFactsSnapshot.Empty, cancellationToken));
+        }
+        var source = services.GetRequiredService<IResourceBreakdownPushSource>();
+        return subscription.Compile(async (writer, cancellationToken) =>
+        {
+            await foreach (var current in source.SubscribeAsync(
+                $"resource-facts:{subscription.Id}", request, interval, cancellationToken))
+            {
+                await writer.WriteAsync(subscription.Id,
+                    ResourceFactsSnapshot.Create(current, request.MetricIds), cancellationToken);
             }
         });
     }

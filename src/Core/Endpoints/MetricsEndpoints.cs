@@ -27,7 +27,6 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Information;
 

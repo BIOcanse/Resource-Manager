@@ -3,6 +3,12 @@ import { formatBytes } from "../../src/presentation/byteUnits.ts";
 
 export default async function diskUsageOperationInvalidationJourney(page, baseUrl) {
   const failures = [];
+  const treeReads = [];
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/disk-usage/tree") treeReads.push(url.search);
+    if (url.pathname === "/api/disk-usage/layout") failures.push("Requested a server treemap layout");
+  });
   page.on("pageerror", error => failures.push(`pageerror: ${String(error)}`));
   page.on("console", message => {
     if (message.type() === "error") failures.push(`console: ${message.text()}`);
@@ -55,12 +61,20 @@ export default async function diskUsageOperationInvalidationJourney(page, baseUr
     .getAttribute("aria-current") === "page",
   "The disk page was not mounted while the scan was still running");
   await waitForRootSize(refreshedSize);
+  assert(treeReads.length >= 3, "Opening, remounting and scan invalidation did not each read scan facts");
+  assert(treeReads.every(query => {
+    const parameters = new URLSearchParams(query);
+    return parameters.get("rootIndex") === "0" && parameters.get("maxNodes") === "400000"
+      && parameters.get("maxBytes") === "33554432"
+      && [...parameters.keys()].every(key => ["rootIndex", "maxNodes", "maxBytes"].includes(key));
+  }), `Unexpected scan-tree queries: ${JSON.stringify(treeReads)}`);
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {
     scanAccepted: true,
     pageWasLeftBeforeCompletion: true,
     reopenedRootSize: refreshedSize,
+    treeReads,
     pageErrors: failures
   };
 }

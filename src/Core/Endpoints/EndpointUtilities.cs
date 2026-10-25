@@ -24,7 +24,6 @@ using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Infrastructure.ResourceTable;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -107,31 +106,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    static ProcessSampleDetailLevel ResolveProcessSampleDetailLevel(
-        HttpRequest request,
-        ResourceTableRequest tableRequest)
-        => ResolveProcessSampleDetailLevel(request.Query, tableRequest);
-
-    static ProcessSampleDetailLevel ResolveProcessSampleDetailLevel(
-        IQueryCollection query,
-        ResourceTableRequest tableRequest)
-    {
-        if (query.TryGetValue("processDetailLevel", out var explicitValue))
-        {
-            var parsed = ParseProcessSampleDetailLevel(explicitValue.ToString());
-            if (parsed is not null)
-            {
-                return parsed.Value;
-            }
-        }
-
-        return tableRequest.ViewMode.Equals(ResourceTableViewModes.Process, StringComparison.OrdinalIgnoreCase)
-            || tableRequest.ColumnIds.Contains(ResourceTableColumnIds.User, StringComparer.OrdinalIgnoreCase)
-            || tableRequest.ColumnIds.Contains(ResourceTableColumnIds.Architecture, StringComparer.OrdinalIgnoreCase)
-            ? ProcessSampleDetailLevel.ResourceTableFull
-            : ProcessSampleDetailLevel.ResourceTableBasic;
-    }
-
     static ProcessSampleDetailLevel? ParseProcessSampleDetailLevel(string value)
     {
         return value.Trim().ToLowerInvariant() switch
@@ -161,72 +135,4 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         => DashboardSettingsDefaults.IsResourceBarMetricSupported(metricId)
             || ProcessMetricFieldRegistry.Find(metricId) is not null;
 
-    static ResourceTableRequest ParseResourceTableRequest(
-        HttpRequest request,
-        CompiledMonitoringPlan? monitoringPlan = null)
-        => ParseResourceTableRequest(request.Query, monitoringPlan);
-
-    static ResourceTableRequest ParseResourceTableRequest(
-        IQueryCollection query,
-        CompiledMonitoringPlan? monitoringPlan = null)
-    {
-        var mode = query.TryGetValue("mode", out var modeValue)
-            ? ParseResourceTableMode(modeValue.ToString())
-            : ResourceTableViewModes.Software;
-        var fallbackColumns = monitoringPlan?.ResolveTableColumnIds(mode);
-        var columns = query.TryGetValue("columns", out var columnsValue)
-            ? columnsValue.SelectMany(static value => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-            : fallbackColumns ?? [];
-        var expanded = query.TryGetValue("expanded", out var expandedValue)
-            ? expandedValue.SelectMany(static value => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
-                .Where(static value => !string.IsNullOrWhiteSpace(value))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var includeProcessRows = query.TryGetValue("includeProcesses", out var includeProcesses)
-            && includeProcesses.Any(static value => value?.Equals("all", StringComparison.OrdinalIgnoreCase) == true);
-
-        return new ResourceTableRequest(
-            ResourceTableProjector.NormalizeColumnIds(columns, mode),
-            query.TryGetValue("sort", out var sort) ? ParseSortColumn(sort.ToString()) : ResourceTableSortIds.Impact,
-            query.TryGetValue("sort", out var sortDirection) ? ParseSortDirection(sortDirection.ToString()) : "desc",
-            mode,
-            expanded,
-            includeProcessRows);
-    }
-
-    static string ParseSortColumn(string value)
-    {
-        var separator = value.IndexOf(':');
-        return separator > 0 ? value[..separator] : value;
-    }
-
-    static string ParseSortDirection(string value)
-    {
-        var separator = value.IndexOf(':');
-        return separator > 0 && value[(separator + 1)..].Equals("asc", StringComparison.OrdinalIgnoreCase)
-            ? "asc"
-            : "desc";
-    }
-
-    static string ParseResourceTableMode(string value)
-    {
-        return value.Equals(ResourceTableViewModes.Process, StringComparison.OrdinalIgnoreCase)
-            ? ResourceTableViewModes.Process
-            : ResourceTableViewModes.Software;
-    }
-
-    static IReadOnlyList<string> AddTableRequiredMetricIds(
-        IReadOnlyList<string> metricIds,
-        IReadOnlyList<string> columnIds)
-    {
-        var result = metricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var metricId in ResourceTableColumnCatalog.RequiredMetricIds(columnIds))
-        {
-            result.Add(metricId);
-        }
-
-        return result.ToArray();
-    }
 }

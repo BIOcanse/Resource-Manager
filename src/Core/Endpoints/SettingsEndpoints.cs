@@ -26,7 +26,6 @@ using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Optimization.Reports;
-using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Infrastructure.ServiceHosting;
 
 namespace ResourceManager.App.Endpoints;

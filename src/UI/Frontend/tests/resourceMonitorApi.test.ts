@@ -55,9 +55,9 @@ try {
   const url = new URL(observedUrl, "http://localhost");
   assert.equal(url.pathname, "/api/resource-monitor/snapshot");
   assert.deepEqual(url.searchParams.getAll("ids"), ["cpu.usage", "memory.usage"]);
-  assert.deepEqual(url.searchParams.getAll("columns"), ["name", "cpu"]);
+  assert.deepEqual(url.searchParams.getAll("columns"), []);
   assert.equal(url.searchParams.get("scope"), "combined");
-  assert.equal(url.searchParams.get("includeProcesses"), "all");
+  assert.equal(url.searchParams.has("includeProcesses"), false);
   assert.deepEqual(url.searchParams.getAll("expanded"), []);
   assert.equal(value.capturedAt, "2026-08-22T15:20:30.000Z");
 

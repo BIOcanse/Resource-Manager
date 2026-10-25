@@ -107,7 +107,6 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         builder.Services.AddSingleton<IResourceBreakdownSampler>(fixture.Sampler);
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(fixture.Sampler);
         builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Subscriptions.Provider);
-        builder.Services.AddSingleton<IResourceTableProjector>(new EmptyTable());
         builder.Services.AddHostedService(_ => fixture.Sampler);
         var app = builder.Build();
         foreach (var method in new[] { "MapResourceMonitorEndpoints", "MapSubscriptionChannelEndpoints" })
@@ -120,9 +119,5 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
         Timeout = TimeSpan.FromSeconds(15) };
 
-    private sealed class EmptyTable : IResourceTableProjector
-    {
-        public ResourceTableSnapshot Project(ResourceBreakdownSnapshot snapshot, ResourceTableRequest request)
-            => new(null, "warming", [], [], [], [], new("impact", "desc"), "software");
-    }
+
 }

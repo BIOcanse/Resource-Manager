@@ -1,13 +1,12 @@
 import { readFileSync } from "node:fs";
 import {
-  decodeResourceMonitorWireSnapshot,
-  decodeResourceTableWireSnapshot
+  decodeResourceMonitorWireSnapshot
 } from "../src/api/resourceBreakdownWire.ts";
 import { metricSnapshotDecoder } from
   "../src/data/monitor/monitorSourceDecoders.ts";
 
 type DecodeRequest = {
-  kind: "metric" | "monitor" | "table";
+  kind: "metric" | "monitor" | "facts";
   payload: unknown;
 };
 
@@ -22,11 +21,11 @@ const rawBreakdown = request.kind === "monitor"
 const metric = request.kind === "metric"
   ? metricSnapshotDecoder.decode(request.payload)
   : null;
-const monitor = request.kind === "monitor"
+const monitor = request.kind === "monitor" || request.kind === "facts"
   ? decodeResourceMonitorWireSnapshot(request.payload)
   : null;
 const table = metric === null
-  ? monitor?.table ?? decodeResourceTableWireSnapshot(request.payload)
+  ? monitor?.table ?? null
   : null;
 const breakdownProcess = monitor?.breakdown.bars
   ?.flatMap((bar) => bar.software)
@@ -34,6 +33,8 @@ const breakdownProcess = monitor?.breakdown.bars
 const tableProcess = table?.rows.find((row) => row.kind === "process");
 
 process.stdout.write(JSON.stringify({
+  factsProcessStartKey: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.processStartKey ?? null,
+  factsProcessSharedValue: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.sharedValue ?? null,
   monitorVersion: monitor === null ? null : 8,
   tableProcessStartKey: tableProcess?.processStartKey ?? null,
   breakdownProcessStartKey: breakdownProcess?.processStartKey ?? null,

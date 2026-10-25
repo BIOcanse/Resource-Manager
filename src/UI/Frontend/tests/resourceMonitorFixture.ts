@@ -5,7 +5,7 @@ export const capturedAt = "2026-08-22T15:20:30.000Z";
 
 export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
   return {
-    version: 9,
+    version: 10,
     capturedAt,
     breakdown: {
       version: 8,
@@ -40,38 +40,6 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
           ]]
         ]]
       }]
-    },
-    table: {
-      capturedAt,
-      columns: [{
-        id: "name",
-        label: "名称",
-        unit: "",
-        visible: true,
-        sortable: true,
-        width: 260
-      }],
-      rows: [{
-        id: "summary:total",
-        parentId: null,
-        depth: 0,
-        kind: "summary",
-        name: "总占用",
-        status: "当前采样",
-        softwareName: null,
-        softwareId: null,
-        processId: null,
-        processStartKey: null,
-        processCount: 0,
-        processIds: [],
-        processNames: [],
-        executablePaths: [],
-        impactScore: 0,
-        values: {},
-        sortKeys: {}
-      }],
-      sort: { columnId: "impact", direction: "desc" },
-      viewMode: "software"
     }
   };
 }

@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using ResourceManager.App.Domain.ResourceBreakdown;
 
 namespace ResourceManager.App.Domain.ResourceTable;
@@ -16,35 +15,10 @@ public static class ResourceTableColumnIds
     public const string Network = "network";
 }
 
-/// <summary>进程行的状态取值。只有状态，没有措辞。</summary>
-public static class ResourceTableProcessStates
-{
-    public const string Running = "running";
-}
-
-public static class ResourceTableRowKinds
-{
-    public const string Summary = "summary";
-    public const string Software = "software";
-    public const string Process = "process";
-}
-
-public static class ResourceTableSortIds
-{
-    public const string Impact = "impact";
-}
-
 public static class ResourceTableViewModes
 {
     public const string Software = "software";
     public const string Process = "process";
-}
-
-public static class ResourceTableProjectionStatuses
-{
-    public const string Warming = "warming";
-    public const string Ready = "ready";
-    public const string Failed = "failed";
 }
 
 public static class ResourceTableColumnCatalog
@@ -150,103 +124,5 @@ public static class ResourceTableColumnCatalog
     }
 }
 
-public sealed record ResourceTableRequest(
-    IReadOnlyList<string> ColumnIds,
-    string SortColumnId,
-    string SortDirection,
-    string ViewMode,
-    IReadOnlySet<string> ExpandedSoftwareIds,
-    bool IncludeProcessRows);
-
-public sealed record ResourceTableSnapshot(
-    DateTimeOffset? CapturedAt,
-    string Status,
-    IReadOnlyList<ResourceTableDatasetInput> InputDatasets,
-    IReadOnlyList<ResourceTableColumn> Columns,
-    IReadOnlyList<ResourceTableRow> Rows,
-    IReadOnlyList<ResourceTableProviderState> ProviderStates,
-    ResourceTableSort Sort,
-    string ViewMode);
-
-public sealed record ResourceTableDatasetInput(
-    string DatasetId,
-    string Status,
-    ulong Generation,
-    long StateRevision,
-    DateTimeOffset? CapturedAt,
-    DateTimeOffset? LastAttemptAt,
-    DateTimeOffset? LastSuccessAt,
-    DateTimeOffset? ReadyUntil,
-    string? FailureCode,
-    string? FailureMessage);
-
-public sealed record ResourceTableColumn(
-    /// <summary>列的标识；表头措辞由前端按 id 出，后端不发措辞。</summary>
-    string Id,
-    string Unit,
-    bool Visible,
-    bool Sortable,
-    double Width);
-
-public sealed record ResourceTableRow(
-    string Id,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? ParentId,
-    int Depth,
-    string Kind,
-    string Name,
-    string Status,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? SoftwareId,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    int? ProcessId,
-    int ProcessCount,
-    double ImpactScore,
-    IReadOnlyDictionary<string, ResourceTableValue> Values,
-    [property: JsonIgnore]
-    IReadOnlyDictionary<string, double> SortKeys)
-{
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? SoftwareName { get; init; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<int>? ProcessIds { get; init; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? ProcessNames { get; init; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? ExecutablePaths { get; init; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? ProcessStartKey { get; init; }
-}
-
-public sealed record ResourceTableValue(
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    double? Value,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    double? Percent,
-    // 文本单元（进程号、用户、架构）用这里的文本；数值单元留空，
-    // 由前端按 Unit 和 Value 自己格式化。
-    string DisplayValue,
-    string Unit,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? Availability,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    double? HeatPercent = null,
-    [property: JsonIgnore]
-    string AttributionKind = "direct")
-{
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public double? SharedValue { get; init; }
-}
-
-public sealed record ResourceTableProviderState(
-    string Id,
-    string State,
-    string Message);
-
-public sealed record ResourceTableSort(
-    string ColumnId,
-    string Direction);
+public sealed record ResourceTableColumn(string Id, string Unit, bool Visible, bool Sortable, double Width);
+public sealed record ResourceTableProviderState(string Id, string State, string Message);

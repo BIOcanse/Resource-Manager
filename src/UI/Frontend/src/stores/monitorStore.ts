@@ -3,6 +3,7 @@ import type { Accessor } from "solid-js";
 import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourcePerformancePanel";
+import { createResourceFactsProjection, resourceTableMetricId } from "../features/resourceTable/resourceFacts.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import type {
@@ -319,8 +320,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
-  const resourceTableSnapshot = createMemo(() => tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
-    ? tableSourceSnapshot()?.source.data?.table ?? null : null);
+  const resourceTableQueryKey = createMemo(() => JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery())));
+  const resourceTableFacts = createMemo(() => tableSourceSnapshot()?.queryKey === resourceTableQueryKey()
+    ? tableSourceSnapshot()?.source.data?.facts ?? null : null);
+  const resourceTableSnapshot = createResourceFactsProjection(resourceTableFacts,
+    activeResourceTableColumns, resourceTableMode, resourceTableSort);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
   const resourceTableObservation = createMemo(() => tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
     ? pushObservation(tableSourceSnapshot()?.source ?? null) : loadingObservation());
@@ -472,22 +476,17 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }
 
   function createResourceTableQuery(): ResourceMonitorQuery {
-    const useCompiledTable = options.smartMonitoringEnabled()
-      && !resourceTableEditing();
-    const sort = resourceTableSort();
     return {
       scope: "table",
       bars: [],
-      sampleMetricIds: [],
-      visibleColumnIds: useCompiledTable
-        ? null
-        : activeResourceTableColumns()
-          .filter((column) => column.visible)
-          .map((column) => column.id),
-      sortColumnId: sort.columnId,
-      sortDirection: sort.direction,
+      // Configured facts keep identities and impact stable when a column is hidden.
+      sampleMetricIds: [...new Set(normalizeResourceTableColumns(activeResourceTableColumns(), catalog(), resourceTableMode())
+        .map(column => resourceTableMetricId(column.id)).filter((id): id is string => id !== null))],
+      visibleColumnIds: [],
+      sortColumnId: "",
+      sortDirection: "desc",
       processDetailSoftwareIds: [],
-      tableMode: resourceTableMode()
+      tableMode: "software"
     };
   }
 

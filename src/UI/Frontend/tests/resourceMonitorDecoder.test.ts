@@ -41,8 +41,6 @@ import {
   wire.breakdown.capturedAt = null;
   wire.breakdown.bars = [];
   wire.breakdown.softwareCatalog = [];
-  wire.table.capturedAt = null;
-  wire.table.rows = [];
   const decoded = decodeResourceMonitorWireSnapshot(wire);
   assert.equal(decoded.table.capturedAt, undefined);
   assert.equal(decoded.capturedAt, undefined);
@@ -50,7 +48,7 @@ import {
 
 {
   const wire = readyResourceMonitorWire();
-  wire.table = null as never;
+  wire.breakdown = null as never;
   assert.throws(
     () => decodeResourceMonitorWireSnapshot(wire),
     ResponseDecodeError);
@@ -58,11 +56,9 @@ import {
 
 {
   const wire = readyResourceMonitorWire();
-  const tableCapturedAt = "2026-08-22T15:20:25.000Z";
-  wire.table.capturedAt = tableCapturedAt;
   const decoded = decodeResourceMonitorWireSnapshot(wire);
   assert.equal(decoded.capturedAt, capturedAt);
-  assert.equal(decoded.table.capturedAt, tableCapturedAt);
+  assert.equal(decoded.table.capturedAt, capturedAt);
 }
 
 {
