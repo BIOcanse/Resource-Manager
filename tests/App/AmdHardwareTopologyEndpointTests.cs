@@ -25,6 +25,7 @@ public sealed class AmdHardwareTopologyEndpointTests
         await using var app = await StartAsync(fixture.Reader);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services
             .GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using (var empty = await client.GetFromJsonAsync<JsonDocument>("/api/cpu/topology/fields", timeout.Token))
             Assert.Empty(empty!.RootElement.GetProperty("devices").EnumerateArray());
@@ -97,6 +98,7 @@ public sealed class AmdHardwareTopologyEndpointTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.Services.RemoveAll<IHostedService>();
         builder.Services.AddSingleton(reader);
         var app = builder.Build();

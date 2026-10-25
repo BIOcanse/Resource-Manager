@@ -73,6 +73,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         await using var app = await StartHttpAsync(sampler, fixture.Catalog, fixture.Slots.Provider, core, ended, timeout.Token);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses)), Timeout = Timeout.InfiniteTimeSpan };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         await sampler.StartAsync(timeout.Token);
         try
         {

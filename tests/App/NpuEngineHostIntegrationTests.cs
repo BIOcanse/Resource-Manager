@@ -74,6 +74,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         await using var app = await StartHttpAsync(sampler, dashboard, slots.Provider, core, ended, timeout.Token);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses)), Timeout = Timeout.InfiniteTimeSpan };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
             Assert.All(Assert.Single(initial.RootElement.EnumerateArray()).GetProperty("fields").EnumerateArray(), static field =>
                 Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));

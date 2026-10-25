@@ -33,6 +33,7 @@ public sealed class PerformanceOverlaySubscriptionTests
         var resourceSource = new ResourceSource();
         var metricSource = new MetricSource();
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var settings = new SettingsStore();
         builder.Services.AddSingleton<IPerformanceOverlaySettingsStore>(settings);
@@ -50,6 +51,7 @@ public sealed class PerformanceOverlaySubscriptionTests
             BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses))
         };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         {

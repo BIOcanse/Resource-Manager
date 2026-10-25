@@ -65,37 +65,33 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     [Theory]
     [InlineData("GET", "/api/health", "Anonymous", "")]
     [InlineData("GET", "/api/public/v1/capabilities", "Anonymous", "")]
-    [InlineData("GET", "/api/metrics/subscribe", "Protected", "metrics.read")]
-    [InlineData("HEAD", "/api/metrics/subscribe", "Protected", "metrics.read")]
-    [InlineData("POST", "/api/metrics/reset", "Protected", "machine.write")]
-    [InlineData("GET", "/api/resource-monitor/processes", "Protected", "processes.read")]
-    [InlineData("HEAD", "/api/resource-breakdown/processes", "Protected", "processes.read")]
-    [InlineData("GET", "/api/resource-table/processes", "Protected", "processes.read")]
-    [InlineData("POST", "/api/resource-monitor/action", "Protected", "machine.write")]
+    [InlineData("GET", "/api/metrics/snapshot", "Protected", "metrics.read")]
+    [InlineData("HEAD", "/api/metrics/snapshot", "Protected", "metrics.read")]
+    [InlineData("GET", "/api/resource-monitor/snapshot", "Protected", "processes.read")]
+    [InlineData("HEAD", "/api/resource-breakdown/snapshot", "Protected", "processes.read")]
+    [InlineData("GET", "/api/resource-facts/snapshot", "Protected", "processes.read")]
     [InlineData("POST", "/api/device-topology/nvidia-drs/fields/read", "Protected", "read")]
     [InlineData("POST", "/api/disk-usage/scan", "Protected", "read")]
-    [InlineData("POST", "/api/components/counter/verify", "Protected", "read")]
-    [InlineData("POST", "/api/public/v1/sqlite/databases/default/query", "Protected", "read")]
+    [InlineData("POST", "/api/components/{id}/verify", "Protected", "read")]
+    [InlineData("POST", "/api/public/v1/sqlite/databases/{databaseId}/query", "Protected", "read")]
     [InlineData("GET", "/api/cpu/residency", "Protected", "processes.read")]
     [InlineData("GET", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
     [InlineData("POST", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
-    [InlineData("POST", "/api/operations/opaque-id/cancel", "Protected", "session")]
+    [InlineData("POST", "/api/operations/{id}/cancel", "Protected", "session")]
     [InlineData("POST", "/api/optimization/reports/refresh", "Protected", "processes.read")]
     [InlineData("POST", "/api/gpu-placement/process-history/observe", "Protected", "gpu.report")]
     [InlineData("GET", "/api/targeted-recordings", "Protected", "processes.read")]
     [InlineData("HEAD", "/api/targeted-recordings", "Protected", "processes.read")]
     [InlineData("POST", "/api/targeted-recordings", "Protected", "session")]
-    [InlineData("DELETE", "/api/targeted-recordings/recording-id", "Protected", "session")]
-    [InlineData("PUT", "/api/targeted-recordings/recording-id", "Protected", "machine.write")]
-    [InlineData("GET", "/api/performance-overlay/software/example", "Protected", "metrics.read")]
-    [InlineData("HEAD", "/api/performance-overlay/software/example", "Protected", "metrics.read")]
-    [InlineData("POST", "/api/performance-overlay/software/example", "Protected", "machine.write")]
-    [InlineData("GET", "/api/system/search-online", "Protected", "session")]
-    [InlineData("POST", "/api/access-requests/opaque/approve", "Protected", "keys.manage")]
-    [InlineData("POST", "/api/access-requests/opaque/deny", "Protected", "keys.manage")]
-    [InlineData("GET", "/api/arbitrary-read", "Protected", "read")]
-    [InlineData("HEAD", "/api/arbitrary-read", "Protected", "read")]
-    [InlineData("POST", "/api/arbitrary-write", "Protected", "machine.write")]
+    [InlineData("DELETE", "/api/targeted-recordings/{id}", "Protected", "session")]
+    [InlineData("GET", "/api/performance-overlay/software/{softwareId}", "Protected", "metrics.read")]
+    [InlineData("HEAD", "/api/performance-overlay/software/{softwareId}", "Protected", "metrics.read")]
+    [InlineData("POST", "/api/system/search-online", "Protected", "session")]
+    [InlineData("POST", "/api/access-requests/{requestId}/approve", "Protected", "keys.manage")]
+    [InlineData("POST", "/api/access-requests/{requestId}/deny", "Protected", "keys.manage")]
+    [InlineData("GET", "/api/settings/app", "Protected", "read")]
+    [InlineData("HEAD", "/api/settings/app", "Protected", "read")]
+    [InlineData("POST", "/api/settings/app/reapply", "Protected", "machine.write")]
     public void HttpRoutesHaveExplicitAccessRequirements(
         string method,
         string path,
@@ -117,15 +113,40 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     }
 
     [Fact]
-    public void MutatingMetricRoutesDoNotReceiveReadScope()
+    public void UnregisteredMetricMutationsHaveNoInferredPolicy()
     {
         var context = new DefaultHttpContext();
         context.Request.Method = "POST";
         context.Request.Path = "/api/metrics/reset";
 
         Assert.Equal(
-            [AccessKeyScopes.MachineWrite],
-            TrustedAccessHttpPolicy.GetRequirement(context.Request).RequiredScopes);
+            TrustedAccessHttpAuthorizationMode.MissingPolicy,
+            TrustedAccessHttpPolicy.GetRequirement(context.Request).Mode);
+    }
+
+    [Fact]
+    public async Task AnUnclassifiedApiRouteFailsClosedBeforeCallingItsHandler()
+    {
+        var context = MethodRequest("GET", "/api/resource-facts/new-unclassified-operation", "GET");
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("localhost", 9321);
+        context.Connection.LocalPort = 9321;
+        context.Connection.LocalIpAddress = System.Net.IPAddress.Loopback;
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback;
+        context.Response.Body = new MemoryStream();
+        var invoked = false;
+        var middleware = new LoopbackApiAuthenticationMiddleware(_ =>
+        {
+            invoked = true;
+            return Task.CompletedTask;
+        }, new TestAdministratorReader(isAdministrator: true));
+
+        await middleware.InvokeAsync(context, new TestKeyService(Key(AccessKeyScopes.Default)));
+
+        Assert.False(invoked);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        Assert.Contains("access-policy-missing", await new StreamReader(context.Response.Body).ReadToEndAsync());
     }
 
     [Fact]
@@ -136,7 +157,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
         context.Request.Path = "/api/components/open-path-injection/install";
         var endpoint = new RouteEndpointBuilder(
             _ => Task.CompletedTask,
-            RoutePatternFactory.Parse("/api/components/{componentId}/install"),
+            RoutePatternFactory.Parse("/api/components/{id}/install"),
             0);
         endpoint.Metadata.Add(new HttpMethodMetadata(["POST"]));
         context.SetEndpoint(endpoint.Build());
@@ -148,7 +169,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/example")]
+    [InlineData("/api/performance-overlay/software/{softwareId}")]
     public async Task InjectionConfigMutationsRequireBothScopesEvenForAdministratorKeys(string path)
     {
         foreach (var method in MethodVariants("PUT"))
@@ -180,7 +201,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/example")]
+    [InlineData("/api/performance-overlay/software/{softwareId}")]
     public async Task InjectionConfigMutationsNeedAdministratorAndAllowFullyAuthorizedKey(string path)
     {
         var context = RequestWithKey("valid-key");
@@ -205,7 +226,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/example")]
+    [InlineData("/api/performance-overlay/software/{softwareId}")]
     public async Task InjectionConfigMutationsRemainDeniedWithoutAdministrator(string path)
     {
         var context = RequestWithKey("valid-key");
@@ -338,7 +359,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     public void AccessRequestCreateAndWaitMustBeKeyless()
     {
         foreach (var method in MethodVariants("POST"))
-        foreach (var path in new[] { "/api/access-requests", "/api/access-requests/opaque/wait" })
+        foreach (var path in new[] { "/api/access-requests", "/api/access-requests/{requestId}/wait" })
         foreach (var matchedEndpoint in new[] { false, true })
             Assert.True(TrustedAccessHttpPolicy.GetRequirement(
                 MethodRequest(method, path, matchedEndpoint ? "POST" : null).Request).RequireKeyless);
@@ -416,6 +437,9 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
         public Task InitializeAsync(bool recover, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public ValueTask<bool> ValidateCredentialAsync(string credentialId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(Key?.Id == credentialId);
 
         public CancellationToken GetRevocationToken(string credentialId)
             => CancellationToken.None;

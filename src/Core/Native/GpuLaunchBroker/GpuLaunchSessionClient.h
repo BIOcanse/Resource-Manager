@@ -223,7 +223,7 @@ inline bool ReadDefaultKey(const std::wstring& packageRoot, std::string& key)
     if (!NoReparseComponents(filePath, false)) return false;
 
     Handle file(CreateFileW(filePath.c_str(), GENERIC_READ | READ_CONTROL,
-        FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
         FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
     if (!file.valid()) return false;
     BY_HANDLE_FILE_INFORMATION info{};

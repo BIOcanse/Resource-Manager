@@ -248,6 +248,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var request=MetricDeviceFields.CreateRequest(dashboard.Current!,device,Names);
         await using var app=await StartHttpAsync(sampler,dashboard);
         using var client=new HttpClient { BaseAddress=new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query="?device="+Uri.EscapeDataString(device)+"&fields="+string.Join(',',Names);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Null(Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
@@ -302,6 +303,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         TaskCompletionSource? streamCompleted = null)
     {
         var builder=WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.Services.AddSingleton(catalog); builder.Services.AddSingleton<IMetricSampler>(sampler); builder.Services.AddSingleton<IMetricSnapshotPushSource>(sampler);
         var app=builder.Build();
         if (streamCompleted is not null)

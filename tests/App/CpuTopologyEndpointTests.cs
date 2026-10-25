@@ -193,6 +193,7 @@ public sealed class CpuTopologyEndpointTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.Services.RemoveAll<IHostedService>();
         builder.Services.AddSingleton(reader);
         var app = builder.Build();
@@ -206,10 +207,10 @@ public sealed class CpuTopologyEndpointTests
     }
 
     private static HttpClient CreateClient(WebApplication app)
-        => new()
+        => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient()
         {
             BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses)),
             Timeout = CpuTopologyProviderTestFixture.Deadline
-        };
+        }, app.Services);
 }

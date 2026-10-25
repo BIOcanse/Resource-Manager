@@ -99,6 +99,7 @@ public sealed partial class IntelGpuInformationCollectorTests
             => Assert.Single(MetricDeviceFields.Read(snapshot, device, ClockNames.ToHashSet())).Fields.ToDictionary(field => field.Name);
         await using var app = await StartIntelHttpAsync(sampler, dashboard);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + string.Join(',', ClockNames);
         Assert.All(Fields(await sampler.GetSnapshotAsync(request, timeout.Token)).Values, field => Assert.Null(field.NumericValue));

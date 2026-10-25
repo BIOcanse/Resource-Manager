@@ -122,6 +122,7 @@ public sealed class StartupCapabilityEndpointMapTests
         StartupCapabilitySet startupCapabilities)
     {
         var builder = WebApplication.CreateBuilder();
+        LoopbackApiPipelineConfigurator.CompileForCurrentProcess().ConfigureServices(builder.Services);
         builder.Services.AddResourceManagerApp(
             ["--no-native-ui"],
             startupCapabilities);

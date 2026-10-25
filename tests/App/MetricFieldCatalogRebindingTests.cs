@@ -50,6 +50,7 @@ public sealed class MetricFieldCatalogRebindingTests
             catalog.PublishCatalogProbe(snapshot);
         }
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
@@ -59,6 +60,7 @@ public sealed class MetricFieldCatalogRebindingTests
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         try
         {

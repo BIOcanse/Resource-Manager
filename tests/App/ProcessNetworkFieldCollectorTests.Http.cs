@@ -102,6 +102,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     internal static async Task<WebApplication> StartAsync(Fixture fixture)
     {
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "processes.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IResourceBreakdownSampler>(fixture.Sampler);
@@ -115,9 +116,9 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         return app;
     }
 
-    internal static HttpClient Client(WebApplication app) => new(new SocketsHttpHandler { MaxResponseDrainSize = 0 })
+    internal static HttpClient Client(WebApplication app) => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient(new SocketsHttpHandler { MaxResponseDrainSize = 0 })
     { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
-        Timeout = TimeSpan.FromSeconds(15) };
+        Timeout = TimeSpan.FromSeconds(15) }, app.Services);
 
 
 }

@@ -60,6 +60,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         app.MapDependencyEndpoints(startupCapabilities);
         app.MapDeviceTopologyEndpoints();
+        app.Map("/api/{**unmatchedPath}", () => Results.NotFound(new EndpointErrorPayload("api-endpoint-not-found")));
         return app;
     }
 }

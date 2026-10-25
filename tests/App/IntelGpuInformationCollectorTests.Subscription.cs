@@ -67,6 +67,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, Names);
         await using var app = await StartIntelHttpAsync(sampler, dashboard);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + string.Join(',', Names);
         Assert.All(ReadIntelFields(await sampler.GetSnapshotAsync(request, timeout.Token), device).Values, field =>
@@ -144,6 +145,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     private static async Task<WebApplication> StartIntelHttpAsync(WindowsHardwareMetricSampler sampler, HardwareMetricCatalogState catalog)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.Services.AddSingleton(catalog); builder.Services.AddSingleton<IMetricSampler>(sampler); builder.Services.AddSingleton<IMetricSnapshotPushSource>(sampler);
         var app = builder.Build();
         foreach (var name in new[] { "MapMetricFieldEndpoints", "MapSubscriptionChannelEndpoints" })

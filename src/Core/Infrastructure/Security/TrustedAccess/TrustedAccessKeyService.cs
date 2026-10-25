@@ -117,32 +117,35 @@ public sealed class TrustedAccessKeyService(
                 isDefault ? replacement.Id : current.DefaultCredentialId,
                 current.LegacyAiMigrationCompleted);
 
-            if (isDefault)
-            {
-                PublishSnapshot(DisableDefaultSnapshot(current));
-                CancelRevocation(oldCredential.Id);
-                keyFile.WriteAtomic(apiKey);
-            }
+            // File replacement must succeed before changing the credential cache
+            // or its stream tokens. The mutation lease blocks other owners from
+            // authenticating against the intermediate file/database combination.
+            var previousDefaultKey = isDefault ? keyFile.Read() : null;
 
             try
             {
+                if (isDefault) keyFile.WriteAtomic(apiKey);
                 await store.SaveAsync(updated, current.Revision, cancellationToken);
             }
             catch
             {
                 if (isDefault)
                 {
-                    var disabled = DisableDefaultSnapshot(updated);
-                    PublishSnapshot(disabled);
                     try
                     {
-                        keyFile.WriteAtomic(string.Empty);
+                        // The writer can throw after replacement, for example
+                        // during final ACL verification. Avoid a second write if
+                        // it failed before replacement and the original survived.
+                        if (!string.Equals(keyFile.Read(), previousDefaultKey, StringComparison.Ordinal))
+                            keyFile.WriteAtomic(previousDefaultKey!);
                     }
                     catch (Exception rollbackException)
                     {
                         logger?.LogError(
                             rollbackException,
-                            "Trusted access default key file could not be cleared after a failed rotation.");
+                            "Trusted access default key file could not be restored after a failed rotation.");
+                        store.InvalidateRevision();
+                        InvalidateSnapshot();
                     }
                 }
 
@@ -309,7 +312,7 @@ public sealed class TrustedAccessKeyService(
         }
 
         var snapshot = Volatile.Read(ref credentialSnapshot);
-        return snapshot is null
+        return snapshot is null || !store.IsRevisionCurrent(snapshot.State.Revision)
             ? AuthenticateAfterLoadingAsync(purpose, apiKey, cancellationToken)
             : Authenticate(snapshot, purpose, apiKey);
     }
@@ -325,7 +328,7 @@ public sealed class TrustedAccessKeyService(
         Span<byte> hash = stackalloc byte[32];
         SHA256.HashData(bytes, hash);
         return snapshot.Credentials.TryGetValue(
-            CredentialLookup.Create(purpose, hash), out var credential)
+            CredentialLookup.Create(AccessKeyPurposes.Normalize(purpose), hash), out var credential)
             ? credential
             : Task.FromResult<AccessKeySummary?>(null);
     }
@@ -439,10 +442,22 @@ public sealed class TrustedAccessKeyService(
         }
     }
 
+    public ValueTask<bool> ValidateCredentialAsync(string credentialId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var snapshot = Volatile.Read(ref credentialSnapshot);
+        return snapshot is not null && store.IsRevisionCurrent(snapshot.State.Revision)
+            ? ValueTask.FromResult(snapshot.CredentialIds.Contains(credentialId))
+            : ValidateCredentialAfterLoadingAsync(credentialId, cancellationToken);
+    }
+
+    private async ValueTask<bool> ValidateCredentialAfterLoadingAsync(string credentialId, CancellationToken cancellationToken)
+        => (await EnsureLoadedAsync(cancellationToken)).CredentialIds.Contains(credentialId);
+
     private async Task<CredentialSnapshot> EnsureLoadedAsync(CancellationToken cancellationToken)
     {
         var current = Volatile.Read(ref credentialSnapshot);
-        if (current is not null)
+        if (current is not null && store.IsRevisionCurrent(current.State.Revision))
         {
             return current;
         }
@@ -451,7 +466,7 @@ public sealed class TrustedAccessKeyService(
         try
         {
             current = credentialSnapshot;
-            if (current is not null)
+            if (current is not null && store.IsRevisionCurrent(current.State.Revision))
             {
                 return current;
             }
@@ -584,6 +599,7 @@ public sealed class TrustedAccessKeyService(
         }
         catch
         {
+            store.InvalidateRevision();
             InvalidateSnapshot();
             throw;
         }
@@ -674,10 +690,10 @@ public sealed class TrustedAccessKeyService(
             revocationTokens.GetOrAdd(credential.Id, static _ => new CancellationTokenSource());
         }
 
-        var published = new CredentialSnapshot(clonedState, snapshot, Array.AsReadOnly(summaries));
+        var nextIds = clonedState.Keys.Select(static key => key.Id).ToFrozenSet(StringComparer.Ordinal);
+        var published = new CredentialSnapshot(clonedState, snapshot, Array.AsReadOnly(summaries), nextIds);
         Volatile.Write(ref credentialSnapshot, published);
 
-        var nextIds = clonedState.Keys.Select(static key => key.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var removedId in revocationTokens.Keys)
         {
             if (!nextIds.Contains(removedId)) CancelRevocation(removedId);
@@ -817,7 +833,8 @@ public sealed class TrustedAccessKeyService(
     private sealed record CredentialSnapshot(
         TrustedAccessKeyStoreState State,
         FrozenDictionary<CredentialLookup, Task<AccessKeySummary?>> Credentials,
-        IReadOnlyList<AccessKeySummary> Summaries);
+        IReadOnlyList<AccessKeySummary> Summaries,
+        FrozenSet<string> CredentialIds);
 
     private readonly record struct CredentialLookup(string Purpose, ulong A, ulong B, ulong C, ulong D)
     {

@@ -23,5 +23,8 @@ public interface ITrustedAccessKeyService
 
     Task InitializeAsync(bool recover, CancellationToken cancellationToken);
 
+    // Long-lived consumers check the authoritative revision before each delivery.
+    ValueTask<bool> ValidateCredentialAsync(string credentialId, CancellationToken cancellationToken);
+
     CancellationToken GetRevocationToken(string credentialId);
 }

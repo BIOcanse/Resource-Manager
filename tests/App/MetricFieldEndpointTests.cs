@@ -329,6 +329,7 @@ public sealed class MetricFieldEndpointTests
     private static async Task<WebApplication> StartAsync(Source source, HardwareMetricCatalogState catalog)
     {
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton(catalog);
@@ -341,11 +342,11 @@ public sealed class MetricFieldEndpointTests
         return app;
     }
 
-    private static HttpClient CreateClient(WebApplication app) => new()
+    private static HttpClient CreateClient(WebApplication app) => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient()
     {
         BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
         Timeout = TimeSpan.FromSeconds(10)
-    };
+    }, app.Services);
 
     private sealed class Source(HardwareMetricSnapshot? snapshot = null) : IMetricSampler, IMetricSnapshotPushSource
     {

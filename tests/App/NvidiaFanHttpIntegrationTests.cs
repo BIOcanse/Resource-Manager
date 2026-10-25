@@ -95,6 +95,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 .Features.Get<IServerAddressesFeature>()!.Addresses)),
             Timeout = Timeout.InfiniteTimeSpan
         };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query = "?device=" + Uri.EscapeDataString(selectedFan.ExactIdentityKey)
             + "&fields=" + NvidiaFanFixture.Percent + "," + NvidiaFanFixture.Rpm;
         var selection = MetricDeviceFields.CreateRequest(dashboard.Current!, selectedFan.ExactIdentityKey,
@@ -264,6 +265,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         TaskCompletionSource<bool> channelEnded, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton(dashboard);

@@ -23,7 +23,17 @@ public interface ITrustedAccessKeyStore
 
     bool DatabaseExists { get; }
 
-    // The owner holds this across database and default-key file mutations.
+    // Exact shared committed revision; false also covers a mutation in progress.
+    // This is a memory read after the first mutation lease, never a filesystem poll.
+    bool IsRevisionCurrent(string revision);
+
+    // Under the mutation lease, prevent publication after a failed file/database
+    // consistency check. A later successful lock-held reload reconciles it.
+    void InvalidateRevision();
+
+    // The owner holds this across database and default-key file mutations. The
+    // lease marks the shared revision unavailable until a verified Load/commit
+    // supplies its committed revision. Only explicit initialization creates it.
     Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false);
 
     IDisposable SubscribeToChanges(Action<Exception?> changed);

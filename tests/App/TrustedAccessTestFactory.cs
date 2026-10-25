@@ -33,6 +33,14 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
 
     public string PackageRoot { get; } = packageRoot;
 
+    public bool IsRevisionCurrent(string revision)
+    {
+        lock (sync) return state?.Revision == revision;
+    }
+
+    // The in-memory fixture has no separate committed revision publication.
+    public void InvalidateRevision() { }
+
     public async Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false)
     {
         await mutationLock.WaitAsync(cancellationToken);
@@ -59,6 +67,8 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
     }
 
     public Exception? LoadFailure { get; set; }
+
+    public Exception? SaveFailure { get; set; }
 
     public bool SuppressChangeNotifications { get; set; }
 
@@ -131,6 +141,7 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
     public Task SaveAsync(TrustedAccessKeyStoreState updatedState, string expectedRevision, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (SaveFailure is not null) throw SaveFailure;
         lock (sync)
         {
             if (state is null)
@@ -202,6 +213,10 @@ internal sealed class TrustedAccessTestKeyFileAccess : ITrustedAccessKeyFileAcce
 
     public Exception? WriteFailure { get; set; }
 
+    public Exception? WriteAfterReplacementFailureOnce { get; set; }
+
+    public Exception? SubsequentWriteFailure { get; set; }
+
     public string? Read()
     {
         if (ReadFailure is not null)
@@ -220,5 +235,11 @@ internal sealed class TrustedAccessTestKeyFileAccess : ITrustedAccessKeyFileAcce
         }
 
         Value = key;
+        if (WriteAfterReplacementFailureOnce is { } failure)
+        {
+            WriteAfterReplacementFailureOnce = null;
+            WriteFailure = SubsequentWriteFailure;
+            throw failure;
+        }
     }
 }

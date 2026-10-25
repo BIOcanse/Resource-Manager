@@ -117,6 +117,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             await using var app = await StartHttpAsync(sampler, dashboard, slots.Provider, core, ended, timeout.Token);
             using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses)) };
+            TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
             try
             {
                 var query = "?device=" + Uri.EscapeDataString(identity) + "&fields=" + name;

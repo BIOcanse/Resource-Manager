@@ -163,6 +163,25 @@ public sealed class SubscriptionChannelContractTests
     }
 
     [Fact]
+    public void ResourceFactsAndRejectionFramesUseProductionJsonMetadata()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        using var facts = JsonDocument.Parse(JsonSerializer.Serialize(
+            new FrontendSubscriptionChannelFrame<ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>(
+                "facts", ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot.Empty), options));
+        Assert.Equal("facts", facts.RootElement.GetProperty("subscriptionId").GetString());
+        Assert.Equal(1, facts.RootElement.GetProperty("value").GetProperty("version").GetInt32());
+        Assert.Empty(facts.RootElement.GetProperty("value").GetProperty("processes").EnumerateArray());
+        using var rejection = JsonDocument.Parse(JsonSerializer.Serialize(
+            new FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>(
+                "unknown", new(400, "unsupported-subscription-selector")), options));
+        Assert.Equal("unknown", rejection.RootElement.GetProperty("subscriptionId").GetString());
+        Assert.Equal(400, rejection.RootElement.GetProperty("value").GetProperty("statusCode").GetInt32());
+        Assert.Equal("unsupported-subscription-selector", rejection.RootElement.GetProperty("value").GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task FailedLogicalCallbackClosesStreamSoExistingClientCanReconnect()
     {
         using var cancellation = new CancellationTokenSource();
@@ -177,6 +196,22 @@ public sealed class SubscriptionChannelContractTests
             subscription, writer, cancellation, NullLogger.Instance, "fixture").WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(cancellation.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task CredentialIsCheckedBeforeEveryFrameAndRevocationDisclosesNoFurtherValue()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var checks = 0;
+        using var writer = new ResourceManagerEndpointRouteBuilderExtensions.FrontendSubscriptionChannelWriter(
+            context.Response, WebJson, _ => ValueTask.FromResult(++checks == 1));
+        await writer.WriteAsync("facts", new { value = 1 }, CancellationToken.None);
+        var committedLength = context.Response.Body.Length;
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await writer.WriteAsync("facts", new { value = 2 }, CancellationToken.None));
+        Assert.Equal(2, checks);
+        Assert.Equal(committedLength, context.Response.Body.Length);
     }
 }
 
@@ -507,6 +542,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
+        global::Resource_Manager_APP.Tests.TrustedAccessEndpointTestAuthentication.Add(builder.Services, "processes.read");
         builder.Services.AddSingleton<IResourceBreakdownSampler>(source);
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(source);
         builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(source);
@@ -528,7 +564,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
     }
 
     private static HttpClient Client(WebApplication app)
-        => new()
+        => global::Resource_Manager_APP.Tests.TrustedAccessEndpointTestAuthentication.Apply(new HttpClient()
         {
             BaseAddress = new Uri(Assert.Single(app.Services
                 .GetRequiredService<IServer>()
@@ -536,7 +572,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
                 .Get<IServerAddressesFeature>()!
                 .Addresses)),
             Timeout = TimeSpan.FromSeconds(15)
-        };
+        }, app.Services);
 
     private sealed class DefaultRuntimePlanProvider : IRuntimePlanProvider
     {

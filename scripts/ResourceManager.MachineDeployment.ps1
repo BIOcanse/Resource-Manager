@@ -358,7 +358,10 @@ function Get-ResourceManagerMachineInstallRollbackMode {
     if ($HadExistingInstallation -and -not $PromotedNewInstallation) {
         return 'RestoreExistingInPlace'
     }
-    return 'RemoveNewInstallation'
+    if ($PromotedNewInstallation) {
+        return 'RemoveNewInstallation'
+    }
+    return 'NoMachineMutation'
 }
 
 function Get-ResourceManagerTreeFiles {
@@ -827,12 +830,12 @@ function Invoke-ResourceManagerMachineInstallCore {
         Set-ResourceManagerInstallAcl -InstallRoot $staging
 
         Assert-ResourceManagerFreshInstallTarget -InstallRoot $install
-        $machineMutationStarted = $true
-        Stop-ResourceManagerMachineService -ServiceName $Plan.ServiceName
         # Directory.Move refuses a target that appears after the vacancy check;
         # never replace an existing data/security root with this fresh image.
         [System.IO.Directory]::Move($staging, $install)
         $promoted = $true
+        $machineMutationStarted = $true
+        Stop-ResourceManagerMachineService -ServiceName $Plan.ServiceName
 
         $null = Invoke-ResourceManagerNativeCommand `
             -FilePath $Plan.BackendPath `

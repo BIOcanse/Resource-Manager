@@ -61,7 +61,6 @@ app.UseDefaultFiles();
 app.UseStaticFiles(FrontendStaticFiles.Options);
 
 app.MapResourceManagerEndpoints(loopbackApiPipeline.Mode, startupCapabilities);
-app.Map("/api/{**unmatchedPath}", () => Results.NotFound(new ResourceManagerEndpointRouteBuilderExtensions.EndpointErrorPayload("api-endpoint-not-found")));
 
 static string ResolveContentRootPath()
 {

@@ -77,6 +77,13 @@ foreach ($case in @(
 
 . (Join-Path $repository 'scripts\ResourceManager.MachineDeployment.ps1')
 
+# A fresh installer that promoted nothing never owns shared registrations,
+# even if a caller already marked machine mutation as started.
+Assert-Contract ((Get-ResourceManagerMachineInstallRollbackMode `
+    -MachineMutationStarted $true -HadExistingInstallation $false `
+    -HadPreviousBackup $false -PromotedNewInstallation $false) -ceq 'NoMachineMutation') `
+    'A fresh install without promotion selected destructive machine rollback.'
+
 # Verify the existing checked command runner's fail-closed exit-code contract.
 function Invoke-FixtureAdministration { $global:LASTEXITCODE = 13 }
 $rejected = $false
@@ -102,9 +109,11 @@ function Set-ResourceManagerMachineRegistry { $script:calls.Add('registry') }
 function Remove-ResourceManagerLegacyStartup { $script:calls.Add('legacy') }
 function Remove-ResourceManagerMachineServiceRegistration { $script:calls.Add('remove-service') }
 function Remove-ResourceManagerOwnedDirectory { }
+$script:registryCleanupCalls = [Collections.Generic.List[string]]::new()
 function Remove-Item {
     param($LiteralPath, [switch]$Recurse, [switch]$Force, $ErrorAction)
     Assert-Contract ($LiteralPath.StartsWith('FixtureRegistry:')) 'Unexpected cleanup mutation in mock test.'
+    $script:registryCleanupCalls.Add($LiteralPath)
 }
 function Invoke-ResourceManagerNativeCommand {
     param($FilePath, $Arguments)
@@ -193,4 +202,40 @@ Assert-Contract $rejected 'A destination arriving during staging was replaced.'
 Assert-Contract ($script:calls.Count -eq 0) 'A destination arriving during staging triggered service/key operations.'
 Assert-Contract ([IO.File]::ReadAllText((Join-Path $raceInstall 'existing-marker')) -ceq 'existing-data') `
     'The destination arriving during staging was changed.'
-Write-Output 'PASS: authenticated headers, empty-key rejection, initializer failure/order, and existing-install rejection preserving enabled/disabled keys and legacy AI input.'
+
+# Reproduce the narrower race: the real final vacancy check passes, then a
+# competitor creates its root and synthetic service/registry registration before
+# the production Directory.Move. No real service or registry operation is used.
+function Set-ResourceManagerInstallAcl { }
+$script:freshTargetCheck = ${function:Assert-ResourceManagerFreshInstallTarget}
+$script:freshTargetChecks = 0
+$script:competitorRegistration = @{}
+function Assert-ResourceManagerFreshInstallTarget {
+    param([string]$InstallRoot)
+    & $script:freshTargetCheck -InstallRoot $InstallRoot
+    $script:freshTargetChecks++
+    if ($script:freshTargetChecks -eq 2) {
+        [void][IO.Directory]::CreateDirectory($InstallRoot)
+        [IO.File]::WriteAllText((Join-Path $InstallRoot 'competitor-marker'), 'competitor-data')
+        $script:competitorRegistration.Service = 'competitor-service'
+        $script:competitorRegistration.Registry = 'competitor-product-registration'
+    }
+}
+$raceInstall = Join-Path $TestRoot 'arrived-after-final-vacancy-check'
+$plan.InstallRoot = $raceInstall
+$script:calls.Clear()
+$script:registryCleanupCalls.Clear()
+$rejected = $false
+try { $null = Invoke-ResourceManagerMachineInstallCore -Plan $plan } catch {
+    $rejected = $_.Exception.InnerException -is [IO.IOException]
+}
+Assert-Contract ($script:freshTargetChecks -eq 2) 'The race did not reach the final successful vacancy check.'
+Assert-Contract $rejected 'Directory.Move did not reject the competing installation.'
+Assert-Contract ($script:calls.Count -eq 0) 'Failed promotion stopped or removed the competing service.'
+Assert-Contract ($script:registryCleanupCalls.Count -eq 0) 'Failed promotion removed competing registry registration.'
+Assert-Contract ($script:competitorRegistration.Service -ceq 'competitor-service' -and
+    $script:competitorRegistration.Registry -ceq 'competitor-product-registration') `
+    'Failed promotion changed the competing registration.'
+Assert-Contract ([IO.File]::ReadAllText((Join-Path $raceInstall 'competitor-marker')) -ceq 'competitor-data') `
+    'Failed promotion changed the competing installation files.'
+Write-Output 'PASS: authenticated headers, empty-key rejection, initializer failure/order, existing-install rejection preserving enabled/disabled keys and legacy AI input, and post-vacancy promotion race with zero competing-service/registry cleanup.'

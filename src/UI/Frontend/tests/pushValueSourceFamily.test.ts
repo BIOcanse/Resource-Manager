@@ -142,6 +142,26 @@ const flush = async () => {
     assert.equal(failures.at(-1)?.data, null, "A decoder failure replaces the affected current value");
     assert.equal(stream.signal.aborted, false);
     assert.equal(harness.streams.length, 1, "A logical decoder must not reconnect the shared stream");
+    for (const rejection of [
+      { statusCode: 400, error: "unsupported-subscription-selector" },
+      { statusCode: 503, error: "access-policy-missing" }
+    ]) {
+      const siblingValue = `after-${rejection.statusCode}`;
+      const failureCount = failures.length;
+      stream.controller.enqueue(new TextEncoder().encode([
+        JSON.stringify({ subscriptionId: firstId, value: rejection }),
+        JSON.stringify({ subscriptionId: secondId, value: { displayValue: siblingValue } }),
+        ""
+      ].join("\n")));
+      await flush();
+      assert.equal(failures.length, failureCount + 1, "Each rejection publishes only its affected source result");
+      assert.equal(failures.at(-1)?.status, "error", "A rejected selector affects its own source");
+      assert.equal(failures.at(-1)?.data, null);
+      assert.deepEqual(first, [], "A rejection frame cannot become a current source value");
+      assert.equal(second.at(-1), siblingValue, "A rejected selector must not discard its sibling's frame");
+      assert.equal(stream.signal.aborted, false, "A rejected selector must not abort the shared stream");
+      assert.equal(harness.streams.length, 1, "A rejected selector must not reconnect the shared stream");
+    }
     publish(stream, firstId, { displayValue: "recovered" });
     await flush();
     assert.deepEqual(first, ["recovered"]);

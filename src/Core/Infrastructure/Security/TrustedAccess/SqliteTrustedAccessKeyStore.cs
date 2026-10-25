@@ -6,12 +6,14 @@ using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace ResourceManager.App.Infrastructure.Security.TrustedAccess;
 
-public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
+public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDisposable
 {
     private const int SchemaVersion = 2;
     private const int MaximumCredentialCount = 10000;
     private readonly ITrustedAccessStorageFileBoundary fileBoundary;
     private readonly string connectionString;
+    private TrustedAccessStoreRevision? sharedRevision;
+    private MutationLease? activeLease;
 
     public SqliteTrustedAccessKeyStore(IHostEnvironment environment)
         : this(
@@ -50,6 +52,10 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
 
     public bool DatabaseExists => fileBoundary.Exists(DatabasePath);
 
+    public bool IsRevisionCurrent(string revision) => sharedRevision?.IsCurrent(revision) == true;
+
+    public void InvalidateRevision() => RequireMutationLease().CommittedRevision = null;
+
     public async Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false)
     {
         if (ensureInitialized) fileBoundary.EnsureSecurityDirectory(PackageRoot);
@@ -76,7 +82,19 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                return new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                var file = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                try
+                {
+                    EnsureSharedRevision(ensureInitialized);
+                    sharedRevision!.BeginChange();
+                    activeLease = new MutationLease(this, file);
+                    return activeLease;
+                }
+                catch
+                {
+                    file.Dispose();
+                    throw;
+                }
             }
             catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33
                 && Environment.TickCount64 < deadline)
@@ -107,6 +125,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
             defaultCredentialId,
             legacyAiMigrationCompleted) { Revision = revision };
         ValidateState(result);
+        if (activeLease is not null) activeLease.CommittedRevision = result.Revision;
         return result;
     }
 
@@ -115,6 +134,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
         CancellationToken cancellationToken)
     {
         ValidateState(initialState);
+        RequireMutationLease().CommittedRevision = null;
         fileBoundary.EnsureSecurityDirectory(PackageRoot);
         fileBoundary.VerifySecurityDirectory(PackageRoot);
         if (DatabaseExists)
@@ -132,6 +152,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
 
         fileBoundary.CreatePrivateFile(DatabasePath);
         await CreateSchemaAndWriteStateAsync(initialState, cancellationToken);
+        RequireMutationLease().CommittedRevision = initialState.Revision;
     }
 
     public async Task SaveAsync(
@@ -142,6 +163,8 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
         ValidateState(state);
         if (state.Revision == expectedRevision)
             throw new InvalidOperationException("A trusted access update must publish a new revision.");
+        var lease = RequireMutationLease();
+        lease.CommittedRevision = null;
         await using var connection = await OpenExistingConnectionAsync(cancellationToken);
         await VerifyIntegrityAsync(connection, cancellationToken);
         await VerifySchemaAsync(connection, cancellationToken);
@@ -164,6 +187,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
         await InsertStateAsync(connection, transaction, state, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await VerifyIntegrityAsync(connection, cancellationToken);
+        lease.CommittedRevision = state.Revision;
     }
 
     public async Task RecoverAsync(
@@ -171,6 +195,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
         CancellationToken cancellationToken)
     {
         ValidateState(initialState);
+        RequireMutationLease().CommittedRevision = null;
         fileBoundary.EnsureSecurityDirectory(PackageRoot);
         fileBoundary.VerifySecurityDirectory(PackageRoot);
         foreach (var familyPath in GetDatabaseFamilyPaths())
@@ -179,6 +204,51 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore
         }
 
         await InitializeAsync(initialState, cancellationToken);
+    }
+
+    private void EnsureSharedRevision(bool initialize)
+    {
+        var path = DatabasePath + ".revision";
+        if (!fileBoundary.Exists(path))
+        {
+            if (!initialize)
+                throw new FileNotFoundException("Trusted access storage requires explicit administrator initialization of its revision file.", path);
+            fileBoundary.CreatePrivateFile(path);
+        }
+        fileBoundary.VerifyPrivateFile(path);
+        sharedRevision ??= new TrustedAccessStoreRevision(path, initialize);
+    }
+
+    private MutationLease RequireMutationLease() => activeLease
+        ?? throw new InvalidOperationException("Trusted access persistence requires its mutation lease.");
+
+    public void Dispose()
+    {
+        if (activeLease is not null)
+            throw new InvalidOperationException("Trusted access storage cannot be disposed during a mutation.");
+        sharedRevision?.Dispose();
+        sharedRevision = null;
+    }
+
+    private sealed class MutationLease(SqliteTrustedAccessKeyStore owner, FileStream file) : IDisposable
+    {
+        private FileStream? heldFile = file;
+        internal string? CommittedRevision { get; set; }
+
+        public void Dispose()
+        {
+            var leaseFile = Interlocked.Exchange(ref heldFile, null);
+            if (leaseFile is null) return;
+            try
+            {
+                if (CommittedRevision is not null) owner.sharedRevision!.Publish(CommittedRevision);
+            }
+            finally
+            {
+                owner.activeLease = null;
+                leaseFile.Dispose();
+            }
+        }
     }
 
     public async Task<IReadOnlyList<StoredTrustedAccessKey>> ReadLegacyAiCredentialsAsync(

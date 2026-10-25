@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -92,7 +93,7 @@ internal sealed class FrontendLoopbackProxy(
         if (context.Connection.RemoteIpAddress is not { } remote || !IPAddress.IsLoopback(remote)
             || request.Host.Value != origin.Authority
             || !request.Headers.TryGetValue(CapabilityHeader, out var supplied)
-            || supplied.Count != 1 || supplied[0] != capability
+            || supplied.Count != 1 || !MatchesCapability(supplied[0])
             || request.Headers.TryGetValue("Origin", out var origins)
                 && (origins.Count != 1 || origins[0] != origin.GetLeftPart(UriPartial.Authority)))
         {
@@ -140,14 +141,7 @@ internal sealed class FrontendLoopbackProxy(
                 if (!excludedResponse.Contains(header.Key)) context.Response.Headers[header.Key] = header.Value.ToArray();
             await using var content = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             await context.Response.StartAsync(token).ConfigureAwait(false);
-            var buffer = new byte[16 * 1024];
-            while (true)
-            {
-                var read = await content.ReadAsync(buffer, token).ConfigureAwait(false);
-                if (read == 0) break;
-                await context.Response.Body.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
-                await context.Response.Body.FlushAsync(token).ConfigureAwait(false);
-            }
+            await CopyStreamingAsync(content, context.Response.Body, token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is HttpRequestException or IOException or UnauthorizedAccessException
             or InvalidOperationException or OperationCanceledException)
@@ -155,6 +149,23 @@ internal sealed class FrontendLoopbackProxy(
             System.Diagnostics.Trace.WriteLine($"Native frontend forwarding failed: {error.GetType().Name}");
             if (context.Response.HasStarted) context.Abort();
             else context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        }
+    }
+
+    internal bool MatchesCapability(string? supplied)
+        => supplied is { Length: 64 }
+            && CryptographicOperations.FixedTimeEquals(
+                MemoryMarshal.AsBytes(supplied.AsSpan()), MemoryMarshal.AsBytes(capability.AsSpan()));
+
+    internal static async Task CopyStreamingAsync(Stream source, Stream destination, CancellationToken token)
+    {
+        var buffer = new byte[16 * 1024];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, token).ConfigureAwait(false);
+            if (read == 0) break;
+            await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+            await destination.FlushAsync(token).ConfigureAwait(false);
         }
     }
 

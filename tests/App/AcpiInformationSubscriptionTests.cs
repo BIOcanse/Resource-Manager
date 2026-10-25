@@ -273,6 +273,7 @@ public sealed partial class AcpiInformationSubscriptionTests
     private static async Task<WebApplication> StartAsync(DeviceTopologySnapshotProvider provider)
     {
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
@@ -284,10 +285,10 @@ public sealed partial class AcpiInformationSubscriptionTests
         return app;
     }
 
-    private static HttpClient Client(WebApplication app) => new(new SocketsHttpHandler { MaxResponseDrainSize = 0 }) {
+    private static HttpClient Client(WebApplication app) => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient(new SocketsHttpHandler { MaxResponseDrainSize = 0 }) {
         BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
         Timeout = TimeSpan.FromSeconds(15)
-    };
+    }, app.Services);
 
     private sealed class AcpiReader : IAcpiFirmwareTableReader
     {

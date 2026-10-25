@@ -14,6 +14,43 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TrustedAccessAuthenticationAllocationTests(ITestOutputHelper output)
 {
+    [Fact]
+    public async Task WarmMappedStoreAuthenticationAndFrameValidationHaveBoundedAllocation()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root,
+            new TrustedAccessKeyStoreTests.TestTrustedAccessStorageFileBoundary());
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        using var owner = new TrustedAccessKeyService(store, keyFile);
+        await owner.InitializeAsync(false, CancellationToken.None);
+        var apiKey = keyFile.Value!;
+        var summary = (await owner.AuthenticateAsync(AccessKeyPurposes.Control, apiKey, CancellationToken.None))!;
+        const int count = 10000;
+        for (var index = 0; index < 2000; index++)
+        {
+            _ = owner.AuthenticateAsync(AccessKeyPurposes.Control, apiKey, CancellationToken.None).GetAwaiter().GetResult();
+            _ = owner.ValidateCredentialAsync(summary.Id, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var started = Stopwatch.GetTimestamp();
+        for (var index = 0; index < count; index++)
+            _ = owner.AuthenticateAsync(AccessKeyPurposes.Control, apiKey, CancellationToken.None).GetAwaiter().GetResult();
+        var authElapsed = Stopwatch.GetElapsedTime(started);
+        var authBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        started = Stopwatch.GetTimestamp();
+        for (var index = 0; index < count; index++)
+            _ = owner.ValidateCredentialAsync(summary.Id, CancellationToken.None).GetAwaiter().GetResult();
+        var frameElapsed = Stopwatch.GetElapsedTime(started);
+        var frameBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        output.WriteLine($"mapped store; calls={count}; authentication={authBytes / (double)count:F1} B/op, {authElapsed.TotalNanoseconds / count:F1} ns/op; frame validation={frameBytes / (double)count:F1} B/op, {frameElapsed.TotalNanoseconds / count:F1} ns/op");
+        Assert.True(authBytes <= count * 16L, $"Mapped warm authentication allocated {authBytes} bytes.");
+        Assert.True(frameBytes <= count * 16L, $"Mapped warm frame validation allocated {frameBytes} bytes.");
+        Assert.True(await owner.ValidateCredentialAsync(summary.Id, CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(128)]
@@ -49,7 +86,7 @@ public sealed class TrustedAccessAuthenticationAllocationTests(ITestOutputHelper
 
         var context = new DefaultHttpContext();
         context.Request.Method = "GET";
-        context.Request.Path = "/api/metrics/subscribe";
+        context.Request.Path = "/api/metrics/snapshot";
         context.Request.Headers[TrustedAccessHeaders.KeyHeader] = apiKey;
         var administrator = new UnexpectedAdministratorReader();
         const int count = 10000;

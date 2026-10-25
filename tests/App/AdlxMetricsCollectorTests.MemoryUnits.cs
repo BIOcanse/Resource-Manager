@@ -106,6 +106,7 @@ public sealed partial class AdlxMetricsCollectorTests
         var streamCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var app = await StartHttpAsync(sampler, dashboard, streamCompleted);
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + RawMemoryName;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Null(ReadRawMemory(await sampler.GetSnapshotAsync(request, timeout.Token), device).IntegerValue);

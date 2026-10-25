@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Domain.TrustedAccess;
 using Microsoft.Data.Sqlite;
 using ResourceManager.App.Infrastructure.Security.TrustedAccess;
@@ -9,12 +10,184 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TrustedAccessKeyStoreTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MappedRevisionDetectsRecoveryWithEveryNotificationSuppressed(bool streamFirst)
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var boundary = new TestTrustedAccessStorageFileBoundary();
+        using var runningStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var adminStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        using var running = new TrustedAccessKeyService(new SilentKeyStore(runningStore), keyFile);
+        await running.InitializeAsync(false, CancellationToken.None);
+        var defaultKey = keyFile.Value!;
+        var defaultSummary = await running.AuthenticateAsync(AccessKeyPurposes.Control, defaultKey, CancellationToken.None);
+        var ordinary = await running.CreateAsync(new AccessKeyCreateRequest("independent", AccessKeyPurposes.Control,
+            [AccessKeyScopes.Read]), CancellationToken.None);
+        var oldDefaultToken = running.GetRevocationToken(defaultSummary!.Id);
+        var oldToken = running.GetRevocationToken(ordinary.Credential.Id);
+        var oldState = await runningStore.LoadAsync(CancellationToken.None);
+        using var administrator = new TrustedAccessKeyService(new SilentKeyStore(adminStore), keyFile);
+
+        await administrator.InitializeAsync(true, CancellationToken.None);
+
+        Assert.False(runningStore.IsRevisionCurrent(oldState.Revision));
+        if (streamFirst)
+            Assert.False(await running.ValidateCredentialAsync(ordinary.Credential.Id, CancellationToken.None));
+        else
+            Assert.Null(await running.AuthenticateAsync(AccessKeyPurposes.Control, defaultKey, CancellationToken.None));
+        Assert.True(oldToken.IsCancellationRequested);
+        Assert.True(oldDefaultToken.IsCancellationRequested);
+        Assert.Null(await running.AuthenticateAsync(AccessKeyPurposes.Control, ordinary.ApiKey, CancellationToken.None));
+        Assert.False(await running.ValidateCredentialAsync(defaultSummary.Id, CancellationToken.None));
+        Assert.NotNull(await running.AuthenticateAsync(AccessKeyPurposes.Control, keyFile.Value, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task InterruptedMappedRevisionRequiresALockHeldDatabaseReloadAndPreservesUnchangedKeys()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        using var running = new TrustedAccessKeyService(new SilentKeyStore(store), keyFile);
+        await running.InitializeAsync(false, CancellationToken.None);
+        var summary = await running.AuthenticateAsync(AccessKeyPurposes.Control, keyFile.Value, CancellationToken.None);
+        var token = running.GetRevocationToken(summary!.Id);
+        var revision = (await store.LoadAsync(CancellationToken.None)).Revision;
+        // Releasing without a verified load or commit simulates a writer that
+        // died after marking the revision unavailable.
+        using (await store.AcquireMutationLockAsync(CancellationToken.None))
+            Assert.False(store.IsRevisionCurrent(revision));
+        Assert.False(store.IsRevisionCurrent(revision));
+
+        Assert.Same(summary, await running.AuthenticateAsync(AccessKeyPurposes.Control, keyFile.Value, CancellationToken.None));
+
+        Assert.True(store.IsRevisionCurrent(revision));
+        Assert.False(token.IsCancellationRequested);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedDefaultReplacementKeepsBothOwnersAtTheSameCommittedRevision(bool failAfterReplacement)
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var boundary = new TestTrustedAccessStorageFileBoundary();
+        using var runningStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var adminStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        using var running = new TrustedAccessKeyService(new SilentKeyStore(runningStore), keyFile);
+        await running.InitializeAsync(false, CancellationToken.None);
+        var key = keyFile.Value!;
+        var original = await running.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None);
+        var token = running.GetRevocationToken(original!.Id);
+        var state = await runningStore.LoadAsync(CancellationToken.None);
+        using var administrator = new TrustedAccessKeyService(new SilentKeyStore(adminStore), keyFile);
+        var adminOriginal = await administrator.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None);
+        var adminToken = administrator.GetRevocationToken(original.Id);
+        if (failAfterReplacement)
+            keyFile.WriteAfterReplacementFailureOnce = new IOException("final file verification failed after replacement");
+        else
+            keyFile.WriteFailure = new IOException("atomic file replacement failed");
+
+        await Assert.ThrowsAsync<IOException>(() => administrator.RotateAsync(original.Id, CancellationToken.None));
+
+        Assert.True(runningStore.IsRevisionCurrent(state.Revision));
+        Assert.True(adminStore.IsRevisionCurrent(state.Revision));
+        Assert.Equal(state.Revision, (await runningStore.LoadAsync(CancellationToken.None)).Revision);
+        Assert.Equal(key, keyFile.Value);
+        Assert.Same(original, await running.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None));
+        Assert.Same(adminOriginal, await administrator.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None));
+        Assert.False(token.IsCancellationRequested);
+        Assert.False(adminToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task FailedRestorationKeepsTheSharedRevisionUnavailableToEveryOwner()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var boundary = new TestTrustedAccessStorageFileBoundary();
+        using var runningStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var adminStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        using var running = new TrustedAccessKeyService(new SilentKeyStore(runningStore), keyFile);
+        await running.InitializeAsync(false, CancellationToken.None);
+        var key = keyFile.Value!;
+        var original = await running.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None);
+        var token = running.GetRevocationToken(original!.Id);
+        var state = await runningStore.LoadAsync(CancellationToken.None);
+        using var administrator = new TrustedAccessKeyService(new SilentKeyStore(adminStore), keyFile);
+        await administrator.AuthenticateAsync(AccessKeyPurposes.Control, key, CancellationToken.None);
+        var adminToken = administrator.GetRevocationToken(original.Id);
+        keyFile.WriteAfterReplacementFailureOnce = new IOException("verification failed after replacement");
+        keyFile.SubsequentWriteFailure = new IOException("restoration was denied");
+
+        await Assert.ThrowsAsync<IOException>(() => administrator.RotateAsync(original.Id, CancellationToken.None));
+
+        Assert.NotEqual(key, keyFile.Value);
+        Assert.True(adminToken.IsCancellationRequested);
+        Assert.False(runningStore.IsRevisionCurrent(state.Revision));
+        Assert.False(adminStore.IsRevisionCurrent(state.Revision));
+        await Assert.ThrowsAsync<InvalidDataException>(() => running.AuthenticateAsync(
+            AccessKeyPurposes.Control, key, CancellationToken.None));
+        Assert.True(token.IsCancellationRequested);
+        Assert.False(runningStore.IsRevisionCurrent(state.Revision));
+        await Assert.ThrowsAsync<InvalidDataException>(() => running.ValidateCredentialAsync(original.Id, CancellationToken.None).AsTask());
+        Assert.False(runningStore.IsRevisionCurrent(state.Revision));
+        Assert.Equal(state.Revision, (await runningStore.LoadAsync(CancellationToken.None)).Revision);
+    }
+
+    [Fact]
+    public async Task MissingMappedRevisionIsNotRecreatedByAuthenticationAndExplicitInitializationPreservesDisabledDefault()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var boundary = new TestTrustedAccessStorageFileBoundary();
+        var keyFile = new TrustedAccessTestKeyFileAccess();
+        string revisionPath;
+        using (var originalStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary))
+        using (var original = new TrustedAccessKeyService(originalStore, keyFile))
+        {
+            await original.InitializeAsync(false, CancellationToken.None);
+            await original.SetDefaultAsync(false, CancellationToken.None);
+            revisionPath = originalStore.DatabasePath + ".revision";
+        }
+        File.Delete(revisionPath);
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var owner = new TrustedAccessKeyService(store, keyFile);
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => owner.ListAsync(CancellationToken.None));
+        Assert.False(File.Exists(revisionPath));
+        await owner.InitializeAsync(false, CancellationToken.None);
+
+        Assert.True(File.Exists(revisionPath));
+        Assert.Empty(await owner.ListAsync(CancellationToken.None));
+        Assert.Equal(string.Empty, keyFile.Value);
+        Assert.False((await store.LoadAsync(CancellationToken.None)).DefaultEnabled);
+    }
+
+    [Fact]
+    public async Task ActiveMappedRevisionHandlesDenyDeletionAndReplacement()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
+        using var owner = new TrustedAccessKeyService(store, new TrustedAccessTestKeyFileAccess());
+        await owner.InitializeAsync(false, CancellationToken.None);
+        var path = store.DatabasePath + ".revision";
+
+        Assert.Throws<IOException>(() => File.Delete(path));
+        Assert.Throws<IOException>(() => File.Move(path, path + ".orphan"));
+        Assert.True(File.Exists(path));
+        Assert.False(File.Exists(path + ".orphan"));
+    }
+
     [Fact]
     public async Task OrdinaryLeaseAcquisitionDoesNotCreateMissingSecurityStorage()
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
         var boundary = new TestTrustedAccessStorageFileBoundary();
-        var store = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
         var directory = Path.GetDirectoryName(store.DatabasePath)!;
 
         await Assert.ThrowsAsync<DirectoryNotFoundException>(() => store.AcquireMutationLockAsync(CancellationToken.None));
@@ -32,7 +205,7 @@ public sealed class TrustedAccessKeyStoreTests
     public async Task CorruptionNotificationInvalidatesAWarmOwnerAndStopsItsStreams()
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
-        var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
         var keyFile = new TrustedAccessTestKeyFileAccess();
         using var owner = new TrustedAccessKeyService(store, keyFile);
         await owner.InitializeAsync(false, CancellationToken.None);
@@ -53,8 +226,8 @@ public sealed class TrustedAccessKeyStoreTests
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
         var boundary = new TestTrustedAccessStorageFileBoundary();
-        var runningStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
-        var adminStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var runningStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var adminStore = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
         var keyFile = new TrustedAccessTestKeyFileAccess();
         using var running = new TrustedAccessKeyService(runningStore, keyFile);
         await running.InitializeAsync(false, CancellationToken.None);
@@ -93,8 +266,8 @@ public sealed class TrustedAccessKeyStoreTests
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
         var boundary = new TestTrustedAccessStorageFileBoundary();
-        var first = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
-        var second = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var first = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var second = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
         using var lease = await first.AcquireMutationLockAsync(CancellationToken.None, ensureInitialized: true);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second.AcquireMutationLockAsync(cancellation.Token));
@@ -104,7 +277,7 @@ public sealed class TrustedAccessKeyStoreTests
     public async Task RestartLoadsCommittedKeysAndDoesNotReenableRevokedDefault()
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
-        var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
         var keyFile = new TrustedAccessTestKeyFileAccess();
         using var first = new TrustedAccessKeyService(store, keyFile);
         await first.InitializeAsync(recover: false, cancellationToken: CancellationToken.None);
@@ -141,7 +314,7 @@ public sealed class TrustedAccessKeyStoreTests
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
         var boundary = new TestTrustedAccessStorageFileBoundary();
-        var store = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, boundary);
         var keyFile = new TrustedAccessTestKeyFileAccess();
         using var owner = new TrustedAccessKeyService(store, keyFile);
 
@@ -179,7 +352,7 @@ public sealed class TrustedAccessKeyStoreTests
         await CreateLegacyDatabaseAsync(legacyPath, legacyHash, createdAt);
         var originalBytes = SHA256.HashData(File.ReadAllBytes(legacyPath));
 
-        var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
+        using var store = new SqliteTrustedAccessKeyStore(temporary.Root, new TestTrustedAccessStorageFileBoundary());
         var keyFile = new TrustedAccessTestKeyFileAccess();
         using var owner = new TrustedAccessKeyService(store, keyFile);
         await owner.InitializeAsync(recover: false, cancellationToken: CancellationToken.None);
@@ -234,7 +407,26 @@ public sealed class TrustedAccessKeyStoreTests
         await command.ExecuteNonQueryAsync();
     }
 
-    private sealed class TestTrustedAccessStorageFileBoundary : ResourceManager.App.Application.TrustedAccess.ITrustedAccessStorageFileBoundary
+    private sealed class SilentKeyStore(ITrustedAccessKeyStore inner) : ITrustedAccessKeyStore
+    {
+        public string PackageRoot => inner.PackageRoot;
+        public bool DatabaseExists => inner.DatabaseExists;
+        public bool IsRevisionCurrent(string revision) => inner.IsRevisionCurrent(revision);
+        public void InvalidateRevision() => inner.InvalidateRevision();
+        public Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false)
+            => inner.AcquireMutationLockAsync(cancellationToken, ensureInitialized);
+        public IDisposable SubscribeToChanges(Action<Exception?> changed) => new SilentSubscription();
+        public Task<TrustedAccessKeyStoreState> LoadAsync(CancellationToken cancellationToken) => inner.LoadAsync(cancellationToken);
+        public Task InitializeAsync(TrustedAccessKeyStoreState state, CancellationToken cancellationToken) => inner.InitializeAsync(state, cancellationToken);
+        public Task SaveAsync(TrustedAccessKeyStoreState state, string expectedRevision, CancellationToken cancellationToken)
+            => inner.SaveAsync(state, expectedRevision, cancellationToken);
+        public Task RecoverAsync(TrustedAccessKeyStoreState state, CancellationToken cancellationToken) => inner.RecoverAsync(state, cancellationToken);
+        public Task<IReadOnlyList<StoredTrustedAccessKey>> ReadLegacyAiCredentialsAsync(CancellationToken cancellationToken)
+            => inner.ReadLegacyAiCredentialsAsync(cancellationToken);
+        private sealed class SilentSubscription : IDisposable { public void Dispose() { } }
+    }
+
+    internal sealed class TestTrustedAccessStorageFileBoundary : ITrustedAccessStorageFileBoundary
     {
         public bool Exists(string path)
         {

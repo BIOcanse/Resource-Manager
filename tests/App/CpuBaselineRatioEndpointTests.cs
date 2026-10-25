@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.CpuTopology;
@@ -164,6 +165,8 @@ public sealed class CpuBaselineRatioEndpointTests
             var capabilities = readOnly ? StartupCapabilitySet.NormalReadOnly
                 : new StartupCapabilitySet("cpu-baseline-test", StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+            // Failure-path assertions must not require permission to write Windows EventLog.
+            builder.Logging.ClearProviders().AddConsole();
             builder.Services.RemoveAll<IHostedService>();
             var sampler = new CountingSampler();
             builder.Services.AddSingleton<ICpuTopologySampler>(sampler);

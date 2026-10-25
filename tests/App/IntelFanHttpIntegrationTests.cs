@@ -90,6 +90,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 .Features.Get<IServerAddressesFeature>()!.Addresses)),
             Timeout = Timeout.InfiniteTimeSpan
         };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query = "?device=" + Uri.EscapeDataString(selectedFan.ExactIdentityKey) + "&fields=" + RecordedIntelFanResources.Name;
         var selection = MetricDeviceFields.CreateRequest(dashboard.Current!, selectedFan.ExactIdentityKey, [RecordedIntelFanResources.Name]);
         await AssertPublicIntelFanCatalogsAsync(client, recording, selectedFan, timeout.Token);

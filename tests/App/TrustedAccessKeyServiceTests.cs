@@ -8,6 +8,105 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TrustedAccessKeyServiceTests
 {
+    [Theory]
+    [InlineData("CoNtRoL", "control")]
+    [InlineData("OPENAI", "openai")]
+    [InlineData("Anthropic", "anthropic")]
+    public async Task AuthenticationPreservesSupportedPurposeNormalization(string purpose, string canonicalPurpose)
+    {
+        var fixture = TrustedAccessTestFactory.Create();
+        using var owner = fixture.Owner;
+        var key = await owner.CreateAsync(new("purpose normalization", purpose, [AccessKeyScopes.Read]), CancellationToken.None);
+        Assert.Equal(canonicalPurpose, (await owner.AuthenticateAsync(purpose, key.ApiKey, CancellationToken.None))!.Purpose);
+        var otherPurpose = canonicalPurpose == AccessKeyPurposes.Control ? AccessKeyPurposes.OpenAi : AccessKeyPurposes.Control;
+        Assert.Null(await owner.AuthenticateAsync(otherPurpose, key.ApiKey, CancellationToken.None));
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecoveryWithoutNotificationsStopsOldKeysAndStreamsAtTheNextAuthorityCheck(bool streamFirst)
+    {
+        var fixture = TrustedAccessTestFactory.Create();
+        using var running = fixture.Owner;
+        var originalDefault = Assert.Single(await running.ListAsync(CancellationToken.None));
+        var oldDefaultKey = fixture.KeyFile.Value!;
+        var original = await running.CreateAsync(new AccessKeyCreateRequest("old", AccessKeyPurposes.Control,
+            [AccessKeyScopes.Read]), CancellationToken.None);
+        var oldStream = running.GetRevocationToken(original.Credential.Id);
+        var oldDefaultStream = running.GetRevocationToken(originalDefault.Id);
+        fixture.Store.SuppressChangeNotifications = true;
+        using var administrator = new ResourceManager.App.Infrastructure.Security.TrustedAccess.TrustedAccessKeyService(fixture.Store, fixture.KeyFile);
+
+        await administrator.InitializeAsync(true, CancellationToken.None);
+
+        if (streamFirst)
+            Assert.False(await running.ValidateCredentialAsync(original.Credential.Id, CancellationToken.None));
+        else
+            Assert.Null(await running.AuthenticateAsync(AccessKeyPurposes.Control, original.ApiKey, CancellationToken.None));
+        Assert.True(oldStream.IsCancellationRequested);
+        Assert.True(oldDefaultStream.IsCancellationRequested);
+        Assert.False(await running.ValidateCredentialAsync(originalDefault.Id, CancellationToken.None));
+        Assert.Null(await running.AuthenticateAsync(AccessKeyPurposes.Control, oldDefaultKey, CancellationToken.None));
+        Assert.Null(await running.AuthenticateAsync(AccessKeyPurposes.Control, original.ApiKey, CancellationToken.None));
+        Assert.NotNull(await running.AuthenticateAsync(AccessKeyPurposes.Control, fixture.KeyFile.Value, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedDefaultRotationWritePreservesTheEntireStoreFileCacheAndStreamTokens(bool failAfterReplacement)
+    {
+        var fixture = TrustedAccessTestFactory.Create();
+        using var owner = fixture.Owner;
+        var ordinary = await owner.CreateAsync(new AccessKeyCreateRequest("independent", AccessKeyPurposes.Control,
+            [AccessKeyScopes.Read]), CancellationToken.None);
+        var defaultKey = fixture.KeyFile.Value!;
+        var defaultSummary = await owner.AuthenticateAsync(AccessKeyPurposes.Control, defaultKey, CancellationToken.None);
+        var independentSummary = await owner.AuthenticateAsync(AccessKeyPurposes.Control, ordinary.ApiKey, CancellationToken.None);
+        var defaultToken = owner.GetRevocationToken(defaultSummary!.Id);
+        var independentToken = owner.GetRevocationToken(ordinary.Credential.Id);
+        var before = fixture.Store.CurrentState!;
+        if (failAfterReplacement)
+            fixture.KeyFile.WriteAfterReplacementFailureOnce = new IOException("final ACL verification failed after replacement");
+        else
+            fixture.KeyFile.WriteFailure = new IOException("atomic replacement sharing violation");
+
+        await Assert.ThrowsAsync<IOException>(() => owner.RotateAsync(defaultSummary.Id, CancellationToken.None));
+
+        var after = fixture.Store.CurrentState!;
+        Assert.Equal(before.Revision, after.Revision);
+        Assert.Equal(before.DefaultEnabled, after.DefaultEnabled);
+        Assert.Equal(before.DefaultCredentialId, after.DefaultCredentialId);
+        Assert.Equal(before.Keys.Select(key => key.Id), after.Keys.Select(key => key.Id));
+        Assert.Equal(before.Keys.Select(key => Convert.ToHexString(key.SecretHash)), after.Keys.Select(key => Convert.ToHexString(key.SecretHash)));
+        Assert.Equal(defaultKey, fixture.KeyFile.Value);
+        Assert.Same(defaultSummary, await owner.AuthenticateAsync(AccessKeyPurposes.Control, defaultKey, CancellationToken.None));
+        Assert.Same(independentSummary, await owner.AuthenticateAsync(AccessKeyPurposes.Control, ordinary.ApiKey, CancellationToken.None));
+        Assert.Equal(defaultToken, owner.GetRevocationToken(defaultSummary.Id));
+        Assert.Equal(independentToken, owner.GetRevocationToken(ordinary.Credential.Id));
+        Assert.False(defaultToken.IsCancellationRequested);
+        Assert.False(independentToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task FailedDefaultRotationStoreCommitRestoresThePreviousFileAndKeepsCredentialsValid()
+    {
+        var fixture = TrustedAccessTestFactory.Create();
+        using var owner = fixture.Owner;
+        var originalKey = fixture.KeyFile.Value!;
+        var original = await owner.AuthenticateAsync(AccessKeyPurposes.Control, originalKey, CancellationToken.None);
+        var token = owner.GetRevocationToken(original!.Id);
+        var revision = fixture.Store.CurrentState!.Revision;
+        fixture.Store.SaveFailure = new IOException("database commit failed");
+
+        await Assert.ThrowsAsync<IOException>(() => owner.RotateAsync(original.Id, CancellationToken.None));
+
+        Assert.Equal(originalKey, fixture.KeyFile.Value);
+        Assert.Equal(revision, fixture.Store.CurrentState!.Revision);
+        Assert.Same(original, await owner.AuthenticateAsync(AccessKeyPurposes.Control, originalKey, CancellationToken.None));
+        Assert.False(token.IsCancellationRequested);
+    }
+
     [Fact]
     public async Task MutationReloadsRecoveredStateEvenBeforeTheChangeSignalArrives()
     {

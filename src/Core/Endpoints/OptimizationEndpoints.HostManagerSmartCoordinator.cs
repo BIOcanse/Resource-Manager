@@ -5,6 +5,7 @@ using ResourceManager.App.Infrastructure.Security;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Options;
 using ResourceManager.App.Endpoints.Transport;
+using ResourceManager.App.Application.TrustedAccess;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -51,12 +52,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             app.MapGet("/api/optimization/smart/diagnostics/decision-snapshot/subscribe", async (
                 HttpResponse response,
+                HttpContext context,
+                ITrustedAccessKeyService keys,
                 HostManagerSmartCoordinator coordinator,
                 IOptions<JsonOptions> jsonOptions,
                 CancellationToken cancellationToken) =>
             {
                 NdjsonResponse.Prepare(response);
-                using var writer = new FrontendSubscriptionChannelWriter(response, jsonOptions.Value.SerializerOptions);
+                using var writer = new FrontendSubscriptionChannelWriter(response, jsonOptions.Value.SerializerOptions,
+                    ReadAuthorization(context)?.Key is { } key
+                        ? token => keys.ValidateCredentialAsync(key.Id, token) : null);
                 try
                 {
                     await PublishAlignedPeriodicAsyncSubscriptionAsync(

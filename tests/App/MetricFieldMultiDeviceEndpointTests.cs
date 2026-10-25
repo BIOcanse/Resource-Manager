@@ -391,6 +391,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         var catalog = new HardwareMetricCatalogState();
         if (ready) catalog.PublishCatalogProbe(source.Current);
         var builder = WebApplication.CreateBuilder();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton(catalog);
@@ -404,11 +405,11 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         return app;
     }
 
-    private static HttpClient Client(WebApplication app) => new()
+    private static HttpClient Client(WebApplication app) => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient()
     {
         BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
         Timeout = TimeSpan.FromSeconds(10)
-    };
+    }, app.Services);
 
     private sealed class Source(HardwareMetricSnapshot snapshot) : IMetricSampler, IMetricSnapshotPushSource
     {

@@ -372,6 +372,9 @@ public sealed partial class GpuLaunchSessionTests
         public Task InitializeAsync(bool recover, CancellationToken cancellationToken)
             => inner.InitializeAsync(recover, cancellationToken);
 
+        public ValueTask<bool> ValidateCredentialAsync(string credentialId, CancellationToken cancellationToken)
+            => inner.ValidateCredentialAsync(credentialId, cancellationToken);
+
         public CancellationToken GetRevocationToken(string credentialId)
         {
             Interlocked.Increment(ref RevocationCalls);

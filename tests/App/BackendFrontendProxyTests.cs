@@ -20,6 +20,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     [Fact]
+    public void BridgeCapabilityRequiresExactFixedSizeSecret()
+    {
+        using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"), (_, _) =>
+            throw new InvalidOperationException("No requests expected."));
+        Assert.True(proxy.MatchesCapability(proxy.Capability));
+        Assert.False(proxy.MatchesCapability(null));
+        Assert.False(proxy.MatchesCapability(proxy.Capability[..63]));
+        Assert.False(proxy.MatchesCapability(proxy.Capability + "0"));
+        foreach (var index in new[] { 0, 31, 63 })
+        {
+            var changed = proxy.Capability.ToCharArray();
+            changed[index] = changed[index] == 'A' ? 'B' : 'A';
+            Assert.False(proxy.MatchesCapability(new string(changed)));
+        }
+    }
+
+    [Fact]
     public async Task PrivateBridgeDeniesMissingCapabilityForeignHostAndForeignOrigin()
     {
         var forwarded = 0;

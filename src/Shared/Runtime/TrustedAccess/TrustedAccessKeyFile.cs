@@ -39,7 +39,13 @@ public static class TrustedAccessKeyFile
         ValidateKeyFileLength(new FileInfo(path).Length);
         VerifyFile(path, allowLocalUsersRead: true);
 
-        var value = File.ReadAllText(path, StrictUtf8).TrimEnd('\r', '\n');
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        ValidateKeyFileLength(stream.Length);
+        Span<byte> bytes = stackalloc byte[MaximumKeyFileBytes + 1];
+        var count = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+        ValidateKeyFileLength(count);
+        var value = StrictUtf8.GetString(bytes[..count]).TrimEnd('\r', '\n');
         if (value.Length == 0)
         {
             return string.Empty;

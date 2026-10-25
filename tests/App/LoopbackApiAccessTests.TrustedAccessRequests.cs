@@ -82,6 +82,53 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
+    public async Task ResourceFactsSnapshotRejectsOrdinaryReadKeyAndAcceptsProcessReadKey()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var readKey = await fixture.Keys.CreateAsync(new("ordinary read", AccessKeyPurposes.Control,
+            [AccessKeyScopes.Read]), CancellationToken.None);
+        var processKey = await fixture.Keys.CreateAsync(new("process read", AccessKeyPurposes.Control,
+            [AccessKeyScopes.ProcessesRead]), CancellationToken.None);
+        foreach (var key in new[] { readKey, processKey })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/resource-facts/snapshot");
+            request.Headers.Add(TrustedAccessHeaders.KeyHeader, key.ApiKey);
+            using var response = await fixture.Client.SendAsync(request);
+            Assert.Equal(key == readKey ? HttpStatusCode.Forbidden : HttpStatusCode.OK, response.StatusCode);
+        }
+        Assert.Equal(0, fixture.Sampler.Captures);
+    }
+
+    [Fact]
+    public async Task UnknownSelectorIsRejectedByIdWhileResourceFactsSubscriptionStillPublishes()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var processKey = await fixture.Keys.CreateAsync(new("process read", AccessKeyPurposes.Control,
+            [AccessKeyScopes.ProcessesRead]), CancellationToken.None);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        {
+            Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
+                new { id = "unknown", path = "/api/not-registered/subscribe" },
+                new { id = "facts", path = "/api/resource-facts/subscribe" } } })
+        };
+        request.Headers.Add(TrustedAccessHeaders.KeyHeader, processKey.ApiKey);
+        using var response = await fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(deadline.Token));
+        using var rejection = JsonDocument.Parse((await reader.ReadLineAsync(deadline.Token))!);
+        Assert.Equal("unknown", rejection.RootElement.GetProperty("subscriptionId").GetString());
+        Assert.Equal(400, rejection.RootElement.GetProperty("value").GetProperty("statusCode").GetInt32());
+        Assert.Equal("unsupported-subscription-selector", rejection.RootElement.GetProperty("value").GetProperty("error").GetString());
+        using var value = JsonDocument.Parse((await reader.ReadLineAsync(deadline.Token))!);
+        Assert.Equal("facts", value.RootElement.GetProperty("subscriptionId").GetString());
+        Assert.Equal(1, value.RootElement.GetProperty("value").GetProperty("version").GetInt32());
+        Assert.Empty(value.RootElement.GetProperty("value").GetProperty("processes").EnumerateArray());
+        Assert.Equal(0, fixture.Sampler.Captures);
+        await deadline.CancelAsync();
+    }
+
+    [Fact]
     public async Task LocalKeylessRequestIsNarrowlyApprovedAndDeliveredOnceThroughHttp()
     {
         await using var fixture = await Fixture.StartAsync();

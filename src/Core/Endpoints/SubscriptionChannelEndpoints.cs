@@ -92,7 +92,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CancellationTokenSource.CreateLinkedTokenSource(revocationCancellation.Token);
             using var writer = new FrontendSubscriptionChannelWriter(
                 httpContext.Response,
-                jsonOptions.Value.SerializerOptions);
+                jsonOptions.Value.SerializerOptions,
+                authorization?.Key is { } streamKey
+                    ? token => httpContext.RequestServices.GetRequiredService<ITrustedAccessKeyService>()
+                        .ValidateCredentialAsync(streamKey.Id, token)
+                    : null);
+            foreach (var rejection in compilation.Rejections)
+                await writer.WriteAsync(rejection.SubscriptionId, rejection.Value, channelCancellation.Token);
             var logger = loggerFactory.CreateLogger(
                 "ResourceManager.FrontendSubscriptionChannel");
             var workers = subscriptions
@@ -176,7 +182,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
     }
 
-    private static async Task<SubscriptionChannelCompilationResult> CompileSubscriptionChannelRequestAsync(
+    internal static async Task<SubscriptionChannelCompilationResult> CompileSubscriptionChannelRequestAsync(
         FrontendSubscriptionChannelRequest? request,
         HttpContext httpContext)
     {
@@ -195,6 +201,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var descriptors = new List<ParsedFrontendSubscription>(
             request.Subscriptions.Count);
+        var rejections = new List<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>>();
         foreach (var item in request.Subscriptions)
         {
             if (item is null
@@ -208,7 +215,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 out var selector,
                 out var query))
             {
-                return Failed(statusCode, $"Subscription '{item.Id}' has an unsupported path.");
+                rejections.Add(new(item.Id!, new(StatusCodes.Status400BadRequest, "unsupported-subscription-selector")));
+                continue;
+            }
+            if (!TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(selector, out _))
+            {
+                rejections.Add(new(item.Id!, new(StatusCodes.Status503ServiceUnavailable, "access-policy-missing")));
+                continue;
             }
             descriptors.Add(new ParsedFrontendSubscription(
                 item.Id!,
@@ -222,7 +235,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             .CreateLogger("ResourceManager.TrustedAccessAuthorization");
         foreach (var descriptor in descriptors)
         {
-            var requiredScopes = TrustedAccessHttpPolicy.RequiredScopesForSubscription(descriptor.Selector);
+            TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(descriptor.Selector, out var requiredScopes);
             var hasExplicitKey = httpContext.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader);
             if (requiredScopes.Count == 0 && !hasExplicitKey)
             {
@@ -258,7 +271,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     descriptor,
                     httpContext.RequestServices))
                 .ToArray();
-            return new(subscriptions, StatusCodes.Status200OK, string.Empty);
+            return new(subscriptions, StatusCodes.Status200OK, string.Empty, rejections);
         }
         catch (Exception exception)
             when (exception is ArgumentException
@@ -273,7 +286,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
 
         static SubscriptionChannelCompilationResult Failed(int code, string message)
-            => new([], code, message);
+            => new([], code, message, []);
     }
 
     /// <summary>
@@ -383,6 +396,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     subscription,
                     services.GetRequiredService<ITrustedAccessRequestOwner>()))
         };
+
+    internal static IEnumerable<string> SubscriptionSelectors => SubscriptionSourceRoutes.Keys;
 
     /// <summary>
     /// 一条订阅源：拿到这次订阅的 query 和间隔之后，怎么把它编成一个运行体。
@@ -847,7 +862,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
     internal sealed class FrontendSubscriptionChannelWriter(
         HttpResponse response,
-        JsonSerializerOptions serializerOptions) : IDisposable
+        JsonSerializerOptions serializerOptions,
+        Func<CancellationToken, ValueTask<bool>>? validateCredential = null) : IDisposable
     {
         private readonly SemaphoreSlim gate = new(1, 1);
 
@@ -859,6 +875,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             await gate.WaitAsync(cancellationToken);
             try
             {
+                // A notification is only a wakeup hint. Each frame checks the owner's
+                // committed persistent revision before disclosing another current value.
+                if (validateCredential is not null && !await validateCredential(cancellationToken))
+                    throw new UnauthorizedAccessException("The subscription credential is no longer valid.");
                 await NdjsonResponse.WriteAsync(
                     response,
                     new FrontendSubscriptionChannelFrame<T>(subscriptionId, value),
@@ -900,10 +920,13 @@ internal sealed record FrontendSubscriptionChannelFrame<T>(
     string SubscriptionId,
     T Value);
 
+internal sealed record SubscriptionChannelRejection(int StatusCode, string Error);
+
 internal sealed record SubscriptionChannelCompilationResult(
     IReadOnlyList<ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Subscriptions,
     int StatusCode,
-    string Error)
+    string Error,
+    IReadOnlyList<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>> Rejections)
 {
     public bool Succeeded => StatusCode == StatusCodes.Status200OK;
 }

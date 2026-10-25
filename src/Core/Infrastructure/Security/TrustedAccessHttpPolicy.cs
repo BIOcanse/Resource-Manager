@@ -9,6 +9,7 @@ namespace ResourceManager.App.Infrastructure.Security;
 internal enum TrustedAccessHttpAuthorizationMode
 {
     Anonymous,
+    MissingPolicy,
     Protected
 }
 
@@ -103,6 +104,9 @@ internal static class TrustedAccessHttpPolicy
     private static readonly TrustedAccessHttpRequirement KeylessRequestRequirement = new(
         TrustedAccessHttpAuthorizationMode.Protected, [], true, RequireKeyless: true);
 
+    private static readonly TrustedAccessHttpRequirement MissingPolicyRequirement = new(
+        TrustedAccessHttpAuthorizationMode.MissingPolicy, [], false);
+
     private static readonly TrustedAccessHttpRequirement SubscriptionRequirement = new(
         TrustedAccessHttpAuthorizationMode.Protected, [], false);
 
@@ -121,168 +125,260 @@ internal static class TrustedAccessHttpPolicy
             || path.StartsWith("/api/public/v1/ai/compat/anthropic/v1/", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static TrustedAccessHttpRequirement GetRequirement(HttpRequest request)
+    private static readonly FrozenDictionary<(string Method, string Path), TrustedAccessHttpRequirement> RouteRequirements = BuildRouteRequirements();
+
+    private static FrozenDictionary<(string Method, string Path), TrustedAccessHttpRequirement> BuildRouteRequirements()
     {
-        var path = GetPolicyPath(request);
-        var method = GetPolicyMethod(request);
+        var routes = new Dictionary<(string Method, string Path), TrustedAccessHttpRequirement>(OperationComparer.Instance);
+        // Every method/template has an explicit rule; new routes receive no inferred read/write fallback.
+        // AI compatibility entries delegate credential-purpose checks to their endpoint.
+        Add(Protected(AccessKeyScopes.KeysManage),
+            "DELETE /api/access-keys/{id}",
+            "DELETE /api/ai-gateway/credentials/{credentialId}",
+            "GET /api/access-keys",
+            "GET /api/ai-gateway/credentials",
+            "POST /api/access-keys",
+            "POST /api/access-keys/{id}/rotate",
+            "POST /api/access-keys/default",
+            "POST /api/access-requests/{requestId}/approve",
+            "POST /api/access-requests/{requestId}/deny",
+            "POST /api/ai-gateway/credentials");
+        Add(Protected(AccessKeyScopes.MachineWrite),
+            "DELETE /api/adapters/{id}",
+            "DELETE /api/control/instances/{instanceId}",
+            "DELETE /api/control/presets/{presetId}",
+            "DELETE /api/controlled/{id:guid}",
+            "DELETE /api/cpu/baseline-ratio",
+            "DELETE /api/cpu/topology/performance-overrides",
+            "DELETE /api/gpu/performance-overrides",
+            "DELETE /api/optimization/trust/{id}",
+            "DELETE /api/software/manual/{id}",
+            "PATCH /api/settings/app",
+            "POST /api/components/{id}/install",
+            "POST /api/control/instances/refresh",
+            "POST /api/control/redetect",
+            "POST /api/control/state/{objectId}/retry",
+            "POST /api/optimization/reports/{id}/dismiss",
+            "POST /api/optimization/smart/mode",
+            "POST /api/optimization/smart/run-once",
+            "POST /api/optimization/smart/validation/process-effect-scope/close",
+            "POST /api/optimization/smart/validation/process-effect-scope/open",
+            "POST /api/public/v1/ai/models/load",
+            "POST /api/public/v1/ai/models/unload",
+            "POST /api/public/v1/sqlite/databases/{databaseId}/batch",
+            "POST /api/public/v1/sqlite/databases/{databaseId}/checkpoint",
+            "POST /api/public/v1/sqlite/databases/{databaseId}/execute",
+            "POST /api/settings/app/reapply",
+            "POST /api/software/manual",
+            "POST /api/software/portable/root",
+            "POST /api/software/uninstall",
+            "POST /api/system/processes/dump",
+            "POST /api/system/processes/terminate",
+            "POST /api/updates/product/apply",
+            "POST /api/updates/product/prepare",
+            "PUT /api/control/access-level",
+            "PUT /api/control/notice",
+            "PUT /api/control/overclock-consent",
+            "PUT /api/control/presets/{objectId}/{name}",
+            "PUT /api/control/state",
+            "PUT /api/control/state/{objectId}",
+            "PUT /api/cpu/baseline-ratio",
+            "PUT /api/cpu/topology/performance-overrides",
+            "PUT /api/gpu-placement/software/{softwareId}/policy",
+            "PUT /api/gpu/performance-overrides",
+            "PUT /api/optimization/protection/software/{softwareId}",
+            "PUT /api/public/v1/sqlite/databases/{databaseId}",
+            "PUT /api/settings/app",
+            "PUT /api/settings/dashboard");
+        Add(Protected(AccessKeyScopes.Session),
+            "DELETE /api/targeted-recordings/{id}",
+            "POST /api/operations/{id}/cancel",
+            "POST /api/system/open-path",
+            "POST /api/system/open-properties",
+            "POST /api/system/search-online",
+            "POST /api/targeted-recordings",
+            "POST /api/targeted-recordings/{id}/stop");
+        Add(Protected(AccessKeyScopes.Read, allowKeylessLocal: true),
+            "GET /api/adapters",
+            "GET /api/browser-runtimes",
+            "GET /api/components",
+            "GET /api/components/{id}/versions",
+            "GET /api/control/access-level",
+            "GET /api/control/actual",
+            "GET /api/control/instances",
+            "GET /api/control/notice",
+            "GET /api/control/objects",
+            "GET /api/control/objects/{objectId}/curve",
+            "GET /api/control/overclock-consent",
+            "GET /api/control/presets",
+            "GET /api/control/state",
+            "GET /api/controlled",
+            "GET /api/cpu/baseline-ratio",
+            "GET /api/cpu/topology",
+            "GET /api/cpu/topology/exclusive-bindings",
+            "GET /api/cpu/topology/fields",
+            "GET /api/debug/amd-smu",
+            "GET /api/debug/cpu-residency",
+            "GET /api/debug/freedom-points",
+            "GET /api/debug/gpu-control",
+            "GET /api/debug/history/requirements",
+            "GET /api/debug/logs",
+            "GET /api/dependencies",
+            "GET /api/device-topology/acpi/fields",
+            "GET /api/device-topology/fields",
+            "GET /api/device-topology/state",
+            "GET /api/disk-usage/node/{nodeId:int}",
+            "GET /api/disk-usage/summary",
+            "GET /api/disk-usage/tree",
+            "GET /api/disk-usage/volumes",
+            "GET /api/gpu-placement/software/{softwareId}/policy/default",
+            "GET /api/gpu/performance-overrides",
+            "GET /api/gpu/performance-scores",
+            "GET /api/index/files/search",
+            "GET /api/index/software/{softwareId}",
+            "GET /api/local-system/status",
+            "GET /api/operations",
+            "GET /api/operations/{id}",
+            "GET /api/optimization/protection",
+            "GET /api/optimization/smart/status",
+            "GET /api/public/v1/ai/models",
+            "GET /api/public/v1/ai/status",
+            "GET /api/public/v1/browser-runtimes",
+            "GET /api/public/v1/index/files/search",
+            "GET /api/public/v1/index/software/{softwareId}",
+            "GET /api/public/v1/index/status",
+            "GET /api/public/v1/resources",
+            "GET /api/public/v1/resources/{publicResourceId}",
+            "GET /api/public/v1/resources/transport",
+            "GET /api/public/v1/sqlite/databases",
+            "GET /api/public/v1/sqlite/databases/{databaseId}",
+            "GET /api/runtime/identity",
+            "GET /api/settings/app",
+            "GET /api/settings/dashboard",
+            "GET /api/settings/report-rules",
+            "GET /api/software",
+            "GET /api/software/manual",
+            "GET /api/software/metadata/{softwareIdentityId}",
+            "GET /api/system/host-manager/deployment",
+            "GET /api/updates/product/status",
+            "GET /api/updates/product/versions",
+            "POST /api/components/{id}/verify",
+            "POST /api/device-topology/nvidia-drs/fields/current",
+            "POST /api/device-topology/nvidia-drs/fields/discover",
+            "POST /api/device-topology/nvidia-drs/fields/read",
+            "POST /api/disk-usage/scan",
+            "POST /api/public/v1/sqlite/databases/{databaseId}/query");
+        Add(Protected(AccessKeyScopes.AdaptersRegisterSelf),
+            "GET /api/adapters/resource-manager/scheduling",
+            "POST /api/adapters/register",
+            "POST /api/adapters/resource-manager/scheduling",
+            "POST /api/controlled/register");
+        Add(Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true),
+            "GET /api/cpu/residency",
+            "GET /api/debug/frame-timing",
+            "GET /api/debug/gpu-renderers",
+            "GET /api/debug/scheduling-inputs",
+            "GET /api/gpu-placement/software/{softwareId}",
+            "GET /api/optimization/reports",
+            "GET /api/optimization/smart/diagnostics/decision-snapshot/subscribe",
+            "GET /api/optimization/smart/state",
+            "GET /api/optimization/smart/validation/memory-cleanup-evidence",
+            "GET /api/optimization/smart/validation/process-effect-scope",
+            "GET /api/resource-breakdown/snapshot",
+            "GET /api/resource-facts/snapshot",
+            "GET /api/resource-monitor/snapshot",
+            "GET /api/targeted-recordings",
+            "GET /api/targeted-recordings/{id}",
+            "GET /api/targeted-recordings/{id}/export",
+            "POST /api/optimization/reports/refresh");
+        Add(TrustedAccessHttpRequirement.Anonymous,
+            "GET /api/health",
+            "GET /api/metrics/catalog",
+            "GET /api/metrics/fields/capabilities",
+            "GET /api/metrics/fields/catalog",
+            "GET /api/public/v1",
+            "GET /api/public/v1/ai/compat/openai/v1/models",
+            "GET /api/public/v1/capabilities",
+            "GET /api/public/v1/capability",
+            "GET /api/resource-breakdown/fields/catalog",
+            "GET /api/runtime/capabilities",
+            "POST /api/public/v1/ai/compat/anthropic/v1/messages",
+            "POST /api/public/v1/ai/compat/openai/v1/chat/completions",
+            "POST /api/public/v1/ai/compat/openai/v1/embeddings",
+            "POST /api/public/v1/ai/compat/openai/v1/responses");
+        Add(Protected(AccessKeyScopes.MetricsRead, allowKeylessLocal: true),
+            "GET /api/debug/metrics/capture",
+            "GET /api/metrics/fields/snapshot",
+            "GET /api/metrics/gpu-specialized",
+            "GET /api/metrics/snapshot",
+            "GET /api/performance-overlay/default",
+            "GET /api/performance-overlay/metrics/catalog",
+            "GET /api/performance-overlay/software/{softwareId}");
+        Add(KeylessRequestRequirement,
+            "POST /api/access-requests",
+            "POST /api/access-requests/{requestId}/wait");
+        Add(Protected(AccessKeyScopes.GpuReport),
+            "POST /api/gpu-placement/process-history/observe");
+        Add(Protected(AccessKeyScopes.DesktopPublish),
+            "POST /api/runtime/interactive-desktop",
+            "POST /api/runtime/interactive-desktop/publisher/select");
+        Add(SubscriptionRequirement,
+            "POST /api/subscriptions/stream");
+        Add(InjectionConfigurationRequirement,
+            "PUT /api/gpu-placement/process-policy",
+            "PUT /api/performance-overlay/software/{softwareId}");
+        return routes.ToFrozenDictionary(OperationComparer.Instance);
 
-        if (IsAnonymousCatalogOrHealth(path, method))
-            return TrustedAccessHttpRequirement.Anonymous;
-
-        if (IsAccessRequestWaitOrCreate(path, method))
+        void Add(TrustedAccessHttpRequirement requirement, params string[] operations)
         {
-            return KeylessRequestRequirement;
-        }
-
-        if (path.StartsWith("/api/access-keys", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/ai-gateway/credentials", StringComparison.OrdinalIgnoreCase)
-            || IsAccessRequestManagement(path, method))
-        {
-            return Protected(AccessKeyScopes.KeysManage);
-        }
-
-        if (path.Equals("/api/subscriptions/stream", StringComparison.OrdinalIgnoreCase))
-        {
-            return SubscriptionRequirement;
-        }
-
-        if (path.Equals("/api/runtime/interactive-desktop", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/runtime/interactive-desktop/publisher/select", StringComparison.OrdinalIgnoreCase))
-        {
-            return Protected(AccessKeyScopes.DesktopPublish);
-        }
-
-        if (path.StartsWith("/api/device-topology/nvidia-drs/fields/", StringComparison.OrdinalIgnoreCase)
-            && method == "POST")
-        {
-            return Protected(AccessKeyScopes.Read, allowKeylessLocal: true);
-        }
-
-        if (path.StartsWith("/api/disk-usage/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/components/", StringComparison.OrdinalIgnoreCase)
-                && path.EndsWith("/verify", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/public/v1/sqlite/databases/", StringComparison.OrdinalIgnoreCase)
-                && path.EndsWith("/query", StringComparison.OrdinalIgnoreCase)
-                && method == "POST")
-        {
-            return Protected(AccessKeyScopes.Read, allowKeylessLocal: true);
-        }
-
-        if (path.Equals("/api/adapters/resource-manager/scheduling", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/adapters/resource-manager/scheduling/subscribe", StringComparison.OrdinalIgnoreCase))
-        {
-            return Protected(AccessKeyScopes.AdaptersRegisterSelf);
-        }
-
-        if (path.StartsWith("/api/operations/", StringComparison.OrdinalIgnoreCase)
-            && path.EndsWith("/cancel", StringComparison.OrdinalIgnoreCase))
-        {
-            return Protected(AccessKeyScopes.Session);
-        }
-
-        if (path.StartsWith("/api/targeted-recordings", StringComparison.OrdinalIgnoreCase))
-        {
-            return method is "GET" or "HEAD"
-                ? Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true)
-                : method is "POST" or "DELETE"
-                    ? Protected(AccessKeyScopes.Session)
-                    : Protected(AccessKeyScopes.MachineWrite);
-        }
-
-        if (path.Equals("/api/optimization/reports/refresh", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/cpu/residency", StringComparison.OrdinalIgnoreCase))
-        {
-            return Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true);
-        }
-
-        if (path.Equals("/api/gpu-placement/process-history/observe", StringComparison.OrdinalIgnoreCase))
-            return Protected(AccessKeyScopes.GpuReport);
-
-        if (path.Equals("/api/gpu-placement/process-policy", StringComparison.OrdinalIgnoreCase)
-            && method == "PUT")
-        {
-            return InjectionConfigurationRequirement;
-        }
-
-        if (path.StartsWith("/api/metrics/", StringComparison.OrdinalIgnoreCase))
-            return method is "GET" or "HEAD"
-                ? Protected(AccessKeyScopes.MetricsRead, allowKeylessLocal: true)
-                : Protected(AccessKeyScopes.MachineWrite);
-
-        if (path.StartsWith("/api/resource-monitor/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/resource-breakdown/", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/resource-table/", StringComparison.OrdinalIgnoreCase))
-        {
-            return method is "GET" or "HEAD"
-                ? Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true)
-                : Protected(AccessKeyScopes.MachineWrite);
-        }
-
-        if (path.StartsWith("/api/adapters/register", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/api/controlled/register", StringComparison.OrdinalIgnoreCase))
-        {
-            return Protected(AccessKeyScopes.AdaptersRegisterSelf);
-        }
-
-        if (path.Equals("/api/operations/subscribe", StringComparison.OrdinalIgnoreCase))
-            return Protected(AccessKeyScopes.Session);
-
-        if (path.StartsWith("/api/performance-overlay/", StringComparison.OrdinalIgnoreCase))
-        {
-            if (path.StartsWith("/api/performance-overlay/software/", StringComparison.OrdinalIgnoreCase)
-                && method == "PUT")
+            foreach (var operation in operations)
             {
-                return InjectionConfigurationRequirement;
+                var separator = operation.IndexOf(' ');
+                var method = operation[..separator];
+                var path = operation[(separator + 1)..];
+                routes.Add((method, path), requirement);
+                if (method == "GET")
+                    routes.Add(("HEAD", path), requirement);
             }
-
-            return method is "GET" or "HEAD"
-                ? Protected(AccessKeyScopes.MetricsRead, allowKeylessLocal: true)
-                : Protected(AccessKeyScopes.MachineWrite);
         }
-
-        if (path.StartsWith("/api/runtime/", StringComparison.OrdinalIgnoreCase)
-            && (path.Contains("gpu", StringComparison.OrdinalIgnoreCase)
-                || path.Contains("adapter", StringComparison.OrdinalIgnoreCase)))
-        {
-            if (path.Contains("resolve", StringComparison.OrdinalIgnoreCase))
-                return Protected(AccessKeyScopes.GpuResolve);
-            if (path.Contains("report", StringComparison.OrdinalIgnoreCase))
-                return Protected(AccessKeyScopes.GpuReport);
-        }
-
-        if (path.StartsWith("/api/gpu-placement/", StringComparison.OrdinalIgnoreCase))
-        {
-            if (path.Contains("/resolve", StringComparison.OrdinalIgnoreCase))
-                return Protected(AccessKeyScopes.GpuResolve);
-            if (path.Contains("/report", StringComparison.OrdinalIgnoreCase))
-                return Protected(AccessKeyScopes.GpuReport);
-        }
-
-        if (path.StartsWith("/api/system/", StringComparison.OrdinalIgnoreCase)
-            && (path.Contains("open-path", StringComparison.OrdinalIgnoreCase)
-                || path.Contains("open-properties", StringComparison.OrdinalIgnoreCase)
-                || path.Contains("search-online", StringComparison.OrdinalIgnoreCase)))
-        {
-            return Protected(AccessKeyScopes.Session);
-        }
-
-        if (method is "GET" or "HEAD")
-            return Protected(AccessKeyScopes.Read, allowKeylessLocal: true);
-
-        var writeScope = path.StartsWith("/api/system/", StringComparison.OrdinalIgnoreCase)
-            && path.Contains("session", StringComparison.OrdinalIgnoreCase)
-                ? AccessKeyScopes.Session
-                : AccessKeyScopes.MachineWrite;
-        return Protected(writeScope);
     }
 
-    public static IReadOnlyList<string> RequiredScopesForSubscription(string selector)
-        => selector switch
+    public static TrustedAccessHttpRequirement GetRequirement(HttpRequest request)
+        => TryGetRequirement(request, out var requirement) ? requirement : MissingPolicyRequirement;
+
+    public static bool TryGetRequirement(HttpRequest request, out TrustedAccessHttpRequirement requirement)
+    {
+        // The matched catchall only returns a typed 404. It is no business read
+        // and has no method restriction; new business templates still need a rule.
+        if (request.HttpContext.GetEndpoint() is RouteEndpoint endpoint
+            && endpoint.RoutePattern.RawText == "/api/{**unmatchedPath}")
+        {
+            requirement = TrustedAccessHttpRequirement.Anonymous;
+            return true;
+        }
+        return RouteRequirements.TryGetValue((GetPolicyMethod(request), GetPolicyPath(request)), out requirement!);
+    }
+
+    private sealed class OperationComparer : IEqualityComparer<(string Method, string Path)>
+    {
+        public static OperationComparer Instance { get; } = new();
+        public bool Equals((string Method, string Path) x, (string Method, string Path) y)
+            => StringComparer.OrdinalIgnoreCase.Equals(x.Method, y.Method)
+                && StringComparer.OrdinalIgnoreCase.Equals(x.Path, y.Path);
+        public int GetHashCode((string Method, string Path) value)
+            => HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(value.Method),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.Path));
+    }
+
+    public static bool TryGetRequiredScopesForSubscription(string selector, out IReadOnlyList<string> requiredScopes)
+    {
+        IReadOnlyList<string>? scopes = selector switch
         {
             "/api/metrics/subscribe" => [AccessKeyScopes.MetricsRead],
             "/api/metrics/fields/catalog/subscribe" => [],
             "/api/metrics/gpu-specialized/subscribe" => [AccessKeyScopes.MetricsRead],
             "/api/resource-monitor/subscribe" => [AccessKeyScopes.ProcessesRead],
+            "/api/resource-facts/subscribe" => [AccessKeyScopes.ProcessesRead],
             "/api/performance-overlay/subscribe" => [AccessKeyScopes.MetricsRead],
             "/api/adapters/resource-manager/scheduling/subscribe" => [AccessKeyScopes.AdaptersRegisterSelf],
             "/api/control/actual/subscribe" => [AccessKeyScopes.Read],
@@ -294,16 +390,20 @@ internal static class TrustedAccessHttpPolicy
             "/api/cpu/topology/subscribe" => [AccessKeyScopes.Read],
             "/api/cpu/topology/fields/subscribe" => [AccessKeyScopes.Read],
             "/api/cpu/residency/subscribe" => [AccessKeyScopes.ProcessesRead],
-            "/api/optimization/smart/state/subscribe" => [AccessKeyScopes.Read],
+            "/api/optimization/smart/state/subscribe" => [AccessKeyScopes.ProcessesRead],
             "/api/optimization/smart/status/subscribe" => [AccessKeyScopes.Read],
             "/api/operations/subscribe" => [AccessKeyScopes.Session],
             "/api/management/inventory-revisions/subscribe" => [AccessKeyScopes.Read],
             "/api/access-requests/subscribe" => [AccessKeyScopes.KeysManage],
-            _ => throw new ArgumentException("The subscription selector has no Trusted Access policy.", nameof(selector))
+            _ => null
         };
+        requiredScopes = scopes ?? [];
+        return scopes is not null;
+    }
 
     public static bool AllowsKeylessSubscription(string selector)
-        => RequiredScopesForSubscription(selector).All(TrustedAccessScopeCatalog.LocalReadScopes.Contains);
+        => TryGetRequiredScopesForSubscription(selector, out var scopes)
+            && scopes.All(TrustedAccessScopeCatalog.LocalReadScopes.Contains);
 
     public static bool IsStreamingRequest(HttpRequest request)
     {
@@ -407,34 +507,6 @@ internal static class TrustedAccessHttpPolicy
         string scope,
         bool allowKeylessLocal = false)
         => SingleScopeRequirements[(scope, allowKeylessLocal)];
-
-    private static bool IsAnonymousCatalogOrHealth(string path, string method)
-    {
-        if (method is not ("GET" or "HEAD")) return false;
-        return path.Equals("/api/runtime/capabilities", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/public/v1", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/public/v1/capabilities", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/public/v1/capability", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/metrics/catalog", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/metrics/fields/capabilities", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/metrics/fields/catalog", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/resource-breakdown/fields/catalog", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/health", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/health", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/healthz", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsAccessRequestWaitOrCreate(string path, string method)
-        => method == "POST"
-            && (path.Equals("/api/access-requests", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("/api/access-requests/", StringComparison.OrdinalIgnoreCase)
-                    && path.EndsWith("/wait", StringComparison.OrdinalIgnoreCase));
-
-    private static bool IsAccessRequestManagement(string path, string method)
-        => method == "POST"
-            && path.StartsWith("/api/access-requests/", StringComparison.OrdinalIgnoreCase)
-            && (path.EndsWith("/approve", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith("/deny", StringComparison.OrdinalIgnoreCase));
 
     private static bool ContainsAll(IReadOnlyList<string> granted, IReadOnlyList<string> required)
     {

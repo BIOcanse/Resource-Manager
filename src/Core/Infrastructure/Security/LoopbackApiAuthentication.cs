@@ -132,6 +132,14 @@ public sealed class LoopbackApiAuthenticationMiddleware(
         }
 
         var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+        if (requirement.Mode == TrustedAccessHttpAuthorizationMode.MissingPolicy)
+        {
+            LogAuthorizationByKey(context, null, "denied:access-policy-missing");
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(
+                new LoopbackApiErrorPayload("access-policy-missing"), context.RequestAborted);
+            return;
+        }
         if (requirement.Mode == TrustedAccessHttpAuthorizationMode.Anonymous)
         {
             if (context.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader))

@@ -6,6 +6,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.Control;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -15,7 +16,8 @@ public sealed class ControlActualStateSubscriptionTests
     public async Task ChannelWorkersOwnDemandOnlyWhileRunningAndPublishTheCurrentValue()
     {
         var owner = new CountingOwner();
-        var subscriptions = Compile(owner);
+        using var channel = await CompileAsync(owner);
+        var subscriptions = channel.Subscriptions;
         Assert.Equal(0, owner.Active);
         var context = new DefaultHttpContext();
         using var body = new MemoryStream();
@@ -51,7 +53,8 @@ public sealed class ControlActualStateSubscriptionTests
     public async Task ChannelTransportFailureReleasesTheActualStateDemand()
     {
         var owner = new CountingOwner();
-        var subscription = Compile(owner)[0];
+        using var channel = await CompileAsync(owner);
+        var subscription = channel.Subscriptions[0];
         var context = new DefaultHttpContext();
         using var body = new FailingStream();
         context.Response.Body = body;
@@ -68,7 +71,8 @@ public sealed class ControlActualStateSubscriptionTests
     public async Task AlreadyCanceledChannelDoesNotAcquireDemandAndReadOnlyOwnerStaysEmpty()
     {
         var owner = new CountingOwner();
-        var subscription = Compile(owner)[0];
+        using var channel = await CompileAsync(owner);
+        var subscription = channel.Subscriptions[0];
         var context = new DefaultHttpContext();
         using var writer = new ResourceManagerEndpointRouteBuilderExtensions.FrontendSubscriptionChannelWriter(
             context.Response, new(JsonSerializerDefaults.Web));
@@ -81,17 +85,33 @@ public sealed class ControlActualStateSubscriptionTests
         Assert.Same(ControlActualState.Empty, readOnly.Current);
     }
 
-    private static IReadOnlyList<ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Compile(
+    private static async Task<CompiledChannel> CompileAsync(
         IControlActualStateOwner owner)
     {
-        using var services = new ServiceCollection().AddSingleton(owner).BuildServiceProvider();
-        object?[] arguments = [new FrontendSubscriptionChannelRequest(1,
+        var registrations = new ServiceCollection().AddSingleton(owner).AddLogging();
+        TrustedAccessEndpointTestAuthentication.Add(registrations, AccessKeyScopes.Read);
+        var services = registrations.BuildServiceProvider();
+        using var client = TrustedAccessEndpointTestAuthentication.Apply(new HttpClient(), services);
+        var context = new DefaultHttpContext { RequestServices = services };
+        context.Request.Headers[TrustedAccessHeaders.KeyHeader] = client.DefaultRequestHeaders
+            .GetValues(TrustedAccessHeaders.KeyHeader).Single();
+        var request = new FrontendSubscriptionChannelRequest(1,
             [new("first", "/api/control/actual/subscribe?intervalMs=60000"),
-             new("second", "/api/control/actual/subscribe?intervalMs=60000")]), services, null, 0, null];
-        var compiled = typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(
-            "TryCompileSubscriptionChannelRequest", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, arguments);
-        Assert.Equal(true, compiled);
-        return Assert.IsAssignableFrom<IReadOnlyList<ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription>>(arguments[2]);
+             new("second", "/api/control/actual/subscribe?intervalMs=60000")]);
+        try
+        {
+            var compilation = await ResourceManagerEndpointRouteBuilderExtensions
+                .CompileSubscriptionChannelRequestAsync(request, context);
+            Assert.True(compilation.Succeeded, compilation.Error);
+            return new CompiledChannel(services, compilation.Subscriptions);
+        }
+        catch { services.Dispose(); throw; }
+    }
+
+    private sealed record CompiledChannel(ServiceProvider Services,
+        IReadOnlyList<ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Subscriptions) : IDisposable
+    {
+        public void Dispose() => Services.Dispose();
     }
 
     private sealed class CountingOwner : IControlActualStateOwner

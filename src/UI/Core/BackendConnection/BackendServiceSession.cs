@@ -41,7 +41,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     {
         endpoint = new Uri(baseAddress);
         BackendPath = ResolveBackendPath();
-        readApiKey = apiKeyReader ?? (() => TrustedAccessKeyFile.Read(NativeUiPaths.PackageRoot));
+        readApiKey = apiKeyReader ?? new NativeTrustedAccessKeyReader(NativeUiPaths.PackageRoot).Read;
         captureIdentity = identityReader ?? (() => BackendProcessConnection.CaptureInstalledServiceIdentity(BackendPath));
         HttpMessageHandler CreateHandler() => BackendProcessConnection.CreateHandler(() => backendProcessIdentity);
         probeClient = new HttpClient(CreateHandler(), disposeHandler: true)
@@ -87,7 +87,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             || address.Scheme != endpoint.Scheme || address.Authority != endpoint.Authority
             || address.UserInfo.Length != 0)
             throw new UnauthorizedAccessException("The frontend request does not target the configured backend.");
-        GetRequestAuthorization().Apply(request);
+        ApplyRequestAuthorization(request);
         return frontendClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
@@ -104,7 +104,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
                 subscriptions
             })
         };
-        GetRequestAuthorization().Apply(request);
+        ApplyRequestAuthorization(request);
         var response = await streamClient.SendAsync(request,
             HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         if (response.IsSuccessStatusCode) return response;
@@ -138,7 +138,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         {
             Content = JsonContent.Create(new { targets })
         };
-        GetRequestAuthorization().Apply(request);
+        ApplyRequestAuthorization(request);
         using var response = await actionClient.SendAsync(request, cancellationToken);
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -203,14 +203,14 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         using (var select = new HttpRequestMessage(HttpMethod.Post,
             "/api/runtime/interactive-desktop/publisher/select"))
         {
-            GetRequestAuthorization().Apply(select);
+            ApplyRequestAuthorization(select);
             using var selected = await desktopPublisherClient.SendAsync(select, cancellationToken);
             if (selected.StatusCode != HttpStatusCode.NoContent)
                 throw new HttpRequestException($"Interactive desktop publisher selection returned {(int)selected.StatusCode}.");
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.EndpointPath)
         { Content = JsonContent.Create(observation) };
-        GetRequestAuthorization().Apply(request);
+        ApplyRequestAuthorization(request);
         using var response = await desktopPublisherClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
@@ -506,25 +506,10 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return false;
     }
 
-    private BackendRequestAuthorization GetRequestAuthorization()
+    private void ApplyRequestAuthorization(HttpRequestMessage request)
     {
         if (backendProcessIdentity is null || readApiKey() is not { Length: > 0 } apiKey)
             throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
-        return BackendRequestAuthorization.ForKey(apiKey);
-    }
-
-    private sealed record BackendRequestAuthorization(
-        string ApiKey,
-        Action<HttpRequestMessage> Apply)
-    {
-        public static BackendRequestAuthorization ForKey(string apiKey)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(apiKey);
-            return new BackendRequestAuthorization(
-                apiKey,
-                request => request.Headers.TryAddWithoutValidation(
-                    ApiKeyHeaderName,
-                    apiKey));
-        }
+        request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, apiKey);
     }
 }
