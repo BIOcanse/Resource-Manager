@@ -40,7 +40,7 @@ const details = decodeResourceProcessDetailsWireSnapshot({ version: 1, capturedA
 assert.deepEqual(details.metrics.map(metric => metric.software[0].processes[0].name), ["", "", "", ""]);
 
 const processCatalog = bars.flatMap(bar => bar.software.flatMap(group => group.processes));
-const facts = decodeResourceFacts({ version: 1, capturedAt: null,
+const facts = decodeResourceFacts({ version: 2, capturedAt: null, attributions: [],
   software: wire.softwareCatalog.map(([softwareId, name, kind, attributionKind]) => ({ softwareId, name, kind, attributionKind })),
   processes: processCatalog.map(process => ({ ...process, userName: process.userName ?? null, architecture: process.architecture ?? null })),
   metrics: bars.map(bar => ({ ...bar, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
