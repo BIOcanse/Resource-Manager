@@ -1,7 +1,11 @@
 // 先选项目、再选来源：部件地址的来源是后端候选来源（自动选择用 isSelected 那个），
 // 不属于部件地址的设备字段按读取项分组；都按后端排序，不支持的来源不列。
 import assert from "node:assert/strict";
-import { metricSourceChoices } from "../src/features/monitor/metricSources.ts";
+import { metricSourceChoiceLabel, metricSourceChoices } from "../src/features/monitor/metricSources.ts";
+import { localizedMetricLabel } from "../src/presentation/metricLabels.ts";
+import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
+import { languageOptions } from "../src/i18n/settingsLanguages.ts";
+import { applyLanguage, currentLanguage, uiText } from "../src/text.ts";
 import { deviceFieldScopeKind, fieldCardId } from "../src/features/monitor/fieldCards.ts";
 import type { MetricFieldReading } from "../src/data/metricFields/metricFieldSource.ts";
 import type { MetricDefinition, MetricSourceCandidate } from "../src/types.ts";
@@ -60,5 +64,31 @@ assert.deepEqual(metricSourceChoices("missing", catalog), []);
 // 不属于部件地址的字段：同一读取项按后端 rank 排，没有“自动选择”，不支持的不列。
 assert.deepEqual(metricSourceChoices(smu.id, [unsupported, adlx, smu]).map((choice) => [choice.metricId, choice.automatic, choice.preferred]),
   [[smu.id, false, true], [adlx.id, false, false]]);
+
+// 来源名里的分组：分组键（cpu、gpu.0）和列表组标题一样翻成当前语言，设备名原样；九种语言都核对，
+// 自动选择里写出的来源名也一样。
+const keyed = field("cpu_package_temperature", "cpu", reading("cpu-package", 10));
+const named = field("smu_edge", "显卡 · Reading GPU", reading("edge", 10));
+let sourceNameLanguages = 0;
+for (const { id } of languageOptions) {
+  if (id === "system") continue;
+  const copy = await loadAppCopy(id);
+  applyLanguage(id);
+  for (let attempt = 0; currentLanguage() !== id && attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(currentLanguage(), id);
+  assert.equal(uiText.status.metricGroup.cpu, copy.status.metricGroup.cpu, `${id}: the language is active`);
+  const keyedName = `${localizedMetricLabel(keyed.id, keyed.label)} · ${copy.status.metricGroup.cpu}`;
+  assert.equal(metricSourceChoiceLabel({ metricId: keyed.id, automatic: false, source: keyed, preferred: false }), keyedName,
+    `${id}: a source's group key is shown by its localized group name`);
+  assert.equal(metricSourceChoiceLabel({ metricId: "cpu.temperature", automatic: true, source: keyed, preferred: false }),
+    copy.metricPicker.sourceAutomatic(keyedName), `${id}: automatic names the source with the localized group`);
+  assert.equal(metricSourceChoiceLabel({ metricId: named.id, automatic: false, source: named, preferred: false }),
+    `${localizedMetricLabel(named.id, named.label)} · 显卡 · Reading GPU`, `${id}: a device name stays as it is`);
+  sourceNameLanguages += 1;
+}
+assert.equal(sourceNameLanguages, 9, "All nine languages are checked");
+applyLanguage("zh-CN");
 
 console.log("metricSources: item then source choices follow the backend candidates and reading groups");

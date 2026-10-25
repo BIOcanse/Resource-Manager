@@ -490,6 +490,13 @@ body.reordering * {
   white-space: nowrap;
 }
 
+/* 列表框和空状态叠在第二行同一格：空状态不放进列表框（列表框里只有分组和选项）。 */
+.metric-options,
+.metric-picker-empty {
+  grid-row: 2;
+  grid-column: 1;
+}
+
 .metric-options {
   overflow: auto;
   padding: 0 4px 8px 0;

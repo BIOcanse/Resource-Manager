@@ -146,7 +146,6 @@ export function MetricModal(props: MetricModalProps) {
     const index = sourceChoices().findIndex((choice) => choice.metricId === props.selectedMetricId);
     return index < 0 ? "" : `source-${index}`;
   };
-  const sourceLabel = metricSourceChoiceLabel;
   const enabledMetricIds = createMemo(() => filteredMetrics()
     .filter((metric) => !metricUnavailable(metric))
     .map((metric) => metric.id));
@@ -331,7 +330,7 @@ export function MetricModal(props: MetricModalProps) {
           aria-multiselectable={props.multiSelect || undefined}
           aria-label={uiText.metricPicker.listLabel}
         >
-          <For each={groupedMetrics().keys} fallback={<div class="metric-picker-empty">{uiText.metricPicker.empty}</div>}>
+          <For each={groupedMetrics().keys}>
             {(key, groupIndex) => {
               // 这一组还在列表里时节点保留，内容跟着分组结果更新。
               const group = createMemo<MetricOptionGroup>(
@@ -341,12 +340,13 @@ export function MetricModal(props: MetricModalProps) {
               return (
                 <section class="metric-option-group-block" role="group" aria-labelledby={headingId()}>
                   <div class="metric-option-group-heading">
-                    <h3 id={headingId()} class="metric-option-group-title" title={group().detail ?? undefined}>
+                    {/* 列表框里只能放分组和选项：组名是普通元素，靠 aria-labelledby 给分组命名，不用标题角色。 */}
+                    <div id={headingId()} class="metric-option-group-title" title={group().detail ?? undefined}>
                       {group().group}
                       <Show when={group().detail}>
                         {(detail) => <span class="metric-option-group-detail"> · {detail()}</span>}
                       </Show>
-                    </h3>
+                    </div>
                     <For each={group().missingComponents}>
                       {(name) => (
                         <small class="metric-option-group-note">
@@ -418,6 +418,10 @@ export function MetricModal(props: MetricModalProps) {
             }}
           </For>
         </div>
+        {/* 空状态在列表框外，和列表框叠在同一格。 */}
+        <Show when={groupedMetrics().keys.length === 0}>
+          <div class="metric-picker-empty">{uiText.metricPicker.empty}</div>
+        </Show>
         <Show when={sourceChoices().length > 0}>
           <div class="metric-picker-source">
             <div class="metric-picker-source-heading">
@@ -431,8 +435,8 @@ export function MetricModal(props: MetricModalProps) {
               }}>
               <Index each={sourceChoices()}>
                 {(choice, index) => (
-                  <RadioGroupItem value={`source-${index}`} class="metric-source-choice" title={sourceLabel(choice())}>
-                    <span class="metric-source-choice-label">{sourceLabel(choice())}</span>
+                  <RadioGroupItem value={`source-${index}`} class="metric-source-choice" title={metricSourceChoiceLabel(choice())}>
+                    <span class="metric-source-choice-label">{metricSourceChoiceLabel(choice())}</span>
                     <Show when={choice().preferred}>
                       <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
                     </Show>

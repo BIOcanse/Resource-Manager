@@ -1,6 +1,7 @@
 import type { MetricDefinition, MetricSourceCandidate } from "../../types";
 import { metricOfferedInPicker } from "../../presentation/metricPresentation.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
+import { userFacingMetricGroup } from "../../presentation/userFacingText.ts";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind, fieldCardId } from "./fieldCards.ts";
 
@@ -29,9 +30,9 @@ export interface MetricSourceChoice {
   readonly preferred: boolean;
 }
 
-/** 一个来源的名字：字段名加设备名。 */
+/** 一个来源的名字：字段名加设备名。分组键（cpu、gpu.0 等）和列表的组标题一样翻成当前语言的名字，设备名原样。 */
 export function metricSourceName(source: MetricDefinition): string {
-  return `${localizedMetricLabel(source.id, source.label)} · ${source.group}`;
+  return `${localizedMetricLabel(source.id, source.label)} · ${userFacingMetricGroup(source.group)}`;
 }
 
 /** 来源选项的名字：自动选择写出后端现在选的来源（还没选中时只写“自动选择”）。卡片选择器和浮窗共用。 */

@@ -31,6 +31,19 @@ export default async function metricPickerGpuNamesJourney(page, baseUrl) {
   await picker.getByRole("group", { name: "GPU1 · Second GPU", exact: true }).waitFor();
   await picker.getByRole("group", { name: "GPU2", exact: true }).waitFor();
   assert.equal(await picker.getByText("untrusted old detail", { exact: true }).count(), 0);
+  // 列表框里只有分组（role=group）和选项：组名不是标题角色，空状态在列表框外。
+  const listbox = picker.getByRole("listbox", { name: app.metricPicker.listLabel, exact: true });
+  const roles = await listbox.evaluate((element) => ({
+    children: [...element.children].map((child) => child.getAttribute("role")),
+    headings: element.querySelectorAll("h1, h2, h3, h4, h5, h6, [role=heading]").length
+  }));
+  assert.ok(roles.children.length > 0 && roles.children.every((role) => role === "group"), JSON.stringify(roles.children));
+  assert.equal(roles.headings, 0, "The listbox holds no heading");
+  await picker.getByRole("combobox", { name: app.metricPicker.searchLabel, exact: true }).fill("no-such-metric-zzz");
+  const empty = picker.getByText(app.metricPicker.empty, { exact: true });
+  await empty.waitFor();
+  assert.equal(await listbox.getByText(app.metricPicker.empty, { exact: true }).count(), 0, "The empty state is outside the listbox");
+  assert.equal(await listbox.evaluate((element) => element.children.length), 0, "An empty listbox has no children");
   await picker.getByRole("button", { name: app.metricPicker.cancel, exact: true }).click();
   return { gpuGroups: ["GPU0 · First GPU", "GPU1 · Second GPU", "GPU2"] };
 }
