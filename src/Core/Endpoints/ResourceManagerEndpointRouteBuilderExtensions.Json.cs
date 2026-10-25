@@ -7,6 +7,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         => options.TypeInfoResolver = BackendHttpJsonContext.Default;
     [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot))]
+    [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>))]
     [JsonSerializable(typeof(EndpointErrorPayload))]
     [JsonSerializable(typeof(MarkerProbeErrorPayload))]
     [JsonSerializable(typeof(CredentialRevocationPayload))]
