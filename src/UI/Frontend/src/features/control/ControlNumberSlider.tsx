@@ -1,13 +1,14 @@
 import { controlSliderDefinition, thumbHalfWidth } from "../../interactions/components/controlSlider.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
-import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
+import { setInteractionComponentBox, solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
 import { effectiveStep, snapControlNumber } from "./controlNumber.ts";
 import type { ControlNumberBounds } from "./controlNumber.ts";
 
 /**
  * 数值滑条：还是原来那个原生 `<input type="range">`（大小、颜色、滑块、滑轨都由浏览器和 control.css 照旧画），
  * 行为交给交互协议的运行时（interactions/components/controlSlider.ts）：
- * 拖动中滑块跟着指针，只通过 onPreview 预览；松开才 onCommit 一次；单击照原生 range（点在滑块上不改，点在滑轨上到那里）；
+ * 按在滑块上拖动保持按下时指针相对圆心的偏移（和原生 range 一样），按在滑轨上拖动滑块圆心跟着指针；
+ * 拖动中只通过 onPreview 预览；松开才 onCommit 一次；单击照原生 range（点在滑块上不改，点在滑轨上到那里）；
  * Esc、右键取消，什么都不写，回到拖动前的值；键盘照原生 range 一步一写。滑块停在哪儿由运行时写 input.value，原生 range 按步长画，读屏读到的也是它。
  *
  * value 是滑块停的值（设定值夹进量程）。提交的值按档位取整、夹进量程；和滑块现在停的值相同就不提交
@@ -33,6 +34,14 @@ export function ControlNumberSlider(props: {
   const view = (): Presentation => {
     // 运行时第一次画之前先按宿主值放好。
     input.value = String(props.value);
+    // 组件是滑块：外框是滑块此刻画在的那一块（圆心左右各半个滑块、滑条整个高度），按在里面是抓住，外面是滑轨。
+    // 原生 range 按取整后的 input.value 画滑块，所以从它算。
+    setInteractionComponentBox(input, () => {
+      const rect = input.getBoundingClientRect();
+      const ratio = span() > 0 ? (Number(input.value) - props.bounds.minimum) / span() : 0;
+      const x = rect.left + thumbHalfWidth + ratio * (rect.width - 2 * thumbHalfWidth);
+      return { left: x - thumbHalfWidth, top: rect.top, right: x + thumbHalfWidth, bottom: rect.bottom };
+    });
     return {
       element: input,
       bindingLabel: "滑块位置",

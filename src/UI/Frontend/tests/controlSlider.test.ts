@@ -1,4 +1,4 @@
-// 控制面数值滑条的定义（src/interactions/components/controlSlider.ts）：按下不改值，离开拖动框起跟着指针预览、松开写一次；单击照原生 range；
+// 控制面数值滑条的定义（src/interactions/components/controlSlider.ts）：按下不改值，离开拖动框起跟着指针预览、松开写一次；按在滑块上拖动保持偏移；单击照原生 range；
 // Esc、右键取消（只调用 cancel，不写）；取消后的松开、移动什么都不调用；方向键、PageUp / PageDown 调用 step，Home / End 停在两端。
 import assert from "node:assert/strict";
 import { controlSliderDefinition } from "../src/interactions/components/controlSlider.ts";
@@ -15,7 +15,8 @@ const SYSTEM = {
 const el = {};
 const platform: Platform = {
   contains: (a, b) => a === b,
-  rect: () => ({ left: 0, top: 0, right: 400, bottom: 16 }),
+  // 组件的外框是滑块：圆心（通道此刻的位置）左右各 8 px，和产品呈现层登记的一样。
+  rect: () => { const x = xOf(inst.ch.x); return { left: x - 8, top: 0, right: x + 8, bottom: 16 }; },
   capture: () => {}, release: () => {}, focus: () => {},
   responseZone: () => ({ left: -10000, top: -10000, right: 10000, bottom: 10000 }),
   requestFrame: () => {},
@@ -33,7 +34,7 @@ const host: Host<number> = {
   subscribe: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
 };
 const setHost = (next: number) => { const old = hostValue; hostValue = next; for (const l of listeners) l(old, next, "宿主值变化"); };
-const xOf = (ratio: number) => 8 + ratio * 384;
+function xOf(ratio: number) { return 8 + ratio * 384; }
 const geometry = { center: "滑块圆心", atMin: { x: 8, y: 8 }, atMax: { x: 392, y: 8 } };
 const view: Presentation = { element: el, bindingLabel: "滑块位置", geometry: () => geometry, render() {}, aria: () => "" };
 const rt = new Runtime(SYSTEM, new Trace(), platform, { mode: "optimized" });
@@ -56,7 +57,7 @@ const key = (code: string) => {
 };
 const settle = () => { for (let i = 0; i < 60; i += 1) { t += 16; rt.frame(t); } };
 
-// 拖动：按下不改值；离开拖动框起滑块圆心在指针下，连续预览；松开写一次。
+// 按在滑轨上拖动：按下不改值；离开拖动框起滑块圆心在指针下，连续预览；松开写一次。
 ptr(xOf(0.1), 0);
 assert.ok(ptr(xOf(0.1), 1, "pointerdown"), "按下被认领（原生 range 不自己拖）");
 assert.deepEqual(calls, [], "按下不改值");
@@ -67,13 +68,23 @@ assert.deepEqual(calls, ["select(0.300, false)", "select(0.650, false)", "select
 assert.equal(inst.mode, "静止");
 settle();
 
-// 单击：点在滑块上（离圆心不超过 8 px）停在宿主值，宿主不写；点在滑轨上到那里。
+// 按在滑块上拖动：保持按下时指针相对圆心的偏移（偏右 5 px），圆心不跳到指针下。
 calls.length = 0;
-ptr(xOf(0.65) + 6, 1, "pointerdown");
-ptr(xOf(0.65) + 6, 0, "pointerup");
+ptr(xOf(0.65) + 5, 1, "pointerdown");
+ptr(xOf(0.7) + 5, 1);
+ptr(xOf(0.75) + 5, 1);
+ptr(xOf(0.75) + 5, 0, "pointerup");
+assert.deepEqual(calls, ["select(0.700, false)", "select(0.750, false)", "select(0.750, true)"]);
+settle();
+
+// 单击：点在滑块上不调用；点在滑轨上到那里。
+calls.length = 0;
+ptr(xOf(0.75) + 6, 1, "pointerdown");
+ptr(xOf(0.75) + 6, 0, "pointerup");
+assert.deepEqual(calls, [], "单击滑块不改值");
 ptr(xOf(0.2), 1, "pointerdown");
 ptr(xOf(0.2), 0, "pointerup");
-assert.deepEqual(calls, ["select(0.650, true)", "select(0.200, true)"]);
+assert.deepEqual(calls, ["select(0.200, true)"]);
 settle();
 assert.ok(Math.abs(inst.ch.x - 0.2) < 1e-6, "单击滑轨后滑块到那里");
 

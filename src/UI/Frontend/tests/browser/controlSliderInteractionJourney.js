@@ -8,7 +8,8 @@ import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 /**
  * 控制面的数值滑条走交互协议的运行时（features/control/ControlNumberSlider.tsx），真实鼠标事件，简体中文。
  * 滑条还是原来的原生 range，只换了行为：
- * - 按下不改值，离开拖动框起滑块圆心在指针下；拖动中滑块和数字框跟着指针，期望状态不变（应用按钮一直不可用），松开才写一次；
+ * - 按在滑轨上：按下不改值，离开拖动框起滑块圆心在指针下；按在滑块上：拖动中保持按下时指针相对圆心的偏移，不跳；
+ *   拖动中滑块和数字框跟着指针，期望状态不变（应用按钮一直不可用），松开才写一次；
  * - 单击和原生 range 相同：同一串单击，原生 range 每次得到的值和这里一样（点在滑块上不改，点在滑轨上到那里）；
  * - 拖动中按 Esc、按右键取消：什么都不写，回到拖动前的值；
  * - 方向键、PageUp / PageDown、Home / End 照原生 range 一步一写；
@@ -167,6 +168,29 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   assert.equal(await shown(), "65");
   assert.equal(await thumb(), "65");
   await applyAndSettle(65, "Drag");
+  // 按在滑块上偏右 5 px 拖动：保持指针相对圆心的偏移，和原生 range 一样不跳。
+  // 圆心若跳到指针下，第一次小移动就会到 70，拖到 80 + 5 px 处会是 85（量程 0–100 时一档约 5 px）。
+  await page.mouse.move(xOf(65) + 5, y);
+  await page.mouse.down();
+  // 离开拖动框（半宽 2 px）但不到半档：抓住时还在 65，跳到指针下（偏右 7.5 px）就是 70。
+  await page.mouse.move(xOf(65) + 7.5, y);
+  await settle();
+  assert.equal(await thumb(), "65", "Grabbing the thumb off-centre does not jump it under the pointer");
+  await moveTo(xOf(65) + 7.5, xOf(80) + 5);
+  await waitFor("Grabbed thumb keeps the offset", thumb, "80");
+  await page.mouse.up();
+  await waitFor("Release after grabbing", shown, "80");
+  await applyAndSettle(80, "Grab");
+  // 按在滑块上不动就松开：不改值，不写。
+  await page.mouse.move(xOf(80) - 6, y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await settle();
+  assert.equal(await thumb(), "80");
+  assert.equal(await pendingWrite(), false, "Clicking the thumb writes nothing");
+  await box.fill("65");
+  await box.press("Enter");
+  await applyAndSettle(65, "Back to 65");
   // 之后只记取消的两次拖动。
   await takeFrames();
 

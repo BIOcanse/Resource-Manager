@@ -21,10 +21,25 @@ import type { Value } from "../protocol/vec.ts";
 let runtime: Runtime | null = null;
 let frameRequested = false;
 
+type Rect = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * 组件的外框不是它元素的外框时，由呈现层在这里登记（平台的“元素的外框”，引擎只拿它算事实“指针在组件内”）。
+ * 例：控制面的数值滑条，元素是原生 range 整条，组件是里面的滑块（浏览器自己画的，没有元素），外框按滑块此刻的位置算。
+ * 没登记的元素照常取 getBoundingClientRect。元素卸载后登记随元素回收。
+ */
+const componentBoxes = new WeakMap<Element, () => Rect>();
+
+export function setInteractionComponentBox(element: Element, box: () => Rect): void {
+  componentBoxes.set(element, box);
+}
+
 const platform: Platform = {
   contains: (element, target) => element instanceof Node && target instanceof Node && element.contains(target),
   rect: (element) => {
     if (!(element instanceof Element)) return null;
+    const box = componentBoxes.get(element);
+    if (box) return box();
     const r = element.getBoundingClientRect();
     return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
   },
