@@ -1,3 +1,6 @@
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
+
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 /// <summary>Host retry/lifetime adapter over the single SDK session resource owner.</summary>
@@ -5,12 +8,21 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
 {
     private readonly KernelEtwSessionOwner owner;
     private readonly TimeSpan reconciliationInterval;
-    public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger)
+    private readonly IBusinessBlockDiagnostics? blockDiagnostics;
+    public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger,
+        IEtwConsumerThreadObserver? consumerThreadObserver = null,
+        IBusinessBlockDiagnostics? blockDiagnostics = null)
     {
+        this.blockDiagnostics = blockDiagnostics;
         owner = new(new TraceEventKernelEtwSessionRuntimeFactory(sessionName =>
             ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
-                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName)),
-            new(value => Report(logger, value)));
+                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName), consumerThreadObserver),
+            new(value =>
+            {
+                Report(logger, value);
+                if (value.Exception is { } error)
+                    blockDiagnostics?.ReportFailure(nameof(KernelEtwSessionBroker), error, "kernel-session");
+            }));
         reconciliationInterval = TimeSpan.FromSeconds(5);
     }
     internal KernelEtwSessionBroker(IKernelEtwSessionRuntimeFactory factory, ILogger<KernelEtwSessionBroker> logger)
@@ -39,6 +51,7 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
             while (!stoppingToken.IsCancellationRequested)
             {
                 await Task.Delay(reconciliationInterval, stoppingToken);
+                using var segment = blockDiagnostics?.MeasureSegment(nameof(KernelEtwSessionBroker));
                 owner.Reconcile();
             }
         }

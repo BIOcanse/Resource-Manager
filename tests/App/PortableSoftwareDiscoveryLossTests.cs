@@ -8,6 +8,7 @@ using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Domain.ProcessAttribution;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -131,6 +132,37 @@ public sealed class PortableSoftwareDiscoveryLossTests
         await service.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task TerminalWorkerFailureIsReportedWhileLegacyTaskCompletesSuccessfully()
+    {
+        var error = new InvalidOperationException("terminal catalog fixture");
+        var diagnostics = new RecordingBlockDiagnostics();
+        var logger = new RecordingLogger();
+        var broker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(
+            broker,
+            new FailingCatalogProvider(error),
+            new MatchingCatalog(),
+            new RecordingRegistry(),
+            logger,
+            () => [new(Environment.ProcessId, 1)],
+            ReadFixtureIdentity,
+            diagnostics);
+
+        await service.StartAsync(CancellationToken.None);
+        var reported = await diagnostics.FailureObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Worker(service).WaitAsync(TimeSpan.FromSeconds(5));
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Equal(nameof(PortableSoftwareDiscoveryService), reported.BlockId);
+        Assert.Same(error, reported.Error);
+        Assert.Equal("portable-discovery-loop", reported.Operation);
+        Assert.True(Worker(service).IsCompletedSuccessfully);
+        Assert.Single(logger.Errors);
+        Assert.Contains("worker stopped unexpectedly", logger.Errors.Single());
+        Assert.Equal(1, broker.ReleaseCount);
+    }
+
     private static Task Worker(PortableSoftwareDiscoveryService service) => (Task)typeof(PortableSoftwareDiscoveryService)
         .GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
 
@@ -161,6 +193,38 @@ public sealed class PortableSoftwareDiscoveryLossTests
     {
         public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
             => throw new ObjectDisposedException("NativeSoftwareIdentityResolutionSession");
+    }
+
+    private sealed class FailingCatalogProvider(Exception error) : IRuntimeProcessAttributionCatalogProvider
+    {
+        public long SoftwareSnapshotGeneration => 0;
+
+        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
+            string? windowsSid,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromException<RuntimeProcessAttributionCatalogLease>(error);
+        }
+
+        public Task InvalidateSoftwareSnapshotAsync() => Task.CompletedTask;
+    }
+
+    private sealed class RecordingBlockDiagnostics : IBusinessBlockDiagnostics
+    {
+        internal TaskCompletionSource<(string BlockId, Exception Error, string Operation)> FailureObserved { get; }
+            = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReportFailure(string blockId, Exception error, string operation)
+            => FailureObserved.TrySetResult((blockId, error, operation));
+
+        public IDisposable MeasureSegment(string blockId) => NoopDisposable.Instance;
+    }
+
+    private sealed class NoopDisposable : IDisposable
+    {
+        internal static NoopDisposable Instance { get; } = new();
+        public void Dispose() { }
     }
 
     private sealed class MatchingCatalog : ISoftwareIdentityCatalog

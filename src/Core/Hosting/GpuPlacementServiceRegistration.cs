@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
@@ -7,6 +7,8 @@ using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Hosting;
 
@@ -21,7 +23,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
         services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
-            services.AddHostedService<GpuPlacementProcessHistoryObserver>();
+            services.AddBusinessBlockHostedService<GpuPlacementProcessHistoryObserver>();
         services.AddSingleton<IWindowsGraphicsPreferenceStore, WindowsGraphicsPreferenceStore>();
         services.AddSingleton<D3d11ProxyShimRuntime>();
         services.AddSingleton<WindowsGpuPlacementInjector>();
@@ -42,7 +44,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(
                 StartupCapability.GpuLaunchInterceptionReconciliation))
         {
-            services.AddHostedService(static provider =>
+            // Observe caught exceptions without editing the reconciler's overlay-related code.
+            services.AddSingleton<ILogger<GpuLaunchInterceptionReconciler>>(provider =>
+                new BusinessBlockFailureLogger<GpuLaunchInterceptionReconciler>(
+                    provider.GetRequiredService<ILoggerFactory>().CreateLogger<GpuLaunchInterceptionReconciler>(),
+                    provider.GetRequiredService<IBusinessBlockDiagnostics>(), nameof(GpuLaunchInterceptionReconciler)));
+            services.AddBusinessBlockHostedService(static provider =>
                 provider.GetRequiredService<GpuLaunchInterceptionReconciler>());
         }
         services.AddSingleton<IRunningGpuPlacementActionService, ExternalOnlyRunningGpuPlacementActionService>();

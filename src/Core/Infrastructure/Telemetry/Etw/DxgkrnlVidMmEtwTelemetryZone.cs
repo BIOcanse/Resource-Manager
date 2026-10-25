@@ -6,12 +6,14 @@ using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Devices;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed class DxgkrnlVidMmEtwTelemetryZone(
-    ILogger<DxgkrnlVidMmEtwTelemetryZone> logger) : BackgroundService, IResourceManagerSelfComputeZone
+    ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : BackgroundService, IResourceManagerSelfComputeZone
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
 
@@ -178,7 +180,11 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
                 state = "Running";
                 message = "DXGKrnl/VidMm ETW 正在采集 GPU 内存归因事件。";
                 var current = session;
-                processingTask = Task.Run(() => ProcessTraceSource(current), CancellationToken.None);
+                processingTask = DedicatedEtwConsumerThread.Start(
+                    "vidmm-etw",
+                    SessionName,
+                    () => ProcessTraceSource(current),
+                    consumerThreadObserver);
             }
             catch (Exception ex)
             {
@@ -186,6 +192,7 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
                 state = "Unavailable";
                 message = $"DXGKrnl/VidMm ETW 启动失败：{ex.Message}";
                 logger.LogWarning(ex, "Failed to start DXGKrnl/VidMm ETW telemetry zone.");
+                consumerThreadObserver?.ReportFailure("vidmm-etw", ex);
             }
         }
     }
@@ -198,6 +205,16 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         }
         catch (Exception ex)
         {
+            try
+            {
+                consumerThreadObserver?.ReportFailure("vidmm-etw", ex);
+            }
+            catch (Exception reportingError)
+            {
+                logger.LogDebug(new AggregateException(ex, reportingError),
+                    "DXGKrnl/VidMm source processing and failure reporting both failed.");
+            }
+
             logger.LogDebug(ex, "DXGKrnl/VidMm source processing stopped.");
         }
         finally

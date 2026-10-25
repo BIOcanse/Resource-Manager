@@ -1,3 +1,7 @@
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+
 namespace ResourceManager.App.Hosting;
 
 internal sealed class NonOwningHostedService<TService>(IServiceProvider provider) : BackgroundService
@@ -10,15 +14,25 @@ internal sealed class NonOwningHostedService<TService>(IServiceProvider provider
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        await Service.StartAsync(cancellationToken).ConfigureAwait(false);
+        _ = Service;
+        await provider.GetRequiredService<BusinessBlockController>().StartAsync(
+            typeof(TService).Name, Reason("host-start"), cancellationToken).ConfigureAwait(false);
         await base.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // The host must observe the real worker task; DI still owns the service's disposal.
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
-        => Service is BackgroundService backgroundService
-            ? backgroundService.ExecuteTask ?? Task.CompletedTask
-            : Task.CompletedTask;
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (Service is not BackgroundService backgroundService || backgroundService.ExecuteTask is not { } execution) return;
+        try { await execution.ConfigureAwait(false); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested
+            || provider.GetRequiredService<BusinessBlockController>().IsStopRequested(typeof(TService).Name)) { }
+        catch (Exception error)
+        {
+            provider.GetRequiredService<BusinessBlockController>().ReportFailure(typeof(TService).Name, error, "hosted-worker");
+            throw;
+        }
+    }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -26,7 +40,8 @@ internal sealed class NonOwningHostedService<TService>(IServiceProvider provider
         {
             if (service is not null)
             {
-                await service.StopAsync(cancellationToken).ConfigureAwait(false);
+                await provider.GetRequiredService<BusinessBlockController>().StopAsync(
+                    typeof(TService).Name, Reason("host-stop"), cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -34,6 +49,10 @@ internal sealed class NonOwningHostedService<TService>(IServiceProvider provider
             await base.StopAsync(cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private BusinessBlockReason Reason(string operation) => new(
+        BusinessBlockRequestKind.Configuration, "generic-host", $"hosting.{typeof(TService).Name}.{operation}",
+        provider.GetService<IRuntimePlanProvider>()?.Current.Version ?? 0);
 }
 
 internal static class NonOwningHostedServiceRegistration
@@ -42,6 +61,7 @@ internal static class NonOwningHostedServiceRegistration
         this IServiceCollection services)
         where TService : class, IHostedService
     {
+        ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services);
         services.AddSingleton<IHostedService>(static provider =>
             new NonOwningHostedService<TService>(provider));
         return services;

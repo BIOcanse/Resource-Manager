@@ -1,5 +1,6 @@
 using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.Diagnostics;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;
@@ -16,6 +17,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            return Results.Ok(blocks.Read());
+        });
+
         app.MapGet("/api/debug/gpu-renderers", (HttpResponse response,
             IMetricSnapshotObservationSource metrics, ISchedulingProcessFactObservationSource processes) =>
         {

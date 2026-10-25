@@ -5,13 +5,15 @@ using System.Threading.Channels;
 using ResourceManager.App.Application.Diagnostics;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Diagnostics;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Diagnostics;
 
 public sealed class JsonDebugDiagnosticLogWriter(
     IHostEnvironment environment,
     IRuntimePlanProvider runtimePlanProvider,
-    ILogger<JsonDebugDiagnosticLogWriter> logger) : BackgroundService, IDebugDiagnosticLogWriter
+    ILogger<JsonDebugDiagnosticLogWriter> logger,
+    IBusinessBlockDiagnostics? blockDiagnostics = null) : BackgroundService, IDebugDiagnosticLogWriter
 {
     private const long MaxLogFileBytes = 32L * 1024 * 1024;
     internal const int QueueCapacity = 1024;
@@ -190,6 +192,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
         }
         catch (Exception ex)
         {
+            blockDiagnostics?.ReportFailure(nameof(JsonDebugDiagnosticLogWriter), ex, "diagnostic-writer-loop");
             logger.LogDebug(ex, "Debug diagnostic log writer stopped unexpectedly.");
         }
     }
@@ -205,11 +208,13 @@ public sealed class JsonDebugDiagnosticLogWriter(
                 return false;
             }
 
-            Directory.CreateDirectory(
-                Path.GetDirectoryName(logPath)
-                    ?? AppContext.BaseDirectory);
-            RotateIfNeeded();
-            var line = JsonSerializer.Serialize(record, JsonOptions);
+            string line;
+            using (blockDiagnostics?.MeasureSegment(nameof(JsonDebugDiagnosticLogWriter)))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath) ?? AppContext.BaseDirectory);
+                RotateIfNeeded();
+                line = JsonSerializer.Serialize(record, JsonOptions);
+            }
             await File.AppendAllTextAsync(logPath, line + Environment.NewLine, cancellationToken);
             return true;
         }
@@ -219,6 +224,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
         }
         catch (Exception ex)
         {
+            blockDiagnostics?.ReportFailure(nameof(JsonDebugDiagnosticLogWriter), ex, "diagnostic-record-write");
             logger.LogDebug(ex, "Failed to write debug diagnostic log record.");
             return false;
         }

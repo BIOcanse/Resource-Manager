@@ -57,7 +57,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (hostEnvironment.IsWindowsService && startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
             services.AddSingleton<IProductUiSessionPresence, ProductUiSessionPresence>();
-            services.AddHostedService<AutomaticProductUpdateService>();
+            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>();
         }
 
         services
@@ -80,6 +80,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             .AddResourceManagerDeviceTopology()
             .AddResourceManagerRuntimeIdentity()
             .AddResourceManagerDependencies();
+
+        services.AddObservedEtwBusinessBlocks();
 
         return services;
     }
@@ -115,7 +117,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 这也是那两个服务图测试守着的东西。
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
-            services.AddHostedService<ControlDesiredStateReassertion>();
+            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>();
             /*
              * 给软件风扇曲线喂温度。
              *
@@ -125,13 +127,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
              * 这台机器用不上的话它一次都不推（核心会在 describe 里说要不要），
              * 所以注册它不等于一定会跑起来。
              */
-            services.AddHostedService<FanCurveTemperatureFeed>();
+            services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>();
             // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
             // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
             services.AddSingleton<ControlActualStateReader>();
             services.AddSingleton<IControlActualStateOwner>(static provider =>
                 provider.GetRequiredService<ControlActualStateReader>());
-            services.AddHostedService(static provider =>
+            services.AddBusinessBlockHostedService(static provider =>
                 provider.GetRequiredService<ControlActualStateReader>());
         }
         else

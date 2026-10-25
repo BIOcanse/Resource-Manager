@@ -10,6 +10,7 @@ using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.App.Infrastructure.ProcessAttribution;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.SoftwareDiscovery;
 
@@ -22,6 +23,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     private readonly ILogger<PortableSoftwareDiscoveryService> logger;
     private readonly Func<PortableProcessCandidate[]> captureCurrentProcesses;
     private readonly Func<PortableProcessCandidate, RuntimeProcessIdentity?> readIdentity;
+    private readonly IBusinessBlockDiagnostics? blockDiagnostics;
     private readonly object failureLogGate = new();
     private readonly Dictionary<string, long> failureLogTimes = new();
     private readonly Channel<PortableProcessCandidate> processStarts = Channel.CreateBounded<PortableProcessCandidate>(
@@ -42,9 +44,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         IRuntimeProcessAttributionCatalogProvider attributionCatalogProvider,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
         IPortableSoftwareRegistry portableSoftwareRegistry,
-        ILogger<PortableSoftwareDiscoveryService> logger)
+        ILogger<PortableSoftwareDiscoveryService> logger,
+        IBusinessBlockDiagnostics? blockDiagnostics = null)
         : this(kernelEtwSessionBroker, attributionCatalogProvider, softwareIdentityCatalog,
-            portableSoftwareRegistry, logger, CaptureCurrentProcesses)
+            portableSoftwareRegistry, logger, CaptureCurrentProcesses, blockDiagnostics: blockDiagnostics)
     {
     }
 
@@ -55,8 +58,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         IPortableSoftwareRegistry portableSoftwareRegistry,
         ILogger<PortableSoftwareDiscoveryService> logger,
         Func<PortableProcessCandidate[]> captureCurrentProcesses,
-        Func<PortableProcessCandidate, RuntimeProcessIdentity?>? readIdentity = null)
+        Func<PortableProcessCandidate, RuntimeProcessIdentity?>? readIdentity = null,
+        IBusinessBlockDiagnostics? blockDiagnostics = null)
     {
+        this.blockDiagnostics = blockDiagnostics;
         this.kernelEtwSessionBroker = kernelEtwSessionBroker;
         this.attributionCatalogProvider = attributionCatalogProvider;
         this.softwareIdentityCatalog = softwareIdentityCatalog;
@@ -131,6 +136,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             },
             (candidate, _) =>
             {
+                using var segment = blockDiagnostics?.MeasureSegment(nameof(PortableSoftwareDiscoveryService));
                 ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
                 return ValueTask.CompletedTask;
             });
@@ -181,6 +187,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 }
                 nextCandidate = processStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
                 using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
+                using var segment = blockDiagnostics?.MeasureSegment(nameof(PortableSoftwareDiscoveryService));
                 ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
             }
         }
@@ -189,6 +196,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
         catch (Exception ex)
         {
+            blockDiagnostics?.ReportFailure(nameof(PortableSoftwareDiscoveryService), ex, "portable-discovery-loop");
             logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly; discovery is unavailable for this service lifetime.");
         }
     }

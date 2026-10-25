@@ -29,7 +29,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<SqlitePortableSoftwareRegistry>();
             services.AddSingleton<IPortableSoftwareRegistry>(static provider =>
                 provider.GetRequiredService<SqlitePortableSoftwareRegistry>());
-            services.AddHostedService<ResourceManagerDatabaseInitializer>();
+            services.AddBusinessBlockHostedService<ResourceManagerDatabaseInitializer>();
             services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>();
         }
         else
@@ -40,7 +40,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         if (startupCapabilities.Allows(StartupCapability.LegacyPersistenceImport))
         {
-            services.AddHostedService<SqliteLegacyDataImportHostedService>();
+            services.AddBusinessBlockHostedService<SqliteLegacyDataImportHostedService>();
         }
         return services;
     }

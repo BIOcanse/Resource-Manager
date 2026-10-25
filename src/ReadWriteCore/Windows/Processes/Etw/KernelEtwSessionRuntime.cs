@@ -1,5 +1,6 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -56,7 +57,9 @@ public sealed record KernelEtwSessionStopResult(
         []);
 }
 
-public sealed class TraceEventKernelEtwSessionRuntimeFactory(Action<string>? beforeCreate = null) : IKernelEtwSessionRuntimeFactory
+public sealed class TraceEventKernelEtwSessionRuntimeFactory(
+    Action<string>? beforeCreate = null,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IKernelEtwSessionRuntimeFactory
 {
 
     public bool TryGetAvailability(out string state, out string message)
@@ -104,7 +107,12 @@ public sealed class TraceEventKernelEtwSessionRuntimeFactory(Action<string>? bef
             var dispatcher = new KernelEtwSubscriptionDispatcher();
             dispatcher.AttachParser(session.Source.Kernel);
             dispatcher.InitializeSubscriptions(subscriptions, context);
-            return new TraceEventSessionProcessingRuntime(session, keywordControl, dispatcher);
+            return new TraceEventSessionProcessingRuntime(
+                session,
+                keywordControl,
+                dispatcher,
+                consumerThreadObserver,
+                "kernel-etw");
         }
         catch (Exception startFailure)
         {
@@ -174,7 +182,9 @@ public sealed class TraceEventKernelEtwSessionRuntimeFactory(Action<string>? bef
 internal sealed class TraceEventSessionProcessingRuntime(
     TraceEventSession session,
     KernelEtwSessionKeywordControl? keywordControl = null,
-    KernelEtwSubscriptionDispatcher? dispatcher = null) : IKernelEtwSessionRuntime
+    KernelEtwSubscriptionDispatcher? dispatcher = null,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null,
+    string blockId = "etw-consumer") : IKernelEtwSessionRuntime
 {
     private Task? processingTask;
     private int processing;
@@ -208,23 +218,22 @@ internal sealed class TraceEventSessionProcessingRuntime(
             throw new InvalidOperationException("ETW 事件处理已经启动。");
         }
 
-        processingTask = Task.Run(() =>
-        {
-            Exception? failure = null;
-            try
-            {
-                session.Source.Process();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-            finally
-            {
-                Volatile.Write(ref processing, 0);
-                completed(failure);
-            }
-        }, CancellationToken.None);
+        processingTask = DedicatedEtwConsumerThread.Start(
+            blockId,
+            session.SessionName,
+            () => session.Source.Process(),
+            consumerThreadObserver).ContinueWith(
+                task =>
+                {
+                    var failure = task.IsFaulted
+                        ? task.Exception?.GetBaseException()
+                        : task.IsCanceled ? new TaskCanceledException(task) : null;
+                    Volatile.Write(ref processing, 0);
+                    completed(failure);
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
     }
 
     public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)

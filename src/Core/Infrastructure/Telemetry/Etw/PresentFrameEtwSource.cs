@@ -1,4 +1,5 @@
 using Microsoft.Diagnostics.Tracing;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.Adapter;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
@@ -12,7 +13,9 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// 高频的 Present 事件不能连累其他采集。有订阅才开，最后一个订阅释放就停；功能区冻结时停。
 /// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”。
 /// </summary>
-public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
+public sealed partial class PresentFrameEtwSource(
+    ILogger<PresentFrameEtwSource> logger,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null)
     : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IDisposable
 {
     internal static readonly Guid DxgiProvider = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
@@ -72,7 +75,9 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
-        Func<string, IPresentFrameEtwSession> createSession, TimeProvider? timeProvider = null) : this(logger)
+        Func<string, IPresentFrameEtwSession> createSession,
+        TimeProvider? timeProvider = null,
+        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
@@ -196,12 +201,25 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
             var current = createSession(name);
             session = current;
             current.Bind(OnEvent);
-            processor = Task.Factory.StartNew(() =>
-            {
-                try { current.Process(); }
-                catch (Exception error) { logger.LogWarning(error, "Present frame event stream ended."); }
-                finally { lock (gate) { if (ReferenceEquals(session, current)) failed = true; } }
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            processor = DedicatedEtwConsumerThread.Start(
+                "present-etw",
+                name,
+                current.Process,
+                consumerThreadObserver).ContinueWith(
+                    task =>
+                    {
+                        if (task.IsFaulted)
+                        {
+                            logger.LogWarning(task.Exception?.GetBaseException(), "Present frame event stream ended.");
+                        }
+                        lock (gate)
+                        {
+                            if (ReferenceEquals(session, current)) failed = true;
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             UpdateProviders(current, previousFrameLeases: null);
             flushTimer = new Timer(_ => Flush(current), null, FlushInterval, FlushInterval);
         }
@@ -210,6 +228,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
             lock (gate) failed = true;
             logger.LogWarning(error, "Present frame session {Session} could not start.", name);
             Stop();
+            consumerThreadObserver?.ReportFailure("present-etw", error);
         }
     }
 
@@ -230,6 +249,7 @@ public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource>
                 lock (gate) failed = true;
                 logger.LogWarning(error, "Present frame session provider update failed.");
                 Stop();
+                consumerThreadObserver?.ReportFailure("present-etw", error);
             }
         }
     }

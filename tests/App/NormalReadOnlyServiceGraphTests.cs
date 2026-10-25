@@ -11,6 +11,7 @@ using ResourceManager.App.Application.PublicServices;
 using ResourceManager.App.Application.PublicServices.AiModels;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Application.Software;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.DeviceTopology;
@@ -44,7 +45,9 @@ public sealed class NormalReadOnlyServiceGraphTests
                 ["--no-native-ui"], writable ? StartupCapabilitySet.Full : StartupCapabilitySet.NormalReadOnly,
                 BackendHostEnvironment.Compile(isWindowsService: true, isLocalSystem: true)))
             .Build();
-        var owners = host.Services.GetServices<IHostedService>().OfType<AutomaticProductUpdateService>().ToArray();
+        var owners = host.Services.GetServices<IHostedService>()
+            .OfType<NonOwningHostedService<AutomaticProductUpdateService>>()
+            .ToArray();
         if (writable)
         {
             Assert.Single(owners);
@@ -73,6 +76,9 @@ public sealed class NormalReadOnlyServiceGraphTests
             service is ResourceManagerDatabaseInitializer
             or SqliteLegacyDataImportHostedService
             or GpuLaunchInterceptionReconciler);
+        AssertNoHostedAlias<ResourceManagerDatabaseInitializer>(hostedServices);
+        AssertNoHostedAlias<SqliteLegacyDataImportHostedService>(hostedServices);
+        AssertNoHostedAlias<GpuLaunchInterceptionReconciler>(hostedServices);
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertNoHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
         AssertNoHostedAlias<HostManagerPublicServiceCoordinatorOwner>(hostedServices);
@@ -88,6 +94,8 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.DoesNotContain(hostedServices, static service =>
             service is SharedMemoryPublicResourceBroker
             or SharedResourceSubscriptionMaintenanceService);
+        AssertNoHostedAlias<SharedMemoryPublicResourceBroker>(hostedServices);
+        AssertNoHostedAlias<SharedResourceSubscriptionMaintenanceService>(hostedServices);
 
         var publicResourceCapability = host.Services
             .GetRequiredService<IHostPublicResourceCapability>()
@@ -153,11 +161,11 @@ public sealed class NormalReadOnlyServiceGraphTests
         var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
 
         Assert.Contains(hostedServices, static service =>
-            service is ResourceManagerDatabaseInitializer);
+            service is NonOwningHostedService<ResourceManagerDatabaseInitializer>);
         Assert.Contains(hostedServices, static service =>
-            service is SqliteLegacyDataImportHostedService);
+            service is NonOwningHostedService<SqliteLegacyDataImportHostedService>);
         Assert.Contains(hostedServices, static service =>
-            service is GpuLaunchInterceptionReconciler);
+            service is NonOwningHostedService<GpuLaunchInterceptionReconciler>);
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
         AssertHostedAlias<HostManagerOperationCoordinatorOwner>(hostedServices);
@@ -175,10 +183,26 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.Same(
             host.Services.GetRequiredService<SqliteSoftwareFileIndex>(),
             host.Services.GetRequiredService<ISoftwareFileIndexRefresher>());
-        Assert.Contains(hostedServices, static service =>
-            service is SharedMemoryPublicResourceBroker);
-        Assert.Contains(hostedServices, static service =>
-            service is SharedResourceSubscriptionMaintenanceService);
+        AssertHostedAlias<SharedMemoryPublicResourceBroker>(hostedServices);
+        AssertHostedAlias<SharedResourceSubscriptionMaintenanceService>(hostedServices);
+    }
+
+    [Fact]
+    public void BusinessBlockQueryLeavesTheNormalReadOnlyGraphStopped()
+    {
+        using var host = Host.CreateDefaultBuilder()
+            .ConfigureServices(static services =>
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
+            .Build();
+
+        var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks;
+
+        Assert.NotEmpty(blocks);
+        Assert.All(blocks, static block =>
+        {
+            Assert.Equal(BusinessBlockState.Stopped, block.State);
+            Assert.False(block.ExecutionOutstanding);
+        });
     }
 
     [Fact]

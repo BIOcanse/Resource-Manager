@@ -192,7 +192,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 风扇由后端内的风扇控制核心处理，按控制通道分类而不按品牌；
         // 而且自带一条规矩：退出时把风扇交还固件。
         services.AddSingleton<FanControlCoreClient>();
-        services.AddHostedService<FanControlCoreLifetimeService>();
+        services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>();
         services.AddSingleton<IControlWriter, FanControlWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
         // 机箱形态读一次就够，所以做成单例 —— 见 WindowsChassisKindReader。

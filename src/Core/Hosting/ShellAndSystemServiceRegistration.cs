@@ -13,10 +13,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         string[] args,
         BackendHostEnvironment hostEnvironment)
     {
-        services.AddHostedService<ServiceAutoStartSettings>();
+        services.AddBusinessBlockHostedService<ServiceAutoStartSettings>();
         services.AddSingleton<IServiceRecoveryControl, WindowsServiceRecoveryControl>();
         services.AddSingleton<ServiceRecoverySettings>();
-        services.AddHostedService(provider => provider.GetRequiredService<ServiceRecoverySettings>());
+        services.AddBusinessBlockHostedService(provider => provider.GetRequiredService<ServiceRecoverySettings>());
         if (hostEnvironment.IsWindowsService
             && !args.Any(static arg => arg.Equals(
                 "--no-native-ui",

@@ -16,6 +16,7 @@ using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Application.PublicServices.AiGateway;
 using ResourceManager.App.Application.PublicServices;
 using ResourceManager.App.Application.PublicServices.AiModels;
@@ -134,6 +135,59 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal(11, fixture.HttpRequests);
         Assert.Equal(0, fixture.Sampler.Captures);
         Assert.Equal(0, fixture.Administrator.Calls);
+    }
+
+    [Fact]
+    public async Task BusinessBlocksDiagnosticReadIsAuthenticatedAndDoesNotStartHostedBlocks()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Administrator.ThrowIfCalled = true;
+        var query = fixture.App.Services.GetRequiredService<IBusinessBlockQuery>();
+        var before = query.Read();
+        var metricsBefore = before.Blocks.Select(block => new
+        {
+            block.Id,
+            block.Metrics.SampledAt,
+            block.Metrics.TotalCpuTime,
+            block.Metrics.TotalAllocatedBytes,
+            ActiveThreadCount = block.Metrics.ActiveThreads.Count
+        }).ToArray();
+
+        using var response = await fixture.Client.GetAsync("/api/debug/business-blocks");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var payloadBlocks = payload.RootElement.GetProperty("blocks").EnumerateArray().ToArray();
+        var after = query.Read();
+        Assert.Equal(before.History.ToArray(), after.History.ToArray());
+        Assert.Equal(after.History.Count, payload.RootElement.GetProperty("history").GetArrayLength());
+        Assert.Equal(before.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal),
+            after.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal));
+        Assert.All(after.Blocks, static block =>
+        {
+            Assert.Equal(BusinessBlockState.Stopped, block.State);
+            Assert.False(block.ExecutionOutstanding);
+        });
+        Assert.Equal(metricsBefore, after.Blocks.Select(block => new
+        {
+            block.Id,
+            block.Metrics.SampledAt,
+            block.Metrics.TotalCpuTime,
+            block.Metrics.TotalAllocatedBytes,
+            ActiveThreadCount = block.Metrics.ActiveThreads.Count
+        }).ToArray());
+        Assert.Equal(after.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal),
+            payloadBlocks.Select(block => block.GetProperty("id").GetString()!)
+                .OrderBy(id => id, StringComparer.Ordinal));
+        Assert.All(payloadBlocks, static block =>
+        {
+            Assert.Equal((int)BusinessBlockState.Stopped, block.GetProperty("state").GetInt32());
+            Assert.False(block.GetProperty("executionOutstanding").GetBoolean());
+        });
+        Assert.Equal(0, fixture.Administrator.Calls);
+        Assert.Equal(0, fixture.Sampler.Captures);
     }
 
     [Fact]
@@ -342,6 +396,7 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("GET", "/api/debug/metrics/capture")]
     [InlineData("GET", "/api/debug/history/requirements")]
     [InlineData("GET", "/api/debug/freedom-points")]
+    [InlineData("GET", "/api/debug/business-blocks")]
     [InlineData("GET", "/api/index/files/search?query=private")]
     [InlineData("GET", "/api/index/software/test")]
     [InlineData("GET", "/api/public/v1/index/files/search?query=private")]
@@ -442,6 +497,7 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("GET", "/api/debug/metrics/capture", false)]
     [InlineData("GET", "/api/debug/history/requirements", false)]
     [InlineData("GET", "/api/debug/freedom-points", false)]
+    [InlineData("GET", "/api/debug/business-blocks", false)]
     [InlineData("GET", "/api/optimization/smart/diagnostics/decision-snapshot/subscribe", false)]
     [InlineData("GET", Scope, false)]
     [InlineData("PUT", "/api/settings/app", false)]

@@ -31,9 +31,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             serviceProvider.GetRequiredService<SharedMemoryPublicResourceBroker>());
         if (startupCapabilities.Allows(StartupCapability.SharedResourceOwnership))
         {
-            services.AddSingleton<IHostedService>(serviceProvider =>
-                serviceProvider.GetRequiredService<SharedMemoryPublicResourceBroker>());
-            services.AddHostedService<SharedResourceSubscriptionMaintenanceService>();
+            services.AddHostedServiceAlias<SharedMemoryPublicResourceBroker>();
+            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>();
         }
         return services;
     }

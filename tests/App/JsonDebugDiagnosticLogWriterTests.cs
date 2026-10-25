@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.Diagnostics;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Diagnostics;
@@ -64,6 +66,50 @@ public sealed class JsonDebugDiagnosticLogWriterTests
             await writer.StopAsync(CancellationToken.None);
 
             Assert.Single(File.ReadAllLines(logPath));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FailedRecordReportsBlockFailureAndWriterContinuesDraining()
+    {
+        var root = CreateRoot();
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Config"), "occupies the diagnostic directory path");
+            var diagnostics = new RecordingBlockDiagnostics(expectedReports: 2);
+            var plans = new TestRuntimePlanProvider(CreatePlan(debugLogEnabled: true));
+            using var writer = new JsonDebugDiagnosticLogWriter(
+                new TestHostEnvironment(root),
+                plans,
+                NullLogger<JsonDebugDiagnosticLogWriter>.Instance,
+                diagnostics);
+
+            await writer.StartAsync(CancellationToken.None);
+            Assert.True(writer.TryWrite(CreateRecord()));
+            Assert.True(writer.TryWrite(CreateRecord()));
+            await diagnostics.ReportsObserved.WaitAsync(TimeSpan.FromSeconds(5));
+            await WaitForFailedRecordsAsync(writer, expectedCount: 2);
+
+            var failures = diagnostics.Failures.ToArray();
+            Assert.Equal(2, failures.Length);
+            Assert.All(failures, failure =>
+            {
+                Assert.Equal(nameof(JsonDebugDiagnosticLogWriter), failure.BlockId);
+                Assert.Equal("diagnostic-record-write", failure.Operation);
+                Assert.NotNull(failure.Error);
+            });
+            var status = writer.CaptureStatus();
+            Assert.Equal(2, status.AcceptedRecordCount);
+            Assert.Equal(0, status.WrittenRecordCount);
+            Assert.Equal(2, status.FailedRecordCount);
+            Assert.False(writer.ExecuteTask!.IsCompleted);
+
+            await writer.StopAsync(CancellationToken.None);
+            Assert.True(writer.ExecuteTask.IsCompletedSuccessfully);
         }
         finally
         {
@@ -282,6 +328,49 @@ public sealed class JsonDebugDiagnosticLogWriterTests
 
             await Task.Delay(10);
         }
+    }
+
+    private static async Task WaitForFailedRecordsAsync(
+        JsonDebugDiagnosticLogWriter writer,
+        long expectedCount)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (writer.CaptureStatus().FailedRecordCount < expectedCount)
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                throw new TimeoutException("The debug log writer did not finish recording failed writes.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
+    private sealed class RecordingBlockDiagnostics(int expectedReports) : IBusinessBlockDiagnostics
+    {
+        private int reportCount;
+        private readonly TaskCompletionSource reportsObserved =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal ConcurrentQueue<(string BlockId, Exception Error, string Operation)> Failures { get; } = new();
+        internal Task ReportsObserved => reportsObserved.Task;
+
+        public void ReportFailure(string blockId, Exception error, string operation)
+        {
+            Failures.Enqueue((blockId, error, operation));
+            if (Interlocked.Increment(ref reportCount) >= expectedReports)
+            {
+                reportsObserved.TrySetResult();
+            }
+        }
+
+        public IDisposable MeasureSegment(string blockId) => NoopDisposable.Instance;
+    }
+
+    private sealed class NoopDisposable : IDisposable
+    {
+        internal static NoopDisposable Instance { get; } = new();
+        public void Dispose() { }
     }
 
     private sealed class TestRuntimePlanProvider(
