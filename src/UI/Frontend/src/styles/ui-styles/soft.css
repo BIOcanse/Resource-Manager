@@ -334,18 +334,13 @@
 
 /* ---------- 开关：轨道不描边，滑块是带柔和阴影的白点 ---------- */
 :root[data-ui-style="soft"] .settings-switch .settings-switch-track {
-  border-color: transparent;
-  background: color-mix(in oklab, var(--muted) 34%, var(--surface));
+  --switch-off-border: transparent;
+  --switch-off-bg: color-mix(in oklab, var(--muted) 34%, var(--surface));
+  --switch-on-border: transparent;
 }
 
-:root[data-ui-style="soft"] .settings-switch input:checked + .settings-switch-track {
-  border-color: transparent;
-  background: var(--accent);
-}
-
-:root[data-ui-style="soft"] .settings-switch input:checked:disabled + .settings-switch-track {
-  border-color: transparent;
-  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
+:root[data-ui-style="soft"] .settings-switch input:disabled + .settings-switch-track {
+  --switch-on-border: transparent;
 }
 
 :root[data-ui-style="soft"] .settings-switch .settings-switch-knob {

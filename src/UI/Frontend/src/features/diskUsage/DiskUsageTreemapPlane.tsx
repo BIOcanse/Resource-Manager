@@ -1,5 +1,8 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { wheelNotches } from "../../interactions/wheelNotches.ts";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import { readMotionDurationMs, readMotionEase } from "../../presentation/motionTokens.ts";
+import { accumulateWheelZoom, wheelZoomAt, type DiskUsageWheelZoom } from "./diskUsageWheelZoom.ts";
 import {
   hitTest,
   magnificationOf,
@@ -15,7 +18,6 @@ import {
   identityViewport,
   panByPixels,
   visibleUnitRect,
-  zoomAt,
   type DiskUsageViewport,
   type DiskUsageViewWindow
 } from "./diskUsageViewport.ts";
@@ -55,6 +57,50 @@ export function DiskUsageTreemapPlane(props: {
   let pointerX = -1;
   let pointerY = -1;
 
+  // 滚轮缩放的过渡（diskUsageWheelZoom.ts）：没在走就是 null。每帧把视口设成过渡这一刻的值。
+  let wheelZoom: DiskUsageWheelZoom | null = null;
+  let wheelZoomEase: (progress: number) => number = (progress) => progress;
+  let wheelZoomFrame = 0;
+
+  function stepWheelZoom(now: number) {
+    wheelZoomFrame = 0;
+    if (!wheelZoom) {
+      return;
+    }
+    const frame = wheelZoomAt(wheelZoom, now, wheelZoomEase);
+    setViewport(frame.viewport);
+    if (frame.done) {
+      wheelZoom = null;
+      return;
+    }
+    wheelZoomFrame = window.requestAnimationFrame(stepWheelZoom);
+  }
+
+  /** 复位、换树这类直接给出视口的操作：过渡停在原地，不再往下走。 */
+  function stopWheelZoom() {
+    wheelZoom = null;
+    if (wheelZoomFrame !== 0) {
+      window.cancelAnimationFrame(wheelZoomFrame);
+      wheelZoomFrame = 0;
+    }
+  }
+
+  /**
+   * 平移（贴边、方向键）。缩放过渡正在走时，过渡的起点和目标一起平移，
+   * 否则下一帧过渡就把这次平移盖掉了。
+   */
+  function panView(deltaX: number, deltaY: number) {
+    const { width, height } = size();
+    if (wheelZoom) {
+      wheelZoom = {
+        ...wheelZoom,
+        from: panByPixels(wheelZoom.from, width, height, deltaX, deltaY),
+        to: panByPixels(wheelZoom.to, width, height, deltaX, deltaY)
+      };
+    }
+    setViewport((current) => panByPixels(current, width, height, deltaX, deltaY));
+  }
+
   onMount(() => {
     const observer = new ResizeObserver(() => measure());
     if (container) {
@@ -79,6 +125,7 @@ export function DiskUsageTreemapPlane(props: {
       stopObservingAppearance();
       window.removeEventListener("blur", release);
       stopEdgePan();
+      stopWheelZoom();
     });
   });
 
@@ -93,6 +140,7 @@ export function DiskUsageTreemapPlane(props: {
       return;
     }
     shownRootNodeId = rootNodeId;
+    stopWheelZoom();
     setViewport(identityViewport);
   });
 
@@ -109,6 +157,7 @@ export function DiskUsageTreemapPlane(props: {
     pointerX = -1;
     pointerY = -1;
     stopEdgePan();
+    stopWheelZoom();
     setViewport(identityViewport);
   });
 
@@ -314,12 +363,7 @@ export function DiskUsageTreemapPlane(props: {
     if (step.deltaX === 0 && step.deltaY === 0) {
       return;
     }
-    setViewport((viewportNow) => panByPixels(
-      viewportNow,
-      current.width,
-      current.height,
-      step.deltaX,
-      step.deltaY));
+    panView(step.deltaX, step.deltaY);
     edgeFrame = window.requestAnimationFrame(edgePanFrame);
   }
 
@@ -342,12 +386,30 @@ export function DiskUsageTreemapPlane(props: {
         role="img"
         onWheel={(event) => {
           event.preventDefault();
+          const notches = wheelNotches(event.deltaY, event.deltaMode);
+          if (notches === 0) {
+            return;
+          }
           const point = localPoint(event);
           const { width, height } = size();
-          // 每格滚轮 1.2 倍，向上放大、向下缩小。
-          const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
-          setViewport((current) =>
-            zoomAt(current, width, height, point.x, point.y, factor));
+          // 每格 1.2 倍，向上放大、向下缩小；目标按格累积，视图用 fast + decel 带过去。
+          // 无动画、极简档（body[data-animations] 不是 normal）和窗口缩放中（令牌为 0）直接到目标。
+          const target = event.currentTarget;
+          const durationMs = document.body.dataset.animations === "normal"
+            ? readMotionDurationMs(target, "--motion-fast")
+            : 0;
+          const zoom = accumulateWheelZoom(
+            wheelZoom, viewport(), width, height, point.x, point.y, notches, performance.now(), durationMs);
+          if (durationMs <= 0) {
+            stopWheelZoom();
+            setViewport(zoom.to);
+            return;
+          }
+          wheelZoom = zoom;
+          wheelZoomEase = readMotionEase(target, "--ease-decel");
+          if (wheelZoomFrame === 0) {
+            wheelZoomFrame = window.requestAnimationFrame(stepWheelZoom);
+          }
         }}
         onMouseEnter={(event) => {
           // 指针进来就接管键盘，省掉"先点一下才能用方向键"这一步。
@@ -392,7 +454,6 @@ export function DiskUsageTreemapPlane(props: {
           }
         }}
         onKeyDown={(event) => {
-          const { width, height } = size();
           const step = 60;
           switch (event.key) {
             case "ArrowLeft":
@@ -409,12 +470,9 @@ export function DiskUsageTreemapPlane(props: {
                 return;
               }
               // 按右就往右看，和贴边平移同一个方向口径。
-              setViewport((current) => panByPixels(
-                current,
-                width,
-                height,
+              panView(
                 event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0,
-                event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0));
+                event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0);
               return;
             case "Enter":
               if (props.selectedNodeId >= 0) {
@@ -424,6 +482,7 @@ export function DiskUsageTreemapPlane(props: {
               return;
             case "Home":
               event.preventDefault();
+              stopWheelZoom();
               setViewport(clampToBounds(identityViewport));
               return;
             default:

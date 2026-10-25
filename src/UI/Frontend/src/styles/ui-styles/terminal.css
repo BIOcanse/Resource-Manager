@@ -246,29 +246,15 @@
 }
 
 /* 开关：关时是暗槽里一块次要色的方块，开时整条反显成强调色、方块换成深色。
-   这里的选择器比标准风格的状态规则更具体，所以开、开但禁用两种状态都要重写一遍。 */
+   轨道和方块的颜色都按开度混合（styles/settings.css），这里只换关的一端，开的一端和开但禁用沿用标准风格。 */
 :root[data-ui-style="terminal"] .settings-switch .settings-switch-track {
-  border-color: var(--line);
-  background: var(--surface-strong);
+  --switch-off-border: var(--line);
+  --switch-off-bg: var(--surface-strong);
 }
 
 :root[data-ui-style="terminal"] .settings-switch .settings-switch-knob {
-  background: var(--muted);
+  background: color-mix(in oklab, var(--on-accent) calc(var(--switch-openness) * 100%), var(--muted));
   box-shadow: none;
-}
-
-:root[data-ui-style="terminal"] .settings-switch input:checked + .settings-switch-track {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-:root[data-ui-style="terminal"] .settings-switch input:checked + .settings-switch-track .settings-switch-knob {
-  background: var(--on-accent);
-}
-
-:root[data-ui-style="terminal"] .settings-switch input:checked:disabled + .settings-switch-track {
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
-  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
 }
 
 /* 分段按钮悬停：和页签一样给一层淡强调色，实心强调色只留给当前项。 */

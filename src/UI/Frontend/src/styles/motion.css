@@ -89,17 +89,7 @@ textarea {
     box-shadow var(--motion-fast) var(--ease-standard);
 }
 
-/* 开关：轨道变色（覆盖基础样式里的 120ms ease）；滑块位置由交互协议的运行时带，不用 CSS 过渡，
-   滑块颜色（终端风格打开时变色）跟轨道同一时长 */
-.settings-switch .settings-switch-track {
-  transition:
-    background var(--motion-medium) var(--ease-standard),
-    border-color var(--motion-medium) var(--ease-standard);
-}
-
-.settings-switch .settings-switch-knob {
-  transition: background var(--motion-medium) var(--ease-standard);
-}
+/* 开关：滑块和轨道颜色都由交互协议的运行时带（颜色按开度混合，styles/settings.css），不用 CSS 过渡 */
 
 /* 不是 button 的悬停、拖动反馈：颜色和 opacity、fill 跟按钮一样 fast + standard */
 .resource-table-head-cell,

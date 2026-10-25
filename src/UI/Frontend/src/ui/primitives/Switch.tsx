@@ -17,6 +17,7 @@ export function SwitchControl(props: {
   onChange: (checked: boolean) => void;
 }) {
   let root!: HTMLElement;
+  let track!: HTMLSpanElement;
   let knob!: HTMLSpanElement;
   // 滑块的行程：外框宽减去滑块宽和两侧留白。
   const travel = () => root.clientWidth - knob.offsetWidth - 2 * knob.offsetLeft;
@@ -29,7 +30,11 @@ export function SwitchControl(props: {
       const atMin = { x: rect.left + knob.offsetLeft + knob.offsetWidth / 2, y: rect.top + knob.offsetTop + knob.offsetHeight / 2 };
       return { center: "滑块圆心", atMin, atMax: { x: atMin.x + travel(), y: atMin.y } };
     },
-    render: ({ x }) => { knob.style.translate = `${(x * travel()).toFixed(2)}px 0`; },
+    // 开度同时写到轨道上：轨道颜色按它在关、开两色之间混合（协议 3.3 颜色由驱动量映射），拖动中跟着滑块走。
+    render: ({ x }) => {
+      knob.style.translate = `${(x * travel()).toFixed(2)}px 0`;
+      track.style.setProperty("--switch-openness", x.toFixed(4));
+    },
     // 复选框的 checked 由 Solid 写，这里不另写无障碍状态。
     aria: (value) => `checked=${value >= 0.5}`
   });
@@ -52,7 +57,7 @@ export function SwitchControl(props: {
         disabled={props.disabled}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
-      <span class="settings-switch-track">
+      <span ref={track} class="settings-switch-track">
         <span ref={knob} class="settings-switch-knob" />
       </span>
     </Dynamic>

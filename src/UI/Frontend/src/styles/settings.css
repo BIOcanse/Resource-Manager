@@ -410,13 +410,21 @@
   cursor: not-allowed;
 }
 
-/* 关闭状态也要看得出轨道：灰色填充，不和面板底色混在一起。 */
+/* 关闭状态也要看得出轨道：灰色填充，不和面板底色混在一起。
+   轨道颜色是开度（--switch-openness，0 关、1 开）在关、开两色之间的混合：首帧按复选框状态取 0 或 1，
+   之后交互协议的运行时逐帧把滑块的开度写在轨道上（ui/primitives/Switch.tsx），拖动中颜色跟着滑块走。
+   风格只改这几组两端颜色，不改混合；颜色由开度带着走，所以不写 CSS 过渡。 */
 .settings-switch .settings-switch-track {
+  --switch-openness: 0;
+  --switch-off-border: var(--border-strong);
+  --switch-off-bg: color-mix(in oklab, var(--muted) 28%, var(--surface));
+  --switch-on-border: var(--accent);
+  --switch-on-bg: var(--accent);
   width: 46px;
   height: 26px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in oklab, var(--switch-on-border) calc(var(--switch-openness) * 100%), var(--switch-off-border));
   border-radius: 999px;
-  background: color-mix(in oklab, var(--muted) 28%, var(--surface));
+  background: color-mix(in oklab, var(--switch-on-bg) calc(var(--switch-openness) * 100%), var(--switch-off-bg));
 }
 
 .settings-switch .settings-switch-knob {
@@ -431,18 +439,17 @@
 }
 
 .settings-switch input:checked + .settings-switch-track {
-  border-color: var(--accent);
-  background: var(--accent);
+  --switch-openness: 1;
 }
 
+/* 不能改：关的变淡；开的一端保留绿色，只是变浅，不能看起来像关闭。 */
 .settings-switch input:disabled + .settings-switch-track {
   opacity: 0.6;
+  --switch-on-border: color-mix(in oklab, var(--accent) 45%, var(--surface));
+  --switch-on-bg: color-mix(in oklab, var(--accent) 45%, var(--surface));
 }
 
-/* 已打开但不能改：保留绿色，只是变淡，不能看起来像关闭。 */
 .settings-switch input:checked:disabled + .settings-switch-track {
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
-  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
   opacity: 1;
 }
 

@@ -141,6 +141,7 @@ const allJourneys = [
   ["column-resize-interaction", columnResizeInteractionJourney],
   ["fan-curve-interaction", fanCurveInteractionJourney],
   ["switch-interaction", switchInteractionJourney],
+  ["wheel-accumulation", async (...args) => (await import("./wheelAccumulationJourney.js")).default(...args)],
   ["reorder-interaction", reorderInteractionJourney],
   ["motion-feel", motionFeelJourney],
   ["r2-remediation", r2RemediationJourney]

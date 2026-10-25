@@ -3,6 +3,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
 import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
+import { createWheelStepAccumulator, wheelNotches } from "../../interactions/wheelNotches.ts";
 import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type {
   AppAnimationMode,
@@ -363,6 +364,8 @@ function ResourceBreakdownItem(props: {
     setHoveredSoftwareId(entry?.segment.softwareId ?? null);
   };
 
+  const wheelSteps = createWheelStepAccumulator();
+
   const moveSelection = (step: number) => {
     const segments = selectable();
     if (segments.length === 0) {
@@ -450,10 +453,14 @@ function ResourceBreakdownItem(props: {
             return;
           }
 
-          const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? Math.sign(event.deltaX) : Math.sign(event.deltaY);
+          // 横竖取量大的那个方向；按格累积，触控板的零碎滚动攒够一格才换一个分段，不再每个事件都跳一格。
+          const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
           if (delta !== 0) {
             event.preventDefault();
-            moveSelection(delta > 0 ? 1 : -1);
+            const steps = wheelSteps(wheelNotches(delta, event.deltaMode));
+            if (steps !== 0) {
+              moveSelection(steps);
+            }
           }
         }}
         onKeyDown={(event) => {

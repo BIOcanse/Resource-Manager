@@ -3,8 +3,8 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
 /**
  * 手感（docs/motion_feel_2026-10-25.md）：设置 → 外观 → 手感，简体中文，真实点击和保存。
- * 换手感后根元素的 --motion-medium 跟着变（180 → 260 → 120），开关轨道的过渡和弹窗的入场时长读同一个令牌；
- * 磁石全局层一起换：开关滑块从切换到停在另一端的用时跟回点时间走。
+ * 换手感后根元素的 --motion-medium 跟着变（180 → 260 → 120），弹窗的入场时长读同一个令牌；
+ * 磁石全局层一起换：开关滑块从切换到停在另一端的用时跟回点时间走，轨道颜色按开度跟着滑块走，自己没有 CSS 过渡。
  * 动画档位选“无动画”时照样不动（时长 0、滑块直接到端），手感仍记在根元素上；刷新后手感保持。
  */
 export default async function motionFeelJourney(page, baseUrl) {
@@ -25,7 +25,7 @@ export default async function motionFeelJourney(page, baseUrl) {
     await page.getByRole("radiogroup", { name: group, exact: true }).getByRole("radio", { name: option, exact: true }).click();
   };
 
-  /** 根元素的令牌、开关轨道的过渡、弹窗的入场动画（.modal 的样式规则，用一个探针元素读）。 */
+  /** 根元素的令牌、开关轨道的过渡（应为 0）、弹窗的入场动画（.modal 的样式规则，用一个探针元素读）。 */
   const readDurations = () => page.evaluate(() => {
     const track = document.querySelector(".settings-switch .settings-switch-track");
     const probe = document.createElement("div");
@@ -98,7 +98,7 @@ export default async function motionFeelJourney(page, baseUrl) {
   const checked = (await feelGroup.getByRole("radio", { checked: true }).textContent())?.trim();
   if (checked !== label("standard")) throw new Error(`Default motion feel is ${checked}`);
 
-  // 正常动画下逐个换手感：令牌、轨道过渡、弹窗入场、滑块用时都跟着变。
+  // 正常动画下逐个换手感：令牌、弹窗入场、滑块用时都跟着变；轨道颜色跟滑块走，不另带过渡。
   await choose(settings.appearance.animationTitle, animationLabel("normal"));
   await save();
   const results = [];
@@ -112,7 +112,7 @@ export default async function motionFeelJourney(page, baseUrl) {
     await page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true }).waitFor();
     const durations = await readDurations();
     if (durations.animations !== "normal" || durations.medium !== ms || durations.modal !== ms
-      || JSON.stringify(durations.track) !== JSON.stringify([ms, ms])) {
+      || !durations.track?.every((value) => value === 0)) {
       throw new Error(`${feel}: durations do not follow the feel: ${JSON.stringify(durations)}`);
     }
     const travels = await knobTravel();

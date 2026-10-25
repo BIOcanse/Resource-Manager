@@ -4,7 +4,8 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 /**
  * 设置开关的滑块走交互协议的运行时（ui/primitives/Switch.tsx），真实鼠标事件，简体中文：
  * 点一下切换一次，滑块随后到另一端；按住滑块拖到另一端松手切换一次，拖完的那次 click 不会再切换回来；
- * 拖一点再拖回原处松手不改值；空格键照常切换。用“自动更新”开关（只改设置草稿，不保存）。
+ * 拖一点再拖回原处松手不改值；拖到一半时轨道颜色已经在关、开两色之间（颜色按开度跟着滑块走，不等松手）；
+ * 空格键照常切换。用“自动更新”开关（只改设置草稿，不保存）。
  */
 export default async function switchInteractionJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
@@ -78,6 +79,48 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await waitKnob(initial, "Knob after drag and return");
 
 
+  // 拖到一半：轨道颜色的每个分量都落在两端颜色之间，离两端都有距离；复选框还没变。拖回原处松手不改值。
+  const track = root.locator(".settings-switch-track");
+  const trackColour = () => track.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const restColour = await trackColour();
+  await box.focus();
+  await page.keyboard.press("Space");
+  await waitChecked(!initial, "Space before the colour check");
+  await waitKnob(!initial, "Knob before the colour check");
+  await settle();
+  const otherColour = await trackColour();
+  await page.keyboard.press("Space");
+  await waitChecked(initial, "Space back before the colour check");
+  await waitKnob(initial, "Knob back before the colour check");
+  await settle();
+  const half = await knobCentre();
+  await page.mouse.move(half.x, half.y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i += 1) await page.mouse.move(half.x + (initial ? -10 : 10) * i / 8, half.y);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const middle = await track.evaluate((element) => ({
+    colour: getComputedStyle(element).backgroundColor,
+    openness: Number.parseFloat(element.style.getPropertyValue("--switch-openness"))
+  }));
+  const middleChecked = await box.isChecked();
+  await page.mouse.move(half.x, half.y);
+  await page.mouse.up();
+  await settle();
+  await waitChecked(initial, "Release after the colour check");
+  const numbers = (colour) => (colour.match(/-?\d*\.?\d+(e-?\d+)?/g) ?? []).map(Number);
+  const [off, on] = initial ? [otherColour, restColour] : [restColour, otherColour];
+  const a = numbers(off);
+  const b = numbers(on);
+  const m = numbers(middle.colour);
+  const spread = Math.max(...a.map((value, i) => Math.abs(value - b[i])));
+  const between = a.length === b.length && a.length === m.length && spread > 0
+    && m.every((value, i) => value >= Math.min(a[i], b[i]) - 1e-3 && value <= Math.max(a[i], b[i]) + 1e-3)
+    && Math.max(...m.map((value, i) => Math.abs(value - a[i]))) > spread * 0.25
+    && Math.max(...m.map((value, i) => Math.abs(value - b[i]))) > spread * 0.25;
+  if (middleChecked !== initial || !(middle.openness > 0.3 && middle.openness < 0.7) || !between) {
+    throw new Error(`Mid-drag track colour does not follow the knob: ${JSON.stringify({ off, on, middle, middleChecked, initial })}`);
+  }
+
   // 空格键照常切换。
   await box.focus();
   await page.keyboard.press("Space");
@@ -85,5 +128,5 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await waitKnob(!initial, "Knob after Space");
   await page.keyboard.press("Space");
   await waitChecked(initial, "Space back");
-  return { initial };
+  return { initial, off, on, middle };
 }
