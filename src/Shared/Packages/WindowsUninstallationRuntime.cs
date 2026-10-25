@@ -10,6 +10,13 @@ namespace ResourceManager.Shared.Packages;
 
 public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
 {
+    private readonly Action<string, string>? createCredentialFreeLegacyDatabaseCopy;
+
+    public WindowsUninstallationRuntime(Action<string, string>? createCredentialFreeLegacyDatabaseCopy = null)
+    {
+        this.createCredentialFreeLegacyDatabaseCopy = createCredentialFreeLegacyDatabaseCopy;
+    }
+
     public void RequireOwned(UninstallationPlan plan)
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -89,4 +96,10 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
             security.AddAccessRule(new(sid, FileSystemRights.FullControl, AccessControlType.Allow));
         new FileInfo(archive).SetAccessControl(security);
     }
+
+    public void CreateCredentialFreeLegacyDatabaseCopy(string sourcePath, string destinationPath)
+        => (createCredentialFreeLegacyDatabaseCopy
+            ?? throw new NotSupportedException("The uninstaller has no legacy credential sanitizer."))(
+            sourcePath,
+            destinationPath);
 }

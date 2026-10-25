@@ -1,0 +1,24 @@
+{
+  "approved": {
+    "status": "approved",
+    "key": {
+      "id": "grant-1",
+      "name": "Telemetry helper",
+      "purpose": "control",
+      "scopes": ["read"],
+      "createdAt": "2026-10-24T12:00:00+00:00",
+      "isDefault": false
+    },
+    "denialReason": null
+  },
+  "denied": {
+    "status": "denied",
+    "key": null,
+    "denialReason": "unsupported"
+  },
+  "expired": {
+    "status": "expired",
+    "key": null,
+    "denialReason": null
+  }
+}

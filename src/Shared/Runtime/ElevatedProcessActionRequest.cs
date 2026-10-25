@@ -22,7 +22,7 @@ public sealed record ProcessActionBatch(string Action, IReadOnlyList<ProcessActi
 }
 
 public sealed record ElevatedProcessActionRequest(string OperationId, int ParentProcessId, long ParentCreatedUtcTicks,
-    int ServiceProcessId, long ServiceCreatedUtcTicks, ulong ServiceInstanceId, ProcessActionBatch Batch)
+    int ServiceProcessId, long ServiceCreatedUtcTicks, ProcessActionBatch Batch)
 {
     public const string Argument = "--elevated-process-action";
     public const int MaximumArgumentBytes = 16 * 1024;
@@ -34,7 +34,7 @@ public sealed record ElevatedProcessActionRequest(string OperationId, int Parent
     public void Validate()
     {
         if (!Guid.TryParseExact(OperationId, "N", out _) || ParentProcessId <= 0 || ParentCreatedUtcTicks <= 0
-            || ServiceProcessId <= 0 || ServiceCreatedUtcTicks <= 0 || ServiceInstanceId == 0 || Batch is null)
+            || ServiceProcessId <= 0 || ServiceCreatedUtcTicks <= 0 || Batch is null)
             throw new InvalidDataException("Invalid process-action binding.");
         Batch.Validate();
     }

@@ -38,6 +38,9 @@ internal sealed class TrustedFrontendDocumentPolicy
             || candidate.AbsolutePath.StartsWith("/api/", StringComparison.Ordinal);
     }
 
+    public bool IsTrustedResourceRequest(string? address) =>
+        TryCreateAbsoluteUri(address, out var candidate) && HasApplicationOrigin(candidate);
+
     public static bool IsBlankDocument(string? address) =>
         string.Equals(address, "about:blank", StringComparison.OrdinalIgnoreCase);
 

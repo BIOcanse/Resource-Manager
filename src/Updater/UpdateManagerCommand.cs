@@ -81,7 +81,14 @@ public static class UpdateManagerCommand
                 ?? throw new InvalidOperationException(text.LauncherServiceStartFailed);
             await runtime.WaitForNativeUiExitAsync(target, cancellationToken);
             runtime.StopService(target);
-            try { UserDataArchive.Import(target, args[1], staged => UpdatePlan.CheckCompatibility(target, staged)); }
+            try
+            {
+                UserDataArchive.Import(
+                    target,
+                    args[1],
+                    staged => UpdatePlan.CheckCompatibility(target, staged),
+                    createCredentialFreeLegacyDatabaseCopy: LegacyAiCredentialArchiveSanitizer.CreateCredentialFreeCopy);
+            }
             finally { if (service.Running) runtime.StartService(target); }
             return text.ImportUserDataCompleted;
         }

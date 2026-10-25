@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.IO.Pipes;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
@@ -15,14 +14,15 @@ namespace ResourceManager.NativeUi;
 internal static class ElevatedProcessActionBroker
 {
     internal static async Task<string> ExecuteAsync(ProcessActionBatch batch,
-        FrontendSessionCredentialReply service, CancellationToken cancellationToken)
+        BackendProcessIdentity service, CancellationToken cancellationToken)
     {
         batch.Validate();
+        ArgumentNullException.ThrowIfNull(service);
         using var own = Process.GetCurrentProcess();
         using var identity = WindowsIdentity.GetCurrent();
         var request = new ElevatedProcessActionRequest(Guid.NewGuid().ToString("N"), own.Id,
-            own.StartTime.ToUniversalTime().Ticks, service.ServiceProcessId,
-            service.ServiceProcessCreatedUtcTicks, service.ServiceInstanceId, batch);
+            own.StartTime.ToUniversalTime().Ticks, service.ProcessId,
+            service.CreatedUtcTicks, batch);
         using var pipe = WindowsSessionPipeFactory.Create(request.PipeName,
             $"D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;{identity.User!.Value})", 4096, 4096);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -101,24 +101,16 @@ internal static class ElevatedProcessActionBroker
         await pipe.ReadExactlyAsync(permit, deadline.Token);
         if (permit[0] != 1) return 5;
 
-        var backend = new BackendProcessIdentity(request.ServiceProcessId,
-            request.ServiceCreatedUtcTicks, BackendServiceSession.ResolveBackendPath());
+        var backendPath = BackendServiceSession.ResolveBackendPath();
+        var backend = BackendProcessConnection.CaptureInstalledServiceIdentity(backendPath);
+        if (backend is null
+            || backend.ProcessId != request.ServiceProcessId
+            || backend.CreatedUtcTicks != request.ServiceCreatedUtcTicks)
+            return 5;
         using var client = new HttpClient(BackendProcessConnection.CreateHandler(() => backend))
         { BaseAddress = new Uri("http://127.0.0.1:9321"), Timeout = TimeSpan.FromMinutes(2) };
-        var challenge = RandomNumberGenerator.GetHexString(BackendRuntimeIdentityContract.ChallengeHexLength);
-        var runtimeJson = await SendBoundedAsync(client, new(HttpMethod.Get,
-            $"/api/runtime/identity?challenge={challenge}"), deadline.Token);
-        var runtime = JsonSerializer.Deserialize<BackendRuntimeIdentityResponse>(runtimeJson,
-            ElevatedProcessActionRequest.JsonOptions);
-        if (runtime is null || runtime.ProductId != BackendRuntimeIdentityContract.ProductId
-            || runtime.ProtocolVersion != BackendRuntimeIdentityContract.ProtocolVersion
-            || runtime.InstanceId != request.ServiceInstanceId || runtime.ProcessId != backend.ProcessId
-            || runtime.ProcessStartUtcTicks != backend.CreatedUtcTicks || runtime.Challenge != challenge
-            || !StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(runtime.ExecutablePath), backend.ExecutablePath))
-            throw new UnauthorizedAccessException("The backend generation changed.");
-        var result = await SendBoundedAsync(client, new(HttpMethod.Post,
-            "/api/system/processes/" + request.Batch.Action)
-        { Content = JsonContent.Create(new { request.Batch.Targets }) }, deadline.Token);
+        using var processAction = CreateKeylessProcessActionRequest(request.Batch);
+        var result = await SendBoundedAsync(client, processAction, deadline.Token);
         ValidateResult(result, request.Batch);
         await ElevatedProcessActionRequest.WriteResultAsync(pipe, result, deadline.Token);
         return 0;
@@ -163,6 +155,16 @@ internal static class ElevatedProcessActionBroker
                 || !item.TryGetProperty("state", out var state) || state.GetString() is not ("Succeeded" or "Skipped" or "Failed"))
                 throw new InvalidDataException("A process-action result changed its identity.");
         }
+    }
+
+    internal static HttpRequestMessage CreateKeylessProcessActionRequest(ProcessActionBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        batch.Validate();
+        return new HttpRequestMessage(HttpMethod.Post, "/api/system/processes/" + batch.Action)
+        {
+            Content = JsonContent.Create(new { batch.Targets })
+        };
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

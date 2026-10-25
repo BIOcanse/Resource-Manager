@@ -181,7 +181,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         foreach (var escaped in new[] { "\\uD800", "\\uDC00", "\\uD83D\\uDE00", "\\uFFFD" })
         {
             using var body = new StringContent("{\"profileName\":\"" + escaped + "\"}", Encoding.UTF8, "application/json");
-            using var response = await fixture.Client.PostAsync("/api/recording/drs-default-binder", body, deadline.Token);
+            using var response = await fixture.Client.PostAsync("/drs-default-binder", body, deadline.Token);
             var text = await response.Content.ReadAsStringAsync(deadline.Token);
             // Diagnostic observation, not a claimed default-binder rejection assertion. Main uses the actual
             // status/body to decide whether the candidate production converter is necessary before acceptance.
@@ -383,6 +383,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         internal NvidiaNvapiMonitoringZone Zone { get; }
         internal DeviceTopologySnapshotProvider Provider { get; }
         private WebApplication? app;
+        private readonly (ResourceManager.App.Infrastructure.Security.TrustedAccess.TrustedAccessKeyService Owner, TrustedAccessTestStore Store, TrustedAccessTestKeyFileAccess KeyFile) keys = TrustedAccessTestFactory.Create();
         internal HttpClient Client { get; private set; } = null!;
         private Fixture()
         {
@@ -400,17 +401,20 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
                 builder.Services.AddSingleton(fixture.Provider);
                 builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(fixture.Provider);
                 builder.Services.AddHostedService(_ => fixture.Provider);
-                builder.Services.AddSingleton(new LoopbackApiAccessToken(_ => false, (_, _) => false));
+                builder.Services.AddSingleton<ResourceManager.App.Application.TrustedAccess.ITrustedAccessKeyService>(
+                    fixture.keys.Owner);
                 builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(fixture.Administrator);
                 fixture.app = builder.Build();
                 fixture.app.UseRouting(); fixture.app.UseMiddleware<LoopbackApiAuthenticationMiddleware>();
-                fixture.app.MapPost("/api/recording/drs-default-binder", (PlainDrsName request) => Results.Ok(request)).AllowAnonymous();
+                // This route observes framework binding only, outside the protected product API.
+                fixture.app.MapPost("/drs-default-binder", (PlainDrsName request) => Results.Ok(request));
                 foreach (var method in new[] { "MapDeviceTopologyEndpoints", "MapSubscriptionChannelEndpoints" })
                     typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!
                         .Invoke(null, [fixture.app]);
                 await fixture.app.StartAsync(token);
                 fixture.Client = new HttpClient { BaseAddress = new Uri(Assert.Single(fixture.app.Services.GetRequiredService<IServer>()
                     .Features.Get<IServerAddressesFeature>()!.Addresses)), Timeout = Timeout.InfiniteTimeSpan };
+                fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.keys.KeyFile.Value);
                 return fixture;
             }
             catch { await fixture.DisposeAsync(); throw; }

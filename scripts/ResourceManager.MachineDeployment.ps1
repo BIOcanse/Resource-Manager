@@ -763,6 +763,15 @@ function Invoke-ResourceManagerMachineInstall {
     }
 }
 
+function Assert-ResourceManagerFreshInstallTarget {
+    param([Parameter(Mandatory = $true)][string]$InstallRoot)
+
+    if ([System.IO.Directory]::Exists($InstallRoot) -or [System.IO.File]::Exists($InstallRoot)) {
+        throw [System.InvalidOperationException]::new(
+            'MachineDeploymentUpgradeNotSupported: this deployment entry requires a vacant installation root. Use the native package installer replacement flow to preserve UserData and existing trusted-access keys. No service or key changes were made.')
+    }
+}
+
 function Invoke-ResourceManagerMachineInstallCore {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][object]$Plan)
@@ -772,6 +781,7 @@ function Invoke-ResourceManagerMachineInstallCore {
         throw 'Machine installation requires an elevated administrator token.'
     }
     $null = Assert-ResourceManagerMachineInstallTargetOwnership -Plan $Plan
+    Assert-ResourceManagerFreshInstallTarget -InstallRoot $Plan.InstallRoot
 
     $null = & $Plan.FinalImageValidatorPath -RootDirectory $Plan.SourceImageRoot
     $null = & $Plan.ExecutableManifestValidatorPath `
@@ -816,15 +826,17 @@ function Invoke-ResourceManagerMachineInstallCore {
             -AllowStagingRoot
         Set-ResourceManagerInstallAcl -InstallRoot $staging
 
+        Assert-ResourceManagerFreshInstallTarget -InstallRoot $install
         $machineMutationStarted = $true
         Stop-ResourceManagerMachineService -ServiceName $Plan.ServiceName
-        if ([System.IO.Directory]::Exists($install)) {
-            [System.IO.Directory]::Move($install, $backup)
-            $hadPrevious = $true
-        }
+        # Directory.Move refuses a target that appears after the vacancy check;
+        # never replace an existing data/security root with this fresh image.
         [System.IO.Directory]::Move($staging, $install)
         $promoted = $true
 
+        $null = Invoke-ResourceManagerNativeCommand `
+            -FilePath $Plan.BackendPath `
+            -Arguments @('--initialize-trusted-access')
         Set-ResourceManagerMachineServiceRegistration -Plan $Plan
         Start-ResourceManagerMachineService -Plan $Plan
         Set-ResourceManagerMachineRegistry -Plan $Plan

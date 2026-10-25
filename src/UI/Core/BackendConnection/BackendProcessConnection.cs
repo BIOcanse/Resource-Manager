@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
+using ResourceManager.Shared.ServiceHosting;
 
 namespace ResourceManager.NativeUi;
 
@@ -12,6 +14,39 @@ internal sealed record BackendProcessIdentity(int ProcessId, long CreatedUtcTick
 // Verify the connected server socket before HttpClient can send credentials or an administrator operation.
 internal static class BackendProcessConnection
 {
+    internal static BackendProcessIdentity? CaptureInstalledServiceIdentity(string expectedExecutablePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedExecutablePath);
+        var executablePath = Path.GetFullPath(expectedExecutablePath);
+        var first = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName);
+        if (first is null || !first.Running || first.ProcessId is 0 or > int.MaxValue)
+        {
+            return null;
+        }
+        WindowsServiceRegistration.RequireExpectedBinary(first, executablePath);
+
+        var processId = checked((int)first.ProcessId);
+        using var process = Process.GetProcessById(processId);
+        var createdUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+        if (!VerifyProcess(processId, createdUtcTicks, executablePath))
+        {
+            return null;
+        }
+
+        var current = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName);
+        if (current is null || !current.Running || current.ProcessId != first.ProcessId)
+        {
+            return null;
+        }
+        WindowsServiceRegistration.RequireExpectedBinary(current, executablePath);
+        if (!VerifyProcess(processId, createdUtcTicks, executablePath))
+        {
+            return null;
+        }
+
+        return new BackendProcessIdentity(processId, createdUtcTicks, executablePath);
+    }
+
     internal static SocketsHttpHandler CreateHandler(Func<BackendProcessIdentity?> expected)
         => new()
         {

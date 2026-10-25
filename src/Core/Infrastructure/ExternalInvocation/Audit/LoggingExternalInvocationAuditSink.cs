@@ -34,11 +34,11 @@ public sealed class LoggingExternalInvocationAuditSink(
     {
         logger.Log(
             level,
-            "External invocation {OperationId} completed with {Status} for {SubjectId}/{ApplicationId} in {ElapsedMicroseconds} us (correlation {CorrelationId}, error {ErrorCode}).",
+            "External invocation {OperationId} completed with {Status} for {SubjectId}/{AccessKeyId} in {ElapsedMicroseconds} us (correlation {CorrelationId}, error {ErrorCode}).",
             auditEvent.OperationId,
             auditEvent.Status,
             auditEvent.SubjectId,
-            auditEvent.ApplicationId,
+            auditEvent.AccessKeyId,
             auditEvent.ElapsedMicroseconds,
             auditEvent.CorrelationId,
             auditEvent.ErrorCode);

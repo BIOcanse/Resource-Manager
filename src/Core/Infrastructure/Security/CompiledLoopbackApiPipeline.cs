@@ -1,6 +1,8 @@
 using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Infrastructure.Security.TrustedAccess;
 
 namespace ResourceManager.App.Infrastructure.Security;
 
@@ -64,15 +66,20 @@ public static class LoopbackApiPipelineConfigurator
 
     private static void ConfigureAuthenticationServices(IServiceCollection services)
     {
-        services.AddSingleton<LoopbackApiAccessToken>();
+        services.TryAddSingleton<ITrustedAccessKeyStore, SqliteTrustedAccessKeyStore>();
+        services.TryAddSingleton<ITrustedAccessKeyFileAccess, WindowsTrustedAccessKeyFileAccess>();
+        services.TryAddSingleton<ITrustedAccessKeyService, TrustedAccessKeyService>();
+        services.TryAddSingleton<TrustedAccessRequestOwner>();
+        services.TryAddSingleton<ITrustedAccessRequestOwner>(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
+        services.AddHostedService(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
         services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
-        services.AddHostedService<FrontendSessionCredentialHostedService>();
+        services.AddHostedService<NativeUiOpenSessionHostedService>();
+        services.AddHostedService<TrustedAccessInvocationHostedService>();
     }
 
     private static void ConfigureAuthenticationMiddleware(WebApplication application)
     {
-        _ = application.Services.GetRequiredService<LoopbackApiAccessToken>();
         application.UseMiddleware<LoopbackApiAuthenticationMiddleware>();
     }
 }

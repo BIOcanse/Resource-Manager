@@ -341,6 +341,27 @@
               }
             ]
           }
+        },
+        {
+          "id": "trusted_access",
+          "description": "Backend access-request lifetime, used by the bounded local approval flow.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "request_lifetime_ms",
+                "description": "Lifetime in milliseconds for an unbound local access request and its one-time key delivery.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 300000,
+                "consumers": [
+                  "HostManagerPlanCompiler.CompileTrustedAccessRequestLifetime"
+                ]
+              }
+            ]
+          }
         }
       ]
     }

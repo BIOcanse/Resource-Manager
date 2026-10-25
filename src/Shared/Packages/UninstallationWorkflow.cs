@@ -10,6 +10,8 @@ public interface IUninstallationRuntime
     void RemoveService(UninstallationPlan plan);
     void RemoveRegistration(UninstallationPlan plan);
     void ProtectArchive(string archive);
+    void CreateCredentialFreeLegacyDatabaseCopy(string sourcePath, string destinationPath)
+        => throw new NotSupportedException("Retained legacy business databases require credential sanitization.");
 }
 
 public static class UninstallationWorkflow
@@ -46,7 +48,7 @@ public static class UninstallationWorkflow
                 var partial = archive + ".partial";
                 try
                 {
-                    UserDataArchive.Create(plan.Root, partial);
+                    UserDataArchive.Create(plan.Root, partial, runtime.CreateCredentialFreeLegacyDatabaseCopy);
                     runtime.ProtectArchive(partial);
                     File.Move(partial, archive);
                 }

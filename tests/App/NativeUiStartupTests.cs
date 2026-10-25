@@ -38,7 +38,7 @@ public sealed class NativeUiStartupTests
         Assert.Contains("NavigationStarting += HandleNavigationStarting", webViewHost, StringComparison.Ordinal);
         Assert.Contains("WebMessageReceived += HandleWebMessageReceived", webViewHost, StringComparison.Ordinal);
         Assert.Contains("documentPolicy.IsTrustedDocument(args.Source)", webViewHost, StringComparison.Ordinal);
-        Assert.Contains("documentPolicy.IsTrustedApiRequest(args.Request.Uri)", webViewHost, StringComparison.Ordinal);
+        Assert.Contains("documentPolicy.IsTrustedResourceRequest(args.Request.Uri)", webViewHost, StringComparison.Ordinal);
 
         foreach (var relativePath in new[]
                  {

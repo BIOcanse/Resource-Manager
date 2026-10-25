@@ -66,18 +66,18 @@ public sealed partial class LoopbackApiAccessTests
 
             await using var fixture = await Fixture.StartAsync(fileIndex: index);
             fixture.Administrator.ThrowIfCalled = true;
-            fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+            fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
             foreach (var path in IndexHttpPaths)
             {
                 using var self = await fixture.Client.GetAsync(path);
                 Assert.Equal(System.Net.HttpStatusCode.Forbidden, self.StatusCode);
             }
-            var deniedResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Token);
+            var deniedResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Key);
             AssertIndexResponses(deniedResults, allowedFile, 1, 7, 1);
             Assert.DoesNotContain("denied.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("secret.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("gone.bin", deniedResults.GetRawText(), StringComparison.OrdinalIgnoreCase);
-            var limitedResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Token,
+            var limitedResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Key,
                 ["/api/index/files/search?query=bin&limit=1", "/api/public/v1/index/files/search?query=bin&limit=1"]);
             Assert.Equal(2, limitedResults.GetArrayLength());
             foreach (var response in limitedResults.EnumerateArray())
@@ -87,7 +87,7 @@ public sealed partial class LoopbackApiAccessTests
             Assert.Equal(77, serviceSnapshot.TotalBytes);
 
             RestorePermissions();
-            var readableResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Token);
+            var readableResults = await RequestIndexFromOwnedProcessAsync(fixture.Client.BaseAddress!, fixture.Key);
             AssertIndexResponses(readableResults, allowedFile, 4, 66, 2);
             Assert.Equal(7, fixture.PublicAccess.Evaluations);
             Assert.Equal(7, fixture.PublicAccess.Completions);
@@ -142,7 +142,7 @@ public sealed partial class LoopbackApiAccessTests
         var paths = string.Join(",", (requestPaths ?? IndexHttpPaths).Select(path => "'" + path + "'"));
         var command = "$ErrorActionPreference='Stop'; $bodies=@(); foreach($path in @(" + paths + ")) { "
             + "$request=[Net.WebRequest]::Create('" + url.AbsoluteUri.TrimEnd('/') + "'+$path); $request.Proxy=$null; $request.Timeout=5000; "
-            + "$request.Headers.Add('" + LoopbackApiAccessToken.HeaderName + "','" + token + "'); "
+            + "$request.Headers.Add('" + ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader + "','" + token + "'); "
             + "$request.Headers.Add('X-Windows-Sid','S-1-5-18'); $response=$request.GetResponse(); "
             + "$reader=[IO.StreamReader]::new($response.GetResponseStream()); try { $bodies+=,$reader.ReadToEnd() } "
             + "finally { $reader.Dispose(); $response.Dispose() } }; [Console]::Out.Write('['+($bodies -join ',')+']');";

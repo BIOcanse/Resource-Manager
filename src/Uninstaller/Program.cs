@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using ResourceManager.Shared.Packages;
 using ResourceManager.Shared.Localization;
+using ResourceManager.Updater;
 
 namespace ResourceManager.Uninstaller;
 
@@ -44,7 +45,10 @@ internal static class Program
             {
                 if (!elevated || args[3] != sid || args[1] is not ("keep" or "delete"))
                     throw new UnauthorizedAccessException(text.ElevationIdentity);
-                var archive = UninstallationWorkflow.Run(plan, args[1] == "keep", new WindowsUninstallationRuntime());
+                var archive = UninstallationWorkflow.Run(
+                    plan,
+                    args[1] == "keep",
+                    new WindowsUninstallationRuntime(LegacyAiCredentialArchiveSanitizer.CreateCredentialFreeCopy));
                 if (archive is not null)
                     _ = Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { plan.Root } });
                 MessageBox.Show(archive is null ? text.UninstallCompleted : text.Format(text.UninstallArchiveCompletedFormat, archive),

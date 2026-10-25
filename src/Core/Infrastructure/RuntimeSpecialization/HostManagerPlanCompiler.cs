@@ -57,6 +57,7 @@ public sealed partial class HostManagerPlanCompiler
         var cpuCoreResidency = CompileCpuCoreResidency(freedom, cpuTopology);
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
+        var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
             profile.BuildSpecialize ?? throw Missing("build_specialize"));
@@ -578,6 +579,7 @@ public sealed partial class HostManagerPlanCompiler
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
+            TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             FreedomPoints = freedomPoints
         };
     }

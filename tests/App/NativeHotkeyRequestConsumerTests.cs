@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using System.Text.Json;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -15,6 +15,7 @@ using ResourceManager.NativeUi;
 using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -50,22 +51,24 @@ public sealed class NativeHotkeyRequestConsumerTests
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             await using var app = builder.Build();
-            const string token = "owned-hotkey-http-test";
+            const string apiKey = "rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             JsonElement? wire = null;
             SystemProcessOperationRequest? bound = null;
             WindowsSystemProcessActionService.NormalizedProcessTarget[]? normalized = null;
             app.MapPost("/api/system/processes/terminate", (SystemProcessOperationRequest request,
                 Microsoft.AspNetCore.Http.HttpContext context) =>
             {
-                Assert.Equal(token, context.Request.Headers["X-Resource-Manager-Token"].ToString());
+                Assert.Equal(apiKey, context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString());
                 bound = request;
                 normalized = WindowsSystemProcessActionService.NormalizeProcessTargets(request.Targets);
                 // No termination implementation is registered or called.
                 return Microsoft.AspNetCore.Http.Results.Ok(new SystemProcessOperationResult(SystemProcessAction.Terminate,
                     [new(target.ProcessId, "owned-probe", "Succeeded", SystemProcessOutcome.Terminated, ProcessStartKey: target.ProcessStartKey)]));
             });
+            app.MapGet("/api/runtime/capabilities", () => Results.Json(new { profileId = "test" }));
             app.Use(async (context, next) =>
             {
+                if (context.Request.Method != "POST") { await next(context); return; }
                 context.Request.EnableBuffering();
                 using var json = await JsonDocument.ParseAsync(context.Request.Body);
                 wire = json.RootElement.Clone();
@@ -77,8 +80,7 @@ public sealed class NativeHotkeyRequestConsumerTests
             {
                 var address = Assert.Single(app.Services.GetRequiredService<IServer>().Features
                     .Get<IServerAddressesFeature>()!.Addresses);
-                using var session = BackendServiceSession.CreateDefault(address);
-                BindOwnedTestSession(session, token);
+                using var session = await CreateOwnedTestSessionAsync(address, apiKey);
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var result = await session.TerminateProcessesAsync([target], deadline.Token);
                 Assert.NotNull(wire);
@@ -108,20 +110,64 @@ public sealed class NativeHotkeyRequestConsumerTests
         }
     }
 
-    private static void BindOwnedTestSession(BackendServiceSession session, string token)
+    [Fact]
+    public async Task NativeDesktopPublisherSendsItsKeyOnlyAsAHeaderOnTheSelectedConnection()
     {
-        // Seed only the completed credential-handshake state. All production
-        // HTTP handlers, OS server checks and action serialization still run.
-        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
-        var type = typeof(BackendServiceSession);
+        const string apiKey = "rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var app = builder.Build();
+        string? selectedConnection = null;
+        string? publishedConnection = null;
+        string? publishedJson = null;
+        app.MapPost("/api/runtime/interactive-desktop/publisher/select", (HttpContext context) =>
+        {
+            Assert.Equal(apiKey, context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString());
+            Assert.True(context.Request.ContentLength is null or 0);
+            selectedConnection = context.Connection.Id;
+            return Results.NoContent();
+        });
+        app.MapPost(InteractiveDesktopObservation.EndpointPath, async (HttpContext context) =>
+        {
+            Assert.Equal(apiKey, context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString());
+            publishedConnection = context.Connection.Id;
+            publishedJson = await new StreamReader(context.Request.Body).ReadToEndAsync();
+            return Results.Ok();
+        });
+        app.MapGet("/api/runtime/capabilities", () => Results.Json(new { profileId = "test" }));
+        await app.StartAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            var address = Assert.Single(app.Services.GetRequiredService<IServer>().Features
+                .Get<IServerAddressesFeature>()!.Addresses);
+            using var session = await CreateOwnedTestSessionAsync(address, apiKey);
+            using var process = Process.GetCurrentProcess();
+            var sample = new InteractiveDesktopObservation(process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(),
+                process.SessionId, DateTimeOffset.UtcNow.UtcTicks, false, false, null, []);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            await session.PublishDesktopAsync(sample, deadline.Token);
+
+            Assert.False(string.IsNullOrWhiteSpace(selectedConnection));
+            Assert.Equal(selectedConnection, publishedConnection);
+            Assert.NotNull(publishedJson);
+            Assert.DoesNotContain(apiKey, publishedJson, StringComparison.Ordinal);
+            Assert.Contains("publisherProcessId", publishedJson, StringComparison.Ordinal);
+        }
+        finally { await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+    }
+
+    private static async Task<BackendServiceSession> CreateOwnedTestSessionAsync(string address, string apiKey)
+    {
         using var server = Process.GetCurrentProcess();
-        type.GetField("<BackendPath>k__BackingField", fields)!.SetValue(session, Environment.ProcessPath);
-        type.GetField("backendCredential", fields)!.SetValue(session, new FrontendSessionCredentialReply(
-            FrontendSessionCredentialContract.ProductId, FrontendSessionCredentialContract.ProtocolVersion,
-            1, server.Id, server.StartTime.ToUniversalTime().Ticks, server.Id, server.StartTime.ToUniversalTime().Ticks,
-            server.SessionId, token));
-        var authorization = type.GetNestedType("BackendRequestAuthorization", BindingFlags.NonPublic)!
-            .GetMethod("ForToken", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [token]);
-        type.GetField("requestAuthorization", fields)!.SetValue(session, authorization);
+        var identity = new BackendProcessIdentity(server.Id, server.StartTime.ToUniversalTime().Ticks, Environment.ProcessPath!);
+        var session = new BackendServiceSession(address, () => apiKey, () => identity);
+        try
+        {
+            await session.EnsureConnectedAsync(CancellationToken.None);
+            return session;
+        }
+        catch { session.Dispose(); throw; }
     }
 }

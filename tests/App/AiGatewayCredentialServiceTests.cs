@@ -1,22 +1,20 @@
-using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
+using System.Security.Cryptography;
+using System.Text;
+using ResourceManager.App.Application.PublicServices.AiGateway;
 using ResourceManager.App.Domain.PublicServices.AiGateway;
-using ResourceManager.App.Infrastructure.Persistence;
+using ResourceManager.App.Domain.TrustedAccess;
 using ResourceManager.App.Infrastructure.PublicServices.AiGateway;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class AiGatewayCredentialServiceTests : IDisposable
+public sealed class AiGatewayCredentialServiceTests
 {
-    private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-ai-gateway-{Guid.NewGuid():N}");
-
     [Fact]
-    public async Task CreateValidateReloadAndRevoke_StoresOnlyDigestAndEnforcesProfile()
+    public async Task CreateValidateReloadAndRevoke_UsesSharedOwnerAndKeepsOnlyDigest()
     {
-        var database = CreateDatabase();
-        var store = new SqliteAiGatewayCredentialStore(database);
-        var service = new AiGatewayCredentialService(store);
+        var fixture = TrustedAccessTestFactory.Create();
+        var service = new AiGatewayCredentialService(fixture.Owner);
 
         var created = await service.CreateAsync(
             new AiGatewayCredentialCreateRequest("test client", AiGatewayCompatibilityProfiles.OpenAi),
@@ -33,17 +31,17 @@ public sealed class AiGatewayCredentialServiceTests : IDisposable
             CancellationToken.None));
         Assert.Equal(created.Credential, Assert.Single(await service.ListAsync(CancellationToken.None)));
 
-        await using (var connection = await database.OpenConnectionAsync(CancellationToken.None))
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT typeof(secret_hash), length(secret_hash) FROM ai_gateway_credentials;";
-            await using var reader = await command.ExecuteReaderAsync();
-            Assert.True(await reader.ReadAsync());
-            Assert.Equal("blob", reader.GetString(0));
-            Assert.Equal(32, reader.GetInt32(1));
-        }
+        var state = fixture.Store.CurrentState!;
+        var stored = state.Keys.Single(item => item.Id == created.Credential.Id);
+        Assert.Equal(AccessKeyPurposes.OpenAi, stored.Purpose);
+        Assert.Empty(stored.Scopes);
+        Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes(created.ApiKey)), stored.SecretHash);
+        Assert.Equal(32, stored.SecretHash.Length);
 
-        var reloaded = new AiGatewayCredentialService(new SqliteAiGatewayCredentialStore(database));
+        var reloadedOwner = new ResourceManager.App.Infrastructure.Security.TrustedAccess.TrustedAccessKeyService(
+            fixture.Store,
+            fixture.KeyFile);
+        var reloaded = new AiGatewayCredentialService(reloadedOwner);
         Assert.True(await reloaded.ValidateAsync(
             AiGatewayCompatibilityProfiles.OpenAi,
             created.ApiKey,
@@ -55,32 +53,19 @@ public sealed class AiGatewayCredentialServiceTests : IDisposable
             CancellationToken.None));
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Revoke_DoesNotRemoveAControlCredentialWithTheSameEndpointSurface()
     {
-        SqliteConnection.ClearAllPools();
-        try
-        {
-            Directory.Delete(testRoot, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-        }
-        catch (IOException)
-        {
-        }
-    }
+        var fixture = TrustedAccessTestFactory.Create();
+        var control = await fixture.Owner.CreateAsync(
+            new AccessKeyCreateRequest("control", AccessKeyPurposes.Control, [AccessKeyScopes.Read]),
+            CancellationToken.None);
+        var service = new AiGatewayCredentialService(fixture.Owner);
 
-    private ResourceManagerDatabase CreateDatabase()
-    {
-        var contentRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
-        return new ResourceManagerDatabase(new TestHostEnvironment(contentRoot));
-    }
-
-    private sealed class TestHostEnvironment(string contentRootPath) : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "ResourceManager.Tests";
-        public string ContentRootPath { get; set; } = contentRootPath;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        Assert.False(await service.RevokeAsync(control.Credential.Id, CancellationToken.None));
+        Assert.NotNull(await fixture.Owner.AuthenticateAsync(
+            AccessKeyPurposes.Control,
+            control.ApiKey,
+            CancellationToken.None));
     }
 }

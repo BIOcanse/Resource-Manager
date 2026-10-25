@@ -8,6 +8,10 @@ const settingsLocaleFactory = readSource("../src/i18n/settingsLocaleFactory.ts")
 const appearanceSettings = readSource("../src/features/settings/components/AppearanceSettingsSection.tsx");
 const performanceSettings = readSource("../src/features/settings/components/PerformanceSettingsSection.tsx");
 const settingsControls = readSource("../src/features/settings/components/SettingsControls.tsx");
+const trustedAccessManager = readSource("../src/features/settings/components/TrustedAccessManager.tsx");
+const trustedAccessApi = readSource("../src/features/trustedAccess/trustedAccessApi.ts");
+const accessRequestSnapshotContext = readSource("../src/features/trustedAccess/AccessRequestSnapshotContext.tsx");
+const trustedAccessBanner = readSource("../src/features/settings/components/TrustedAccessPendingBanner.tsx");
 
 // 设置页不再自己持有一份文案：界面语言只有 appTextStore 一个所有者。
 assert.doesNotMatch(settingsPage, /createSignal<SettingsTextBundle>/);
@@ -29,6 +33,22 @@ assert.match(settingsLocaleFactory, /type: \{ label: "类型固定色"/);
 assert.match(settingsLocaleFactory, /distinct: \{ label: "异色区分"/);
 assert.match(settingsLocaleFactory, /whole interface/);
 assert.match(settingsLoader, /settingsLanguageDescription: ""/);
+
+// Trusted-access requests use the shared backend subscription source; the caller facts are informational,
+// scopes shown for approval come only from the request, and the default secret has no frontend read path.
+assert.match(accessRequestSnapshotContext, /runtime\.sources\.accessRequests\.subscribeSnapshot\(setSnapshot\)/);
+assert.equal((accessRequestSnapshotContext.match(/runtime\.sources\.accessRequests\.subscribeSnapshot/g) ?? []).length, 1);
+assert.match(trustedAccessManager, /useAccessRequestSnapshot\(\)/);
+assert.match(trustedAccessBanner, /useAccessRequestSnapshot\(\)/);
+assert.match(trustedAccessBanner, /reviewRequests/);
+assert.doesNotMatch(trustedAccessManager, /runtime\.sources\.accessRequests/);
+assert.match(trustedAccessManager, /For each=\{request\.requestedScopes\}/);
+assert.match(trustedAccessManager, /observedCallerIsInformational/);
+assert.match(trustedAccessManager, /defaultSecretLocalOnly/);
+assert.match(trustedAccessManager, /<strong>\{props\.copy\.defaultKeyName\}<\/strong>/);
+assert.doesNotMatch(trustedAccessManager, /localStorage|sessionStorage|setInterval|\bfetch\s*\(/);
+assert.match(trustedAccessApi, /"\/api\/access-keys\/default"/);
+assert.doesNotMatch(trustedAccessApi, /acquire-default|defaultSecret/);
 
 // Refresh interval edits stay local until the shared NumberField commits them.
 // 可见标签只写“自定义 (ms)”，不再把整行标题重复一遍；读屏名称仍带行标题，三行可区分。

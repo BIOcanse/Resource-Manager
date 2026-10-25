@@ -45,6 +45,9 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }
 
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.TrustedAccessRequestLifetimeMilliseconds)]
+    public int TrustedAccessRequestLifetimeMilliseconds { get; init; }
+
     public const int CurrentSchemaVersion = 42;
 
     public bool IsPublished => SchemaVersion == CurrentSchemaVersion
@@ -61,6 +64,7 @@ public sealed record CompiledHostManagerPlan(
         && CpuCoreResidency.IsPublished
         && CpuScoring is not null
         && SchedulerSamplingInterval > TimeSpan.Zero
+        && TrustedAccessRequestLifetimeMilliseconds > 0
         && BindingProvenance.IsPublished
         && DeploymentDigests.IsPublished
         && BuildSpecialize.IsPublished

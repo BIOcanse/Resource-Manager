@@ -26,7 +26,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         }
 
         services.AddSingleton<IPublicSqliteDatabaseService, PublicSqliteDatabaseService>();
-        services.AddSingleton<IAiGatewayCredentialStore, SqliteAiGatewayCredentialStore>();
         services.AddSingleton<IAiGatewayCredentialService, AiGatewayCredentialService>();
         services.AddHttpClient("lm-studio", client =>
         {

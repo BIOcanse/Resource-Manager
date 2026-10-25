@@ -19,4 +19,5 @@ internal static class BackendFreedomPointPaths
     public const string CpuSmtAccounting = "resource-manager/backend/scoring/cpu/build/complex/0";
     public const string CpuBaselineRatio = "resource-manager/backend/scoring/cpu/runtime/simple/0";
     public const string CpuCorePerformanceWeights = "resource-manager/backend/scoring/cpu/runtime/complex/1";
+    public const string TrustedAccessRequestLifetime = "resource-manager/backend/trusted_access/build/simple/0";
 }

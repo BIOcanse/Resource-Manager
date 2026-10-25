@@ -6,13 +6,14 @@ using System.Text.Json;
 using ResourceManager.NativeUi;
 using ResourceManager.NativeUi.Localization;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class ElevatedProcessActionTests
 {
     private static ProcessActionBatch Batch => new("terminate", [new(71, "132537599910000000")]);
-    private static ElevatedProcessActionRequest Request => new(Guid.NewGuid().ToString("N"), 1, 2, 3, 4, 5, Batch);
+    private static ElevatedProcessActionRequest Request => new(Guid.NewGuid().ToString("N"), 1, 2, 3, 4, Batch);
 
     [Fact]
     public void EnvelopeRetainsOnlyOneBoundedOperationAndExactTargets()
@@ -25,6 +26,8 @@ public sealed class ElevatedProcessActionTests
         using var json = JsonDocument.Parse(Convert.FromBase64String(original.Encode()));
         Assert.False(json.RootElement.TryGetProperty("pipeName", out _));
         Assert.False(json.RootElement.TryGetProperty("accessToken", out _));
+        Assert.False(json.RootElement.TryGetProperty("apiKey", out _));
+        Assert.False(json.RootElement.TryGetProperty("key", out _));
     }
 
     [Theory]
@@ -61,6 +64,31 @@ public sealed class ElevatedProcessActionTests
     {
         using var stream = new MemoryStream(BitConverter.GetBytes(length));
         await Assert.ThrowsAsync<InvalidDataException>(() => ElevatedProcessActionRequest.ReadResultAsync(stream, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ElevatedHelperUsesAKeylessAdministratorRequestWithTheExactBatch()
+    {
+        using var request = ElevatedProcessActionBroker.CreateKeylessProcessActionRequest(Batch);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/system/processes/terminate", request.RequestUri!.OriginalString);
+        Assert.False(request.Headers.Contains(TrustedAccessHeaders.KeyHeader));
+        using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+        Assert.Equal(Batch.Targets[0].ProcessId,
+            json.RootElement.GetProperty("targets")[0].GetProperty("processId").GetInt32());
+        Assert.Equal(Batch.Targets[0].ProcessStartKey,
+            json.RootElement.GetProperty("targets")[0].GetProperty("processStartKey").GetString());
+    }
+
+    [Theory]
+    [InlineData("{\"error\":\"access-scope-required\"}", true)]
+    [InlineData("{\"error\":\"elevated-administrator-required\"}", true)]
+    [InlineData("{\"code\":\"ProcessActionRequiresElevation\"}", true)]
+    [InlineData("{\"error\":\"access-key-invalid\"}", false)]
+    [InlineData("not json", false)]
+    public void ParentRequestsElevationOnlyForTheKnownProcessActionDenials(string payload, bool expected)
+    {
+        Assert.Equal(expected, BackendServiceSession.RequiresProcessElevation(payload));
     }
 
     [Theory]
@@ -135,7 +163,7 @@ public sealed class ElevatedProcessActionTests
         {
             using var client = new HttpClient(BackendProcessConnection.CreateHandler(() => mismatch));
             using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{port}/");
-            request.Headers.Add("X-Resource-Manager-Token", "must-not-be-sent");
+            request.Headers.Add(TrustedAccessHeaders.KeyHeader, "must-not-be-sent");
             var pending = client.SendAsync(request, deadline.Token);
             using var accepted = await listener.AcceptTcpClientAsync(deadline.Token);
             await Assert.ThrowsAsync<HttpRequestException>(() => pending);
@@ -149,12 +177,12 @@ public sealed class ElevatedProcessActionTests
         Assert.False(BackendProcessConnection.IsLoopbackHost("example.com"));
 
         using var verifiedClient = new HttpClient(BackendProcessConnection.CreateHandler(() => expected));
-        verifiedClient.DefaultRequestHeaders.Add("X-Resource-Manager-Token", "attested-test-credential");
+        verifiedClient.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, "rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         var verifiedRequest = verifiedClient.GetAsync($"http://127.0.0.1:{port}/", deadline.Token);
         using var verifiedServer = await listener.AcceptTcpClientAsync(deadline.Token);
         var bytes = new byte[4096];
         var read = await verifiedServer.GetStream().ReadAsync(bytes, deadline.Token);
-        Assert.Contains("attested-test-credential", Encoding.ASCII.GetString(bytes, 0, read));
+        Assert.Contains("rm_sk_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Encoding.ASCII.GetString(bytes, 0, read));
         await verifiedServer.GetStream().WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}"), deadline.Token);
         using var verifiedResponse = await verifiedRequest;
         Assert.True(verifiedResponse.IsSuccessStatusCode);

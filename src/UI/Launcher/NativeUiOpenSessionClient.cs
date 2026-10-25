@@ -18,7 +18,7 @@ internal static class NativeUiOpenSessionClient
         // The SCM running state can precede the first active-session pipe scan.
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
         using var pipe = new NamedPipeClientStream(".",
-            FrontendSessionCredentialContract.PipeName(checked((uint)own.SessionId)),
+            NativeUiOpenSessionContract.PipeName(checked((uint)own.SessionId)),
             PipeDirection.InOut, PipeOptions.Asynchronous, TokenImpersonationLevel.Impersonation);
         await pipe.ConnectAsync(deadline.Token);
         if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var serverPid)) throw LastWin32();

@@ -25,7 +25,7 @@ public sealed class BackendHostEnvironmentTests
     [Fact]
     public void ServiceGraph_RegistersOnlyTheWtsNativeUiOwner()
     {
-        using var provider = new ServiceCollection()
+        var services = new ServiceCollection()
             .AddLogging()
             .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
@@ -33,28 +33,28 @@ public sealed class BackendHostEnvironmentTests
                 StartupCapabilitySet.NormalReadOnly,
                 BackendHostEnvironment.Compile(
                     isWindowsService: true,
-                    isLocalSystem: true))
-            .BuildServiceProvider();
+                    isLocalSystem: true));
+        using var provider = services.BuildServiceProvider();
 
         Assert.IsType<WindowsInteractiveUserSessionBroker>(
             provider.GetRequiredService<IInteractiveUserSessionBroker>());
         Assert.Contains(
-            provider.GetServices<IHostedService>(),
-            static service => service is NativeUiLaunchHostedService);
+            services,
+            static registration => registration.ServiceType == typeof(IHostedService)
+                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
     }
 
     [Fact]
     public void InteractiveAndNoUiGraphsKeepSessionValidationWithoutNativeUiLauncher()
     {
-        using var interactiveProvider = new ServiceCollection()
+        var interactiveServices = new ServiceCollection()
             .AddLogging()
             .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
                 [],
                 StartupCapabilitySet.NormalReadOnly,
-                BackendHostEnvironment.Interactive)
-            .BuildServiceProvider();
-        using var headlessServiceProvider = new ServiceCollection()
+                BackendHostEnvironment.Interactive);
+        var headlessServices = new ServiceCollection()
             .AddLogging()
             .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
@@ -62,18 +62,21 @@ public sealed class BackendHostEnvironmentTests
                 StartupCapabilitySet.NormalReadOnly,
                 BackendHostEnvironment.Compile(
                     isWindowsService: true,
-                    isLocalSystem: true))
-            .BuildServiceProvider();
+                    isLocalSystem: true));
+        using var interactiveProvider = interactiveServices.BuildServiceProvider();
+        using var headlessServiceProvider = headlessServices.BuildServiceProvider();
 
         Assert.IsType<WindowsInteractiveUserSessionBroker>(
             Assert.Single(interactiveProvider.GetServices<IInteractiveUserSessionBroker>()));
         Assert.IsType<WindowsInteractiveUserSessionBroker>(
             Assert.Single(headlessServiceProvider.GetServices<IInteractiveUserSessionBroker>()));
         Assert.DoesNotContain(
-            interactiveProvider.GetServices<IHostedService>(),
-            static service => service is NativeUiLaunchHostedService);
+            interactiveServices,
+            static registration => registration.ServiceType == typeof(IHostedService)
+                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
         Assert.DoesNotContain(
-            headlessServiceProvider.GetServices<IHostedService>(),
-            static service => service is NativeUiLaunchHostedService);
+            headlessServices,
+            static registration => registration.ServiceType == typeof(IHostedService)
+                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
     }
 }

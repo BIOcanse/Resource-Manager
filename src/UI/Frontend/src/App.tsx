@@ -26,6 +26,8 @@ import {
   normalizeBarColorMode
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
+import { AccessRequestSnapshotProvider } from "./features/trustedAccess/AccessRequestSnapshotContext.tsx";
+import { TrustedAccessPendingBanner } from "./features/settings/components/TrustedAccessPendingBanner.tsx";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
 import { applyLanguage, uiText } from "./text.ts";
 import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
@@ -311,8 +313,20 @@ export default function App() {
     setActivePage(page);
   }
 
+  function openAccessRequests() {
+    settings.setActiveSection("systemIntegration");
+    selectPage("settings");
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById("trustedAccessManager")?.scrollIntoView({
+        block: "start",
+        behavior: "smooth"
+      });
+    }));
+  }
+
   return (
     <FrontendWorkProvider controller={frontendWork}>
+      <AccessRequestSnapshotProvider>
       <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={pageRefresh.cpuRuntimePlan}>
       <>
       <AppShell
@@ -327,6 +341,10 @@ export default function App() {
         onManagementSubpageSelect={selectManagementSubpage}
         onTaskCenterOpen={() => setTaskCenterOpen(true)}
       >
+        <TrustedAccessPendingBanner
+          hidden={() => activePage() === "settings" && settings.activeSection() === "systemIntegration"}
+          onReview={openAccessRequests}
+        />
         <LanguageLoadNotice />
         <AppRoutes
           animationMode={gpuRuntimePlan().animations}
@@ -412,6 +430,7 @@ export default function App() {
       <ToastHost items={toasts()} onDismiss={dismissToast} />
       </>
       </FrontendReadIntervalsProvider>
+      </AccessRequestSnapshotProvider>
     </FrontendWorkProvider>
   );
 }

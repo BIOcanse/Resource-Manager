@@ -1,6 +1,5 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
-using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Windows;
 using ResourceManager.ReadWrite.Windows.Processes;
@@ -14,6 +13,7 @@ public sealed class InteractiveDesktopObservationStore
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private readonly Dictionary<int, InteractiveDesktopObservation> sessions = [];
+    private readonly Dictionary<int, Publisher> publishers = [];
     private readonly TimeProvider clock;
     private readonly Func<InteractiveDesktopObservation, bool> verifyPublisher;
     private readonly Func<ProcessInstanceKey, int?> readSession;
@@ -24,7 +24,42 @@ public sealed class InteractiveDesktopObservationStore
         Func<InteractiveDesktopObservation, bool> verifyPublisher, Func<ProcessInstanceKey, int?> readSession)
         => (this.clock, this.verifyPublisher, this.readSession) = (clock, verifyPublisher, readSession);
 
-    public bool Publish(InteractiveDesktopObservation observation)
+    internal bool SelectPublisher(int sessionId, string connectionId, int processId,
+        long creationFileTimeUtc, CancellationToken connectionClosed, CancellationToken keyRevoked = default)
+    {
+        if (sessionId <= 0 || string.IsNullOrWhiteSpace(connectionId) || processId <= 4
+            || creationFileTimeUtc <= 0 || connectionClosed.IsCancellationRequested
+            || keyRevoked.IsCancellationRequested) return false;
+        lock (gate)
+        {
+            if (publishers.TryGetValue(sessionId, out var previous))
+                return previous.ConnectionId == connectionId && previous.ProcessId == processId
+                    && previous.CreationFileTimeUtc == creationFileTimeUtc;
+            if (publishers.Count >= 64) return false;
+            var publisher = new Publisher(connectionId, processId, creationFileTimeUtc);
+            publishers.Add(sessionId, publisher);
+            publisher.Closed = connectionClosed.Register(() => ReleasePublisher(sessionId, publisher));
+            publisher.Revoked = keyRevoked.Register(() => ReleasePublisher(sessionId, publisher));
+            if (publishers.TryGetValue(sessionId, out var selected) && ReferenceEquals(selected, publisher))
+                return true;
+            publisher.Closed.Unregister();
+            publisher.Revoked.Unregister();
+            return false;
+        }
+    }
+
+    private void ReleasePublisher(int sessionId, Publisher publisher)
+    {
+        lock (gate)
+        {
+            if (publishers.TryGetValue(sessionId, out var current) && ReferenceEquals(current, publisher))
+                publishers.Remove(sessionId);
+        }
+        publisher.Closed.Unregister();
+        publisher.Revoked.Unregister();
+    }
+
+    public bool Publish(InteractiveDesktopObservation observation, string connectionId)
     {
         var now = clock.GetUtcNow().UtcTicks;
         if (observation.SessionId <= 0 || observation.PublisherProcessId <= 4
@@ -39,6 +74,9 @@ public sealed class InteractiveDesktopObservationStore
         observation = observation with { Windows = observation.Windows.ToArray() };
         lock (gate)
         {
+            if (!publishers.TryGetValue(observation.SessionId, out var publisher)
+                || publisher.ConnectionId != connectionId || publisher.ProcessId != observation.PublisherProcessId
+                || publisher.CreationFileTimeUtc != observation.PublisherCreationFileTimeUtc) return false;
             if (sessions.TryGetValue(observation.SessionId, out var previous)
                 && observation.ObservedAtUtcTicks < previous.ObservedAtUtcTicks) return false;
             foreach (var stale in sessions.Where(pair => !Fresh(pair.Value, now)).Select(pair => pair.Key).ToArray())
@@ -110,9 +148,8 @@ public sealed class InteractiveDesktopObservationStore
         {
             return NativeMethods.ProcessIdToSessionId(checked((uint)observation.PublisherProcessId), out var session)
                 && session == observation.SessionId
-                && StringComparer.OrdinalIgnoreCase.Equals(WindowsProcessImagePathReader.TryRead(
-                        observation.PublisherProcessId, observation.PublisherCreationFileTimeUtc),
-                    NativeUiLaunchHostedService.ResolveNativeUiPath());
+                && WindowsProcessImagePathReader.TryRead(
+                        observation.PublisherProcessId, observation.PublisherCreationFileTimeUtc) is not null;
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { return false; }
@@ -129,5 +166,14 @@ public sealed class InteractiveDesktopObservationStore
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { return null; }
+    }
+
+    private sealed class Publisher(string connectionId, int processId, long creationFileTimeUtc)
+    {
+        internal string ConnectionId { get; } = connectionId;
+        internal int ProcessId { get; } = processId;
+        internal long CreationFileTimeUtc { get; } = creationFileTimeUtc;
+        internal CancellationTokenRegistration Closed;
+        internal CancellationTokenRegistration Revoked;
     }
 }

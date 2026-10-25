@@ -100,6 +100,12 @@ import type { SoftwareMetadataLookupResult } from
   "../../features/softwareMetadata/softwareMetadataDecoder.ts";
 import { getOptimizationReports } from
   "../../data/optimization/optimizationReportsApi.ts";
+import { buildAccessRequestPendingSubscriptionUrl } from
+  "../../features/trustedAccess/trustedAccessApi.ts";
+import { accessRequestPendingSnapshotDecoder } from
+  "../../features/trustedAccess/trustedAccessDecoder.ts";
+import type { AccessRequestPendingSnapshot } from
+  "../../features/trustedAccess/trustedAccessTypes.ts";
 import {
   buildHostManagerSmartStateSubscriptionUrl,
   hostManagerSmartStateDecoder
@@ -156,6 +162,7 @@ export interface FrontendSources {
   readonly deviceTopology: PushValueSource<DeviceTopologySnapshotState>;
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
   readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
+  readonly accessRequests: CurrentValueSource<AccessRequestPendingSnapshot>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
@@ -246,6 +253,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildManagementInventoryRevisionSubscriptionUrl,
       decoder: managementInventoryRevisionDecoder
+    }),
+    accessRequests: new BackendCurrentValueSource<AccessRequestPendingSnapshot>({
+      key: "access-requests.pending",
+      channel: subscriptionChannel,
+      buildUrl: () => buildAccessRequestPendingSubscriptionUrl(),
+      decoder: accessRequestPendingSnapshotDecoder
     }),
     cpuTopology: new BackendPushValueSource<CpuTopologySnapshot | null>({
       key: "cpu.topology",

@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { ServiceRecoverySetting } from "./ServiceRecoverySetting";
 import { AiGatewayKeyManager } from "./AiGatewayKeyManager";
+import { TrustedAccessManager } from "./TrustedAccessManager";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
@@ -196,6 +197,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
         enabled={props.publicServicesAvailable && publicService().enabled && publicService().aiModelCatalogEnabled}
         labels={props.text.systemIntegration}
       />
+      <TrustedAccessManager copy={props.text.systemIntegration.trustedAccess} />
     </div>
   );
 }

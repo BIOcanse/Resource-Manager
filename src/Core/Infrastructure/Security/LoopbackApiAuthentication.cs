@@ -1,95 +1,24 @@
-using System.Security.Cryptography;
-using System.Runtime.InteropServices;
-using System.Text;
-using Microsoft.AspNetCore.Authorization;
-using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Application.PublicServices;
-using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Infrastructure.Adaptation.Transport;
-using ResourceManager.Shared.Runtime;
+using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Domain.TrustedAccess;
+using ResourceManager.Shared.Runtime.TrustedAccess;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Routing;
 
 namespace ResourceManager.App.Infrastructure.Security;
 
-public sealed class LoopbackApiAccessToken
-{
-    public const string HeaderName = "X-Resource-Manager-Token";
-    public const string FileName = "loopback-api-token";
-    private readonly object gate = new();
-    private readonly Dictionary<string, Entry> entries = [];
-    private readonly Func<TrustedAdapterCallerIdentity, bool> ownerAlive;
-    private readonly Func<HttpContext, TrustedAdapterCallerIdentity, bool> requestOwned;
-
-    public LoopbackApiAccessToken(IHostEnvironment environment) : this(VerifyOwner, VerifyRequest)
-    {
-        // Migration only: a legacy shared credential is never loaded or accepted.
-        var legacy = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-            "Config", "Runtime", FileName);
-        try { File.Delete(legacy); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
-    }
-
-    internal LoopbackApiAccessToken(Func<TrustedAdapterCallerIdentity, bool> ownerAlive,
-        Func<HttpContext, TrustedAdapterCallerIdentity, bool> requestOwned)
-        => (this.ownerAlive, this.requestOwned) = (ownerAlive, requestOwned);
-
-    internal string Issue(TrustedAdapterCallerIdentity owner)
-    {
-        if (!ownerAlive(owner)) throw new UnauthorizedAccessException("The frontend identity is no longer live.");
-        lock (gate)
-        {
-            foreach (var expired in entries.Where(pair => !ownerAlive(pair.Value.Owner)).Select(pair => pair.Key).ToArray())
-                entries.Remove(expired);
-            var existing = entries.Values.FirstOrDefault(entry => SameOwner(entry.Owner, owner));
-            if (existing is not null) return existing.Token;
-            if (entries.Count >= 128) throw new InvalidOperationException("Frontend session capacity reached.");
-            var token = RandomNumberGenerator.GetHexString(FrontendSessionCredentialContract.AccessTokenHexLength);
-            entries.Add(Key(token), new(token, owner));
-            return token;
-        }
-    }
-
-    public bool Validate(HttpContext context, string? suppliedToken)
-    {
-        if (suppliedToken is null || suppliedToken.Length != FrontendSessionCredentialContract.AccessTokenHexLength) return false;
-        Entry? entry;
-        lock (gate) entries.TryGetValue(Key(suppliedToken), out entry);
-        if (entry is null || !ownerAlive(entry.Owner) || !requestOwned(context, entry.Owner)) return false;
-        context.Items[typeof(TrustedAdapterCallerIdentity)] = entry.Owner;
-        return true;
-    }
-
-    private static bool SameOwner(TrustedAdapterCallerIdentity first, TrustedAdapterCallerIdentity second)
-        => first.HostInstanceId == second.HostInstanceId && first.ProcessId == second.ProcessId
-            && first.ProcessCreatedUtcTicks == second.ProcessCreatedUtcTicks && first.WindowsSid == second.WindowsSid
-            && first.WindowsSessionId == second.WindowsSessionId
-            && first.ExecutableFileIdentity == second.ExecutableFileIdentity
-            && StringComparer.OrdinalIgnoreCase.Equals(first.CanonicalExecutablePath, second.CanonicalExecutablePath);
-
-    private static bool VerifyOwner(TrustedAdapterCallerIdentity owner)
-    {
-        try
-        {
-            var process = WindowsNamedPipeCallerAttester.ReadProcessIdentity(checked((uint)owner.ProcessId));
-            return process.CreatedUtcTicks == owner.ProcessCreatedUtcTicks
-                && process.FileIdentity == owner.ExecutableFileIdentity
-                && StringComparer.OrdinalIgnoreCase.Equals(process.CanonicalExecutablePath, owner.CanonicalExecutablePath);
-        }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException)
-        { return false; }
-    }
-
-    private static bool VerifyRequest(HttpContext context, TrustedAdapterCallerIdentity owner)
-        => WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller)
-            && caller.ProcessId != Environment.ProcessId && caller.WindowsSid == owner.WindowsSid
-            && caller.WindowsSessionId == owner.WindowsSessionId;
-
-    private static string Key(string token) => Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(token)));
-    private sealed record Entry(string Token, TrustedAdapterCallerIdentity Owner);
-}
-
 public static class LoopbackApiAuthenticationPolicy
 {
-    internal static bool IsAllowedBrowserRequest(HttpRequest request, int localPort)
+    public static bool IsLoopbackConnection(HttpContext context)
+    {
+        var remote = NormalizeLoopbackAddress(context.Connection.RemoteIpAddress);
+        var local = NormalizeLoopbackAddress(context.Connection.LocalIpAddress);
+        return remote is not null && local is not null
+            && System.Net.IPAddress.IsLoopback(remote)
+            && System.Net.IPAddress.IsLoopback(local);
+    }
+
+    public static bool IsAllowedBrowserRequest(HttpRequest request, int localPort)
     {
         var host = request.Host.Host.Trim('[', ']');
         var localHost = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
@@ -104,66 +33,281 @@ public static class LoopbackApiAuthenticationPolicy
             && origin.UserInfo.Length == 0;
     }
 
-    public static bool IsAuthorized(
-        string expectedToken,
-        string? suppliedToken)
-    {
-        if (string.IsNullOrWhiteSpace(expectedToken)
-            || string.IsNullOrWhiteSpace(suppliedToken))
-        {
-            return false;
-        }
-
-        return expectedToken.Length == suppliedToken.Length
-            && CryptographicOperations.FixedTimeEquals(
-                MemoryMarshal.AsBytes(expectedToken.AsSpan()),
-                MemoryMarshal.AsBytes(suppliedToken.AsSpan()));
-    }
+    private static System.Net.IPAddress? NormalizeLoopbackAddress(System.Net.IPAddress? address)
+        => address?.IsIPv4MappedToIPv6 == true ? address.MapToIPv4() : address;
 }
 
 public sealed class LoopbackApiAuthenticationMiddleware(
     RequestDelegate next,
-    LoopbackApiAccessToken accessToken,
-    ILoopbackApiAdministratorReader administratorReader)
+    ILoopbackApiAdministratorReader administratorReader,
+    ILogger<LoopbackApiAuthenticationMiddleware>? logger = null)
 {
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, ITrustedAccessKeyService keyService)
     {
+        if (TrustedAccessHttpPolicy.IsTrustedAccessApiRequest(context.Request))
+            context.Response.Headers["Cache-Control"] = "no-store";
+
+        if (RequiresTrustedAccessBodyLimit(context.Request))
+        {
+            if (context.Request.ContentLength is { } contentLength
+                && contentLength > TrustedAccessApiContract.AccessRequestMaximumBodyBytes)
+            {
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                await context.Response.WriteAsJsonAsync(
+                    new LoopbackApiErrorPayload("request-body-too-large"),
+                    context.RequestAborted);
+                return;
+            }
+
+            var bodySizeFeature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodySizeFeature is null || bodySizeFeature.IsReadOnly)
+            {
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                await context.Response.WriteAsJsonAsync(
+                    new LoopbackApiErrorPayload("request-body-limit-unavailable"),
+                    context.RequestAborted);
+                return;
+            }
+
+            bodySizeFeature.MaxRequestBodySize = TrustedAccessApiContract.AccessRequestMaximumBodyBytes;
+        }
+
         if (!context.Request.Path.StartsWithSegments("/api"))
         {
             await next(context);
             return;
         }
-        if (!LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, context.Connection.LocalPort))
+
+        if (!LoopbackApiAuthenticationPolicy.IsLoopbackConnection(context)
+            || !LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, context.Connection.LocalPort))
         {
+            LogAuthorizationByKey(context, null, "denied:loopback-origin-required");
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorPayload("loopback-origin-required"));
+            await context.Response.WriteAsJsonAsync(
+                new LoopbackApiErrorPayload("loopback-origin-required"),
+                context.RequestAborted);
             return;
         }
-        if (context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is null
-            && !accessToken.Validate(context, context.Request.Headers[LoopbackApiAccessToken.HeaderName].FirstOrDefault())
-            && !administratorReader.IsAdministrator(context))
+
+        // The subscription endpoint authorizes every selector in the multiplexed body.
+        // It cannot be authorized once at the HTTP path because one body may request several scopes.
+        if (context.Request.Path.Equals("/api/subscriptions/stream", StringComparison.OrdinalIgnoreCase))
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorMessagePayload("frontend-or-administrator-required", "This API requires the corresponding frontend or an administrator caller."));
+            await next(context);
             return;
         }
+
+        // These routes authenticate their own OpenAI/Anthropic credential purpose.
+        // A control key never substitutes for that credential; an explicitly supplied
+        // control key is still validated and rejected if it is invalid.
+        if (TrustedAccessHttpPolicy.IsAiCompatibilityRequest(context.Request))
+        {
+            if (context.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader))
+            {
+                var explicitCredentialDecision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+                    context,
+                    keyService,
+                    administratorReader,
+                    [],
+                    allowKeylessLocalWindowsCaller: false,
+                    requireKeyless: false,
+                    context.RequestAborted);
+                if (!explicitCredentialDecision.Allowed)
+                {
+                    LogAuthorization(context, explicitCredentialDecision, $"denied:{explicitCredentialDecision.ErrorCode}");
+                    context.Response.StatusCode = explicitCredentialDecision.StatusCode;
+                    await context.Response.WriteAsJsonAsync(
+                        new LoopbackApiErrorPayload(explicitCredentialDecision.ErrorCode),
+                        context.RequestAborted);
+                    return;
+                }
+                LogAuthorization(context, explicitCredentialDecision, "allowed");
+            }
+            else
+            {
+                LogAuthorizationByKey(context, null, "delegated-purpose-authentication");
+            }
+            await InvokePublicServicePolicyOrNextAsync(context);
+            return;
+        }
+
+        var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+        if (requirement.Mode == TrustedAccessHttpAuthorizationMode.Anonymous)
+        {
+            if (context.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader))
+            {
+                var explicitCredentialDecision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+                    context,
+                    keyService,
+                    administratorReader,
+                    [],
+                    allowKeylessLocalWindowsCaller: false,
+                    requireKeyless: false,
+                    context.RequestAborted);
+                if (!explicitCredentialDecision.Allowed)
+                {
+                    LogAuthorization(context, explicitCredentialDecision, $"denied:{explicitCredentialDecision.ErrorCode}");
+                    context.Response.StatusCode = explicitCredentialDecision.StatusCode;
+                    await context.Response.WriteAsJsonAsync(
+                        new LoopbackApiErrorPayload(explicitCredentialDecision.ErrorCode),
+                        context.RequestAborted);
+                    return;
+                }
+                LogAuthorization(context, explicitCredentialDecision, "allowed");
+            }
+            else
+            {
+                LogAuthorizationByKey(context, null, "allowed:anonymous-catalog-or-health");
+            }
+            await InvokePublicServicePolicyOrNextAsync(context);
+            return;
+        }
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            requirement.RequiredScopes,
+            requirement.AllowKeylessLocalWindowsCaller,
+            requirement.RequireKeyless,
+            context.RequestAborted);
+        if (!decision.Allowed)
+        {
+            LogAuthorization(context, decision, $"denied:{decision.ErrorCode}");
+            context.Response.StatusCode = decision.StatusCode;
+            await context.Response.WriteAsJsonAsync(
+                new LoopbackApiErrorPayload(decision.ErrorCode),
+                context.RequestAborted);
+            return;
+        }
+        LogAuthorization(context, decision, "allowed");
+
+        if (decision.Context?.Key is not null
+            && TrustedAccessHttpPolicy.IsStreamingRequest(context.Request))
+        {
+            await InvokeAuthorizedSafelyAsync(context, keyService, decision);
+            return;
+        }
+
+        await InvokeAuthorizedSafelyAsync(context, keyService, decision);
+    }
+
+    private async Task InvokeAuthorizedSafelyAsync(
+        HttpContext context,
+        ITrustedAccessKeyService keyService,
+        TrustedAccessAuthorizationDecision decision)
+    {
+        var requestAborted = context.RequestAborted;
+        CancellationTokenSource? revocation = null;
+        try
+        {
+            if (decision.Context?.Key is { } key
+                && TrustedAccessHttpPolicy.IsStreamingRequest(context.Request))
+            {
+                revocation = CancellationTokenSource.CreateLinkedTokenSource(
+                    requestAborted,
+                    keyService.GetRevocationToken(key.Id));
+                context.RequestAborted = revocation.Token;
+            }
+
+            await InvokePublicServicePolicyOrNextAsync(context);
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception error) when (TrustedAccessHttpPolicy.IsTrustedAccessApiRequest(context.Request))
+        {
+            LogAuthorizationByKey(context, decision.AccessKeyId, "unavailable");
+            if (logger is not null)
+            {
+                logger.LogWarning(
+                    "Trusted access operation {Operation} failed ({ErrorType}).",
+                    GetSafeOperation(context),
+                    error.GetType().Name);
+            }
+            if (!context.Response.HasStarted)
+            {
+                context.Response.Clear();
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                await context.Response.WriteAsJsonAsync(
+                    new LoopbackApiErrorPayload("access-service-unavailable"),
+                    requestAborted);
+            }
+            else
+            {
+                context.Abort();
+            }
+        }
+        finally
+        {
+            context.RequestAborted = requestAborted;
+            revocation?.Dispose();
+        }
+    }
+
+    private void LogAuthorization(
+        HttpContext context,
+        TrustedAccessAuthorizationDecision decision,
+        string result)
+        => LogAuthorizationByKey(context, decision.AccessKeyId, result);
+
+    private void LogAuthorizationByKey(HttpContext context, string? accessKeyId, string result)
+    {
+        if (logger is null)
+            return;
+        var route = context.GetEndpoint() is RouteEndpoint endpoint
+            ? endpoint.RoutePattern.RawText ?? "<unnamed-route>"
+            : "<unmatched-api-route>";
+        logger.LogInformation(
+            "Trusted access key {AccessKeyId} operation {Operation} result {Result}",
+            accessKeyId ?? "none",
+            $"{context.Request.Method} {route}",
+            result);
+    }
+
+    private static string GetSafeOperation(HttpContext context)
+    {
+        var route = context.GetEndpoint() is RouteEndpoint endpoint
+            ? endpoint.RoutePattern.RawText ?? "<unnamed-route>"
+            : "<unmatched-api-route>";
+        return $"{context.Request.Method} {route}";
+    }
+
+    private async Task InvokePublicServicePolicyOrNextAsync(HttpContext context)
+    {
         if (!context.Request.Path.StartsWithSegments("/api/public/v1"))
         {
             await next(context);
             return;
         }
+
         var policy = context.RequestServices.GetRequiredService<ILocalPublicServiceAccessPolicy>();
         var decision = await policy.EvaluateAsync(context, context.RequestAborted);
         if (!decision.Allowed)
         {
             context.Response.StatusCode = decision.StatusCode;
-            await context.Response.WriteAsJsonAsync(new LoopbackApiErrorPayload(decision.Reason), context.RequestAborted);
+            await context.Response.WriteAsJsonAsync(
+                new LoopbackApiErrorPayload(decision.Reason),
+                context.RequestAborted);
             return;
         }
-        try { await next(context); }
-        finally { await policy.CompleteAsync(decision.CompletionHandle, CancellationToken.None); }
+
+        try
+        {
+            await next(context);
+        }
+        finally
+        {
+            await policy.CompleteAsync(decision.CompletionHandle, CancellationToken.None);
+        }
     }
+
+    private static bool RequiresTrustedAccessBodyLimit(HttpRequest request)
+        => request.Path.StartsWithSegments(TrustedAccessApiContract.AccessKeysPath,
+                StringComparison.OrdinalIgnoreCase)
+            || request.Path.StartsWithSegments(TrustedAccessApiContract.AccessRequestsPath,
+                StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed record LoopbackApiErrorPayload(string error);
-internal sealed record LoopbackApiErrorMessagePayload(string error, string message);

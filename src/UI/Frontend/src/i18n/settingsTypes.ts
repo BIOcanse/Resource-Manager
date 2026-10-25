@@ -187,6 +187,7 @@ export interface SettingsCopy {
     aiGatewayRevoke: string;
     aiGatewayEmpty: string;
     aiGatewayLoadFailed: string;
+    trustedAccess: TrustedAccessCopy;
   };
   debug: {
     debugModeTitle: string;
@@ -286,6 +287,70 @@ export interface SettingsCopy {
       solidPlugin: string;
     };
   };
+}
+
+export interface TrustedAccessCopy {
+  title: string;
+  description: string;
+  loading: string;
+  loadFailed: string;
+  actionFailed: string;
+  retry: string;
+  defaultTitle: string;
+  defaultDescription: string;
+  defaultEnabled: string;
+  defaultDisabled: string;
+  defaultKeyName: string;
+  defaultFilePath: string;
+  defaultSecretLocalOnly: string;
+  defaultAccessLossWarning: string;
+  enableDefault: string;
+  disableDefault: string;
+  regenerateDefault: string;
+  reloadMetadata: string;
+  createTitle: string;
+  createDescription: string;
+  nameLabel: string;
+  namePlaceholder: string;
+  createScopesLabel: string;
+  noScopesAvailable: string;
+  create: string;
+  working: string;
+  oneTimeTitle: string;
+  oneTimeDescription: string;
+  apiKeyLabel: string;
+  copy: string;
+  copied: string;
+  copyFailed: string;
+  dismissSecret: string;
+  createdAt: string;
+  keysTitle: string;
+  keysEmpty: string;
+  revoke: string;
+  rotate: string;
+  requestsTitle: string;
+  requestsDescription: string;
+  reviewRequests: string;
+  requestsLoading: string;
+  requestsLoadFailed: string;
+  requestsEmpty: string;
+  requestName: string;
+  expiresAt: string;
+  observedExecutable: string;
+  observedProcess: string;
+  submittedAt: string;
+  observedCallerIsInformational: string;
+  requestScopesLabel: string;
+  requestUnavailableScopeHelp: string;
+  approve: string;
+  deny: string;
+  denyReasonLabel: string;
+  requestActionFailed: string;
+  requestApproved: string;
+  requestDenied: string;
+  requestExpired: string;
+  denialReasons: Record<"not-approved" | "unsupported" | "duplicate" | "not-needed", string>;
+  scopeLabels: Record<string, string>;
 }
 
 export interface UpdatesCopy {

@@ -6,10 +6,6 @@ namespace ResourceManager.NativeUi;
 
 public sealed partial class MainForm
 {
-    private const string AppUrl = "http://127.0.0.1:9321/";
-    private const string ApiRequestFilter = "http://127.0.0.1:9321/api/*";
-    private const string AccessTokenHeaderName = "X-Resource-Manager-Token";
-
     private async Task<bool> EnsureFrontendHostAsync()
     {
         if (frontendHost.IsReady)

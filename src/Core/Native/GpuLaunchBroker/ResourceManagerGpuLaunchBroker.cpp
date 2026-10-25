@@ -73,7 +73,8 @@ struct StartupDecision
     std::wstring targetAdapterName;
     ResourceManagerGpuLaunchSession::BackendIdentity backend;
     std::wstring backendPath;
-    std::wstring sessionPipeName;
+    std::wstring trustedAccessPackageRoot;
+    std::wstring testPipeName;
 };
 
 std::wstring Trim(std::wstring value)
@@ -219,7 +220,8 @@ bool PostStartupRequest(const std::wstring& executablePath, StartupDecision& dec
     const std::string body = WideToUtf8(executablePath);
     std::string bytes;
     const bool success = ResourceManagerGpuLaunchSession::Call(ResourceManagerGpuLaunchSession::ResolveOperation,
-        body, decision.backendPath, decision.sessionPipeName, decision.backend, false, bytes);
+        body, decision.backendPath, decision.trustedAccessPackageRoot, decision.testPipeName,
+        decision.backend, false, bytes);
     response = success ? Utf8ToWide(bytes) : std::wstring();
     return success && !response.empty();
 }
@@ -263,7 +265,8 @@ bool PostStartupReport(
     std::string reply;
     auto backend = decision.backend;
     return ResourceManagerGpuLaunchSession::Call(ResourceManagerGpuLaunchSession::ReportOperation,
-        body, decision.backendPath, decision.sessionPipeName, backend, true, reply) && reply == "ok";
+        body, decision.backendPath, decision.trustedAccessPackageRoot, decision.testPipeName,
+        backend, true, reply) && reply == "ok";
 }
 
 void ParseStartupDecision(
@@ -341,11 +344,12 @@ void ParseStartupDecision(
 }
 
 StartupDecision ResolveStartupDecision(const std::wstring& targetPath, const std::wstring& packageRoot,
-    const std::wstring& expectedBackend = std::wstring(), const std::wstring& pipeName = std::wstring())
+    const std::wstring& expectedBackend = std::wstring(), const std::wstring& testPipeName = std::wstring())
 {
     StartupDecision decision;
     decision.backendPath = expectedBackend.empty() ? Combine(DirectoryName(ModulePath()), L"ResourceManager.exe") : expectedBackend;
-    decision.sessionPipeName = pipeName;
+    decision.trustedAccessPackageRoot = ResolvePackageRoot();
+    decision.testPipeName = testPipeName;
 
     std::wstring response;
     if (!PostStartupRequest(targetPath, decision, response))

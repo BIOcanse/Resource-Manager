@@ -149,8 +149,9 @@ public sealed class RuntimeProcessAttributionPipelineTests
     {
         var desktop = new InteractiveDesktopObservationStore(TimeProvider.System, _ => true, readSession ?? (_ => 1));
         var rows = windows.Select(process => new DesktopProcessWindowObservation(process.ProcessId, process.StartKey, true, false)).ToArray();
+        Assert.True(desktop.SelectPublisher(1, "test-publisher", 999, 1, CancellationToken.None));
         Assert.True(desktop.Publish(new(999, 1, 1, DateTimeOffset.UtcNow.UtcTicks, true, true,
-            rows.Single(row => row.ProcessId == foreground), rows)));
+            rows.Single(row => row.ProcessId == foreground), rows), "test-publisher"));
         return desktop;
     }
 

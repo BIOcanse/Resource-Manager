@@ -4,6 +4,7 @@ using ResourceManager.App.Domain.ExternalInvocation;
 using ResourceManager.App.Infrastructure.ExternalInvocation;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -60,12 +61,12 @@ public sealed class ExternalInvokerTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    [InlineData(true, true, true)]
-    public async Task AuthenticatedOperation_AcceptsFrontendOrAdministrator(
-        bool frontend, bool administrator, bool allowed)
+    [InlineData(false, false, null, false)]
+    [InlineData(true, false, null, true)]
+    [InlineData(false, true, null, true)]
+    [InlineData(false, true, "valid-low-scope-key", false)]
+    public async Task AuthenticatedOperation_RequiresScopeOrUnkeyedAdministrator(
+        bool grantsRead, bool administrator, string? accessKeyId, bool allowed)
     {
         var calls = 0;
         var invoker = CreateInvoker(
@@ -78,13 +79,16 @@ public sealed class ExternalInvokerTests
             new RecordingAuditSink());
 
         var result = await invoker.InvokeAsync(
-            CreateRequest(frontend: frontend, administrator: administrator),
+            CreateRequest(
+                grantedScopes: grantsRead ? [AccessKeyScopes.Read] : [],
+                administrator: administrator,
+                accessKeyId: accessKeyId),
             CancellationToken.None);
 
         Assert.Equal(allowed, result.Succeeded);
         Assert.Equal(allowed ? 1 : 0, calls);
         if (!allowed)
-            Assert.Equal("frontend-or-administrator-required", result.ErrorCode);
+            Assert.Equal("access-scope-required", result.ErrorCode);
     }
 
     [Fact]
@@ -101,6 +105,26 @@ public sealed class ExternalInvokerTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("open", result.Value);
+    }
+
+    [Fact]
+    public async Task BearerKeyScopeWorksWithoutWindowsSidOrProcessBinding()
+    {
+        var invoker = CreateInvoker(
+            CreateModule(ExternalInvocationAccessClass.Authenticated,
+                (_, _) => ValueTask.FromResult("scoped")),
+            ExternalInvocationRuntimePlan.Default,
+            new RecordingAuditSink());
+
+        var result = await invoker.InvokeAsync(
+            CreateRequest(
+                grantedScopes: [AccessKeyScopes.Read],
+                windowsSid: null,
+                accessKeyId: "bearer-key-id"),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("scoped", result.Value);
     }
 
     [Fact]
@@ -333,25 +357,31 @@ public sealed class ExternalInvokerTests
                 ExternalInvocationRiskLevel.Low,
                 "Test operation.",
                 "test.no-request.v1",
-                "test.response.v1"),
+                "test.response.v1")
+            {
+                RequiredScopes = accessClass == ExternalInvocationAccessClass.Authenticated
+                    ? [AccessKeyScopes.Read]
+                    : []
+            },
             handler);
         return new TestModule(moduleId, operation);
     }
 
     private static ExternalInvocationRequest CreateRequest(
-        bool frontend = false,
+        IReadOnlyCollection<string>? grantedScopes = null,
         bool administrator = false,
-        string? windowsSid = "S-1-5-21-test")
+        string? windowsSid = "S-1-5-21-test",
+        string? accessKeyId = null)
     {
         return new ExternalInvocationRequest(
             OperationId,
             null,
             new ExternalInvocationCaller(
-                "test-subject",
+                accessKeyId ?? "test-subject",
                 windowsSid,
-                "test-app",
+                accessKeyId,
                 ExternalInvocationTransport.Internal,
-                frontend,
+                grantedScopes ?? [],
                 administrator,
                 Environment.ProcessId),
             Guid.NewGuid().ToString("N"));

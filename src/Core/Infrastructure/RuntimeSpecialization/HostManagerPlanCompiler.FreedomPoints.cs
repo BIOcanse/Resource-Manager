@@ -12,6 +12,16 @@ public sealed partial class HostManagerPlanCompiler
         => freedom.Consume<int>(BackendFreedomPointPaths.ServiceRecoveryCounterReset,
             "HostManagerPlanCompiler.CompileServiceRecovery");
 
+    private static int CompileTrustedAccessRequestLifetime(FreedomPointCompilation freedom)
+    {
+        var milliseconds = freedom.Consume<int>(
+            BackendFreedomPointPaths.TrustedAccessRequestLifetime,
+            "HostManagerPlanCompiler.CompileTrustedAccessRequestLifetime");
+        if (milliseconds <= 0)
+            throw new InvalidDataException("The trusted-access request lifetime must be a positive integer.");
+        return milliseconds;
+    }
+
     private static CompiledCpuScoringPlan CompileCpuScoring(FreedomPointCompilation freedom)
     {
         const string consumer = $"{nameof(HostManagerPlanCompiler)}.{nameof(CompileCpuScoring)}";

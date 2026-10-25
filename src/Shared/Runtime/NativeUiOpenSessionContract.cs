@@ -1,8 +1,9 @@
 namespace ResourceManager.Shared.Runtime;
 
-// Explicit UI opening shares the authenticated user-session pipe, without issuing an API credential.
+// Explicit UI opening has its own user-session pipe and carries no API credential.
 public static class NativeUiOpenSessionContract
 {
+    public static string PipeName(uint sessionId) => $"ResourceManager.NativeUi.OpenSession.{sessionId}.v1";
     public const byte OpenOperation = 4;
     public const byte OpenForeground = 0;
     public const byte OpenBackground = 1;

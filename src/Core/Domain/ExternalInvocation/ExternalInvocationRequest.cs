@@ -5,11 +5,12 @@ public readonly record struct ExternalInvocationNoRequest;
 public sealed record ExternalInvocationCaller(
     string SubjectId,
     string? WindowsSid,
-    string? ApplicationId,
+    string? AccessKeyId,
     ExternalInvocationTransport Transport,
-    bool IsCorrespondingFrontend,
+    IReadOnlyCollection<string> GrantedScopes,
     bool IsAdministrator,
-    int? ProcessId);
+    int? ProcessId,
+    int? WindowsSessionId = null);
 
 public sealed record ExternalInvocationRequest(
     string OperationId,

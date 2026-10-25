@@ -931,6 +931,321 @@
   padding: 12px 0;
 }
 
+.trusted-access-notification {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--text);
+  box-shadow: var(--elev-1);
+}
+
+.trusted-access-notification-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trusted-access-notification-copy > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.trusted-access-notification-copy > span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.trusted-access-notification-count {
+  display: grid;
+  min-width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.trusted-access-notification > button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trusted-access-notification > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.trusted-access-manager {
+  gap: 14px;
+}
+
+.trusted-access-default,
+.trusted-access-create,
+.trusted-access-one-time,
+.trusted-access-key-list,
+.trusted-access-requests {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.trusted-access-section-heading,
+.trusted-access-request-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trusted-access-status,
+.trusted-access-muted,
+.trusted-access-native-secret,
+.trusted-access-state {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trusted-access-key-summary {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.trusted-access-key-summary > strong,
+.trusted-access-request-heading > strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.trusted-access-key-summary > span,
+.trusted-access-request-heading > span,
+.trusted-access-request-facts,
+.trusted-access-default-path {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trusted-access-default-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.trusted-access-default-path > code {
+  color: var(--text);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.trusted-access-scope-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.trusted-access-scope {
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.trusted-access-actions,
+.trusted-access-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trusted-access-actions > button,
+.trusted-access-request-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.trusted-access-name-field,
+.trusted-access-deny-reason {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trusted-access-name-field > span,
+.trusted-access-deny-reason > span,
+.trusted-access-secret-row > span {
+  font-weight: 700;
+}
+
+.trusted-access-scopes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 7px 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--divider-soft);
+  border-radius: var(--radius-sm);
+}
+
+.trusted-access-scopes > legend {
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trusted-access-scope-option {
+  display: inline-flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.trusted-access-scope-option input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.trusted-access-one-time {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.trusted-access-secret-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.trusted-access-secret-row > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trusted-access-secret-row > code,
+.trusted-access-request-facts > code {
+  min-width: 0;
+  color: var(--text);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.trusted-access-dismiss {
+  justify-self: end;
+}
+
+.trusted-access-key-list > strong,
+.trusted-access-requests > .settings-row-copy > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.trusted-access-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.trusted-access-request {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.trusted-access-request-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 5px 8px;
+  min-width: 0;
+}
+
+.trusted-access-request-facts > code {
+  overflow-wrap: anywhere;
+}
+
+.trusted-access-outcome {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.trusted-access-outcome.denied,
+.trusted-access-outcome.expired,
+.trusted-access-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.trusted-access-warning {
+  margin: 0;
+  padding: 7px 10px;
+  border-left: 3px solid var(--warn);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.trusted-access-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-left: 3px solid var(--danger);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 @media (max-width: 1120px) {
   /* 窄窗口：说明一行，模式和输入并排一行；模式控件按内容宽，不拉出空轨道。 */
   .settings-interval-item {
@@ -949,6 +1264,11 @@
 
   .ai-gateway-create-row .settings-segmented-control {
     justify-self: start;
+  }
+
+  .trusted-access-key-row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
   }
 }
 
@@ -969,6 +1289,30 @@
 
   .ai-gateway-value > span {
     grid-column: 1 / -1;
+  }
+
+  .trusted-access-secret-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .trusted-access-secret-row > span {
+    grid-column: 1 / -1;
+  }
+
+  .trusted-access-request-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trusted-access-notification {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .trusted-access-notification-copy {
+    grid-column: 1 / -1;
+  }
+
+  .trusted-access-notification > button {
+    justify-self: end;
   }
 }
 

@@ -80,6 +80,7 @@ const defaultScenario = {
   unknownGpuScore: false,
   gpuPressureFixture: false,
   gpuOverflowThresholdsMissing: false,
+  accessRequests: [],
   pausedSubscriptionPaths: []
 };
 const scenario = structuredClone(defaultScenario);
@@ -280,6 +281,14 @@ server.listen(port, "127.0.0.1", () => {
 
 async function handleApi(request, response, url) {
   const path = url.pathname;
+  if (path === "/api/access-keys" && request.method === "GET") {
+    return json(response, 200, {
+      keys: [],
+      defaultEnabled: false,
+      defaultKeyId: null,
+      availableScopes: []
+    });
+  }
   if (path === "/api/control/objects") {
     return json(response, 200, { readAt: now(), objects: [{
       id: "gpu:test", kind: "gpu", reportedName: "Fixture GPU", adapterIndex: 0,
@@ -1926,7 +1935,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/optimization/smart/state/subscribe",
   "/api/optimization/smart/status/subscribe",
   "/api/operations/subscribe",
-  "/api/management/inventory-revisions/subscribe"
+  "/api/management/inventory-revisions/subscribe",
+  "/api/access-requests/subscribe"
 ]);
 
 function smartCoordinatorStatus() {
@@ -1966,6 +1976,8 @@ function writeSubscriptionChannelFrame(response, subscriptionId, value) {
 
 function subscriptionPayloadFactory(url) {
   switch (url.pathname) {
+    case "/api/access-requests/subscribe":
+      return () => scenario.accessRequests;
     case "/api/control/actual/subscribe":
       return publishedAt => ({ readAt: publishedAt, values: scenario.controlActualValues ?? [
         { objectId: "gpu:test", capabilityId: "gpu.temperature-limit", number: 89, unit: "°C" },
@@ -2156,6 +2168,7 @@ function publishNdjsonBoundary(publisher) {
 }
 
 function pushInterval(url) {
+  if (url.pathname === "/api/access-requests/subscribe") return 100;
   const value = Number(url.searchParams.get("intervalMs"));
   return Number.isFinite(value)
     ? Math.min(60_000, Math.max(100, Math.round(value)))

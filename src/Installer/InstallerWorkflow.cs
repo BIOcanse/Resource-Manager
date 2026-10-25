@@ -85,8 +85,16 @@ internal static class InstallerWorkflow
             File.Copy(UpdateManagerPaths.PackagedExecutable(target.Root), managerExecutable, overwrite: false);
             File.Copy(target.Start, Path.Combine(managerRoot, "Start.exe"), overwrite: false);
             File.Copy(Path.Combine(target.Root, UninstallationPlan.ExecutableName), Path.Combine(managerRoot, UninstallationPlan.ExecutableName), overwrite: false);
-            serviceAttempted = true;
-            WindowsServiceRegistration.RegisterOnly(WindowsServiceRegistration.ProductServiceName, target.Backend);
+            TrustedAccessInstallLifecycle.InitializeBeforeServiceRegistration(
+                target.Backend,
+                TrustedAccessInstallLifecycle.RunBackendAdministration,
+                () =>
+                {
+                    serviceAttempted = true;
+                    WindowsServiceRegistration.RegisterOnly(
+                        WindowsServiceRegistration.ProductServiceName,
+                        target.Backend);
+                });
             registryStarted = true;
             InstallationRegistry.Write(target);
             shortcutStarted = true;

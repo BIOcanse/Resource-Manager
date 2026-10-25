@@ -14,11 +14,14 @@ using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Endpoints.Transport;
+using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -39,24 +42,54 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
-            if (!TryCompileSubscriptionChannelRequest(
-                request,
-                httpContext.RequestServices,
-                out var subscriptions,
-                out var statusCode,
-                out var error))
+            var compilation = await CompileSubscriptionChannelRequestAsync(request, httpContext);
+            if (!compilation.Succeeded)
             {
-                httpContext.Response.StatusCode = statusCode;
+                httpContext.Response.StatusCode = compilation.StatusCode;
                 await httpContext.Response.WriteAsJsonAsync(
-                    new EndpointErrorPayload(error),
+                    new EndpointErrorPayload(compilation.Error),
                     jsonOptions.Value.SerializerOptions,
                     cancellationToken);
                 return;
             }
+            var subscriptions = compilation.Subscriptions;
+
+            var authorization = httpContext.Items.TryGetValue(
+                    typeof(TrustedAccessAuthorizationContext),
+                    out var authorizationObject)
+                ? authorizationObject as TrustedAccessAuthorizationContext
+                : null;
+            var revocationToken = CancellationToken.None;
+            if (authorization?.Key is { } authenticatedKey)
+            {
+                try
+                {
+                    revocationToken = httpContext.RequestServices
+                        .GetRequiredService<ITrustedAccessKeyService>()
+                        .GetRevocationToken(authenticatedKey.Id);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    loggerFactory.CreateLogger("ResourceManager.TrustedAccessAuthorization")
+                        .LogWarning("Trusted access stream revocation state is unavailable ({ErrorType}).",
+                            error.GetType().Name);
+                    httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    await httpContext.Response.WriteAsJsonAsync(
+                        new EndpointErrorPayload("access-service-unavailable"),
+                        jsonOptions.Value.SerializerOptions,
+                        cancellationToken);
+                    return;
+                }
+            }
 
             NdjsonResponse.Prepare(httpContext.Response);
+            using var revocationCancellation = authorization?.Key is not null
+                ? CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    revocationToken)
+                : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             using var channelCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                CancellationTokenSource.CreateLinkedTokenSource(revocationCancellation.Token);
             using var writer = new FrontendSubscriptionChannelWriter(
                 httpContext.Response,
                 jsonOptions.Value.SerializerOptions);
@@ -143,27 +176,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
     }
 
-    private static bool TryCompileSubscriptionChannelRequest(
+    private static async Task<SubscriptionChannelCompilationResult> CompileSubscriptionChannelRequestAsync(
         FrontendSubscriptionChannelRequest? request,
-        IServiceProvider services,
-        out IReadOnlyList<CompiledFrontendSubscription> subscriptions,
-        out int statusCode,
-        out string error)
+        HttpContext httpContext)
     {
-        subscriptions = [];
-        statusCode = StatusCodes.Status400BadRequest;
-        error = string.Empty;
+        var statusCode = StatusCodes.Status400BadRequest;
         if (request is null || request.Version != 1)
         {
-            error = "Subscription channel version 1 is required.";
-            return false;
+            return Failed(statusCode, "Subscription channel version 1 is required.");
         }
         if (request.Subscriptions is null
             || request.Subscriptions.Count is < 1
                 or > SubscriptionChannelMaximumItemCount)
         {
-            error = $"The subscription count must be from 1 through {SubscriptionChannelMaximumItemCount}.";
-            return false;
+            return Failed(statusCode, $"The subscription count must be from 1 through {SubscriptionChannelMaximumItemCount}.");
         }
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -175,16 +201,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 || !IsValidSubscriptionId(item.Id)
                 || !ids.Add(item.Id!))
             {
-                error = "Every subscription must have a unique valid id.";
-                return false;
+                return Failed(statusCode, "Every subscription must have a unique valid id.");
             }
             if (!TryParseSubscriptionSelector(
                 item.Path,
                 out var selector,
                 out var query))
             {
-                error = $"Subscription '{item.Id}' has an unsupported path.";
-                return false;
+                return Failed(statusCode, $"Subscription '{item.Id}' has an unsupported path.");
             }
             descriptors.Add(new ParsedFrontendSubscription(
                 item.Id!,
@@ -192,29 +216,64 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 query));
         }
 
+        var keyService = httpContext.RequestServices.GetRequiredService<ITrustedAccessKeyService>();
+        var administratorReader = httpContext.RequestServices.GetRequiredService<ILoopbackApiAdministratorReader>();
+        var authorizationLogger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("ResourceManager.TrustedAccessAuthorization");
+        foreach (var descriptor in descriptors)
+        {
+            var requiredScopes = TrustedAccessHttpPolicy.RequiredScopesForSubscription(descriptor.Selector);
+            var hasExplicitKey = httpContext.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader);
+            if (requiredScopes.Count == 0 && !hasExplicitKey)
+            {
+                authorizationLogger.LogInformation(
+                    "Trusted access key {AccessKeyId} operation {Operation} result {Result}",
+                    "none",
+                    descriptor.Selector,
+                    "allowed:anonymous");
+                continue;
+            }
+
+            var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+                httpContext,
+                keyService,
+                administratorReader,
+                requiredScopes,
+                TrustedAccessHttpPolicy.AllowsKeylessSubscription(descriptor.Selector),
+                requireKeyless: false,
+                httpContext.RequestAborted);
+            authorizationLogger.LogInformation(
+                "Trusted access key {AccessKeyId} operation {Operation} result {Result}",
+                decision.AccessKeyId ?? "none",
+                descriptor.Selector,
+                decision.Allowed ? "allowed" : $"denied:{decision.ErrorCode}");
+            if (!decision.Allowed)
+                return Failed(decision.StatusCode, decision.ErrorCode);
+        }
+
         try
         {
-            subscriptions = descriptors
+            var subscriptions = descriptors
                 .Select(descriptor => CompileFrontendSubscription(
                     descriptor,
-                    services))
+                    httpContext.RequestServices))
                 .ToArray();
-            return true;
+            return new(subscriptions, StatusCodes.Status200OK, string.Empty);
         }
         catch (Exception exception)
             when (exception is ArgumentException
                 or FormatException
                 or OverflowException)
         {
-            error = "One or more subscription queries are invalid.";
-            return false;
+            return Failed(StatusCodes.Status400BadRequest, "One or more subscription queries are invalid.");
         }
         catch (InvalidOperationException)
         {
-            statusCode = StatusCodes.Status503ServiceUnavailable;
-            error = "One or more subscription sources are unavailable.";
-            return false;
+            return Failed(StatusCodes.Status503ServiceUnavailable, "One or more subscription sources are unavailable.");
         }
+
+        static SubscriptionChannelCompilationResult Failed(int code, string message)
+            => new([], code, message);
     }
 
     /// <summary>
@@ -318,7 +377,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ["/api/management/inventory-revisions/subscribe"] = new((subscription, services, _) =>
                 CompileManagementInventoryRevisionSubscription(
                     subscription,
-                    services.GetRequiredService<IManagementInventoryRevisionOwner>()))
+                    services.GetRequiredService<IManagementInventoryRevisionOwner>())),
+            ["/api/access-requests/subscribe"] = new((subscription, services, _) =>
+                CompileAccessRequestSubscription(
+                    subscription,
+                    services.GetRequiredService<ITrustedAccessRequestOwner>()))
         };
 
     /// <summary>
@@ -531,6 +594,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             await foreach (var snapshot in inventoryRevisions.SubscribeAsync(cancellationToken))
             {
                 await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
+            }
+        });
+
+    private static CompiledFrontendSubscription CompileAccessRequestSubscription(
+        ParsedFrontendSubscription subscription,
+        ITrustedAccessRequestOwner requests)
+        => subscription.Compile(async (writer, cancellationToken) =>
+        {
+            await foreach (var pending in requests.SubscribePendingAsync(cancellationToken))
+            {
+                var wire = pending.Select(static request => new TrustedAccessRequestPendingWireSnapshot(
+                    request.RequestId,
+                    request.Name,
+                    request.RequestedScopes.ToArray(),
+                    request.ObservedExecutablePath,
+                    request.ObservedProcessId,
+                    request.SubmittedAt,
+                    request.ExpiresAt)).ToArray();
+                await writer.WriteAsync(subscription.Id, wire, cancellationToken);
             }
         });
 
@@ -817,3 +899,11 @@ internal sealed record FrontendSubscriptionChannelRequestItem(
 internal sealed record FrontendSubscriptionChannelFrame<T>(
     string SubscriptionId,
     T Value);
+
+internal sealed record SubscriptionChannelCompilationResult(
+    IReadOnlyList<ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Subscriptions,
+    int StatusCode,
+    string Error)
+{
+    public bool Succeeded => StatusCode == StatusCodes.Status200OK;
+}

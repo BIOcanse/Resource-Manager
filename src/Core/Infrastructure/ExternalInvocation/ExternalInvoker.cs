@@ -133,7 +133,7 @@ public sealed class ExternalInvoker(
             moduleId,
             request.Caller.SubjectId,
             request.Caller.WindowsSid,
-            request.Caller.ApplicationId,
+            request.Caller.AccessKeyId,
             request.Caller.Transport,
             request.Caller.ProcessId,
             accessClass,

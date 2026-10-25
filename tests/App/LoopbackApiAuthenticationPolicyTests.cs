@@ -1,114 +1,423 @@
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using ResourceManager.App.Application.RuntimeSpecialization;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
+using Microsoft.Extensions.Primitives;
+using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Domain.TrustedAccess;
 using ResourceManager.App.Infrastructure.Security;
-using ResourceManager.Shared.Runtime;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class LoopbackApiAuthenticationPolicyTests
 {
-    private const string ExpectedToken = "0123456789ABCDEF0123456789ABCDEF";
+    [Theory]
+    [InlineData("127.0.0.1:9321", null, true)]
+    [InlineData("localhost:9321", "http://localhost:9321", true)]
+    [InlineData("localhost:9321", "http://attacker.invalid", false)]
+    [InlineData("attacker.invalid:9321", null, false)]
+    [InlineData("localhost:9322", null, false)]
+    [InlineData("localhost:9321", "http://localhost:9321/path", false)]
+    [InlineData("localhost:9321", "http://user@localhost:9321", false)]
+    public void BearerKeysDoNotRemoveHostOrOriginChecks(string host, string? origin, bool allowed)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString(host);
+        if (origin is not null) context.Request.Headers.Origin = origin;
+        Assert.Equal(allowed, LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, 9321));
+    }
 
     [Fact]
-    public void AuthenticationEnabled_AcceptsOnlyTheCurrentInstanceToken()
+    public void MultipleOriginsAreRejected()
     {
-        Assert.True(LoopbackApiAuthenticationPolicy.IsAuthorized(
-            ExpectedToken,
-            ExpectedToken));
-        Assert.False(LoopbackApiAuthenticationPolicy.IsAuthorized(
-            ExpectedToken,
-            "0123456789ABCDEF0123456789ABCDE0"));
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("localhost:9321");
+        context.Request.Headers.Origin = new StringValues(
+            ["http://localhost:9321", "http://attacker.invalid"]);
+        Assert.False(LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, 9321));
+    }
+
+    [Fact]
+    public void ForgedLocalhostHostDoesNotAllowNonLoopbackPeer()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("localhost:9321");
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("192.0.2.10");
+        context.Connection.LocalIpAddress = System.Net.IPAddress.Loopback;
+
+        Assert.True(LoopbackApiAuthenticationPolicy.IsAllowedBrowserRequest(context.Request, 9321));
+        Assert.False(LoopbackApiAuthenticationPolicy.IsLoopbackConnection(context));
+    }
+
+    [Fact]
+    public void IPv4MappedLoopbackPeerRemainsLoopback()
+    {
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback.MapToIPv6();
+        context.Connection.LocalIpAddress = System.Net.IPAddress.IPv6Loopback;
+
+        Assert.True(LoopbackApiAuthenticationPolicy.IsLoopbackConnection(context));
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void AuthenticationEnabled_RejectsMissingTokens(string? suppliedToken)
+    [InlineData("GET", "/api/health", "Anonymous", "")]
+    [InlineData("GET", "/api/public/v1/capabilities", "Anonymous", "")]
+    [InlineData("GET", "/api/metrics/subscribe", "Protected", "metrics.read")]
+    [InlineData("HEAD", "/api/metrics/subscribe", "Protected", "metrics.read")]
+    [InlineData("POST", "/api/metrics/reset", "Protected", "machine.write")]
+    [InlineData("GET", "/api/resource-monitor/processes", "Protected", "processes.read")]
+    [InlineData("HEAD", "/api/resource-breakdown/processes", "Protected", "processes.read")]
+    [InlineData("GET", "/api/resource-table/processes", "Protected", "processes.read")]
+    [InlineData("POST", "/api/resource-monitor/action", "Protected", "machine.write")]
+    [InlineData("POST", "/api/device-topology/nvidia-drs/fields/read", "Protected", "read")]
+    [InlineData("POST", "/api/disk-usage/scan", "Protected", "read")]
+    [InlineData("POST", "/api/components/counter/verify", "Protected", "read")]
+    [InlineData("POST", "/api/public/v1/sqlite/databases/default/query", "Protected", "read")]
+    [InlineData("GET", "/api/cpu/residency", "Protected", "processes.read")]
+    [InlineData("GET", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
+    [InlineData("POST", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
+    [InlineData("POST", "/api/operations/opaque-id/cancel", "Protected", "session")]
+    [InlineData("POST", "/api/optimization/reports/refresh", "Protected", "processes.read")]
+    [InlineData("POST", "/api/gpu-placement/process-history/observe", "Protected", "gpu.report")]
+    [InlineData("GET", "/api/targeted-recordings", "Protected", "processes.read")]
+    [InlineData("HEAD", "/api/targeted-recordings", "Protected", "processes.read")]
+    [InlineData("POST", "/api/targeted-recordings", "Protected", "session")]
+    [InlineData("DELETE", "/api/targeted-recordings/recording-id", "Protected", "session")]
+    [InlineData("PUT", "/api/targeted-recordings/recording-id", "Protected", "machine.write")]
+    [InlineData("GET", "/api/performance-overlay/software/example", "Protected", "metrics.read")]
+    [InlineData("HEAD", "/api/performance-overlay/software/example", "Protected", "metrics.read")]
+    [InlineData("POST", "/api/performance-overlay/software/example", "Protected", "machine.write")]
+    [InlineData("GET", "/api/system/search-online", "Protected", "session")]
+    [InlineData("POST", "/api/access-requests/opaque/approve", "Protected", "keys.manage")]
+    [InlineData("POST", "/api/access-requests/opaque/deny", "Protected", "keys.manage")]
+    [InlineData("GET", "/api/arbitrary-read", "Protected", "read")]
+    [InlineData("HEAD", "/api/arbitrary-read", "Protected", "read")]
+    [InlineData("POST", "/api/arbitrary-write", "Protected", "machine.write")]
+    public void HttpRoutesHaveExplicitAccessRequirements(
+        string method,
+        string path,
+        string mode,
+        string scope)
     {
-        Assert.False(LoopbackApiAuthenticationPolicy.IsAuthorized(
-            ExpectedToken,
-            suppliedToken));
-    }
-
-    [Fact]
-    public void StandardUserPipeline_RegistersFixedTokenAuthenticationServices()
-    {
-        var pipeline = LoopbackApiPipelineConfigurator.Compile(processIsAdministrator: false);
-        var services = new ServiceCollection();
-
-        pipeline.ConfigureServices(services);
-
-        Assert.Equal(LoopbackApiPipelineMode.StandardUser, pipeline.Mode);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LoopbackApiAccessToken)
-            && descriptor.Lifetime == ServiceLifetime.Singleton);
-    }
-
-    [Fact]
-    public void AdministratorPipeline_RegistersFixedTokenAuthenticationServices()
-    {
-        var pipeline = LoopbackApiPipelineConfigurator.Compile(processIsAdministrator: true);
-        var services = new ServiceCollection();
-
-        pipeline.ConfigureServices(services);
-
-        Assert.Equal(LoopbackApiPipelineMode.Administrator, pipeline.Mode);
-        Assert.Contains(services, descriptor =>
-            descriptor.ServiceType == typeof(LoopbackApiAccessToken)
-            && descriptor.Lifetime == ServiceLifetime.Singleton);
-    }
-
-    [Fact]
-    public void AuthenticationMiddleware_BindsAuthenticationServicesForBothModes()
-    {
-        var constructor = Assert.Single(
-            typeof(LoopbackApiAuthenticationMiddleware).GetConstructors());
-        Assert.Equal(
-            [
-                typeof(RequestDelegate),
-                typeof(LoopbackApiAccessToken),
-                typeof(ILoopbackApiAdministratorReader)
-            ],
-            constructor.GetParameters().Select(parameter => parameter.ParameterType));
-
-        var invoke = typeof(LoopbackApiAuthenticationMiddleware).GetMethod("InvokeAsync");
-        Assert.NotNull(invoke);
-        Assert.Equal(
-            [typeof(HttpContext)],
-            invoke!.GetParameters().Select(parameter => parameter.ParameterType));
-
-        foreach (var processIsAdministrator in new[] { false, true })
+        foreach (var variant in MethodVariants(method))
+        foreach (var matchedEndpoint in new[] { false, true })
         {
-            var services = new ServiceCollection();
-            LoopbackApiPipelineConfigurator
-                .Compile(processIsAdministrator)
-                .ConfigureServices(services);
-            Assert.Contains(services, descriptor =>
-                descriptor.ServiceType == typeof(LoopbackApiAccessToken));
+            var context = MethodRequest(variant, path, matchedEndpoint ? method : null);
+            var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+
+            Assert.Equal(mode, requirement.Mode.ToString());
+            if (scope.Length == 0)
+                Assert.Empty(requirement.RequiredScopes);
+            else
+                Assert.Equal(new[] { scope }, requirement.RequiredScopes);
         }
     }
 
     [Fact]
-    public void SessionProof_ProvesTokenPossessionWithoutExposingTheToken()
+    public void MutatingMetricRoutesDoNotReceiveReadScope()
     {
-        var challenge = new string('A', LoopbackSessionProofContract.ChallengeHexLength);
-        var proof = LoopbackSessionProofContract.ComputeProof(ExpectedToken, challenge);
+        var context = new DefaultHttpContext();
+        context.Request.Method = "POST";
+        context.Request.Path = "/api/metrics/reset";
 
-        Assert.Equal(LoopbackSessionProofContract.ProofHexLength, proof.Length);
-        Assert.DoesNotContain(ExpectedToken, proof, StringComparison.Ordinal);
-        Assert.True(LoopbackSessionProofContract.VerifyProof(
-            ExpectedToken,
-            challenge,
-            proof));
-        Assert.False(LoopbackSessionProofContract.VerifyProof(
-            ExpectedToken,
-            new string('B', LoopbackSessionProofContract.ChallengeHexLength),
-            proof));
-        Assert.False(LoopbackSessionProofContract.VerifyProof(
-            ExpectedToken + "0",
-            challenge,
-            proof));
+        Assert.Equal(
+            [AccessKeyScopes.MachineWrite],
+            TrustedAccessHttpPolicy.GetRequirement(context.Request).RequiredScopes);
+    }
+
+    [Fact]
+    public void RouteParameterTextCannotChangeTheCanonicalRouteScopes()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = "POST";
+        context.Request.Path = "/api/components/open-path-injection/install";
+        var endpoint = new RouteEndpointBuilder(
+            _ => Task.CompletedTask,
+            RoutePatternFactory.Parse("/api/components/{componentId}/install"),
+            0);
+        endpoint.Metadata.Add(new HttpMethodMetadata(["POST"]));
+        context.SetEndpoint(endpoint.Build());
+
+        var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+
+        Assert.Equal([AccessKeyScopes.MachineWrite], requirement.RequiredScopes);
+    }
+
+    [Theory]
+    [InlineData("/api/gpu-placement/process-policy")]
+    [InlineData("/api/performance-overlay/software/example")]
+    public async Task InjectionConfigMutationsRequireBothScopesEvenForAdministratorKeys(string path)
+    {
+        foreach (var method in MethodVariants("PUT"))
+        foreach (var matchedEndpoint in new[] { false, true })
+        {
+            var context = MethodRequest(method, path, matchedEndpoint ? "PUT" : null);
+            context.Request.Headers[TrustedAccessHeaders.KeyHeader] = "valid-key";
+            var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+            var administratorReader = new TestAdministratorReader(isAdministrator: true);
+
+            Assert.Equal(
+                [AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure],
+                requirement.RequiredScopes);
+            var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+                context,
+                new TestKeyService(Key([AccessKeyScopes.MachineWrite])),
+                administratorReader,
+                requirement.RequiredScopes,
+                allowKeylessLocalWindowsCaller: false,
+                requireKeyless: false,
+                cancellationToken: CancellationToken.None);
+
+            Assert.False(decision.Allowed);
+            Assert.Equal(StatusCodes.Status403Forbidden, decision.StatusCode);
+            Assert.Equal("access-scope-required", decision.ErrorCode);
+            Assert.Equal(0, administratorReader.CallCount);
+        }
+    }
+
+    [Theory]
+    [InlineData("/api/gpu-placement/process-policy")]
+    [InlineData("/api/performance-overlay/software/example")]
+    public async Task InjectionConfigMutationsNeedAdministratorAndAllowFullyAuthorizedKey(string path)
+    {
+        var context = RequestWithKey("valid-key");
+        context.Request.Method = "PUT";
+        context.Request.Path = path;
+        var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+        var scopes = new[] { AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure };
+        var administratorReader = new TestAdministratorReader(isAdministrator: true);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            new TestKeyService(Key(scopes)),
+            administratorReader,
+            requirement.RequiredScopes,
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(decision.Allowed);
+        Assert.Equal(1, administratorReader.CallCount);
+    }
+
+    [Theory]
+    [InlineData("/api/gpu-placement/process-policy")]
+    [InlineData("/api/performance-overlay/software/example")]
+    public async Task InjectionConfigMutationsRemainDeniedWithoutAdministrator(string path)
+    {
+        var context = RequestWithKey("valid-key");
+        context.Request.Method = "PUT";
+        context.Request.Path = path;
+        var requirement = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+        var keyService = new TestKeyService(Key(
+            [AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure]));
+        var administratorReader = new TestAdministratorReader(isAdministrator: false);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            requirement.RequiredScopes,
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(decision.Allowed);
+        Assert.Equal(StatusCodes.Status403Forbidden, decision.StatusCode);
+        Assert.Equal("elevated-administrator-required", decision.ErrorCode);
+        Assert.Equal(1, administratorReader.CallCount);
+    }
+
+    [Fact]
+    public void AiCompatibilityKeepsItsPurposeSpecificAuthenticationPath()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/public/v1/ai/compat/openai/v1/chat/completions";
+
+        Assert.True(TrustedAccessHttpPolicy.IsAiCompatibilityRequest(context.Request));
+        Assert.False(TrustedAccessHttpPolicy.IsAiCompatibilityRequest(new DefaultHttpContext().Request));
+    }
+
+    [Fact]
+    public async Task ValidBearerReadDoesNotRequireOrBindToWindowsIdentity()
+    {
+        var context = RequestWithKey("raw-test-key");
+        var keyService = new TestKeyService(Key([AccessKeyScopes.MetricsRead]));
+        var administratorReader = new TestAdministratorReader(isAdministrator: false);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            [AccessKeyScopes.MetricsRead],
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(decision.Allowed);
+        Assert.Equal("key-id-1", decision.AccessKeyId);
+        Assert.Equal(0, administratorReader.CallCount);
+        Assert.Equal("control", keyService.LastPurpose);
+        Assert.Same(keyService.Key, decision.Context!.Key);
+        Assert.Null(decision.Context.WindowsCaller);
+    }
+
+    [Fact]
+    public async Task ExplicitInvalidBearerCannotFallBackToAdministratorIdentity()
+    {
+        var context = RequestWithKey("wrong-key");
+        var keyService = new TestKeyService(null);
+        var administratorReader = new TestAdministratorReader(isAdministrator: true);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            [AccessKeyScopes.Read],
+            allowKeylessLocalWindowsCaller: true,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(decision.Allowed);
+        Assert.Equal(StatusCodes.Status401Unauthorized, decision.StatusCode);
+        Assert.Equal("access-key-invalid", decision.ErrorCode);
+        Assert.Equal(0, administratorReader.CallCount);
+    }
+
+    [Fact]
+    public async Task KeyStoreFailureReturnsUnavailableWithoutAdministratorFallback()
+    {
+        var context = RequestWithKey("valid-looking-key");
+        var keyService = new TestKeyService(null)
+        {
+            AuthenticationFailure = new IOException("details must not escape")
+        };
+        var administratorReader = new TestAdministratorReader(isAdministrator: true);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            [AccessKeyScopes.Read],
+            allowKeylessLocalWindowsCaller: true,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(decision.Allowed);
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, decision.StatusCode);
+        Assert.Equal("access-service-unavailable", decision.ErrorCode);
+        Assert.Equal(0, administratorReader.CallCount);
+    }
+
+    [Fact]
+    public async Task ElevatedScopesRequireAdministratorEvenWhenKeyGrantsThem()
+    {
+        var context = RequestWithKey("valid-key");
+        var keyService = new TestKeyService(Key([AccessKeyScopes.MachineWrite]));
+        var administratorReader = new TestAdministratorReader(isAdministrator: false);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            context,
+            keyService,
+            administratorReader,
+            [AccessKeyScopes.MachineWrite],
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(decision.Allowed);
+        Assert.Equal(StatusCodes.Status403Forbidden, decision.StatusCode);
+        Assert.Equal("elevated-administrator-required", decision.ErrorCode);
+        Assert.Equal(1, administratorReader.CallCount);
+    }
+
+    [Fact]
+    public void AccessRequestCreateAndWaitMustBeKeyless()
+    {
+        foreach (var method in MethodVariants("POST"))
+        foreach (var path in new[] { "/api/access-requests", "/api/access-requests/opaque/wait" })
+        foreach (var matchedEndpoint in new[] { false, true })
+            Assert.True(TrustedAccessHttpPolicy.GetRequirement(
+                MethodRequest(method, path, matchedEndpoint ? "POST" : null).Request).RequireKeyless);
+    }
+
+    private static string[] MethodVariants(string method)
+        => [method, method.ToLowerInvariant(), method[..1] + method[1..].ToLowerInvariant()];
+
+    private static DefaultHttpContext MethodRequest(string method, string path, string? matchedMethod)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = method;
+        context.Request.Path = path;
+        if (matchedMethod is not null)
+        {
+            var endpoint = new RouteEndpointBuilder(_ => Task.CompletedTask, RoutePatternFactory.Parse(path), 0);
+            endpoint.Metadata.Add(new HttpMethodMetadata([matchedMethod]));
+            context.SetEndpoint(endpoint.Build());
+        }
+        return context;
+    }
+
+    private static DefaultHttpContext RequestWithKey(string key)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Headers[TrustedAccessHeaders.KeyHeader] = key;
+        return context;
+    }
+
+    private static AccessKeySummary Key(string[] scopes)
+        => new("key-id-1", "test", AccessKeyPurposes.Control, scopes, DateTimeOffset.UnixEpoch, false);
+
+    private sealed class TestAdministratorReader(bool isAdministrator) : ILoopbackApiAdministratorReader
+    {
+        public int CallCount { get; private set; }
+
+        public bool IsAdministrator(HttpContext context)
+        {
+            CallCount++;
+            return isAdministrator;
+        }
+    }
+
+    private sealed class TestKeyService(AccessKeySummary? key) : ITrustedAccessKeyService
+    {
+        public AccessKeySummary? Key { get; } = key;
+        public string? LastPurpose { get; private set; }
+        public Exception? AuthenticationFailure { get; init; }
+
+        public Task<IReadOnlyList<AccessKeySummary>> ListAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<AccessKeySummary>>([]);
+
+        public Task<AccessKeyCreated> CreateAsync(AccessKeyCreateRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<AccessKeyCreated> RotateAsync(string credentialId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<bool> RevokeAsync(string credentialId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<AccessKeyCreated?> SetDefaultAsync(bool enabled, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<AccessKeySummary?> AuthenticateAsync(
+            string purpose,
+            string? apiKey,
+            CancellationToken cancellationToken)
+        {
+            LastPurpose = purpose;
+            if (AuthenticationFailure is not null)
+                return Task.FromException<AccessKeySummary?>(AuthenticationFailure);
+            return Task.FromResult(Key);
+        }
+
+        public Task InitializeAsync(bool recover, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public CancellationToken GetRevocationToken(string credentialId)
+            => CancellationToken.None;
     }
 }

@@ -35,7 +35,7 @@ public sealed record ExternalInvocationAuditEvent(
     string? ModuleId,
     string SubjectId,
     string? WindowsSid,
-    string? ApplicationId,
+    string? AccessKeyId,
     ExternalInvocationTransport Transport,
     int? ProcessId,
     ExternalInvocationAccessClass? AccessClass,

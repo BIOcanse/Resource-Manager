@@ -24,13 +24,13 @@ public sealed partial class MainForm : Form
     private readonly ResizeGripMessageFilter resizeGripMessageFilter;
     private readonly Action<bool> taskManagerShortcutReplacementChanged;
     private readonly Action editableHotkeysChanged;
-    private string? loopbackApiAccessToken;
     private FrontendBackendSessionProjection? backendSessionProjection;
     private readonly Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction;
 
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
         Action editableHotkeysChanged,
+        FrontendLoopbackProxy frontendProxy,
         Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null)
     {
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
@@ -40,10 +40,7 @@ public sealed partial class MainForm : Form
             new WebView2HostConfiguration(
                 NativeUiPaths.WebViewUserDataFolder,
                 NativeUiPaths.FrontendPreferencesPath,
-                AppUrl,
-                ApiRequestFilter,
-                AccessTokenHeaderName,
-                () => loopbackApiAccessToken));
+                frontendProxy));
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;
         Text = NativeUiText.Current.AppName;
@@ -107,7 +104,7 @@ public sealed partial class MainForm : Form
             if (!appNavigationStarted)
             {
                 appNavigationStarted = true;
-                frontendHost.Navigate(AppUrl);
+                frontendHost.Navigate(frontendHost.ApplicationAddress);
             }
         }
     }
@@ -150,13 +147,6 @@ public sealed partial class MainForm : Form
             : string.Format(NativeUiText.Current.WindowTitleFormat, text);
     }
 
-    public void SetLoopbackApiAccessToken(string? accessToken)
-    {
-        loopbackApiAccessToken = string.IsNullOrWhiteSpace(accessToken)
-            ? null
-            : accessToken;
-    }
-
     internal void ShowBackendConnecting(bool reconnecting)
     {
         DisableBackendContent();
@@ -184,7 +174,6 @@ public sealed partial class MainForm : Form
     }
 
     internal void ShowBackendReady(
-        string? accessToken,
         FrontendBackendSessionProjection projection)
     {
         ArgumentNullException.ThrowIfNull(projection);
@@ -196,7 +185,6 @@ public sealed partial class MainForm : Form
         }
 
         backendSessionProjection = projection;
-        SetLoopbackApiAccessToken(accessToken);
         backendContentEnabled = true;
         appNavigationStarted = false;
         frontendHost.View.Visible = false;
@@ -220,7 +208,6 @@ public sealed partial class MainForm : Form
     private void DisableBackendContent()
     {
         backendContentEnabled = false;
-        SetLoopbackApiAccessToken(null);
         StopPolling();
         appNavigationStarted = false;
         lastPublishedHostVisibility = null;

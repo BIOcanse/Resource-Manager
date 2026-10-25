@@ -8,6 +8,17 @@ public sealed class TrustedFrontendDocumentPolicyTests
         "http://127.0.0.1:9321/");
 
     [Theory]
+    [InlineData("http://127.0.0.1:9321/", true)]
+    [InlineData("http://127.0.0.1:9321/assets/main.js", true)]
+    [InlineData("http://127.0.0.1:9321/api/settings", true)]
+    [InlineData("http://127.0.0.1:9322/assets/main.js", false)]
+    [InlineData("http://localhost:9321/assets/main.js", false)]
+    [InlineData("https://example.com/assets/main.js", false)]
+    [InlineData("http://user@127.0.0.1:9321/", false)]
+    public void NativeProxyAuthorizationCoversOnlyResourcesAtTheConfiguredOrigin(string address, bool expected)
+        => Assert.Equal(expected, policy.IsTrustedResourceRequest(address));
+
+    [Theory]
     [InlineData("http://127.0.0.1:9321/")]
     [InlineData("http://127.0.0.1:9321/#monitor")]
     public void TrustedDocument_AcceptsOnlyTheConfiguredRoot(string address)

@@ -10,6 +10,8 @@ public static class UserDataArchive
 {
     private const string Contract = "resource-manager-user-data-v1";
     private const string ManifestName = "user-data-manifest.json";
+    private const string TrustedAccessDirectory = "UserData/Security";
+    private const string LegacyBusinessDatabase = "UserData/Database/resource-manager.db";
     private const long MaximumBytes = 256L * 1024 * 1024 * 1024;
     public static IReadOnlyList<string> DirectoryNames { get; } = ["Config", "UserData", "Misc"];
     private sealed record Member(string Path, long Length, string Sha256);
@@ -29,39 +31,63 @@ public static class UserDataArchive
         return entries[0];
     }
 
-    public static void Create(string installRoot, string archivePath)
+    public static void Create(
+        string installRoot,
+        string archivePath,
+        Action<string, string>? createCredentialFreeLegacyDatabaseCopy = null)
     {
         var files = new List<Member>();
         var directories = new List<string>();
         var count = 0;
         long bytes = 0;
+        var sanitizedDatabaseDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"ResourceManager-archive-db-{Guid.NewGuid():N}");
+        var sanitizedDatabasePath = Path.Combine(sanitizedDatabaseDirectory, "resource-manager.db");
         ReleasePackageLayout.RejectReparse(installRoot);
-        using (var output = new FileStream(archivePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        using (var zip = new ZipArchive(output, ZipArchiveMode.Create))
+        try
         {
-            foreach (var name in DirectoryNames)
+            using (var output = new FileStream(archivePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var zip = new ZipArchive(output, ZipArchiveMode.Create))
             {
-                var source = Path.Combine(installRoot, name);
-                if (!Directory.Exists(source)) continue;
-                foreach (var path in OwnedPackageTree.Read(source))
+                foreach (var name in DirectoryNames)
                 {
-                    if (++count > 100_000) throw new IOException("User data archive exceeds its entry bound.");
-                    var relative = Path.GetRelativePath(installRoot, path).Replace('\\', '/');
-                    RequireDataPath(relative);
-                    if (Directory.Exists(path)) { directories.Add(relative); continue; }
-                    using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    bytes = checked(bytes + input.Length);
-                    if (bytes > MaximumBytes) throw new IOException("User data archive exceeds its size bound.");
-                    var entry = zip.CreateEntry(relative, CompressionLevel.Fastest);
-                    using (var destination = entry.Open()) input.CopyTo(destination);
-                    input.Position = 0;
-                    files.Add(new(relative, input.Length, Convert.ToHexString(SHA256.HashData(input))));
+                    var source = Path.Combine(installRoot, name);
+                    if (!Directory.Exists(source)) continue;
+                    foreach (var path in OwnedPackageTree.Read(source))
+                    {
+                        if (++count > 100_000) throw new IOException("User data archive exceeds its entry bound.");
+                        var relative = Path.GetRelativePath(installRoot, path).Replace('\\', '/');
+                        if (IsTrustedAccessPath(relative) || IsLegacyBusinessDatabaseSidecar(relative)) continue;
+                        RequireDataPath(relative);
+                        if (Directory.Exists(path)) { directories.Add(relative); continue; }
+
+                        var archiveSource = path;
+                        if (relative.Equals(LegacyBusinessDatabase, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (createCredentialFreeLegacyDatabaseCopy is null)
+                                throw new InvalidOperationException("Retaining the legacy business database requires credential sanitization.");
+                            createCredentialFreeLegacyDatabaseCopy(path, sanitizedDatabasePath);
+                            if (!File.Exists(sanitizedDatabasePath))
+                                throw new IOException("The sanitized legacy business database was not created.");
+                            archiveSource = sanitizedDatabasePath;
+                        }
+
+                        using var input = new FileStream(archiveSource, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        bytes = checked(bytes + input.Length);
+                        if (bytes > MaximumBytes) throw new IOException("User data archive exceeds its size bound.");
+                        var entry = zip.CreateEntry(relative, CompressionLevel.Fastest);
+                        using (var destination = entry.Open()) input.CopyTo(destination);
+                        input.Position = 0;
+                        files.Add(new(relative, input.Length, Convert.ToHexString(SHA256.HashData(input))));
+                    }
                 }
+                var manifest = zip.CreateEntry(ManifestName);
+                using var writer = manifest.Open();
+                JsonSerializer.Serialize(writer, new Manifest(Contract, directories.ToArray(), files.ToArray()));
             }
-            var manifest = zip.CreateEntry(ManifestName);
-            using var writer = manifest.Open();
-            JsonSerializer.Serialize(writer, new Manifest(Contract, directories.ToArray(), files.ToArray()));
         }
+        finally { DeleteSanitizedDatabaseFamily(sanitizedDatabasePath); }
         Verify(archivePath);
     }
 
@@ -72,12 +98,20 @@ public static class UserDataArchive
     }
 
     public static void Import(string installRoot, string archivePath, Action<string>? validateData = null,
-        IHostManagerUserDataArrival? hostManagerArrival = null)
+        IHostManagerUserDataArrival? hostManagerArrival = null,
+        Action<Stream, string>? createCredentialFreeLegacyDatabaseCopy = null)
     {
         installRoot = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
         ReleasePackageLayout.RejectReparse(installRoot);
         foreach (var name in DirectoryNames)
-            if (Directory.Exists(Path.Combine(installRoot, name))) _ = OwnedPackageTree.Read(Path.Combine(installRoot, name));
+        {
+            var current = Path.Combine(installRoot, name);
+            if (!Directory.Exists(current)) continue;
+            if (name.Equals("UserData", StringComparison.Ordinal))
+                _ = ReadUserDataWithoutSecurity(current);
+            else
+                _ = OwnedPackageTree.Read(current);
+        }
         var workspace = Path.Combine(Path.GetDirectoryName(installRoot)!, "ResourceManager-import-" + Guid.NewGuid().ToString("N"));
         var next = Path.Combine(workspace, "next");
         var previous = Path.Combine(workspace, "previous");
@@ -85,6 +119,9 @@ public static class UserDataArchive
         Directory.CreateDirectory(previous);
         var moved = new List<string>();
         var promoted = new List<string>();
+        var movedUserDataEntries = new List<string>();
+        var promotedUserDataEntries = new List<string>();
+        var userDataRootWasPresent = Directory.Exists(Path.Combine(installRoot, "UserData"));
         var complete = false;
         try
         {
@@ -98,6 +135,17 @@ public static class UserDataArchive
                 {
                     var target = Path.Combine(next, member.Path.Replace('/', Path.DirectorySeparatorChar));
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    if (member.Path.Equals(LegacyBusinessDatabase, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (createCredentialFreeLegacyDatabaseCopy is null)
+                            throw new InvalidOperationException("Importing the legacy business database requires credential sanitization.");
+                        using var legacyDatabase = zip.GetEntry(member.Path)!.Open();
+                        createCredentialFreeLegacyDatabaseCopy(legacyDatabase, target);
+                        if (!File.Exists(target))
+                            throw new IOException("The sanitized imported business database was not created.");
+                        continue;
+                    }
+
                     using var source = zip.GetEntry(member.Path)!.Open();
                     using var destination = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                     source.CopyTo(destination);
@@ -110,6 +158,17 @@ public static class UserDataArchive
             foreach (var name in promotedDirectories)
             {
                 if (!Directory.Exists(Path.Combine(next, name))) continue;
+                if (name.Equals("UserData", StringComparison.Ordinal))
+                {
+                    PromoteUserDataEntries(
+                        next,
+                        installRoot,
+                        previous,
+                        movedUserDataEntries,
+                        promotedUserDataEntries);
+                    continue;
+                }
+
                 var target = Path.Combine(installRoot, name);
                 if (Directory.Exists(target)) { Directory.Move(target, Path.Combine(previous, name)); moved.Add(name); }
                 Directory.Move(Path.Combine(next, name), target);
@@ -122,12 +181,111 @@ public static class UserDataArchive
         catch
         {
             // Retain this workspace if rollback itself fails; never erase the previous data in that case.
+            var userDataTarget = Path.Combine(installRoot, "UserData");
+            var previousUserData = Path.Combine(previous, "UserData");
+            foreach (var entry in promotedUserDataEntries.AsEnumerable().Reverse())
+            {
+                var path = Path.Combine(userDataTarget, entry);
+                if (Directory.Exists(path)) OwnedPackageTree.Delete(path);
+                else if (File.Exists(path))
+                {
+                    ReleasePackageLayout.RejectReparse(path);
+                    File.Delete(path);
+                }
+            }
+            Directory.CreateDirectory(userDataTarget);
+            Directory.CreateDirectory(previousUserData);
+            foreach (var entry in movedUserDataEntries.AsEnumerable().Reverse())
+                MoveOwnedEntry(Path.Combine(previousUserData, entry), Path.Combine(userDataTarget, entry));
+            if (!userDataRootWasPresent && !Directory.EnumerateFileSystemEntries(userDataTarget).Any())
+                Directory.Delete(userDataTarget, recursive: false);
             foreach (var name in promoted.AsEnumerable().Reverse()) OwnedPackageTree.Delete(Path.Combine(installRoot, name));
             foreach (var name in moved.AsEnumerable().Reverse()) Directory.Move(Path.Combine(previous, name), Path.Combine(installRoot, name));
             complete = true;
             throw;
         }
         finally { if (complete) OwnedPackageTree.Delete(workspace); }
+    }
+
+    private static void PromoteUserDataEntries(
+        string nextRoot,
+        string installRoot,
+        string previousRoot,
+        List<string> movedEntries,
+        List<string> promotedEntries)
+    {
+        var source = Path.Combine(nextRoot, "UserData");
+        var target = Path.Combine(installRoot, "UserData");
+        var previous = Path.Combine(previousRoot, "UserData");
+        if (File.Exists(target))
+            throw new InvalidDataException("The installed UserData path is not a directory.");
+        Directory.CreateDirectory(target);
+        Directory.CreateDirectory(previous);
+
+        foreach (var entry in Directory.EnumerateFileSystemEntries(target))
+        {
+            var name = Path.GetFileName(entry);
+            if (name.Equals("Security", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!Directory.Exists(entry))
+                    throw new InvalidDataException("The installed trusted-access security path is not a directory.");
+                ReleasePackageLayout.RejectReparse(entry);
+                continue;
+            }
+
+            MoveOwnedEntry(entry, Path.Combine(previous, name));
+            movedEntries.Add(name);
+        }
+
+        foreach (var entry in Directory.EnumerateFileSystemEntries(source))
+        {
+            var name = Path.GetFileName(entry);
+            if (name.Equals("Security", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("An archive cannot provide the trusted-access security directory.");
+            MoveOwnedEntry(entry, Path.Combine(target, name));
+            promotedEntries.Add(name);
+        }
+    }
+
+    private static void MoveOwnedEntry(string source, string destination)
+    {
+        ReleasePackageLayout.RejectReparse(source);
+        if (Directory.Exists(source))
+        {
+            _ = OwnedPackageTree.Read(source);
+            Directory.Move(source, destination);
+            return;
+        }
+
+        if (!File.Exists(source))
+            throw new FileNotFoundException("User data entry disappeared during import.", source);
+        File.Move(source, destination);
+    }
+
+    private static IReadOnlyList<string> ReadUserDataWithoutSecurity(string root)
+    {
+        root = Path.GetFullPath(root);
+        var entries = new List<string>();
+        var pending = new Queue<(string Path, int Depth)>();
+        pending.Enqueue((root, 0));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (pending.TryDequeue(out var item))
+        {
+            if (item.Depth > 64 || !seen.Add(item.Path) || entries.Count >= 100_000)
+                throw new IOException("User data import target exceeds its traversal bound.");
+            ReleasePackageLayout.RejectReparse(item.Path);
+            entries.Add(item.Path);
+            if (!Directory.Exists(item.Path)
+                || (item.Depth == 1 && Path.GetFileName(item.Path).Equals("Security", StringComparison.OrdinalIgnoreCase)))
+                continue;
+            foreach (var child in Directory.EnumerateFileSystemEntries(item.Path))
+                pending.Enqueue((child, item.Depth + 1));
+        }
+
+        var securityPath = Path.Combine(root, "Security");
+        if (File.Exists(securityPath))
+            throw new InvalidDataException("The installed trusted-access security path is not a directory.");
+        return entries;
     }
 
     private static Manifest ReadVerified(ZipArchive zip)
@@ -182,11 +340,28 @@ public static class UserDataArchive
     private static void RequireDataPath(string path)
     {
         var parts = path.Split('/');
-        if (parts.Length > 64 || !DirectoryNames.Contains(parts[0], StringComparer.Ordinal)
+        if (IsTrustedAccessPath(path)
+            || parts.Length > 64 || !DirectoryNames.Contains(parts[0], StringComparer.Ordinal)
             || path.Contains('\\') || parts.Any(part => part.Length == 0 || part is "." or ".."
                 || part.EndsWith('.') || part.EndsWith(' ') || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
                 || IsDeviceName(part)))
             throw new InvalidDataException("Unsafe user data archive path.");
+    }
+
+    private static bool IsTrustedAccessPath(string path) =>
+        path.Equals(TrustedAccessDirectory, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(TrustedAccessDirectory + "/", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLegacyBusinessDatabaseSidecar(string path) =>
+        path.StartsWith(LegacyBusinessDatabase + "-", StringComparison.OrdinalIgnoreCase);
+
+    private static void DeleteSanitizedDatabaseFamily(string path)
+    {
+        foreach (var member in new[] { path, path + "-journal", path + "-wal", path + "-shm" })
+            if (File.Exists(member)) File.Delete(member);
+        var directory = Path.GetDirectoryName(path);
+        if (directory is not null && Directory.Exists(directory))
+            Directory.Delete(directory, recursive: false);
     }
 
     private static bool IsDeviceName(string part)

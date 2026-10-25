@@ -17,7 +17,10 @@ public sealed record ExternalInvocationOperationDescriptor(
     string Description,
     string RequestSchemaId,
     string ResponseSchemaId,
-    bool EnabledByDefault = true);
+    bool EnabledByDefault = true)
+{
+    public IReadOnlyList<string> RequiredScopes { get; init; } = [];
+}
 
 public sealed record ExternalInvocationModuleAvailability(
     bool Available,

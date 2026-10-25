@@ -46,6 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../src/UI/Frontend/tests/fixtures/trustedAccessDecisions.json" LogicalName="trusted-access-decisions" />
     <EmbeddedResource Include="Fixtures\Memory\windows-sdk-pagefile.json" />
     <EmbeddedResource Include="Fixtures\Operations\operation-coordinator-v1.bin" LogicalName="ResourceManager.Tests.Operations.operation-coordinator-v1.bin" WithCulture="false" />
     <EmbeddedResource Include="Fixtures\Operations\operation-coordinator-v1.bin.root.manifest" LogicalName="ResourceManager.Tests.Operations.operation-coordinator-v1.bin.root.manifest" WithCulture="false" />

@@ -352,7 +352,7 @@ public sealed class LmStudioAiModelService : IAiModelRuntimeProvider
             if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(header.Key, "Authorization", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(header.Key, "x-api-key", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(header.Key, "X-Resource-Manager-Token", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(header.Key, ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
             {
                 continue;

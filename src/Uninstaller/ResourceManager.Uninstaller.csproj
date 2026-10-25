@@ -8,5 +8,8 @@
     <AssemblyName>UninstallResourceManager</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="..\Shared\ResourceManager.Shared.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\ResourceManager.Shared.csproj" />
+    <ProjectReference Include="..\Updater\ResourceManager.Updater.csproj" />
+  </ItemGroup>
 </Project>

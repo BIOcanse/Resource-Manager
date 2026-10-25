@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Connections.Features;
+using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Security;
@@ -14,31 +16,31 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static IEndpointRouteBuilder MapRuntimeIdentityEndpoints(
         this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/health", () => Results.NoContent()).AllowAnonymous();
+        app.MapPost(InteractiveDesktopObservation.EndpointPath + "/publisher/select", (
+            HttpContext context,
+            ITrustedAccessKeyService keys,
+            ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore desktops) =>
+        {
+            if (!WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller)
+                || caller.WindowsSessionId <= 0)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            var lifetime = context.Features.Get<IConnectionLifetimeFeature>();
+            if (lifetime is null)
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            return desktops.SelectPublisher(caller.WindowsSessionId, context.Connection.Id, caller.ProcessId,
+                    new DateTime(caller.ProcessCreatedUtcTicks, DateTimeKind.Utc).ToFileTimeUtc(),
+                    lifetime.ConnectionClosed,
+                    ReadAuthorization(context)?.Key is { } key
+                        ? keys.GetRevocationToken(key.Id) : CancellationToken.None)
+                ? Results.NoContent() : Results.StatusCode(StatusCodes.Status409Conflict);
+        });
         app.MapPost(InteractiveDesktopObservation.EndpointPath, (
             InteractiveDesktopObservation observation,
-            ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore desktops) =>
-            desktops.Publish(observation) ? Results.Ok() : Results.BadRequest(new EndpointErrorPayload("invalid-desktop-observation")))
-            .WithMetadata(new RequestSizeLimitAttribute(InteractiveDesktopObservation.MaximumRequestBytes));
-        app.MapGet(LoopbackSessionProofContract.EndpointPath, (
-            string? challenge,
             HttpContext context,
-            [FromServices] LoopbackApiAccessToken accessToken) =>
-        {
-            if (!LoopbackSessionProofContract.IsValidChallenge(challenge))
-            {
-                return Results.BadRequest(new EndpointErrorPayload("invalid-loopback-session-challenge"));
-            }
-
-            var token = context.Request.Headers[LoopbackApiAccessToken.HeaderName].FirstOrDefault();
-            if (!accessToken.Validate(context, token)) return Results.Unauthorized();
-            return Results.Ok(new LoopbackSessionProofResponse(
-                LoopbackSessionProofContract.ProductId,
-                LoopbackSessionProofContract.ProtocolVersion,
-                challenge!,
-                LoopbackSessionProofContract.ComputeProof(
-                    token!,
-                    challenge!)));
-        }).AllowAnonymous();
+            ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore desktops) =>
+            desktops.Publish(observation, context.Connection.Id) ? Results.Ok() : Results.BadRequest(new EndpointErrorPayload("invalid-desktop-observation")))
+            .WithMetadata(new RequestSizeLimitAttribute(InteractiveDesktopObservation.MaximumRequestBytes));
 
         app.MapGet("/api/runtime/identity", (
             string? challenge,

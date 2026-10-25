@@ -5,6 +5,7 @@ using ResourceManager.App.Infrastructure.Shell;
 using ResourceManager.App.Infrastructure.Security;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using System.Security.Principal;
+using ResourceManager.App.Application.TrustedAccess;
 
 if (OperatingSystem.IsWindows())
     WindowsNativeLaunchErrorPolicy.InitializeForCurrentProcess();
@@ -35,6 +36,21 @@ builder.Services.AddResourceManagerApp(
     hostEnvironment);
 
 var app = builder.Build();
+var initializeAccessKeys = args.Contains("--initialize-trusted-access", StringComparer.Ordinal);
+var recoverAccessKeys = args.Contains("--recover-trusted-access", StringComparer.Ordinal);
+if (initializeAccessKeys || recoverAccessKeys)
+{
+    if (initializeAccessKeys && recoverAccessKeys)
+        throw new ArgumentException("Select exactly one trusted-access administration action.");
+    using var identity = WindowsIdentity.GetCurrent();
+    if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+        throw new UnauthorizedAccessException("Trusted-access initialization requires an elevated administrator.");
+    // Explicit administration, before the host starts any service or opens a listener.
+    await app.Services.GetRequiredService<ITrustedAccessKeyService>()
+        .InitializeAsync(recoverAccessKeys, CancellationToken.None);
+    await app.DisposeAsync();
+    return;
+}
 app.Logger.LogInformation(
     "Resource Manager startup profile {StartupProfile} allows {StartupCapabilities}.",
     startupCapabilities.ProfileId,

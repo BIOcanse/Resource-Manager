@@ -9,6 +9,7 @@ import diskUsageActionErrorsJourney from "./diskUsageActionErrorsJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
+import trustedAccessJourney from "./trustedAccessJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
 import { spawn } from "node:child_process";
@@ -80,6 +81,7 @@ const allJourneys = [
   ["management-shared-refresh", managementSharedRefreshJourney],
   ["frontend-audit", frontendAuditJourney],
   ["report-rule-settings", reportRuleSettingsJourney],
+  ["trusted-access", trustedAccessJourney],
   ["localization", localizationJourney],
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],

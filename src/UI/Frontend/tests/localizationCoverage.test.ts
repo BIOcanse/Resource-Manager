@@ -75,7 +75,11 @@ for (const count of [0, 1, 37]) {
   );
 }
 const settingsCases: FunctionCase<SettingsTextBundle>[] = [
-  { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true }
+  { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true },
+  { path: "systemIntegration.trustedAccess.requestExpired", render: copy => copy.systemIntegration.trustedAccess.requestExpired, parameters: [], requiresTranslation: true },
+  { path: "systemIntegration.trustedAccess.reviewRequests", render: copy => copy.systemIntegration.trustedAccess.reviewRequests, parameters: [], requiresTranslation: true },
+  { path: "systemIntegration.trustedAccess.defaultAccessLossWarning", render: copy => copy.systemIntegration.trustedAccess.defaultAccessLossWarning, parameters: [], requiresTranslation: true },
+  { path: "systemIntegration.trustedAccess.scopeLabels.keys.manage", render: copy => copy.systemIntegration.trustedAccess.scopeLabels["keys.manage"], parameters: [], requiresTranslation: true }
 ];
 
 const englishApp = await loadAppCopy("en-US");

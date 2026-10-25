@@ -140,6 +140,7 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.ExecutionTimeSource => (typeof(CompiledCpuCoreResidencyPlan), nameof(CompiledCpuCoreResidencyPlan.ExecutionTimeSource)),
             BackendFreedomPointPositions.SmtAccounting => (typeof(CompiledCpuCoreResidencyPlan), nameof(CompiledCpuCoreResidencyPlan.PhysicalCoreByLogicalProcessor)),
             BackendFreedomPointPositions.CrashCounterResetSeconds => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.ServiceRecoveryResetPeriodSeconds)),
+            BackendFreedomPointPositions.TrustedAccessRequestLifetimeMilliseconds => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.TrustedAccessRequestLifetimeMilliseconds)),
             BackendFreedomPointPositions.SubscriptionIntervalMs => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.SchedulerSamplingInterval)),
             BackendFreedomPointPositions.ActionTimeoutMs => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.ActionTimeoutMilliseconds)),
             BackendFreedomPointPositions.GpuWindowExecutionLimits => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.WindowExecution)),

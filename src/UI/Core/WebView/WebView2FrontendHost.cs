@@ -11,6 +11,7 @@ internal sealed class WebView2FrontendHost : IDisposable
         + "--disable-sync --disable-default-apps";
     private readonly WebView2HostConfiguration configuration;
     private readonly TrustedFrontendDocumentPolicy documentPolicy;
+    private readonly FrontendLoopbackProxy proxy;
     private readonly WebView2Control surface;
     private readonly Color backgroundColor;
     private CoreWebView2Environment? environment;
@@ -24,7 +25,8 @@ internal sealed class WebView2FrontendHost : IDisposable
     public WebView2FrontendHost(WebView2HostConfiguration configuration)
     {
         this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        documentPolicy = new TrustedFrontendDocumentPolicy(configuration.ApplicationAddress);
+        proxy = configuration.Proxy;
+        documentPolicy = new TrustedFrontendDocumentPolicy(proxy.ApplicationAddress);
         backgroundColor = WebViewAppearanceBootstrap.LoadBackgroundColor(configuration.SettingsPath);
         surface = new WebView2Control
         {
@@ -39,6 +41,10 @@ internal sealed class WebView2FrontendHost : IDisposable
     public Color BackgroundColor => backgroundColor;
 
     public bool IsReady => coreWebView is not null;
+
+    public string ApplicationAddress => proxy.ApplicationAddress;
+
+    internal CoreWebView2Environment? EnvironmentForDiagnostics => environment;
 
     /// <summary>
     /// 把键盘焦点交给页面。
@@ -132,7 +138,7 @@ internal sealed class WebView2FrontendHost : IDisposable
         var currentCoreWebView = coreWebView ?? surface.CoreWebView2;
         if (eventsAttached && currentCoreWebView is not null)
         {
-            currentCoreWebView.WebResourceRequested -= AttachLoopbackApiAccessToken;
+            currentCoreWebView.WebResourceRequested -= AuthorizePrivateProxyRequest;
             currentCoreWebView.WebMessageReceived -= HandleWebMessageReceived;
             currentCoreWebView.NavigationStarting -= HandleNavigationStarting;
             currentCoreWebView.NavigationCompleted -= HandleNavigationCompleted;
@@ -149,6 +155,8 @@ internal sealed class WebView2FrontendHost : IDisposable
 
     private async Task InitializeCoreAsync()
     {
+        await proxy.StartAsync();
+        System.Diagnostics.Trace.WriteLine("WebView2 private HTTP proxy started.");
         Directory.CreateDirectory(configuration.ProfileDirectory);
         Environment.SetEnvironmentVariable(
             "WEBVIEW2_DEFAULT_BACKGROUND_COLOR",
@@ -160,9 +168,13 @@ internal sealed class WebView2FrontendHost : IDisposable
         environment ??= await CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: runtime.BrowserExecutableFolder,
             userDataFolder: configuration.ProfileDirectory,
-            options: new CoreWebView2EnvironmentOptions(ResolveBrowserArguments()));
+            options: new CoreWebView2EnvironmentOptions(ResolveBrowserArguments()
+                + $" --proxy-server={proxy.Address.TrimEnd('/')} --proxy-bypass-list=<-loopback>"));
+        System.Diagnostics.Trace.WriteLine("WebView2 environment created.");
+        System.Diagnostics.Trace.WriteLine($"WebView2 controller thread: {System.Environment.CurrentManagedThreadId}; apartment: {Thread.CurrentThread.GetApartmentState()}; context: {SynchronizationContext.Current?.GetType().FullName ?? "none"}.");
 
         await surface.EnsureCoreWebView2Async(environment);
+        System.Diagnostics.Trace.WriteLine("WebView2 controller created.");
         var nextCoreWebView = surface.CoreWebView2
             ?? throw new InvalidOperationException("WebView2 did not provide a CoreWebView2 instance.");
         var developerSurfacesEnabled = ShouldEnableDeveloperSurfaces();
@@ -183,14 +195,15 @@ internal sealed class WebView2FrontendHost : IDisposable
         if (!requestFilterAdded)
         {
             nextCoreWebView.AddWebResourceRequestedFilter(
-                configuration.LoopbackApiRequestFilter,
-                CoreWebView2WebResourceContext.All);
+                proxy.ApplicationAddress + "*",
+                CoreWebView2WebResourceContext.All,
+                CoreWebView2WebResourceRequestSourceKinds.Document);
             requestFilterAdded = true;
         }
 
         if (!eventsAttached)
         {
-            nextCoreWebView.WebResourceRequested += AttachLoopbackApiAccessToken;
+            nextCoreWebView.WebResourceRequested += AuthorizePrivateProxyRequest;
             nextCoreWebView.WebMessageReceived += HandleWebMessageReceived;
             nextCoreWebView.NavigationStarting += HandleNavigationStarting;
             nextCoreWebView.NavigationCompleted += HandleNavigationCompleted;
@@ -243,25 +256,19 @@ internal sealed class WebView2FrontendHost : IDisposable
         }
     }
 
-    private void AttachLoopbackApiAccessToken(
+    private void AuthorizePrivateProxyRequest(
         object? sender,
         CoreWebView2WebResourceRequestedEventArgs args)
     {
         if (!trustedTopLevelDocumentActive
-            || !documentPolicy.IsTrustedApiRequest(args.Request.Uri))
-        {
-            return;
-        }
-
-        var accessToken = configuration.AccessTokenProvider();
-        if (string.IsNullOrWhiteSpace(accessToken))
+            || !documentPolicy.IsTrustedResourceRequest(args.Request.Uri))
         {
             return;
         }
 
         args.Request.Headers.SetHeader(
-            configuration.AccessTokenHeaderName,
-            accessToken);
+            FrontendLoopbackProxy.CapabilityHeader,
+            proxy.Capability);
     }
 
     private void HandleWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -336,10 +343,7 @@ internal sealed class WebView2FrontendHost : IDisposable
 internal sealed record WebView2HostConfiguration(
     string ProfileDirectory,
     string SettingsPath,
-    string ApplicationAddress,
-    string LoopbackApiRequestFilter,
-    string AccessTokenHeaderName,
-    Func<string?> AccessTokenProvider);
+    FrontendLoopbackProxy Proxy);
 
 internal sealed class FrontendMessageReceivedEventArgs(string json) : EventArgs
 {

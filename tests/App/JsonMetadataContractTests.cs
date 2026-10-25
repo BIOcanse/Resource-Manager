@@ -14,6 +14,7 @@ using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -60,6 +61,24 @@ public sealed class JsonMetadataContractTests
     private static readonly Assembly App = typeof(HostManagerPlanCompiler).Assembly;
     private static readonly Assembly ReadWrite = typeof(WindowsMetricConfiguration).Assembly;
 
+    [Fact]
+    public void TrustedAccessDecisionFixturesMatchProductionWireSerialization()
+    {
+        using var stream = typeof(JsonMetadataContractTests).Assembly.GetManifestResourceStream("trusted-access-decisions")!;
+        using var fixtures = JsonDocument.Parse(stream);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        foreach (var fixture in fixtures.RootElement.EnumerateObject())
+        {
+            var value = JsonSerializer.Deserialize<TrustedAccessRequestDecisionWireResponse>(fixture.Value, options)!;
+            Assert.Equal(fixture.Name, value.Status);
+            var serialized = JsonSerializer.SerializeToNode(value, options);
+            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture.Value.GetRawText()), serialized), fixture.Name);
+            Assert.True(fixture.Value.TryGetProperty("key", out _));
+            Assert.True(fixture.Value.TryGetProperty("denialReason", out _));
+        }
+    }
+
     public static IEnumerable<object[]> Owners()
     {
         foreach (var (assembly, name, field) in new[]
@@ -88,8 +107,10 @@ public sealed class JsonMetadataContractTests
         var software = App.GetType("ResourceManager.App.Infrastructure.Software.JsonSoftwarePolicyProfileProvider", true)!;
         yield return ["software-profile", (JsonSerializerOptions)software.GetMethod("CreateSerializerOptions", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!];
         yield return ["information", ResourceManager.ReadWrite.Information.WindowsInformationFieldProjection.InformationJsonOptions];
-        foreach (var assembly in new[] { App, ReadWrite, typeof(ResourceManager.Shared.Runtime.FrontendSessionCredentialContract).Assembly })
-        foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "SessionCredentialJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
+        foreach (var assembly in new[] { App, ReadWrite, typeof(ResourceManager.Shared.Runtime.BackendRuntimeIdentityContract).Assembly,
+            typeof(ResourceManager.NativeUi.BackendServiceSession).Assembly })
+        foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "TrustedAccessInvocationJsonContext",
+            "NativeBackendProbeJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
         {
             var type = assembly.GetTypes().FirstOrDefault(t => t.Name == name);
             if (type is null) continue;
@@ -154,7 +175,8 @@ public sealed class JsonMetadataContractTests
     {
         var plain = owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations" or "software-profile"
             or "plan-identity" or "MetricCatalogJsonContext" or "ManagementInventoryJsonContext"
-            or "SoftwareContentJsonContext" or "SessionCredentialJsonContext" or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"
+            or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext" or "NativeBackendProbeJsonContext"
+            or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"
             || owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal);
         var options = new JsonSerializerOptions(plain ? JsonSerializerDefaults.General : JsonSerializerDefaults.Web)
         { TypeInfoResolver = new DefaultJsonTypeInfoResolver() };

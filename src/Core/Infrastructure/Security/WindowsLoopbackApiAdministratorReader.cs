@@ -22,10 +22,38 @@ public sealed partial class WindowsLoopbackApiAdministratorReader : ILoopbackApi
 
     internal static bool TryReadCallerIdentity(HttpContext context, out LoopbackApiCaller caller)
     {
-        if (!TryOpenCallerToken(context, out caller, out var token))
+        if (!TryReadConnectedCaller(context, out var peer))
+        {
+            caller = null!;
             return false;
-        token.Dispose();
+        }
+        caller = peer.Caller;
         return true;
+    }
+
+    internal static bool TryReadConnectedCaller(HttpContext context, out LoopbackApiProcess peer)
+    {
+        peer = null!;
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        var connection = context.Connection;
+        var clientAddress = Normalize(connection.RemoteIpAddress);
+        var serverAddress = Normalize(connection.LocalIpAddress);
+        if (clientAddress is null || serverAddress is null
+            || !IPAddress.IsLoopback(clientAddress) || !IPAddress.IsLoopback(serverAddress))
+            return false;
+
+        var owner = FindOwner(clientAddress, connection.RemotePort, serverAddress, connection.LocalPort);
+        return TryOpenProcessIdentity(owner, out peer, out var token,
+            () => FindOwner(clientAddress, connection.RemotePort, serverAddress, connection.LocalPort) == owner)
+            && DisposeToken(token);
+
+        static bool DisposeToken(SafeAccessTokenHandle? token)
+        {
+            token?.Dispose();
+            return token is not null;
+        }
     }
 
     internal static bool TryOpenCallerToken(HttpContext context, out LoopbackApiCaller caller,

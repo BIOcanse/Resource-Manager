@@ -107,7 +107,7 @@ public sealed class LmStudioAiModelServiceTests
             forwarded = request.RequestUri?.AbsolutePath == "/v1/messages";
             leakedAuthorization = request.Headers.Authorization is not null;
             leakedAnthropicKey = request.Headers.Contains("x-api-key");
-            leakedResourceManagerToken = request.Headers.Contains("X-Resource-Manager-Token");
+            leakedResourceManagerToken = request.Headers.Contains("X-Resource-Manager-Key");
             return Json("{}");
         });
         var context = new DefaultHttpContext();
@@ -116,7 +116,7 @@ public sealed class LmStudioAiModelServiceTests
         context.Request.Body = new MemoryStream("{}"u8.ToArray());
         context.Request.Headers.Authorization = "Bearer rm_sk_client";
         context.Request.Headers["x-api-key"] = "rm_sk_anthropic";
-        context.Request.Headers["X-Resource-Manager-Token"] = "internal";
+        context.Request.Headers["X-Resource-Manager-Key"] = "internal";
         context.Response.Body = new MemoryStream();
 
         await service.ForwardAsync(context, "/v1/messages", CancellationToken.None);

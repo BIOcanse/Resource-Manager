@@ -2,6 +2,7 @@ using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.Overlay;
 using ResourceManager.NativeUi.SystemIntegration;
 using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
+using ResourceManager.NativeUi.WebView;
 
 namespace ResourceManager.NativeUi;
 
@@ -15,6 +16,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly Control uiDispatcher = new();
     private readonly NativeUiShutdownCoordinator shutdownCoordinator = new();
     private readonly PerformanceOverlayCoordinator performanceOverlay;
+    private readonly FrontendLoopbackProxy frontendProxy;
     private readonly InteractiveDesktopObservationPublisher desktopObservations = new();
     private readonly TaskManagerShortcutReplacementController taskManagerShortcutReplacement;
     private readonly ForceTerminateHotkeyController forceTerminateHotkey;
@@ -48,6 +50,10 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     {
         this.singleInstance = singleInstance;
         this.startInBackground = startInBackground;
+        frontendProxy = new FrontendLoopbackProxy(new Uri(ApiBaseAddress + "/"),
+            (request, token) => backendReady && backendSession is { } currentSession
+                ? currentSession.SendFrontendRequestAsync(request, token)
+                : Task.FromException<System.Net.Http.HttpResponseMessage>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
         uiDispatcher.CreateControl();
         _ = uiDispatcher.Handle;
         performanceOverlay = new PerformanceOverlayCoordinator(uiDispatcher);
@@ -126,6 +132,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             RunDisposalAction(() => NativeUiText.Changed -= OnInterfaceLanguageChanged);
             RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
             RunDisposalAction(DisposeMainForm);
+            RunDisposalAction(frontendProxy.Dispose);
             RunDisposalAction(performanceOverlay.Dispose);
             RunDisposalAction(() => desktopObservations.HostWindowVisibilityChanged -= OnObservedHostWindowVisibilityChanged);
             RunDisposalAction(desktopObservations.Dispose);
@@ -301,6 +308,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         var form = new MainForm(
             taskManagerShortcutReplacement.SetEnabledFromUi,
             forceTerminateHotkey.Reload,
+            frontendProxy,
             batch => backendReady && backendSession is { } session
                 ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
                 : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
@@ -402,7 +410,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             desktopObservations.Start(session);
             if (mainForm is { IsDisposed: false } form)
             {
-                form.ShowBackendReady(session.AccessToken, projection);
+                form.ShowBackendReady(projection);
             }
             return true;
         }
@@ -715,7 +723,6 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         if (backendReady && backendSession is { } session)
         {
             mainForm?.ShowBackendReady(
-                session.AccessToken,
                 RequireBackendSessionProjection(ready: true));
             _ = StartMainWindowFrontendIfVisibleAsync();
             return;
@@ -772,7 +779,6 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         {
             case BackendConnectionState.Ready when backendSession is { } session:
                 form.ShowBackendReady(
-            session.AccessToken,
             RequireBackendSessionProjection(ready: true));
                 break;
             case BackendConnectionState.Degraded:

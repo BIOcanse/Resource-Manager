@@ -38,6 +38,9 @@ using ResourceManager.App.Infrastructure.Optimization.Transactions;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.PublicServices.AiGateway;
 using ResourceManager.App.Application.Indexing;
+using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Infrastructure.Security.TrustedAccess;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -49,7 +52,7 @@ public sealed partial class LoopbackApiAccessTests
     public async Task FreedomPointsReadsTheCurrentCompiledTreeWithoutSamplingOrCompiling()
     {
         await using var fixture = await Fixture.StartAsync();
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.ThrowIfCalled = true;
         var plan = HostManagerTestPlanFactory.CreatePlan();
         fixture.Runtime.Publish(fixture.Runtime.Current with { HostManager = plan });
@@ -99,7 +102,7 @@ public sealed partial class LoopbackApiAccessTests
     public async Task HistoryRequirementsReadsCurrentCompiledPlanWithoutSampling()
     {
         await using var fixture = await Fixture.StartAsync();
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.ThrowIfCalled = true;
         var plan = HostManagerTestPlanFactory.CreatePlan();
         fixture.Runtime.Publish(fixture.Runtime.Current with { HostManager = plan });
@@ -141,7 +144,7 @@ public sealed partial class LoopbackApiAccessTests
     public async Task BusinessBlocksDiagnosticReadIsAuthenticatedAndDoesNotStartHostedBlocks()
     {
         await using var fixture = await Fixture.StartAsync();
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.ThrowIfCalled = true;
         var query = fixture.App.Services.GetRequiredService<IBusinessBlockQuery>();
         var before = query.Read();
@@ -191,9 +194,10 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
-    public async Task DecisionSubscription_RequiresAuthentication()
+    public async Task DecisionSubscription_RejectsAnExplicitInvalidKey()
     {
         await using var fixture = await Fixture.StartAsync();
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, "invalid-key");
         using var response = await fixture.Client.GetAsync(
             "/api/optimization/smart/diagnostics/decision-snapshot/subscribe");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -208,7 +212,7 @@ public sealed partial class LoopbackApiAccessTests
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var request = new HttpRequestMessage(HttpMethod.Get,
             "/api/optimization/smart/diagnostics/decision-snapshot/subscribe");
-        request.Headers.Add("X-Resource-Manager-Token", fixture.Token);
+        request.Headers.Add("X-Resource-Manager-Key", fixture.Key);
         using var response = await fixture.Client.SendAsync(request,
             HttpCompletionOption.ResponseHeadersRead, deadline.Token);
         Assert.True(response.StatusCode == HttpStatusCode.OK,
@@ -311,7 +315,7 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
-    public async Task OpenSubscription_PushesSuccessiveCurrentValuesFromOneAnonymousRequest()
+    public async Task ReadKeySubscription_PushesSuccessiveCurrentValuesFromOneRequest()
     {
         await using var topology = new CpuTopologyProviderTestFixture();
         await using var fixture = await Fixture.StartAsync(topology.Reader);
@@ -325,6 +329,7 @@ public sealed partial class LoopbackApiAccessTests
                 subscriptions = new[] { new { id = "cpu", path = "/api/cpu/topology/subscribe?intervalMs=100" } }
             })
         };
+        request.Headers.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
         var responseTask = fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
         try
         {
@@ -353,15 +358,17 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
-    public async Task OpenReadsDoNotInspectIdentityButModeChangesRequireIt()
+    public async Task AnonymousCatalogRemainsOpenButAnExplicitBadKeyIsNeverIgnored()
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Administrator.ThrowIfCalled = true;
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, "not-a-token");
         using var capabilities = await fixture.Client.GetAsync("/api/runtime/capabilities");
         Assert.Equal(HttpStatusCode.OK, capabilities.StatusCode);
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, "not-a-key");
+        using var explicitBad = await fixture.Client.GetAsync("/api/runtime/capabilities");
+        Assert.Equal(HttpStatusCode.Unauthorized, explicitBad.StatusCode);
         using var status = await fixture.Client.GetAsync("/api/optimization/smart/status");
-        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, status.StatusCode);
         Assert.Equal(0, fixture.Administrator.Calls);
         fixture.Administrator.ThrowIfCalled = false;
         using var mode = await fixture.Client.PostAsJsonAsync(
@@ -377,7 +384,7 @@ public sealed partial class LoopbackApiAccessTests
     public async Task BrowserRequestsCannotBypassHostOrOriginBoundary(string header, string value)
     {
         await using var fixture = await Fixture.StartAsync();
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/optimization/smart/run-once");
         request.Headers.TryAddWithoutValidation(header, value);
         using var response = await fixture.Client.SendAsync(request);
@@ -405,26 +412,26 @@ public sealed partial class LoopbackApiAccessTests
     {
         await using var fixture = await Fixture.StartAsync();
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
-        request.Headers.Add(LoopbackApiAccessToken.HeaderName, "wrong-instance-token");
+        request.Headers.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, "wrong-instance-token");
         request.Headers.Add("X-Is-Administrator", "true");
         request.Headers.Add("X-Windows-Sid", "S-1-5-18");
         request.Headers.Add("X-Is-Frontend", "true");
         using var response = await fixture.Client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Contains("frontend-or-administrator-required", await response.Content.ReadAsStringAsync());
-        Assert.Equal(1, fixture.Administrator.Calls);
+        Assert.Contains("access-key-invalid", await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, fixture.Administrator.Calls);
         Assert.Equal(0, fixture.Effects.ValidationCalls);
         Assert.Equal(0, fixture.Sampler.Captures);
     }
 
     [Theory]
-    [InlineData("frontend")]
+    [InlineData("key")]
     [InlineData("administrator")]
-    public async Task AuthenticatedRoutesAcceptFrontendOrAdministrator(string admission)
+    public async Task ReadKeyDoesNotAuthorizeMachineWritesWhileAnElevatedAdministratorCanWrite(string admission)
     {
         await using var fixture = await Fixture.StartAsync();
-        if (admission == "frontend")
-            fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        if (admission == "key")
+            fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.Allowed = admission == "administrator";
         fixture.Administrator.ThrowIfCalled = admission != "administrator";
         fixture.Runtime.SetDebug(admission == "debug");
@@ -442,9 +449,11 @@ public sealed partial class LoopbackApiAccessTests
         using var evidence = await fixture.Client.GetAsync(
             "/api/optimization/smart/validation/memory-cleanup-evidence");
         using var capture = await fixture.Client.GetAsync("/api/debug/metrics/capture");
-        foreach (var response in new[] { read, open, close, evidence, capture })
+        foreach (var response in new[] { read, evidence, capture })
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(4, fixture.Effects.ValidationCalls);
+        foreach (var response in new[] { open, close })
+            Assert.Equal(admission == "administrator" ? HttpStatusCode.OK : HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(admission == "administrator" ? 4 : 2, fixture.Effects.ValidationCalls);
         Assert.Equal(1, fixture.Sampler.Captures);
         Assert.Equal(admission == "administrator" ? 5 : 0, fixture.Administrator.Calls);
     }
@@ -454,14 +463,16 @@ public sealed partial class LoopbackApiAccessTests
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Runtime.SetDebug(true);
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, "invalid-key");
         using var anonymous = await fixture.Client.GetAsync(Scope);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        fixture.Client.DefaultRequestHeaders.Remove(TrustedAccessHeaders.KeyHeader);
+        fixture.Client.DefaultRequestHeaders.Add(ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.ThrowIfCalled = true;
         using var authorized = await fixture.Client.GetAsync(Scope);
         Assert.Equal(HttpStatusCode.OK, authorized.StatusCode);
         Assert.Equal(1, fixture.Effects.ValidationCalls);
-        Assert.Equal(1, fixture.Administrator.Calls);
+        Assert.Equal(0, fixture.Administrator.Calls);
     }
 
     [Fact]
@@ -469,13 +480,12 @@ public sealed partial class LoopbackApiAccessTests
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Runtime.SetDebug(true);
-        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
-        fixture.Administrator.ThrowIfCalled = true;
+        fixture.Administrator.Allowed = true;
         using var response = await fixture.Client.PostAsJsonAsync(
             Scope + "/close", new { scopeId = "not-a-guid" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, fixture.Effects.ValidationCalls);
-        Assert.Equal(0, fixture.Administrator.Calls);
+        Assert.Equal(1, fixture.Administrator.Calls);
     }
 
     [Theory]
@@ -524,14 +534,21 @@ public sealed partial class LoopbackApiAccessTests
         public EffectRecorder Effects { get; } = new();
         public Sampler Sampler { get; } = new();
         public PublicAccessPolicy PublicAccess { get; } = new();
-        public AiGatewayCredentialService Credentials { get; } = new(new CredentialStore());
+        public AiGatewayCredentialService Credentials { get; }
         public AiModelService Models { get; } = new();
-        public LoopbackApiAccessToken Tokens { get; private set; } = new(_ => true, (_, _) => true);
+        public TrustedAccessKeyService Keys { get; }
+        private readonly TrustedAccessTestKeyFileAccess keyFile;
         public int HttpRequests;
         public Exception? LastRequestError;
-        private string? token;
-        public string Token => token ??= Tokens.Issue(new TrustedAdapterCallerIdentity(
-            1, 1, 7, 1, "test-sid", 1, 1, 1, false, Path.GetFullPath("fixture.exe"), default, 1));
+        public string Key => keyFile.Value!;
+
+        private Fixture()
+        {
+            var fixture = TrustedAccessTestFactory.Create();
+            Keys = fixture.Owner;
+            keyFile = fixture.KeyFile;
+            Credentials = new(Keys);
+        }
 
         public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null, ISoftwareFileIndex? fileIndex = null,
             bool actualSessionCredentials = false)
@@ -545,7 +562,6 @@ public sealed partial class LoopbackApiAccessTests
                 {
                     ContentRootPath = fixture.root, EnvironmentName = Environments.Production
                 });
-                if (actualSessionCredentials) fixture.Tokens = new LoopbackApiAccessToken(builder.Environment);
                 builder.Logging.ClearProviders();
                 builder.WebHost.UseUrls("http://127.0.0.1:0");
                 builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.Full);
@@ -553,7 +569,7 @@ public sealed partial class LoopbackApiAccessTests
                 var pipeline = LoopbackApiPipelineConfigurator.Compile(processIsAdministrator: true);
                 pipeline.ConfigureServices(builder.Services);
                 builder.Services.RemoveAll<IHostedService>();
-                builder.Services.AddSingleton(fixture.Tokens);
+                builder.Services.AddSingleton<ITrustedAccessKeyService>(fixture.Keys);
                 builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Runtime);
                 builder.Services.AddSingleton(provider =>
                 {
@@ -726,17 +742,6 @@ public sealed partial class LoopbackApiAccessTests
             if (FailForward) throw new HttpRequestException("Simulated provider failure.");
             return context.Response.WriteAsync(relativePath, cancellationToken);
         }
-    }
-
-    private sealed class CredentialStore : IAiGatewayCredentialStore
-    {
-        private readonly List<StoredAiGatewayCredential> values = [];
-        public Task<IReadOnlyList<StoredAiGatewayCredential>> LoadAsync(CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<StoredAiGatewayCredential>>(values.ToArray());
-        public Task AddAsync(StoredAiGatewayCredential credential, CancellationToken cancellationToken)
-        { values.Add(credential); return Task.CompletedTask; }
-        public Task<bool> DeleteAsync(string credentialId, CancellationToken cancellationToken)
-            => Task.FromResult(values.RemoveAll(item => item.Id == credentialId) > 0);
     }
 
     private sealed class PublicAccessPolicy : ILocalPublicServiceAccessPolicy
