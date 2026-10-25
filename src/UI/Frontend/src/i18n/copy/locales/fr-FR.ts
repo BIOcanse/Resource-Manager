@@ -457,6 +457,7 @@ const frFrAppCopy: AppCopy = {
     menuProperties: "Propriétés",
     menuCopyPath: "Copier le chemin complet",
     menuDrillDown: "Agrandir cet élément",
+    treemapLabel: "Tuiles d’occupation du disque",
     menuSize: "Taille",
     menuPath: "Chemin",
     menuKindFile: "Fichier",

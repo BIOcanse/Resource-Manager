@@ -1,10 +1,12 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { wheelNotches } from "../../interactions/wheelNotches.ts";
+import { uiText } from "../../text.ts";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 import { readMotionDurationMs, readMotionEase } from "../../presentation/motionTokens.ts";
 import { accumulateWheelZoom, wheelZoomAt, type DiskUsageWheelZoom } from "./diskUsageWheelZoom.ts";
 import {
   hitTest,
+  visibleNodeCentre,
   magnificationOf,
   paintTreemap,
   renderTreemapSheet,
@@ -384,6 +386,7 @@ export function DiskUsageTreemapPlane(props: {
         class="disk-usage-treemap-canvas"
         tabIndex={0}
         role="img"
+        aria-label={uiText.diskUsage.treemapLabel}
         onWheel={(event) => {
           event.preventDefault();
           const notches = wheelNotches(event.deltaY, event.deltaMode);
@@ -447,6 +450,10 @@ export function DiskUsageTreemapPlane(props: {
         }}
         onContextMenu={(event) => {
           event.preventDefault();
+          // 键盘（菜单键、Shift+F10）在 keydown 里对选中方格开菜单；这里只接指针右键，免得同一下按键再按坐标开另一个方格的菜单。
+          if (event.button !== 2) {
+            return;
+          }
           const node = nodeAt(event);
           if (node >= 0) {
             props.onSelect(node);
@@ -454,6 +461,19 @@ export function DiskUsageTreemapPlane(props: {
           }
         }}
         onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            // 键盘下的“当前方格”就是选中项（方向键移动的就是它）；没有选中项时不开菜单。
+            const selected = props.selectedNodeId;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const centre = selected >= 0
+              ? visibleNodeCentre(props.layout, viewport(), size().width, size().height, selected)
+              : null;
+            if (centre) {
+              props.onContextMenu(selected, rect.left + centre.x, rect.top + centre.y);
+            }
+            return;
+          }
           const step = 60;
           switch (event.key) {
             case "ArrowLeft":

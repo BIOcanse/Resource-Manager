@@ -457,6 +457,7 @@ const deDeAppCopy: AppCopy = {
     menuProperties: "Eigenschaften",
     menuCopyPath: "Vollständigen Pfad kopieren",
     menuDrillDown: "Dieses Element vergrößern",
+    treemapLabel: "Kacheln der Datenträgerbelegung",
     menuSize: "Größe",
     menuPath: "Pfad",
     menuKindFile: "Datei",

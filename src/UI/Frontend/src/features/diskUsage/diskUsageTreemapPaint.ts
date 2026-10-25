@@ -414,3 +414,32 @@ export function hitTest(
   }
   return -1;
 }
+
+/**
+ * 方格在画布上的可见部分的中心（画布内坐标，和 hitTest 同一套换算）。
+ * 键盘打开右键菜单时，菜单就开在这里。方格整个在视口外时，落到画布边上离它最近的点。
+ * 节点不在这一页的布局里时返回 null。
+ */
+export function visibleNodeCentre(
+  layout: DiskUsageLayout,
+  viewport: DiskUsageViewport,
+  width: number,
+  height: number,
+  nodeId: number
+): { x: number; y: number } | null {
+  const index = layout.indexByNodeId.get(nodeId);
+  if (index === undefined) {
+    return null;
+  }
+  const scaleX = width * viewport.scale;
+  const scaleY = height * viewport.scale;
+  const left = (layout.x[index] - viewport.offsetX) * scaleX;
+  const top = (layout.y[index] - viewport.offsetY) * scaleY;
+  const right = left + layout.width[index] * scaleX;
+  const bottom = top + layout.height[index] * scaleY;
+  const clamp = (value: number, limit: number) => Math.min(limit, Math.max(0, value));
+  return {
+    x: clamp((Math.max(left, 0) + Math.min(right, width)) / 2, width),
+    y: clamp((Math.max(top, 0) + Math.min(bottom, height)) / 2, height)
+  };
+}

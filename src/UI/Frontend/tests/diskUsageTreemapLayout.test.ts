@@ -69,3 +69,35 @@ assert.equal(wideTree.nodeIds.length,maximumDiskUsageTiles+2);
 assert.equal(bounded.nodeIds.length,maximumDiskUsageTiles);
 assert.equal(bounded.omittedCount,2);
 console.log("diskUsageTreemapLayout: facts, area, pruning, paths, protocol validation and 400000-tile bound passed");
+
+// 键盘打开右键菜单的位置：选中方格可见部分的中心，和 hitTest 用同一套视口换算。
+{
+  const { hitTest, visibleNodeCentre } = await import("../src/features/diskUsage/diskUsageTreemapPaint.ts");
+  const width = 800;
+  const height = 400;
+  for (const viewport of [{ scale: 1, offsetX: 0, offsetY: 0 }, { scale: 3, offsetX: 0.2, offsetY: 0.1 }]) {
+    for (const index of depthOne) {
+      const nodeId = layout.nodeIds[index];
+      const centre = visibleNodeCentre(layout, viewport, width, height, nodeId)!;
+      assert.ok(centre.x >= 0 && centre.x <= width && centre.y >= 0 && centre.y <= height);
+      const left = (layout.x[index] - viewport.offsetX) * width * viewport.scale;
+      const right = left + layout.width[index] * width * viewport.scale;
+      const top = (layout.y[index] - viewport.offsetY) * height * viewport.scale;
+      const bottom = top + layout.height[index] * height * viewport.scale;
+      const visible = right > 0 && left < width && bottom > 0 && top < height;
+      if (visible) {
+        // 中心落在这个方格（或画在它上面的子方格）里：命中检测找到的是它自己或它的后代。
+        let hit = hitTest(layout, viewport, width, height, centre.x, centre.y);
+        let guard = 0;
+        while (hit >= 0 && hit !== nodeId && guard++ < 64) {
+          hit = layout.parentIds[layout.indexByNodeId.get(hit)!];
+        }
+        assert.equal(hit, nodeId, `centre of node ${nodeId} hits it`);
+      }
+    }
+  }
+  assert.equal(visibleNodeCentre(layout, { scale: 1, offsetX: 0, offsetY: 0 }, width, height, -12345), null);
+  // 整个在视口外的方格落到画布边上。
+  const offscreen = visibleNodeCentre(layout, { scale: 4, offsetX: 0.75, offsetY: 0.75 }, width, height, layout.nodeIds[depthOne[0]]);
+  assert.ok(offscreen && offscreen.x >= 0 && offscreen.x <= width && offscreen.y >= 0 && offscreen.y <= height);
+}

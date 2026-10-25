@@ -329,6 +329,7 @@ export const zhShellCopy = {
     menuProperties: "属性",
     menuCopyPath: "复制完整路径",
     menuDrillDown: "只看这一层",
+    treemapLabel: "磁盘占用方格图",
     menuSize: "大小",
     menuPath: "路径",
     menuKindFile: "文件",

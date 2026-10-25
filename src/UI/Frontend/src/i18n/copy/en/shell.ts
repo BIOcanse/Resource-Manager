@@ -330,6 +330,7 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     menuProperties: "Properties",
     menuCopyPath: "Copy full path",
     menuDrillDown: "Zoom into this",
+    treemapLabel: "Disk usage tiles",
     menuSize: "Size",
     menuPath: "Path",
     menuKindFile: "File",

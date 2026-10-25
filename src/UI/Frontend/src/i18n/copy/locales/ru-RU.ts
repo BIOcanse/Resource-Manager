@@ -457,6 +457,7 @@ const ruRuAppCopy: AppCopy = {
     menuProperties: "Свойства",
     menuCopyPath: "Копировать полный путь",
     menuDrillDown: "Приблизить этот элемент",
+    treemapLabel: "Плитки занятого места на диске",
     menuSize: "Размер",
     menuPath: "Путь",
     menuKindFile: "Файл",

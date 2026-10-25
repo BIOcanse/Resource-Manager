@@ -457,6 +457,7 @@ const jaJpAppCopy: AppCopy = {
     menuProperties: "プロパティ",
     menuCopyPath: "フルパスをコピー",
     menuDrillDown: "この項目を拡大",
+    treemapLabel: "ディスク使用量のタイル",
     menuSize: "サイズ",
     menuPath: "パス",
     menuKindFile: "ファイル",

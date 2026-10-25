@@ -47,6 +47,13 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
   await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   assert(box && box.width > 0 && box.height > 0, "Treemap canvas has no size");
+  // 方格图有可读名称；还没有选中方格时，键盘打开菜单不开（没有“当前方格”）。
+  assert(await canvas.getAttribute("aria-label") === copy.diskUsage.treemapLabel,
+    `Treemap canvas name: ${await canvas.getAttribute("aria-label")}`);
+  await canvas.focus();
+  await page.keyboard.press("Shift+F10");
+  await page.waitForTimeout(300);
+  assert(await page.locator(".disk-usage-context-menu").count() === 0, "Shift+F10 opened a menu with no selected tile");
   const checkedMenuActions = [];
   for (const [label, failure] of [
     [copy.diskUsage.menuOpenLocation, copy.softwareActions.openFileLocationFailed],
@@ -61,6 +68,37 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
     checkedMenuActions.push(label);
   }
 
+  // 右键已经选中了中间的方格：Shift+F10 和菜单键对它开菜单，焦点在第一个动作上，
+  // 上下键、Home/End 在动作间移动，Esc 和 Tab 关闭后焦点回到方格图。
+  const menu = page.locator(".disk-usage-context-menu");
+  const activeMenuItem = () => page.evaluate(() => document.activeElement?.getAttribute("role") === "menuitem"
+    ? document.activeElement.textContent?.trim() : `not a menu item: ${document.activeElement?.tagName}`);
+  const focusReturnedToCanvas = () => page.waitForFunction(() =>
+    document.activeElement?.classList.contains("disk-usage-treemap-canvas"), null, { timeout: 3000 });
+  await canvas.focus();
+  await page.keyboard.press("Shift+F10");
+  await menu.waitFor();
+  const menuBox = await menu.boundingBox();
+  assert(menuBox && menuBox.x >= box.x && menuBox.x <= box.x + box.width && menuBox.y >= box.y - 1,
+    `Keyboard menu did not open at the selected tile: ${JSON.stringify({ menuBox, box })}`);
+  const order = [copy.diskUsage.menuDrillDown, copy.diskUsage.menuOpenLocation, copy.diskUsage.menuProperties, copy.diskUsage.menuCopyPath];
+  await page.waitForFunction(label => document.activeElement?.textContent?.trim() === label, order[0], { timeout: 3000 });
+  const visited = [await activeMenuItem()];
+  for (const key of ["ArrowDown", "ArrowDown", "ArrowUp", "End", "ArrowDown", "Home", "ArrowUp"]) {
+    await page.keyboard.press(key);
+    visited.push(await activeMenuItem());
+  }
+  const expected = [order[0], order[1], order[2], order[1], order[3], order[0], order[0], order[3]];
+  assert(JSON.stringify(visited) === JSON.stringify(expected), `Menu arrow keys: ${JSON.stringify(visited)}`);
+  await page.keyboard.press("Escape");
+  await menu.waitFor({ state: "detached" });
+  await focusReturnedToCanvas();
+  await page.keyboard.press("ContextMenu");
+  await menu.waitFor();
+  await page.keyboard.press("Tab");
+  await menu.waitFor({ state: "detached" });
+  await focusReturnedToCanvas();
+
   assert(errors.length === 0, errors.join("\n"));
-  return { folderPickerFailures: 2, menuActionFailures: checkedMenuActions.length, pageErrors: errors };
+  return { folderPickerFailures: 2, menuActionFailures: checkedMenuActions.length, keyboardMenu: visited.length, pageErrors: errors };
 }

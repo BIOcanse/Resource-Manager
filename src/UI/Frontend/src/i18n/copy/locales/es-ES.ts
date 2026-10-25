@@ -457,6 +457,7 @@ const esEsAppCopy: AppCopy = {
     menuProperties: "Propiedades",
     menuCopyPath: "Copiar ruta completa",
     menuDrillDown: "Ampliar este elemento",
+    treemapLabel: "Bloques de uso del disco",
     menuSize: "Tamaño",
     menuPath: "Ruta",
     menuKindFile: "Archivo",

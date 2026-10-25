@@ -457,6 +457,7 @@ const koKrAppCopy: AppCopy = {
     menuProperties: "속성",
     menuCopyPath: "전체 경로 복사",
     menuDrillDown: "이 항목 확대",
+    treemapLabel: "디스크 사용량 타일",
     menuSize: "크기",
     menuPath: "경로",
     menuKindFile: "파일",
