@@ -34,6 +34,7 @@ public sealed class CpuTopologyCaptureOwner : IDisposable
     private readonly Action resetUsageBaseline;
     private readonly Action<Exception>? logFailure;
     private CpuTopologyPublishedState current = new(null, DeviceInformationSnapshot.Empty);
+    private int usageBaselineResetPending;
     private int disposed;
 
     public CpuTopologyCaptureOwner() : this(new WindowsCpuOsTopologyReader()) { }
@@ -67,6 +68,7 @@ public sealed class CpuTopologyCaptureOwner : IDisposable
         try
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            ApplyPendingUsageBaselineReset();
             var admission = permission?.Admit() ?? CpuTopologyCaptureAdmission.Capture;
             if (admission != CpuTopologyCaptureAdmission.Capture)
             {
@@ -103,17 +105,28 @@ public sealed class CpuTopologyCaptureOwner : IDisposable
         }
         finally { sampleGate.Release(); }
     }
-    public void ResetUsageBaselineIfIdle()
+    /// <summary>Discards the usage baseline without waiting: now when no capture holds the gate, otherwise inside the gate
+    /// before the next capture reads, so a capture running when demand ended cannot carry its baseline across the idle period.</summary>
+    public void ResetUsageBaselineBeforeNextCapture()
     {
+        Volatile.Write(ref usageBaselineResetPending, 1);
         if (!sampleGate.Wait(0)) return;
-        try { resetUsageBaseline(); }
+        try { ApplyPendingUsageBaselineReset(); }
         finally { sampleGate.Release(); }
     }
     public async Task DrainAndResetUsageBaselineAsync()
     {
         await sampleGate.WaitAsync();
-        try { resetUsageBaseline(); }
+        try
+        {
+            Volatile.Write(ref usageBaselineResetPending, 0);
+            resetUsageBaseline();
+        }
         finally { sampleGate.Release(); }
+    }
+    private void ApplyPendingUsageBaselineReset()
+    {
+        if (Interlocked.Exchange(ref usageBaselineResetPending, 0) != 0) resetUsageBaseline();
     }
     public void Dispose()
     {

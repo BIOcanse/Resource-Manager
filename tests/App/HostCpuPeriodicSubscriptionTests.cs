@@ -99,15 +99,19 @@ public sealed class HostCpuPeriodicSubscriptionTests
         Assert.Equal(fixture.Reader.GetInformationSnapshot().ObservedAt, reading.ObservedAt);
         Assert.True(fixture.Sampler.CaptureCount >= capturesBeforeWorker + 1);
 
+        // Cancel while the next due capture is held in the controlled sampler, so the reset must survive a running capture.
+        var capturesBeforeNextDue = fixture.Sampler.CaptureCount;
+        await WaitUntilAsync(() => fixture.Sampler.CaptureCount > capturesBeforeNextDue);
         var resetsBeforeCancel = fixture.Sampler.ResetCount;
         await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await stream.MoveNextAsync().AsTask());
         Assert.Equal(0u, fixture.ReadDemand().SourceCount);
         var capturesAfterCancellation = fixture.Sampler.CaptureCount;
+        fixture.Sampler.Complete(recorded);
+        await WaitUntilAsync(() => fixture.Sampler.ResetCount > resetsBeforeCancel);
         await Task.Delay(250, CancellationToken.None);
         Assert.Equal(capturesAfterCancellation, fixture.Sampler.CaptureCount);
-        await WaitUntilAsync(() => fixture.Sampler.ResetCount > resetsBeforeCancel);
         Assert.Same(recorded, fixture.Reader.GetSnapshot());
     }
 

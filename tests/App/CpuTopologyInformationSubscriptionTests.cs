@@ -98,7 +98,9 @@ public sealed class CpuTopologyInformationSubscriptionTests
         Assert.Equal(2, fixture.Sampler.CaptureCount);
         Assert.Equal(1u, fixture.ReadDemand().SourceCount);
         Assert.Same(completed, fixture.Reader.GetSnapshot());
-        Assert.True(fixture.Sampler.ResetCount > resetsBeforeCancel);
+        // The paused lease stays, so the worker sees the canceled demand on its next due wake, not at a fixed time.
+        while (fixture.Sampler.ResetCount <= resetsBeforeCancel)
+            await Task.Delay(10, deadline.Token);
 
         // Restart while the canceled source is still paused: its old lease must not keep the time interval alive.
         using var resumedCancellation = new CancellationTokenSource();

@@ -80,7 +80,39 @@ public sealed class CpuCaptureOwnerLibraryIntegrationTests
     }
 
     [Fact]
-    public async Task BusyIdleResetSkipsAndDrainWaitsForTheOriginalGate()
+    public async Task ResetRequestedDuringACaptureIsAppliedBeforeTheNextCaptureReads()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var holdFirstRead = true;
+        using var owner = new CpuTopologyCaptureOwner(() =>
+        {
+            events.Enqueue("read");
+            if (Volatile.Read(ref holdFirstRead))
+            {
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException();
+            }
+            return Capture();
+        }, () => events.Enqueue("reset"));
+        var running = Task.Run(() => owner.CaptureAsync(CancellationToken.None));
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+            owner.ResetUsageBaselineBeforeNextCapture();
+            Assert.Equal(new[] { "read" }, events.ToArray());
+        }
+        finally { release.Set(); }
+        Assert.Equal(CpuTopologyCaptureCompletion.Sampled, await running);
+        Volatile.Write(ref holdFirstRead, false);
+        await owner.CaptureAsync(CancellationToken.None);
+        await owner.CaptureAsync(CancellationToken.None);
+        Assert.Equal(new[] { "read", "reset", "read", "read" }, events.ToArray());
+    }
+
+    [Fact]
+    public async Task BusyResetDefersAndDrainWaitsForTheOriginalGate()
     {
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
@@ -95,7 +127,7 @@ public sealed class CpuCaptureOwnerLibraryIntegrationTests
         try
         {
             Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
-            owner.ResetUsageBaselineIfIdle();
+            owner.ResetUsageBaselineBeforeNextCapture();
             Assert.Equal(0, resets);
             drain = owner.DrainAndResetUsageBaselineAsync();
             Assert.False(drain.IsCompleted);

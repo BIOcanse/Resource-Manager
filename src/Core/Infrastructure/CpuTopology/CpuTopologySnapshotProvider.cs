@@ -96,7 +96,7 @@ public sealed partial class CpuTopologySnapshotProvider(
             {
                 // Canceled enumerators may remain paused at their last value without removing their lease yet.
                 if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
-                    ResetUsageBaselineIfIdle();
+                    ResetUsageBaselineBeforeNextCapture();
             },
             static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
             TimeSpan.Zero);

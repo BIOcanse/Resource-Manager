@@ -6,7 +6,7 @@ namespace ResourceManager.App.Infrastructure.CpuTopology;
 
 public sealed partial class CpuTopologySnapshotProvider
 {
-    private void ResetUsageBaselineIfIdle() => captureOwner.ResetUsageBaselineIfIdle();
+    private void ResetUsageBaselineBeforeNextCapture() => captureOwner.ResetUsageBaselineBeforeNextCapture();
 
     internal IDisposable AcquireInformationSubscription(string subscriptionId, TimeSpan interval, CancellationToken cancellationToken = default)
     {
