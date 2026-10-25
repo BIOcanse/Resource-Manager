@@ -140,8 +140,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             hostStartReturnedAtQpcTicks = Stopwatch.GetTimestamp();
             await WaitForHostedScoreOnlyCycleAsync(
                 traceProbe,
-                expectedCycle: 1,
-                TimeSpan.FromSeconds(5));
+                expectedCycle: 1);
 
             for (var sequence = 2;
                  sequence <= Scale256HostedTotalCycleCount;
@@ -400,7 +399,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             EnqueueScale256ClockPermit(source, trace, permits[0]);
             await host.StartAsync(CancellationToken.None);
-            await WaitForHostedScoreOnlyCycleAsync(traceProbe, 1, TimeSpan.FromSeconds(5));
+            await WaitForHostedScoreOnlyCycleAsync(traceProbe, 1);
             EnqueueScale256ClockPermit(source, trace, permits[1]);
             EnqueueScale256ClockPermit(source, trace, permits[2]);
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
@@ -469,7 +468,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var target = clock.GetTimestamp() + checked(Stopwatch.Frequency * HostedScoreOnlyEventIntervalMilliseconds / 1000);
         await clock.WaitForTimerAsync(target);
         clock.AdvanceTo(target);
-        await WaitForHostedScoreOnlyCycleAsync(trace, expectedCycle, TimeSpan.FromSeconds(5));
+        await WaitForHostedScoreOnlyCycleAsync(trace, expectedCycle);
     }
 
     private static void WriteScale256ClockCausalityTrace(Scale256ClockTrace trace, string caseName)

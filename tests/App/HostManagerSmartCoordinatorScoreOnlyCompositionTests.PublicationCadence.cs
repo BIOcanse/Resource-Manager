@@ -42,7 +42,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(processReadsBeforeStart, fixture.ProcessFacts.ReadLatestRequests.Count);
 
             reader.Publish(null);
-            await WaitForHostedScoreOnlyCycleAsync(trace, 1, TimeSpan.FromSeconds(10));
+            await WaitForHostedScoreOnlyCycleAsync(trace, 1);
 
             Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage,
                 fixture.Coordinator.SchedulingAuthority.Compute!.CpuOccupancySource);

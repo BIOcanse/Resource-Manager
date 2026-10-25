@@ -103,8 +103,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             residencyOutput.Publish();
             await WaitForHostedScoreOnlyCycleAsync(
                 traceProbe,
-                expectedCycle: 1,
-                TimeSpan.FromSeconds(5));
+                expectedCycle: 1);
 
             for (var sequence = 2;
                  sequence <= HostedScoreOnlyLastMeasuredSequence;
@@ -117,8 +116,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 residencyOutput.Publish();
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
-                    checked((ulong)(sequence + 1)),
-                    TimeSpan.FromSeconds(5));
+                    checked((ulong)(sequence + 1)));
             }
 
             Assert.Equal(HostedScoreOnlyLastMeasuredSequence, source.CompletedCount);

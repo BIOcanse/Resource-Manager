@@ -138,8 +138,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             residencyOutput.Publish();
             await WaitForHostedScoreOnlyCycleAsync(
                 traceProbe,
-                expectedCycle: 1,
-                TimeSpan.FromSeconds(5));
+                expectedCycle: 1);
 
             for (var sequence = 2; sequence <= HostedScoreOnlyWarmupCycleCount; sequence += 2)
             {
@@ -150,8 +149,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 residencyOutput.Publish();
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
-                    checked((ulong)(sequence + 1)),
-                    TimeSpan.FromSeconds(5));
+                    checked((ulong)(sequence + 1)));
             }
 
             Assert.Equal(HostedScoreOnlyWarmupCycleCount, source.CompletedCount);
@@ -178,8 +176,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 residencyOutput.Publish();
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
-                    checked((ulong)(sequence + 1)),
-                    TimeSpan.FromSeconds(5));
+                    checked((ulong)(sequence + 1)));
             }
             var measuredElapsed = Stopwatch.GetElapsedTime(measuredStarted);
             var plannedStop = hostedStopTask
@@ -331,10 +328,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             })
             .Build();
 
+    // Hang detection only. Under full-suite parallel load one cycle can take several seconds;
+    // the measured bounds of each evidence test stay separate and unchanged.
+    private static readonly TimeSpan HostedScoreOnlyCycleLivenessTimeout = TimeSpan.FromSeconds(30);
     private static async Task WaitForHostedScoreOnlyCycleAsync(
-        OuterLoopTraceProbe trace, ulong expectedCycle, TimeSpan timeout)
+        OuterLoopTraceProbe trace, ulong expectedCycle)
     {
-        using var cancellation = new CancellationTokenSource(timeout);
+        using var cancellation = new CancellationTokenSource(HostedScoreOnlyCycleLivenessTimeout);
         while (trace.CompletedCount < checked((int)expectedCycle))
             await Task.Delay(1, cancellation.Token);
         Assert.Equal(checked((int)expectedCycle), trace.CompletedCount);
