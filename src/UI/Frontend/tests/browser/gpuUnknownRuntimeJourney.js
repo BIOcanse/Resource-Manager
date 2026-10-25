@@ -18,7 +18,7 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     }
     const response = await route.fetch();
     const data = await response.json();
-    data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "gpu1", displayName: "GPU 1 Test", available: true }] };
+    data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "gpu1", adapterName: "Test Adapter", available: true }] };
     data.processCapabilities = [{ processKey: "fixture",
       startup: { state: "supported", providerId: "fixture", graphicsApi: "D3D11", reason: "fixture" },
       runtime: { state: "unknown", providerId: "fixture", graphicsApi: "D3D11", reason: "Requires runtime validation" } }];
@@ -31,7 +31,8 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
   const dialog = page.getByRole("dialog", { name: "示例软件" });
   await dialog.getByRole("tab", { name: "策略", exact: true }).click();
   await dialog.getByRole("combobox", { name: "启动时 GPU", exact: true }).click();
-  await page.getByRole("option", { name: "GPU 1 Test", exact: true }).click();
+  // 后端只给 targetGpu 与适配器原名，选项文字由前端组成。
+  await page.getByRole("option", { name: "GPU1 · Test Adapter", exact: true }).click();
   const toggle = dialog.getByRole("checkbox", { name: "允许运行时切换显卡", exact: true });
   assert.equal(await toggle.isEnabled(), true);
   await toggle.check();
