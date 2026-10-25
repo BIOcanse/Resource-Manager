@@ -120,6 +120,9 @@ export default async function resourceTableScrollStabilityJourney(
   await nameResizer.press("ArrowRight");
   const widthAfter = Number(await nameResizer.getAttribute("aria-valuenow"));
   if (widthAfter <= widthBefore || widthAfter > 520) throw new Error(`Local column resize failed: ${widthBefore} -> ${widthAfter}`);
+  // 列宽只是前端呈现：调整宽度不得改变提交的读取项，也就不重建资源事实订阅。
+  await page.waitForTimeout(150);
+  assertSameFactsLease("Resizing a column");
   const editor = page.locator(".resource-table-column-editor");
   await editor.locator("label").filter({ hasText: /^CPU$/ }).getByRole("checkbox").uncheck();
   await editor.locator("label").filter({ hasText: /内存（驻留）/ }).getByRole("checkbox").uncheck();
@@ -127,7 +130,18 @@ export default async function resourceTableScrollStabilityJourney(
   await editor.locator("label").filter({ hasText: /^网络$/ }).getByRole("checkbox").uncheck();
   if (await page.locator('.resource-table-row.software-row[aria-hidden="false"]').count() < 2) throw new Error("Hiding numeric columns erased software identities.");
   if (await page.locator('.resource-table-row[aria-hidden="false"] .value-cell').count() !== 0) throw new Error("Hidden numeric columns retained visible cells.");
-  assertSameFactsLease("Resizing and hiding numeric columns");
+  // 可见列提交的正是它显示的读取项、隐藏的不占订阅（仪表布局移到前端时的合同）：隐藏全部数值列后，订阅只剩软件/进程身份，
+  // 不再带任何数值读取项；身份行保留（上面已查）。
+  const identityOnlyItems = ["process.attribution", "process.inventory"];
+  const latestItems = () => {
+    const latest = factSubscriptions.at(-1);
+    return latest ? new URL(latest.path, baseUrl).searchParams.getAll("items").sort() : [];
+  };
+  const hideDeadline = Date.now() + 5_000;
+  while (JSON.stringify(latestItems()) !== JSON.stringify(identityOnlyItems) && Date.now() < hideDeadline) await page.waitForTimeout(100);
+  if (JSON.stringify(latestItems()) !== JSON.stringify(identityOnlyItems)) {
+    throw new Error(`Hiding numeric columns did not submit exactly the shown items: ${JSON.stringify(factSubscriptions.at(-1))}`);
+  }
   await page.locator(".resource-table-panel").getByRole("button", { name: /取消/ }).click();
 
   return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter, nameOnlyRowsPreserved: true };
