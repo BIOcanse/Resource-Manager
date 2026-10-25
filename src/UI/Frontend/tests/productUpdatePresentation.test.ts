@@ -23,6 +23,17 @@ test("every selectable locale resolves update controls and all stable failure co
   assert.match(productUpdateCopy("zh-CN").pending, /更新包/);
 });
 
+test("every failure message is keyed by exactly the selectable languages", () => {
+  const languages = languageOptions.filter(({ id }) => id !== "system").map(({ id }) => id).sort();
+  for (const [code, values] of Object.entries(updateErrors)) {
+    assert.deepEqual(Object.keys(values).sort(), languages, code);
+  }
+  // 按语言取值，不按位置：繁体与简体、日文与韩文各自取到自己的文字。
+  assert.equal(productUpdateCopy("ja-JP").apply, "今すぐ適用");
+  assert.equal(productUpdateCopy("ko-KR").apply, "지금 적용");
+  assert.equal(productUpdateCopy("zh-TW").apply, "立即套用");
+});
+
 test("failure mapping retains stable parameters and never exposes exception prose", () => {
   const state = updateFailure({ message: "private exception", payload: {
     errorCode: "update.versionMismatch", errorParameters: { targetVersion: "1.2.3" }
