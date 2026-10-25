@@ -16,9 +16,10 @@ public sealed class PerformanceOverlayProjectionTests
             resource.Contains("overlay-metric-labels", StringComparison.OrdinalIgnoreCase));
         Assert.Null(backend.GetType("ResourceManager.App.Application.Overlay.PerformanceOverlayMetricLabels"));
         var setting = PerformanceOverlaySettings.Default("game") with { Enabled = true };
-        var result = PerformanceOverlayProjection.Create([setting], Snapshot(Process(10, 200, "game")),
+        var result = PerformanceOverlayProjection.Create([setting], [PerformanceOverlayMetricIds.Cpu], Snapshot(Process(10, 200, "game")),
             null, null, null, DateTimeOffset.UnixEpoch);
         Assert.Equal(2, result.Version);
+        Assert.Equal([PerformanceOverlayMetricIds.Cpu], Assert.Single(result.Targets).Metrics.Select(static item => item.MetricId));
         using var json = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(result));
         var target = json.RootElement.GetProperty("Targets")[0];
         Assert.False(target.TryGetProperty("DisplayName", out _));
@@ -43,6 +44,8 @@ public sealed class PerformanceOverlayProjectionTests
 
         Assert.Equal([10, 11], selected.Select(static item => item.ProcessId));
         Assert.Empty(PerformanceOverlayProjection.SelectTargets(settings, null));
+        Assert.Empty(PerformanceOverlayProjection.SelectTargets(settings,
+            facts with { InventoryProcesses = [] }));
     }
 
     [Fact]
@@ -65,12 +68,11 @@ public sealed class PerformanceOverlayProjectionTests
                     [new ResourceProcessSegment(10, "Game", null, 500, 50, 100) { ProcessStartKey = 100 }])])]);
         var setting = PerformanceOverlaySettings.Default("game") with
         {
-            Enabled = true,
-            Metrics = [PerformanceOverlayMetricIds.Fps, PerformanceOverlayMetricIds.Cpu,
-                PerformanceOverlayMetricIds.Memory]
+            Enabled = true
         };
 
-        var result = PerformanceOverlayProjection.Create([setting], facts, breakdown, null, frames,
+        var result = PerformanceOverlayProjection.Create([setting], [PerformanceOverlayMetricIds.Fps,
+            PerformanceOverlayMetricIds.Cpu, PerformanceOverlayMetricIds.Memory], facts, breakdown, null, frames,
             DateTimeOffset.UtcNow);
 
         var target = Assert.Single(result.Targets);
@@ -92,12 +94,11 @@ public sealed class PerformanceOverlayProjectionTests
             ])]);
         var setting = PerformanceOverlaySettings.Default("game") with
         {
-            Enabled = true,
-            Metrics = [PerformanceOverlayMetricIds.Fps, PerformanceOverlayMetricIds.FrameTime,
-                PerformanceOverlayMetricIds.OnePercentLow]
+            Enabled = true
         };
 
-        var result = PerformanceOverlayProjection.Create([setting], Snapshot(Process(10, 200, "game")),
+        var result = PerformanceOverlayProjection.Create([setting], [PerformanceOverlayMetricIds.Fps,
+            PerformanceOverlayMetricIds.FrameTime, PerformanceOverlayMetricIds.OnePercentLow], Snapshot(Process(10, 200, "game")),
             null, null, frames, DateTimeOffset.UtcNow);
 
         var target = Assert.Single(result.Targets);
@@ -122,6 +123,7 @@ public sealed class PerformanceOverlayProjectionTests
             attributed)
         {
             HasSeparateFoundationPayloads = true,
+            InventoryProcesses = attributed,
             AttributionProcesses = attributed
         };
 }

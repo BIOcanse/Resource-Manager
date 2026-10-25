@@ -31,13 +31,6 @@
     },
     {
       "version": "0.1.0-dev.45",
-      "fileName": "FreedomPoint.Compilation.0.1.0-dev.45.nupkg",
-      "bytes": 11932056,
-      "id": "FreedomPoint.Compilation",
-      "sha256": "8A1D3E842E81707919494ED7A2F839A297CE6B14B4FC7EF4B4AF783E0F1E7E4F"
-    },
-    {
-      "version": "0.1.0-dev.45",
       "fileName": "FreedomPoint.Core.0.1.0-dev.45.nupkg",
       "bytes": 85581,
       "id": "FreedomPoint.Core",

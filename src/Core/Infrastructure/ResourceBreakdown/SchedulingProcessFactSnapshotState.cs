@@ -439,10 +439,6 @@ internal sealed class SchedulingProcessFactSnapshotState
         lock (gate)
         {
             var requestedBits = EnumerateBits(request.RequestedMetricMask).ToArray();
-            if (requestedBits.Length == 0)
-            {
-                return null;
-            }
             if (inventory is null)
             {
                 return null;
@@ -459,7 +455,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             {
                 return null;
             }
-            if (requestedBits.All(bit => !datasets.ContainsKey(bit)))
+            if (requestedBits.Length > 0 && requestedBits.All(bit => !datasets.ContainsKey(bit)))
             {
                 return null;
             }
@@ -495,7 +491,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 }
             }
 
-            if (selected.Count == 0)
+            if (requestedBits.Length > 0 && selected.Count == 0)
             {
                 return null;
             }

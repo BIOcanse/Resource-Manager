@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Settings;
@@ -12,6 +13,56 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class BackendPreferenceBoundaryTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RoundTwoMetricsOnlyFileMigratesAndImportsWithoutReplacingAnExistingBackup(bool existingBackup)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-overlay-v2-" + Guid.NewGuid().ToString("N"));
+        var application = Directory.CreateDirectory(Path.Combine(root, "APP")).FullName;
+        var profiles = Directory.CreateDirectory(Path.Combine(root, "UserData", "SoftwareProfiles")).FullName;
+        var path = Path.Combine(profiles, "performance-overlay.local.json");
+        var cache = Path.Combine(profiles, "frontend.cache.json");
+        try
+        {
+            // Derive the v2 writer's shape from the recorded legacy writer image:
+            // round two removed its six layout fields but retained metrics.
+            var image = JsonNode.Parse(await File.ReadAllBytesAsync(Fixture("performance-overlay.local.json")))!;
+            image["software"]![0]!["metrics"] = new JsonArray("target.memory", "target.fps");
+            var original = JsonSerializer.SerializeToUtf8Bytes(image);
+            image["version"] = 2;
+            foreach (var field in PresentationPreferenceRemoval.OverlayFields.Where(static field => field != "metrics"))
+                image["software"]![0]!.AsObject().Remove(field);
+            var v2 = JsonSerializer.SerializeToUtf8Bytes(image);
+            await File.WriteAllBytesAsync(path, v2);
+            var backup = path + PresentationPreferenceRemoval.BackupSuffix;
+            if (existingBackup) await File.WriteAllBytesAsync(backup, original);
+            var store = new JsonPerformanceOverlaySettingsStore(new Environment(application));
+            Assert.Equal(3, (await store.GetAsync(default)).Version);
+            var bytes = await ReadCommitted(path);
+            using var migrated = JsonDocument.Parse(bytes);
+            Assert.False(PresentationPreferenceRemoval.HasOverlayFields(migrated.RootElement));
+            Assert.Equal(existingBackup ? original : v2, await ReadCommitted(backup));
+            var owner = new FrontendPreferencesOwner(cache, null, path);
+            Assert.Equal(new[] { "target.memory", "target.fps" }, owner.Read().Overlays["legacy-game"].Metrics);
+            await new JsonPerformanceOverlaySettingsStore(new Environment(application)).GetAsync(default);
+            Assert.Equal(bytes, await ReadCommitted(path));
+            owner.Reset();
+            Assert.Empty(new FrontendPreferencesOwner(cache, null, path).Read().Overlays);
+        }
+        finally
+        {
+            foreach (var file in Directory.EnumerateFiles(profiles)) File.Delete(file);
+            Directory.Delete(profiles);
+            Directory.Delete(Path.Combine(root, "UserData"));
+            Directory.Delete(application);
+            Directory.Delete(root);
+        }
+    }
+
+    private static Task<byte[]> ReadCommitted(string path) =>
+        ResourceManager.App.Infrastructure.NativeCore.WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(path, default);
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -42,15 +93,15 @@ public sealed class BackendPreferenceBoundaryTests
             if (startupOrder == 2)
                 await Task.WhenAll(Task.Run(Migrate), Task.Run(() => frontend.Read()));
             else await Migrate();
-            Assert.Equal(2, (await backend.GetAsync(default)).Version);
-            using var migrated = JsonDocument.Parse(await File.ReadAllBytesAsync(overlayPath));
-            Assert.False(PresentationPreferenceRemoval.HasOverlayLayoutFields(migrated.RootElement));
+            Assert.Equal(3, (await backend.GetAsync(default)).Version);
+            using var migrated = JsonDocument.Parse(await ReadCommitted(overlayPath));
+            Assert.False(PresentationPreferenceRemoval.HasOverlayFields(migrated.RootElement));
             var backup = overlayPath + PresentationPreferenceRemoval.BackupSuffix;
-            Assert.Equal(original, await File.ReadAllBytesAsync(backup));
-            var bytes = await File.ReadAllBytesAsync(overlayPath);
+            Assert.Equal(original, await ReadCommitted(backup));
+            var bytes = await ReadCommitted(overlayPath);
             var backupTime = File.GetLastWriteTimeUtc(backup);
             await new JsonPerformanceOverlaySettingsStore(environment).GetAsync(default);
-            Assert.Equal(bytes, await File.ReadAllBytesAsync(overlayPath));
+            Assert.Equal(bytes, await ReadCommitted(overlayPath));
             Assert.Equal(backupTime, File.GetLastWriteTimeUtc(backup));
             var imported = frontend.Read();
             Assert.Equal(FrontendPoints.FontSizePx, imported.Overlays["legacy-game"].FontSizePx);
@@ -101,16 +152,16 @@ public sealed class BackendPreferenceBoundaryTests
             Assert.Equal(AppSettingsDefaults.CurrentVersion, loaded.Settings.Version);
             Assert.True(loaded.Source.RewritePerformed);
             var backup = path + PresentationPreferenceRemoval.BackupSuffix;
-            Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+            Assert.Equal(original, await ReadCommitted(backup));
             var backupTime = File.GetLastWriteTimeUtc(backup);
-            using var migrated = JsonDocument.Parse(await File.ReadAllBytesAsync(path));
+            using var migrated = JsonDocument.Parse(await ReadCommitted(path));
             Assert.False(PresentationPreferenceRemoval.HasAppFields(migrated.RootElement));
-            var bytes = await File.ReadAllBytesAsync(path);
+            var bytes = await ReadCommitted(path);
             var reloaded = await new JsonAppSettingsStore(new Environment(application)).LoadAsync(CancellationToken.None);
             Assert.False(reloaded.Source.RewritePerformed);
-            Assert.Equal(bytes, await File.ReadAllBytesAsync(path));
+            Assert.Equal(bytes, await ReadCommitted(path));
             Assert.Equal(backupTime, File.GetLastWriteTimeUtc(backup));
-            Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+            Assert.Equal(original, await ReadCommitted(backup));
         }
         finally
         {

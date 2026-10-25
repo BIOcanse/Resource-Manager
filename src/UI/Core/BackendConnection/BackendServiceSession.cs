@@ -62,6 +62,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     }
 
     internal async Task<HttpResponseMessage> OpenPerformanceOverlayStreamAsync(
+        ResourceManager.NativeUi.Overlay.OverlaySubscription[] subscriptions,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -70,10 +71,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             Content = JsonContent.Create(new
             {
                 version = 1,
-                subscriptions = new[]
-                {
-                    new { id = "performance-overlay", path = "/api/performance-overlay/subscribe?intervalMs=500" }
-                }
+                subscriptions
             })
         };
         GetRequestAuthorization().Apply(request);
@@ -83,6 +81,17 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         var statusCode = response.StatusCode;
         response.Dispose();
         throw new HttpRequestException($"Overlay stream returned {(int)statusCode}.");
+    }
+
+    internal async Task<ResourceManager.NativeUi.Overlay.OverlaySettingsDocument> ReadPerformanceOverlaySettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/performance-overlay/settings");
+        GetRequestAuthorization().Apply(request);
+        using var response = await actionClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ResourceManager.NativeUi.Overlay.OverlaySettingsDocument>(
+            cancellationToken) ?? throw new InvalidDataException("Missing overlay operational settings.");
     }
 
     public async Task<string> TerminateProcessesAsync(

@@ -103,6 +103,10 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         var result = GetPublicationDatasetIds(request)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Foundation-only consumers request these dependencies without inventing
+        // a performance metric merely to keep process identity publication alive.
+        result.UnionWith(request.PublicationDatasetIds.Where(static id =>
+            id is SamplingDatasetIds.ProcessInventory or SamplingDatasetIds.ProcessAttribution));
         if (result.Count > 0)
         {
             result.Add(SamplingDatasetIds.ProcessInventory);

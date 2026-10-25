@@ -35,7 +35,12 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         var cancellation = new CancellationTokenSource();
         subscriptionCancellation = cancellation;
         UpdateWindowTimerState();
-        _ = ReadStreamAsync(session, ++streamGeneration, cancellation.Token);
+        var generation = ++streamGeneration;
+        _ = OverlaySubscriptions.RunAsync(session.ReadPerformanceOverlaySettingsAsync,
+            FrontendPreferencesOwner.Current.Read,
+            (subscriptions, token) => ReadStreamAsync(session, subscriptions, generation, token),
+            () => Post(() => { if (generation == streamGeneration) Clear(); }),
+            TimeSpan.FromMilliseconds(500), cancellation.Token);
     }
 
     public void Stop()
@@ -161,14 +166,15 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         }
     }
 
-    private async Task ReadStreamAsync(BackendServiceSession session, long generation,
+    private async Task ReadStreamAsync(BackendServiceSession session, OverlaySubscription[] subscriptions, long generation,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                using var response = await session.OpenPerformanceOverlayStreamAsync(cancellationToken);
+                var snapshots = new Dictionary<string, OverlaySnapshot>();
+                using var response = await session.OpenPerformanceOverlayStreamAsync(subscriptions, cancellationToken);
                 await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var reader = new StreamReader(stream);
                 while (!cancellationToken.IsCancellationRequested)
@@ -178,12 +184,15 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
                     using var frame = JsonDocument.Parse(line);
                     var root = frame.RootElement;
                     if (!root.TryGetProperty("subscriptionId", out var subscriptionId)
-                        || subscriptionId.GetString() != "performance-overlay"
+                        || !subscriptions.Any(item => item.Id == subscriptionId.GetString())
                         || !root.TryGetProperty("value", out var value)) continue;
                     var snapshot = value.Deserialize<OverlaySnapshot>(StreamJson);
-                    if (snapshot is not null) Post(() =>
+                    if (snapshot is null) continue;
+                    snapshots[subscriptionId.GetString()!] = snapshot;
+                    var combined = snapshot with { Targets = snapshots.Values.SelectMany(static item => item.Targets).ToArray() };
+                    Post(() =>
                     {
-                        if (generation == streamGeneration) ApplySnapshot(snapshot);
+                        if (!cancellationToken.IsCancellationRequested && generation == streamGeneration) ApplySnapshot(combined);
                     });
                 }
             }

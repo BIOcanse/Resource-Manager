@@ -238,6 +238,40 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     }
 
     [Fact]
+    public async Task FoundationOnlySubscriptionPublishesIdentitiesWithoutHardwareOrPerformanceDemand()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalog = new VersionedProcessAttributionCatalogProvider();
+        var hardware = new StaticMetricSampler(CreateMemorySnapshot());
+        using var sampler = new WindowsResourceBreakdownSampler(hardware, catalog,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var request = new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
+            ProcessSampleDetailLevel.SmartSchedulingLite)
+        { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] };
+        Assert.Equal(request.PublicationDatasetIds.Order(), WindowsResourceBreakdownSampler.GetSubscriptionDatasetIds(request).Order());
+        var read = new SchedulingProcessFactRequest(SchedulingProcessMetricMask.None,
+            new SchedulingGpuInventorySnapshot(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []));
+        Assert.Null(sampler.ReadLatest(read));
+        Assert.Equal(0, hardware.CaptureCount);
+        await sampler.StartAsync(default);
+        try
+        {
+            using var lease = sampler.AcquireSubscription("overlay-foundation-test", request, TimeSpan.FromMilliseconds(100));
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            SchedulingProcessFactSnapshot? current;
+            while ((current = sampler.ReadLatest(read)) is null) await Task.Delay(20, stop.Token);
+            Assert.NotEmpty(current.InventoryProcesses);
+            Assert.NotEmpty(current.AttributionProcesses);
+            Assert.Empty(current.Processes);
+            Assert.Equal(SchedulingProcessMetricMask.None, current.CurrentMetricMask);
+            Assert.Equal(0, hardware.CaptureCount);
+        }
+        finally { await sampler.StopAsync(default); }
+    }
+
+    [Fact]
     public async Task SubscribeAsync_WaitsForBackendPublicationBeforeFirstValue()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();

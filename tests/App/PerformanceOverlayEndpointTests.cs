@@ -54,7 +54,7 @@ public sealed class PerformanceOverlayEndpointTests
         Assert.Equal("game", defaults.SoftwareId);
         Assert.Equal("external", defaults.Mode);
         using var wire = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/performance-overlay/default?softwareId=game"));
-        foreach (var key in new[] { "fontSizePx", "sizeMode", "regionWidthRatio", "regionHeightRatio", "anchor", "marginPx" })
+        foreach (var key in new[] { "metrics", "fontSizePx", "sizeMode", "regionWidthRatio", "regionHeightRatio", "anchor", "marginPx" })
             Assert.False(wire.RootElement.TryGetProperty(key, out _));
 
         var catalog = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
@@ -78,6 +78,9 @@ public sealed class PerformanceOverlayEndpointTests
         Assert.Equal(saved.SoftwareId, retrieved!.SoftwareId);
         Assert.Equal(saved.Mode, retrieved.Mode);
         Assert.True(retrieved.Enabled);
+        using var all = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/performance-overlay/settings"));
+        foreach (var item in all.RootElement.GetProperty("software").EnumerateArray())
+            Assert.Equal(new[] { "enabled", "mode", "softwareId" }, item.EnumerateObject().Select(static field => field.Name).Order());
         Assert.Equal(executablePath, Assert.Single(registry.OverlayPaths));
 
         using var externalResponse = await client.PutAsJsonAsync("/api/performance-overlay/software/game",

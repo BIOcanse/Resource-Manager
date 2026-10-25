@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.Settings;
 
 /// <summary>
 /// One-time file migration frontend-preferences-v1. Delete after the minimum
-/// supported settings schema is newer than 1.0.31 and legacy overlay v1 is retired.
+/// supported settings schema is newer than 1.0.31 and legacy overlay v1/v2 are retired.
 /// The backend never reads the frontend cache or its import marker. Keep the raw
 /// backup until the supported frontend upgrade paths no longer need the importer.
 /// </summary>
@@ -25,13 +25,6 @@ internal static class PresentationPreferenceRemoval
         && root.TryGetProperty("software", out var software) && software.ValueKind == JsonValueKind.Array
         && software.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Object
             && OverlayFields.Any(field => item.TryGetProperty(field, out _)));
-
-    // Metrics removal awaits the protected projection owner; the six layout
-    // fields can leave independently without changing the subscription.
-    internal static bool HasOverlayLayoutFields(JsonElement root) => root.ValueKind == JsonValueKind.Object
-        && root.TryGetProperty("software", out var software) && software.ValueKind == JsonValueKind.Array
-        && software.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Object
-            && OverlayFields.Skip(1).Any(field => item.TryGetProperty(field, out _)));
 
     internal static void PreserveLegacyImage(string path, byte[] bytes, Func<JsonElement, bool> containsLegacy)
     {

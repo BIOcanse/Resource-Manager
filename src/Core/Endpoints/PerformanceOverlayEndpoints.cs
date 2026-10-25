@@ -12,6 +12,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapPerformanceOverlayEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/performance-overlay/settings", async (
+            IPerformanceOverlaySettingsStore store, CancellationToken cancellationToken) =>
+            Results.Ok(await store.GetAsync(cancellationToken))).AllowAnonymous();
+
         app.MapGet("/api/performance-overlay/default", (string softwareId) =>
         {
             try { return Results.Ok(PerformanceOverlaySettings.Normalize(null, softwareId)); }

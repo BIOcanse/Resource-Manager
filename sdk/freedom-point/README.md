@@ -2,18 +2,17 @@
 
 ## 适用包
 
-本目录消费下列正式包，原始字节不重打包。`materials.json` 记录长度、SHA-256、原 NuSpec 摘要、依赖及交付回执；旧 dev.41 原包保留为历史输入，当前 RM pin 为 dev.45。
+本目录仅保留当前实际使用的正式包，原始字节不重打包。`materials.json` 记录长度、SHA-256、原 NuSpec 摘要、依赖及交付回执；当前 RM pin 为 dev.45。
 
 | 版本 | 包 | 实际用途 |
 |---|---|---|
 | 0.1.0-dev.45 | FreedomPoint.Core | 后端与 native 前端产品依赖 |
 | 0.1.0-dev.45 | FreedomPoint.SourceTracking | 后端、前端开发期源码检查 |
 | 0.1.0-dev.45 | FreedomPoint.Generators | 前端 TS 与 C# 正式投影 |
-| 0.1.0-dev.45 | FreedomPoint.Compilation | SDK BuildCheckTool 的正式依赖 |
 | 0.1.0-dev.39 | FreedomPoint.Core | Ledger dev.2 构建时依赖 |
 | 0.1.0-dev.39 | FreedomPoint.Generators | Ledger dev.2 构建时生成器；依赖同版 Core |
 
-工具闭包在 `tools/sdk45`；主 DLL SHA-256 为 `88A34E51D6EBB7E87698B6942EB7BA9F8EC27DD02813BF7A57355DA6FBFA2926`。SourceTracking 的 Roslyn 与工具依赖不进入产品运行图。Ledger 自身的 dev.39 pin 不变。
+RM 构建和测试直接调用已引用包的 SDK API，不运行 FreedomPoint.BuildCheckTool，也不携带其工具闭包或未消费的 Compilation 包。SourceTracking 自带的 Roslyn 用于源码检查，不进入产品运行图。Ledger 自身的 dev.39 pin 不变。
 
 后端适配器独立 `Declare`，前端构建工具调用 `CreateExtensionLayout` / `Extend`，不插入后端先序遍历。后端源码检查不携带前端声明。前端的唯一默认值来源是 `src/UI/Frontend/preferences.points.json`；`scripts/build/Generate-FrontendPreferences.ps1` 用 SDK 正式投影生成 TS/native C#。构建前设置 `RM_LEDGER_WORK_ROOT` 为经维护入口登记且仍 running 的工作目录；native 构建使用同一 `ResourceManagerLedgerWorkRoot`。值文件不入库；structure 文件保留稳定身份。
 

@@ -12,6 +12,30 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(2);
 
     [Fact]
+    public void FoundationReadNeedsBothPublicationsAndNoPerformanceDataset()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var request = FactRequest(SchedulingProcessMetricMask.None);
+        var fact = Fact(42, 100, SchedulingProcessMetricMask.None, 0, 0);
+        var sample = Sample(now, 1, SchedulingProcessMetricMask.None, fact);
+        Assert.Null(state.ReadLatest(request, now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory), sample, now, Schedule(now));
+        Assert.Null(state.ReadLatest(request, now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessAttribution), sample, now, Schedule(now));
+        var current = Assert.IsType<SchedulingProcessFactSnapshot>(state.ReadLatest(request, now));
+        Assert.Empty(current.Processes);
+        Assert.Equal(fact.ProcessStartKey, Assert.Single(current.InventoryProcesses).ProcessStartKey);
+        Assert.Equal(fact.SoftwareId, Assert.Single(current.AttributionProcesses).SoftwareId);
+        Assert.Equal(SchedulingProcessMetricMask.None, current.CurrentMetricMask);
+        Assert.Empty(current.DatasetObservations);
+        Assert.Null(state.ReadLatest(FactRequest(SchedulingProcessMetricMask.CpuUsage), now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory),
+            Sample(now.AddSeconds(1), 2, SchedulingProcessMetricMask.None), now.AddSeconds(1), Schedule(now.AddSeconds(1), 2));
+        Assert.Empty(state.ReadLatest(request, now.AddSeconds(1))!.InventoryProcesses);
+    }
+
+    [Fact]
     public void BadDecisionIdentityDoesNotInvalidateTheIndependentInventory()
     {
         var sample = Sample(DateTimeOffset.UtcNow, 1, SchedulingProcessMetricMask.CpuUsage,

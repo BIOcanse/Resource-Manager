@@ -38,8 +38,12 @@ public static class PerformanceOverlayProjection
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var attributedProcesses = processes.HasSeparateFoundationPayloads
             ? processes.AttributionProcesses : processes.Processes;
+        var liveIdentities = processes.HasSeparateFoundationPayloads
+            ? processes.InventoryProcesses.Select(static process => (process.ProcessId, process.ProcessStartKey)).ToHashSet()
+            : null;
         return attributedProcesses
             .Where(process => process.ProcessId > 0 && process.ProcessStartKey > 0
+                && (liveIdentities is null || liveIdentities.Contains((process.ProcessId, process.ProcessStartKey)))
                 && enabled.Contains(process.SoftwareId))
             .GroupBy(static process => (process.ProcessId, process.ProcessStartKey))
             .Select(static group => group.First())
@@ -50,6 +54,7 @@ public static class PerformanceOverlayProjection
 
     public static PerformanceOverlaySnapshot Create(
         IReadOnlyList<PerformanceOverlaySettings> settings,
+        IReadOnlyList<string> metricIds,
         SchedulingProcessFactSnapshot? processes,
         ResourceBreakdownSnapshot? breakdown,
         HardwareMetricSnapshot? hardware,
@@ -87,7 +92,7 @@ public static class PerformanceOverlayProjection
                 },
                 item.SwapChain, item.PresentCount,
                 ReferenceEquals(item, selectedStream), item.LastPresentAt, item.Statistics)).ToArray();
-            var metrics = selectedSettings.Metrics.Select(metricId => ProjectMetric(
+            var metrics = metricIds.Select(metricId => ProjectMetric(
                 metricId, process, metricProcess, breakdown, hardware, frames, selectedStream,
                 systemDefinitions)).ToArray();
             return new PerformanceOverlayTarget(

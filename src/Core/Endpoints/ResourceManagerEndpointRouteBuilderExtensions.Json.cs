@@ -278,6 +278,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(ResourceManager.App.Domain.Optimization.SoftwareProtectionRequest))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Optimization.TrustedOptimizationTarget))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Overlay.PerformanceOverlaySettings))]
+    [JsonSerializable(typeof(ResourceManager.App.Domain.Overlay.PerformanceOverlaySettingsDocument))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.PublicServices.AiGateway.AiGatewayCredentialCreateRequest))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.PublicServices.AiModels.AiModelLoadRequest))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.PublicServices.AiModels.AiModelUnloadRequest))]

@@ -47,7 +47,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
         try
         {
             var document = await LoadCoreAsync(cancellationToken);
-            var next = new PerformanceOverlaySettingsDocument(2, document.Software
+            var next = new PerformanceOverlaySettingsDocument(3, document.Software
                 .Where(item => !item.SoftwareId.Equals(normalized.SoftwareId, StringComparison.OrdinalIgnoreCase))
                 .Append(normalized)
                 .OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase)
@@ -79,7 +79,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
             var bytes = await NativeCore.WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(storagePath, cancellationToken);
             using var image = JsonDocument.Parse(bytes);
             var document = Normalize(JsonSerializer.Deserialize<PerformanceOverlaySettingsDocument>(bytes, JsonOptions));
-            if (PresentationPreferenceRemoval.HasOverlayLayoutFields(image.RootElement))
+            if (PresentationPreferenceRemoval.HasOverlayFields(image.RootElement))
             {
                 PresentationPreferenceRemoval.PreserveLegacyImage(storagePath, bytes, PresentationPreferenceRemoval.HasOverlayFields);
                 await SaveCoreAsync(document, cancellationToken);
@@ -115,6 +115,6 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
             .Select(static group => group.Last())
             .OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        return new PerformanceOverlaySettingsDocument(2, software);
+        return new PerformanceOverlaySettingsDocument(3, software);
     }
 }

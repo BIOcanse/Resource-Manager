@@ -11,9 +11,6 @@ public static class PerformanceOverlayMetricIds
     public const string Memory = "target.memory";
     public const string Vram = "target.vram";
 
-    public static readonly IReadOnlyList<string> Defaults =
-        [Fps, OnePercentLow, FrameTime, Cpu, Gpu];
-
     public static readonly IReadOnlyList<string> Known =
         [Fps, FrameTime, OnePercentLow, PointOnePercentLow, Cpu, Gpu, Memory, Vram];
 }
@@ -23,7 +20,6 @@ public sealed record PerformanceOverlaySettings
     public string SoftwareId { get; init; } = string.Empty;
     public bool Enabled { get; init; }
     public string Mode { get; init; } = "external";
-    public IReadOnlyList<string> Metrics { get; init; } = PerformanceOverlayMetricIds.Defaults;
 
     public static PerformanceOverlaySettings Default(string softwareId) =>
         new() { SoftwareId = softwareId };
@@ -39,21 +35,11 @@ public sealed record PerformanceOverlaySettings
         }
 
         settings ??= Default(id);
-        var metrics = (settings.Metrics ?? PerformanceOverlayMetricIds.Defaults)
-            .Where(static metric => !string.IsNullOrWhiteSpace(metric))
-            .Select(static metric => metric.Trim())
-            .Where(static metric => metric.Length <= 128)
-            .Select(static metric => PerformanceOverlayMetricIds.Known.FirstOrDefault(
-                known => known.Equals(metric, StringComparison.OrdinalIgnoreCase)) ?? metric)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(64)
-            .ToArray();
         return settings with
         {
             SoftwareId = id,
             Mode = settings.Mode?.Equals("injected", StringComparison.OrdinalIgnoreCase) == true
-                ? "injected" : "external",
-            Metrics = metrics
+                ? "injected" : "external"
         };
     }
 
@@ -63,5 +49,5 @@ public sealed record PerformanceOverlaySettingsDocument(
     int Version,
     IReadOnlyList<PerformanceOverlaySettings> Software)
 {
-    public static PerformanceOverlaySettingsDocument Empty { get; } = new(2, []);
+    public static PerformanceOverlaySettingsDocument Empty { get; } = new(3, []);
 }

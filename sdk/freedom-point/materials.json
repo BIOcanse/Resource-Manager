@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "RM dev.45 Core/Generators/SourceTracking/Compilation and Ledger dev.2 build-time dev.39 Core/Generators",
+  "scope": "RM dev.45 Core/Generators/SourceTracking; Ledger dev.2 build-time dev.39 Core/Generators",
   "firstPartyLicenseId": "Apache-2.0",
   "firstPartyCopyrightOwner": "BIOcanse",
   "firstPartyPublicLicensePending": false,
@@ -57,24 +57,6 @@
         "System.Security.Cryptography"
       ],
       "bundledRoslyn": []
-    },
-    {
-      "authors": "BIOcanse",
-      "nuspecContainsLicense": true,
-      "fileName": "FreedomPoint.Compilation.0.1.0-dev.45.nupkg",
-      "nuspecSha256": "BFBD66F4A0165996E7F34C15E0015A5C6435F3A528BCAEB18E5CE785EB302C0F",
-      "bytes": 11932056,
-      "id": "FreedomPoint.Compilation",
-      "license": "Apache-2.0",
-      "version": "0.1.0-dev.45",
-      "use": "Frontend generation/source-check and formal CLI tool only",
-      "sha256": "8A1D3E842E81707919494ED7A2F839A297CE6B14B4FC7EF4B4AF783E0F1E7E4F",
-      "dependencies": [
-        {
-          "version": "0.1.0-dev.45",
-          "id": "FreedomPoint.Core"
-        }
-      ]
     },
     {
       "authors": "BIOcanse",
@@ -156,8 +138,8 @@
     },
     {
       "path": "authorization.json",
-      "bytes": 2289,
-      "sha256": "A8684E8C53FBF7E87F1B116EB993AC88E42B3EDA3E3AD825C96E9095D05B3286"
+      "bytes": 2030,
+      "sha256": "D9A830D9ECB1763653BE8149C2B4B658DC2443BA0BE4F0342887B073CA93B9E9"
     },
     {
       "path": "third-party/dotnet/LICENSE.txt",
@@ -193,9 +175,5 @@
   "deliveryReceipt": {
     "sha256": "1CA03322CE668497D8D5ECDDDBCD0E1951CF9B47285332F3F6F1122FEA384FD6",
     "path": "D:/Code/FreedomPoint/artifacts/receipts/sdk45/delivery.json"
-  },
-  "tool": {
-    "sha256": "88A34E51D6EBB7E87698B6942EB7BA9F8EC27DD02813BF7A57355DA6FBFA2926",
-    "path": "tools/sdk45/FreedomPoint.BuildCheckTool.dll"
   }
 }

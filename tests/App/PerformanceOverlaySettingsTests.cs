@@ -18,16 +18,13 @@ public sealed class PerformanceOverlaySettingsTests : IDisposable
         var initial = await store.GetSoftwareAsync(" game ", CancellationToken.None);
         Assert.False(initial.Enabled);
         Assert.Equal("external", initial.Mode);
-        Assert.Equal(PerformanceOverlayMetricIds.Defaults, initial.Metrics);
 
         var saved = await store.SaveSoftwareAsync(initial with
         {
             Enabled = true,
-            Mode = "INJECTED",
-            Metrics = ["target.FPS", "target.fps", "cpu.usage"]
+            Mode = "INJECTED"
         }, CancellationToken.None);
         Assert.Equal("injected", saved.Mode);
-        Assert.Equal([PerformanceOverlayMetricIds.Fps, "cpu.usage"], saved.Metrics);
 
         var reloaded = await CreateStore().GetSoftwareAsync("GAME", CancellationToken.None);
         Assert.Equal(JsonSerializer.Serialize(saved), JsonSerializer.Serialize(reloaded));
@@ -50,7 +47,7 @@ public sealed class PerformanceOverlaySettingsTests : IDisposable
         Assert.Equal("GAME", setting.SoftwareId);
         Assert.False(setting.Enabled);
         Assert.Equal("external", setting.Mode);
-        Assert.Equal(2, document.Version);
+        Assert.Equal(3, document.Version);
     }
 
     [Fact]
