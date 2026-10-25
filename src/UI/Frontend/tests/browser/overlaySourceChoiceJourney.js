@@ -14,7 +14,7 @@ const alternate = { fieldName: "gpu_amd_edge_temperature_celsius", deviceIdentit
  * 选 ADLX 次选并保存：来源和项目一起存在前端偏好缓存里，发给后端的任何请求（启动模块登记等）都不带来源；
  * 重新打开仍选着它。改回自动选择保存后缓存里没有这一项的来源；移除这一项时它的来源一起去掉。
  * 最后在九种语言下核对来源名称、自动选择和首选标记的文字。
- * 原生壳按 fields= 订阅、按设备取值的部分由 OverlaySubscriptionConsumerTests / PerformanceOverlayNativeUiTests 核对。
+ * 原生壳按 device=/fields= 成对订阅、按设备取值的部分由 OverlaySubscriptionConsumerTests / PerformanceOverlayNativeUiTests 核对。
  */
 export default async function overlaySourceChoiceJourney(page, baseUrl) {
   const response = await fetch(`${baseUrl}/__test/scenario`, {

@@ -26,6 +26,10 @@ export const processMemoryQuantities = [
 ] as const;
 export type ProcessMemoryQuantity = typeof processMemoryQuantities[number];
 
+/** 后端合同里资源事实能比较的两个整机指标；出现别的就是 wire 变了。 */
+export const resourceFactTotalMetricIds = ["memory.usage", "virtualMemory.usage"] as const;
+export type ResourceFactTotalMetricId = typeof resourceFactTotalMetricIds[number];
+
 export type ProcessMetricFieldReading = { readonly resource: "memory"; readonly quantity: ProcessMemoryQuantity };
 
 export interface ProcessMetricField {
@@ -37,6 +41,8 @@ export interface ProcessMetricField {
   readonly reading: ProcessMetricFieldReading | null;
   /** 后端说这个字段能不能作资源事实（资源表的列、资源条的来源）：工作集、私有工作集、私有提交量是，峰值提交量不是。 */
   readonly supportsResourceFacts: boolean;
+  /** 这个字段作资源事实时比较的整机指标：工作集类是 memory.usage，私有提交量是 virtualMemory.usage；不能作资源事实的为 null。 */
+  readonly resourceFactTotalMetricId: ResourceFactTotalMetricId | null;
 }
 
 export const processFieldCatalogDecoder = defineResponseDecoder<readonly ProcessMetricField[]>(
@@ -51,6 +57,8 @@ export const processFieldCatalogDecoder = defineResponseDecoder<readonly Process
       valueKind: requireNonEmptyString(record.valueKind, `${path}.valueKind`),
       sourceId: requireNonEmptyString(record.sourceId, `${path}.sourceId`),
       supportsResourceFacts: requireBoolean(record.supportsResourceFacts, `${path}.supportsResourceFacts`),
+      resourceFactTotalMetricId: requireNullable(record.resourceFactTotalMetricId, `${path}.resourceFactTotalMetricId`,
+        (total, totalPath) => requireOneOf(total, totalPath, resourceFactTotalMetricIds)),
       reading: requireNullable(record.reading, `${path}.reading`, (reading, readingPath) => {
         const fact = requireRecord(reading, readingPath);
         return {

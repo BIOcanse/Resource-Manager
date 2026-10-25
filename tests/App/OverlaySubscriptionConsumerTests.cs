@@ -35,18 +35,20 @@ public sealed class OverlaySubscriptionConsumerTests
     }
 
     [Fact]
-    public void ItemsWithAChosenSourceSubscribeTheirRawFieldInsteadOfThePartAddress()
+    public void ItemsWithAChosenSourceSubscribeTheirRawFieldOnTheChosenDeviceInsteadOfThePartAddress()
     {
-        // docs/metric_item_source_choice_2026-10-25.md: a chosen source reads only that raw field.
+        // docs/metric_item_source_choice_2026-10-25.md: a chosen source reads only that raw field on that device.
+        // Each chosen device is one device=/fields= pair (the backend pairs them in order), never a field on every device.
         var preferences = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
         {
             ["game"] = new()
             {
                 Enabled = true,
-                Metrics = ["target.fps", "gpu.0.temperature", "cpu.temperature"],
+                Metrics = ["target.fps", "gpu.0.temperature", "gpu.0.hotspot", "cpu.temperature"],
                 MetricSources = new Dictionary<string, FrontendOverlayMetricSource>
                 {
                     ["gpu.0.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|0"),
+                    ["gpu.0.hotspot"] = new("gpu_amd_hotspot_temperature_celsius", "gpu|0"),
                     ["cpu.temperature"] = new("gpu_amd_edge_temperature_celsius", "gpu|1")
                 }
             },
@@ -62,12 +64,15 @@ public sealed class OverlaySubscriptionConsumerTests
         Assert.Equal(2, plan.Length);
         var fieldsOnly = plan.Single(item => item.Path.Contains("softwareId=fields-only"));
         Assert.DoesNotContain("&ids=", fieldsOnly.Path);
-        Assert.EndsWith("&fields=cpu_amd_tctl_temperature_celsius", fieldsOnly.Path);
+        Assert.EndsWith("&device=cpu%7C0&fields=cpu_amd_tctl_temperature_celsius", fieldsOnly.Path);
         var game = plan.Single(item => item.Path.Contains("softwareId=game"));
-        Assert.EndsWith("&ids=target.fps&fields=gpu_amd_edge_temperature_celsius", game.Path);
-        Assert.DoesNotContain("temperature&ids", game.Path);
-        Assert.DoesNotContain("ids=gpu.0.temperature", game.Path);
+        Assert.EndsWith("&ids=target.fps"
+            + "&device=gpu%7C0&fields=gpu_amd_edge_temperature_celsius,gpu_amd_hotspot_temperature_celsius"
+            + "&device=gpu%7C1&fields=gpu_amd_edge_temperature_celsius", game.Path);
+        Assert.DoesNotContain("ids=gpu.0", game.Path);
         Assert.DoesNotContain("ids=cpu.temperature", game.Path);
+        foreach (var path in plan.Select(static item => item.Path))
+            Assert.Equal(path.Split("&fields=").Length, path.Split("&device=").Length);
     }
 
     [Fact]

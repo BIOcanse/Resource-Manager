@@ -20,6 +20,10 @@ import {
   resourceSegmentLayout,
   shouldAnimateResourceSegment
 } from "./resourceSegmentLayout";
+import {
+  normalizeResourceBarScaleMode,
+  resourceBarSupportsCapacity
+} from "./resourceBarScaleCapabilities";
 import type {
   ResourceSegmentCssVars as CssVars
 } from "./resourceSegmentLayout";
@@ -49,7 +53,6 @@ import type { ObservationState } from "../../observation/observationState";
 import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
 import {
-  resourceBarScaleModes,
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
@@ -263,12 +266,7 @@ function ResourceBarEditor(props: {
       <For each={resourceBarOptions(props.catalog)}>
         {(metric) => {
           const bar = () => barByMetric().get(metric.id);
-          // 选了来源的资源条按显式口径订阅，后端只按容量比较：缩放只剩容量。
-          const scaleModes = () => resourceBarScaleModes({ metricId: metric.id, source: bar()?.source ?? null });
-          const scaleMode = () => {
-            const stored = bar()?.scaleMode;
-            return stored && scaleModes().includes(stored) ? stored : scaleModes()[0];
-          };
+          const supportsCapacity = resourceBarSupportsCapacity(metric.id);
           return (
             <label class="resource-bar-option">
               <input
@@ -280,11 +278,13 @@ function ResourceBarEditor(props: {
                 <span>{localizedMetricLabel(metric.id, metric.label)}</span>
               </span>
               <StandardSelect<"capacity" | "active">
-                value={scaleMode()}
-                disabled={!bar() || scaleModes().length < 2}
+                value={normalizeResourceBarScaleMode(metric.id, bar()?.scaleMode)}
+                disabled={!bar() || !supportsCapacity}
                 ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(localizedMetricLabel(metric.id, metric.label))}
-                options={scaleModes().map((mode) => ({ value: mode,
-                  label: mode === "capacity" ? uiText.resourceBreakdown.scaleCapacity : uiText.resourceBreakdown.scaleActive }))}
+                options={[
+                  ...(supportsCapacity ? [{ value: "capacity" as const, label: uiText.resourceBreakdown.scaleCapacity }] : []),
+                  { value: "active" as const, label: uiText.resourceBreakdown.scaleActive }
+                ]}
                 onChange={(value) => props.onScaleModeChange(metric.id, value)}
               />
             </label>
@@ -588,13 +588,11 @@ function ResourceBreakdownItem(props: {
         {(_expandedId) => (
           <Show when={expanded()}>
             {(software) => <ResourceProcessPanel bar={props.bar} software={software()}
-              // 选了来源的资源条没有进程明细（明细订阅不接受显式口径），写明不可用，不借按指标 id 的明细。
-              processes={props.bar.source !== null || props.processDetails === null ? null : props.processDetails.metrics
-                .find(metric => metric.metricId === props.bar.metricId)?.software
+              // 选了来源的资源条按这个字段订阅明细，后端回的明细 metricId 是字段名。
+              processes={props.processDetails === null ? null : props.processDetails.metrics
+                .find(metric => metric.metricId === (props.bar.source ?? props.bar.metricId))?.software
                 .find(item => item.softwareId === software().softwareId)?.processes ?? []}
-              observation={props.bar.source !== null
-                ? { status: "error", source: "none", lastError: uiText.resourceBreakdownView.sourceProcessDetailsUnavailable }
-                : props.processDetailsObservation} />}
+              observation={props.processDetailsObservation} />}
           </Show>
         )}
       </Show>

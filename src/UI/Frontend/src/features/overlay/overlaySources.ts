@@ -8,7 +8,7 @@ import { metricSourceChoiceLabel, metricSourceChoices } from "../monitor/metricS
  * 项目是浮窗列表里的一项（部件地址，如 cpu.temperature）。来源和卡片选择器同一出处
  * （features/monitor/metricSources.ts：部件地址的后端候选，自动选择写出后端现在选中的那个）。
  * 自动选择时这一项没有来源记录，原生壳按部件地址订阅；选了具体来源，记下这个候选的字段名和设备身份，
- * 原生壳只按 fields= 读这台设备上的这个字段，读不到时这一行不显示数值，不换成部件地址。
+ * 原生壳按 device=/fields= 成对订阅，只读这台设备上的这个字段，读不到时这一行不显示数值，不换成部件地址。
  * 浮窗的 target.* 指标没有候选，不摆选择。
  */
 

@@ -11,7 +11,6 @@ export const zhMonitorViewsCopy = {
     noDataDetail: "當前尚未收到可顯示資料；資料來源準備完成後會自動更新。",
     editorLabel: "資源佔用條目編輯器",
     scaleModeLabel: (metric: string) => `${metric} 縮放模式`,
-    sourceProcessDetailsUnavailable: "選了具體來源的資源條暫時沒有程序明細。",
     moveUp: (label: string) => `上移 ${label}`,
     moveUpTitle: "上移",
     moveDown: (label: string) => `下移 ${label}`,

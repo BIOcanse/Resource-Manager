@@ -729,7 +729,6 @@ const koKrAppCopy: AppCopy = {
     noDataDetail: "표시할 데이터가 아직 도착하지 않았습니다. 데이터 원본이 준비되면 자동으로 갱신됩니다.",
     editorLabel: "리소스 사용량 항목 편집기",
     scaleModeLabel: (metric: string) => `${metric} 눈금 모드`,
-    sourceProcessDetailsUnavailable: "원본을 지정한 막대에는 아직 프로세스 세부 정보가 없습니다.",
     moveUp: (label: string) => `${label} 위로 이동`,
     moveUpTitle: "위로 이동",
     moveDown: (label: string) => `${label} 아래로 이동`,

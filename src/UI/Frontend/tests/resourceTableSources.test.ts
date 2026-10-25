@@ -13,9 +13,12 @@ import { uiText } from "../src/text.ts";
 
 // 后端 ProcessMetricFieldRegistry 的 wire 形状：内存四种口径带 reading，其余为 null。
 // supportsResourceFacts 是后端说的（工作集、私有工作集、私有提交量 true，峰值提交量 false），前端只读它。
+const totalFor = (quantity: string | null) => quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
+  : quantity === "private_commit" ? "virtualMemory.usage" : null;
 const wireField = (name: string, quantity: string | null, supportsResourceFacts = quantity !== null && quantity !== "peak_private_commit") => ({
   name, valueKind: "unsigned64", unit: "B", sourceId: "windows.process.query",
-  resource: "process", vendor: "all", reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts });
+  resource: "process", vendor: "all", reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts,
+  resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
 const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_handle_count_actual", null),
   wireField("process_all_working_set_actual", "working_set_including_shared"),

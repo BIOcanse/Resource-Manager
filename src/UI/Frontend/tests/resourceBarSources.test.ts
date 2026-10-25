@@ -1,12 +1,16 @@
-// 资源条先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md）：可选来源、订阅参数（ids/modes 与 measures）、
-// 后端条接到项目上、名字和说明、缩放，以及条上 processFieldName / totalMetricId 的解码。
+// 资源条先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md）：可选来源（按 resourceFactTotalMetricId 归到自己的条）、
+// 订阅参数（ids/modes 与 measures/modes，明细也带 measures）、后端条接到项目上、名字和说明，以及条上 processFieldName / totalMetricId 的解码。
 import assert from "node:assert/strict";
 import { processFieldCatalogDecoder } from "../src/data/resourceMonitor/processFieldCatalog.ts";
-import { buildResourceMonitorSubscriptionUrl, normalizeResourceMonitorQuery } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
+import {
+  buildResourceMonitorSubscriptionUrl,
+  buildResourceProcessDetailsSubscriptionUrl,
+  normalizeResourceBreakdownQuery,
+  normalizeResourceMonitorQuery
+} from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import { decodeResourceBreakdownWireSnapshot } from "../src/api/resourceBreakdownWire.ts";
 import {
   resourceBarQuery,
-  resourceBarScaleModes,
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
@@ -15,9 +19,12 @@ import {
 import { uiText } from "../src/text.ts";
 import type { ResourceBarSettings, ResourceBreakdownBar } from "../src/types.ts";
 
+const totalFor = (quantity: string | null) => quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
+  : quantity === "private_commit" ? "virtualMemory.usage" : null;
 const wireField = (name: string, quantity: string | null, supportsResourceFacts: boolean) => ({ name, valueKind: "unsigned64", unit: "B",
   sourceId: "windows.process.query", resource: "process", vendor: "all",
-  reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts });
+  reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts,
+  resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
 const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_handle_count_actual", null, false),
   wireField("process_all_working_set_actual", "working_set_including_shared", true),
@@ -27,21 +34,25 @@ const fields = processFieldCatalogDecoder.decode([
 ]);
 const quantities = uiText.resourceTable.memoryQuantities;
 
-// 两条整机内存资源条有来源：自动选择在前，然后是后端标了 supportsResourceFacts 的内存口径；别的条没有。
-const allSources = [null, "process_all_working_set_actual", "process_all_private_working_set_actual", "process_all_private_commit_actual"];
-assert.deepEqual(resourceBarSourceChoices("memory.usage", fields), allSources);
-assert.deepEqual(resourceBarSourceChoices("virtualMemory.usage", fields), allSources);
+// 两条整机内存资源条有来源：自动选择在前，然后是后端说整机比较指标就是这条的内存口径；别的条没有。
+assert.deepEqual(resourceBarSourceChoices("memory.usage", fields),
+  [null, "process_all_working_set_actual", "process_all_private_working_set_actual"], "Physical memory lists the working-set fields");
+assert.deepEqual(resourceBarSourceChoices("virtualMemory.usage", fields),
+  [null, "process_all_private_commit_actual"], "Commit lists private commit");
+// resourceFactTotalMetricId 必须给出（可以是 null），且只能是两个整机指标之一。
+assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null, false), resourceFactTotalMetricId: undefined }]), /resourceFactTotalMetricId/);
+assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null, false), resourceFactTotalMetricId: "cpu.usage" }]), /resourceFactTotalMetricId/);
 assert.deepEqual(resourceBarSourceChoices("cpu.usage", fields), []);
 assert.deepEqual(resourceBarSourceChoices("memory.usage", []), [], "No catalog yet: nothing to choose");
 assert.equal(resourceBarSourceLabel(null, fields, "process_all_private_working_set_actual"), uiText.metricPicker.sourceAutomatic(quantities.private_working_set));
 assert.equal(resourceBarSourceLabel(null, fields, null), uiText.metricPicker.sourceAutomatic(null));
 assert.equal(resourceBarSourceLabel("process_all_private_commit_actual", fields, null), quantities.private_commit);
 
-// 订阅：自动选择按 ids/modes；选了来源只发这个字段的 measures，不再带这条的 ids/modes；没有按 id 的条时发空 ids。
+// 订阅：自动选择按 ids/modes；选了来源发这个字段的 measures，缩放按 modes=字段名:缩放，不带这条的 ids；没有按 id 的条时发空 ids。
 const memory: ResourceBarSettings = { id: "resource-memory", metricId: "memory.usage", scaleMode: "active", source: "process_all_private_commit_actual" };
 const cpu: ResourceBarSettings = { id: "resource-cpu", metricId: "cpu.usage", scaleMode: "capacity" };
-assert.deepEqual(resourceBarQuery(memory), { metricId: "memory.usage", scaleMode: "capacity", source: "process_all_private_commit_actual" },
-  "A chosen source is compared against capacity only");
+assert.deepEqual(resourceBarQuery(memory), { metricId: "memory.usage", scaleMode: "active", source: "process_all_private_commit_actual" },
+  "A chosen source keeps the bar's scale mode");
 assert.deepEqual(resourceBarQuery({ ...memory, source: null }), { metricId: "memory.usage", scaleMode: "active", source: null });
 assert.deepEqual(resourceBarQuery({ ...cpu, source: "process_all_private_commit_actual" }).source, null, "Only memory bars take a source");
 const query = (bars: ResourceBarSettings[]) => new URL(buildResourceMonitorSubscriptionUrl(normalizeResourceMonitorQuery({
@@ -49,7 +60,7 @@ const query = (bars: ResourceBarSettings[]) => new URL(buildResourceMonitorSubsc
   sortColumnId: "impact", sortDirection: "desc", tableMode: "software" }), 1000), "http://local").searchParams;
 const mixed = query([cpu, memory]);
 assert.deepEqual(mixed.getAll("ids"), ["cpu.usage"]);
-assert.deepEqual(mixed.getAll("modes"), ["cpu.usage:capacity"]);
+assert.deepEqual(mixed.getAll("modes"), ["cpu.usage:capacity", "process_all_private_commit_actual:active"]);
 assert.deepEqual(mixed.getAll("measures"), ["process_all_private_commit_actual"]);
 const measuresOnly = query([memory]);
 assert.deepEqual(measuresOnly.getAll("ids"), [""], "Without id bars the subscription says so instead of asking for the default bars");
@@ -57,10 +68,13 @@ assert.deepEqual(measuresOnly.getAll("measures"), ["process_all_private_commit_a
 assert.deepEqual(query([memory, { ...memory, id: "resource-virtual-memory", metricId: "virtualMemory.usage" }]).getAll("measures"),
   ["process_all_private_commit_actual"], "The same measure is subscribed once");
 
-// 缩放：选了来源只剩容量；自动选择保留原有能力。
-assert.deepEqual(resourceBarScaleModes(memory), ["capacity"]);
-assert.deepEqual(resourceBarScaleModes({ ...memory, source: null }), ["capacity", "active"]);
-assert.deepEqual(resourceBarScaleModes({ metricId: "disk.io", source: null }), ["active"]);
+// 进程明细和条一样带 measures：选了来源的资源条展开后按这个字段取进程。
+const details = new URL(buildResourceProcessDetailsSubscriptionUrl(normalizeResourceBreakdownQuery({
+  bars: [cpu, memory].map(resourceBarQuery), processDetailSoftwareIds: ["example"] }), 1000), "http://local").searchParams;
+assert.equal(details.get("scope"), "details");
+assert.deepEqual(details.getAll("measures"), ["process_all_private_commit_actual"]);
+assert.deepEqual(details.getAll("ids"), ["cpu.usage"]);
+assert.deepEqual(details.getAll("processDetails"), ["example"]);
 
 // 条上的 processFieldName / totalMetricId：后端只给进程内存类的条；写了就必须是非空字符串。
 const wireBar = (metricId: string, extra: Record<string, unknown> = {}) => ({ metricId, unit: "B", scaleMode: "capacity",

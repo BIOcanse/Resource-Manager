@@ -17,12 +17,11 @@ import { uiText } from "../../text.ts";
  * 项目是资源条本身（物理内存 memory.usage、虚拟内存提交量 virtualMemory.usage）。来源第一项是“自动选择”：
  * 资源条存 source = null，按原来的指标 id 订阅（ids=），后端按它的口径给软件分项和整机总量，并在
  * processFieldName 写出这次实际读的进程字段。其余每项是进程内存的一个口径（presentation/processMemorySources.ts，
- * 和资源表内存列同一出处），资源条存字段名，订阅时作显式口径（measures=）只读这个字段；总量、比例和
- * “系统/驱动保留”由后端按这个字段的整机事实给出，工作集类对物理内存已用量、私有提交量对系统提交量。
- * 选了的字段读不到总量时后端不发这一条，资源条就不显示，不换成别的口径。
- *
- * 显式口径在后端只按容量比较（不接受 modes=），所以选了来源的资源条缩放固定为容量；
- * 进程明细（scope=details）也不接受显式口径，选了来源的资源条没有进程明细，面板写明不可用。
+ * 和资源表内存列同一出处），而且只列后端说整机比较指标（resourceFactTotalMetricId）就是这条资源条的那些：
+ * 物理内存条列工作集类，提交量条列私有提交量。资源条存字段名，订阅时作显式口径（measures=）只读这个字段，
+ * 缩放照常按 modes=字段名:缩放 传；总量、比例和“系统/驱动保留”由后端按这个字段的整机事实给出。
+ * 选了的字段读不到总量时后端不发这一条，资源条就不显示，不换成别的口径。进程明细（scope=details）
+ * 同样按 measures= 订阅这个字段，后端回的明细 metricId 就是字段名。
  */
 
 /** 资源条加上它的来源：后端那一条按项目的 id 显示，选择、展开、排序都认项目。 */
@@ -37,10 +36,10 @@ export interface ResourceBarView extends ResourceBreakdownBar {
 /** 有来源可选的资源条：两条整机内存。 */
 const memoryBarIds: ReadonlySet<string> = new Set(["memory.usage", "virtualMemory.usage"]);
 
-/** 一条资源条能选的来源：null 是自动选择，其余是进程字段名；没得选时为空数组（不摆选择）。 */
+/** 一条资源条能选的来源：null 是自动选择，其余是整机比较指标就是这条资源条的进程字段名；没得选时为空数组（不摆选择）。 */
 export function resourceBarSourceChoices(metricId: string, fields: readonly ProcessMetricField[]): readonly (string | null)[] {
   if (!memoryBarIds.has(metricId)) return [];
-  const sources = processMemorySources(fields);
+  const sources = processMemorySources(fields).filter((field) => field.resourceFactTotalMetricId === metricId);
   return sources.length === 0 ? [] : [null, ...sources.map((field) => field.name)];
 }
 
@@ -49,18 +48,9 @@ export function resourceBarSource(bar: Pick<ResourceBarSettings, "metricId" | "s
   return bar.source && memoryBarIds.has(bar.metricId) ? bar.source : null;
 }
 
-/** 资源条在订阅里的样子：自动选择按指标 id 和缩放；选了来源是这个字段的显式口径（缩放固定为容量）。 */
+/** 资源条在订阅里的样子：指标 id、缩放和来源（自动选择为 null，按 ids= 订阅；选了来源按这个字段的 measures= 订阅）。 */
 export function resourceBarQuery(bar: ResourceBarSettings): ResourceBarQuery {
-  const source = resourceBarSource(bar);
-  return source
-    ? { metricId: bar.metricId, scaleMode: "capacity", source }
-    : { metricId: bar.metricId, scaleMode: normalizeResourceBarScaleMode(bar.metricId, bar.scaleMode), source: null };
-}
-
-/** 这条资源条能选的缩放：选了来源只有容量。 */
-export function resourceBarScaleModes(bar: Pick<ResourceBarSettings, "metricId" | "source">): readonly ("capacity" | "active")[] {
-  if (resourceBarSource(bar)) return ["capacity"];
-  return normalizeResourceBarScaleMode(bar.metricId, "capacity") === "capacity" ? ["capacity", "active"] : ["active"];
+  return { metricId: bar.metricId, scaleMode: normalizeResourceBarScaleMode(bar.metricId, bar.scaleMode), source: resourceBarSource(bar) };
 }
 
 /**

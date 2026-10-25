@@ -7,22 +7,27 @@ internal sealed record OverlaySubscription(string Id, string Path);
 
 internal static class OverlaySubscriptions
 {
-    // Items with a chosen source are read as raw fields (fields=) instead of their part address (ids=).
-    // Like the dashboard's field cards the fields are requested by name; each item picks its own device.
+    // Items with a chosen source are read as raw fields instead of their part address (ids=): each chosen
+    // device is one device=/fields= pair carrying the distinct field names chosen on it, so only those
+    // (device, field) pairs are sampled.
     internal static OverlaySubscription[] Create(FrontendPreferences preferences, StartupModuleOperationsDocument? operations = null) =>
         preferences.Overlays.Where(pair => OverlayStartupModules.Enabled(pair.Key, pair.Value, operations ?? new(1, [])))
             .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(static pair => (SoftwareId: pair.Key,
                 Ids: pair.Value.Metrics.Where(id => pair.Value.SourceFor(id) is null)
                     .OrderBy(static id => id, StringComparer.Ordinal).ToArray(),
-                Fields: pair.Value.Metrics.Select(pair.Value.SourceFor).OfType<FrontendOverlayMetricSource>()
-                    .Select(static source => source.FieldName).Distinct(StringComparer.Ordinal)
-                    .Order(StringComparer.Ordinal).ToArray()))
-            .Where(static item => item.Ids.Length + item.Fields.Length > 0)
+                Devices: pair.Value.Metrics.Select(pair.Value.SourceFor).OfType<FrontendOverlayMetricSource>()
+                    .GroupBy(static source => source.DeviceIdentity, StringComparer.Ordinal)
+                    .OrderBy(static device => device.Key, StringComparer.Ordinal)
+                    .Select(static device => (Device: device.Key, Fields: device.Select(static source => source.FieldName)
+                        .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()))
+                    .ToArray()))
+            .Where(static item => item.Ids.Length + item.Devices.Length > 0)
             .Select((item, index) => new OverlaySubscription($"overlay-{index}",
                 "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(item.SoftwareId)
                 + string.Concat(item.Ids.Select(static id => "&ids=" + Uri.EscapeDataString(id)))
-                + string.Concat(item.Fields.Select(static field => "&fields=" + Uri.EscapeDataString(field)))))
+                + string.Concat(item.Devices.Select(static device => "&device=" + Uri.EscapeDataString(device.Device)
+                    + "&fields=" + string.Join(',', device.Fields.Select(Uri.EscapeDataString))))))
             .ToArray();
 
     // The controller observes operational settings without sampling. Only the

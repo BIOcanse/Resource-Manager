@@ -20,7 +20,7 @@ export interface ResourceBarQuery {
   readonly metricId: string;
   readonly scaleMode: ResourceScaleMode;
   /**
-   * 选了来源的资源条：后端进程字段名，作显式口径（measures=）订阅，不带 ids/modes；null 或没有是按 metricId 订阅。
+   * 选了来源的资源条：后端进程字段名，作显式口径（measures=）订阅，缩放按 modes=字段名:缩放 传，不带 ids；null 或没有是按 metricId 订阅。
    * 见 features/resourceBreakdown/resourceBarSources.ts。
    */
   readonly source?: string | null;
@@ -200,7 +200,9 @@ function appendBars(
     params.append("modes", `${bar.metricId}:${bar.scaleMode}`);
   }
   for (const bar of bars) {
-    if (bar.source) params.append("measures", bar.source);
+    if (!bar.source) continue;
+    params.append("measures", bar.source);
+    params.append("modes", `${bar.source}:${bar.scaleMode}`);
   }
 }
 

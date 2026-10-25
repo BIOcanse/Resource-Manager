@@ -705,11 +705,13 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/resource-monitor/snapshot") {
     const capturedAt = resourceSlotCapturedAt;
+    if (!resourceMeasuresKnown(url)) return json(response, 400, { error: "One or more subscription queries are invalid." });
     if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt));
     const breakdown = resourceBreakdown(
       capturedAt,
       new Set(url.searchParams.getAll("processDetails")),
-      url.searchParams.getAll("measures"));
+      url.searchParams.getAll("measures"),
+      url.searchParams.getAll("modes"));
     return json(response, 200, {
       version: 10,
       capturedAt,
@@ -1461,8 +1463,11 @@ const processFieldCatalog = [
   ["process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query", "peak_private_commit"]
 ].map(([name, valueKind, unit, sourceId, quantity]) => ({ name, valueKind, unit, sourceId, resource: "process", vendor: "all",
   reading: quantity === null ? null : { resource: "memory", quantity },
-  // 后端：工作集、私有工作集、私有提交量能作资源事实，峰值提交量和非内存字段不能。
-  supportsResourceFacts: quantity !== null && quantity !== "peak_private_commit" }));
+  // 后端：工作集、私有工作集、私有提交量能作资源事实，峰值提交量和非内存字段不能；
+  // resourceFactTotalMetricId 是作资源事实时比较的整机指标（不能作资源事实的为 null）。
+  supportsResourceFacts: quantity !== null && quantity !== "peak_private_commit",
+  resourceFactTotalMetricId: quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
+    : quantity === "private_commit" ? "virtualMemory.usage" : null }));
 
 // 自动的整机内存指标实际读的进程字段（后端在资源事实和资源条上写的 processFieldName）。
 const automaticProcessFields = { "memory.usage": "process_all_private_working_set_actual", "virtualMemory.usage": "process_all_private_commit_actual" };
@@ -1474,6 +1479,11 @@ const processMemoryFacts = {
   process_all_private_working_set_actual: { totalMetricId: "memory.usage", totalValue: 8 * GiB, capacityValue: 16 * GiB, processSum: 0.5 * GiB },
   process_all_private_commit_actual: { totalMetricId: "virtualMemory.usage", totalValue: 6 * GiB, capacityValue: 24 * GiB, processSum: GiB }
 };
+
+// 后端只接受能作资源事实的进程字段作 measures；峰值提交量、未知字段整条请求 400。
+function resourceMeasuresKnown(url) {
+  return url.searchParams.getAll("measures").every(field => Object.hasOwn(processMemoryFacts, field));
+}
 
 function resourceFactItemsKnown(url) {
   return url.searchParams.getAll("items").every(id => ["process.inventory", "process.attribution", "cpu.usage", "memory.usage", "disk.io", "network.traffic"].includes(id)
@@ -1718,8 +1728,10 @@ function fixtureCpuResidency(capturedAt = now()) {
 function resourceProcessDetails(url, capturedAt) {
   const requested = new Set(url.searchParams.getAll("processDetails").flatMap(value => value.split(",")));
   const ids = new Set(url.searchParams.getAll("ids").flatMap(value => value.split(",")));
-  const breakdown = resourceBreakdown(capturedAt, requested);
-  const metrics = breakdown.bars.filter(bar => !url.searchParams.has("ids") || ids.has(bar.metricId))
+  const measures = url.searchParams.getAll("measures");
+  // 明细按 measures 给出这个字段的进程，整机总量读不到也照样给。
+  const breakdown = resourceBreakdown(capturedAt, requested, measures, url.searchParams.getAll("modes"), { keepMissingTotals: true });
+  const metrics = breakdown.bars.filter(bar => measures.includes(bar.metricId) || !url.searchParams.has("ids") || ids.has(bar.metricId))
     .map(bar => ({ metricId: bar.metricId, software: bar.software
       .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0]))
       .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
@@ -1727,7 +1739,7 @@ function resourceProcessDetails(url, capturedAt) {
   return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
 }
 
-function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = []) {
+function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false } = {}) {
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
@@ -1776,21 +1788,26 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
           (value) => `${(value * 1024).toFixed(2)} MB`,
           processDetailSoftwareIds).map(row => scenario.resourceSharedMemory ? [...row, row[1] / 2] : row)
       },
-      ...resourceMeasureBars(softwareCatalog, measures)
+      ...resourceMeasureBars(softwareCatalog, measures, modes, processDetailSoftwareIds, keepMissingTotals)
     ]
   };
 }
 
 // 按进程字段订阅的资源条（后端 ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars 的形状）：
-// metricId 和 processFieldName 是字段名，totalMetricId 是它比较的整机事实，只按容量比较；第一个软件拿全部进程之和，
-// 差额进 resource-residual:<totalMetricId>。后端只认三种能作资源事实的字段，别的 measures 不出条；
-// 总量读不到（resourceBarMeasureTotalsMissing）时也不出这一条。
-function resourceMeasureBars(softwareCatalog, measures) {
+// metricId 和 processFieldName 是字段名，totalMetricId 是它比较的整机事实；第一个软件拿全部进程之和，
+// 差额进 resource-residual:<totalMetricId>。缩放看 modes=，键可以是字段名或它的 totalMetricId，同时出现时字段名优先，
+// active 按整机已用量比较。后端只认三种能作资源事实的字段（别的在请求时已经 400）；
+// 总量读不到（resourceBarMeasureTotalsMissing）时条上不出这一条，明细照样给。
+function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetailSoftwareIds = new Set(), keepMissingTotals = false) {
+  const modeByKey = new Map(modes.map(value => value.split(":")).filter(parts => parts.length === 2));
   const known = [...new Set(measures)].filter(field => Object.hasOwn(processMemoryFacts, field)
-    && !(scenario.resourceBarMeasureTotalsMissing ?? []).includes(field));
+    && (keepMissingTotals || !(scenario.resourceBarMeasureTotalsMissing ?? []).includes(field)));
   return known.map(field => {
     const fact = processMemoryFacts[field];
-    const percent = value => value * 100 / fact.capacityValue;
+    const scaleMode = modeByKey.get(field) ?? modeByKey.get(fact.totalMetricId) ?? "capacity";
+    const base = scaleMode === "active" ? fact.totalValue : fact.capacityValue;
+    const percent = value => value * 100 / base;
+    const detailed = processDetailSoftwareIds.has(softwareCatalog[0][0]);
     const residualId = `resource-residual:${fact.totalMetricId}`;
     let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
     if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
@@ -1800,12 +1817,14 @@ function resourceMeasureBars(softwareCatalog, measures) {
       totalMetricId: fact.totalMetricId,
       processFieldName: field,
       unit: "B",
-      scaleMode: "capacity",
+      scaleMode,
       totalValue: fact.totalValue,
       capacityValue: fact.capacityValue,
       totalSystemPercent: percent(fact.totalValue),
       sharedValue: null,
-      software: [[0, fact.processSum, percent(fact.processSum), 1, 5, []], [residualIndex, residual, percent(residual), 0, 0, []]]
+      software: [[0, fact.processSum, percent(fact.processSum), 1, 5, detailed ? [[4242, "example.exe", "C:\\FrontendHarness\\example.exe",
+        fact.processSum, percent(fact.processSum), 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + 4242n)]] : []],
+        [residualIndex, residual, percent(residual), 0, 0, []]]
     };
   });
 }
@@ -2281,6 +2300,8 @@ function subscriptionPayloadFactory(url) {
         adapters: []
       });
     case "/api/resource-monitor/subscribe": {
+      // 和后端一样，不支持的 measures（例如峰值提交量）在条和明细上都拒绝。
+      if (!resourceMeasuresKnown(url)) return null;
       if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt);
       const processDetails = new Set(url.searchParams.getAll("processDetails"));
       return (publishedAt) => {
@@ -2289,7 +2310,7 @@ function subscriptionPayloadFactory(url) {
         return {
           version: 10,
           capturedAt,
-          breakdown: resourceBreakdown(capturedAt, processDetails, url.searchParams.getAll("measures"))
+          breakdown: resourceBreakdown(capturedAt, processDetails, url.searchParams.getAll("measures"), url.searchParams.getAll("modes"))
         };
       };
     }
