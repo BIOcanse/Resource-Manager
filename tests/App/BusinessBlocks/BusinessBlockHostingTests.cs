@@ -38,7 +38,8 @@ public sealed class BusinessBlockHostingTests
             })
             .Build();
 
-        var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+        Assert.Single(host.Services.GetServices<IHostedService>().OfType<BusinessBlockDependencyLifetime>());
+        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
         Assert.Collection(
             hostedServices,
             service => Assert.IsType<NonOwningHostedService<ConsumerService>>(service),

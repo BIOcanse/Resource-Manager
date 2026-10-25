@@ -262,7 +262,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>());
-        services.AddHostedServiceAlias<DxgkrnlVidMmEtwTelemetryZone>();
         services.AddSingleton<PresentFrameEtwSource>();
         services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());

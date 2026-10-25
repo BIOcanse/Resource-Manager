@@ -2,7 +2,12 @@ using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -24,10 +29,42 @@ internal sealed class GpuAllocationTestSessionFactory : IGpuAllocationSessionFac
         Sessions.Add(result);
         return result;
     }
-    internal GpuAllocationCollector Collector(TimeSpan? budget = null, ILogger<GpuAllocationCollector>? logger = null,
-        IConfiguration? configuration = null, TimeProvider? timeProvider = null)
-        => new(logger ?? NullLogger<GpuAllocationCollector>.Instance, configuration ?? new ConfigurationBuilder().Build(),
-            this, timeProvider ?? TimeProvider.System, budget);
+    internal GpuAllocationTestHarness Harness(TimeSpan? budget = null, ILogger<GpuAllocationCollector>? logger = null,
+        IConfiguration? configuration = null, TimeProvider? timeProvider = null,
+        IEtwConsumerThreadObserver? observer = null, BusinessBlockOptions? blockOptions = null)
+        => new(this, budget, logger, configuration, timeProvider, observer, blockOptions);
+}
+
+internal sealed class GpuAllocationTestHarness : IAsyncDisposable
+{
+    private readonly ServiceProvider services;
+
+    internal GpuAllocationTestHarness(GpuAllocationTestSessionFactory factory, TimeSpan? budget,
+        ILogger<GpuAllocationCollector>? logger, IConfiguration? configuration, TimeProvider? timeProvider,
+        IEtwConsumerThreadObserver? observer, BusinessBlockOptions? blockOptions)
+    {
+        services = new ServiceCollection().BuildServiceProvider();
+        GpuAllocationCollector? collector = null;
+        var registration = new BusinessBlockRegistration("gpu-allocation-etw", [], _ => collector
+            ?? throw new InvalidOperationException("The GPU allocation test collector has not been assigned."));
+        Controller = new BusinessBlockController(services, [registration],
+            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockController>.Instance);
+        Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
+            configuration ?? new ConfigurationBuilder().Build(), Controller, factory,
+            timeProvider ?? TimeProvider.System, budget, observer);
+        collector = Collector;
+    }
+
+    internal GpuAllocationCollector Collector { get; }
+    internal BusinessBlockController Controller { get; }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Controller.StopDependenciesAsync(new BusinessBlockReason(BusinessBlockRequestKind.Dependency,
+            "gpu-allocation-test-harness", "test-cleanup", Controller.CurrentPlanVersion));
+        await Controller.DisposeAsync();
+        await services.DisposeAsync();
+    }
 }
 
 internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSession
@@ -42,6 +79,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     internal int Captures;
     internal int ManifestEvents;
     internal int Stops;
+    internal TimeSpan? StopTimeout;
     internal int Pid = 41;
     internal ulong Bytes = 1024;
     internal bool HoldEnd;
@@ -116,6 +154,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     public KernelEtwSessionStopResult Stop(TimeSpan timeout)
     {
         Stops++;
+        StopTimeout = timeout;
         IsProcessing = false;
         if (StopResult.IsReleased) Enabled.Clear();
         return StopResult;

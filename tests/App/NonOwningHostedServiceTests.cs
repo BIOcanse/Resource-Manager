@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -82,7 +83,7 @@ public sealed class NonOwningHostedServiceTests
             .Build();
         try
         {
-            var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+            var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
             Assert.Equal(1, created);
             var owner = Assert.IsType<NonOwningHostedService<PlainService>>(
                 Assert.Single(hostedServices));

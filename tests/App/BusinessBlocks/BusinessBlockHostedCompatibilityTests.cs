@@ -53,7 +53,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks);
         Assert.Null(facts.Policy.StopDeadline);
 
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>());
+        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
         var stopping = hosted.StopAsync(hostDeadline.Token);
         try
         {
@@ -87,7 +87,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             services.AddBusinessBlockHostedService<LifecycleService>(_ => service));
 
         await host.StartAsync();
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>());
+        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
         var thrown = await Assert.ThrowsAsync<TimeoutException>(() => hosted.StopAsync(CancellationToken.None));
 
         Assert.Same(failure, thrown);
@@ -114,7 +114,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             });
 
         await host.StartAsync();
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>());
+        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
         var thrown = await Assert.ThrowsAsync<TimeoutException>(() => hosted.StopAsync(CancellationToken.None));
 
         Assert.Same(failure, thrown);
@@ -163,12 +163,10 @@ public sealed class BusinessBlockHostedCompatibilityTests
         try
         {
             await host.StartAsync();
+            if (!useContinueWaitingDeadline) await backgroundService!.ExecutionStarted.Task.WaitAsync(TestTimeout);
             var activeController = host.Services.GetRequiredService<BusinessBlockController>();
             controller = activeController;
-            var hosted = Assert.Single(host.Services.GetServices<IHostedService>());
-            // BackgroundService starts ExecuteAsync on a pool thread. Stopping before it runs leaves no
-            // execution behind, so the outstanding-execution case needs it to be running first.
-            if (!useContinueWaitingDeadline) await backgroundService!.ExecutionStarted.Task.WaitAsync(TestTimeout);
+            var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
             var stopping = hosted.StopAsync(stopCancellation.Token);
             stopTask = stopping;
             var stopStarted = useContinueWaitingDeadline
@@ -248,7 +246,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             });
         });
 
-        var hosted = host.Services.GetServices<IHostedService>().ToArray();
+        var hosted = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.Collection(events,
             value => Assert.Equal("first:construct", value),

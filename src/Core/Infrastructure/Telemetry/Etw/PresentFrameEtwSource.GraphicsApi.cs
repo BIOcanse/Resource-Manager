@@ -2,6 +2,7 @@ using Microsoft.Diagnostics.Tracing;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Adaptation;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -16,10 +17,12 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var subscription = new GraphicsApiSubscription(this, process);
+            var dependency = controller.AcquireDependency("present-etw",
+                new(BusinessBlockRequestKind.Dependency, "graphics-api-history", "present-graphics-api-subscription", controller.CurrentPlanVersion),
+                outputs: ["graphics-api"]);
+            var subscription = new GraphicsApiSubscription(this, process, dependency);
             lock (gate) graphicsApiSubscriptions.Add(subscription);
-            leases++;
-            ReconcileDemand(frameLeases);
+            subscription.ObserveRelease();
             return subscription;
         }
     }
@@ -50,7 +53,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         lock (gate)
         {
             foreach (var subscription in graphicsApiSubscriptions)
-                if (subscription.Active && subscription.Process.ProcessId == pid
+                if (subscription.Active && !subscription.Released.IsCompleted && subscription.Process.ProcessId == pid
                     && timestampUtc.ToFileTimeUtc() >= (long)subscription.Process.ProcessStartKey)
                     subscription.Api ??= api;
         }
@@ -70,23 +73,30 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         }
     }
 
-    private sealed class GraphicsApiSubscription(PresentFrameEtwSource owner, GpuPlacementProcessInstance process)
-        : IPresentGraphicsApiSubscription
+    private sealed class GraphicsApiSubscription : IPresentGraphicsApiSubscription, IBusinessBlockDependency
     {
-        private PresentFrameEtwSource? owner = owner;
-        internal GpuPlacementProcessInstance Process { get; } = process;
+        private PresentFrameEtwSource? owner;
+        private readonly IBusinessBlockDependency dependency;
+        internal GraphicsApiSubscription(PresentFrameEtwSource owner, GpuPlacementProcessInstance process,
+            IBusinessBlockDependency dependency)
+        {
+            this.owner = owner;
+            this.dependency = dependency;
+            Process = process;
+        }
+        internal void ObserveRelease() => _ = dependency.Released.ContinueWith(_ => Dispose(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        internal GpuPlacementProcessInstance Process { get; }
         internal bool Active { get; set; } = true;
         internal GpuGraphicsApi? Api { get; set; }
+        public Task Ready => dependency.Ready;
+        public Task Released => dependency.Released;
 
         public GpuGraphicsApi? Read()
         {
             var current = Volatile.Read(ref owner);
             if (current is null) return null;
-            lock (current.lifecycle)
-            {
-                current.ReconcileDemand(current.frameLeases);
-                lock (current.gate) return !current.disposed && !current.failed && Active ? Api : null;
-            }
+            lock (current.gate) return Active && !Released.IsCompleted ? Api : null;
         }
 
         public void Dispose()
@@ -96,8 +106,10 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             lock (current.lifecycle)
             {
                 lock (current.gate) current.graphicsApiSubscriptions.Remove(this);
-                if (current.leases > 0 && --current.leases == 0) current.Stop();
             }
+            dependency.Dispose();
         }
+
+        public async ValueTask DisposeAsync() { Dispose(); await Released.ConfigureAwait(false); }
     }
 }

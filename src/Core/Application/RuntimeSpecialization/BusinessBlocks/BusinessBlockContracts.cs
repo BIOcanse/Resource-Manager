@@ -14,6 +14,13 @@ public interface IBusinessBlock
     Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification);
 }
 
+/// <summary>A counted request for a producer block to remain available.</summary>
+public interface IBusinessBlockDependency : IDisposable, IAsyncDisposable
+{
+    Task Ready { get; }
+    Task Released { get; }
+}
+
 public sealed record BusinessBlockResult(BusinessBlockOutcome Outcome, string? FailureType = null, BusinessBlockFailureStage? FailureStage = null)
 {
     // Full errors cross the execution boundary for logging only, never the diagnostic wire.
@@ -70,6 +77,14 @@ public sealed record BusinessBlockFacts(
     BusinessBlockMetricFacts Metrics)
 {
     public bool ObservationOnly { get; init; }
+    public bool Enabled { get; init; } = true;
+    public IReadOnlyList<BusinessBlockDependencyFacts> ActiveDependencies { get; init; } = Array.Empty<BusinessBlockDependencyFacts>();
+}
+
+public sealed record BusinessBlockDependencyFacts(
+    BusinessBlockReason Reason, TimeSpan? Interval, IReadOnlyList<string> Outputs)
+{
+    public string Owner => Reason.Owner;
 }
 
 public sealed record BusinessBlocksSnapshot(

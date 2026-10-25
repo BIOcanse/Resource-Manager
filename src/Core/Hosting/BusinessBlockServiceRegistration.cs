@@ -3,6 +3,7 @@ using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace ResourceManager.App.Hosting;
 
@@ -17,6 +18,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<IBusinessBlockQuery>(provider => provider.GetRequiredService<BusinessBlockController>());
         services.TryAddSingleton<IBusinessBlockDiagnostics>(provider => provider.GetRequiredService<BusinessBlockController>());
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
+        // Registered before the producers' hosted consumers, so shutdown withdraws
+        // any remaining capture dependencies after those consumers have stopped.
+        services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
         return services;
     }
 
@@ -53,9 +57,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
     private static IServiceCollection AddObservedEtwBusinessBlocks(this IServiceCollection services)
     {
         services.AddSingleton(new BusinessBlockRegistration("present-etw", [],
-            _ => throw new InvalidOperationException("Present activation remains inside the legacy producer in step 1.")) { ObservationOnly = true });
+            provider => provider.GetRequiredService<PresentFrameEtwSource>()));
         services.AddSingleton(new BusinessBlockRegistration("gpu-allocation-etw", [],
-            _ => throw new InvalidOperationException("GPU allocation activation remains inside the legacy producer in step 1.")) { ObservationOnly = true });
+            provider => provider.GetRequiredService<GpuAllocationCollector>()));
+        services.AddSingleton(new BusinessBlockRegistration(nameof(DxgkrnlVidMmEtwTelemetryZone), [],
+            provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>()));
         // This method is the complete production composition, after all capability-gated declarations.
         // Standalone aliases intentionally declare no production prerequisites.
         for (var index = 0; index < services.Count; index++)
@@ -63,7 +69,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             if (services[index].ImplementationInstance is not BusinessBlockRegistration registration) continue;
             string[] prerequisites = registration.Id switch
             {
-                "RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" => [],
+                "RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" or nameof(DxgkrnlVidMmEtwTelemetryZone) => [],
                 "WindowsHardwareMetricSampler" or "GpuTelemetryWorkerSupervisor" or "CpuTopologySnapshotProvider" or "DeviceTopologySnapshotProvider"
                     => ["HostManagerSamplingSubscriptionOwner"],
                 "WindowsResourceBreakdownSampler" => ["WindowsHardwareMetricSampler", "HostManagerSamplingSubscriptionOwner", "KernelEtwSessionBroker"],
@@ -76,7 +82,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 "SqliteLegacyDataImportHostedService" => ["ResourceManagerDatabaseInitializer", "SqlitePortableSoftwareRegistry"],
                 _ => []
             };
-            if (registration.Id is not ("RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw"))
+            if (registration.Id is not ("RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" or nameof(DxgkrnlVidMmEtwTelemetryZone)))
                 prerequisites = ["RuntimeSpecializationCoordinator", .. prerequisites];
             services[index] = ServiceDescriptor.Singleton(registration with { Dependencies = prerequisites });
         }

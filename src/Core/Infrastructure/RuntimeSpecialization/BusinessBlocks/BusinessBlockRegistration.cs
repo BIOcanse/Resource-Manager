@@ -11,7 +11,7 @@ public sealed record BusinessBlockRegistration(
 }
 
 // Legacy hosted StartAsync must finish before Generic Host advances to its next service.
-internal interface IBusinessBlockStartup
+public interface IBusinessBlockStartup
 {
     Task Started { get; }
 }

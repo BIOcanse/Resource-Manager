@@ -125,7 +125,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
                 var concrete = host.Services.GetRequiredService<HostManagerSmartCoordinator>();
                 var contract = host.Services.GetRequiredService<IHostManagerSmartCoordinator>();
-                var hostedOwner = Assert.Single(host.Services.GetServices<IHostedService>());
+                var hostedOwner = Assert.Single(host.Services.GetServices<IHostedService>()
+                    .OfType<NonOwningHostedService<HostManagerSmartCoordinator>>());
                 var alias = Assert.IsType<NonOwningHostedService<HostManagerSmartCoordinator>>(
                     hostedOwner);
                 Assert.Same(fixture.Coordinator, concrete);

@@ -7,7 +7,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
-    DxgkrnlVidMmEtwTelemetryZone etwZone) : IResourceResidualBreakdownProvider, IResourceTableProviderStateSource
+    DxgkrnlVidMmEtwTelemetryZone etwZone) : IResourceResidualBreakdownProvider, IResourceTableProviderStateSource, IGpuVramResidualObservationSource
 {
     private static readonly TimeSpan EvidenceWindow = TimeSpan.FromSeconds(45);
 
@@ -19,6 +19,8 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
         DxgkrnlVidMmEtwTelemetryZone etwZone,
         Func<TimeSpan, IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence>> readEvidence) : this(etwZone)
         => this.readEvidence = readEvidence;
+
+    public IDisposable AcquireSubscription(string owner, TimeSpan interval) => etwZone.AcquireSubscription(owner, interval);
 
     public IReadOnlyList<ResourceTableProviderState> GetStates(IReadOnlyList<ResourceTableColumn> columns)
     {
@@ -55,7 +57,8 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
             .Where(evidence => evidence.ValueBytes > 0
                 && now - evidence.ObservedAt <= EvidenceWindow
                 && evidence.ProcessId > 4
-                && !request.KnownProcessIds.Contains(evidence.ProcessId))
+                && !request.KnownProcessIds.Contains(evidence.ProcessId)
+                && etwZone.MatchesCurrentProcess(evidence))
             .GroupBy(static evidence => evidence.ProcessId)
             .Select(static group => group.OrderByDescending(evidence => evidence.ObservedAt).First())
             .OrderByDescending(static evidence => evidence.ValueBytes)

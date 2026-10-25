@@ -31,7 +31,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 };
             }
         };
-        using var collector = factory.Collector();
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
         var now = DateTimeOffset.UtcNow.UtcTicks;
         var hardware = CreateMemorySnapshot() with
         {
@@ -85,7 +86,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalog = new VersionedProcessAttributionCatalogProvider();
         var factory = new GpuAllocationTestSessionFactory { Configure = session => session.Pid = Environment.ProcessId };
-        using var collector = factory.Collector();
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
         using var sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(CreateAllocationHardware()), catalog,
             new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
             new PdhProcessGpuReader(), new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]),
@@ -119,7 +121,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await Task.Delay(1200);
         Assert.Equal(afterRelease, factory.Current.Captures);
         smart.Dispose();
-        Assert.Equal(1, factory.Current.Stops);
+        await AwaitGpuAsync(() => factory.Current.Stops == 1);
         Assert.Empty(factory.Current.Enabled);
         await sampler.StopAsync(default);
     }

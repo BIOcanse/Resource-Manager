@@ -5,6 +5,8 @@ using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Frames;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -15,8 +17,9 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// </summary>
 public sealed partial class PresentFrameEtwSource(
     ILogger<PresentFrameEtwSource> logger,
+    BusinessBlockController controller,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
-    : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IDisposable
+    : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IBusinessBlock, IBusinessBlockStartup, IDisposable
 {
     internal static readonly Guid DxgiProvider = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
     internal static readonly Guid Direct3D9Provider = new("783ACA0A-790E-4D7F-8451-AA850511C6B9");
@@ -60,12 +63,12 @@ public sealed partial class PresentFrameEtwSource(
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
     private IPresentFrameEtwSession? session;
-    private Task? processor;
-    private Timer? flushTimer;
-    private int leases;
+    private ITimer? flushTimer;
+    private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
-    private bool failed;
     private bool disposed;
+    private bool hasFrameCurrent;
+    private long frameStoppedAt;
     private int observedEventsLost;
     private long lastLossUtcTicks;
     private ResourceManagerComputeZoneMode mode = ResourceManagerComputeZoneMode.Normal;
@@ -75,9 +78,10 @@ public sealed partial class PresentFrameEtwSource(
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
+        BusinessBlockController controller,
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
-        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, consumerThreadObserver)
+        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
@@ -89,49 +93,32 @@ public sealed partial class PresentFrameEtwSource(
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var previousFrameLeases = frameLeases;
-            Interlocked.Increment(ref frameLeases);
-            leases++;
-            ReconcileDemand(previousFrameLeases);
-
-            return new Lease(this);
+            var dependency = controller.AcquireDependency("present-etw",
+                new(BusinessBlockRequestKind.Dependency, "frame-observation", "present-frame-subscription", controller.CurrentPlanVersion),
+                outputs: ["frame-timing"]);
+            var subscription = new FrameSubscription(this, dependency);
+            frameSubscriptions.Add(subscription);
+            Volatile.Write(ref frameLeases, frameSubscriptions.Count(value => !value.Released.IsCompleted));
+            UpdateOutputDemand(previousFrameLeases);
+            subscription.ObserveRelease();
+            return subscription;
         }
     }
 
     public FrameTimingSnapshot? Read(TimeSpan window)
     {
-        lock (lifecycle)
+        lock (gate)
         {
-            ReconcileDemand(frameLeases);
-            if (session is not { } current)
+            if (!hasFrameCurrent) return null;
+            var now = frameStoppedAt != 0 ? frameStoppedAt : timeProvider.GetUtcNow().UtcTicks;
+            var complete = (lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks)
+                && ledger.IsComplete(now - window.Ticks);
+            return new FrameTimingSnapshot(
+                new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window))
             {
-                return null;
-            }
-
-            lock (gate)
-            {
-                if (failed)
-                {
-                    return null;
-                }
-
-                var now = timeProvider.GetUtcNow().UtcTicks;
-                var lost = current.EventsLost;
-                if (lost != observedEventsLost)
-                {
-                    observedEventsLost = lost;
-                    lastLossUtcTicks = now;
-                    ledger.EventsLost();
-                }
-
-                var complete = (lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks)
-                    && ledger.IsComplete(now - window.Ticks);
-                return new FrameTimingSnapshot(
-                    new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window))
-                {
-                    LastPresents = ledger.ReadLastPresents(now, window),
-                    DisplayStreams = ledger.ReadDisplayStreams(now, window)
-                };
-            }
+                LastPresents = ledger.ReadLastPresents(now, window),
+                DisplayStreams = ledger.ReadDisplayStreams(now, window)
+            };
         }
     }
 
@@ -142,115 +129,27 @@ public sealed partial class PresentFrameEtwSource(
             throw new ArgumentOutOfRangeException(nameof(through));
         }
 
-        lock (lifecycle)
+        lock (gate)
         {
-            ReconcileDemand(frameLeases);
-            if (session is not { } current)
-            {
-                return null;
-            }
-
-            lock (gate)
-            {
-                if (failed)
-                {
-                    return null;
-                }
-
-                var lost = current.EventsLost;
-                if (lost != observedEventsLost)
-                {
-                    observedEventsLost = lost;
-                    lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
-                    ledger.EventsLost();
-                }
-
-                return new FrameIntervalBatch(through,
-                    (lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks)
-                        && ledger.IsComplete(after.UtcTicks),
-                    ledger.ReadIntervals(after.UtcTicks, through.UtcTicks));
-            }
+            if (!hasFrameCurrent) return null;
+            var throughTicks = frameStoppedAt != 0 ? Math.Min(through.UtcTicks, frameStoppedAt) : through.UtcTicks;
+            return new FrameIntervalBatch(through,
+                throughTicks == through.UtcTicks && (lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks)
+                    && ledger.IsComplete(after.UtcTicks),
+                ledger.ReadIntervals(after.UtcTicks, throughTicks));
         }
     }
 
     public void ApplyMode(ResourceManagerComputeZoneMode next)
+        => _ = ApplyModeAsync(next);
+
+    internal Task ApplyModeAsync(ResourceManagerComputeZoneMode next)
     {
         lock (lifecycle)
         {
             mode = next;
-            if (next == ResourceManagerComputeZoneMode.Freeze) Stop();
-            else ReconcileDemand(frameLeases);
-        }
-    }
-
-    private void Start()
-    {
-        lock (gate)
-        {
-            ledger = new PresentFrameLedger(ReadProcessStartKey);
-            foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
-            failed = false;
-            observedEventsLost = 0;
-            lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
-        }
-
-        var name = ResourceManagerEtwSessionNames.Create(
-            ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
-        try
-        {
-            var current = createSession(name);
-            session = current;
-            current.Bind(OnEvent);
-            processor = DedicatedEtwConsumerThread.Start(
-                "present-etw",
-                name,
-                current.Process,
-                consumerThreadObserver).ContinueWith(
-                    task =>
-                    {
-                        if (task.IsFaulted)
-                        {
-                            logger.LogWarning(task.Exception?.GetBaseException(), "Present frame event stream ended.");
-                        }
-                        lock (gate)
-                        {
-                            if (ReferenceEquals(session, current)) failed = true;
-                        }
-                    },
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default);
-            UpdateProviders(current, previousFrameLeases: null);
-            flushTimer = new Timer(_ => Flush(current), null, FlushInterval, FlushInterval);
-        }
-        catch (Exception error)
-        {
-            lock (gate) failed = true;
-            logger.LogWarning(error, "Present frame session {Session} could not start.", name);
-            Stop();
-            consumerThreadObserver?.ReportFailure("present-etw", error);
-        }
-    }
-
-    // Reads and subscription/mode changes are existing demand lifecycle points.
-    // Retire a dead processor before starting a replacement; lease counts stay owned here.
-    private void ReconcileDemand(int previousFrameLeases)
-    {
-        if (disposed || leases == 0 || mode == ResourceManagerComputeZoneMode.Freeze) return;
-        bool dead;
-        lock (gate) dead = failed || processor is { IsCompleted: true };
-        if (dead) Stop();
-        if (session is null) Start();
-        else
-        {
-            try { UpdateProviders(session, previousFrameLeases); }
-            catch (Exception error)
-            {
-                lock (gate) failed = true;
-                logger.LogWarning(error, "Present frame session provider update failed.");
-                Stop();
-                consumerThreadObserver?.ReportFailure("present-etw", error);
-            }
+            return controller.SetEnabledAsync("present-etw", next != ResourceManagerComputeZoneMode.Freeze,
+                new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwPresentFrames, controller.CurrentPlanVersion));
         }
     }
 
@@ -277,26 +176,45 @@ public sealed partial class PresentFrameEtwSource(
                 // Events buffered before both providers were enabled cannot fill this window.
                 ledger = new PresentFrameLedger(ReadProcessStartKey);
                 lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
+                frameStoppedAt = 0;
+                hasFrameCurrent = true;
             }
         }
         else if (frameLeases == 0 && previousFrameLeases > 0)
         {
             current.DisableProvider(GraphicsKernelProvider);
             current.DisableProvider(Win32kProvider);
-            lock (gate) ledger = new PresentFrameLedger(ReadProcessStartKey);
+            lock (gate)
+            {
+                frameStoppedAt = timeProvider.GetUtcNow().UtcTicks;
+                ledger.ReleaseCorrelationState();
+            }
         }
     }
 
     private void Flush(IPresentFrameEtwSession current)
     {
+        var run = Volatile.Read(ref activeRun);
+        if (run is null || Volatile.Read(ref run.Accepting) == 0 || !ReferenceEquals(run.Session, current)) return;
         try
         {
-            current.Flush();
+            using (controller.MeasureSegment("present-etw"))
+            {
+                current.Flush();
+                if (Volatile.Read(ref frameLeases) == 0) return;
+                var lost = current.EventsLost;
+                lock (gate)
+                    if (frameLeases > 0 && lost != observedEventsLost)
+                    {
+                        observedEventsLost = lost;
+                        lastLossUtcTicks = timeProvider.GetUtcNow().UtcTicks;
+                        ledger.EventsLost();
+                    }
+            }
         }
-        catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException or System.ComponentModel.Win32Exception or System.Runtime.InteropServices.COMException)
+        catch (Exception error)
         {
-            // 会话正在停止时冲刷会失败，停止流程会处理会话本身。
-            logger.LogDebug(error, "Present frame session flush skipped.");
+            SignalFailure(error);
         }
     }
 
@@ -314,7 +232,7 @@ public sealed partial class PresentFrameEtwSource(
             }
             catch (Exception error)
             {
-                failed = true;
+                SignalFailure(error);
                 logger.LogWarning(error, "Present frame event {Provider}/{Event} could not be applied.", data.ProviderName, (int)data.ID);
             }
         }
@@ -480,52 +398,4 @@ public sealed partial class PresentFrameEtwSource(
         }
     }
 
-    private void Release()
-    {
-        lock (lifecycle)
-        {
-            var previousFrameLeases = frameLeases;
-            Interlocked.Decrement(ref frameLeases);
-            if (leases > 0) leases--;
-            if (leases == 0) Stop();
-            else if (session is not null) ReconcileDemand(previousFrameLeases);
-        }
-    }
-
-    private void Stop()
-    {
-        flushTimer?.Dispose();
-        flushTimer = null;
-        var current = session;
-        session = null;
-        current?.Dispose();
-        if (processor is not null && !processor.Wait(TimeSpan.FromSeconds(3)))
-        {
-            logger.LogWarning("Present frame event processing did not stop within 3 seconds.");
-        }
-
-        processor = null;
-        lock (gate) ledger = new PresentFrameLedger(ReadProcessStartKey);
-    }
-
-    public void Dispose()
-    {
-        lock (lifecycle)
-        {
-            if (disposed)
-            {
-                return;
-            }
-
-            disposed = true;
-            leases = 0;
-            Stop();
-        }
-    }
-
-    private sealed class Lease(PresentFrameEtwSource owner) : IDisposable
-    {
-        private PresentFrameEtwSource? owner = owner;
-        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release();
-    }
 }

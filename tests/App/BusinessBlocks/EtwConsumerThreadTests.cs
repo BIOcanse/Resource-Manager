@@ -37,6 +37,7 @@ public sealed class EtwConsumerThreadTests
                     Thread.SpinWait(256);
                 }
             },
+            out var consumerThread,
             observation);
 
         try
@@ -62,6 +63,9 @@ public sealed class EtwConsumerThreadTests
         }
 
         await processing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(consumerThread.Join(TimeSpan.FromSeconds(10)));
+        Assert.False(consumerThread.IsAlive);
 
         Assert.True(registrationDisposed.IsSet);
         Assert.True(Volatile.Read(ref iterations) > 0);

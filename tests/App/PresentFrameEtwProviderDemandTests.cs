@@ -1,5 +1,5 @@
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -16,11 +16,12 @@ public sealed class PresentFrameEtwProviderDemandTests
         new(73, (ulong)DateTime.UnixEpoch.ToFileTimeUtc(), "recorded", "C:\\recorded.exe");
 
     [Fact]
-    public void ApiOnlyEnablesOnlyItsThreeProvidersAndReadsDoNotReenableThem()
+    public async Task ApiOnlyEnablesOnlyItsThreeProvidersAndReadsDoNotReenableThem()
     {
-        using var fixture = new Fixture();
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        var session = Assert.Single(fixture.Sessions);
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(ApiProviders, session.Enabled);
         Assert.Collection(session.Operations,
             item => AssertEnable(item, ApiProviders[0], TraceEventLevel.Informational, 0x10, [1, 2]),
@@ -30,20 +31,26 @@ public sealed class PresentFrameEtwProviderDemandTests
         fixture.Source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42,
             Process.ProcessId, DateTime.FromFileTimeUtc((long)Process.ProcessStartKey));
         Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12, api.Read());
-        Assert.Equal(3, session.Operations.Count);
-        api.Dispose();
+        Assert.Equal(3, session.Operations.Length);
+        Assert.Equal(0, session.EventsLostReads);
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
         Assert.Equal(1, session.Stops);
     }
 
     [Fact]
-    public void FirstFrameAddsDisplayProvidersAndLastFrameRemovesThemOnTheSameSession()
+    public async Task FirstFrameAddsDisplayProvidersAndLastFrameRemovesThemOnTheSameSession()
     {
-        using var fixture = new Fixture();
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        var session = Assert.Single(fixture.Sessions);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(10));
-        using var first = fixture.Source.AcquireSubscription();
-        using var second = fixture.Source.AcquireSubscription();
+        var clock = new PresentFrameEtwManualTimeProvider();
+        await using var fixture = PresentFrameEtwTestHarness.Create(timeProvider: clock);
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        clock.Advance(TimeSpan.FromSeconds(10));
+        var first = fixture.Source.AcquireSubscription();
+        var second = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(first);
+        await PresentFrameEtwTestHarness.ReadyAsync(second);
+        Assert.Equal(3, Assert.Single(fixture.Controller.Read().Blocks).ActiveDependencies.Count);
         Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
         Assert.Collection(session.Operations.Skip(3),
             item => AssertEnable(item, DisplayProviders[0], TraceEventLevel.Verbose,
@@ -54,75 +61,96 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.False(initial.Complete);
         Assert.Empty(initial.Processes);
         Assert.Empty(initial.DisplayStreams);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
+        clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
         Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        first.Dispose();
-        Assert.Equal(5, session.Operations.Count);
-        second.Dispose();
+        await PresentFrameEtwTestHarness.ReleaseAsync(first);
+        Assert.Equal(5, session.Operations.Length);
+        Assert.Equal(2, Assert.Single(fixture.Controller.Read().Blocks).ActiveDependencies.Count);
+        await PresentFrameEtwTestHarness.ReleaseAsync(second);
         Assert.Equal(ApiProviders, session.Enabled);
-        Assert.Equal(DisplayProviders.Select(provider => new Operation("disable", provider)),
+        Assert.Single(Assert.Single(fixture.Controller.Read().Blocks).ActiveDependencies);
+        Assert.Equal(DisplayProviders.Select(provider => new PresentEtwProviderOperation("disable", provider)),
             session.Operations.Skip(5));
         Assert.Equal(0, session.Stops);
 
         // A new frame observation cannot inherit the completed window from before the gap.
-        fixture.Clock.Advance(TimeSpan.FromSeconds(10));
-        using var resumed = fixture.Source.AcquireSubscription();
+        clock.Advance(TimeSpan.FromSeconds(10));
+        var resumed = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(resumed);
         Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        Assert.False(fixture.Source.ReadIntervals(fixture.Clock.GetUtcNow() - TimeSpan.FromSeconds(1),
-            fixture.Clock.GetUtcNow())!.Complete);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
+        Assert.False(fixture.Source.ReadIntervals(clock.GetUtcNow() - TimeSpan.FromSeconds(1),
+            clock.GetUtcNow())!.Complete);
+        clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
         Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        Assert.Single(fixture.Sessions);
+        Assert.Single(fixture.Sessions.Snapshot());
+        await PresentFrameEtwTestHarness.ReleaseAsync(resumed);
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
+        Assert.Empty(Assert.Single(fixture.Controller.Read().Blocks).ActiveDependencies);
     }
 
     [Fact]
-    public void FrameFirstThenApiKeepsTheFullProviderSetWithoutReenabling()
+    public async Task FrameFirstThenApiKeepsTheFullProviderSetWithoutReenabling()
     {
-        using var fixture = new Fixture();
-        using var frame = fixture.Source.AcquireSubscription();
-        var session = Assert.Single(fixture.Sessions);
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var frame = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(2));
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        api.Dispose();
-        Assert.Equal(5, session.Operations.Count);
+        var initialOperations = session.Operations.Length;
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1)) is not null);
+        Assert.Equal(initialOperations, session.Operations.Length);
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
+        Assert.Equal(initialOperations, session.Operations.Length);
         Assert.Equal(0, session.Stops);
-        frame.Dispose();
+        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
         Assert.Equal(1, session.Stops);
-        Assert.Single(fixture.Sessions);
+        Assert.Single(fixture.Sessions.Snapshot());
     }
 
     [Fact]
-    public void FrameWindowStartsAfterBothDisplayProvidersFinishEnabling()
+    public async Task FrameWindowStartsAfterBothDisplayProvidersFinishEnabling()
     {
-        using var fixture = new Fixture();
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        var session = Assert.Single(fixture.Sessions);
-        session.AfterEnable = _ => fixture.Clock.Advance(TimeSpan.FromSeconds(2));
-        using var frame = fixture.Source.AcquireSubscription();
+        var clock = new PresentFrameEtwManualTimeProvider();
+        await using var fixture = PresentFrameEtwTestHarness.Create(timeProvider: clock);
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        session.AfterEnable = _ => clock.Advance(TimeSpan.FromSeconds(2));
+        var frame = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(frame);
         Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
+        clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
         Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
-        Assert.Single(fixture.Sessions);
+        Assert.Single(fixture.Sessions.Snapshot());
+        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void BothLeaseDisposalOrdersStopOnlyAfterTheLastLease(bool frameLeavesFirst)
+    public async Task BothLeaseDisposalOrdersStopOnlyAfterTheLastLease(bool frameLeavesFirst)
     {
-        using var fixture = new Fixture();
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        using var frame = fixture.Source.AcquireSubscription();
-        var session = Assert.Single(fixture.Sessions);
-        if (frameLeavesFirst) frame.Dispose(); else api.Dispose();
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        var frame = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        if (frameLeavesFirst) await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        else await PresentFrameEtwTestHarness.ReleaseAsync(api);
         Assert.Equal(0, session.Stops);
         Assert.Equal(frameLeavesFirst ? ApiProviders : ApiProviders.Concat(DisplayProviders), session.Enabled);
-        if (frameLeavesFirst) api.Dispose(); else frame.Dispose();
+        if (frameLeavesFirst) await PresentFrameEtwTestHarness.ReleaseAsync(api);
+        else await PresentFrameEtwTestHarness.ReleaseAsync(frame);
         Assert.Equal(1, session.Stops);
-        Assert.Null(fixture.Source.Read(TimeSpan.FromSeconds(1)));
-        Assert.Single(fixture.Sessions);
+        Assert.True(session.ProcessExited.IsCompleted);
+        var retained = fixture.Source.Read(TimeSpan.FromSeconds(1));
+        Assert.NotNull(retained);
+        Assert.Equal(retained.ObservedAt, fixture.Source.Read(TimeSpan.FromSeconds(1))!.ObservedAt);
+        Assert.Single(fixture.Sessions.Snapshot());
         Assert.Equal(1, session.Stops);
     }
 
@@ -130,120 +158,110 @@ public sealed class PresentFrameEtwProviderDemandTests
     [InlineData(true, false)]
     [InlineData(true, true)]
     [InlineData(false, true)]
-    public void FreezeStopsAndThawDerivesProvidersFromTheSurvivingLeases(bool includeApi, bool includeFrames)
+    public async Task FreezeStopsAndThawStartsOnlyTheProviderSetNeededBySurvivingLeases(bool includeApi, bool includeFrames)
     {
-        using var fixture = new Fixture();
-        using var api = includeApi ? fixture.Source.AcquireGraphicsApiSubscription(Process) : null;
-        using var frame = includeFrames ? fixture.Source.AcquireSubscription() : null;
-        var session = Assert.Single(fixture.Sessions);
-        fixture.Source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        IDisposable? api = includeApi ? fixture.Source.AcquireGraphicsApiSubscription(Process) : null;
+        IDisposable? frame = includeFrames ? fixture.Source.AcquireSubscription() : null;
+        if (api is not null) await PresentFrameEtwTestHarness.ReadyAsync(api);
+        if (frame is not null) await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze);
         Assert.Equal(1, session.Stops);
-        Assert.Null(fixture.Source.Read(TimeSpan.FromSeconds(1)));
-        Assert.Single(fixture.Sessions);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(10));
-        fixture.Source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        Assert.Equal(2, fixture.Sessions.Count);
-        var resumed = fixture.Sessions[1];
-        Assert.Equal(includeFrames ? ApiProviders.Concat(DisplayProviders) : ApiProviders, resumed.Enabled);
+        Assert.True(session.ProcessExited.IsCompleted);
+        Assert.Equal(includeFrames, fixture.Source.Read(TimeSpan.FromSeconds(1)) is not null);
+        Assert.Single(fixture.Sessions.Snapshot());
+        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
+        var sessions = fixture.Sessions.Snapshot();
+        Assert.Equal(2, sessions.Length);
+        var current = fixture.Sessions.Snapshot()[1];
+        Assert.Equal(includeFrames ? ApiProviders.Concat(DisplayProviders) : ApiProviders, current.Enabled);
         if (includeFrames) Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
+        if (frame is not null) await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        if (api is not null) await PresentFrameEtwTestHarness.ReleaseAsync(api);
     }
 
     [Fact]
-    public void FrameAddedWhileFrozenIsEnabledOnlyWhenThawed()
+    public async Task FrameAndApiLeasesAddedWhileFrozenStartTogetherWhenThawed()
     {
-        using var fixture = new Fixture();
-        fixture.Source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        using var frame = fixture.Source.AcquireSubscription();
-        Assert.Empty(fixture.Sessions);
-        fixture.Source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
-        Assert.Equal(ApiProviders.Concat(DisplayProviders), Assert.Single(fixture.Sessions).Enabled);
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze);
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        var frame = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        Assert.Empty(fixture.Sessions.Snapshot());
+        await fixture.Source.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
         Assert.False(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
+        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
     }
 
-    [Theory]
-    [InlineData("enable", 0)]
-    [InlineData("enable", 1)]
-    [InlineData("disable", 0)]
-    [InlineData("disable", 1)]
-    public void FailedProviderTransitionRetiresTheSessionAndExistingDemandCanRecover(string kind, int index)
+    [Fact]
+    public async Task ProviderFailureIsReportedOnceAndDoesNotRestartUntilAllDependenciesLeave()
     {
-        using var fixture = new Fixture();
-        using var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
-        var session = Assert.Single(fixture.Sessions);
-        using var frame = kind == "disable" ? fixture.Source.AcquireSubscription() : null;
-        session.Fail = (kind, DisplayProviders[index]);
-        using var added = kind == "enable" ? fixture.Source.AcquireSubscription() : null;
-        if (kind == "disable") frame!.Dispose();
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        fixture.Sessions.Configure = (session, attempt) =>
+        {
+            if (attempt == 1) session.FailTransition = ("enable", DisplayProviders[0]);
+        };
+        var frame = fixture.Source.AcquireSubscription();
+        await Assert.ThrowsAnyAsync<Exception>(() => PresentFrameEtwTestHarness.ReadyAsync(frame));
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        Assert.Equal(1, session.Stops);
+        Assert.Null(fixture.Source.Read(TimeSpan.FromSeconds(1)));
+        Assert.Null(fixture.Source.ReadIntervals(DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow));
+        Assert.Equal(1, fixture.Sessions.Attempts);
+
+        var second = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await Assert.ThrowsAnyAsync<Exception>(() => PresentFrameEtwTestHarness.ReadyAsync(second));
+        _ = second.Read();
+        _ = fixture.Source.Read(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, fixture.Sessions.Attempts);
+
+        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await PresentFrameEtwTestHarness.ReleaseAsync(second);
+        var replacement = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(replacement);
+        Assert.Equal(2, fixture.Sessions.Attempts);
+        await PresentFrameEtwTestHarness.ReleaseAsync(replacement);
+    }
+
+    [Fact]
+    public async Task ProviderDisableFailureFailsTheRunWithoutRestartingTheSurvivingApiLease()
+    {
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        var frame = fixture.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        session.FailTransition = ("disable", DisplayProviders[0]);
+
+        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        var completion = await fixture.Controller.GetCompletion("present-etw");
+        Assert.Equal(BusinessBlockOutcome.Failed, completion.Outcome);
         Assert.Equal(1, session.Stops);
         _ = api.Read();
-        Assert.Equal(2, fixture.Sessions.Count);
-        Assert.Equal(kind == "enable" ? ApiProviders.Concat(DisplayProviders) : ApiProviders,
-            fixture.Sessions[1].Enabled);
+        _ = fixture.Source.Read(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, fixture.Sessions.Attempts);
+
+        await PresentFrameEtwTestHarness.ReleaseAsync(api);
+        var next = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await PresentFrameEtwTestHarness.ReadyAsync(next);
+        Assert.Equal(2, fixture.Sessions.Attempts);
+        await PresentFrameEtwTestHarness.ReleaseAsync(next);
     }
 
-    private static void AssertEnable(Operation item, Guid provider, TraceEventLevel level, ulong keywords, int[] ids)
+    private static void AssertEnable(PresentEtwProviderOperation item, Guid provider, TraceEventLevel level,
+        ulong keywords, int[] ids)
     {
         Assert.Equal("enable", item.Kind);
         Assert.Equal(provider, item.Provider);
         Assert.Equal(level, item.Level);
         Assert.Equal(keywords, item.Keywords);
         Assert.Equal(ids, item.EventIds);
-    }
-
-    private sealed record Operation(string Kind, Guid Provider, TraceEventLevel Level = default,
-        ulong Keywords = 0, int[]? EventIds = null);
-
-    private sealed class RecordingSession : IPresentFrameEtwSession
-    {
-        private readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public List<Operation> Operations { get; } = [];
-        public List<Guid> Enabled { get; } = [];
-        public (string Kind, Guid Provider)? Fail { get; set; }
-        public Action<Guid>? AfterEnable { get; set; }
-        public int Stops { get; private set; }
-        public int EventsLost => 0;
-        public void Bind(Action<TraceEvent> handler) { }
-        public void Process() => stopped.Task.GetAwaiter().GetResult();
-        public void EnableProvider(Guid provider, TraceEventLevel level, ulong keywords, int[] eventIds)
-        {
-            Operations.Add(new("enable", provider, level, keywords, eventIds));
-            ThrowIfRequested("enable", provider);
-            Enabled.Add(provider);
-            AfterEnable?.Invoke(provider);
-        }
-        public void DisableProvider(Guid provider)
-        {
-            Operations.Add(new("disable", provider));
-            ThrowIfRequested("disable", provider);
-            Enabled.Remove(provider);
-        }
-        private void ThrowIfRequested(string kind, Guid provider)
-        {
-            if (Fail == (kind, provider)) throw new InvalidOperationException("Recorded provider failure.");
-        }
-        public void Flush() { }
-        public void Dispose() { Stops++; stopped.TrySetResult(); }
-    }
-
-    private sealed class Clock : TimeProvider
-    {
-        private DateTimeOffset now = DateTimeOffset.UnixEpoch.AddDays(1);
-        public override DateTimeOffset GetUtcNow() => now;
-        public void Advance(TimeSpan amount) => now += amount;
-    }
-
-    private sealed class Fixture : IDisposable
-    {
-        public Clock Clock { get; } = new();
-        public List<RecordingSession> Sessions { get; } = [];
-        public PresentFrameEtwSource Source { get; }
-        public Fixture() => Source = new(NullLogger<PresentFrameEtwSource>.Instance, _ =>
-        {
-            var session = new RecordingSession();
-            Sessions.Add(session);
-            return session;
-        }, Clock);
-        public void Dispose() => Source.Dispose();
     }
 }

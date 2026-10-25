@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.ProcessFields;
@@ -137,6 +138,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         IDisposable? hardwareLease = null;
         IDisposable? allocationLease = null;
+        IDisposable? residualLease = null;
         try
         {
             var hardwareRequest = CreateHardwareRequest(request);
@@ -149,15 +151,19 @@ public sealed partial class WindowsResourceBreakdownSampler
                     $"resource-breakdown:{sourceKey}", hardwareRequest, interval);
             }
             if (NeedsGpuAllocations(request))
-                allocationLease = gpuAllocations?.AcquireSubscription(interval);
+                allocationLease = gpuAllocations?.AcquireSubscription(interval, $"resource-breakdown:{sourceKey}");
+            if (request.MetricIds.Any(static id => TryParseGpuMetric(id, out _, out var kind) && kind == "vram")
+                && residualBreakdownProvider is IGpuVramResidualObservationSource residualSource)
+                residualLease = residualSource.AcquireSubscription($"resource-breakdown:{sourceKey}", interval);
             subscriptions.TrackPersistent(sourceKey, request, DateTimeOffset.UtcNow, interval, flags);
             SignalDemand();
             return new ObservationSubscriptionLease(this, sourceKey, hardwareLease, allocationLease,
-                fieldDeliveryLease);
+                fieldDeliveryLease, residualLease);
         }
         catch
         {
             hardwareLease?.Dispose();
+            residualLease?.Dispose();
             allocationLease?.Dispose();
             fieldDeliveryLease?.Dispose();
             throw;

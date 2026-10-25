@@ -1,236 +1,89 @@
 using System.Collections.Concurrent;
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.Adapter;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-public sealed class DxgkrnlVidMmEtwTelemetryZone(
+public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
-    IEtwConsumerThreadObserver? consumerThreadObserver = null) : BackgroundService, IResourceManagerSelfComputeZone
+    BusinessBlockController controller,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock, IBusinessBlockStartup, IResourceManagerSelfComputeZone
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
-
+    internal const string BusinessBlockId = nameof(DxgkrnlVidMmEtwTelemetryZone);
     private const string ProviderName = "Microsoft-Windows-DxgKrnl";
-    private const ulong DxgKrnlKeywords =
-        0x0000000000000040UL
-        | 0x0000000000000080UL
-        | 0x0000000000010000UL
-        | 0x0000000000100000UL
-        | 0x0000000000200000UL
-        | 0x0000000020000000UL;
-
+    private const ulong DxgKrnlKeywords = 0x40UL | 0x80UL | 0x10000UL | 0x100000UL | 0x200000UL | 0x20000000UL;
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwDxgkrnlVidMm}");
-    private static readonly TimeSpan ProcessStopWait = TimeSpan.FromSeconds(2);
     private static readonly string SessionName = $"ResourceManagerDxgKrnlVidMm-{Environment.ProcessId}";
-    private static readonly string[] ProcessIdPayloadNames =
-    [
-        "ProcessId",
-        "ProcessID",
-        "Pid",
-        "PID",
-        "OwnerProcessId",
-        "OwnerProcessID"
-    ];
-
+    private static readonly string[] ProcessIdPayloadNames = ["ProcessId", "ProcessID", "Pid", "PID", "OwnerProcessId", "OwnerProcessID"];
+    private static readonly TimeSpan EvidenceRetention = TimeSpan.FromSeconds(90);
     private ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> evidenceByProcess = new();
-    private readonly object sessionGate = new();
-    private TraceEventSession? session;
-    private Task? processingTask;
-    private bool disposed;
+    private DxgkrnlVidMmEtwMemoryEvidence[]? retainedEvidence;
+    private long stoppedAtUtcTicks;
+    private long nextPruneUtcTicks;
     private readonly Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess = WindowsNetworkEndpointProcessLease.Open;
-    private DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
+    private readonly Func<string, IVidMmEtwSession> createSession = name => new TraceEventVidMmSession(name, ProviderName, DxgKrnlKeywords);
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
-    private volatile string state = "Idle";
-    private volatile string message = "DXGKrnl/VidMm ETW 显存残差归因按需启动。";
 
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwDxgkrnlVidMm;
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
-    public string State => state;
-    public string Message => message;
+    public string State => controller.GetState(BusinessBlockId) switch
+    {
+        BusinessBlockState.Stopped => "Idle",
+        BusinessBlockState.Failed => "Unavailable",
+        var value => value.ToString()
+    };
+    public string Message => controller.GetState(BusinessBlockId) == BusinessBlockState.Failed ? "etw-session-failed" : string.Empty;
 
     internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
-        Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess) : this(logger)
-        => this.openProcess = openProcess;
+        BusinessBlockController controller, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess,
+        Func<string, IVidMmEtwSession>? createSession = null, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        : this(logger, controller, consumerThreadObserver)
+    {
+        this.openProcess = openProcess;
+        if (createSession is not null) this.createSession = createSession;
+    }
+
+    public IBusinessBlockDependency AcquireSubscription(string owner, TimeSpan interval)
+        => controller.AcquireDependency(BusinessBlockId,
+            new(BusinessBlockRequestKind.Dependency, owner, "gpu-vram-residual-subscription", controller.CurrentPlanVersion),
+            interval, ["gpu-vram-residual"]);
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
     {
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
-        {
-            state = "Idle";
-            message = "DXGKrnl/VidMm ETW 显存残差归因当前处于功能区冻结。";
-            return [];
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        lastRequestAt = now;
-        EnsureStarted();
-        if (state != "Running") return [];
-        return ReadCurrentEvidence(now, evidenceWindow);
+        var stoppedAt = Volatile.Read(ref stoppedAtUtcTicks);
+        return ReadCurrentEvidence(stoppedAt == 0 ? DateTimeOffset.UtcNow : new(stoppedAt, TimeSpan.Zero), evidenceWindow);
     }
 
     internal IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadCurrentEvidence(DateTimeOffset now, TimeSpan evidenceWindow)
     {
-        PruneStaleEvidence(now, evidenceWindow + evidenceWindow);
-        return evidenceByProcess.Values
-            .Where(evidence => evidence.ValueBytes > 0 && now - evidence.ObservedAt <= evidenceWindow
-                && ReadProcessBirth(evidence.ProcessId) == evidence.ProcessStartKey)
-            .ToArray();
+        IEnumerable<DxgkrnlVidMmEtwMemoryEvidence> current = Volatile.Read(ref retainedEvidence)
+            ?? (IEnumerable<DxgkrnlVidMmEtwMemoryEvidence>)Volatile.Read(ref evidenceByProcess).Values;
+        return current.Where(evidence => evidence.ProcessId > 4 && evidence.ValueBytes > 0
+            && now - evidence.ObservedAt <= evidenceWindow).ToArray();
     }
 
-    public void ApplyMode(ResourceManagerComputeZoneMode mode)
+    // Residual production validates this captured identity at its due time. A raw
+    // current-value read does not query process metadata or activate any producer.
+    internal bool MatchesCurrentProcess(DxgkrnlVidMmEtwMemoryEvidence evidence)
+        => evidence.ProcessStartKey > 0 && ReadProcessBirth(evidence.ProcessId) == evidence.ProcessStartKey;
+
+    public void ApplyMode(ResourceManagerComputeZoneMode mode) => _ = ApplyModeAsync(mode);
+    internal Task ApplyModeAsync(ResourceManagerComputeZoneMode mode)
     {
         currentComputeMode = mode;
-        if (mode == ResourceManagerComputeZoneMode.Freeze)
-        {
-            StopSession("DXGKrnl/VidMm ETW 显存残差归因已按功能区冻结停止。");
-        }
+        return controller.SetEnabledAsync(BusinessBlockId, mode != ResourceManagerComputeZoneMode.Freeze,
+            new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwDxgkrnlVidMm, controller.CurrentPlanVersion));
     }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(1000, stoppingToken);
-                if (IsRunning && DateTimeOffset.UtcNow - lastRequestAt > CurrentIdleStopAfter())
-                {
-                    StopSession("DXGKrnl/VidMm ETW 显存残差归因已因无请求而停止。");
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-        }
-
-        StopSession("DXGKrnl/VidMm ETW 显存残差归因正在随程序停止。");
-    }
-
-    private TimeSpan CurrentIdleStopAfter()
-    {
-        return currentComputeMode switch
-        {
-            ResourceManagerComputeZoneMode.LowPower => TimeSpan.FromSeconds(2),
-            _ => TimeSpan.FromSeconds(5)
-        };
-    }
-
-    private bool IsRunning
-    {
-        get
-        {
-            lock (sessionGate)
-            {
-                return session is not null;
-            }
-        }
-    }
-
-    private void EnsureStarted()
-    {
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
-        {
-            state = "Idle";
-            message = "DXGKrnl/VidMm ETW 显存残差归因当前处于功能区冻结。";
-            return;
-        }
-
-        if (!OperatingSystem.IsWindows())
-        {
-            state = "Unavailable";
-            message = "当前系统不是 Windows，DXGKrnl/VidMm ETW 不可用。";
-            return;
-        }
-
-        if (TraceEventSession.IsElevated() != true)
-        {
-            state = "Unavailable";
-            message = "DXGKrnl/VidMm ETW 需要管理员权限或性能日志权限，当前进程未提权。";
-            return;
-        }
-
-        lock (sessionGate)
-        {
-            if (disposed) return;
-            if (session is not null && processingTask is { IsCompleted: true })
-                StopSession("DXGKrnl/VidMm ETW 事件流已结束。");
-            if (session is not null)
-            {
-                return;
-            }
-
-            try
-            {
-                session = new TraceEventSession(SessionName, TraceEventSessionOptions.Create)
-                {
-                    StopOnDispose = true
-                };
-                session.EnableProvider(ProviderName, TraceEventLevel.Verbose, DxgKrnlKeywords);
-                var currentEvidence = evidenceByProcess;
-                session.Source.Dynamic.All += data => OnDynamicEvent(data, currentEvidence);
-                state = "Running";
-                message = "DXGKrnl/VidMm ETW 正在采集 GPU 内存归因事件。";
-                var current = session;
-                processingTask = DedicatedEtwConsumerThread.Start(
-                    "vidmm-etw",
-                    SessionName,
-                    () => ProcessTraceSource(current),
-                    consumerThreadObserver);
-            }
-            catch (Exception ex)
-            {
-                StopSession("DXGKrnl/VidMm ETW 显存残差归因启动失败。");
-                state = "Unavailable";
-                message = $"DXGKrnl/VidMm ETW 启动失败：{ex.Message}";
-                logger.LogWarning(ex, "Failed to start DXGKrnl/VidMm ETW telemetry zone.");
-                consumerThreadObserver?.ReportFailure("vidmm-etw", ex);
-            }
-        }
-    }
-
-    private void ProcessTraceSource(TraceEventSession current)
-    {
-        try
-        {
-            current.Source.Process();
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                consumerThreadObserver?.ReportFailure("vidmm-etw", ex);
-            }
-            catch (Exception reportingError)
-            {
-                logger.LogDebug(new AggregateException(ex, reportingError),
-                    "DXGKrnl/VidMm source processing and failure reporting both failed.");
-            }
-
-            logger.LogDebug(ex, "DXGKrnl/VidMm source processing stopped.");
-        }
-        finally
-        {
-            lock (sessionGate)
-            {
-                if (ReferenceEquals(session, current))
-                {
-                    evidenceByProcess.Clear();
-                    state = "Unavailable";
-                    message = "DXGKrnl/VidMm ETW 事件流已结束，等待下一次需求重新启动。";
-                }
-            }
-        }
-    }
-
     private void OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {
         try
@@ -249,7 +102,7 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Ignored malformed DXGKrnl/VidMm event.");
+            SignalFailure(ex);
         }
     }
 
@@ -263,79 +116,17 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
     {
         var birth = ReadProcessBirth(processId);
         if (birth is null || eventTime is null || eventTime.Value < birth.Value) return;
+        // Retention is maintained only when producing evidence, never by an idle
+        // checker or a current-value read. No events means no new retained entries.
+        if (observedAt.UtcTicks >= Volatile.Read(ref nextPruneUtcTicks))
+        {
+            foreach (var item in currentEvidence)
+                if (observedAt - item.Value.ObservedAt > EvidenceRetention)
+                    currentEvidence.TryRemove(item.Key, out _);
+            Volatile.Write(ref nextPruneUtcTicks, (observedAt + EvidenceRetention / 2).UtcTicks);
+        }
         currentEvidence[processId] = new(processId, NormalizeProcessName(processName, processId),
             valueBytes, eventName, observedAt) { ProcessStartKey = birth.Value };
-    }
-
-    private void PruneStaleEvidence(DateTimeOffset now, TimeSpan retention)
-    {
-        foreach (var item in evidenceByProcess)
-        {
-            if (now - item.Value.ObservedAt > retention || item.Value.ProcessId <= 4)
-            {
-                evidenceByProcess.TryRemove(item.Key, out _);
-            }
-        }
-    }
-
-    private void StopSession(string idleMessage)
-    {
-        TraceEventSession? sessionToStop;
-        Task? taskToWait;
-        lock (sessionGate)
-        {
-            sessionToStop = session;
-            taskToWait = processingTask;
-            session = null;
-            processingTask = null;
-            Interlocked.Exchange(ref evidenceByProcess, new());
-        }
-
-        if (sessionToStop is null)
-        {
-            if (!state.Equals("Unavailable", StringComparison.OrdinalIgnoreCase))
-            {
-                state = "Idle";
-                message = idleMessage;
-            }
-
-            return;
-        }
-
-        try
-        {
-            sessionToStop.Source.StopProcessing();
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            sessionToStop.Stop(noThrow: true);
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            sessionToStop.Dispose();
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            taskToWait?.Wait(ProcessStopWait);
-        }
-        catch
-        {
-        }
-
-        state = "Idle";
-        message = idleMessage;
     }
 
     private static string NormalizeProcessName(string? processName, int processId)
@@ -358,16 +149,6 @@ public sealed class DxgkrnlVidMmEtwTelemetryZone(
             logger.LogDebug(error, "Could not verify DXGKrnl process identity for {ProcessId}.", processId);
             return null;
         }
-    }
-
-    public override void Dispose()
-    {
-        lock (sessionGate)
-        {
-            disposed = true;
-        }
-        StopSession("DXGKrnl/VidMm ETW 显存残差归因正在随程序停止。");
-        base.Dispose();
     }
 
     private static bool IsProcessMemoryEvent(string eventName)

@@ -11,13 +11,12 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuAllocationConsumerAccountingTests
 {
     [Fact]
-    public void CollectorFactoryPassesObserverAndSessionToTheGpuConsumerRuntime()
+    public async Task CollectorFactoryPassesObserverAndSessionToTheGpuConsumerRuntime()
     {
         var observer = new RecordingObserver();
-        using var collector = new GpuAllocationCollector(
-            NullLogger<GpuAllocationCollector>.Instance,
-            new ConfigurationBuilder().Build(),
-            observer);
+        await using var harness = new GpuAllocationTestSessionFactory().Harness(observer: observer);
+        var collector = new GpuAllocationCollector(NullLogger<GpuAllocationCollector>.Instance,
+            new ConfigurationBuilder().Build(), harness.Controller, observer);
 
         var factory = Assert.IsType<TraceEventGpuAllocationSessionFactory>(ReadField(collector, "sessionFactory"));
         var session = (TraceEventSession)RuntimeHelpers.GetUninitializedObject(typeof(TraceEventSession));

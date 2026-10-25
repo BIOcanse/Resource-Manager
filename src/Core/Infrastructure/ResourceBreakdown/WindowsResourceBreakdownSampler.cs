@@ -999,7 +999,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
         string sourceKey,
         IDisposable? hardwareLease,
         IDisposable? allocationLease,
-        IDisposable? fieldDeliveryLease = null) : IDisposable
+        IDisposable? fieldDeliveryLease = null,
+        IDisposable? residualLease = null) : IDisposable
     {
         private int state;
 
@@ -1013,6 +1014,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             Exception? resourceReleaseError = null;
             Exception? hardwareReleaseError = null;
             Exception? allocationReleaseError = null;
+            Exception? residualReleaseError = null;
             Exception? fieldDeliveryReleaseError = null;
             try
             {
@@ -1032,14 +1034,16 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 hardwareReleaseError = error;
             }
 
+            try { residualLease?.Dispose(); }
+            catch (Exception error) { residualReleaseError = error; }
             try { allocationLease?.Dispose(); }
             catch (Exception error) { allocationReleaseError = error; }
             try { fieldDeliveryLease?.Dispose(); }
             catch (Exception error) { fieldDeliveryReleaseError = error; }
             Volatile.Write(ref state, 2);
-            if (allocationReleaseError is not null || fieldDeliveryReleaseError is not null)
+            if (allocationReleaseError is not null || fieldDeliveryReleaseError is not null || residualReleaseError is not null)
                 throw new AggregateException(new[] { resourceReleaseError, hardwareReleaseError, allocationReleaseError,
-                    fieldDeliveryReleaseError }.OfType<Exception>());
+                    fieldDeliveryReleaseError, residualReleaseError }.OfType<Exception>());
             if (resourceReleaseError is not null
                 && hardwareReleaseError is not null)
             {

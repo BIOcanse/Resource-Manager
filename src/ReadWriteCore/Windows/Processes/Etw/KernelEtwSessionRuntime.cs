@@ -187,6 +187,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
     string blockId = "etw-consumer") : IKernelEtwSessionRuntime
 {
     private Task? processingTask;
+    private Thread? consumerThread;
     private int processing;
     private readonly object stopGate = new();
     private KernelEtwSessionStopResult? stopResult;
@@ -222,6 +223,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             blockId,
             session.SessionName,
             () => session.Source.Process(),
+            out consumerThread,
             consumerThreadObserver).ContinueWith(
                 task =>
                 {
@@ -238,7 +240,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
     public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)
     {
-        if (waitTimeout < TimeSpan.Zero)
+        if (waitTimeout < TimeSpan.Zero && waitTimeout != Timeout.InfiniteTimeSpan)
         {
             throw new ArgumentOutOfRangeException(nameof(waitTimeout));
         }
@@ -302,6 +304,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             }
 
             var processingCompleted = processingTask is null;
+            var drainStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 processingCompleted = processingTask?.Wait(waitTimeout) ?? true;
@@ -313,6 +316,19 @@ internal sealed class TraceEventSessionProcessingRuntime(
             catch (Exception ex)
             {
                 failures.Add($"ProcessingTask: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            // Completion records Process() and observer cleanup. Join the original
+            // thread too, using only the remainder of the same drain budget.
+            if (consumerThread is { } thread)
+            {
+                var unlimited = waitTimeout == Timeout.InfiniteTimeSpan;
+                var remaining = unlimited ? Timeout.InfiniteTimeSpan
+                    : waitTimeout - System.Diagnostics.Stopwatch.GetElapsedTime(drainStarted);
+                var joined = thread.Join(unlimited ? Timeout.InfiniteTimeSpan
+                    : remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+                processingCompleted &= joined;
+                if (!joined) failures.Add($"ConsumerThread: did not exit within {waitTimeout}.");
             }
 
             stopResult = new KernelEtwSessionStopResult(

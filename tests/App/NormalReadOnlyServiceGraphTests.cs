@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -67,7 +68,7 @@ public sealed class NormalReadOnlyServiceGraphTests
             .Build();
 
         var capabilities = host.Services.GetRequiredService<StartupCapabilitySet>();
-        var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.Same(StartupCapabilitySet.NormalReadOnly, capabilities);
         Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
@@ -158,7 +159,7 @@ public sealed class NormalReadOnlyServiceGraphTests
                     StartupCapabilitySet.Full))
             .Build();
 
-        var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.Contains(hostedServices, static service =>
             service is NonOwningHostedService<ResourceManagerDatabaseInitializer>);

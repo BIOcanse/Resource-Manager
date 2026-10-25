@@ -8,6 +8,7 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -25,11 +26,16 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         var contract = Assert.Single(services, static descriptor =>
             descriptor.ServiceType == typeof(IHostManagerSmartCoordinator));
         var hosted = Assert.Single(services, static descriptor =>
-            descriptor.ServiceType == typeof(IHostedService));
+            descriptor.ServiceType == typeof(IHostedService)
+            && descriptor.ImplementationType != typeof(BusinessBlockDependencyLifetime));
+        var dependencyLifetime = Assert.Single(services, static descriptor =>
+            descriptor.ServiceType == typeof(IHostedService)
+            && descriptor.ImplementationType == typeof(BusinessBlockDependencyLifetime));
 
         Assert.Equal(ServiceLifetime.Singleton, concrete.Lifetime);
         Assert.Equal(ServiceLifetime.Singleton, contract.Lifetime);
         Assert.Equal(ServiceLifetime.Singleton, hosted.Lifetime);
+        Assert.Equal(ServiceLifetime.Singleton, dependencyLifetime.Lifetime);
         Assert.Equal(typeof(HostManagerSmartCoordinator), concrete.ImplementationType);
 
         var owner = (HostManagerSmartCoordinator)RuntimeHelpers.GetUninitializedObject(

@@ -31,29 +31,29 @@ public sealed class BusinessBlockMetricsTests
         Exception? workerError = null;
         long nativeThreadId = 0;
         long cpuBeforeRegistration = 0;
-        long cpuAtRegistration = 0;
         long cpuAfterRegistration = 0;
+        long cpuBeforeUnregistration = 0;
+        long cpuAfterUnregistration = 0;
 
         var worker = new Thread(() =>
         {
             try
             {
-                // Thread times advance per clock tick, so the registration's own baseline is bracketed
-                // by a read before and a read after it.
                 cpuBeforeRegistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
                 using (metrics.RegisterCurrentThread("busy-session"))
                 {
                     nativeThreadId = NativeThreadTimes.GetCurrentThreadId();
-                    cpuAtRegistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
+                    cpuAfterRegistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
                     started.Set();
 
                     while (!stop.IsSet)
                     {
                         Thread.SpinWait(20_000);
                     }
+                    cpuBeforeUnregistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
                 }
 
-                cpuAfterRegistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
+                cpuAfterUnregistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
             }
             catch (Exception exception)
             {
@@ -74,7 +74,7 @@ public sealed class BusinessBlockMetricsTests
         {
             threadHandle = NativeThreadTimes.Open(checked((uint)nativeThreadId));
             Thread.Sleep(200);
-            var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - cpuAtRegistration;
+            var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - cpuAfterRegistration;
             metrics.Sample(DateTimeOffset.UtcNow);
             var sample = metrics.Read();
             var activeThread = Assert.Single(sample.ActiveThreads);
@@ -107,11 +107,12 @@ public sealed class BusinessBlockMetricsTests
             Assert.True(final.TotalCpuTime > TimeSpan.Zero);
             Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreads, final.Coverage);
 
-            var independentlyMeasuredTicks = cpuAfterRegistration - cpuAtRegistration;
+            // Bracket the measurement's registration and release reads. Subtracting
+            // only an after-registration baseline can be one CPU quantum too small.
             Assert.InRange(
-                Math.Abs(final.TotalCpuTime.Ticks - independentlyMeasuredTicks),
-                0,
-                TimeSpan.FromMilliseconds(100).Ticks);
+                final.TotalCpuTime.Ticks,
+                cpuBeforeUnregistration - cpuAfterRegistration,
+                cpuAfterUnregistration - cpuBeforeRegistration);
         }
         finally
         {

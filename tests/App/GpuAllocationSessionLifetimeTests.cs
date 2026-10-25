@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
@@ -5,89 +6,89 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuAllocationSessionLifetimeTests
 {
     [Fact]
-    public async Task FailedStartupRetriesOnlyAtNextDueCaptureNeverOnRead()
+    public async Task FailedStartupDoesNotRetryUntilDependencyIsWithdrawnAndAcquiredAgain()
     {
         var factory = new GpuAllocationTestSessionFactory { Failures = 1 };
-        using var collector = factory.Collector();
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
-        Assert.Equal(0, factory.Attempts);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        for (var i = 0; i < 10; i++) Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
+
+        var failed = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await Assert.ThrowsAnyAsync<Exception>(() => failed.Ready);
         Assert.Equal(1, factory.Attempts);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Equal(1, factory.Attempts);
+
+        await failed.DisposeAsync();
+        var next = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await next.Ready;
         Assert.Equal(2, factory.Attempts);
-        Assert.Empty(factory.Current.Enabled);
+        Assert.Equal(0, factory.Current.Captures);
     }
 
     [Fact]
-    public async Task UnexpectedExitReleasesOldRuntimeBeforeReplacementAndIgnoresLateCallbacks()
+    public async Task UnexpectedExitFailsTheBlockAndCaptureDoesNotRestartIt()
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector();
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
+        var subscription = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await subscription.Ready;
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var old = factory.Current;
         var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes);
-        old.End();
-        Assert.Same(prior, collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        Assert.Equal(1, factory.Attempts);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+
+        old.End(new IOException("injected consumer failure"));
+        var completion = await harness.Controller.GetCompletion("gpu-allocation-etw");
+        Assert.Equal(BusinessBlockOutcome.Failed, completion.Outcome);
         Assert.Equal(1, old.Stops);
-        Assert.Equal(2, factory.Attempts);
-        var replacement = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        Assert.Equal(Timeout.InfiniteTimeSpan, old.StopTimeout);
+        Assert.Same(prior, collector.ReadCurrent(GpuAllocationTestSession.Processes));
+
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.Equal(1, factory.Attempts);
+        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         old.End(new IOException("late callback"));
-        Assert.Same(replacement, collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+
+        await subscription.DisposeAsync();
+        var next = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await next.Ready;
+        Assert.Equal(2, factory.Attempts);
     }
 
     [Fact]
-    public async Task UnconfirmedReleaseCannotCreateSecondRuntime()
+    public async Task UnconfirmedSessionReleaseBlocksAReplacementRun()
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector();
-        var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
+        var first = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await first.Ready;
         factory.Current.StopResult = new(true, false, true, ["fake disposal failure"]);
         factory.Current.End();
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        lease.Dispose();
-        using var next = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.Equal(BusinessBlockOutcome.Failed,
+            (await harness.Controller.GetCompletion("gpu-allocation-etw")).Outcome);
+        await first.DisposeAsync();
+
+        var next = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAnyAsync<Exception>(() => next.Ready);
         Assert.Equal(1, factory.Attempts);
         Assert.Equal(1, factory.Current.Stops);
-        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
     }
 
     [Fact]
-    public async Task PartialFactoryCleanupFailureBlocksReplacement()
+    public async Task PartialFactoryCleanupFailureBlocksReplacementRun()
     {
         var factory = new GpuAllocationTestSessionFactory { PartialCleanupFailure = true };
-        using var collector = factory.Collector();
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        Assert.Equal(1, factory.Attempts);
-    }
-
-    [Fact]
-    public async Task LastLeaseStopsPendingCaptureAndDisposeCannotRestart()
-    {
-        var factory = new GpuAllocationTestSessionFactory { Configure = session => session.HoldEnd = true };
-        using var collector = factory.Collector();
+        await using var harness = factory.Harness();
+        var collector = harness.Collector;
         var first = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
-        var last = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
-        var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        first.Dispose();
-        Assert.Equal(0, factory.Current.Stops);
-        last.Dispose();
-        await capture.WaitAsync(TimeSpan.FromSeconds(1));
-        Assert.Equal(1, factory.Current.Stops);
-        Assert.Empty(factory.Current.Enabled);
-        factory.Current.DeliverEnd();
-        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        collector.Dispose();
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await Assert.ThrowsAnyAsync<Exception>(() => first.Ready);
+        await first.DisposeAsync();
+
+        var next = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAnyAsync<Exception>(() => next.Ready);
         Assert.Equal(1, factory.Attempts);
-        Assert.Throws<ObjectDisposedException>(() => collector.AcquireSubscription(TimeSpan.FromSeconds(1)));
+        Assert.Empty(factory.Sessions);
     }
 }

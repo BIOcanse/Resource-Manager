@@ -14,9 +14,9 @@ public sealed class GpuAllocationFrequencyTests
     public async Task HighestHeldFrequencySelectsTheMechanismAndOnlyDuePublishes(int seconds, bool live)
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(timeProvider: new NoTimers());
+        await using var harness = factory.Harness(timeProvider: new NoTimers());
+        var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(seconds));
-        Assert.Empty(factory.Sessions);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
         Assert.Equal(live, factory.Current.Enabled.Contains(GpuAllocationCollector.Provider));
@@ -55,7 +55,8 @@ public sealed class GpuAllocationFrequencyTests
     public async Task UiAdmissionAndReleaseSwitchOnlyAtNextDueAndAlwaysUseShortestHeldInterval()
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(timeProvider: new NoTimers());
+        await using var harness = factory.Harness(timeProvider: new NoTimers());
+        var collector = harness.Collector;
         using var smart = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Empty(factory.Current.Enabled);
@@ -87,7 +88,8 @@ public sealed class GpuAllocationFrequencyTests
     {
         var log = new CaptureLog();
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(logger: log, timeProvider: new NoTimers());
+        await using var harness = factory.Harness(logger: log, timeProvider: new NoTimers());
+        var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes);
@@ -116,7 +118,8 @@ public sealed class GpuAllocationFrequencyTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { [GpuAllocationCapturePlan.ThresholdKey] = threshold }).Build();
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(configuration: configuration, timeProvider: new NoTimers());
+        await using var harness = factory.Harness(configuration: configuration, timeProvider: new NoTimers());
+        var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(seconds));
         configuration[GpuAllocationCapturePlan.ThresholdKey] = live ? "0" : "1e100";
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
@@ -134,23 +137,27 @@ public sealed class GpuAllocationFrequencyTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { [GpuAllocationCapturePlan.ThresholdKey] = threshold }).Build();
         var factory = new GpuAllocationTestSessionFactory();
-        Assert.Throws<ArgumentOutOfRangeException>(() => factory.Collector(configuration: configuration));
+        Assert.Throws<ArgumentOutOfRangeException>(() => factory.Harness(configuration: configuration));
         Assert.Empty(factory.Sessions);
     }
 
     [Fact]
-    public async Task ReleasingLastLiveLeaseStopsEventsAndCannotRepublishLateCallbacks()
+    public async Task ReleasingLastLiveLeaseStopsTheBlockAndRetainsPublishedValue()
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(timeProvider: new NoTimers());
+        await using var harness = factory.Harness(timeProvider: new NoTimers());
+        var collector = harness.Collector;
         var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var published = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         lease.Dispose();
-        Assert.Empty(factory.Current.Enabled);
+        await lease.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(1, factory.Current.Stops);
+        Assert.Equal(Timeout.InfiniteTimeSpan, factory.Current.StopTimeout);
+        Assert.Empty(factory.Current.Enabled);
         factory.Current.Emit(34, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
-        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Same(published, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Equal(1, factory.Current.Captures);
     }
 

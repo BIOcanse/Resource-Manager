@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.PublicResources;
@@ -23,7 +24,7 @@ public sealed class HostManagerStartupOrderTests
                     StartupCapabilitySet.Full))
             .Build();
 
-        var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
             hostedServices[0]);

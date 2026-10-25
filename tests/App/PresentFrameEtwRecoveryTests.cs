@@ -1,25 +1,36 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class PresentFrameEtwRecoveryTests
 {
     [Fact]
-    public void ExistingLeaseCanReconcileFailedStartAndAdditionalBorrowersWithoutAllLeasesLeaving()
+    public async Task FailedStartupRequiresExplicitWithdrawalBeforeAnotherDependencyStartsIt()
     {
-        var starts = 0;
-        using var source = new PresentFrameEtwSource(NullLogger<PresentFrameEtwSource>.Instance,
-            _ => { starts++; throw new InvalidOperationException("recorded failed startup"); });
-        using var first = source.AcquireSubscription();
-        Assert.Equal(1, starts);
-        Assert.Null(source.Read(TimeSpan.FromSeconds(1)));
-        Assert.Equal(2, starts);
-        using (source.AcquireSubscription()) Assert.Equal(3, starts);
-        Assert.Null(source.ReadIntervals(DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow));
-        Assert.Equal(4, starts);
-        first.Dispose();
-        Assert.Null(source.Read(TimeSpan.FromSeconds(1)));
-        Assert.Equal(4, starts);
+        await using var harness = PresentFrameEtwTestHarness.Create();
+        harness.Sessions.Configure = (_, attempt) =>
+        {
+            if (attempt == 1) throw new IOException("injected startup failure");
+        };
+        var first = harness.Source.AcquireSubscription();
+        await Assert.ThrowsAsync<IOException>(() => PresentFrameEtwTestHarness.ReadyAsync(first));
+        Assert.Equal(BusinessBlockOutcome.Failed,
+            (await harness.Controller.GetCompletion("present-etw")).Outcome);
+        for (var index = 0; index < 3; index++)
+        {
+            Assert.Null(harness.Source.Read(TimeSpan.FromSeconds(1)));
+            Assert.Null(harness.Source.ReadIntervals(DateTimeOffset.UtcNow.AddSeconds(-1), DateTimeOffset.UtcNow));
+            _ = harness.Controller.Read();
+        }
+        var second = harness.Source.AcquireSubscription();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => PresentFrameEtwTestHarness.ReadyAsync(second));
+        Assert.Equal(1, harness.Sessions.Attempts);
+        await PresentFrameEtwTestHarness.ReleaseAsync(first);
+        await PresentFrameEtwTestHarness.ReleaseAsync(second);
+
+        var next = harness.Source.AcquireSubscription();
+        await PresentFrameEtwTestHarness.ReadyAsync(next);
+        Assert.Equal(2, harness.Sessions.Attempts);
+        await PresentFrameEtwTestHarness.ReleaseAsync(next);
     }
 }

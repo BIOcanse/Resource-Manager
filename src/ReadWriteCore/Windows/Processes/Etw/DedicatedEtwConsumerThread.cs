@@ -7,6 +7,14 @@ public static class DedicatedEtwConsumerThread
         string sessionName,
         Action process,
         IEtwConsumerThreadObserver? observer = null)
+        => Start(blockId, sessionName, process, out _, observer);
+
+    public static Task Start(
+        string blockId,
+        string sessionName,
+        Action process,
+        out Thread consumerThread,
+        IEtwConsumerThreadObserver? observer = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockId);
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
@@ -44,6 +52,7 @@ public static class DedicatedEtwConsumerThread
             Name = $"{blockId} / {sessionName}"
         };
 
+        consumerThread = thread;
         thread.Start();
         return completion.Task;
     }

@@ -28,6 +28,16 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
 
     public int StreamCount => streams.Count;
 
+    // Keep the bounded output history, release the indexes used only to correlate
+    // incoming events. A stopped producer can still return its current values.
+    public void ReleaseCorrelationState()
+    {
+        startKeys.Clear();
+        currentPresentsByThread.Clear();
+        presentsBySubmitSequence.Clear();
+        presentsByWin32kToken.Clear();
+    }
+
     // Lost lifecycle events invalidate live identity/correlation state. Exact recorded
     // history remains readable by cursor consumers until normal retention expires.
     public void EventsLost()

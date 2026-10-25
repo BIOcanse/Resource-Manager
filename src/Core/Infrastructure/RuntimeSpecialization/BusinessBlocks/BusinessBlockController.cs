@@ -4,7 +4,7 @@ using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 /// <summary>Owns lifecycle facts; Generic Host remains the owner of process lifetime.</summary>
-public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBlockDiagnostics, IAsyncDisposable
+public sealed partial class BusinessBlockController : IBusinessBlockQuery, IBusinessBlockDiagnostics, IAsyncDisposable
 {
     private readonly object sync = new();
     private readonly SemaphoreSlim requests = new(1, 1);
@@ -52,6 +52,9 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var ordered = Ordered([id]);
+            var disabled = ordered.FirstOrDefault(entry => !entry.Enabled);
+            if (disabled is not null)
+                throw new InvalidOperationException($"Business block {disabled.Registration.Id} is disabled by configuration.");
             var originalRuns = ordered.ToDictionary(entry => entry.Registration.Id, entry => entry.Run, StringComparer.Ordinal);
             try
             {
@@ -64,7 +67,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
             }
             catch
             {
-                var needed = Ordered(roots).Select(entry => entry.Registration.Id).ToHashSet(StringComparer.Ordinal);
+                var needed = NeededBlockIds();
                 for (var index = ordered.Count - 1; index >= 0; index--)
                     if (!needed.Contains(ordered[index].Registration.Id)
                         && !ReferenceEquals(originalRuns[ordered[index].Registration.Id], ordered[index].Run)
@@ -73,9 +76,8 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
                         { Kind = BusinessBlockRequestKind.Dependency, ConfigurationOrDependency = "start-failed:" + id }, CancellationToken.None).ConfigureAwait(false);
                 throw;
             }
-            roots.Add(id);
-            if (options.MetricsInterval is not null && samplingTask is null)
-                samplingTask = SampleLoopAsync(samplingStop.Token);
+            lock (sync) roots.Add(id);
+            EnsureSamplingStarted();
         }
         finally { requests.Release(); }
     }
@@ -97,6 +99,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
             entry.Stop = new();
             entry.StopCompletion = null;
             entry.Run = null;
+            entry.CompletedOutcome = null;
             entry.Block = null;
             // Legacy producers can already hold a consumer before their hosted adapter starts.
             // Preserve its measured lifetime instead of resetting an active thread registration.
@@ -145,6 +148,7 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         await consumersReleased.ConfigureAwait(false);
         lock (sync)
         {
+            entry.CompletedOutcome = result.Outcome;
             var outcome = entry.HasReportedFailure ? BusinessBlockTransitionOutcome.Failed : result.Outcome switch
             {
                 BusinessBlockOutcome.Done => BusinessBlockTransitionOutcome.Done,
@@ -167,8 +171,8 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         try
         {
             _ = Get(id);
-            roots.Remove(id);
-            var needed = Ordered(roots).Select(value => value.Registration.Id).ToHashSet(StringComparer.Ordinal);
+            lock (sync) roots.Remove(id);
+            var needed = NeededBlockIds();
             var candidates = Ordered([id]);
             for (var index = candidates.Count - 1; index >= 0; index--)
             {
@@ -234,11 +238,13 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
                 }
                 finally { deadlineStop.Cancel(); }
             }
-            if (hosted is not null && (run is null || run.IsCompleted))
+            if (hosted is not null)
                 lock (sync)
-                    if (entry.State == BusinessBlockState.Stopping)
+                    if ((run is null || run.IsCompleted || entry.CompletedOutcome is not null)
+                        && entry.State == BusinessBlockState.Stopping)
                     {
-                        var failed = entry.HasReportedFailure || run is { IsCompletedSuccessfully: true }
+                        var failed = entry.HasReportedFailure || entry.CompletedOutcome == BusinessBlockOutcome.Failed
+                            || run is { IsCompletedSuccessfully: true }
                             && run.Result.Outcome == BusinessBlockOutcome.Failed;
                         Transition(entry, failed ? BusinessBlockState.Failed : BusinessBlockState.Stopped, reason,
                             failed ? BusinessBlockTransitionOutcome.Failed : BusinessBlockTransitionOutcome.Stopped);
@@ -299,23 +305,63 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         {
             var id = failed.Registration.Id;
             var affected = new HashSet<string>(StringComparer.Ordinal) { id };
+            var revoked = new List<DependencyLease>();
             if (failed.Policy.OnFailure == BusinessBlockFailurePolicy.StopDependents)
             {
                 var failedRoots = new List<string>();
-                foreach (var root in roots)
+                string[] rootSnapshot;
+                DependencyLease[] dependencySnapshot;
+                lock (sync)
+                {
+                    rootSnapshot = roots.ToArray();
+                    dependencySnapshot = entries.Values.SelectMany(entry => entry.ActiveDependencies).ToArray();
+                }
+                foreach (var root in rootSnapshot)
                     if (Ordered([root]).Any(entry => entry.Registration.Id == id))
                     {
                         failedRoots.Add(root);
                         foreach (var entry in Ordered([root])) affected.Add(entry.Registration.Id);
                     }
-                foreach (var root in failedRoots) roots.Remove(root);
-                var needed = Ordered(roots).Select(entry => entry.Registration.Id).ToHashSet(StringComparer.Ordinal);
+                foreach (var lease in dependencySnapshot)
+                    if (Ordered([lease.Entry.Registration.Id]).Any(entry => entry.Registration.Id == id))
+                    {
+                        foreach (var entry in Ordered([lease.Entry.Registration.Id])) affected.Add(entry.Registration.Id);
+                        lock (sync)
+                            if (lease.Entry.ActiveDependencies.Remove(lease))
+                            {
+                                lease.TryBeginRelease();
+                                revoked.Add(lease);
+                            }
+                    }
+                lock (sync)
+                    foreach (var root in failedRoots) roots.Remove(root);
+                var needed = NeededBlockIds();
                 affected.ExceptWith(needed);
             }
             var ordered = Ordered(affected);
-            for (var index = ordered.Count - 1; index >= 0; index--)
-                if (affected.Contains(ordered[index].Registration.Id))
-                    await StopOneAsync(ordered[index], new(BusinessBlockRequestKind.Dependency, id, "failure-policy", failed.Reason?.PlanVersion ?? 0), CancellationToken.None).ConfigureAwait(false);
+            Exception? stopError = null;
+            try
+            {
+                for (var index = ordered.Count - 1; index >= 0; index--)
+                    if (affected.Contains(ordered[index].Registration.Id))
+                        await StopOneAsync(ordered[index], new(BusinessBlockRequestKind.Dependency, id, "failure-policy", failed.Reason?.PlanVersion ?? 0), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                stopError = error;
+                throw;
+            }
+            finally
+            {
+                foreach (var lease in revoked)
+                {
+                    var withdrawal = new InvalidOperationException(
+                        $"Dependency owned by {lease.Facts.Owner} was withdrawn by StopDependents after {id} failed.");
+                    lease.CompleteReleased(stopError is null ? withdrawal : new AggregateException(withdrawal, stopError));
+                    logger.LogWarning("Business block dependency for {Owner} on {BlockId} was withdrawn by StopDependents after {FailedBlockId} failed",
+                        lease.Facts.Owner, lease.Entry.Registration.Id, id);
+                }
+            }
         }
         catch (Exception error) { logger.LogError(error, "Business block failure policy could not complete for {BlockId}", failed.Registration.Id); }
         finally { requests.Release(); }
@@ -397,13 +443,29 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         catch (Exception error) { logger.LogError(error, "Business block CPU sampling failed"); }
     }
 
+    private void EnsureSamplingStarted()
+    {
+        if (options.MetricsInterval is not null && samplingTask is null)
+            samplingTask = SampleLoopAsync(samplingStop.Token);
+    }
+
     public BusinessBlocksSnapshot Read()
     {
         lock (sync) return new(DateTimeOffset.UtcNow, options.HistoryLimit, options.MetricsInterval,
             entries.Values.Select(entry => new BusinessBlockFacts(entry.Registration.Id, entry.State,
                 entry.Registration.Dependencies.ToArray(), entry.Policy, entry.Reason, entry.Outcome,
-                entry.Run is { IsCompleted: false } || entry.StopCompletion is { IsCompleted: false } || entry.ObservedThreads != 0, entry.Metrics.Read())
-                { ObservationOnly = entry.Registration.ObservationOnly }).ToArray(), history.ToArray());
+                entry.Run is { IsCompleted: false } && entry.CompletedOutcome is null
+                    || entry.StopCompletion is { IsCompleted: false } || entry.ObservedThreads != 0, entry.Metrics.Read())
+                {
+                    ObservationOnly = entry.Registration.ObservationOnly,
+                    Enabled = entry.Enabled,
+                    ActiveDependencies = entry.ActiveDependencies.Select(lease => lease.Facts).ToArray()
+                }).ToArray(), history.ToArray());
+    }
+
+    internal BusinessBlockState GetState(string id)
+    {
+        lock (sync) return Get(id).State;
     }
 
     private Entry Get(string id) => entries.TryGetValue(id, out var entry) ? entry : throw new KeyNotFoundException($"Unknown business block: {id}");
@@ -489,10 +551,16 @@ public sealed class BusinessBlockController : IBusinessBlockQuery, IBusinessBloc
         public CancellationTokenSource? Stop;
         public IBusinessBlock? Block;
         public Task<BusinessBlockResult>? Run;
+        // The block and observed consumers have returned, even if this controller's
+        // async bookkeeping task has not yet published its Task completion.
+        public BusinessBlockOutcome? CompletedOutcome;
         public Task? StopCompletion;
         public Task? FailurePolicyTask;
         public bool HasReportedFailure;
         public int ObservedThreads;
         public TaskCompletionSource? ConsumersReleased;
+        public bool Enabled = true;
+        public List<DependencyLease> ActiveDependencies { get; } = [];
     }
+
 }
