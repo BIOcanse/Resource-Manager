@@ -36,6 +36,20 @@ await resetDashboardPreferences(client);
 assert.equal((await client.read()).appearance.language, "ja-JP");
 assert.deepEqual((await readDashboardPreferences(undefined, client)).settings, dashboardPointValues());
 
+// A cached column without a width takes its own column set's template width; GPU columns resolve through the {index} template.
+{
+  const unsized = (ids: string[]) => ids.map(id => ({ id, visible: true }));
+  await saveDashboardPreferences({ ...initial.settings, resourceTableColumns: unsized(["memory", "gpu.3.vram", "pid", "custom.column"]),
+    resourceTableProcessColumns: unsized(["pid", "gpu.1.usage"]) } as DashboardSettings, client);
+  const widths = (await readDashboardPreferences([], client)).settings;
+  const { ResourceManager } = await import("../src/preferences/generated/frontendPoints.values.ts");
+  const fallback = ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth;
+  assert.deepEqual(widths.resourceTableColumns.map(column => column.width), [110, 132, fallback, fallback],
+    "software columns use the software templates; a process-only column is not a software template");
+  assert.deepEqual(widths.resourceTableProcessColumns.map(column => column.width), [76, 108]);
+  await resetDashboardPreferences(client);
+}
+
 // Existing Phase A browser caches have no dashboard entry.
 const phaseA = pointPreferences(); delete phaseA.dashboard;
 await client.save(phaseA);

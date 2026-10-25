@@ -44,10 +44,21 @@ function validateDashboardCache(value: DashboardSettings): void {
   }
 }
 
-function columnValues(columns: ResourceTableColumnSettings[]): ResourceTableColumnSettings[] {
-  return columns.map(column => ({ ...column, width: column.width ?? points.DashboardLayoutDefaults.processColumns
-    .find(template => template.id.replace("{index}", String(gpuIndex(column.id))) === column.id)?.width
-      ?? points.DashboardLayoutLimits.defaultColumnWidth }));
+type ColumnSet = "software" | "process";
+
+// 点值模板按模板 ID 给出默认列宽，每个列集合用自己的模板；GPU 列的模板 ID 把设备序号换回 {index}。
+const defaultColumnWidths: Record<ColumnSet, ReadonlyMap<string, number>> = {
+  software: new Map(points.DashboardLayoutDefaults.softwareColumns.map(template => [template.id, template.width])),
+  process: new Map(points.DashboardLayoutDefaults.processColumns.map(template => [template.id, template.width]))
+};
+
+function columnTemplateId(id: string): string {
+  return gpuIndex(id) === null ? id : id.replace(/^gpu\.\d+\./i, "gpu.{index}.");
+}
+
+function columnValues(columns: ResourceTableColumnSettings[], set: ColumnSet): ResourceTableColumnSettings[] {
+  return columns.map(column => ({ ...column, width: column.width ?? defaultColumnWidths[set].get(columnTemplateId(column.id))
+    ?? points.DashboardLayoutLimits.defaultColumnWidth }));
 }
 
 export function dashboardPointValues(catalog?: readonly MetricDefinition[]): DashboardSettings {
@@ -131,8 +142,8 @@ export async function readDashboardPreferences(catalog?: readonly MetricDefiniti
   // explicit empty arrays remain empty.
   return dashboardCacheResult(resolveDashboardBindings({ ...cached, cards: cached.cards ?? pointValues().cards,
     resourceBars: cached.resourceBars ?? pointValues().resourceBars,
-    resourceTableColumns: columnValues(cached.resourceTableColumns ?? pointValues().resourceTableColumns),
-    resourceTableProcessColumns: columnValues(cached.resourceTableProcessColumns ?? pointValues().resourceTableProcessColumns),
+    resourceTableColumns: columnValues(cached.resourceTableColumns ?? pointValues().resourceTableColumns, "software"),
+    resourceTableProcessColumns: columnValues(cached.resourceTableProcessColumns ?? pointValues().resourceTableProcessColumns, "process"),
     usesFactoryDefaults: false }, catalog ?? []));
 }
 
