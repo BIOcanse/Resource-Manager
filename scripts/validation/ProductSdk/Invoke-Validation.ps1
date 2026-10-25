@@ -161,6 +161,7 @@ try {
 [IO.File]::WriteAllText((Join-Path $taskRun 'workset.json'),($taskWorkset|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
 $taskWorksetRecorded=$true
 $taskInputs=@(& rg --files src/Core src/ReadWriteCore src/SubscriptionCore src/Shared sdk/csharp/ResourceManager.Adapter.Abstractions sdk/csharp/ResourceManager.Adapter.SharedMemory tests/App tests/ReadWriteCore/PackageConsumer tests/SubscriptionCore/PackageConsumer scripts/validation scripts/build)
+if($LASTEXITCODE -ne 0){throw 'Could not enumerate backend inputs.'}
 $taskInputs=@($taskInputs|Where-Object {$_ -notmatch '(^|[\\/])(bin|obj|node_modules)([\\/]|$)' -and $_ -notlike 'src\UI\Frontend\*' -and $_ -match '\.(cs|csproj|props|targets|json|ps1|mjs|rsp|runsettings)$'})
 if($taskExplicitTestProject) {
     # Seal the complete managed project graph and copied/embedded resources,
@@ -177,6 +178,7 @@ if($Stage -in @('Frontend','ProductNative','ProductLegacy','ProductDiskNative','
     # Product composition includes the shell, frontend and legacy Native inputs.
     # Enumerate source trees, never their generated caches or compiled outputs.
     $taskProductInputs=@(& rg --files src/UI src/Updater src/Core/Native src/Core/wwwroot sdk/zig scripts/release tests/Fixtures)
+    if($LASTEXITCODE -ne 0){throw 'Could not enumerate product inputs.'}
     if($taskQualifiedNativeConsumer -and $Stage -in @('ProductBackend','ProductShell','ProductImage')) {
         # These stages consume the qualified prebuilt Native outputs. Their
         # complete SDK dependency set is already sealed through taskNativeInputs;

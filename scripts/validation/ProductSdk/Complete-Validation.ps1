@@ -13,12 +13,12 @@ $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $taskPath=[IO.Path]::GetFullPath($TaskRoot)
 $workspace=[IO.Path]::GetFullPath($WorkspaceRoot)
 $batchRoot=Join-Path $workspace '.validation/batches'
-$acceptance=Get-Content (Join-Path $taskPath 'acceptance.json') -Raw|ConvertFrom-Json
+$acceptance=Get-Content -LiteralPath (Join-Path $taskPath 'acceptance.json') -Raw|ConvertFrom-Json
 if(-not $acceptance.scopeAccepted){throw 'Scope not accepted'}
 foreach($proof in $acceptance.stages){
     if((Get-FileHash -LiteralPath $proof.receipt).Hash -ine $proof.sha256){throw 'Accepted stage receipt changed'}
 }
-$taskState=Get-Content (Join-Path $taskPath '.generated-workspace.json') -Raw|ConvertFrom-Json
+$taskState=Get-Content -LiteralPath (Join-Path $taskPath '.generated-workspace.json') -Raw|ConvertFrom-Json
 $workspaceMarker=Join-Path $workspace '.generated-workspace.json'
 $workspaceState=Get-Content -LiteralPath $workspaceMarker -Raw|ConvertFrom-Json
 if($taskState.state -cne 'running' -or $workspaceState.state -cne 'running'){throw 'Closure requires the task and its workspace to be running.'}
@@ -108,13 +108,13 @@ if($runningCompletions.Count) {
         $completedBatch=Complete-GeneratedWorkspaceBatch -RootPath $batchRoot -Completions $runningCompletions.ToArray() -Policy $policy -ReferenceRoots $referenceRoots
     } catch {
         $partial=$_.Exception.Data['completion']
-        if($null -ne $partial){$partial|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'running-batch-closure.json') -Encoding utf8}
+        if($null -ne $partial){$partial|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'running-batch-closure.json') -Encoding utf8}
         throw
     }
-    $completedBatch|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'running-batch-closure.json') -Encoding utf8
+    $completedBatch|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'running-batch-closure.json') -Encoding utf8
     foreach($state in $completedBatch.completed){$closures.Add([pscustomobject]@{workspace=$state})}
 }
-$closures|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'attempt-batch-closures.json') -Encoding utf8
+$closures|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'attempt-batch-closures.json') -Encoding utf8
 if($SharedWorkspace) {
     if((Get-FileHash -LiteralPath $workspaceMarker).Hash -cne $workspaceMarkerHash){throw 'Shared workspace lifecycle changed during closure.'}
     $workspaceClosure=[pscustomobject]@{shared=$true;state='running';unchanged=$true}
@@ -124,7 +124,7 @@ if($SharedWorkspace) {
     if($LASTEXITCODE -ne 0 -or -not $raw){throw 'Official workspace closure failed'}
     $workspaceClosure=$raw|ConvertFrom-Json
 }
-$workspaceClosure|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'workspace-closure.json') -Encoding utf8
+$workspaceClosure|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'workspace-closure.json') -Encoding utf8
 if($KeepTaskRunning) {
     $currentTask=Get-Content -LiteralPath (Join-Path $taskPath '.generated-workspace.json') -Raw|ConvertFrom-Json
     if($currentTask.state -cne 'running' -or $currentTask.workspaceId -cne $taskState.workspaceId){throw 'Running task identity changed during leaf closure.'}
@@ -137,10 +137,10 @@ if($KeepTaskRunning) {
 }
 # Zero-recent policies may legitimately reclaim the completed task. Do not
 # recreate an unregistered directory just to store its own closure receipt.
-if([IO.Directory]::Exists($taskPath)) {$taskClosure|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'task-closure.json') -Encoding utf8}
+if([IO.Directory]::Exists($taskPath)) {$taskClosure|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'task-closure.json') -Encoding utf8}
 $batchRetention=if([IO.Directory]::Exists($batchRoot)) {
     Invoke-GeneratedWorkspaceRetention -RootPath $batchRoot -Policy $policy -ReferenceRoots $referenceRoots -Apply
 } else {[pscustomobject]@{rootPath=$batchRoot;removedWithCompletedWorkspace=$true}}
 if($SharedWorkspace -and (Get-FileHash -LiteralPath $workspaceMarker).Hash -cne $workspaceMarkerHash){throw 'Shared workspace lifecycle changed during final retention.'}
-if([IO.Directory]::Exists($taskPath)) {$batchRetention|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'final-batch-retention.json') -Encoding utf8}
+if([IO.Directory]::Exists($taskPath)) {$batchRetention|ConvertTo-Json -Depth 20|Set-Content -LiteralPath (Join-Path $taskPath 'final-batch-retention.json') -Encoding utf8}
 [pscustomobject]@{closedAttempts=$closures.Count;scope=$acceptance.scope;broaderBackendProductGoal='running';ledgerParent='unchanged';sharedWorkspace=[bool]$SharedWorkspace;acceptedReferenceRegistration=$acceptedReferenceRegistration;workspaceClosure=$workspaceClosure;taskClosure=$taskClosure;batchRetention=$batchRetention}|ConvertTo-Json -Depth 20
