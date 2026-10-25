@@ -324,6 +324,24 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal("dark", Owner().Read().Appearance.Theme);
     }
 
+    [Fact]
+    public void ResetRestoresThePreferencePointsButKeepsTheNoticedVersionRecord()
+    {
+        var owner = Owner();
+        owner.SaveGlobal(owner.Read() with
+        {
+            Appearance = new() { Theme = "dark" },
+            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" }
+        });
+        var reset = owner.Reset();
+        Assert.Equal(FrontendPoints.Theme, reset.Appearance.Theme);
+        Assert.Equal(FrontendPoints.UpdateInApp, reset.Notifications.UpdateInApp);
+        Assert.Equal(FrontendPoints.UpdateSystem, reset.Notifications.UpdateSystem);
+        Assert.Equal("1.2.0", reset.Notifications.UpdateInAppNotifiedVersion);
+        Assert.Equal("1.2.0", Owner().Read().Notifications.UpdateInAppNotifiedVersion);
+        Assert.Equal(FrontendPoints.Theme, Owner().Read().Appearance.Theme);
+    }
+
     private FrontendPreferencesOwner Owner() => new(Cache, App, Overlay);
     private static string Serialize(FrontendPreferences value) => JsonSerializer.Serialize(value, FrontendPreferencesOwner.Json);
 

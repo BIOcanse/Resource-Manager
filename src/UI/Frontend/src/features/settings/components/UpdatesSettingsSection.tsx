@@ -8,7 +8,7 @@ import { VersionSelector, type VersionChoice } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
 import type { ProductUpdateStore } from "../../../stores/productUpdateStore.ts";
 import { updateCheckIntervalHours } from "../../../stores/settingsStore.ts";
-import { formatConnectedDuration, formatUtcTime } from "../../../data/productUpdateStatus.ts";
+import { formatConnectedDuration, formatUtcTime, parseUtcTime } from "../../../data/productUpdateStatus.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
 
 interface ProductVersionOption extends Omit<VersionChoice, "unavailableReason"> {
@@ -60,7 +60,10 @@ export function UpdatesSettingsSection(props: {
   async function refresh() {
     setLoading(true);
     try {
-      setCatalog(await getJson<ProductVersionCatalog>("/api/updates/product/versions", { timeoutMs: 35000 }));
+      const result = await getJson<ProductVersionCatalog>("/api/updates/product/versions", { timeoutMs: 35000 });
+      // 目录的检查时间和更新状态一样是 UTC（「时间按照协调世界时」）；不带 Z 或 +00:00 的时间不是合同里的值。
+      if (!parseUtcTime(result.checkedAt)) throw new Error("catalog checkedAt is not UTC");
+      setCatalog(result);
     } catch {
       setCatalog({ status: "error", complete: false, checkedAt: new Date().toISOString(),
         options: [], errorCode: "update.catalogUnavailable" });
@@ -157,7 +160,7 @@ export function UpdatesSettingsSection(props: {
         <div class="settings-row-copy">
           <strong>{text().versionsTitle}</strong>
           <span>{text().versionsDescription}</span>
-          <small>{text().lastChecked}{new Date(result().checkedAt).toLocaleString(props.text.language)}</small>
+          <small>{text().lastChecked}{formatUtcTime(result().checkedAt)}</small>
         </div>
         <VersionSelector options={result().options} choice={selected()}
           onSelect={setSelected} text={text()} />

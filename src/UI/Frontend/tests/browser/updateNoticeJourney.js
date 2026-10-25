@@ -46,8 +46,13 @@ export default async function updateNoticeJourney(page, baseUrl) {
   const periodic = () => page.getByRole("checkbox", { name: text.periodicTitle, exact: true });
   const interval = () => page.getByRole("textbox", { name: text.intervalTitle, exact: true });
 
+  await page.route("**/api/updates/product/versions", route => route.fulfill({ json: {
+    installedVersion: "1.0.0", status: "loaded", complete: true, checkedAt: "2026-10-27T08:30:00+00:00",
+    options: [{ choice: "latest", version: "1.3.0", selectable: true, available: true }] } }));
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await openUpdates();
+  // 版本目录的“上次检查”与更新状态同样按 UTC 显示。
+  await page.getByText(`${text.lastChecked}2026-10-27 08:30 UTC`, { exact: true }).waitFor();
 
   // 三档：默认自动下载并应用；选“只检查并提示”保存后重新加载仍是它。
   assert.equal(await mode(option("automatic")).getAttribute("aria-checked"), "true");
@@ -151,7 +156,22 @@ export default async function updateNoticeJourney(page, baseUrl) {
   assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), false);
   assert.equal(await page.getByRole("checkbox", { name: text.systemNoticeTitle, exact: true }).isChecked(), false);
 
+  // 恢复界面偏好默认值只重置偏好点；已提示版本是记录，保留，同一版本不再提示。
+  await publish({ checkResult: "available", availableVersion: "1.2.0" });
+  await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
+  await page.getByRole("button", { name: settings.appearance.resetCache, exact: true }).click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")
+    ?.notifications?.updateInApp === "on");
+  assert.deepEqual((await readFrontendPreferences(page)).notifications,
+    { updateInApp: "on", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await openUpdates();
+  assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), true);
+  await page.getByText(`${text.availableVersion}1.2.0`, { exact: true }).waitFor();
+  await page.waitForTimeout(300);
+  assert.equal(await notices().count(), 0, "the same version was noticed again after resetting the interface preferences");
+
   assert.deepEqual(errors, []);
-  return { modePersisted: true, intervalRange: [24, 168], offDisablesPeriodic: true, waitingForInternet: true,
+  return { resetKeepsNoticedVersion: true, modePersisted: true, intervalRange: [24, 168], offDisablesPeriodic: true, waitingForInternet: true,
     utcTimes: true, noticesShown: ["1.1.0", "1.2.0"], sameVersionAfterReload: 0, inAppOff: 0, entryOpensUpdates: true };
 }

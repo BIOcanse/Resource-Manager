@@ -179,7 +179,10 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const value = pointPreferences();
     value.overlays = Object.fromEntries(Object.entries(current.overlays).map(([id, overlay]) =>
       [id, { ...pointOverlayPresentation(), enabled: overlay.enabled ?? false, mode: overlay.mode ?? "external" }]));
-    if (Object.keys(value.overlays).length) browserStorage.setItem(key, JSON.stringify(value));
+    // 与原生壳相同：已提示版本是“提示过哪个版本”的记录，不是偏好，重置偏好点时保留。
+    value.notifications.updateInAppNotifiedVersion = current.notifications.updateInAppNotifiedVersion;
+    if (Object.keys(value.overlays).length || value.notifications.updateInAppNotifiedVersion !== null)
+      browserStorage.setItem(key, JSON.stringify(value));
     else browserStorage.removeItem(key);
     notifyReset();
     return value;

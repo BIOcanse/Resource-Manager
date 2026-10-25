@@ -128,7 +128,14 @@ internal sealed partial class FrontendPreferencesOwner
             var choices = current.Overlays.ToDictionary(static pair => pair.Key,
                 static pair => new FrontendOverlayPresentation { Enabled = pair.Value.Enabled, Mode = pair.Value.Mode },
                 StringComparer.OrdinalIgnoreCase);
-            if (choices.Count != 0) return Save(pointValues with { Overlays = choices });
+            // 已提示版本是“提示过哪个版本”的记录，不是偏好：重置偏好点时保留它，同一版本不会再提示。
+            var notified = current.Notifications.UpdateInAppNotifiedVersion;
+            if (choices.Count != 0 || notified is not null)
+                return Save(pointValues with
+                {
+                    Overlays = choices,
+                    Notifications = pointValues.Notifications with { UpdateInAppNotifiedVersion = notified }
+                });
             WriteImportMarker();
             WriteDashboardImportMarker();
             File.Delete(cachePath);
