@@ -37,6 +37,21 @@ public sealed class GpuAllocationFrequencyTests
     }
 
     [Fact]
+    public async Task BoundaryManifestEventDoesNotFailTheDueCapture()
+    {
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector(timeProvider: new NoTimers());
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+
+        Assert.Equal(2, factory.Current.ManifestEvents);
+        var value = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        Assert.NotNull(value);
+        Assert.Equal(1024, value.Adapters[23][41].PrivateBytes);
+    }
+
+    [Fact]
     public async Task UiAdmissionAndReleaseSwitchOnlyAtNextDueAndAlwaysUseShortestHeldInterval()
     {
         var factory = new GpuAllocationTestSessionFactory();

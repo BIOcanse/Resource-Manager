@@ -204,6 +204,9 @@ public sealed class GpuAllocationCollector(
                 {
                     if (provider == BoundaryProvider)
                     {
+                        // Only BeginScan (2) and EndScan (3) carry boundary fields. The EventSource also writes
+                        // its self-describing manifest (event 65534) each time a capture enables the provider.
+                        if (id is not (2 or 3)) return;
                         if (scan is not { } pending || pending.Completion.Task.IsCompleted
                             || payload.Get(GpuAllocationField.session)?.ToString() != name
                             || Convert.ToInt64(payload.Get(GpuAllocationField.scan)) != pending.Id) return;

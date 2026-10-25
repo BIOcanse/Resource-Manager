@@ -40,6 +40,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     internal Task FirstEndScanQueued => firstEndScanQueued.Task;
     internal readonly HashSet<Guid> Enabled = [];
     internal int Captures;
+    internal int ManifestEvents;
     internal int Stops;
     internal int Pid = 41;
     internal ulong Bytes = 1024;
@@ -55,7 +56,16 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     public int EventsLost { get; private set; }
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> callback) => handler = callback;
     public void StartProcessing(Action<Exception?> callback) { completed = callback; IsProcessing = true; }
-    public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null) => Enabled.Add(provider);
+    public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
+    {
+        Enabled.Add(provider);
+        // Like the real EventSource, the boundary provider writes its self-describing manifest (event 65534),
+        // which has none of the boundary fields, each time a session enables it.
+        if (provider != EventSource.GetGuid(typeof(GpuAllocationBoundary)) || handler is null) return;
+        ManifestEvents++;
+        handler(provider, 65534, new GpuAllocationNamedPayload(key =>
+            throw new InvalidDataException($"GPU event 65534/v1 has no {key} payload.")), DateTime.UtcNow);
+    }
     public void DisableProvider(Guid provider)
     {
         if (FailDisable) throw new IOException("fake disable failure");
