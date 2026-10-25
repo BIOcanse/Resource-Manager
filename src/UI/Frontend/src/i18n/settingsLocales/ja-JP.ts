@@ -76,18 +76,6 @@ export default createSettingsLocale("ja-JP", {
     "reapply": "再適用"
   },
   "performance": {
-    "smartMonitoringTitle": "必要時のみ監視",
-    "smartMonitoringDescription": "現在は表示中の需要に応じて常にサンプリングします。この旧スイッチは、今後の用途が決まるまで無効です。",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "オン"
-      },
-      {
-        "id": "disabled",
-        "label": "オフ"
-      }
-    ],
     "preciseGpuPlacementTitle": "GPU の正確な選択",
     "preciseGpuPlacementDescription": "対応する描画プロセスで GPU を正確に指定できます。実行中の切り替えはプロセスの互換性に依存し、アプリごとに設定できます。",
     "preciseGpuPlacementModeOptions": {

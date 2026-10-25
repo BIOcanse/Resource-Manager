@@ -36,12 +36,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     reapply: "重新应用"
   },
   performance: {
-    smartMonitoringTitle: "按需监控",
-    smartMonitoringDescription: "目前始终按可见需求采样。旧开关已停用，其后续用途待定。",
-    adaptiveBooleanModeOptions: [
-      { id: "enabled", label: "开启" },
-      { id: "disabled", label: "关闭" }
-    ],
     preciseGpuPlacementTitle: "精确 GPU 选择",
     preciseGpuPlacementDescription: "允许受支持的渲染进程精确选卡；运行时换卡仍取决于该进程的兼容能力。每个软件可单独设。",
     preciseGpuPlacementModeOptions: {
@@ -354,12 +348,6 @@ const enSettingsCopy: SettingsCopy = {
     reapply: "Apply Again"
   },
   performance: {
-    smartMonitoringTitle: "On-demand monitoring",
-    smartMonitoringDescription: "Sampling now always follows visible demand. This old switch is disabled while its future use is undecided.",
-    adaptiveBooleanModeOptions: [
-      { id: "enabled", label: "On" },
-      { id: "disabled", label: "Off" }
-    ],
     preciseGpuPlacementTitle: "Precise GPU selection",
     preciseGpuPlacementDescription: "Allow precise GPU selection for supported render processes. Runtime switching still depends on process compatibility, and each app remains configurable.",
     preciseGpuPlacementModeOptions: {

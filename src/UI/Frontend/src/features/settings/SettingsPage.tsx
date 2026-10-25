@@ -9,7 +9,6 @@ import { SystemIntegrationSettingsSection } from "./components/SystemIntegration
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import type {
-  AppAdaptiveBooleanMode,
   AppAnimationMode,
   AppBarColorMode,
   ByteUnitMode,
@@ -48,7 +47,6 @@ interface SettingsPageProps {
   onRestoreDefaults: () => void;
   onResetFrontendPreferences: () => void;
   onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
-  onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -255,7 +253,6 @@ export function SettingsPage(props: SettingsPageProps) {
               settings={props.settings.performance}
               text={text()}
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
-              onSmartMonitoringModeChange={props.onSmartMonitoringModeChange}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}

@@ -27,7 +27,6 @@ import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
   AppAnimationMode,
   AppAiModelServiceSettings,
-  AppAdaptiveBooleanMode,
   AppAppearanceSettings,
   AppEditableHotkeySettings,
   AppBarColorMode,
@@ -103,7 +102,6 @@ export interface SettingsStore {
   resetFrontendPreferences: () => Promise<void>;
   updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
-  updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -467,10 +465,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     resetDraftToDefaults,
     updateReports: (reports) => updateDraft(current => ({ ...current, reports })),
     updateControl: (control) => updateDraft(current => ({ ...current, control })),
-    updateSmartMonitoringMode: (mode) => updatePerformance((performance) => ({
-      ...performance,
-      smartMonitoringMode: normalizeAdaptiveBooleanMode(mode)
-    })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
       preciseGpuPlacementEnabled: enabled
@@ -698,7 +692,6 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
       virtualMemoryOptimizationTargetUsagePercent: 70,
-      smartMonitoringMode: ResourceManager.FrontendPoints.SmartMonitoringMode,
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
@@ -754,7 +747,6 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.virtualMemoryAutomaticCleanupPercent, defaults.performance!.virtualMemoryAutomaticCleanupPercent),
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.physicalMemoryOptimizationTargetUsagePercent, defaults.performance!.physicalMemoryOptimizationTargetUsagePercent),
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
-      smartMonitoringMode: normalizeAdaptiveBooleanMode(settings?.performance?.smartMonitoringMode),
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),
       localSystemRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("localSystem", settings?.performance?.localSystemRefreshIntervalMs)
@@ -892,10 +884,6 @@ export function normalizeAnimationMode(animations?: string | null): AppAnimation
   return animations === "normal" ? "normal" : ResourceManager.FrontendPoints.AnimationMode;
 }
 
-// 无用户值时采用前端点，后端不参与这项选择。
-export function normalizeAdaptiveBooleanMode(mode?: string | null): AppAdaptiveBooleanMode {
-  return mode === "disabled" || mode === "enabled" ? mode : ResourceManager.FrontendPoints.SmartMonitoringMode;
-}
 
 export function resolveEffectiveAnimationMode(
   animations?: string | null,

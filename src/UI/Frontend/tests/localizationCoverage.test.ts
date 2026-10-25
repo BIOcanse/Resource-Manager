@@ -144,7 +144,7 @@ try {
     assert.equal(documentState.dir, /^(?:ar|he)-/.test(language) ? "rtl" : "ltr");
     assert.deepEqual(hostMessages.at(-1), { type: "shell.language", language });
     issues.push(...inspectCopy(language, "app", uiText, englishApp));
-    issues.push(...inspectCopy(language, "settings", currentSettingsText(), englishSettings, true));
+    issues.push(...inspectCopy(language, "settings", currentSettingsText(), englishSettings));
     const edidFixture = JSON.parse(readFileSync(new URL("./fixtures/displayEdid.json", import.meta.url), "utf8")).snapshot.ports[0].display;
     const edid = buildDisplayEdidView(edidFixture, app); const englishEdid = buildDisplayEdidView(edidFixture, englishApp);
     for (let index = 0; index < edid.current.length; index++)

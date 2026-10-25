@@ -76,18 +76,6 @@ export default createSettingsLocale("de-DE", {
     "reapply": "Erneut anwenden"
   },
   "performance": {
-    "smartMonitoringTitle": "Überwachung nach Bedarf",
-    "smartMonitoringDescription": "Die Abtastung folgt jetzt immer dem sichtbaren Bedarf. Dieser bisherige Schalter ist deaktiviert, bis seine künftige Verwendung feststeht.",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "Ein"
-      },
-      {
-        "id": "disabled",
-        "label": "Aus"
-      }
-    ],
     "preciseGpuPlacementTitle": "Genaue GPU-Auswahl",
     "preciseGpuPlacementDescription": "Ermöglicht genaue GPU-Auswahl für unterstützte Renderprozesse. Wechsel während der Laufzeit hängen von der Prozesskompatibilität ab und bleiben pro App konfigurierbar.",
     "preciseGpuPlacementModeOptions": {

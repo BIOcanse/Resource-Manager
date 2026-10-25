@@ -26,10 +26,6 @@ assert.equal(inspectParameters("ja-JP", "app.count(3)", "ファイルがあり�
 assert.equal(inspectTraditional("app.page.settings", "设置")[0]?.kind, "simplified-chinese");
 assert.deepEqual(inspectTraditional("app.page.settings", "設定"), []);
 
-const optionalBase = { performance: { adaptiveBooleanModeOptions: [{ id: "enabled", label: "Enabled", description: "Always enabled" }] } };
-const optionalCopy = { performance: { adaptiveBooleanModeOptions: [{ id: "enabled", label: "开启" }] } };
-assert.deepEqual(inspectCopy("zh-CN", "settings", optionalCopy, optionalBase, true), []);
-assert.equal(inspectCopy("zh-CN", "settings", optionalCopy, optionalBase, false)[0]?.kind, "missing");
 const cycle: Record<string, unknown> = {};
 cycle.self = cycle;
 assert.throws(() => flattenCopy(cycle), /contains a cycle/);

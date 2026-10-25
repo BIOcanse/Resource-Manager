@@ -71,7 +71,7 @@ test("concurrent scoped frontend writes preserve the other view's choices", asyn
 test("frontend settings never enter the backend settings view", () => {
   const payload = backendSettings(defaultAppSettings());
   assert.equal("appearance" in payload, false);
-  for (const field of ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"])
+  for (const field of ["monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"])
     assert.equal(field in (payload.performance as object), false, field);
 });
 

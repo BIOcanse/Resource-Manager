@@ -84,11 +84,13 @@ export async function checkCpuMetricFields(page, app, language) {
   const cpu = app.cpuTopology;
   const numa = cpu.numaNode(0, [cpu.numaCapacity("32.0 GiB"), cpu.numaAvailable(cpu.fieldUnavailable)].join(" · "));
   // CPU 拓扑沿原 60 秒订阅，首个对齐回调最长要等一分钟。
-  await page.locator(".cpu-topology-meta strong").waitFor({ timeout: 65_000 });
-  const numaLine = page.locator(".cpu-topology-numa").filter({ hasText: numa });
+  // CPU 页同时有 CPU 型号区和基线比例区，两者共用 cpu-topology-* 样式；按型号区的可访问名称限定。
+  const model = page.getByRole("region", { name: cpu.modelLabel, exact: true });
+  await model.locator(".cpu-topology-meta strong").waitFor({ timeout: 65_000 });
+  const numaLine = model.locator(".cpu-topology-numa").filter({ hasText: numa });
   await numaLine.waitFor();
   if (await numaLine.getAttribute("title") !== cpu.numaHint) throw new Error(`${language}: NUMA hint missing`);
-  await page.locator(".cpu-topology-actions").getByRole("button", { name: cpu.details, exact: true }).click();
+  await model.locator(".cpu-topology-actions").getByRole("button", { name: cpu.details, exact: true }).click();
   const dialog = page.locator(".user-details-modal:visible");
   await dialog.getByText(cpu.coreDetailTitle, { exact: true }).waitFor();
   const frequency = dialog.locator(".user-details-row").filter({ hasText: cpu.effectiveFrequency });

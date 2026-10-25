@@ -81,11 +81,12 @@ assert.equal(normalizedMissingFields.publicService?.aiModelCatalogEnabled, false
 assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
 
 // 用户裁定删除的死设置：默认设置和归一化结果里都不能再有这些键；旧文件里带着也只会被丢弃。
-// 按需监控只剩开、关：旧值 auto 读成开，显式 disabled 保持，缺省为开。
+// 智能监测开关已按用户 10-25 裁定删除：smartMonitoringMode 同样不能再出现。
 {
   const retiredPerformanceKeys = [
     "gpuPerformanceUseCases",
     "smartMonitoringEnabled",
+    "smartMonitoringMode",
     "monitoringIdleSeconds",
     "pauseFrontendRefreshWhenHiddenInNormalMode",
     "frontendHiddenRefreshMode",
@@ -131,14 +132,6 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     }
   }
   assert.deepEqual(logicRefreshIntervalKeys, ["monitor", "resourceTable", "localSystem"]);
-  assert.equal(canonicalDefaults.performance!.smartMonitoringMode, "enabled");
-  assert.equal(normalizedMissingFields.performance!.smartMonitoringMode, "enabled");
-  assert.equal(normalizedLegacy.performance!.smartMonitoringMode, "enabled",
-    "Legacy auto must read as on, regardless of the retired boolean copy");
-  assert.equal(normalizeAppSettings({
-    version: "1.0.26",
-    performance: { smartMonitoringMode: "disabled" }
-  } as unknown as AppSettings).performance!.smartMonitoringMode, "disabled", "Explicit off must stay off");
 }
 
 // 独显溢出阈值：默认值与后端一致（95 / 80），各自按 1–100 取整归一化。
@@ -434,11 +427,6 @@ await new Promise<void>((resolve, reject) => {
         changes: { performance: { gpuOverflowUsagePercent: 100 } }
       }, "Out-of-range input must be clamped before it is submitted");
 
-      store.updateSmartMonitoringMode("disabled");
-      await store.saveDraft();
-      assert.equal(patches.length, 0, "Frontend cadence choices must never be patched to the backend");
-      assert.equal(store.settings().performance!.smartMonitoringMode, "disabled");
-      assert.equal(store.isDirty(), false);
 
       dispose();
       resolve();

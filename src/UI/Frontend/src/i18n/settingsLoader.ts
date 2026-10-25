@@ -61,9 +61,6 @@ export const loadingSettingsText: SettingsTextBundle = {
   },
   actions: { save: "", restoreDefaults: "", retry: "", reload: "", reapply: "" },
   performance: {
-    smartMonitoringTitle: "",
-    smartMonitoringDescription: "",
-    adaptiveBooleanModeOptions: [],
     preciseGpuPlacementTitle: "",
     preciseGpuPlacementDescription: "",
     preciseGpuPlacementModeOptions: {

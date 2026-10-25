@@ -8,7 +8,6 @@ import {
 } from "../../../stores/settingsStore";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
-  AppAdaptiveBooleanMode,
   AppLogicRefreshIntervalKey,
   AppLogicRefreshIntervalPreset,
   AppPerformanceSettings,
@@ -25,7 +24,6 @@ interface PerformanceSettingsSectionProps {
   settings: AppPerformanceSettings | undefined;
   text: SettingsTextBundle;
   preciseGpuPlacementAvailable: boolean;
-  onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -110,20 +108,6 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
 
   return (
     <div class="settings-section-panel">
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{props.text.performance.smartMonitoringTitle}</strong>
-          <span>{props.text.performance.smartMonitoringDescription}</span>
-        </div>
-        <SegmentedControl
-          value={performance().smartMonitoringMode}
-          options={props.text.performance.adaptiveBooleanModeOptions}
-          ariaLabel={props.text.performance.smartMonitoringTitle}
-          disabled={true}
-          disabledTitle={props.text.performance.smartMonitoringDescription}
-          onChange={props.onSmartMonitoringModeChange}
-        />
-      </div>
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.performance.preciseGpuPlacementTitle}</strong>

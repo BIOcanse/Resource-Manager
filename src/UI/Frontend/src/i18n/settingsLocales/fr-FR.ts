@@ -76,18 +76,6 @@ export default createSettingsLocale("fr-FR", {
     "reapply": "Appliquer à nouveau"
   },
   "performance": {
-    "smartMonitoringTitle": "Surveillance à la demande",
-    "smartMonitoringDescription": "L’échantillonnage suit désormais toujours les besoins visibles. Cet ancien commutateur est désactivé en attendant de décider de son usage futur.",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "Activé"
-      },
-      {
-        "id": "disabled",
-        "label": "Désactivé"
-      }
-    ],
     "preciseGpuPlacementTitle": "Sélection précise du GPU",
     "preciseGpuPlacementDescription": "Permet de choisir précisément le GPU des processus de rendu compatibles. Le changement en cours d’exécution dépend de leur compatibilité et reste configurable par application.",
     "preciseGpuPlacementModeOptions": {

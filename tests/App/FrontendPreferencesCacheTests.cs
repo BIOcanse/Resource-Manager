@@ -59,8 +59,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var imported = Owner().Read();
         Assert.Equal("dark", imported.Appearance.Theme);
         Assert.Equal("all", imported.Appearance.ReadingSourceMode);
-        Assert.Equal("disabled", imported.Refresh.SmartMonitoringMode);
         Assert.Equal(4321, imported.Refresh.Monitor.CustomValue);
+        Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
         Assert.Equal(24, imported.Overlays["game"].FontSizePx);
         Assert.Equal(new[] { "target.gpu", "target.fps" }, imported.Overlays["game"].Metrics);
         Assert.True(File.Exists(Cache + ".imported-v1"));
@@ -132,6 +132,26 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         File.WriteAllText(Cache, "{invalid");
         Assert.Throws<JsonException>(() => Owner().Read());
         Assert.Equal("{invalid", File.ReadAllText(Cache));
+    }
+
+    [Fact]
+    public void CacheFromBeforeTheSmartMonitoringRulingLoadsWithItsChoicesAndLosesOnlyTheRetiredField()
+    {
+        // The Phase A owner wrote refresh.smartMonitoringMode; the user retired that switch on 2026-10-25.
+        var saved = JsonSerializer.SerializeToNode(new FrontendPreferences
+        {
+            Appearance = new() { Theme = "dark" },
+            Refresh = new() { Monitor = new("custom", "balanced", 2345) }
+        }, FrontendPreferencesOwner.Json)!.AsObject();
+        var refresh = saved["refresh"]!.AsObject();
+        refresh.Insert(0, "smartMonitoringMode", "disabled");
+        File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
+
+        var current = Owner().Read();
+        Assert.Equal("dark", current.Appearance.Theme);
+        Assert.Equal(2345, current.Refresh.Monitor.CustomValue);
+        Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
+        Assert.Equal(Serialize(current), Serialize(Owner().Read()));
     }
 
     [Fact]

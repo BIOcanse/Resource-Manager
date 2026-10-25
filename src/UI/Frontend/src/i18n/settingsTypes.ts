@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -65,9 +65,6 @@ export interface SettingsCopy {
   // 标题已经说清楚的选项（"开启""关闭"）再挂一句
   // "始终启用这项设置"只是把标题重说一遍，那是噪音不是帮助。
   performance: {
-    smartMonitoringTitle: string;
-    smartMonitoringDescription: string;
-    adaptiveBooleanModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description?: string }>;
     preciseGpuPlacementTitle: string;
     preciseGpuPlacementDescription: string;
     preciseGpuPlacementModeOptions: {

@@ -13,7 +13,6 @@ export function subscribeFrontendPreferencesReset(listener: () => void): () => v
 }
 function notifyReset() { for (const listener of resetListeners) listener(); }
 export type FrontendRefresh = {
-  smartMonitoringMode: AppPerformanceSettings["smartMonitoringMode"];
   monitor: AppPresetNumericSetting;
   resourceTable: AppPresetNumericSetting;
   localSystem: AppPresetNumericSetting;
@@ -44,7 +43,7 @@ export function pointPreferences(): FrontendPreferencesCache {
       byteUnitMode: points.ByteUnitMode, readingSourceMode: points.ReadingSourceMode
     },
     refresh: {
-      smartMonitoringMode: points.SmartMonitoringMode, monitor: { ...points.Monitor },
+      monitor: { ...points.Monitor },
       resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem }
     }, overlays: {}, dashboard: null
   };
@@ -78,7 +77,6 @@ export function applyFrontendPreferences(settings: Omit<AppSettings, "appearance
   return {
     ...settings, appearance: structuredClone(preferences.appearance),
     performance: settings.performance ? { ...settings.performance,
-      smartMonitoringMode: preferences.refresh.smartMonitoringMode,
       monitorRefreshIntervalMs: { ...preferences.refresh.monitor },
       resourceTableRefreshIntervalMs: { ...preferences.refresh.resourceTable },
       localSystemRefreshIntervalMs: { ...preferences.refresh.localSystem } } as AppPerformanceSettings : undefined
@@ -89,7 +87,7 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
   const performance = value.performance!;
   return {
     appearance: structuredClone(value.appearance!),
-    refresh: { smartMonitoringMode: performance.smartMonitoringMode,
+    refresh: {
       monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
       localSystem: { ...performance.localSystemRefreshIntervalMs } }, overlays: existing.overlays, dashboard: existing.dashboard
   };
@@ -99,7 +97,7 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
 export function backendSettings(value: AppSettings): Record<string, unknown> {
   const { appearance: _appearance, ...backend } = value;
   if (!backend.performance) return backend;
-  const { smartMonitoringMode: _smart, monitorRefreshIntervalMs: _monitor,
+  const { monitorRefreshIntervalMs: _monitor,
     resourceTableRefreshIntervalMs: _table, localSystemRefreshIntervalMs: _system, ...performance } = backend.performance;
   return { ...backend, performance };
 }

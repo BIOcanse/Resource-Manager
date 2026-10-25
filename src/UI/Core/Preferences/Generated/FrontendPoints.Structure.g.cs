@@ -38,22 +38,20 @@ public static class @FrontendPoints
     [global::FreedomPoint.FreedomPointBinding(0x0001000200250008UL)]
     public static readonly string @ReadingSourceMode = @FrontendPointsValues.@__fpValue_ReadingSourceMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290000UL)]
-    public static readonly string @SmartMonitoringMode = @FrontendPointsValues.@__fpValue_SmartMonitoringMode;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290001UL)]
     public static readonly PointRefreshSetting @Monitor = @FrontendPointsValues.@__fpValue_Monitor;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290002UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290001UL)]
     public static readonly PointRefreshSetting @ResourceTable = @FrontendPointsValues.@__fpValue_ResourceTable;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290003UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290002UL)]
     public static readonly PointRefreshSetting @LocalSystem = @FrontendPointsValues.@__fpValue_LocalSystem;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290004UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290003UL)]
     public static readonly PointRefreshPresets @MonitorPresets = @FrontendPointsValues.@__fpValue_MonitorPresets;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290005UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290004UL)]
     public static readonly PointRefreshPresets @ResourceTablePresets = @FrontendPointsValues.@__fpValue_ResourceTablePresets;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290006UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290005UL)]
     public static readonly PointRefreshPresets @LocalSystemPresets = @FrontendPointsValues.@__fpValue_LocalSystemPresets;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290007UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290006UL)]
     public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
-    [global::FreedomPoint.FreedomPointBinding(0x0001000200290008UL)]
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290007UL)]
     public static readonly string @AutoBackgroundPreset = @FrontendPointsValues.@__fpValue_AutoBackgroundPreset;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002C0000UL)]
     public const int @FontSizePx = @FrontendPointsValues.@__fpValue_FontSizePx;

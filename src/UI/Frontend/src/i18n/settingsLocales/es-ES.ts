@@ -76,18 +76,6 @@ export default createSettingsLocale("es-ES", {
     "reapply": "Aplicar de nuevo"
   },
   "performance": {
-    "smartMonitoringTitle": "Supervisión bajo demanda",
-    "smartMonitoringDescription": "El muestreo siempre sigue ahora la demanda visible. Este antiguo interruptor está desactivado mientras se decide su uso futuro.",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "Activado"
-      },
-      {
-        "id": "disabled",
-        "label": "Desactivado"
-      }
-    ],
     "preciseGpuPlacementTitle": "Selección precisa de GPU",
     "preciseGpuPlacementDescription": "Permite elegir una GPU concreta para procesos de renderizado compatibles. El cambio durante la ejecución depende de la compatibilidad y se configura por aplicación.",
     "preciseGpuPlacementModeOptions": {

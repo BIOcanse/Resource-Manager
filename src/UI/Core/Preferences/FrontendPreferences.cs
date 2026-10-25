@@ -46,7 +46,6 @@ internal sealed record FrontendRefreshSetting(string Mode, string Preset, int Cu
 
 internal sealed record FrontendRefresh
 {
-    public string SmartMonitoringMode { get; init; } = FrontendPoints.SmartMonitoringMode;
     public FrontendRefreshSetting Monitor { get; init; } = new(
         FrontendPoints.Monitor.Mode, FrontendPoints.Monitor.Preset, FrontendPoints.Monitor.CustomValue);
     public FrontendRefreshSetting ResourceTable { get; init; } = new(
@@ -56,8 +55,7 @@ internal sealed record FrontendRefresh
 
     internal void Validate()
     {
-        if (SmartMonitoringMode is not ("enabled" or "disabled")
-            || Monitor is null || ResourceTable is null || LocalSystem is null)
+        if (Monitor is null || ResourceTable is null || LocalSystem is null)
             throw new InvalidDataException("Invalid frontend refresh cache.");
         Monitor.Validate();
         ResourceTable.Validate();

@@ -27,29 +27,9 @@ for (const [enabled, disabled] of [
   }
 }
 
-// 按需监控只有开、关两档：不再有自动项，开启在前、关闭在后。
-// 资源条硬件加速已删除，文案里不应再出现它的选项组。
-{
-  const block = "adaptiveBooleanModeOptions";
-  let cursor = 0;
-  let count = 0;
-  for (;;) {
-    const start = locales.indexOf(block, cursor);
-    if (start < 0) {
-      break;
-    }
-    const end = locales.indexOf("]", start);
-    const slice = locales.slice(start, end);
-    assert.ok(!slice.includes('"auto"'), `${block} 不能再有自动项`);
-    assert.ok(
-      slice.indexOf('"enabled"') > 0 && slice.indexOf('"enabled"') < slice.indexOf('"disabled"'),
-      `${block} 的顺序要是 开启 / 关闭`);
-    cursor = end;
-    count += 1;
-  }
-  assert.ok(count >= 2, `找不到 ${block}`);
-}
+// 资源条硬件加速和智能监测（按需监控）开关都已删除，文案里不应再出现它们的选项组。
 assert.doesNotMatch(locales, /resourceBarHardwareAcceleration/);
+assert.doesNotMatch(locales, /smartMonitoring|adaptiveBooleanModeOptions/);
 
 function read(relativePath: string) {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");

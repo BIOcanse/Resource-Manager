@@ -75,18 +75,6 @@ export default createSettingsLocale("zh-TW", {
     "reapply": "重新應用"
   },
   "performance": {
-    "smartMonitoringTitle": "按需監控",
-    "smartMonitoringDescription": "目前一律依可見需求取樣。舊開關已停用，後續用途尚待決定。",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "開啟"
-      },
-      {
-        "id": "disabled",
-        "label": "關閉"
-      }
-    ],
     "preciseGpuPlacementTitle": "精確 GPU 選擇",
     "preciseGpuPlacementDescription": "允許受支援的渲染程序精確選卡；執行時換卡仍取決於該程序的相容能力。每個軟體可單獨設。",
     "preciseGpuPlacementModeOptions": {

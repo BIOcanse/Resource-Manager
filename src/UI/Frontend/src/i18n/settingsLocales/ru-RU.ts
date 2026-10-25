@@ -76,18 +76,6 @@ export default createSettingsLocale("ru-RU", {
     "reapply": "Применить снова"
   },
   "performance": {
-    "smartMonitoringTitle": "Мониторинг по запросу",
-    "smartMonitoringDescription": "Сбор данных теперь всегда определяется видимыми элементами. Этот прежний переключатель отключён, пока не решено, как использовать его в дальнейшем.",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "Вкл."
-      },
-      {
-        "id": "disabled",
-        "label": "Выкл."
-      }
-    ],
     "preciseGpuPlacementTitle": "Точный выбор GPU",
     "preciseGpuPlacementDescription": "Позволяет точно выбирать GPU для поддерживаемых процессов рендеринга. Переключение во время работы зависит от совместимости и настраивается для каждого приложения.",
     "preciseGpuPlacementModeOptions": {

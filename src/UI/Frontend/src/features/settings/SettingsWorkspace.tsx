@@ -31,7 +31,6 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         runtimeFailureCode={settings.runtimeFailureCode()}
         onReportsChange={settings.updateReports}
         onControlChange={settings.updateControl}
-        onSmartMonitoringModeChange={settings.updateSmartMonitoringMode}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}
         onMemoryOptimizationTargetLinesChange={settings.updateMemoryOptimizationTargetLines}

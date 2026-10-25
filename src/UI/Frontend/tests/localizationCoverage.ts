@@ -54,17 +54,13 @@ export function inspectText(language: string, path: string, actual: unknown, eng
 }
 
 export function inspectCopy(
-  language: string, surface: string, actual: unknown, english: unknown,
-  optionalDescriptions = false
+  language: string, surface: string, actual: unknown, english: unknown
 ): LocalizationIssue[] {
   const baseline = flattenCopy(english);
   const leaves = flattenCopy(actual);
   const issues: LocalizationIssue[] = [];
   for (const [path, expected] of baseline) {
     const fullPath = `${surface}.${path}`;
-    // Only this option contract makes description optional. Missing titles
-    // and labels still fail; an explicitly present empty description also fails.
-    if (optionalDescriptions && /^performance\.adaptiveBooleanModeOptions\.\d+\.description$/.test(path) && leaves.get(path) === undefined) continue;
     if (!leaves.has(path)) {
       issues.push({ language, path: fullPath, kind: "missing", actual: null });
     } else if (typeof leaves.get(path) !== typeof expected) {

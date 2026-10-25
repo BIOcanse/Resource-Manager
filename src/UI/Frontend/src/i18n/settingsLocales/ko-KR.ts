@@ -76,18 +76,6 @@ export default createSettingsLocale("ko-KR", {
     "reapply": "다시 적용"
   },
   "performance": {
-    "smartMonitoringTitle": "필요할 때 모니터링",
-    "smartMonitoringDescription": "이제 항상 화면에 표시되는 항목의 요구에 따라 샘플링합니다. 이 이전 스위치는 향후 용도가 결정될 때까지 비활성화됩니다.",
-    "adaptiveBooleanModeOptions": [
-      {
-        "id": "enabled",
-        "label": "켜짐"
-      },
-      {
-        "id": "disabled",
-        "label": "꺼짐"
-      }
-    ],
     "preciseGpuPlacementTitle": "정확한 GPU 선택",
     "preciseGpuPlacementDescription": "지원되는 렌더링 프로세스에서 GPU를 정확히 지정할 수 있습니다. 실행 중 전환은 프로세스 호환성에 따라 달라지며 앱별로 설정할 수 있습니다.",
     "preciseGpuPlacementModeOptions": {

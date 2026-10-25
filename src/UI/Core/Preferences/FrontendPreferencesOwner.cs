@@ -51,6 +51,7 @@ internal sealed partial class FrontendPreferencesOwner
     {
         lock (gate)
         {
+            RemoveRetiredCacheFields();
             InitializeImport();
             InitializeDashboardImport();
             var file = new FileInfo(cachePath);
@@ -143,6 +144,31 @@ internal sealed partial class FrontendPreferencesOwner
         get { Read(); lock (gate) return revision; }
     }
 
+    // Migration frontend-preferences-retired-v1. The user retired the smart monitoring switch on
+    // 2026-10-25; caches written before that still carry refresh.smartMonitoringMode, which the
+    // strict reader rejects. Remove that one field once and rewrite the cache atomically; every
+    // other value, and a cache that does not parse, is left to the normal read. Delete together
+    // with frontend-preferences-v1 once every supported upgrade starts after this release.
+    private bool retiredFieldsRemoved;
+
+    private void RemoveRetiredCacheFields()
+    {
+        if (retiredFieldsRemoved) return;
+        if (File.Exists(cachePath))
+        {
+            JsonNode? root = null;
+            try
+            {
+                using var stream = Configuration.SettingsFileReader.Open(cachePath);
+                root = JsonNode.Parse(stream);
+            }
+            catch (JsonException) { } // The strict read below reports a damaged cache.
+            if (root?["refresh"] is JsonObject refresh && refresh.Remove("smartMonitoringMode"))
+                WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
+        }
+        retiredFieldsRemoved = true;
+    }
+
     // Migration frontend-preferences-v1 (frontend half). Delete only when every supported
     // upgrade starts after the legacy file schema. The marker is NOT cache data: clearing
     // the cache/reset must never resurrect choices from an old backup.
@@ -169,8 +195,9 @@ internal sealed partial class FrontendPreferencesOwner
             if (app["performance"] is JsonObject performance)
             {
                 var refresh = node["refresh"]!.AsObject();
+                // The retired smart monitoring switch (user ruling 2026-10-25) is not imported.
                 foreach (var (source, destination) in new[] {
-                    ("smartMonitoringMode", "smartMonitoringMode"), ("monitorRefreshIntervalMs", "monitor"),
+                    ("monitorRefreshIntervalMs", "monitor"),
                     ("resourceTableRefreshIntervalMs", "resourceTable"), ("localSystemRefreshIntervalMs", "localSystem") })
                 {
                     if (performance.TryGetPropertyValue(source, out var value) && value is not null)

@@ -42,7 +42,6 @@ export type AppPalette =
   | "paper" | "graphite" | "blueprint"
   | "phosphor" | "amber" | "ice";
 // 只有开、关两档（按需监控用）；旧设置里的 auto 由归一化读成 enabled。
-export type AppAdaptiveBooleanMode = "enabled" | "disabled";
 export type AppAnimationMode = "auto" | "normal" | "none" | "ultra";
 // 资源条动画帧率：display = 跟随屏幕，custom = 按 resourceBarFrameRate 限帧；见 presentation/resourceBarFrameRate.ts。
 export type AppResourceBarFrameRateMode = "display" | "custom";
@@ -277,7 +276,6 @@ export interface AppPerformanceSettings {
   virtualMemoryAutomaticCleanupPercent: number;
   physicalMemoryOptimizationTargetUsagePercent: number;
   virtualMemoryOptimizationTargetUsagePercent: number;
-  smartMonitoringMode: AppAdaptiveBooleanMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;
   localSystemRefreshIntervalMs: AppPresetNumericSetting;
@@ -409,7 +407,7 @@ export interface ServiceRecoveryDiagnostics {
 }
 
 export type BackendAppPerformanceSettings = Omit<AppPerformanceSettings,
-  "smartMonitoringMode" | "monitorRefreshIntervalMs" | "resourceTableRefreshIntervalMs" | "localSystemRefreshIntervalMs">;
+  "monitorRefreshIntervalMs" | "resourceTableRefreshIntervalMs" | "localSystemRefreshIntervalMs">;
 export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance"> & { performance?: BackendAppPerformanceSettings };
 
 export interface AppSettingsResult {
