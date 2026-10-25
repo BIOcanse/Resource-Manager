@@ -30,7 +30,7 @@ export default async function controlSlowRequestJourney(page, baseUrl) {
   const card = page.locator(".control-object").filter({ hasText: "Slow Fan" });
   await card.getByRole("radio", { name: "软件管理", exact: true }).click();
   await card.getByRole("checkbox", { name: "转速曲线", exact: true }).check();
-  const highPoint = card.getByRole("slider", { name: "100 °C", exact: true });
+  const highPoint = card.getByRole("slider", { name: /^100 °C，\d+%$/ });
   await highPoint.waitFor({ timeout: 20_000 });
   assert.equal(await highPoint.getAttribute("aria-valuenow"), "100", "Slow read must map the high-temperature tail to the 100°C grid endpoint");
   await highPoint.press("ArrowDown");

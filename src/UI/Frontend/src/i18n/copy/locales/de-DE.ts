@@ -234,6 +234,8 @@ const deDeAppCopy: AppCopy = {
     readingFirmwareCurve: "Firmware-Kurve wird gelesen…",
     fixedStepsCurveNote: "In dieser Firmware-Tabelle kann nur die Geschwindigkeit pro Stufe geändert werden; die Temperaturschwellen sind durch die Firmware festgelegt.",
     curvePreview: "Kurvenvorschau",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent} %`,
+    curvePointValue: (percent: number) => `${percent} %`,
     saveFailed: "Speichern fehlgeschlagen",
     apply: "Anwenden",
     discard: "Verwerfen",

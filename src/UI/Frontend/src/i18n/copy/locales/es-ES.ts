@@ -234,6 +234,8 @@ const esEsAppCopy: AppCopy = {
     readingFirmwareCurve: "Leyendo la curva del firmware…",
     fixedStepsCurveNote: "Esta tabla solo permite cambiar la velocidad de cada tramo; los puntos de temperatura los fija el firmware.",
     curvePreview: "Vista previa de la curva",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent} %`,
+    curvePointValue: (percent: number) => `${percent} %`,
     saveFailed: "Error al guardar",
     apply: "Aplicar",
     discard: "Descartar",

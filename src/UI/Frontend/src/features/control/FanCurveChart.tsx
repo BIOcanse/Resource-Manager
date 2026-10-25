@@ -157,7 +157,7 @@ export function FanCurveChart(props: {
             render: ({ mode }) => handle.classList.toggle("fan-curve-handle-active", mode !== "静止"),
             aria: (value) => {
               handle.setAttribute("aria-valuenow", String(value));
-              handle.setAttribute("aria-valuetext", `${temperature} °C, ${value}%`);
+              handle.setAttribute("aria-valuetext", uiText.control.curvePointValue(value));
               return `aria-valuenow=${value}`;
             }
           });
@@ -179,11 +179,12 @@ export function FanCurveChart(props: {
               role="slider"
               aria-disabled={props.disabled === true}
               aria-orientation="vertical"
-              aria-label={`${temperature} °C`}
+              // 名称同时说温度和转速，读屏在点之间移动时不必再等数值。
+              aria-label={uiText.control.curvePointName(temperature, percent())}
               aria-valuemin={0}
               aria-valuemax={100}
             >
-              <title>{`${temperature} °C: ${percent()}%`}</title>
+              <title>{uiText.control.curvePointName(temperature, percent())}</title>
               <circle class="fan-curve-hit" cx={xOf(temperature)} cy={yOf(percent())} r={2} />
               <circle class="fan-curve-point" cx={xOf(temperature)} cy={yOf(percent())} r={1} />
             </g>

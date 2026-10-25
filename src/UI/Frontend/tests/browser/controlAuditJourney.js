@@ -48,7 +48,7 @@ export default async function controlAuditJourney(page, baseUrl) {
   const a = page.locator(".control-object").filter({ hasText: "Fan A" });
   const b = page.locator(".control-object").filter({ hasText: "Fan B" });
   await a.locator(".fan-curve-chart").waitFor();
-  await a.getByRole("slider", { name: "60 °C", exact: true }).press("ArrowUp");
+  await a.getByRole("slider", { name: /^60 °C，\d+%$/ }).press("ArrowUp");
   await a.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => !document.querySelector(".control-workspace")?.hasAttribute("aria-busy"));
   assert.ok(writes[0].settings.some(setting => setting.capabilityId === "fan.duty" && setting.number === 42),
@@ -61,7 +61,7 @@ export default async function controlAuditJourney(page, baseUrl) {
   curveAvailable = true;
   await b.locator(".control-curve button").click();
   await b.locator(".fan-curve-chart").waitFor();
-  assert.equal(await b.getByRole("slider", { name: "60 °C", exact: true }).getAttribute("aria-valuenow"), "60");
+  assert.equal(await b.getByRole("slider", { name: /^60 °C，\d+%$/ }).getAttribute("aria-valuenow"), "60");
   await page.waitForFunction(async () => {
     const telemetry = await (await fetch("/__test/requests")).json();
     return telemetry["/api/control/actual/subscribe"]?.inFlight === 1;

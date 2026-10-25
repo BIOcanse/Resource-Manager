@@ -234,6 +234,8 @@ const ruRuAppCopy: AppCopy = {
     readingFirmwareCurve: "Чтение кривой прошивки…",
     fixedStepsCurveNote: "В этой таблице можно менять только скорость каждой ступени; температурные пороги задаются прошивкой.",
     curvePreview: "Предпросмотр кривой",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent} %`,
+    curvePointValue: (percent: number) => `${percent} %`,
     saveFailed: "Не удалось сохранить",
     apply: "Применить",
     discard: "Отменить изменения",

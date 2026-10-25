@@ -47,7 +47,7 @@ export default async function controlCardJourney(page, baseUrl) {
   assert.equal(await a.locator(".fan-curve-grid").count(), 22);
   assert.equal(await a.locator(".control-curve-execution").count(), 0);
   assert.equal(await a.locator(".control-ownership-choice [aria-checked=true]").count(), 1);
-  const highPoint = b.getByRole("slider", { name: "100 °C", exact: true });
+  const highPoint = b.getByRole("slider", { name: /^100 °C，\d+%$/ });
   const highX = await highPoint.locator(".fan-curve-point").getAttribute("cx");
   assert.ok(Number(highX) >= 10 && Number(highX) <= 95, "A loaded 120°C tail maps to the visible 100°C grid endpoint");
   await highPoint.press("ArrowDown");
@@ -61,7 +61,7 @@ export default async function controlCardJourney(page, baseUrl) {
   await b.getByRole("button", { name: "撤销改动", exact: true }).click();
   assert.equal(await b.getByRole("radio", { name: "固件管理", exact: true }).getAttribute("aria-checked"), "true");
   assert.equal(await a.getByRole("checkbox", { name: "转速曲线", exact: true }).isChecked(), true);
-  const slider = a.getByRole("slider", { name: "60 °C", exact: true });
+  const slider = a.getByRole("slider", { name: /^60 °C，\d+%$/ });
   await slider.press("ArrowUp");
   holdWrite = new Promise(resolve => { releaseWrite = resolve; });
   await a.getByRole("button", { name: "应用", exact: true }).click();

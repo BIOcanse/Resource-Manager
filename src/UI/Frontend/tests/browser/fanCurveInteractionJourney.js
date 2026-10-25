@@ -29,7 +29,8 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
   await chart.waitFor();
   await chart.scrollIntoViewIfNeeded();
 
-  const point = card.getByRole("slider", { name: "60 °C", exact: true });
+  // 点的可读名称同时说温度和转速（“60 °C，45%”），转速变了名称跟着变，所以按温度前缀找。
+  const point = card.getByRole("slider", { name: /^60 °C，\d+%$/ });
   const value = async () => Number(await point.getAttribute("aria-valuenow"));
   const circle = async () => {
     const box = await point.locator(".fan-curve-point").boundingBox();
@@ -98,5 +99,12 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
   await waitValue(v1 + 1, "ArrowUp");
   await point.press("Shift+ArrowDown");
   await waitValue(v1 - 9, "Shift+ArrowDown");
+  const spoken = await point.evaluate((element) => ({
+    name: element.getAttribute("aria-label"),
+    valueText: element.getAttribute("aria-valuetext"),
+    title: element.querySelector("title")?.textContent
+  }));
+  assert.deepEqual(spoken, { name: `60 °C，${v1 - 9}%`, valueText: `${v1 - 9}%`, title: `60 °C，${v1 - 9}%` },
+    "The point name carries temperature and speed in the interface language");
   return { grabbed: v0, dragged, keyboard: v1 - 9 };
 }

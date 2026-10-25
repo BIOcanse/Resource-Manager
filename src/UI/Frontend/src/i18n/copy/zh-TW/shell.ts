@@ -218,6 +218,8 @@ export const zhShellCopy = {
     readingFirmwareCurve: "正在讀取韌體當前曲線…",
     fixedStepsCurveNote: "這臺機器的韌體表只讓改每一檔的轉速，溫度斷點是韌體定死的，改不了。",
     curvePreview: "曲線預覽",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C，${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
     saveFailed: "儲存失敗",
     apply: "應用",
     discard: "撤銷改動",

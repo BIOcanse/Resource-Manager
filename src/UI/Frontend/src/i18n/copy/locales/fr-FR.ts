@@ -234,6 +234,8 @@ const frFrAppCopy: AppCopy = {
     readingFirmwareCurve: "Lecture de la courbe du micrologiciel…",
     fixedStepsCurveNote: "Cette table ne permet de modifier que la vitesse de chaque palier ; les seuils de température sont fixés par le micrologiciel.",
     curvePreview: "Aperçu de la courbe",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent} %`,
+    curvePointValue: (percent: number) => `${percent} %`,
     saveFailed: "Échec de l’enregistrement",
     apply: "Appliquer",
     discard: "Abandonner",

@@ -219,6 +219,8 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     readingFirmwareCurve: "Reading the firmware curve…",
     fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
     curvePreview: "Curve preview",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
     saveFailed: "Save failed",
     apply: "Apply",
     discard: "Discard",

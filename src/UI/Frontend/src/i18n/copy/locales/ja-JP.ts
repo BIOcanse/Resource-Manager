@@ -234,6 +234,8 @@ const jaJpAppCopy: AppCopy = {
     readingFirmwareCurve: "ファームウェアの曲線を読み取り中…",
     fixedStepsCurveNote: "このファームウェア表では各段階の回転速度のみ変更できます。温度の境界値はファームウェアで固定されています。",
     curvePreview: "曲線のプレビュー",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C、${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
     saveFailed: "保存に失敗しました",
     apply: "適用",
     discard: "破棄",

@@ -234,6 +234,8 @@ const koKrAppCopy: AppCopy = {
     readingFirmwareCurve: "펌웨어 곡선 읽는 중…",
     fixedStepsCurveNote: "이 펌웨어 표에서는 단계별 속도만 변경할 수 있습니다. 온도 분기점은 펌웨어에서 고정됩니다.",
     curvePreview: "곡선 미리 보기",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C, ${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
     saveFailed: "저장 실패",
     apply: "적용",
     discard: "버리기",

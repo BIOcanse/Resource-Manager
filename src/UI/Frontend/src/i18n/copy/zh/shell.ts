@@ -218,6 +218,8 @@ export const zhShellCopy = {
     readingFirmwareCurve: "正在读取固件当前曲线…",
     fixedStepsCurveNote: "这台机器的固件表只让改每一档的转速，温度断点是固件定死的，改不了。",
     curvePreview: "曲线预览",
+    curvePointName: (temperature: number, percent: number) => `${temperature} °C，${percent}%`,
+    curvePointValue: (percent: number) => `${percent}%`,
     saveFailed: "保存失败",
     apply: "应用",
     discard: "撤销改动",
