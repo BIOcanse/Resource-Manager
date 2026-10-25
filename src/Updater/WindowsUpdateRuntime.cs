@@ -8,6 +8,7 @@ internal interface IUpdateRuntime
 {
     Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken);
     void StopService(string installRoot);
+    void InitializeTrustedAccess(string installRoot);
     void StartService(string installRoot);
     Task WaitForHealthAsync(CancellationToken cancellationToken);
     void WriteInstalledVersion(string root, string version);
@@ -20,6 +21,12 @@ internal sealed partial class WindowsUpdateRuntime : IUpdateRuntime
 
     private static string Backend(string root)
         => Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe");
+
+    public void InitializeTrustedAccess(string root)
+    {
+        var exitCode = TrustedAccessAdministration.Run(Backend(root), TrustedAccessAdministration.InitializeArgument);
+        if (exitCode != 0) throw new IOException($"Trusted access initialization failed ({exitCode}).");
+    }
 
     public Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken)
         => ResourceManager.Shared.Packages.PackageUseGuard.AcquireMaintenanceAsync(installRoot, cancellationToken);

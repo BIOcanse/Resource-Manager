@@ -295,6 +295,7 @@ public sealed class ManagerSelfUpdateTests
     {
         public Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken) => Task.FromResult<IDisposable>(new MemoryStream());
         public void StopService(string installRoot) { }
+        public void InitializeTrustedAccess(string installRoot) { }
         public void StartService(string installRoot) { }
         public Task WaitForHealthAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public void WriteInstalledVersion(string installRoot, string version) { }

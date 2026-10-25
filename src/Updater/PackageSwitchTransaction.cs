@@ -53,6 +53,9 @@ internal static class PackageSwitchTransaction
             PackagePayloadSwitch.Move(next, plan.InstallRoot, preserveAuthority: true);
             Journal("nextPromoted");
 
+            // As the installer does before registering the service: an install from before trusted access
+            // has no key store or default key, and an existing store is only checked and kept.
+            runtime.InitializeTrustedAccess(plan.InstallRoot);
             runtime.StartService(plan.InstallRoot);
             await runtime.WaitForHealthAsync(cancellationToken);
             runtime.WriteInstalledVersion(plan.InstallRoot, plan.Package.Version);

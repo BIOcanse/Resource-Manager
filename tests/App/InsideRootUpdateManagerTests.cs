@@ -173,6 +173,7 @@ public sealed class InsideRootUpdateManagerTests
         public bool FailHealth;
         public Task<IDisposable> AcquirePackageMaintenanceAsync(string root, CancellationToken token) => Task.FromResult<IDisposable>(new MemoryStream());
         public void StopService(string root) { }
+        public void InitializeTrustedAccess(string root) { }
         public void StartService(string root) { }
         public Task WaitForHealthAsync(CancellationToken token) => FailHealth ? Task.FromException(new IOException("health failure")) : Task.CompletedTask;
         public void WriteInstalledVersion(string root, string version) { }

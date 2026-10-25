@@ -215,6 +215,8 @@ public sealed class PackageSwitchTransactionTests
             Assert.True(File.Exists(Path.Combine(managerDirectory, "operation.lock")));
             Assert.Equal(failHealth ? 2 : 1, runtime.StartCount);
             Assert.Equal(failHealth ? 2 : 1, runtime.StopCount);
+            // Trusted access is initialized once on the promoted root, with the service stopped and not yet started.
+            Assert.Equal((installed, 1, 0), runtime.TrustedAccessInitializations.Single());
             Assert.Equal(failHealth ? 0 : 1, runtime.WrittenVersions.Count);
             if (!failHealth) Assert.Equal("0.3.0", runtime.WrittenVersions.Single());
         }
@@ -331,6 +333,12 @@ public sealed class PackageSwitchTransactionTests
             return new Lease(inner, () => MaintenanceActive = false);
         }
         public void StopService(string installRoot) { Assert.True(MaintenanceActive); StopCount++; }
+        public List<(string Root, int Stops, int Starts)> TrustedAccessInitializations { get; } = [];
+        public void InitializeTrustedAccess(string installRoot)
+        {
+            Assert.True(MaintenanceActive);
+            TrustedAccessInitializations.Add((installRoot, StopCount, StartCount));
+        }
         public void StartService(string installRoot) { Assert.True(MaintenanceActive); StartCount++; }
         public Task WaitForHealthAsync(CancellationToken cancellationToken)
         {
