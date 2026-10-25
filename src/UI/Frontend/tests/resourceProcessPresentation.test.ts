@@ -43,7 +43,7 @@ const processCatalog = bars.flatMap(bar => bar.software.flatMap(group => group.p
 const facts = decodeResourceFacts({ version: 2, capturedAt: null, attributions: [],
   software: wire.softwareCatalog.map(([softwareId, name, kind, attributionKind]) => ({ softwareId, name, kind, attributionKind })),
   processes: processCatalog.map(process => ({ ...process, userName: process.userName ?? null, architecture: process.architecture ?? null })),
-  metrics: bars.map(bar => ({ ...bar, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
+  metrics: bars.map(bar => ({ ...bar, totalMetricId: null, processSumValue: null, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
     processes: group.processes.map(process => ({ ...process, processIndex: processCatalog.indexOf(process), sharedValue: null })) })) }))
 }).facts!;
 const columns = [{ id: "name", visible: true }, { id: "memory", visible: true }, { id: "gpu.12.vram", visible: true }];

@@ -692,6 +692,18 @@ const frFrAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `Réservé système/pilote · ${metric}`,
+    columnSourceLabel: (column: string) => `Source de ${column}`,
+    sourceAutomatic: "Automatique",
+    memoryQuantities: {
+      working_set_including_shared: "Ensemble de travail (pages partagées incluses)",
+      private_working_set: "Ensemble de travail privé",
+      private_commit: "Engagement privé"
+    },
+    memoryColumnBySource: (quantity: string) => `Mémoire · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "Système : mémoire physique occupée / capacité. Processus : ensemble de travail, pages partagées avec d’autres processus incluses ; une page partagée compte dans chaque processus qui l’utilise, la somme des processus peut donc dépasser le total du système, et il n’y a alors pas d’écart système/pilote.",
+      private_commit: "Système : charge d’engagement du système / limite d’engagement. Processus : engagement privé. L’écart entre les processus et l’engagement du système figure dans la ligne « Réservé système/pilote ». L’engagement inclut le support en RAM et dans le fichier de pagination, pas son occupation réelle."
+    },
     columns: {
       name: "Nom",
       pid: "PID",

@@ -120,6 +120,18 @@ export const zhMonitorCopy = {
       }
     },
     systemResidualRow: (metric: string) => `系统/驱动保留 · ${metric}`,
+    columnSourceLabel: (column: string) => `${column}的来源`,
+    sourceAutomatic: "自动选择",
+    memoryQuantities: {
+      working_set_including_shared: "工作集（含共享页）",
+      private_working_set: "私有工作集",
+      private_commit: "私有提交量"
+    },
+    memoryColumnBySource: (quantity: string) => `内存 · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "整机：物理内存实际用量 / 物理容量。进程：工作集，含与其他进程共享的页；同一共享页计入每个用到它的进程，所以各进程之和可能大于整机用量，这时没有“系统/驱动保留”差额。",
+      private_commit: "整机：系统提交量 / 提交上限。进程：私有提交量。各进程之和与系统提交量的差额在“系统/驱动保留”行。提交量包含物理内存与页面文件后备，不是页面文件实际占用。"
+    },
     columns: {
       name: "名称",
       pid: "PID",

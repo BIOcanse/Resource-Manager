@@ -5,7 +5,9 @@ import type { Accessor, Setter } from "solid-js";
 import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourcePerformancePanel";
-import { createResourceFactsProjection, resourceTableMetricId } from "../features/resourceTable/resourceFacts.ts";
+import { createResourceFactsProjection } from "../features/resourceTable/resourceFacts.ts";
+import { resourceTableMetricId } from "../features/resourceTable/resourceTableSources.ts";
+import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import type {
@@ -92,6 +94,8 @@ export interface OpenMetricModalTarget extends MetricModalTarget {
 export interface MonitorStoreOptions {
   onMetricDependenciesRequested: () => void;
   metricCatalogSource: SourceHandle<MetricDefinition[]>;
+  /** 进程字段目录：资源表列的来源选择和表头口径从这里来。 */
+  processFieldCatalogSource: SourceHandle<readonly ProcessMetricField[]>;
   dashboardSettingsSource: SourceHandle<DashboardSettingsResult>;
   metricSnapshotSource: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
   /** 规范字段的设备目录：卡片选择器的设备字段条目、卡片上的设备名和「设备不在」都从这里来。 */
@@ -136,6 +140,8 @@ export interface MonitorStore {
   resourceTableEditing: Accessor<boolean>;
   resourceTableMode: Accessor<ResourceTableViewMode>;
   activeResourceTableColumns: Accessor<ResourceTableColumnSettings[]>;
+  /** 后端进程字段目录；还没读到时为空数组。 */
+  processFields: Accessor<readonly ProcessMetricField[]>;
   resourceBreakdownSnapshot: Accessor<ResourceBreakdownSnapshot | null>;
   resourceProcessDetails: Accessor<ResourceProcessDetailsSnapshot | null>;
   resourceProcessDetailsObservation: Accessor<ObservationState>;
@@ -172,6 +178,8 @@ export interface MonitorStore {
   cancelResourceTableEdit: () => void;
   updateResourceTableSort: (columnId: string, direction: "asc" | "desc") => void;
   toggleResourceTableColumn: (columnId: string, visible: boolean) => void;
+  /** 改一列的来源：null 是自动选择，其余是进程字段名。和显示/隐藏一样进编辑草稿，保存时写前端布局缓存。 */
+  changeResourceTableColumnSource: (columnId: string, source: string | null) => void;
   updateResourceTableColumnWidth: (columnId: string, width: number, commit: boolean) => void;
   toggleResourceTableExpand: (softwareId: string) => void;
   reorderResourceTableColumns: (sourceColumnId: string, targetColumnId: string) => void;
@@ -218,6 +226,17 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     active: true,
     refreshIntervalMs: null
   });
+  // 进程字段目录是后端常量表，读一次。
+  const processFieldCatalogLease = options.processFieldCatalogSource.acquire({
+    active: true,
+    refreshIntervalMs: null
+  });
+  const [processFields, setProcessFields] = createSignal<readonly ProcessMetricField[]>([]);
+  const applyProcessFieldCatalog = (source: SourceSnapshot<readonly ProcessMetricField[]>) => {
+    if (sourceCanRender(source) && source.data) setProcessFields(source.data);
+  };
+  const unsubscribeProcessFieldCatalog = processFieldCatalogLease.subscribe(applyProcessFieldCatalog);
+  applyProcessFieldCatalog(processFieldCatalogLease.snapshot);
   const unsubscribePreferenceReset = subscribeFrontendPreferencesReset(() => { void refreshSettings(); });
   let dashboardRollbackSnapshot: DashboardCardSettings[] | null = null;
   let resourceBarRollbackSnapshot: ResourceBarSettings[] | null = null;
@@ -454,6 +473,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     unsubscribeDashboardSettings();
     metricCatalogLease.release();
     dashboardSettingsLease.release();
+    unsubscribeProcessFieldCatalog();
+    processFieldCatalogLease.release();
     unsubscribePreferenceReset();
   });
 
@@ -470,7 +491,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       bars: [],
       // Identity/attribution are explicit facts; hidden numeric columns have no demand.
       sampleMetricIds: [...new Set([...(activeResourceTableColumns().some(column => column.visible) ? ["process.inventory", "process.attribution"] : []), ...normalizeResourceTableColumns(activeResourceTableColumns(), catalog(), resourceTableMode())
-        .filter(column => column.visible && dashboardMetricAvailable(column.id, column.binding, catalog())).map(column => resourceTableMetricId(column.id)).filter((id): id is string => id !== null)])],
+        .filter(column => column.visible && dashboardMetricAvailable(column.id, column.binding, catalog())).map(column => resourceTableMetricId(column)).filter((id): id is string => id !== null)])],
       processDetailLevel: activeResourceTableColumns().some(column => column.visible && ["user", "architecture"].includes(column.id)) ? "full" : "basic",
       visibleColumnIds: [],
       sortColumnId: "",
@@ -943,6 +964,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     });
   }
 
+  function changeResourceTableColumnSource(columnId: string, source: string | null) {
+    updateResourceTableColumns((columns) => normalizeResourceTableColumns(columns, catalog(), resourceTableMode())
+      .map((column) => column.id === columnId ? { ...column, source } : column));
+  }
+
   function updateResourceTableColumnWidth(columnId: string, width: number, commit: boolean) {
     const mode = resourceTableMode();
     const applyWidth = (columns: ResourceTableColumnSettings[]) => normalizeResourceTableColumns(columns, catalog(), mode)
@@ -1089,6 +1115,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     resourceTableEditing,
     resourceTableMode,
     activeResourceTableColumns,
+    processFields,
     resourceBreakdownSnapshot,
     resourceProcessDetails,
     resourceProcessDetailsObservation,
@@ -1125,6 +1152,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     cancelResourceTableEdit,
     updateResourceTableSort,
     toggleResourceTableColumn,
+    changeResourceTableColumnSource,
     updateResourceTableColumnWidth,
     toggleResourceTableExpand,
     reorderResourceTableColumns,

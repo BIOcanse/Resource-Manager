@@ -1,10 +1,17 @@
 import {
   resourceTableCellText,
   resourceTableColumnLabel,
-  resourceTableRowName as rowName,
-  resourceMetricBasis
+  resourceTableRowName as rowName
 } from "../../presentation/metricLabels";
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
+import {
+  resourceColumnSourceChoices,
+  resourceColumnSourceLabel,
+  resourceTableColumnText,
+  type ResourceTableColumnText
+} from "./resourceTableSources.ts";
+import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
@@ -74,6 +81,9 @@ interface ResourceTableProps {
   onCancelEdit: () => void;
   onSortChange: (columnId: string, direction: "asc" | "desc") => void;
   onToggleColumn: (columnId: string, visible: boolean) => void;
+  /** 后端进程字段目录：列的来源选择和选了来源后的表头口径。 */
+  processFields: readonly ProcessMetricField[];
+  onColumnSourceChange: (columnId: string, source: string | null) => void;
   onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
@@ -191,7 +201,9 @@ export function ResourceTable(props: ResourceTableProps) {
           mode={props.mode}
           catalog={props.catalog}
           columns={props.columnSettings}
+          processFields={props.processFields}
           onToggle={props.onToggleColumn}
+          onSourceChange={props.onColumnSourceChange}
         />
       </Show>
       <Show
@@ -205,6 +217,7 @@ export function ResourceTable(props: ResourceTableProps) {
                 rows={visibleRows()}
                 snapshot={props.snapshot}
                 columnSettings={props.columnSettings}
+                processFields={props.processFields}
                 sortColumnId={props.sortColumnId}
                 sortDirection={props.sortDirection}
                 expandedSoftwareIds={props.expandedSoftwareIds}
@@ -286,9 +299,15 @@ function ResourceTableColumnEditor(props: {
   mode: ResourceTableViewMode;
   catalog: MetricDefinition[];
   columns: ResourceTableColumnSettings[];
+  processFields: readonly ProcessMetricField[];
   onToggle: (columnId: string, visible: boolean) => void;
+  onSourceChange: (columnId: string, source: string | null) => void;
 }) {
   const byId = () => new Map(props.columns.map((column) => [column.id, column]));
+  // 先选项目、再选来源：有不止一个来源的列在勾选项后面摆“来源”，第一项是自动选择。
+  const sourceColumns = createMemo(() => resourceTableEditorColumns(props.columns, props.catalog, props.mode)
+    .map((column) => ({ id: column.id, choices: resourceColumnSourceChoices(column.id, props.processFields) }))
+    .filter((column) => column.choices.length > 0));
   return (
     <div
       ref={props.onElement}
@@ -309,6 +328,33 @@ function ResourceTableColumnEditor(props: {
           </label>
         )}
       </For>
+      <For each={sourceColumns()}>
+        {(column) => {
+          const label = () => uiText.resourceTable.columnSourceLabel(resourceTableColumnLabel(column.id));
+          const current = () => byId().get(column.id)?.source ?? null;
+          return (
+            <div class="resource-table-column-source">
+              <strong>{label()}</strong>
+              <RadioGroupRoot class="segmented resource-table-column-source-choices" ariaLabel={label()}
+                // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
+                value={(() => { const index = column.choices.findIndex((choice) => choice.source === current()); return index < 0 ? "" : `source-${index}`; })()}
+                onChange={(value) => {
+                  const choice = column.choices[Number(value.slice("source-".length))];
+                  if (choice) props.onSourceChange(column.id, choice.source);
+                }}>
+                <Index each={column.choices}>
+                  {(choice, index) => (
+                    <RadioGroupItem value={`source-${index}`} class="segment"
+                      title={resourceTableColumnText({ id: column.id, source: choice().source }, props.processFields).basis}>
+                      {resourceColumnSourceLabel(choice())}
+                    </RadioGroupItem>
+                  )}
+                </Index>
+              </RadioGroupRoot>
+            </div>
+          );
+        }}
+      </For>
     </div>
   );
 }
@@ -319,6 +365,7 @@ function VirtualResourceTable(props: {
   rows: ResourceTableRow[];
   snapshot: ResourceTableSnapshot | null;
   columnSettings: ResourceTableColumnSettings[];
+  processFields: readonly ProcessMetricField[];
   sortColumnId: string;
   sortDirection: string;
   expandedSoftwareIds: Record<string, boolean>;
@@ -398,6 +445,9 @@ function VirtualResourceTable(props: {
     }
     return low;
   };
+  // 表头、单元格提示用的列名和说明：选了来源的列写出口径。
+  const columnTexts = createMemo(() => new Map(columns().map((column) => [column.id, resourceTableColumnText(column, props.processFields)])));
+  const columnText = (column: ResourceTableColumn) => columnTexts().get(column.id) ?? resourceTableColumnText(column, props.processFields);
   const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
   const visibleRange = createMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
@@ -675,11 +725,11 @@ function VirtualResourceTable(props: {
                 <button
                   class="resource-table-sort-button"
                   type="button"
-                  title={resourceMetricBasis(column().id, "table")}
+                  title={columnText(column()).basis}
                   disabled={!column().sortable || props.editMode}
                   onClick={() => updateSort(column())}
                 >
-                  <span>{resourceTableColumnLabel(column().id)}</span>
+                  <span>{columnText(column()).label}</span>
                   <Show when={props.sortColumnId === columnId}>
                     <small>{props.sortDirection === "asc" ? "↑" : "↓"}</small>
                   </Show>
@@ -690,7 +740,7 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === 0}
-                      aria-label={uiText.resourceTableView.moveColumnLeft(resourceTableColumnLabel(column().id))}
+                      aria-label={uiText.resourceTableView.moveColumnLeft(columnText(column()).label)}
                       title={uiText.resourceTableView.moveLeftTitle}
                       onClick={() => {
                         const previous = columns()[columnIndex() - 1];
@@ -705,7 +755,7 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === columns().length - 1}
-                      aria-label={uiText.resourceTableView.moveColumnRight(resourceTableColumnLabel(column().id))}
+                      aria-label={uiText.resourceTableView.moveColumnRight(columnText(column()).label)}
                       title={uiText.resourceTableView.moveRightTitle}
                       onClick={() => {
                         const next = columns()[columnIndex() + 1];
@@ -724,7 +774,7 @@ function VirtualResourceTable(props: {
                   role="separator"
                   tabIndex={props.editMode ? 0 : -1}
                   aria-orientation="vertical"
-                  aria-label={uiText.resourceTableView.resizeColumn(resourceTableColumnLabel(column().id))}
+                  aria-label={uiText.resourceTableView.resizeColumn(columnText(column()).label)}
                   aria-valuemin={minColumnWidth}
                   aria-valuemax={maxColumnWidth}
                   aria-valuenow={storedWidth()}
@@ -757,6 +807,7 @@ function VirtualResourceTable(props: {
                 <ResourceTableRowSlot
                   row={row}
                   columns={columns}
+                  columnText={columnText}
                   gridTemplate={gridTemplate}
                   rowIndex={rowIndex}
                   mode={props.mode}
@@ -781,6 +832,7 @@ function VirtualResourceTable(props: {
 function ResourceTableRowSlot(props: {
   row: () => ResourceTableRow | undefined;
   columns: () => ResourceTableColumn[];
+  columnText: (column: ResourceTableColumn) => ResourceTableColumnText;
   gridTemplate: () => string;
   rowIndex: () => number;
   mode: ResourceTableViewMode;
@@ -864,6 +916,7 @@ function ResourceTableRowSlot(props: {
           const column = () => props.columns().find((candidate) => candidate.id === columnId)!;
           return <ResourceTableCell
             column={column()}
+            text={props.columnText(column())}
             columnIndex={columnIndex()}
             onRowContextMenu={props.onRowContextMenu}
             row={row}
@@ -1036,6 +1089,7 @@ function normalizeSearchText(value: string) {
 
 function ResourceTableCell(props: {
   column: ResourceTableColumn;
+  text: ResourceTableColumnText;
   columnIndex: number;
   row: () => ResourceTableRow | undefined;
   mode: ResourceTableViewMode;
@@ -1124,14 +1178,14 @@ function ResourceTableCell(props: {
       style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
       title={(value()?.sharedValue != null
         ? uiText.resourceTableView.memoryBreakdown(
-          resourceTableColumnLabel(props.column.id),
+          props.text.label,
           resourceTableCellText(value(), props.column.id),
           formatBytes((value()?.value ?? 0) - value()!.sharedValue!, "memory"),
           formatBytes(value()?.sharedValue, "memory"))
         : value()
-          ? `${resourceTableColumnLabel(props.column.id)}: ${resourceTableCellText(value(), props.column.id)}`
-          : resourceTableColumnLabel(props.column.id))
-        + (resourceMetricBasis(props.column.id, "table") ? `\n${resourceMetricBasis(props.column.id, "table")}` : "")}
+          ? `${props.text.label}: ${resourceTableCellText(value(), props.column.id)}`
+          : props.text.label)
+        + (props.text.basis ? `\n${props.text.basis}` : "")}
     >
       {resourceTableCellText(value(), props.column.id)}
     </div>
@@ -1158,18 +1212,18 @@ function contextMenuEventForElement(element: HTMLElement) {
 function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
   const processMode = mode === "process";
   return [
-    { id: "name", unit: "", visible: true, sortable: true, width: 260 },
-    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76 }] : []),
-    { id: "status", unit: "", visible: true, sortable: true, width: 92 },
+    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null },
+    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null }] : []),
+    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null },
     ...(processMode ? [
-      { id: "user", unit: "", visible: true, sortable: true, width: 150 },
-      { id: "architecture", unit: "", visible: true, sortable: true, width: 76 }
+      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null },
+      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null }
     ] : []),
-    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86 },
-    { id: "memory", unit: "B", visible: true, sortable: true, width: 110 },
+    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null },
+    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null },
     ...gpuResourceTableColumns(catalog),
-    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106 },
-    { id: "network", unit: "bps", visible: true, sortable: true, width: 106 }
+    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null },
+    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null }
   ];
 }
 
@@ -1182,7 +1236,8 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
       unit: metric.id.endsWith(".vram") ? "B" : "%",
       visible: true,
       sortable: true,
-      width: metric.id.endsWith(".vram") ? 132 : 108
+      width: metric.id.endsWith(".vram") ? 132 : 108,
+      source: null
     }));
 }
 

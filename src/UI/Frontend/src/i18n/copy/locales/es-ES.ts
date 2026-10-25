@@ -692,6 +692,18 @@ const esEsAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `Reservado por sistema/controlador · ${metric}`,
+    columnSourceLabel: (column: string) => `Origen de ${column}`,
+    sourceAutomatic: "Automático",
+    memoryQuantities: {
+      working_set_including_shared: "Conjunto de trabajo (con páginas compartidas)",
+      private_working_set: "Conjunto de trabajo privado",
+      private_commit: "Compromiso privado"
+    },
+    memoryColumnBySource: (quantity: string) => `Memoria · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "Sistema: memoria física ocupada / capacidad. Procesos: conjunto de trabajo, incluidas las páginas compartidas con otros procesos; una página compartida cuenta en cada proceso que la usa, por lo que la suma de los procesos puede superar el total del sistema y entonces no hay diferencia de sistema/controlador.",
+      private_commit: "Sistema: carga de compromiso del sistema / límite de compromiso. Procesos: compromiso privado. La diferencia entre los procesos y el compromiso del sistema está en la fila de reservado por sistema/controlador. El compromiso incluye respaldo en RAM y archivo de paginación, no la ocupación real de dicho archivo."
+    },
     columns: {
       name: "Nombre",
       pid: "PID",

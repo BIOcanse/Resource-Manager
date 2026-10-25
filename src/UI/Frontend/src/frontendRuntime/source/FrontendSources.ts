@@ -47,6 +47,7 @@ import {
   type ResourceMonitorQuery
 } from "../../data/resourceMonitor/resourceMonitorApi.ts";
 import type { ResourceMonitorSnapshot, ResourceProcessDetailsSnapshot } from "../../types.ts";
+import { getProcessFieldCatalog, type ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
 import type {
   DashboardSettingsResult,
   GpuSpecializedTelemetrySnapshot,
@@ -176,6 +177,8 @@ export interface FrontendSources {
   readonly smartCoordinatorStatus: PushValueSource<HostManagerSmartCoordinatorStatus>;
   readonly cpuExclusiveBindings: SourceHandle<CpuExclusiveBindingSnapshot | null>;
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
+  /** 进程字段目录（后端常量表）：资源表列的来源选择从这里来。 */
+  readonly processFieldCatalog: SourceHandle<readonly ProcessMetricField[]>;
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
   readonly targetedRecordings: SourceHandle<RecordingHeader[]>;
@@ -304,6 +307,11 @@ export function createFrontendSources(
     metricCatalog: sourceRegistry.define<MetricDefinition[]>({
       key: "monitor.metric-catalog",
       load: (signal) => getMetricCatalogSource(requestClient, signal),
+      retainLastGood: false
+    }),
+    processFieldCatalog: sourceRegistry.define<readonly ProcessMetricField[]>({
+      key: "resource-breakdown.process-field-catalog",
+      load: (signal) => getProcessFieldCatalog(requestClient, signal),
       retainLastGood: false
     }),
     dashboardSettings: sourceRegistry.define<DashboardSettingsResult>({

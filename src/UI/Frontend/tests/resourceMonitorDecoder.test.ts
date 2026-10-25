@@ -35,7 +35,7 @@ import {
     software: [{ softwareId: "software:test", name: "Test App", kind: "other", attributionKind: "other" }],
     processes: [{ processId: 4242, processStartKey: "134325768300000000", name: "worker.exe",
       executablePath: "C:/Apps/worker.exe", userName: "TEST-PC\\user", architecture: "x64", attributionKind: "process" }],
-    metrics: [{ metricId: "cpu.usage", unit: "%", totalValue: 12, capacityValue: 100, totalSystemPercent: 12, sharedValue: null,
+    metrics: [{ metricId: "cpu.usage", unit: "%", totalMetricId: null, processSumValue: null, totalValue: 12, capacityValue: 100, totalSystemPercent: 12, sharedValue: null,
       software: [{ softwareId: "software:test", value: 12, systemPercent: 12, processCount: 1, baseScore: 0, sharedValue: null,
         processes: [{ processIndex: 0, value: 12, systemPercent: 12, softwarePercent: 100, baseScore: 0, sharedValue: null }] }] }]
   };

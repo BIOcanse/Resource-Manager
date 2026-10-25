@@ -7,6 +7,7 @@ import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayD
 import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
 import usabilityProbe from "./usabilityProbe.js";
 import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, enableMetricFields, seedFieldCards } from "./metricFieldsProbe.js";
+import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney.js";
 
 export default async function localizationJourney(page, baseUrl) {
   const failures = [];
@@ -27,6 +28,7 @@ export default async function localizationJourney(page, baseUrl) {
   await seedFieldCards(page);
   const metricFieldChecks = [];
   const fieldCardChecks = [];
+  const resourceTableSourceChecks = [];
   let verificationFails = false;
   let verificationRequests = 0;
   const pendingVerificationReleases = [];
@@ -183,6 +185,8 @@ export default async function localizationJourney(page, baseUrl) {
     metricFieldChecks.push(await checkDeviceMetricFields(page, app, option.id));
     // 监视控制台的设备字段卡片：字段名、设备种类名、「设备不在」。
     fieldCardChecks.push(await checkFieldCardDisplay(page, app, option.id));
+    // 资源表内存列的来源选择：来源名、选项、说明和选了来源后的表头。
+    resourceTableSourceChecks.push(await checkResourceTableSourceText(page, app, option.id));
     await page.getByRole("navigation").getByRole("button", { name: app.page.control, exact: true }).click();
     await page.locator(".control-group h3").filter({ hasText: app.control.kind.gpu }).waitFor();
     await page.locator(".control-readings dt").filter({ hasText: app.control.presentation.labels["gpu.temperature-limit"] }).waitFor();
@@ -304,7 +308,7 @@ export default async function localizationJourney(page, baseUrl) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
     translatedComponentVerificationSuccessAndFailure: true,
     translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };

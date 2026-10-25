@@ -3,14 +3,24 @@ import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegm
 import { requireArray, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
 import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
+import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
 type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes"> & { processes: IdentityProcess[] };
 
+/**
+ * 资源事实的一个指标。totalValue/capacityValue 是 totalMetricId 指向的整机事实（如私有提交量对应系统提交量），
+ * 不是进程之和；processSumValue 是本帧有值的真实进程之和（不含系统残差）。只有进程字段指标带这两项，其余为 null。
+ */
+export interface ResourceFactsMetric extends ResourceBreakdownBar {
+  totalMetricId: string | null;
+  processSumValue: number | null;
+}
+
 export interface ResourceFacts {
   identities?: IdentitySoftware[];
   capturedAt?: string;
-  metrics: ResourceBreakdownBar[];
+  metrics: ResourceFactsMetric[];
 }
 
 /** Decode the neutral attribution catalogs; all table identities are created below. */
@@ -36,10 +46,12 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
       attributionKind: requireString(item.attributionKind, `${path}.attributionKind`) };
   });
   const nullableNumber = (item: Record<string, unknown>, key: string, path: string) => requireNullable(item[key], `${path}.${key}`, requireFiniteNumber);
-  const metrics = requireArray(frame.metrics, "$.metrics").map((value, index): ResourceBreakdownBar => {
+  const metrics = requireArray(frame.metrics, "$.metrics").map((value, index): ResourceFactsMetric => {
     const path = `$.metrics[${index}]`;
     const metric = requireRecord(value, path);
     return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
+      totalMetricId: requireNullable(metric.totalMetricId, `${path}.totalMetricId`, requireNonEmptyString),
+      processSumValue: nullableNumber(metric, "processSumValue", path),
       totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
       software: requireArray(metric.software, `${path}.software`).map((value, index) => {
@@ -77,14 +89,15 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
   return { capturedAt, facts, breakdown: { capturedAt, bars: [] }, table: { capturedAt, columns: [], rows: [], sort: { columnId: "impact", direction: "desc" } } };
 }
 
-export function resourceTableMetricId(columnId: string): string | null {
-  return ({ cpu: "cpu.usage", memory: "memory.usage", disk: "disk.io", network: "network.traffic" } as Record<string, string>)[columnId]
-    ?? (/^gpu\.\d+\.(usage|vram)$/.test(columnId) ? columnId : null);
-}
-
 export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", locale?: string): ResourceTableSnapshot {
   const options = settings;
-  const columns = options.filter(column => column.visible).map(column => ({ ...column, unit: facts.metrics.find(metric => resourceTableMetricId(column.id) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth }));
+  const columns = options.filter(column => column.visible).map(column => ({ ...column, source: column.source ?? null, unit: facts.metrics.find(metric => resourceTableMetricId(column) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth }));
+  // 列按自己的来源认领指标：自动选择认列原来的指标，选了来源就认那个进程字段。
+  const columnByMetric = new Map<string, string>();
+  for (const column of options) {
+    const metricId = resourceTableMetricId(column);
+    if (metricId !== null) columnByMetric.set(metricId, column.id);
+  }
   const softwareRows = new Map<string, ResourceTableRow>();
   const processRows = new Map<string, ResourceTableRow>();
   const children = new Map<string, ResourceTableRow[]>();
@@ -109,7 +122,9 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     let child = processRows.get(key);
     if (!child) {
       const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
-      const displayName = resourceProcessDisplayName(process, metricId);
+      // 残差进程按它所属的整机事实命名：残差软件 id 就写着这个指标（私有提交量的残差是 resource-residual:virtualMemory.usage），
+      // 和软件行的名字同一出处；身份目录先于数值建行时也一样。
+      const displayName = resourceProcessDisplayName(process, /^resource-residual:(.+)$/.exec(software.softwareId)?.[1] ?? metricId);
       child = { ...row(`process:${key}`, "process", displayName, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
         softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
         processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
@@ -143,8 +158,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     for (const process of software.processes) ensureProcess(software, process);
   }
   for (const metric of facts.metrics) {
-    const columnId = ({ "cpu.usage": "cpu", "memory.usage": "memory", "disk.io": "disk", "network.traffic": "network" } as Record<string, string>)[metric.metricId]
-      ?? (/^gpu\.\d+\.(usage|vram)$/.test(metric.metricId) ? metric.metricId : null);
+    const columnId = columnByMetric.get(metric.metricId) ?? null;
     if (columnId) summary.values[columnId] = metric.totalValue !== null && metric.totalSystemPercent !== null && metric.capacityValue !== null
       ? cell(metric.totalValue, metric.totalSystemPercent, metric.unit, metric.sharedValue)
       : { ...cell(null, null, metric.unit), availability: "Unavailable" };
@@ -162,7 +176,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   for (const item of [summary, ...softwareRows.values(), ...processRows.values()]) {
     item.impactScore = Object.entries(item.values).reduce((sum, [key, value]) => sum + (value.percent ?? 0) * (weights[key] ?? (key.startsWith("gpu.") ? 1 : 0)), 0);
     // Identity text remains searchable, while numeric cells follow local visibility.
-    for (const key of Object.keys(item.values)) if (resourceTableMetricId(key) !== null && !visibleIds.has(key)) delete item.values[key];
+    for (const key of Object.keys(item.values)) if (isResourceTableMetricColumn(key) && !visibleIds.has(key)) delete item.values[key];
   }
   // CurrentCultureIgnoreCase distinguishes accents, ignores case and leaves equal keys stable.
   const textOrder = new Intl.Collator(locale, { sensitivity: "accent" });
@@ -184,9 +198,10 @@ export function createResourceFactsProjection(
   sort: Accessor<{ columnId: string; direction: "asc" | "desc" }>,
   project: typeof projectResourceFacts = projectResourceFacts
 ): Accessor<ResourceTableSnapshot | null> {
-  const columns = createMemo(() => settings().map(({ id, visible }) => ({ id, visible })), undefined, {
+  const columns = createMemo(() => settings().map(({ id, visible, source }) => ({ id, visible, source: source ?? null })), undefined, {
     equals: (previous, next) => previous.length === next.length
-      && previous.every((column, index) => column.id === next[index].id && column.visible === next[index].visible)
+      && previous.every((column, index) => column.id === next[index].id && column.visible === next[index].visible
+        && column.source === next[index].source)
   });
   return createMemo(() => {
     const current = facts();

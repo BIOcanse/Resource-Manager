@@ -120,6 +120,18 @@ export const zhMonitorCopy = {
       }
     },
     systemResidualRow: (metric: string) => `系統/驅動保留 · ${metric}`,
+    columnSourceLabel: (column: string) => `${column}的來源`,
+    sourceAutomatic: "自動選擇",
+    memoryQuantities: {
+      working_set_including_shared: "工作集（含共享頁）",
+      private_working_set: "私有工作集",
+      private_commit: "私有提交量"
+    },
+    memoryColumnBySource: (quantity: string) => `記憶體 · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "整機：實體記憶體實際用量 / 物理容量。程序：工作集，含與其他程序共享的頁；同一共享頁計入每個用到它的程序，所以各程序之和可能大於整機用量，這時沒有「系統/驅動保留」差額。",
+      private_commit: "整機：系統提交量 / 提交上限。程序：私有提交量。各程序之和與系統提交量的差額在「系統/驅動保留」列。提交量包含實體記憶體與頁面檔案後備，不是頁面檔案實際佔用。"
+    },
     columns: {
       name: "名稱",
       pid: "PID",

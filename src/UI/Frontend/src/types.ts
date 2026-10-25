@@ -228,6 +228,11 @@ export interface ResourceTableColumnSettings {
   visible: boolean;
   width?: number | null;
   binding?: DashboardMetricBinding | null;
+  /**
+   * 这一列的来源：null 或没有是“自动选择”（后端按列的指标选口径），否则是后端进程字段名
+   * （如 process_all_private_commit_actual），只读那个字段。见 docs/metric_item_source_choice_2026-10-25.md。
+   */
+  source?: string | null;
 }
 
 /** Frontend cache/source result. Never an API wire contract. */
@@ -557,6 +562,8 @@ export interface ResourceTableColumn {
   visible: boolean;
   sortable: boolean;
   width: number;
+  /** 列的来源（同 ResourceTableColumnSettings.source）；null 是自动选择。 */
+  source: string | null;
 }
 
 export interface ResourceTableValue {

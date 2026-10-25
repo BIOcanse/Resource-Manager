@@ -692,6 +692,18 @@ const jaJpAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `システム／ドライバー予約 · ${metric}`,
+    columnSourceLabel: (column: string) => `${column}のソース`,
+    sourceAutomatic: "自動選択",
+    memoryQuantities: {
+      working_set_including_shared: "ワーキングセット（共有ページを含む）",
+      private_working_set: "プライベートワーキングセット",
+      private_commit: "プライベートコミット量"
+    },
+    memoryColumnBySource: (quantity: string) => `メモリ · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "システム：物理メモリ実使用量 / 物理容量。プロセス：ワーキングセット（他のプロセスと共有するページを含みます）。共有ページはそれを使う各プロセスに計上されるため、プロセスの合計がシステム全体を上回ることがあり、その場合システム／ドライバーの差分はありません。",
+      private_commit: "システム：システムのコミット量 / コミット上限。プロセス：プライベートコミット量。プロセスの合計とシステムのコミット量との差は「システム／ドライバー予約」の行にあります。RAM とページファイルの裏付けを含み、ページファイルの実使用量ではありません。"
+    },
     columns: {
       name: "名前",
       pid: "PID",

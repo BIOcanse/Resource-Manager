@@ -37,6 +37,8 @@ function validateDashboardCache(value: DashboardSettings): void {
         const column = item as ResourceTableColumnSettings;
         if (typeof column.visible !== "boolean" || column.width != null && (!Number.isFinite(column.width)
           || column.width < limits.minimumColumnWidth || column.width > limits.maximumColumnWidth)) throw new Error("Invalid frontend dashboard cache");
+        // 来源：null／没有是自动选择，否则是非空的后端进程字段名。
+        if (column.source != null && (typeof column.source !== "string" || !column.source.trim())) throw new Error("Invalid frontend dashboard cache");
       }
     }
   }

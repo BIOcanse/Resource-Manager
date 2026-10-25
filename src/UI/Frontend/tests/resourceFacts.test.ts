@@ -8,7 +8,7 @@ const raw = {
   software: [{ softwareId: "a", name: "App A", kind: "other", attributionKind: "other" }, { softwareId: "b", name: "App B", kind: "other", attributionKind: "other" }],
   processes: [{ processId: 42, processStartKey: "9223372036854775807", name: "worker.exe", executablePath: "C:/worker.exe", userName: null, architecture: "x64", attributionKind: "process" },
     { processId: 43, processStartKey: "9223372036854775806", name: "second.exe", executablePath: null, userName: "user", architecture: null, attributionKind: "process" }],
-  metrics: [{ metricId: "memory.usage", unit: "B", totalValue: 64, capacityValue: 128, totalSystemPercent: 50, sharedValue: 8,
+  metrics: [{ metricId: "memory.usage", unit: "B", totalMetricId: null, processSumValue: null, totalValue: 64, capacityValue: 128, totalSystemPercent: 50, sharedValue: 8,
     software: [{ softwareId: "a", value: 16, systemPercent: 12.5, processCount: 1, baseScore: 0, sharedValue: 4, processes: [{ processIndex: 0, value: 16, systemPercent: 12.5, softwarePercent: 100, baseScore: 0, sharedValue: 4 }] },
       { softwareId: "b", value: 48, systemPercent: 37.5, processCount: 1, baseScore: 0, sharedValue: 4, processes: [{ processIndex: 1, value: 48, systemPercent: 37.5, softwarePercent: 100, baseScore: 0, sharedValue: 4 }] }] }]
 };

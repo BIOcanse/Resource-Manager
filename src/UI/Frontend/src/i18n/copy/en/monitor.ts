@@ -124,6 +124,18 @@ export const enMonitorCopy: Pick<
       }
     },
     systemResidualRow: (metric: string) => `System/driver reserved · ${metric}`,
+    columnSourceLabel: (column: string) => `${column} source`,
+    sourceAutomatic: "Automatic",
+    memoryQuantities: {
+      working_set_including_shared: "Working set (incl. shared pages)",
+      private_working_set: "Private working set",
+      private_commit: "Private commit"
+    },
+    memoryColumnBySource: (quantity: string) => `Memory · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "System: physical memory used / physical capacity. Processes: working set, including pages shared with other processes; a shared page counts in every process that uses it, so the processes can add up to more than the system total, and then there is no system/driver difference.",
+      private_commit: "System: system commit charge / commit limit. Processes: private commit. The difference between the processes and the system commit charge is in the system/driver reserved row. Commit includes RAM and page-file backing, not actual page-file occupancy."
+    },
     columns: {
       name: "Name",
       pid: "PID",

@@ -143,7 +143,9 @@ export function normalizeResourceTableColumns(
       id: column.id.trim(),
       visible: Boolean(column.visible),
       width: clampResourceTableColumnWidth(column.width ?? byId.get(column.id.trim())?.width ?? limits.defaultColumnWidth),
-      binding: normalizeMetricBinding(column.id, column.binding)
+      binding: normalizeMetricBinding(column.id, column.binding),
+      // 来源原样保留（null 是自动选择），见 ResourceTableColumnSettings.source。
+      source: column.source ?? null
     }));
   return normalized;
 }

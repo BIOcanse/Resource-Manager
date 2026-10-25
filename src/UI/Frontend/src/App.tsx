@@ -155,6 +155,7 @@ export default function App() {
       .map(id => decodeURIComponent(id.slice("monitor.card.".length))),
     onMetricDependenciesRequested: () => void management.refreshComponents(),
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
+    processFieldCatalogSource: frontendRuntime.sources.processFieldCatalog,
     dashboardSettingsSource: frontendRuntime.sources.dashboardSettings,
     metricSnapshotSource: frontendRuntime.sources.metricSnapshot,
     metricFieldCatalogSource: frontendRuntime.sources.metricFieldCatalog,

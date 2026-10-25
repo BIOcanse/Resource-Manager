@@ -692,6 +692,18 @@ const deDeAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `System-/Treiberreserviert · ${metric}`,
+    columnSourceLabel: (column: string) => `Quelle für ${column}`,
+    sourceAutomatic: "Automatisch",
+    memoryQuantities: {
+      working_set_including_shared: "Working Set (inkl. gemeinsamer Seiten)",
+      private_working_set: "Privater Working Set",
+      private_commit: "Private Zusicherung"
+    },
+    memoryColumnBySource: (quantity: string) => `Arbeitsspeicher · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "System: physisch belegter Speicher / Kapazität. Prozesse: Working Set einschließlich mit anderen Prozessen gemeinsam genutzter Seiten; eine gemeinsame Seite zählt bei jedem Prozess, der sie nutzt, daher kann die Summe der Prozesse größer als die Systembelegung sein, und dann gibt es keine System-/Treiberdifferenz.",
+      private_commit: "System: zugesicherter Systemspeicher / Zusicherungsgrenze. Prozesse: private Zusicherung. Die Differenz zwischen den Prozessen und der Systemzusicherung steht in der Zeile „System-/Treiberreserviert“. Die Zusicherung umfasst RAM und Auslagerungsdatei-Backing, nicht die tatsächliche Belegung der Auslagerungsdatei."
+    },
     columns: {
       name: "Name",
       pid: "PID",

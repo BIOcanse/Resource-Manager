@@ -661,6 +661,9 @@ async function handleApi(request, response, url) {
         metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")] : []),
       ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])]);
   }
+  if (path === "/api/resource-breakdown/fields/catalog" && request.method === "GET") {
+    return json(response, 200, processFieldCatalog);
+  }
   if (path === "/api/metrics/snapshot") {
     return json(response, 200, metricSnapshot(url.searchParams.getAll("ids")));
   }
@@ -717,6 +720,7 @@ async function handleApi(request, response, url) {
         new Set(url.searchParams.getAll("processDetails"))));
   }
   if (path === "/api/resource-facts/snapshot") {
+    if (!resourceFactItemsKnown(url)) return json(response, 400, { error: "unknown resource fact item" });
     return json(response, 200, resourceFacts(url, resourceSlotCapturedAt));
   }
   if (path === "/api/local-system/status") {
@@ -1443,6 +1447,29 @@ function readingSourceAddress() {
   ]), fieldName: "gpu_amd_edge_temperature_celsius", deviceIdentity: "gpu|reading" };
 }
 
+// 进程字段目录（后端 ProcessMetricFieldRegistry 的形状）：内存四种口径带 reading，其余字段没有。
+const processFieldCatalog = [
+  ["process_all_cpu_usage_actual", "float64", "%", "windows.process.cpu-interval", null],
+  ["process_all_working_set_actual", "unsigned64", "B", "windows.process.query", "working_set_including_shared"],
+  ["process_all_private_working_set_actual", "unsigned64", "B", "windows.process.query", "private_working_set"],
+  ["process_all_private_commit_actual", "unsigned64", "B", "windows.process.query", "private_commit"],
+  ["process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query", "peak_private_commit"]
+].map(([name, valueKind, unit, sourceId, quantity]) => ({ name, valueKind, unit, sourceId, resource: "process", vendor: "all",
+  reading: quantity === null ? null : { resource: "memory", quantity } }));
+
+// 资源事实接受的进程内存字段：整机比较事实、整机量、容量和全部进程之和（按软件平分）。
+const GiB = 1024 ** 3;
+const processMemoryFacts = {
+  process_all_working_set_actual: { totalMetricId: "memory.usage", totalValue: 8 * GiB, capacityValue: 16 * GiB, processSum: 0.625 * GiB },
+  process_all_private_working_set_actual: { totalMetricId: "memory.usage", totalValue: 8 * GiB, capacityValue: 16 * GiB, processSum: 0.5 * GiB },
+  process_all_private_commit_actual: { totalMetricId: "virtualMemory.usage", totalValue: 6 * GiB, capacityValue: 24 * GiB, processSum: GiB }
+};
+
+function resourceFactItemsKnown(url) {
+  return url.searchParams.getAll("items").every(id => ["process.inventory", "process.attribution", "cpu.usage", "memory.usage", "disk.io", "network.traffic"].includes(id)
+    || Object.hasOwn(processMemoryFacts, id) || /^gpu\.\d+\.(usage|vram)$/.test(id));
+}
+
 function metricSnapshot(requestedIds) {
   const allItems = {
     "cpu.usage": { id: "cpu.usage", unit: "%", status: 1, numericValue: 12, percent: 12 },
@@ -1748,17 +1775,38 @@ function resourceFacts(url, capturedAt = now()) {
   const processes = software.map((_, index) => ({ processId: 4242 + index, processStartKey: String(132000000000000000n + BigInt(4242 + index)),
     name: `example-${index}.exe`, executablePath: "C:\\FrontendHarness\\example.exe", userName: "测试用户", architecture: "x64", attributionKind: "process" }));
   const items = new Set(url.searchParams.getAll("items"));
+  const residualAttributions = [];
     const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution").map(metricId => {
+    const fact = processMemoryFacts[metricId];
+    if (fact) {
+      // 进程字段：总计是 totalMetricId 指向的整机事实，不是进程之和；差额进现有的系统/驱动残差行。
+      const share = fact.processSum / Math.max(1, count);
+      const percent = value => value * 100 / fact.capacityValue;
+      const residualId = `resource-residual:${fact.totalMetricId}`;
+      const residual = fact.totalValue - (count > 0 ? fact.processSum : 0);
+      const rows = software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share), processCount: 1, baseScore: 0, sharedValue: null,
+        processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: null }] }));
+      if (residual > 0) {
+        if (!software.some(identity => identity.softwareId === residualId)) software.push({ softwareId: residualId, name: "", kind: "windows_system", attributionKind: "system-residual" });
+        const processIndex = processes.push({ processId: -1, processStartKey: null, name: "", executablePath: null, userName: null, architecture: null, attributionKind: "system-residual" }) - 1;
+        residualAttributions.push({ softwareId: residualId, processIndex, baseScore: 0 });
+        rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
+          processes: [{ processIndex, value: residual, systemPercent: percent(residual), softwarePercent: 100, baseScore: 0, sharedValue: null }] });
+      }
+      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, totalValue: fact.totalValue, capacityValue: fact.capacityValue,
+        totalSystemPercent: percent(fact.totalValue), processSumValue: count > 0 ? fact.processSum : 0, sharedValue: null, software: rows };
+    }
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
     const sharedValue = memory ? 134217728 : null;
     return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
-      totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, sharedValue,
-      software: software.map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
+      totalMetricId: null, totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
+      software: software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
         baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
         processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };
   });
-    const attributions = items.has("process.attribution") ? software.map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : [];
+    const attributions = [...(items.has("process.attribution") ? software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : []),
+      ...residualAttributions];
     return { version: 2, capturedAt, software, processes, metrics, attributions };
 }
 
@@ -2204,7 +2252,8 @@ function subscriptionPayloadFactory(url) {
       };
     }
     case "/api/resource-facts/subscribe":
-      return publishedAt => resourceFacts(url, publishedAt);
+      // 和后端一样不接受不认识的 items。
+      return resourceFactItemsKnown(url) ? publishedAt => resourceFacts(url, publishedAt) : null;
     case "/api/device-topology/state/subscribe":
       return (publishedAt) => fixtureDeviceTopologyState(publishedAt);
     case "/api/cpu/topology/subscribe":

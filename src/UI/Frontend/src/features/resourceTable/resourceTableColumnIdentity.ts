@@ -17,6 +17,7 @@ export function resourceTableColumnsEqual(
       && column.unit === candidate.unit
       && column.visible === candidate.visible
       && column.sortable === candidate.sortable
-      && column.width === candidate.width;
+      && column.width === candidate.width
+      && column.source === candidate.source;
   });
 }

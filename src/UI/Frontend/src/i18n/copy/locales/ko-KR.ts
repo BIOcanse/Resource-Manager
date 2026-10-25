@@ -692,6 +692,18 @@ const koKrAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `시스템/드라이버 예약 · ${metric}`,
+    columnSourceLabel: (column: string) => `${column} 소스`,
+    sourceAutomatic: "자동 선택",
+    memoryQuantities: {
+      working_set_including_shared: "작업 집합(공유 페이지 포함)",
+      private_working_set: "전용 작업 집합",
+      private_commit: "프라이빗 커밋량"
+    },
+    memoryColumnBySource: (quantity: string) => `메모리 · ${quantity}`,
+    memorySourceBasis: {
+      working_set_including_shared: "시스템: 물리 메모리 실제 사용량 / 물리 용량. 프로세스: 작업 집합(다른 프로세스와 공유하는 페이지 포함). 공유 페이지는 이를 쓰는 모든 프로세스에 계산되므로 프로세스 합계가 시스템 전체보다 클 수 있으며, 이때는 시스템/드라이버 차이가 없습니다.",
+      private_commit: "시스템: 시스템 커밋량 / 커밋 한도. 프로세스: 프라이빗 커밋량. 프로세스 합계와 시스템 커밋량의 차이는 시스템/드라이버 예약 행에 있습니다. RAM과 페이지 파일의 지원을 포함하며 페이지 파일의 실제 사용량은 아닙니다."
+    },
     columns: {
       name: "이름",
       pid: "PID",

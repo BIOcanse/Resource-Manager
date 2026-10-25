@@ -185,6 +185,8 @@ export function MonitorPage(props: MonitorPageProps) {
                 onCancelEdit={monitor.cancelResourceTableEdit}
                 onSortChange={monitor.updateResourceTableSort}
                 onToggleColumn={monitor.toggleResourceTableColumn}
+                processFields={monitor.processFields()}
+                onColumnSourceChange={monitor.changeResourceTableColumnSource}
                 onColumnWidthChange={monitor.updateResourceTableColumnWidth}
                 onToggleExpand={monitor.toggleResourceTableExpand}
                 onSoftwareContextMenu={props.onResourceTableSoftwareContextMenu}

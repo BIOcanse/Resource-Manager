@@ -8,14 +8,16 @@ const cpuColumn: ResourceTableColumn = {
   unit: "%",
   visible: true,
   sortable: true,
-  width: 120
+  width: 120,
+  source: null
 };
 const memoryColumn: ResourceTableColumn = {
   id: "memory",
   unit: "B",
   visible: true,
   sortable: true,
-  width: 140
+  width: 140,
+  source: null
 };
 
 assert.equal(resourceTableColumnsEqual(
@@ -28,7 +30,9 @@ for (const [field, value] of [
   ["unit", "ms"],
   ["visible", false],
   ["sortable", false],
-  ["width", 121]
+  ["width", 121],
+  // 换了来源，表头措辞跟着变。
+  ["source", "process_all_private_commit_actual"]
 ] as const) {
   assert.equal(resourceTableColumnsEqual(
     [cpuColumn],
