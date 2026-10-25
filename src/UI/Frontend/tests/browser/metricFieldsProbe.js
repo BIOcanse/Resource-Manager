@@ -83,8 +83,6 @@ export async function checkCpuMetricFields(page, app, language) {
   await page.getByRole("tab", { name: app.misc.detailsTab.cpu, exact: true }).click();
   const cpu = app.cpuTopology;
   const numa = cpu.numaNode(0, [cpu.numaCapacity("32.0 GiB"), cpu.numaAvailable(cpu.fieldUnavailable)].join(" · "));
-  // CPU 页同时有 CPU 型号区和基线比例区，两者共用 cpu-topology-* 样式；按型号区的可访问名称限定。
-  const model = page.getByRole("region", { name: cpu.modelLabel, exact: true });
   // CPU 拓扑沿原 60 秒订阅，首个对齐回调最长要等一分钟。
   // CPU 页同时有 CPU 型号区和基线比例区，两者共用 cpu-topology-* 样式；按型号区的可访问名称限定。
   const model = page.getByRole("region", { name: cpu.modelLabel, exact: true });
