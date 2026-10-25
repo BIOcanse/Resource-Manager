@@ -65,31 +65,28 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var metricIds = ParseResourceMetricIds(request);
             var scaleModes = ParseResourceScaleModes(request);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
-            if (scope == ResourceMonitorScope.Details)
-            {
-                var details = await breakdownSampler.GetSnapshotAsync(
-                    new ResourceBreakdownSampleRequest(
-                        metricIds,
-                        scaleModes,
-                        ProcessSampleDetailLevel.ResourceTableBasic),
-                    cancellationToken);
-                return Results.Ok(ResourceProcessDetailsWireSnapshot.Create(
-                    details,
-                    metricIds,
-                    processDetailSoftwareIds));
-            }
-
-            var measures = ParseResourceBarMeasures(request.Query);
+            string[] measures;
+            try { measures = ParseResourceBarMeasures(request.Query); }
+            catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var sampleRequest = new ResourceBreakdownSampleRequest(
                 metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
             { ProcessMemoryFactIds = measures };
             var sampledBreakdown = await breakdownSampler.GetSnapshotAsync(sampleRequest, cancellationToken);
+            var foundations = ReadResourceFoundations(sampleRequest, request.HttpContext.RequestServices);
+            if (scope == ResourceMonitorScope.Details)
+            {
+                return Results.Ok(ResourceProcessDetailsWireSnapshot.Create(
+                    sampledBreakdown,
+                    metricIds,
+                    processDetailSoftwareIds, foundations, scaleModes));
+            }
+
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
                 processDetailSoftwareIds,
-                ReadResourceFoundations(sampleRequest, request.HttpContext.RequestServices));
+                foundations, scaleModes);
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
                 breakdownWire.CapturedAt,
@@ -169,11 +166,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 or ResourceBreakdownMetricIds.NetworkSend or ResourceBreakdownMetricIds.NetworkRawTraffic
                 or ResourceBreakdownMetricIds.NetworkRawReceive or ResourceBreakdownMetricIds.NetworkRawSend;
 
-    private static string[] ProcessMemoryFields(IReadOnlyList<string> ids)
-        => ids.Where(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null).ToArray();
-
     private static string[] ParseResourceBarMeasures(IQueryCollection query)
-        => ProcessMemoryFields(ParseResourceMetricIdsFromQuery(query, "measures", null));
+    {
+        var measures = query["measures"].SelectMany(static value => (value ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var measure in measures)
+            if (ProcessMemoryFactFields.TotalMetricId(measure) is null)
+                throw new ArgumentException($"Resource measure '{measure}' is unsupported.");
+        return measures;
+    }
 
     private static ResourceMonitorScope ParseResourceMonitorScope(HttpRequest request)
         => ParseResourceMonitorScope(request.Query);

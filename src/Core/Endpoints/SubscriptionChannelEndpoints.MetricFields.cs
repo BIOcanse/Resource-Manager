@@ -11,8 +11,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         string id,
         IMetricSnapshotPushSource source,
         HardwareMetricCatalogState catalog,
-        string? device,
-        IReadOnlySet<string> fields,
+        IReadOnlyList<MetricFieldSelection> selections,
         TimeSpan interval,
         IServiceProvider services,
         FrontendSubscriptionChannelWriter writer,
@@ -20,7 +19,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         // Keep the symbolic selection for this channel's lifetime. A directory publication
         // retires the concrete sampler lease, including when no devices currently match.
-        var names = fields.Select(MetricFieldRegistry.NormalizePublicName).ToHashSet(StringComparer.Ordinal);
         var changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
         {
             SingleReader = true,
@@ -35,7 +33,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 while (changes.Reader.TryRead(out _)) { }
                 // Compilation already validated the selection against a published catalog.
-                var request = MetricDeviceFields.SelectBound(catalog.Current!, device, names);
+                var request = SelectMetricFields(catalog.Current!, selections);
                 if (request.IsEmpty)
                 {
                     await writer.WriteAsync(id, Array.Empty<DeviceMetricFieldSnapshot>(), cancellationToken);
@@ -60,7 +58,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                             break;
                         }
                         if (!await next) break;
-                        await writer.WriteAsync(id, ReadMetricFields(snapshots.Current, device, fields, services), cancellationToken);
+                        await writer.WriteAsync(id, ReadMetricFields(snapshots.Current, selections, services), cancellationToken);
                     }
                 }
                 finally

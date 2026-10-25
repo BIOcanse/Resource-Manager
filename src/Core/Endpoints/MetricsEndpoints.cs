@@ -101,16 +101,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IMetricSampler sampler, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            string? device;
-            try { device = ParseMetricFieldDevice(request.Query); }
+            IReadOnlyList<MetricFieldSelection> selections;
+            try { selections = ParseMetricFieldSelections(request.Query); }
             catch (ArgumentException) { return Results.BadRequest(); }
-            var fields = ParseMetricFieldNames(request.Query);
             if (catalogState.Current is not { } catalog) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
             MetricSampleRequest selection;
-            try { selection = MetricDeviceFields.CreateRequest(catalog, device, fields); }
+            try { selection = MetricSampleRequest.Merge(selections.Select(item =>
+                MetricDeviceFields.CreateRequest(catalog, item.Device, item.Fields))); }
             catch (ArgumentException) { return Results.BadRequest(); }
             var snapshot = await sampler.GetSnapshotAsync(selection, cancellationToken);
-            return Results.Ok(ReadMetricFields(snapshot, device, fields, request.HttpContext.RequestServices));
+            return Results.Ok(ReadMetricFields(snapshot, selections, request.HttpContext.RequestServices));
         }).AllowAnonymous();
 
         return app;
@@ -147,4 +147,24 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         => query["fields"].SelectMany(static value => (value ?? string.Empty)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .ToHashSet(StringComparer.Ordinal);
+
+    private sealed record MetricFieldSelection(string? Device, IReadOnlySet<string> Fields);
+
+    private static IReadOnlyList<MetricFieldSelection> ParseMetricFieldSelections(IQueryCollection query)
+    {
+        var devices = query["device"];
+        if (devices.Count <= 1)
+            return [new(ParseMetricFieldDevice(query), ParseMetricFieldNames(query)
+                .Select(MetricFieldRegistry.NormalizePublicName).ToHashSet(StringComparer.Ordinal))];
+        var groups = query["fields"];
+        if (groups.Count != devices.Count || devices.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException("metric-field-device-invalid", nameof(query));
+        return Enumerable.Range(0, devices.Count).Select(index => new MetricFieldSelection(devices[index],
+            (groups[index] ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(MetricFieldRegistry.NormalizePublicName).ToHashSet(StringComparer.Ordinal))).ToArray();
+    }
+
+    private static MetricSampleRequest SelectMetricFields(HardwareMetricSnapshot catalog,
+        IReadOnlyList<MetricFieldSelection> selections)
+        => MetricSampleRequest.Merge(selections.Select(item => MetricDeviceFields.SelectBound(catalog, item.Device, item.Fields)));
 }

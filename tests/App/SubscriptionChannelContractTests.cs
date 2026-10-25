@@ -220,11 +220,22 @@ public sealed class SubscriptionChannelContractTests
 public sealed class ResourceMonitorDetailsSubscriptionTests
 {
     [Theory]
-    [InlineData("process_all_working_set_actual", "memory.usage", false)]
-    [InlineData("process_all_private_working_set_actual", "memory.usage", false)]
-    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false)]
-    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", true)]
-    public async Task ResourceBarsProjectOnlyTheChosenFieldThroughExistingFactDemand(string field, string totalId, bool missingTotal)
+    [InlineData("process_all_working_set_actual", "memory.usage", false, "bars", "capacity", false)]
+    [InlineData("process_all_private_working_set_actual", "memory.usage", false, "bars", "capacity", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false, "bars", "capacity", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", true, "bars", "capacity", false)]
+    [InlineData("process_all_working_set_actual", "memory.usage", false, "bars", "active", false)]
+    [InlineData("process_all_private_working_set_actual", "memory.usage", false, "bars", "active", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false, "bars", "active", false)]
+    [InlineData("process_all_working_set_actual", "memory.usage", false, "bars", "active", true)]
+    [InlineData("process_all_private_working_set_actual", "memory.usage", false, "bars", "active", true)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false, "bars", "active", true)]
+    [InlineData("process_all_working_set_actual", "memory.usage", false, "details", "capacity", false)]
+    [InlineData("process_all_private_working_set_actual", "memory.usage", false, "details", "active", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false, "details", "capacity", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", true, "details", "capacity", false)]
+    public async Task ResourceBarsProjectOnlyTheChosenFieldThroughExistingFactDemand(
+        string field, string totalId, bool missingTotal, string scope, string mode, bool totalModeKey)
     {
         var snapshot = Resource_Manager_APP.Tests.ResourceFactsPublicationTests.Snapshot();
         var total = totalId == "memory.usage" ? 80d : 120d;
@@ -241,23 +252,40 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         { Foundations = Resource_Manager_APP.Tests.ResourceFactsPublicationTests.Foundations() };
         await using var app = await StartAsync(source);
         using var client = Client(app);
-        var query = "?scope=bars&measures=" + field + "&processDetails=example";
+        var query = "?scope=" + scope + "&measures=" + field + "&processDetails=example&modes="
+            + (totalModeKey ? totalId : field) + ":" + mode;
         using var direct = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot" + query));
-        var bars = direct.RootElement.GetProperty("breakdown").GetProperty("bars");
-        if (missingTotal) Assert.Empty(bars.EnumerateArray());
+        if (scope == "details")
+        {
+            var metric = Assert.Single(direct.RootElement.GetProperty("metrics").EnumerateArray());
+            Assert.Equal(field, metric.GetProperty("metricId").GetString());
+            var software = Assert.Single(metric.GetProperty("software").EnumerateArray());
+            Assert.Equal("example", software.GetProperty("softwareId").GetString());
+            var process = Assert.Single(software.GetProperty("processes").EnumerateArray());
+            Assert.Equal(7, process[3].GetDouble());
+            Assert.Equal(long.MaxValue.ToString(), process[10].GetString());
+        }
         else
         {
-            var bar = Assert.Single(bars.EnumerateArray());
-            Assert.Equal(field, bar.GetProperty("metricId").GetString());
-            Assert.Equal(field, bar.GetProperty("processFieldName").GetString());
-            Assert.Equal(totalId, bar.GetProperty("totalMetricId").GetString());
-            Assert.Equal(total, bar.GetProperty("totalValue").GetDouble());
-            var rows = bar.GetProperty("software");
-            Assert.Equal(7, rows[0][1].GetDouble());
-            Assert.Equal(total - 7, rows[1][1].GetDouble());
-            Assert.Equal(7, rows[0][5][0][3].GetDouble());
+            var bars = direct.RootElement.GetProperty("breakdown").GetProperty("bars");
+            if (missingTotal) Assert.Empty(bars.EnumerateArray());
+            else
+            {
+                var bar = Assert.Single(bars.EnumerateArray());
+                Assert.Equal(mode, bar.GetProperty("scaleMode").GetString());
+                Assert.Equal(field, bar.GetProperty("metricId").GetString());
+                Assert.Equal(field, bar.GetProperty("processFieldName").GetString());
+                Assert.Equal(totalId, bar.GetProperty("totalMetricId").GetString());
+                Assert.Equal(total, bar.GetProperty("totalValue").GetDouble());
+                var rows = bar.GetProperty("software");
+                Assert.Equal(7, rows[0][1].GetDouble());
+                Assert.Equal(total - 7, rows[1][1].GetDouble());
+                Assert.Equal(7, rows[0][5][0][3].GetDouble());
+            }
         }
-        Assert.Equal([field], Assert.Single(source.SnapshotRequests).ProcessMemoryFactIds);
+        var sampledRequest = Assert.Single(source.SnapshotRequests);
+        Assert.Equal([field], sampledRequest.ProcessMemoryFactIds);
+        Assert.Equal(mode, sampledRequest.ScaleModes[totalModeKey ? totalId : field]);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
@@ -268,8 +296,35 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         using var frame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
         Assert.Equal(direct.RootElement.GetRawText(), frame.RootElement.GetProperty("value").GetRawText());
         Assert.Equal([field], Assert.Single(source.PushRequests).Request.ProcessMemoryFactIds);
+        Assert.Equal(mode, source.PushRequests.Single().Request.ScaleModes[totalModeKey ? totalId : field]);
         await timeout.CancelAsync();
         response.Dispose();
+        await app.StopAsync();
+    }
+
+    [Theory]
+    [InlineData("bars", "process_all_peak_private_commit_actual")]
+    [InlineData("details", "process_all_peak_private_commit_actual")]
+    [InlineData("bars", "process_all_cpu_time_actual")]
+    [InlineData("details", "unknown.measure")]
+    public async Task UnsupportedMeasuresRejectTheWholeQueryBeforeAnyDemand(string scope, string unsupported)
+    {
+        var source = new ResourceMonitorSource(CreateSnapshot(DateTimeOffset.UnixEpoch));
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        foreach (var measures in new[] { unsupported, "process_all_working_set_actual," + unsupported })
+        {
+            var query = "?scope=" + scope + "&measures=" + measures;
+            using var get = await client.GetAsync("/api/resource-monitor/snapshot" + query);
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, get.StatusCode);
+            using var channel = await client.PostAsJsonAsync("/api/subscriptions/stream", new { version = 1, subscriptions = new[] {
+                new { id = "measure", path = "/api/resource-monitor/subscribe" + query } } });
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, channel.StatusCode);
+            using var error = JsonDocument.Parse(await channel.Content.ReadAsStringAsync());
+            Assert.Equal("One or more subscription queries are invalid.", error.RootElement.GetProperty("error").GetString());
+        }
+        Assert.Empty(source.SnapshotRequests);
+        Assert.Empty(source.PushRequests);
         await app.StopAsync();
     }
 

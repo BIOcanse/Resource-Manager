@@ -30,6 +30,8 @@ public sealed class PerformanceOverlaySubscriptionTests
     [InlineData("field.current")]
     [InlineData("field.unavailable")]
     [InlineData("field.rebound")]
+    [InlineData("field.multi")]
+    [InlineData("field.pairs")]
     public async Task OverlayProducerLeasesFollowOnlyExplicitRequestedFacts(string metricId)
     {
         var processSource = new ProcessSource();
@@ -49,6 +51,22 @@ public sealed class PerformanceOverlaySubscriptionTests
                 1, DateTimeOffset.UtcNow.UtcTicks, 1, 1, 1, 1) }
         };
         if (useFields) metricSource.Current = FieldSnapshot(binding.RequestAddress);
+        var multipleDevices = metricId is "field.multi" or "field.pairs";
+        var secondField = MetricFieldRegistry.Definitions.Single(item => item.Code == MetricFieldCode.CommitPeak);
+        if (multipleDevices)
+        {
+            var bindings = new[] { "device-a", "device-b", "device-c" }.SelectMany(device =>
+                new[] { field, secondField }.Select(definition => new MetricDeviceFieldBinding(
+                    device, definition, device + "/" + definition.Name, "fixture"))).ToArray();
+            metricSource.Current = metricSource.Current with
+            {
+                FieldBindings = bindings.ToDictionary(item => item.RequestAddress),
+                Items = bindings.ToDictionary(item => item.RequestAddress,
+                    item => new MetricReadingValue(item.RequestAddress, null, "B") { IntegerValue = new MetricInteger(9007199254740993) }),
+                Datasets = bindings.ToDictionary(item => item.RequestAddress, item => new HardwareMetricDatasetObservation(
+                    item.RequestAddress, SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 1, 1, 1, 1))
+            };
+        }
         var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(metricSource.Current);
         var builder = WebApplication.CreateBuilder();
@@ -81,7 +99,11 @@ public sealed class PerformanceOverlaySubscriptionTests
                 subscriptions = new[]
                 {
                     new { id = "overlay", path = "/api/performance-overlay/subscribe?intervalMs=100&softwareId=game&" + (useFields
-                        ? "fields=" + field.Name + "&device=" + binding.DeviceIdentity : "ids=" + Uri.EscapeDataString(metricId)) }
+                        ? multipleDevices
+                            ? "device=device-a&fields=" + field.Name + "&device=device-b&fields="
+                                + (metricId == "field.pairs" ? secondField.Name : field.Name)
+                            : "fields=" + field.Name + "&device=" + binding.DeviceIdentity
+                        : "ids=" + Uri.EscapeDataString(metricId)) }
                 }
             })
         };
@@ -103,7 +125,32 @@ public sealed class PerformanceOverlaySubscriptionTests
         var needsResource = needsGpu || metricId == "target.memory";
         Assert.Equal(needsResource ? 1 : 0, resourceSource.ActiveCount);
         Assert.Equal(needsGpu || metricId == "cpu.usage" || useFields ? 1 : 0, metricSource.ActiveCount);
-        if (useFields)
+        if (multipleDevices)
+        {
+            var selectedSecond = metricId == "field.pairs" ? secondField.Name : field.Name;
+            string[] expected = ["device-a/" + field.Name, "device-b/" + selectedSecond];
+            Assert.Equal(expected.Order(), metricSource.LastRequest!.Ids.Order());
+            using var rawFrame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+            var rows = rawFrame.RootElement.GetProperty("value").GetProperty("fields").EnumerateArray()
+                .ToDictionary(row => row.GetProperty("deviceIdentity").GetString()!);
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(field.Name, Assert.Single(rows["device-a"].GetProperty("fields").EnumerateArray()).GetProperty("name").GetString());
+            Assert.Equal(selectedSecond, Assert.Single(rows["device-b"].GetProperty("fields").EnumerateArray()).GetProperty("name").GetString());
+            var datasets = metricSource.Current.Datasets.ToDictionary(item => item.Key, item => item.Value);
+            datasets[expected[1]] = datasets[expected[1]] with { Status = SamplingObservationStatus.Unavailable };
+            metricSource.Current = metricSource.Current with { Datasets = datasets };
+            while (true)
+            {
+                using var next = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+                var failed = Assert.Single(next.RootElement.GetProperty("value").GetProperty("fields").EnumerateArray(),
+                    row => row.GetProperty("deviceIdentity").GetString() == "device-b").GetProperty("fields")[0];
+                if (failed.GetProperty("status").GetInt32() != (int)SamplingObservationStatus.Unavailable) continue;
+                Assert.Equal(JsonValueKind.Null, failed.GetProperty("integerValue").ValueKind);
+                break;
+            }
+            Assert.Equal(expected.Order(), metricSource.LastRequest.Ids.Order());
+        }
+        else if (useFields)
         {
             Assert.Equal([binding.RequestAddress], metricSource.LastRequest!.Ids);
             using var rawFrame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);

@@ -42,7 +42,8 @@ public sealed class ResourceBreakdownWireSnapshot
         ResourceBreakdownSnapshot source,
         IReadOnlyList<string> visibleMetricIds,
         IReadOnlySet<string>? processDetailSoftwareIds = null,
-        SchedulingProcessFactSnapshot? foundations = null)
+        SchedulingProcessFactSnapshot? foundations = null,
+        IReadOnlyDictionary<string, string>? scaleModes = null)
     {
         var visibleIds = visibleMetricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var currentDatasets = source.Datasets
@@ -61,7 +62,7 @@ public sealed class ResourceBreakdownWireSnapshot
         // 实测就这么炸过：核显那条不可用，GPU 调度页整页无限加载。
         var bars = visibleIds.Count == 0
             ? []
-            : source.Bars.Concat(ProjectProcessMemoryBars(source, visibleMetricIds, foundations))
+            : source.Bars.Concat(ProjectProcessMemoryBars(source, visibleMetricIds, foundations, scaleModes))
                 .Where(bar => visibleIds.Contains(bar.MetricId)
                 && currentDatasets.ContainsKey(
                     SamplingDatasetIds.ForProcessMetric(bar.MetricId))
@@ -103,14 +104,17 @@ public sealed class ResourceBreakdownWireSnapshot
             processFields);
     }
 
-    private static IEnumerable<ResourceBreakdownBar> ProjectProcessMemoryBars(
-        ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations)
+    internal static IEnumerable<ResourceBreakdownBar> ProjectProcessMemoryBars(
+        ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations,
+        IReadOnlyDictionary<string, string>? scaleModes = null)
     {
         var fields = ids.Where(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null).ToArray();
         if (fields.Length == 0) return [];
         var facts = ResourceFactsSnapshot.Create(source, fields, foundations);
         var owners = facts.Software.ToDictionary(static owner => owner.SoftwareId, StringComparer.Ordinal);
-        return facts.Metrics.Select(metric => new ResourceBreakdownBar(metric.MetricId, metric.Unit, "capacity",
+        return facts.Metrics.Select(metric => new ResourceBreakdownBar(metric.MetricId, metric.Unit,
+            ResourceBreakdownScaleModes.Normalize(metric.TotalMetricId, scaleModes?.GetValueOrDefault(metric.MetricId)
+                ?? scaleModes?.GetValueOrDefault(metric.TotalMetricId!)),
             metric.TotalValue, metric.CapacityValue, metric.TotalSystemPercent, metric.Software.Select(owner =>
             {
                 var identity = owners[owner.SoftwareId];

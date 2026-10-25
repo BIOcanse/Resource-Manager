@@ -442,10 +442,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         TimeSpan interval)
     {
         var useFields = subscription.Query.ContainsKey("device") || subscription.Query.ContainsKey("fields");
-        var device = useFields ? ParseMetricFieldDevice(subscription.Query) : null;
-        var fields = ParseMetricFieldNames(subscription.Query);
+        var selections = useFields ? ParseMetricFieldSelections(subscription.Query) : [];
         var snapshotRequest = useFields
-            ? MetricDeviceFields.CreateRequest(services.GetRequiredService<HardwareMetricCatalogState>().Current, device, fields)
+            ? MetricSampleRequest.Merge(selections.Select(item => MetricDeviceFields.CreateRequest(
+                services.GetRequiredService<HardwareMetricCatalogState>().Current, item.Device, item.Fields)))
             : subscription.Query.TryGetValue("ids", out var ids)
             ? MetricSampleRequest.ForIds(ids)
             : MetricSampleRequest.ForIds([]);
@@ -456,7 +456,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (useFields)
             {
                 await RunMetricFieldSubscriptionAsync(subscription.Id, source, catalogState,
-                    device, fields, interval, services, writer, cancellationToken);
+                    selections, interval, services, writer, cancellationToken);
                 return;
             }
             await foreach (var snapshot in source.SubscribeAsync(
@@ -512,18 +512,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var scaleModes = ParseResourceScaleModes(subscription.Query);
         var processDetailSoftwareIds =
             ParseResourceBreakdownProcessDetailSoftwareIds(subscription.Query);
+        var measures = ParseResourceBarMeasures(subscription.Query);
+        metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var sampleRequest = new ResourceBreakdownSampleRequest(
+            metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
+        { ProcessMemoryFactIds = measures };
         var source = services.GetRequiredService<IResourceBreakdownPushSource>();
         if (scope == ResourceMonitorScope.Details)
         {
-            var detailsRequest = new ResourceBreakdownSampleRequest(
-                metricIds,
-                scaleModes,
-                ProcessSampleDetailLevel.ResourceTableBasic);
             return subscription.Compile(async (writer, cancellationToken) =>
             {
                 await foreach (var sampledBreakdown in source.SubscribeAsync(
                     $"frontend-channel:{subscription.Id}",
-                    detailsRequest,
+                    sampleRequest,
                     interval,
                     cancellationToken))
                 {
@@ -532,19 +533,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         ResourceProcessDetailsWireSnapshot.Create(
                             sampledBreakdown,
                             metricIds,
-                            processDetailSoftwareIds),
+                            processDetailSoftwareIds, ReadResourceFoundations(sampleRequest, services), scaleModes),
                         cancellationToken);
                 }
             });
         }
 
-        var measures = ParseResourceBarMeasures(subscription.Query);
-        metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var sampleRequest = new ResourceBreakdownSampleRequest(
-            metricIds,
-            scaleModes,
-            ProcessSampleDetailLevel.ResourceTableBasic)
-        { ProcessMemoryFactIds = measures };
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             await foreach (var sampledBreakdown in source.SubscribeAsync(
@@ -557,7 +551,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     sampledBreakdown,
                     metricIds,
                     processDetailSoftwareIds,
-                    ReadResourceFoundations(sampleRequest, services));
+                    ReadResourceFoundations(sampleRequest, services), scaleModes);
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(

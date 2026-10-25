@@ -28,6 +28,43 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
     private const string Query = "?fields=" + Frequency + "," + Counter;
 
     [Fact]
+    public async Task RepeatedDeviceAndFieldGroupsSelectPairsForGetAndSubscription()
+    {
+        var snapshot = CreateSnapshot();
+        var source = new Source(snapshot);
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        var query = "?device=opaque-instance-00&fields=" + Frequency
+            + "&device=opaque-instance-02&fields=" + Counter;
+        var expected = snapshot.FieldBindings.Values.Where(binding =>
+            binding.DeviceIdentity == "opaque-instance-00" && binding.Field.Name == Frequency
+            || binding.DeviceIdentity == "opaque-instance-02" && binding.Field.Name == Counter)
+            .Select(binding => binding.RequestAddress).Order().ToArray();
+        using var get = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query));
+        CheckPairs(get.RootElement);
+        Assert.Equal(expected, source.Request!.Ids.Order());
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        { Content = JsonContent.Create(Channel(query)) }, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        using var frame = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        CheckPairs(frame.RootElement.GetProperty("value"));
+        Assert.Equal(expected, source.Request!.Ids.Order());
+        await timeout.CancelAsync();
+        response.Dispose();
+        await app.StopAsync();
+
+        static void CheckPairs(JsonElement devices)
+        {
+            var rows = devices.EnumerateArray().ToDictionary(row => row.GetProperty("deviceIdentity").GetString()!);
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(Frequency, Assert.Single(rows["opaque-instance-00"].GetProperty("fields").EnumerateArray()).GetProperty("name").GetString());
+            Assert.Equal(Counter, Assert.Single(rows["opaque-instance-02"].GetProperty("fields").EnumerateArray()).GetProperty("name").GetString());
+        }
+    }
+
+    [Fact]
     public async Task CatalogAndFieldPushExposeUsableDeviceDescriptionsAndRecordActualWire()
     {
         const string gpuPnp = @"PCI\VEN_1002&DEV_1234\GpuMixed";

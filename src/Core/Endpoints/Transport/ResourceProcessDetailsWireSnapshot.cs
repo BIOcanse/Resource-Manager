@@ -25,7 +25,9 @@ internal sealed class ResourceProcessDetailsWireSnapshot
     internal static ResourceProcessDetailsWireSnapshot Create(
         ResourceBreakdownSnapshot source,
         IReadOnlyList<string> metricIds,
-        IReadOnlySet<string> requestedSoftwareIds)
+        IReadOnlySet<string> requestedSoftwareIds,
+        SchedulingProcessFactSnapshot? foundations = null,
+        IReadOnlyDictionary<string, string>? scaleModes = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(metricIds);
@@ -47,7 +49,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             .ToDictionary(
                 static dataset => dataset.DatasetId,
                 StringComparer.OrdinalIgnoreCase);
-        var barsByMetric = source.Bars.ToDictionary(
+        var barsByMetric = source.Bars.Concat(ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars(
+            source, metricIds, foundations, scaleModes)).ToDictionary(
             static bar => bar.MetricId,
             StringComparer.OrdinalIgnoreCase);
         var metrics = new List<ResourceProcessDetailsMetric>();

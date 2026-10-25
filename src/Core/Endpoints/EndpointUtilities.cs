@@ -58,10 +58,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     : null;
             })
             .Where(static item => item is not null
-                && ResourceBreakdownMetricIds.IsSupported(item.MetricId))
+                && (ResourceBreakdownMetricIds.IsSupported(item.MetricId)
+                    || ResourceBreakdownScaleModes.SupportsCapacity(item.MetricId)
+                    || ProcessMemoryFactFields.TotalMetricId(item.MetricId) is not null))
             .ToDictionary(
                 static item => item!.MetricId,
-                static item => ResourceBreakdownScaleModes.Normalize(item!.MetricId, item.ScaleMode),
+                static item => ResourceBreakdownScaleModes.Normalize(
+                    ProcessMemoryFactFields.TotalMetricId(item!.MetricId) ?? item.MetricId, item.ScaleMode),
                 StringComparer.OrdinalIgnoreCase);
     }
 

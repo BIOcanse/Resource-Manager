@@ -26,7 +26,6 @@ public sealed record ProcessMetricFieldDefinition(
     public string Resource => "process";
     public string Vendor => "all";
     public bool SupportsResourceFacts => ResourceFactTotalMetricId is not null;
-    [JsonIgnore]
     public string? ResourceFactTotalMetricId => Code switch
     {
         ProcessMetricFieldCode.WorkingSet or ProcessMetricFieldCode.PrivateWorkingSet => "memory.usage",
