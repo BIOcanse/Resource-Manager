@@ -22,6 +22,7 @@ public sealed class SubscriptionChannelFrameMetadataTests
     {
         var written = ChannelWrittenValueTypes();
         Assert.Contains(typeof(ResourceFactsSnapshot), written);
+        Assert.Contains(typeof(global::ResourceManager.App.Domain.Control.ControlActualState), written);
 
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
@@ -57,12 +58,14 @@ public sealed class SubscriptionChannelFrameMetadataTests
                 if (arguments[0] is { } concrete) written.Add(concrete);
                 else forwarded++;
             }
-            else if (name.StartsWith("CompileAlignedPeriodic", StringComparison.Ordinal) && arguments[0] is { } aligned)
+            else if ((name.StartsWith("CompileAlignedPeriodic", StringComparison.Ordinal)
+                || name.StartsWith("PublishAlignedPeriodic", StringComparison.Ordinal)) && arguments[0] is { } aligned)
             {
                 forwardedConcrete.Add(aligned);
             }
         }
-        // A generic WriteAsync<T> exists only inside the periodic publishers; their concrete T comes from the compilers.
+        // A generic WriteAsync<T> exists only inside the periodic publishers; their concrete T comes from the compilers
+        // and from compilers that call a publisher directly (the control actual state does).
         if (forwarded != 0) Assert.NotEmpty(forwardedConcrete);
         written.UnionWith(forwardedConcrete);
         return written;
