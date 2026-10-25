@@ -712,14 +712,14 @@ function ControlObjectCard(props: {
               new Intl.ListFormat(currentLanguage(), { type: "conjunction" }).format(props.takenOverWith))
             : uiText.control.term["takeover-all-fans"]}</p>
         </Show>
-        <RadioGroupRoot class="settings-segmented-control control-ownership-choice control-fan-modes"
+        <RadioGroupRoot class="segmented settings-segmented-control control-ownership-choice control-fan-modes"
           ariaLabel={uiText.control.ownership.label} value={selectedMode() ?? ""} onChange={id => {
             if (selectedMode() === id) return;
             props.onReplaceSettings([]);
             props.onFanModeChoice(id);
           }}>
           <For each={modes()}>{entry =>
-            <RadioGroupItem value={entry.id} class="settings-segment" disabled={!entry.available}
+            <RadioGroupItem value={entry.id} class="segment settings-segment" disabled={!entry.available}
               title={entry.unavailableReason ? controlReasonText(entry.unavailableReason) : undefined}>
               <Show when={!entry.available}>
                 <Show when={entry.unavailableKind === "platform"} fallback={<Lock size={13} />}><X size={13} /></Show>
