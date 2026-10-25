@@ -341,8 +341,6 @@ body[data-animations="ultra"] .page-subnav {
 
 /* 统一键盘焦点环：克制的 accent 描边，仅键盘可见，不影响鼠标态 */
 button:focus-visible,
-.settings-segment:focus-visible,
-.resource-table-mode-button:focus-visible,
 .icon-button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -351,11 +349,6 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
-/* 分段控件的容器裁掉溢出，焦点环画在选项内侧，否则外扩的部分被裁掉。 */
-.settings-segment:focus-visible,
-.resource-table-mode-button:focus-visible {
-  outline-offset: -2px;
-}
 
 .settings-switch input:focus-visible + span {
   outline: 2px solid var(--accent);

@@ -1,38 +1,17 @@
 /* Device Topology */
+/* 外部／内部是分段选择：样子在 segmented.css（.segmented / .segment），这里只管尺寸和排列。 */
 .device-scope-tabs {
   display: inline-flex;
   width: max-content;
   max-width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
+  gap: 1px;
 }
 
 .device-scope-tab {
   min-width: 96px;
   min-height: 30px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--muted);
   padding: 0 14px;
   font-size: 12px;
-  font-weight: 700;
-}
-
-.device-scope-tab + .device-scope-tab {
-  border-left: 1px solid var(--divider);
-}
-
-.device-scope-tab:not(.active):not(:disabled):hover {
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-.device-scope-tab.active {
-  background: color-mix(in oklab, var(--accent) 22%, var(--surface-soft));
-  color: var(--text);
 }
 
 .device-topology-panel {

@@ -44,12 +44,12 @@ export function MultiSegmentedControl<T extends string>(props: {
   };
 
   return (
-    <div class="settings-segmented-control" role="group" aria-label={props.ariaLabel}>
+    <div class="segmented settings-segmented-control" role="group" aria-label={props.ariaLabel}>
       <For each={props.options}>
         {(option) => (
           <button
             type="button"
-            class="settings-segment"
+            class="segment settings-segment"
             role="checkbox"
             aria-checked={hasValue(option.id) ? "true" : "false"}
             classList={{ active: hasValue(option.id) }}

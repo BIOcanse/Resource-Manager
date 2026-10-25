@@ -40,15 +40,12 @@
   gap: 8px;
 }
 
+/* 样子在 segmented.css（.segmented / .segment），这里只管尺寸和排列。 */
 .resource-table-mode-switch {
   display: inline-flex;
   align-items: stretch;
   gap: 1px;
   height: 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--line);
 }
 
 .resource-table-search {
@@ -78,23 +75,8 @@
 .resource-table-mode-button {
   min-height: 28px;
   height: 28px;
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--muted);
   padding: 0 12px;
   font-size: 12px;
-  font-weight: 700;
-}
-
-.resource-table-mode-button:hover {
-  background: var(--surface-strong);
-  color: var(--text);
-}
-
-.resource-table-mode-button.active {
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
 .resource-table-column-editor {

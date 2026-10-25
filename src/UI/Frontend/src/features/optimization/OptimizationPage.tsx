@@ -138,10 +138,10 @@ export function OptimizationPage(props: OptimizationPageProps) {
         class="optimization-modebar"
         aria-label={uiText.optimization.modeBar}
       >
-        <div class="optimization-mode-group" role="group" aria-label={uiText.optimization.modeBar}>
+        <div class="segmented optimization-mode-group" role="group" aria-label={uiText.optimization.modeBar}>
           <button
             type="button"
-            class="optimization-mode"
+            class="segment optimization-mode"
             classList={{
               active: selectedOptimizationMode() === "normal",
               pending: props.pendingOptimizationMode === "normal"
@@ -154,7 +154,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
             {(domain) => (
               <button
                 type="button"
-                class="optimization-mode"
+                class="segment optimization-mode"
                 classList={{
                   active: optimizationModeHasDomain(selectedOptimizationMode(), domain),
                   pending: props.pendingOptimizationMode !== null

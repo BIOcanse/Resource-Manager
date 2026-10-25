@@ -277,78 +277,39 @@
 /* ---------- 分段控件：圆角轨道 + 轨道里的选中胶囊 ----------
    轨道用 --surface-strong 铺底、边框透明；分段之间原来 1px 的缝和透明边框露出的都是轨道色，
    选中段因此四周留出 1px 轨道。不用同色内描边假装内边距：圆角边缘会透出一圈强调色。 */
-:root[data-ui-style="soft"] .settings-segmented-control,
-:root[data-ui-style="soft"] .resource-table-mode-switch,
-:root[data-ui-style="soft"] .optimization-mode-group,
-:root[data-ui-style="soft"] .optimization-report-filter,
-:root[data-ui-style="soft"] .settings-hotkey-relation,
-:root[data-ui-style="soft"] .device-scope-tabs {
+:root[data-ui-style="soft"] .segmented {
   border-color: transparent;
   border-radius: 999px;
   background: var(--surface-strong);
 }
 
-:root[data-ui-style="soft"] .settings-segment,
-:root[data-ui-style="soft"] .resource-table-mode-button,
-:root[data-ui-style="soft"] .optimization-mode,
-:root[data-ui-style="soft"] .optimization-report-filter button,
-:root[data-ui-style="soft"] .settings-hotkey-relation button,
-:root[data-ui-style="soft"] .device-scope-tab {
+:root[data-ui-style="soft"] .segment {
   border-radius: 999px;
 }
 
-:root[data-ui-style="soft"] .device-scope-tab + .device-scope-tab {
-  border-left-color: transparent;
-}
-
-:root[data-ui-style="soft"] .settings-segment:not(:disabled),
-:root[data-ui-style="soft"] .resource-table-mode-button:not(:disabled),
-:root[data-ui-style="soft"] .optimization-mode:not(:disabled),
-:root[data-ui-style="soft"] .optimization-report-filter button:not(:disabled),
-:root[data-ui-style="soft"] .settings-hotkey-relation button:not(:disabled),
-:root[data-ui-style="soft"] .device-scope-tab:not(:disabled) {
+:root[data-ui-style="soft"] .segment:not(:disabled) {
   background: transparent;
   color: var(--muted);
 }
 
-:root[data-ui-style="soft"] .settings-segment:not(.active):not(:disabled):hover,
-:root[data-ui-style="soft"] .resource-table-mode-button:not(.active):not(:disabled):hover,
-:root[data-ui-style="soft"] .optimization-mode:not(.active):not(:disabled):hover,
-:root[data-ui-style="soft"] .optimization-report-filter button:not(.active):not(:disabled):hover,
-:root[data-ui-style="soft"] .settings-hotkey-relation button:not(.active):not(:disabled):hover,
-:root[data-ui-style="soft"] .device-scope-tab:not(.active):not(:disabled):hover {
+:root[data-ui-style="soft"] .segment:not(.active):not(:disabled):hover {
   background: color-mix(in oklab, var(--surface) 70%, var(--surface-strong));
   color: var(--text);
 }
 
-:root[data-ui-style="soft"] .settings-segment.active:not(:disabled),
-:root[data-ui-style="soft"] .resource-table-mode-button.active:not(:disabled),
-:root[data-ui-style="soft"] .optimization-mode.active:not(:disabled),
-:root[data-ui-style="soft"] .optimization-report-filter button.active:not(:disabled),
-:root[data-ui-style="soft"] .settings-hotkey-relation button.active:not(:disabled),
-:root[data-ui-style="soft"] .device-scope-tab.active:not(:disabled) {
+:root[data-ui-style="soft"] .segment.active:not(:disabled) {
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: var(--elev-1);
 }
 
 /* 键盘焦点：轨道 overflow: hidden 会裁掉外扩的焦点轮廓，改画在胶囊内侧；选中段上用强调色上的文字色。 */
-:root[data-ui-style="soft"] .settings-segment:focus-visible,
-:root[data-ui-style="soft"] .resource-table-mode-button:focus-visible,
-:root[data-ui-style="soft"] .optimization-mode:focus-visible,
-:root[data-ui-style="soft"] .optimization-report-filter button:focus-visible,
-:root[data-ui-style="soft"] .settings-hotkey-relation button:focus-visible,
-:root[data-ui-style="soft"] .device-scope-tab:focus-visible {
+:root[data-ui-style="soft"] .segment:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
-:root[data-ui-style="soft"] .settings-segment.active:focus-visible,
-:root[data-ui-style="soft"] .resource-table-mode-button.active:focus-visible,
-:root[data-ui-style="soft"] .optimization-mode.active:focus-visible,
-:root[data-ui-style="soft"] .optimization-report-filter button.active:focus-visible,
-:root[data-ui-style="soft"] .settings-hotkey-relation button.active:focus-visible,
-:root[data-ui-style="soft"] .device-scope-tab.active:focus-visible {
+:root[data-ui-style="soft"] .segment.active:focus-visible {
   outline-color: var(--on-accent);
 }
 
@@ -362,13 +323,11 @@
 }
 
 /* 禁用的分段（只读的控制项）：不铺禁用底色，只把文字压淡，选中段保留淡强调色。 */
-:root[data-ui-style="soft"] .settings-segment:disabled,
-:root[data-ui-style="soft"] .optimization-mode:disabled,
-:root[data-ui-style="soft"] .device-scope-tab:disabled {
+:root[data-ui-style="soft"] .segment:disabled {
   background: transparent;
 }
 
-:root[data-ui-style="soft"] .settings-segment.active:disabled {
+:root[data-ui-style="soft"] .segment.active:disabled {
   background: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
   color: var(--text);
 }

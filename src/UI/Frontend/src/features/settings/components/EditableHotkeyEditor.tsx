@@ -87,13 +87,13 @@ export function EditableHotkeyEditor(props: {
                   <RadioGroupRoot
                     value={String(model().relations[index() - 1] ?? 0)}
                     ariaLabel={`${props.labels.hotkeyUnordered} / ${props.labels.hotkeyOrdered}`}
-                    class="settings-hotkey-relation"
+                    class="segmented settings-hotkey-relation"
                     onChange={(value) => updateRelation(index() - 1, value === "1" ? 1 : 0)}
                   >
-                    <RadioGroupItem value="0">
+                    <RadioGroupItem class="segment" value="0">
                       {props.labels.hotkeyUnordered}
                     </RadioGroupItem>
-                    <RadioGroupItem value="1">
+                    <RadioGroupItem class="segment" value="1">
                       {props.labels.hotkeyOrdered}
                     </RadioGroupItem>
                   </RadioGroupRoot>

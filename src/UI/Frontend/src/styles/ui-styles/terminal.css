@@ -272,8 +272,7 @@
 }
 
 /* 分段按钮悬停：和页签一样给一层淡强调色，实心强调色只留给当前项。 */
-:root[data-ui-style="terminal"] .settings-segment:not(.active):hover,
-:root[data-ui-style="terminal"] .resource-table-mode-button:not(.active):hover {
+:root[data-ui-style="terminal"] .segment:not(.active):not(:disabled):hover {
   background: var(--accent-soft);
   color: var(--accent-strong);
 }

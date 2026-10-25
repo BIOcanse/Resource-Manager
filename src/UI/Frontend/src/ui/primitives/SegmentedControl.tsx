@@ -23,7 +23,7 @@ export function SegmentedControl<T extends string>(props: {
     <RadioGroupRoot
       value={props.value}
       ariaLabel={props.ariaLabel}
-      class={props.class}
+      class={props.class ? `segmented ${props.class}` : "segmented"}
       disabled={props.disabled}
       onChange={(value) => props.onChange(value as T)}
     >
@@ -31,7 +31,7 @@ export function SegmentedControl<T extends string>(props: {
         {(option) => (
           <RadioGroupItem
             value={option.id}
-            class={props.itemClass}
+            class={props.itemClass ? `segment ${props.itemClass}` : "segment"}
             classList={option.classList}
             disabled={option.disabled}
             title={props.disabled ? props.disabledTitle : option.description}

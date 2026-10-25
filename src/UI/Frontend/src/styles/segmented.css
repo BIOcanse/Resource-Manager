@@ -1,0 +1,39 @@
+/* ============================================================
+   分段选择：在一个面板里选一个值或一种显示方式（资源表的软件级／进程级／性能，设备拓扑的外部／内部，
+   设置里的各个分段，优化模式，报告筛选，热键关系）。和分页（page-tabs.css）分开：分页是去另一页，分段是改这一块。
+   这里只管样子：轨道、分段的底色、文字、悬停、选中、焦点。高度、内边距、字号、排列（含热键关系的两列网格）留在各处自己的类里。
+   四种界面风格各自在 ui-styles/*.css 里覆盖 .segmented / .segment，一处覆盖对所有分段生效。
+   ============================================================ */
+
+.segmented {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--line);
+}
+
+/* 分段之间 1px 的缝露出轨道色，就是分隔线。 */
+.segment {
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.segment:not(.active):not(:disabled):hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.segment.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 轨道裁掉溢出，焦点环画在分段内侧。 */
+.segment:focus-visible {
+  outline-offset: -2px;
+}

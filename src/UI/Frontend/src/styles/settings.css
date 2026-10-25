@@ -487,15 +487,12 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
+/* 样子在 segmented.css（.segmented / .segment），这里只管尺寸和排列。 */
 .settings-segmented-control {
   max-width: 520px;
   display: inline-flex;
   align-items: stretch;
   gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--line);
 }
 
 .settings-capability-notice {
@@ -510,24 +507,8 @@
 
 .settings-segment {
   min-height: 32px;
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--muted);
   padding: 0 12px;
   font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.settings-segment:hover {
-  background: var(--surface-strong);
-  color: var(--text);
-}
-
-.settings-segment.active {
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
 .settings-number-pair {
@@ -797,8 +778,7 @@
 }
 
 .settings-icon-button,
-.settings-hotkey-add,
-.settings-hotkey-relation button {
+.settings-hotkey-add {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -823,25 +803,12 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--line);
 }
 
 .settings-hotkey-relation button {
   min-height: 34px;
-  border: 0;
-  border-radius: 0;
   padding: 0 8px;
   font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.settings-hotkey-relation button.active {
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 .settings-hotkey-add {

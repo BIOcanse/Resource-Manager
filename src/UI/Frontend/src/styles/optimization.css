@@ -7,32 +7,16 @@
   margin-bottom: 14px;
 }
 
+/* 样子在 segmented.css（.segmented / .segment），这里只管尺寸和排列；待应用的模式另加警示描边。 */
 .optimization-mode-group {
   display: inline-flex;
   gap: 1px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--line);
 }
 
 .optimization-mode {
   min-height: 32px;
   padding: 0 12px;
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--text);
   font-size: 13px;
-}
-
-.optimization-mode:not(.active):not(:disabled):hover {
-  background: var(--hover-bg);
-}
-
-.optimization-mode.active {
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
 .optimization-mode.pending {
@@ -79,26 +63,12 @@
   display: inline-flex;
   align-items: stretch;
   gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--line);
 }
 
 .optimization-report-filter button {
   min-height: 30px;
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--muted);
   padding: 0 12px;
   font-size: 13px;
-  font-weight: 700;
-}
-
-.optimization-report-filter button.active {
-  background: var(--accent);
-  color: var(--accent-contrast);
 }
 
 .optimization-report-list {
