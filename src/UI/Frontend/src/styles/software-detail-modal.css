@@ -26,23 +26,10 @@
   overflow-x: auto;
 }
 
+/* 样子在 page-tabs.css（.page-tab），这里只管尺寸。 */
 .software-detail-tabs button {
-  box-shadow: none;
   min-height: 32px;
   padding: 0 13px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.software-detail-tabs button.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
 .software-detail-section,

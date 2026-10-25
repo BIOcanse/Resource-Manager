@@ -21,14 +21,11 @@
   flex-direction: column;
 }
 
+/* 分页项的样子在 page-tabs.css（.page-tab），这里只管排列和尺寸。 */
 .ui-tabs-list {
   display: flex;
   gap: 4px;
-  padding: 3px;
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
 }
 
 .ui-tabs-trigger {
@@ -38,24 +35,7 @@
   justify-content: center;
   gap: 7px;
   flex: 0 0 auto;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
   padding: 0 11px;
-  box-shadow: none;
-  font-size: 12px;
-}
-
-.ui-tabs-trigger:hover {
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-.ui-tabs-trigger.active {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  box-shadow: var(--elev-1), inset 0 -2px 0 var(--accent);
 }
 
 .ui-tabs-panel {

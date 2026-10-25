@@ -185,30 +185,26 @@
 /* ---- 顶栏与二级分页 ---- */
 
 /* 未选中的页签是透明的字，当前页是反显的强调色块加微光。 */
-:root[data-ui-style="terminal"] .shell-page,
-:root[data-ui-style="terminal"] .page-subnav-tab {
+:root[data-ui-style="terminal"] .page-tab {
   border-color: transparent;
   background: transparent;
   color: var(--muted);
 }
 
-:root[data-ui-style="terminal"] .shell-page:not(.active):hover,
-:root[data-ui-style="terminal"] .page-subnav-tab:not(.active):not(:disabled):hover {
+:root[data-ui-style="terminal"] .page-tab:not(.active):not(:disabled):hover {
   border-color: var(--line);
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
 
-:root[data-ui-style="terminal"] .shell-page.active,
-:root[data-ui-style="terminal"] .page-subnav-tab.active {
+:root[data-ui-style="terminal"] .page-tab.active {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: var(--terminal-glow);
 }
 
-:root[data-ui-style="terminal"] .shell-page.active:hover,
-:root[data-ui-style="terminal"] .page-subnav-tab.active:hover {
+:root[data-ui-style="terminal"] .page-tab.active:hover {
   border-color: var(--accent-hover);
   background: var(--accent-hover);
 }
@@ -280,11 +276,6 @@
 :root[data-ui-style="terminal"] .resource-table-mode-button:not(.active):hover {
   background: var(--accent-soft);
   color: var(--accent-strong);
-}
-
-/* 设置页左侧当前分区：和顶栏当前页一样带微光。 */
-:root[data-ui-style="terminal"] .settings-nav-item.active {
-  box-shadow: var(--terminal-glow);
 }
 
 /* 资源条提示：标准风格写死了半透明深底白字，这里换成本配色的表面、文字和细线。 */

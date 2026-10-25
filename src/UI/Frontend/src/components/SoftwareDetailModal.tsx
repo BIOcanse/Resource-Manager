@@ -232,7 +232,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
             <TabsList class="software-detail-tabs" ariaLabel={uiText.softwareDetail.tabsLabel}>
               <For each={tabs()}>
                 {(tab) => (
-                  <TabsTrigger value={tab}>
+                  <TabsTrigger class="page-tab" value={tab}>
                     {detailTabLabels()[tab]}
                   </TabsTrigger>
                 )}

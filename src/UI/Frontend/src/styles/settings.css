@@ -23,26 +23,11 @@
   padding: 8px;
 }
 
+/* 样子在 page-tabs.css（.page-tab），这里只管尺寸和竖排对齐。 */
 .settings-nav-item {
   min-height: 34px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
   padding: 0 10px;
   text-align: left;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.settings-nav-item:not(.active):not(:disabled):hover {
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.settings-nav-item.active {
-  background: var(--accent);
-  color: var(--on-accent);
 }
 
 .settings-content {

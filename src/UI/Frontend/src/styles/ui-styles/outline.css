@@ -169,51 +169,26 @@
 }
 
 /* 顶栏页签和二级分页：未选中是线框，选中是实心。 */
-:root[data-ui-style="outline"] .shell-page,
-:root[data-ui-style="outline"] .page-subnav-tab {
+:root[data-ui-style="outline"] .page-tab {
   border-color: var(--line);
   background: transparent;
 }
 
-:root[data-ui-style="outline"] .shell-page.active,
-:root[data-ui-style="outline"] .page-subnav-tab.active {
+:root[data-ui-style="outline"] .page-tab.active {
   border-color: var(--accent);
   background: var(--accent);
 }
 
-:root[data-ui-style="outline"] .shell-page:not(.active):hover,
-:root[data-ui-style="outline"] .page-subnav-tab:not(.active):not(:disabled):hover {
+:root[data-ui-style="outline"] .page-tab:not(.active):not(:disabled):hover {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
 
-:root[data-ui-style="outline"] .shell-page.active:hover,
-:root[data-ui-style="outline"] .page-subnav-tab.active:hover {
+:root[data-ui-style="outline"] .page-tab.active:hover {
   border-color: var(--accent-hover);
   background: var(--accent-hover);
 }
 
-/* 软件详情的分页按钮同样是线框；未选中的悬停给淡强调色，不落到全局按钮的实心悬停上。 */
-:root[data-ui-style="outline"] .software-detail-tabs button:not(.active) {
-  background: transparent;
-}
-
-:root[data-ui-style="outline"] .software-detail-tabs button:not(.active):not(:disabled):hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-/* 分页标签：选中只画下划线，不刷底色、不加投影。 */
-:root[data-ui-style="outline"] .ui-tabs-list {
-  background: transparent;
-}
-
-:root[data-ui-style="outline"] .ui-tabs-trigger.active {
-  background: transparent;
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
 
 /* 开关是方的：轨道和滑块都只留很小的圆角。 */
 :root[data-ui-style="outline"] .settings-switch span {

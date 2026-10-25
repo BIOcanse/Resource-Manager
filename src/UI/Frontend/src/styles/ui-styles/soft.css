@@ -175,31 +175,27 @@
   border-bottom-color: var(--divider-soft);
 }
 
-:root[data-ui-style="soft"] .shell-page,
-:root[data-ui-style="soft"] .page-subnav-tab {
+:root[data-ui-style="soft"] .page-tab {
   border-color: transparent;
   border-radius: 999px;
   background: transparent;
   color: var(--text);
 }
 
-:root[data-ui-style="soft"] .shell-page:not(.active):hover,
-:root[data-ui-style="soft"] .page-subnav-tab:not(.active):not(:disabled):hover {
+:root[data-ui-style="soft"] .page-tab:not(.active):not(:disabled):hover {
   border-color: transparent;
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
 
-:root[data-ui-style="soft"] .shell-page.active,
-:root[data-ui-style="soft"] .page-subnav-tab.active {
+:root[data-ui-style="soft"] .page-tab.active {
   border-color: transparent;
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
-:root[data-ui-style="soft"] .shell-page.active:hover,
-:root[data-ui-style="soft"] .page-subnav-tab.active:hover {
+:root[data-ui-style="soft"] .page-tab.active:hover {
   border-color: transparent;
   background: var(--accent-hover);
 }
@@ -375,59 +371,6 @@
 :root[data-ui-style="soft"] .settings-segment.active:disabled {
   background: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
   color: var(--text);
-}
-
-/* ---------- 页签 ---------- */
-:root[data-ui-style="soft"] .ui-tabs-list {
-  border-color: transparent;
-  border-radius: 999px;
-  background: var(--surface-strong);
-}
-
-:root[data-ui-style="soft"] .ui-tabs-trigger {
-  border-radius: 999px;
-}
-
-:root[data-ui-style="soft"] .ui-tabs-trigger:hover {
-  background: color-mix(in oklab, var(--surface) 60%, var(--surface-strong));
-}
-
-:root[data-ui-style="soft"] .ui-tabs-trigger.active {
-  background: var(--surface);
-  color: var(--accent-strong);
-  box-shadow: var(--elev-1), var(--edge-highlight);
-}
-
-:root[data-ui-style="soft"] .software-detail-tabs button {
-  border-radius: 999px;
-}
-
-:root[data-ui-style="soft"] .software-detail-tabs button:not(.active):not(:disabled) {
-  border-color: transparent;
-  background: var(--surface-strong);
-  box-shadow: none;
-}
-
-:root[data-ui-style="soft"] .software-detail-tabs button:not(.active):not(:disabled):hover {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-:root[data-ui-style="soft"] .software-detail-tabs button.active {
-  border-color: transparent;
-  box-shadow: var(--elev-1), var(--edge-highlight);
-}
-
-/* ---------- 设置侧栏：选中项是淡强调色，不用实心色块 ---------- */
-:root[data-ui-style="soft"] .settings-nav-item:not(.active):not(:disabled):hover {
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-:root[data-ui-style="soft"] .settings-nav-item.active {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 16%, transparent);
 }
 
 /* ---------- 开关：轨道不描边，滑块是带柔和阴影的白点 ---------- */

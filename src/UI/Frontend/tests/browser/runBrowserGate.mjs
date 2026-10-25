@@ -55,6 +55,7 @@ import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
 import targetedRecordingSourceJourney from "./targetedRecordingSourceJourney.js";
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
+import pageTabsConsistencyJourney from "./pageTabsConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
 import usabilityProbe from "./usabilityProbe.js";
 import localizationJourney from "./localizationJourney.js";
@@ -100,6 +101,7 @@ const allJourneys = [
   ["software-participation", softwareParticipationJourney],
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
+  ["page-tabs-consistency", pageTabsConsistencyJourney],
   ["software-issues", softwareIssueJourney],
   ["software-unclassified", softwareUnclassifiedJourney],
   ["device-topology-source", deviceTopologySourceJourney],

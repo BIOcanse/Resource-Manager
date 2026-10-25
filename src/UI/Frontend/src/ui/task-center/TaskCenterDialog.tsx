@@ -144,7 +144,7 @@ export function TaskCenterDialog(props: {
           <TabsList class="ui-tabs-list" ariaLabel={uiText.taskCenter.filterLabel}>
             <For each={visibleTabs()}>
               {(tab) => (
-                <TabsTrigger class="ui-tabs-trigger" value={tab.value}>
+                <TabsTrigger class="ui-tabs-trigger page-tab" value={tab.value}>
                   <span>{tab.label}</span>
                   <span class="task-center-tab-count" aria-hidden="true">
                     {itemsFor(tab.value).length}

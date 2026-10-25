@@ -137,7 +137,7 @@ export function SettingsPage(props: SettingsPageProps) {
           {(section) => (
             <button
               type="button"
-              class="settings-nav-item"
+              class="settings-nav-item page-tab"
               classList={{ active: props.activeSection === section }}
               disabled={!canRenderSettings()}
               aria-current={props.activeSection === section ? "page" : undefined}

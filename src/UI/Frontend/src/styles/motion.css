@@ -264,7 +264,6 @@ body[data-animations="ultra"] {
 body[data-animations="normal"] .settings-row,
 body[data-animations="normal"] .device-port-item,
 body[data-animations="normal"] .optimization-report,
-body[data-animations="normal"] .software-detail-tabs button,
 body[data-animations="normal"] .device-port-icon {
   transition:
     background var(--motion-medium) var(--ease-standard),
@@ -285,8 +284,7 @@ body[data-animations="normal"] .optimization-report:hover {
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
-body[data-animations="normal"] .device-port-item:not(:disabled):active,
-body[data-animations="normal"] .software-detail-tabs button:not(:disabled):active {
+body[data-animations="normal"] .device-port-item:not(:disabled):active {
   transform: translateY(1px);
 }
 
@@ -343,9 +341,7 @@ body[data-animations="ultra"] .page-subnav {
 
 /* 统一键盘焦点环：克制的 accent 描边，仅键盘可见，不影响鼠标态 */
 button:focus-visible,
-.shell-page:focus-visible,
 .settings-segment:focus-visible,
-.settings-nav-item:focus-visible,
 .resource-table-mode-button:focus-visible,
 .icon-button:focus-visible,
 input:focus-visible,

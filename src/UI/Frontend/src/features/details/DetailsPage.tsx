@@ -59,7 +59,7 @@ export function DetailsPage(props: DetailsPageProps) {
         <TabsList class="page-subnav" ariaLabel={uiText.misc.detailsTab.tabsLabel}>
           <For each={visibleTabs()}>
             {(tab) => (
-              <TabsTrigger value={tab.id} class="page-subnav-tab">
+              <TabsTrigger value={tab.id} class="page-subnav-tab page-tab">
                 {tab.label}
               </TabsTrigger>
             )}

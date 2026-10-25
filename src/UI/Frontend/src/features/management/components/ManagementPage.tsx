@@ -89,7 +89,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
         {(kind) => (
           <button
             id={`managementTab-${kind.id}`}
-            class="page-subnav-tab"
+            class="page-subnav-tab page-tab"
             classList={{ active: props.activeSubpage === kind.id }}
             type="button"
             aria-current={props.activeSubpage === kind.id ? "page" : undefined}
@@ -101,7 +101,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
       </For>
       <button
         id="managementTab-BrowserRuntime"
-        class="page-subnav-tab"
+        class="page-subnav-tab page-tab"
         classList={{ active: props.activeSubpage === browserRuntimeManagementSubpageId }}
         type="button"
         aria-current={props.activeSubpage === browserRuntimeManagementSubpageId ? "page" : undefined}

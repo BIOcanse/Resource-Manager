@@ -76,15 +76,15 @@ export function AppShell(props: AppShellProps) {
     <>
       <header class="window-shellbar">
         <nav ref={(element) => { pageNav = element; }} class="shell-pages" aria-label={uiText.shell.pageNav}>
-          <button class="shell-page" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>{uiText.page.monitor}</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>{uiText.page.components}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>{uiText.page.monitor}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>{uiText.page.components}</button>
           <Show when={props.runtimeCapabilities.optimizationEnabled()}>
-            <button class="shell-page" classList={{ active: props.activePage() === "optimization" }} type="button" aria-current={props.activePage() === "optimization" ? "page" : undefined} onClick={() => props.onPageSelect("optimization")}>{uiText.page.optimization}</button>
+            <button class="shell-page page-tab" classList={{ active: props.activePage() === "optimization" }} type="button" aria-current={props.activePage() === "optimization" ? "page" : undefined} onClick={() => props.onPageSelect("optimization")}>{uiText.page.optimization}</button>
           </Show>
-          <button class="shell-page" classList={{ active: props.activePage() === "diskUsage" }} type="button" aria-current={props.activePage() === "diskUsage" ? "page" : undefined} onClick={() => props.onPageSelect("diskUsage")}>{uiText.page.diskUsage}</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "control" }} type="button" aria-current={props.activePage() === "control" ? "page" : undefined} onClick={() => props.onPageSelect("control")}>{uiText.page.control}</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "details" }} type="button" aria-current={props.activePage() === "details" ? "page" : undefined} onClick={() => props.onPageSelect("details")}>{uiText.page.details}</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "settings" }} type="button" aria-current={props.activePage() === "settings" ? "page" : undefined} onClick={() => props.onPageSelect("settings")}>{uiText.page.settings}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "diskUsage" }} type="button" aria-current={props.activePage() === "diskUsage" ? "page" : undefined} onClick={() => props.onPageSelect("diskUsage")}>{uiText.page.diskUsage}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "control" }} type="button" aria-current={props.activePage() === "control" ? "page" : undefined} onClick={() => props.onPageSelect("control")}>{uiText.page.control}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "details" }} type="button" aria-current={props.activePage() === "details" ? "page" : undefined} onClick={() => props.onPageSelect("details")}>{uiText.page.details}</button>
+          <button class="shell-page page-tab" classList={{ active: props.activePage() === "settings" }} type="button" aria-current={props.activePage() === "settings" ? "page" : undefined} onClick={() => props.onPageSelect("settings")}>{uiText.page.settings}</button>
         </nav>
         <div class="window-drag-region" data-window-drag onPointerDown={(event) => {
           if (event.button === 0) {

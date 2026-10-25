@@ -56,35 +56,11 @@
   border-radius: 999px;
 }
 
+/* 样子在 page-tabs.css（.page-tab），这里只管尺寸。 */
 .page-subnav-tab {
   flex: 0 0 auto;
   min-height: 30px;
   padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.page-subnav-tab.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-/* 与顶栏页签同一口径：悬停是淡强调色，实心强调色只留给当前子页。 */
-.page-subnav-tab:not(.active):not(:disabled):hover {
-  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
-  background: var(--accent-soft);
-  color: var(--text);
-}
-
-.page-subnav-tab.active:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
 }
 
 .management-list {
