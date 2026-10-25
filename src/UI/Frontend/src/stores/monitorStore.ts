@@ -1,7 +1,7 @@
 import { dashboardMetricAvailable } from "../preferences/dashboardPreferences.ts";
 import { subscribeFrontendPreferencesReset } from "../preferences/frontendPreferences.ts";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import type { Accessor } from "solid-js";
+import type { Accessor, Setter } from "solid-js";
 import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourcePerformancePanel";
@@ -529,15 +529,17 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const settings = result.settings;
     dashboardUsesFactoryDefaults = settings.usesFactoryDefaults === true;
     if (source.revision !== lastDashboardSettingsRevision) {
+      // 目录修订后按出厂布局重读，内容通常不变；相同内容不算变化，
+      // 否则卡片全部重建、可见需求注销再注册，订阅随之退订重订，合并订阅通道整条重建。
       if (!editMode()) {
-        setCards(structuredClone(settings.cards));
+        replaceIfChanged(cards, setCards, settings.cards);
       }
       if (!resourceBarEditing()) {
-        setResourceBars(structuredClone(settings.resourceBars));
+        replaceIfChanged(resourceBars, setResourceBars, settings.resourceBars);
       }
       if (!resourceTableEditing()) {
-        setResourceTableColumns(structuredClone(settings.resourceTableColumns));
-        setResourceTableProcessColumns(structuredClone(settings.resourceTableProcessColumns));
+        replaceIfChanged(resourceTableColumns, setResourceTableColumns, settings.resourceTableColumns);
+        replaceIfChanged(resourceTableProcessColumns, setResourceTableProcessColumns, settings.resourceTableProcessColumns);
       }
       lastDashboardSettingsRevision = source.revision;
     }
@@ -1128,6 +1130,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     clearResourceSelection,
     cancelAllMonitorEdits
   };
+}
+
+/** 布局数据是纯 JSON；内容相同就保留当前对象，消费端（卡片列表、可见需求、订阅）不随之重建。 */
+function replaceIfChanged<T>(current: Accessor<T>, set: Setter<T>, next: T): void {
+  if (JSON.stringify(current()) !== JSON.stringify(next)) set(() => structuredClone(next));
 }
 
 /** 目录只有设备描述和字段定义（纯 JSON 数据），按完整内容比较，目录合同加字段时也不漏。 */

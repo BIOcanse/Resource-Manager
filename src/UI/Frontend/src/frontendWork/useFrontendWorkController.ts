@@ -1,20 +1,20 @@
-import { createSignal, onCleanup, onMount, type Accessor } from "solid-js";
-import { subscribeShellHostMessages } from "../utils";
-import { FrontendVisibilityDemandController } from "./FrontendVisibilityDemandController";
+import { createSelector, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
+import { subscribeShellHostMessages } from "../utils.ts";
+import { FrontendVisibilityDemandController } from "./FrontendVisibilityDemandController.ts";
 import type { FrontendWorkId } from "./frontendWorkIds";
 import {
   frontendVisibilityDemandsAttribute,
   frontendVisibilitySurfaceAttribute,
   frontendVisibilitySurfaceSelector,
   readFrontendVisibilitySurface
-} from "./frontendVisibilitySurface";
+} from "./frontendVisibilitySurface.ts";
 import {
   isFrontendSurfaceVisible,
   resolveFrontendVisibilityBounds,
   sameOrderedValues,
   visibleFrontendDemandIds,
   type FrontendVisibilityBounds
-} from "./frontendVisibility";
+} from "./frontendVisibility.ts";
 
 const repairIntervalMilliseconds = 5_000;
 
@@ -51,12 +51,16 @@ export function useFrontendWorkController(): FrontendWorkController {
   let mutationObserver: MutationObserver | null = null;
   let repairTimer = 0;
   let hostVisible = true;
+  // 每项工作的“是否需要”只在这一项变化时通知：消费端在 effect 里读它决定是否持有订阅，
+  // 跟踪整份列表会让无关工作变化或同一需求的注销再注册（卡片重建）把订阅退掉重订，合并通道随之整条重建。
+  const isNeeded = createSelector<readonly FrontendWorkId[], FrontendWorkId>(
+    activeWorkIds, (workId, ids) => ids.includes(workId));
 
   const controller: FrontendWorkController = {
     frontendVisible,
     activeVisibilityDemandIds,
     activeWorkIds,
-    isNeeded: (workId) => activeWorkIds().includes(workId),
+    isNeeded,
     registerVisibilityDemand(demandId, workIds) {
       const demandController = new FrontendVisibilityDemandController(
         demandId,
