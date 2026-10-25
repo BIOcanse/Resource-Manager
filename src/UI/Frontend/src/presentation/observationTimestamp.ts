@@ -1,3 +1,5 @@
+import { currentLanguage } from "../text.ts";
+
 export function formatObservationTimestamp(value?: string): string {
   if (!value) {
     return "";
@@ -6,7 +8,7 @@ export function formatObservationTimestamp(value?: string): string {
   if (!Number.isFinite(timestamp)) {
     return "";
   }
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(currentLanguage(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

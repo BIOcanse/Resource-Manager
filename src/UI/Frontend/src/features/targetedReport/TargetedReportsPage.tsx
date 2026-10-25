@@ -10,7 +10,7 @@ import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
 import { formatBytes, formatBytesPerSecond } from "../../presentation/byteUnits.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
-import { uiText } from "../../text.ts";
+import { currentLanguage, uiText } from "../../text.ts";
 import {
   deleteRecording, exportRecording,
   type RecordingHeader, type RecordingReport
@@ -307,7 +307,7 @@ function stopReason(reason: string | null) {
 
 function dateTime(value: string) {
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? new Intl.DateTimeFormat(undefined, {
+  return Number.isFinite(timestamp) ? new Intl.DateTimeFormat(currentLanguage(), {
     year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }).format(timestamp) : value;
 }

@@ -1,4 +1,4 @@
-import { uiText } from "../text.ts";
+import { currentLanguage, uiText } from "../text.ts";
 import { backendMessageDomains, renderBackendMessage } from "./backendMessage.ts";
 import type { BackendMessage } from "../types";
 
@@ -131,7 +131,7 @@ export function userFacingDateTime(value: unknown, fallback = uiText.status.unkn
   }
 
   const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString(currentLanguage());
 }
 
 /**

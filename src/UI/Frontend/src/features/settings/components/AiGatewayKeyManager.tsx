@@ -4,7 +4,7 @@ import { createAiGatewayCredential, getAiGatewayCredentials, revokeAiGatewayCred
 import { userFacingErrorMessage } from "../../../presentation/userFacingText";
 import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../../../types";
 import { SegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
-import { uiText } from "../../../text.ts";
+import { currentLanguage, uiText } from "../../../text.ts";
 
 interface AiGatewayKeyManagerLabels {
   aiGatewayTitle: string;
@@ -168,7 +168,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
                   {credential.compatibilityProfile === "openai"
                     ? props.labels.aiGatewayOpenAiProfile
                     : props.labels.aiGatewayAnthropicProfile}
-                  {" · "}{new Date(credential.createdAt).toLocaleString()}
+                  {" · "}{new Date(credential.createdAt).toLocaleString(currentLanguage())}
                 </span>
                 <code>{credential.baseUrl}</code>
               </div>

@@ -265,15 +265,15 @@ export default createSettingsLocale("fr-FR", {
         "description": "Utiliser les animations normales au premier plan et l’apparence à très hautes performances en arrière-plan à faible consommation"
       },
       "normal": {
-        "label": "Normal motion",
-        "description": "Enable restrained global transitions"
+        "label": "Animations normales",
+        "description": "Activer des transitions discrètes dans toute l’interface"
       },
       "none": {
-        "label": "No motion",
+        "label": "Aucune animation",
         "description": "Désactiver les transitions et animations tout en conservant l’aspect soigné"
       },
       "ultra": {
-        "label": "Ultra performance",
+        "label": "Très hautes performances",
         "description": "Désactiver les animations, ombres, reflets et flous pour réduire au minimum le coût d’affichage"
       }
     },

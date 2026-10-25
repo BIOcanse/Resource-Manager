@@ -265,15 +265,15 @@ export default createSettingsLocale("de-DE", {
         "description": "Im Vordergrund normale Animationen verwenden und im energiesparenden Hintergrund zur besonders sparsamen Darstellung wechseln"
       },
       "normal": {
-        "label": "Normal motion",
-        "description": "Enable restrained global transitions"
+        "label": "Normale Animationen",
+        "description": "Zurückhaltende Übergänge in der gesamten Oberfläche aktivieren"
       },
       "none": {
-        "label": "No motion",
+        "label": "Keine Animationen",
         "description": "Alle Übergänge und Animationen deaktivieren, das Erscheinungsbild beibehalten"
       },
       "ultra": {
-        "label": "Ultra performance",
+        "label": "Höchste Leistung",
         "description": "Animationen, Schatten, Glanz und Unschärfe für möglichst geringen Darstellungsaufwand deaktivieren"
       }
     },

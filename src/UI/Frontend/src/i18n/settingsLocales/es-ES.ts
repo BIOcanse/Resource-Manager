@@ -265,15 +265,15 @@ export default createSettingsLocale("es-ES", {
         "description": "Usa animaciones normales en primer plano y el aspecto de máximo rendimiento en segundo plano de bajo consumo"
       },
       "normal": {
-        "label": "Normal motion",
-        "description": "Enable restrained global transitions"
+        "label": "Animaciones normales",
+        "description": "Activa transiciones moderadas en toda la interfaz"
       },
       "none": {
-        "label": "No motion",
+        "label": "Sin animaciones",
         "description": "Desactiva transiciones y animaciones y conserva el aspecto cuidado"
       },
       "ultra": {
-        "label": "Ultra performance",
+        "label": "Máximo rendimiento",
         "description": "Desactiva animaciones, sombras, reflejos y desenfoque para minimizar el coste de visualización"
       }
     },

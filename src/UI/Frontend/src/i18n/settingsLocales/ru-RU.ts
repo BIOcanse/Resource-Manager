@@ -265,15 +265,15 @@ export default createSettingsLocale("ru-RU", {
         "description": "Использовать обычную анимацию на переднем плане и экономное оформление в фоновом режиме с низким энергопотреблением"
       },
       "normal": {
-        "label": "Normal motion",
-        "description": "Enable restrained global transitions"
+        "label": "Обычная анимация",
+        "description": "Включить сдержанные переходы во всём интерфейсе"
       },
       "none": {
-        "label": "No motion",
+        "label": "Без анимации",
         "description": "Отключить все переходы и анимацию, сохранив оформление"
       },
       "ultra": {
-        "label": "Ultra performance",
+        "label": "Максимальная производительность",
         "description": "Отключить анимацию, тени, блики и размытие для минимальной нагрузки интерфейса"
       }
     },

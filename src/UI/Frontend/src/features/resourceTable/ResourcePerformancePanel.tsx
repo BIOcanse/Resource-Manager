@@ -9,7 +9,7 @@ import {
   type PerformancePoint,
   type PerformanceSeries
 } from "./resourcePerformanceHistory.ts";
-import { uiText } from "../../text.ts";
+import { currentLanguage, uiText } from "../../text.ts";
 
 const palette = ["#0f8f7b", "#4f7fd8", "#d79429", "#8762c9", "#c64e64", "#5894a0", "#65922f", "#9a7130"];
 
@@ -384,7 +384,7 @@ function formatCapturedAt(value: string) {
   if (!Number.isFinite(timestamp)) {
     return value;
   }
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(currentLanguage(), {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit"

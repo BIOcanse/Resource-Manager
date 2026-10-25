@@ -162,6 +162,12 @@ try {
       throw new Error(language + ": exact EDID rate changed during localization");
     inspectFunctions(language, "app", uiText, englishApp, appCases);
     inspectFunctions(language, "settings", currentSettingsText(), englishSettings, settingsCases);
+    // 动画选项的名字和说明是两三个词的短句，英文散文判定抓不到，按必须翻译逐项检查（曾有四种语言漏翻）。
+    for (const option of currentSettingsText().animationOptions) {
+      const english = englishSettings.animationOptions.find(item => item.id === option.id)!;
+      issues.push(...inspectText(language, `settings.animationOptions.${option.id}.label`, option.label, english.label, true));
+      issues.push(...inspectText(language, `settings.animationOptions.${option.id}.description`, option.description, english.description, true));
+    }
     assert.match(uiText.backendMessage.software.selfNoUninstall, /UninstallResourceManager\.exe/, `${language}: self-uninstall must direct users to the external executable.`);
 
     if (language === "zh-TW") {
