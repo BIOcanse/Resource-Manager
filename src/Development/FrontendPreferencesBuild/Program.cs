@@ -139,10 +139,13 @@ internal static class Program
             PreferenceSourceCheck.Run(view, ts, root, output, compilerContext, typeScriptContext);
     }
 
+    // Generated sources are committed. A checkout may hold them with CRLF (core.autocrlf), so an equal text
+    // with other line endings is left untouched; rewriting it would make a clean release tree dirty.
     private static void Write(string path, string text)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        if (!File.Exists(path) || File.ReadAllText(path) != text) File.WriteAllText(path, text, new UTF8Encoding(false));
+        if (!File.Exists(path) || File.ReadAllText(path).ReplaceLineEndings("\n") != text.ReplaceLineEndings("\n"))
+            File.WriteAllText(path, text, new UTF8Encoding(false));
     }
 
     private static void Validate(string type, JsonElement definition, JsonElement value)

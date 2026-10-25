@@ -30,7 +30,9 @@ $output = Join-Path $WorkRoot 'frontend-points'
 $memoryLimit = Join-Path $repository 'scripts/dev/Invoke-WithMemoryLimit.ps1'
 if (-not $GeneratorPath) {
     $artifacts = Join-Path $output 'build'
-    & $memoryLimit -FilePath dotnet -ArgumentList (@('build',
+    # An ordinary product build, including the App's native toolchain; only the self-written generator below
+    # runs under the diagnostic memory ceiling.
+    & dotnet @(@('build',
         (Join-Path $repository 'src/Development/FrontendPreferencesBuild/ResourceManager.FrontendPreferencesBuild.csproj'),
         '-c','Release','--disable-build-servers','-maxcpucount:1','-p:BuildInParallel=false',
         '-p:SkipClientAppBuild=true',"-p:ResourceManagerLedgerWorkRoot=$WorkRoot", "-p:ArtifactsPath=$artifacts") + $BuildProperties)

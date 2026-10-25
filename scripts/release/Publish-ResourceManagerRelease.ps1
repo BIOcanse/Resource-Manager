@@ -19,16 +19,25 @@ public static class ResourceManagerReleaseErrorMode {
 [void][ResourceManagerReleaseErrorMode]::SetErrorMode(32771)
 # The Web SDK snapshots wwwroot items when the project is evaluated. Build the
 # frontend before dotnet publish so a clean checkout includes its generated assets.
+# The Ledger native build and the frontend preferences generator only run inside a registered
+# workspace; the caller's build root is one.
+$ledgerWorkRoot = Join-Path $OutputRoot 'ledger'
+$callerLedgerWorkRoot = $env:RM_LEDGER_WORK_ROOT
 Push-Location $clientApp
 try {
     if (-not (Test-Path -LiteralPath 'node_modules' -PathType Container)) {
         & npm install
         if ($LASTEXITCODE -ne 0) { throw "Frontend dependency installation failed: $LASTEXITCODE" }
     }
+    # The prebuild step reads the generator's workspace from this variable.
+    $env:RM_LEDGER_WORK_ROOT = $ledgerWorkRoot
     & npm run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend publication build failed: $LASTEXITCODE" }
 }
-finally { Pop-Location }
+finally {
+    $env:RM_LEDGER_WORK_ROOT = $callerLedgerWorkRoot
+    Pop-Location
+}
 # The backend service and the native UI publish as folders (user decisions 2026-10-24): every assembly
 # is mapped from its own file, so the two long-running processes do not keep a private decompressed
 # copy of each assembly beside the mapped bundle. The short-lived programs stay single-file.
@@ -49,9 +58,8 @@ foreach ($project in $projects) {
         }
         else { '-p:PublishSingleFile=false' })
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
-    # The Ledger native build only runs inside a registered workspace; the caller's build root is one.
     & dotnet publish $project.Project -c Release -r win-x64 --self-contained true @layout -p:PublishReadyToRun=true `
-        -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$(Join-Path $OutputRoot 'ledger')" `
+        -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$ledgerWorkRoot" `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
 }
