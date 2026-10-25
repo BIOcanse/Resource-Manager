@@ -140,6 +140,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 editingAvailable={dashboardAvailable()}
                 bars={monitor.activeResourceBars()}
                 snapshotBars={monitor.orderedSnapshotBars()}
+                processFields={monitor.processFields()}
                 observation={monitor.resourceBarsObservation()}
                 processDetails={monitor.resourceProcessDetails()}
                 processDetailsObservation={monitor.resourceProcessDetailsObservation()}
@@ -150,6 +151,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 onCancelEdit={monitor.cancelResourceBarEdit}
                 onToggleBar={monitor.toggleResourceBar}
                 onScaleModeChange={monitor.updateResourceBarScale}
+                onSourceChange={monitor.changeResourceBarSource}
                 onSelect={monitor.selectResourceSegment}
                 onReorderBar={monitor.reorderResourceBars}
               />

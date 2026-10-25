@@ -729,6 +729,7 @@ const jaJpAppCopy: AppCopy = {
     noDataDetail: "表示できるデータがまだ届いていません。データ ソースの準備ができ次第、自動的に更新されます。",
     editorLabel: "リソース使用量項目のエディター",
     scaleModeLabel: (metric: string) => `${metric}のスケール モード`,
+    sourceProcessDetailsUnavailable: "ソースを指定したバーでは、まだプロセスの内訳を表示できません。",
     moveUp: (label: string) => `${label}を上へ移動`,
     moveUpTitle: "上へ移動",
     moveDown: (label: string) => `${label}を下へ移動`,

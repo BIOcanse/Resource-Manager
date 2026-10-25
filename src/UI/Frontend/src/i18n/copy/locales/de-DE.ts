@@ -729,6 +729,7 @@ const deDeAppCopy: AppCopy = {
     noDataDetail: "Es sind noch keine anzeigbaren Daten eingetroffen; die Anzeige wird automatisch aktualisiert, sobald die Datenquelle bereit ist.",
     editorLabel: "Editor für Einträge zur Ressourcennutzung",
     scaleModeLabel: (metric: string) => `Skalenmodus für ${metric}`,
+    sourceProcessDetailsUnavailable: "Für einen Balken mit gewählter Quelle gibt es noch keine Prozessdetails.",
     moveUp: (label: string) => `${label} nach oben verschieben`,
     moveUpTitle: "Nach oben verschieben",
     moveDown: (label: string) => `${label} nach unten verschieben`,

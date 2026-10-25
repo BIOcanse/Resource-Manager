@@ -211,6 +211,11 @@ export interface ResourceBarSettings {
   metricId: string;
   scaleMode: ResourceScaleMode;
   binding?: DashboardMetricBinding | null;
+  /**
+   * 这一条的来源：null 或没有是“自动选择”（按 metricId 订阅），否则是后端进程字段名，作显式口径只读那个字段。
+   * 只有两条整机内存资源条认它（features/resourceBreakdown/resourceBarSources.ts）。
+   */
+  source?: string | null;
 }
 
 export interface DashboardSettings {
@@ -534,6 +539,10 @@ export interface ResourceSoftwareSegment {
 export interface ResourceBreakdownBar {
   sharedValue?: number | null;
   metricId: string;
+  /** 这一条实际读的进程字段（后端只给进程内存类的条）；没有为 null。 */
+  processFieldName?: string | null;
+  /** 按进程字段订阅的条比较的整机事实（memory.usage 或 virtualMemory.usage）；没有为 null。 */
+  totalMetricId?: string | null;
   unit: string;
   scaleMode: ResourceScaleMode;
   totalValue: number | null;

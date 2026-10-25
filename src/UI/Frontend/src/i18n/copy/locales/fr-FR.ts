@@ -729,6 +729,7 @@ const frFrAppCopy: AppCopy = {
     noDataDetail: "Aucune donnée affichable n'est encore arrivée ; l'affichage se met à jour dès que la source de données est prête.",
     editorLabel: "Éditeur des éléments d'utilisation des ressources",
     scaleModeLabel: (metric: string) => `Mode d'échelle de ${metric}`,
+    sourceProcessDetailsUnavailable: "Le détail par processus n'est pas encore disponible pour une barre avec une source choisie.",
     moveUp: (label: string) => `Déplacer ${label} vers le haut`,
     moveUpTitle: "Déplacer vers le haut",
     moveDown: (label: string) => `Déplacer ${label} vers le bas`,

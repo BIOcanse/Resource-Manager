@@ -1,5 +1,5 @@
 import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, softwareDisplayName } from "../../presentation/metricLabels.ts";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
 import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
@@ -20,10 +20,6 @@ import {
   resourceSegmentLayout,
   shouldAnimateResourceSegment
 } from "./resourceSegmentLayout";
-import {
-  normalizeResourceBarScaleMode,
-  resourceBarSupportsCapacity
-} from "./resourceBarScaleCapabilities";
 import type {
   ResourceSegmentCssVars as CssVars
 } from "./resourceSegmentLayout";
@@ -50,6 +46,15 @@ import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { formatResourceBarValue } from "./resourceBreakdownValue";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
 import type { ObservationState } from "../../observation/observationState";
+import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
+import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import {
+  resourceBarScaleModes,
+  resourceBarSourceChoices,
+  resourceBarSourceLabel,
+  resourceBarText,
+  type ResourceBarView
+} from "./resourceBarSources.ts";
 
 export interface ResourcePrecisionSelection {
   metricId: string;
@@ -64,7 +69,10 @@ interface ResourceBreakdownProps {
   editingAvailable: boolean;
   saveState: "idle" | "saving" | "error";
   bars: ResourceBarSettings[];
-  snapshotBars: ResourceBreakdownBar[];
+  /** 按资源条设置接到项目上的后端资源条（resourceBarViews）。 */
+  snapshotBars: ResourceBarView[];
+  /** 后端进程字段目录：内存资源条的来源选择。 */
+  processFields: readonly ProcessMetricField[];
   observation: ObservationState;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
@@ -74,6 +82,7 @@ interface ResourceBreakdownProps {
   onCancelEdit: () => void;
   onToggleBar: (metricId: string, enabled: boolean) => void;
   onScaleModeChange: (metricId: string, scaleMode: "capacity" | "active") => void;
+  onSourceChange: (metricId: string, source: string | null) => void;
   onSelect: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
   onReorderBar: (sourceMetricId: string, targetMetricId: string) => void;
 }
@@ -152,8 +161,11 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
           onElement={(element) => { editorRegion = element; }}
           catalog={props.catalog}
           bars={props.bars}
+          snapshotBars={props.snapshotBars}
+          processFields={props.processFields}
           onToggleBar={props.onToggleBar}
           onScaleModeChange={props.onScaleModeChange}
+          onSourceChange={props.onSourceChange}
         />
       </Show>
       <Show
@@ -224,10 +236,23 @@ function ResourceBarEditor(props: {
   onElement?: (element: HTMLDivElement) => void;
   catalog: MetricDefinition[];
   bars: ResourceBarSettings[];
+  snapshotBars: readonly ResourceBarView[];
+  processFields: readonly ProcessMetricField[];
   onToggleBar: (metricId: string, enabled: boolean) => void;
   onScaleModeChange: (metricId: string, scaleMode: "capacity" | "active") => void;
+  onSourceChange: (metricId: string, source: string | null) => void;
 }) {
   const barByMetric = () => new Map(props.bars.map((bar) => [bar.metricId, bar]));
+  // 先选项目、再选来源：已勾选、且有不止一个来源的资源条在选项后面摆“来源”，第一项是自动选择。
+  const sourceBars = createMemo(() => resourceBarOptions(props.catalog)
+    .filter((metric) => barByMetric().has(metric.id))
+    .map((metric) => ({ metric, choices: resourceBarSourceChoices(metric.id, props.processFields) }))
+    .filter((item) => item.choices.length > 0));
+  // 自动选择这一项写出后端这次实际读的字段：只有这一条现在就是自动选择时，显示中的那条的字段才是它。
+  const automaticField = (metricId: string) => {
+    const shown = props.snapshotBars.find((bar) => bar.metricId === metricId);
+    return shown && shown.source === null ? shown.processFieldName ?? null : null;
+  };
   return (
     <div
       ref={props.onElement}
@@ -238,7 +263,12 @@ function ResourceBarEditor(props: {
       <For each={resourceBarOptions(props.catalog)}>
         {(metric) => {
           const bar = () => barByMetric().get(metric.id);
-          const supportsCapacity = resourceBarSupportsCapacity(metric.id);
+          // 选了来源的资源条按显式口径订阅，后端只按容量比较：缩放只剩容量。
+          const scaleModes = () => resourceBarScaleModes({ metricId: metric.id, source: bar()?.source ?? null });
+          const scaleMode = () => {
+            const stored = bar()?.scaleMode;
+            return stored && scaleModes().includes(stored) ? stored : scaleModes()[0];
+          };
           return (
             <label class="resource-bar-option">
               <input
@@ -250,16 +280,41 @@ function ResourceBarEditor(props: {
                 <span>{localizedMetricLabel(metric.id, metric.label)}</span>
               </span>
               <StandardSelect<"capacity" | "active">
-                value={normalizeResourceBarScaleMode(metric.id, bar()?.scaleMode)}
-                disabled={!bar() || !supportsCapacity}
+                value={scaleMode()}
+                disabled={!bar() || scaleModes().length < 2}
                 ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(localizedMetricLabel(metric.id, metric.label))}
-                options={[
-                  ...(supportsCapacity ? [{ value: "capacity" as const, label: uiText.resourceBreakdown.scaleCapacity }] : []),
-                  { value: "active" as const, label: uiText.resourceBreakdown.scaleActive }
-                ]}
+                options={scaleModes().map((mode) => ({ value: mode,
+                  label: mode === "capacity" ? uiText.resourceBreakdown.scaleCapacity : uiText.resourceBreakdown.scaleActive }))}
                 onChange={(value) => props.onScaleModeChange(metric.id, value)}
               />
             </label>
+          );
+        }}
+      </For>
+      <For each={sourceBars()}>
+        {(item) => {
+          const label = () => uiText.resourceTable.columnSourceLabel(localizedMetricLabel(item.metric.id, item.metric.label));
+          const current = () => barByMetric().get(item.metric.id)?.source ?? null;
+          return (
+            <div class="resource-bar-source">
+              <strong>{label()}</strong>
+              <RadioGroupRoot class="segmented resource-bar-source-choices" ariaLabel={label()}
+                // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
+                value={(() => { const index = item.choices.indexOf(current()); return index < 0 ? "" : `source-${index}`; })()}
+                onChange={(value) => {
+                  const index = Number(value.slice("source-".length));
+                  if (index >= 0 && index < item.choices.length) props.onSourceChange(item.metric.id, item.choices[index]);
+                }}>
+                <Index each={item.choices}>
+                  {(source, index) => (
+                    <RadioGroupItem value={`source-${index}`} class="segment"
+                      title={resourceBarText({ metricId: item.metric.id, source: source(), processFieldName: null }, props.processFields).basis}>
+                      {resourceBarSourceLabel(source(), props.processFields, automaticField(item.metric.id))}
+                    </RadioGroupItem>
+                  )}
+                </Index>
+              </RadioGroupRoot>
+            </div>
           );
         }}
       </For>
@@ -269,7 +324,7 @@ function ResourceBarEditor(props: {
 
 function ResourceBreakdownItem(props: {
   animationMode: Exclude<AppAnimationMode, "auto">;
-  bar: ResourceBreakdownBar;
+  bar: ResourceBarView;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
   editMode: boolean;
@@ -283,7 +338,7 @@ function ResourceBreakdownItem(props: {
   onMoveAfter: () => void;
 }) {
   const selectable = () => resourceSelectableSoftwareSegments(props.bar);
-  const label = () => resourceBreakdownLabel(props.bar);
+  const label = () => props.bar.label;
   const denominator = () => resourceBarDenominator(props.bar);
   const layout = createMemo(() => resourceSegmentLayout(selectable(), denominator(), resourceBarLayoutOptions(props.bar)));
   // Position segments by softwareId (stable DOM order) with absolute left/width so both
@@ -404,7 +459,7 @@ function ResourceBreakdownItem(props: {
       ref={props.reorder.item({ id: () => props.bar.metricId, enabled: () => props.editMode })}
     >
       <div class="resource-breakdown-header">
-        <strong title={resourceMetricBasis(props.bar.metricId)}>{label()}</strong>
+        <strong title={props.bar.basis}>{label()}</strong>
         <span>
           {formatResourceBarValue(props.bar, props.bar.totalValue)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
@@ -533,10 +588,13 @@ function ResourceBreakdownItem(props: {
         {(_expandedId) => (
           <Show when={expanded()}>
             {(software) => <ResourceProcessPanel bar={props.bar} software={software()}
-              processes={props.processDetails === null ? null : props.processDetails.metrics
+              // 选了来源的资源条没有进程明细（明细订阅不接受显式口径），写明不可用，不借按指标 id 的明细。
+              processes={props.bar.source !== null || props.processDetails === null ? null : props.processDetails.metrics
                 .find(metric => metric.metricId === props.bar.metricId)?.software
                 .find(item => item.softwareId === software().softwareId)?.processes ?? []}
-              observation={props.processDetailsObservation} />}
+              observation={props.bar.source !== null
+                ? { status: "error", source: "none", lastError: uiText.resourceBreakdownView.sourceProcessDetailsUnavailable }
+                : props.processDetailsObservation} />}
           </Show>
         )}
       </Show>
@@ -545,7 +603,7 @@ function ResourceBreakdownItem(props: {
 }
 
 function ResourceProcessPanel(props: {
-  bar: ResourceBreakdownBar;
+  bar: ResourceBarView;
   software: ResourceSoftwareSegment;
   processes: ResourceProcessSegment[] | null;
   observation: ObservationState;
@@ -697,7 +755,7 @@ function ResourceProcessPanel(props: {
   );
 }
 
-function resourceProcessTooltip(bar: ResourceBreakdownBar, process: ResourceProcessSegment) {
+function resourceProcessTooltip(bar: ResourceBarView, process: ResourceProcessSegment) {
   const identity = isSystemResidualProcess(process) || Number(process.processId) <= 0
     ? uiText.resourceBreakdown.noPidCategory
     : `PID ${process.processId}`;
@@ -721,10 +779,6 @@ function resourceBarOptions(catalog: MetricDefinition[]) {
   return [...catalog, ...resourceOnlyMetricOptions(catalog)]
     .filter((metric) => isResourceBarMetric(metric.id))
     .sort((left, right) => resourceBarSort(left.id) - resourceBarSort(right.id));
-}
-
-function resourceBreakdownLabel(bar: ResourceBreakdownBar) {
-  return localizedMetricLabel(bar.metricId);
 }
 
 function isResourceBarMetric(metricId: string) {
@@ -833,19 +887,19 @@ function segmentLabel(segment: ResourceSelectableSegment) {
   return segment.kind === "Empty" ? segment.name : softwareDisplayName(segment);
 }
 
-function resourceSegmentTooltip(bar: ResourceBreakdownBar, segment: ResourceSelectableSegment) {
+function resourceSegmentTooltip(bar: ResourceBarView, segment: ResourceSelectableSegment) {
   const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
   return `${segmentLabel(segment)}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${resourceMemoryDetail(bar, segment)}`;
 }
 
-function resourceMemoryDetail(bar: ResourceBreakdownBar, segment: { value: number; sharedValue?: number | null }) {
+function resourceMemoryDetail(bar: ResourceBarView, segment: { value: number; sharedValue?: number | null }) {
   const value = bar.unit === "B" && segment.sharedValue != null
-    ? uiText.resourceTableView.memoryBreakdown(resourceBreakdownLabel(bar),
+    ? uiText.resourceTableView.memoryBreakdown(bar.label,
       formatResourceBarValue(bar, segment.value),
       formatResourceBarValue(bar, segment.value - segment.sharedValue),
       formatResourceBarValue(bar, segment.sharedValue))
-    : `${resourceBreakdownLabel(bar)}: ${formatResourceBarValue(bar, segment.value)}`;
-  const basis = resourceMetricBasis(bar.metricId);
+    : `${bar.label}: ${formatResourceBarValue(bar, segment.value)}`;
+  const basis = bar.basis;
   return basis ? `${value}\n${basis}` : value;
 }
 

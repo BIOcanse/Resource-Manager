@@ -729,6 +729,7 @@ const esEsAppCopy: AppCopy = {
     noDataDetail: "Todavía no ha llegado ningún dato que mostrar; se actualizará automáticamente cuando la fuente de datos esté lista.",
     editorLabel: "Editor de elementos de uso de recursos",
     scaleModeLabel: (metric: string) => `Modo de escala de ${metric}`,
+    sourceProcessDetailsUnavailable: "Las barras con un origen elegido aún no tienen detalle por proceso.",
     moveUp: (label: string) => `Mover ${label} hacia arriba`,
     moveUpTitle: "Mover hacia arriba",
     moveDown: (label: string) => `Mover ${label} hacia abajo`,

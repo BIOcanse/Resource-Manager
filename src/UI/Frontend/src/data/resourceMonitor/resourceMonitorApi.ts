@@ -19,6 +19,11 @@ type ResourceMonitorRequestClient = Pick<RequestClient, "request">;
 export interface ResourceBarQuery {
   readonly metricId: string;
   readonly scaleMode: ResourceScaleMode;
+  /**
+   * 选了来源的资源条：后端进程字段名，作显式口径（measures=）订阅，不带 ids/modes；null 或没有是按 metricId 订阅。
+   * 见 features/resourceBreakdown/resourceBarSources.ts。
+   */
+  readonly source?: string | null;
 }
 
 export interface ResourceBreakdownQuery {
@@ -161,14 +166,16 @@ export function normalizeResourceBreakdownQuery(query: ResourceBreakdownQuery): 
   const bars = query.bars === null
     ? null
     : Object.freeze(
-      [...new Map(query.bars.map((bar) => [
-        bar.metricId.trim().toLocaleLowerCase(),
-        Object.freeze({
+      [...new Map(query.bars.map((bar) => {
+        const source = bar.source?.trim() || null;
+        // 同一个显式口径只订一次，和按指标 id 的条分开去重。
+        return [source ? `measure:${source}` : bar.metricId.trim().toLocaleLowerCase(), Object.freeze({
           metricId: bar.metricId.trim(),
-          scaleMode: bar.scaleMode
-        })
-      ])).values()]
-        .sort((left, right) => left.metricId.localeCompare(right.metricId)));
+          scaleMode: bar.scaleMode,
+          source
+        })] as const;
+      })).values()]
+        .sort((left, right) => (left.source ?? "").localeCompare(right.source ?? "") || left.metricId.localeCompare(right.metricId)));
   return Object.freeze({
     bars,
     processDetailSoftwareIds:
@@ -183,13 +190,17 @@ function appendBars(
   if (bars === null) {
     return;
   }
-  if (bars.length === 0) {
+  const byId = bars.filter((bar) => !bar.source);
+  // 没有按指标 id 的条时明确发空 ids，后端不会当成默认那几条；显式口径另走 measures。
+  if (byId.length === 0) {
     params.append("ids", "");
-    return;
   }
-  for (const bar of bars) {
+  for (const bar of byId) {
     params.append("ids", bar.metricId);
     params.append("modes", `${bar.metricId}:${bar.scaleMode}`);
+  }
+  for (const bar of bars) {
+    if (bar.source) params.append("measures", bar.source);
   }
 }
 

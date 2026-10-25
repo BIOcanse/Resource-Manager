@@ -31,7 +31,8 @@ export function createResourceBreakdownBindings(options: {
   const detailsKey = createMemo(() => JSON.stringify({
     active: options.active(), intervalMs: options.intervalMs(),
     query: normalizeResourceBreakdownQuery({
-      bars: options.bars(),
+      // 进程明细（scope=details）不接受显式口径：选了来源的资源条不进明细订阅，也不借按指标 id 的明细。
+      bars: options.bars()?.filter((bar) => !bar.source) ?? null,
       processDetailSoftwareIds: options.detailSoftwareIds()
     })
   }));

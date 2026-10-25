@@ -8,6 +8,7 @@ import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogPro
 import usabilityProbe from "./usabilityProbe.js";
 import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, enableMetricFields, seedFieldCards } from "./metricFieldsProbe.js";
 import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney.js";
+import { checkResourceBarSourceText } from "./resourceBarSourceChoiceJourney.js";
 
 export default async function localizationJourney(page, baseUrl) {
   const failures = [];
@@ -29,6 +30,7 @@ export default async function localizationJourney(page, baseUrl) {
   const metricFieldChecks = [];
   const fieldCardChecks = [];
   const resourceTableSourceChecks = [];
+  const resourceBarSourceChecks = [];
   let verificationFails = false;
   let verificationRequests = 0;
   const pendingVerificationReleases = [];
@@ -187,6 +189,8 @@ export default async function localizationJourney(page, baseUrl) {
     fieldCardChecks.push(await checkFieldCardDisplay(page, app, option.id));
     // 资源表内存列的来源选择：来源名、选项、说明和选了来源后的表头。
     resourceTableSourceChecks.push(await checkResourceTableSourceText(page, app, option.id));
+    // 物理内存资源条的来源选择：来源名、选项（自动选择写出实际读的字段）和说明。
+    resourceBarSourceChecks.push(await checkResourceBarSourceText(page, app, option.id));
     await page.getByRole("navigation").getByRole("button", { name: app.page.control, exact: true }).click();
     await page.locator(".control-group h3").filter({ hasText: app.control.kind.gpu }).waitFor();
     await page.locator(".control-readings dt").filter({ hasText: app.control.presentation.labels["gpu.temperature-limit"] }).waitFor();
@@ -308,7 +312,7 @@ export default async function localizationJourney(page, baseUrl) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, resourceBarSourceChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
     translatedComponentVerificationSuccessAndFailure: true,
     translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };

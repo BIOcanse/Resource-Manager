@@ -360,6 +360,27 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(FrontendPoints.Theme, Owner().Read().Appearance.Theme);
     }
 
+    [Fact]
+    public void ResourceBarAndColumnSourcesSurviveTheCacheAndBlankSourcesAreRejected()
+    {
+        // A bar's or column's source is automatic when absent or null, otherwise a backend process field name.
+        static JsonElement Layout(string source) => JsonDocument.Parse($$"""
+            {"resourceBars":[{"id":"resource-memory-usage","metricId":"memory.usage","scaleMode":"capacity","source":{{source}}}],
+            "resourceTableColumns":[{"id":"memory","visible":true,"source":{{source}}}]}
+            """).RootElement.Clone();
+        var owner = Owner();
+        owner.Save(new() { Dashboard = Layout("\"process_all_private_commit_actual\"") });
+        var dashboard = Owner().Read().Dashboard!.Value;
+        Assert.Equal("process_all_private_commit_actual",
+            dashboard.GetProperty("resourceBars")[0].GetProperty("source").GetString());
+        Assert.Equal("process_all_private_commit_actual",
+            dashboard.GetProperty("resourceTableColumns")[0].GetProperty("source").GetString());
+        owner.Save(new() { Dashboard = Layout("null") });
+        foreach (var invalid in new[] { "\"\"", "\"  \"", "42" })
+            Assert.Throws<InvalidDataException>(() => owner.Save(new() { Dashboard = Layout(invalid) }));
+        Assert.Equal(JsonValueKind.Null, Owner().Read().Dashboard!.Value.GetProperty("resourceBars")[0].GetProperty("source").ValueKind);
+    }
+
     private FrontendPreferencesOwner Owner() => new(Cache, App, Overlay);
     private static string Serialize(FrontendPreferences value) => JsonSerializer.Serialize(value, FrontendPreferencesOwner.Json);
 

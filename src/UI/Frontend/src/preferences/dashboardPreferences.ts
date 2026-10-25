@@ -33,6 +33,8 @@ function validateDashboardCache(value: DashboardSettings): void {
       } else if (name === "resourceBars") {
         const bar = item as DashboardSettings["resourceBars"][number];
         if (typeof bar.metricId !== "string" || !bar.metricId.trim() || !["capacity", "active"].includes(bar.scaleMode)) throw new Error("Invalid frontend dashboard cache");
+        // 来源：null／没有是自动选择，否则是非空的后端进程字段名。
+        if (bar.source != null && (typeof bar.source !== "string" || !bar.source.trim())) throw new Error("Invalid frontend dashboard cache");
       } else {
         const column = item as ResourceTableColumnSettings;
         if (typeof column.visible !== "boolean" || column.width != null && (!Number.isFinite(column.width)

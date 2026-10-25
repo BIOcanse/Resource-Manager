@@ -157,8 +157,14 @@ function decodeBar(
     throw new ResponseDecodeError(path, "published bar with numeric totals");
   }
 
+  // 后端只在进程内存类的条上写这两项（自动的整机内存条写 processFieldName，按字段订阅的条两项都写）；
+  // 写了就必须是非空字符串。
+  const optionalName = (key: "processFieldName" | "totalMetricId") =>
+    bar[key] === undefined ? null : requireNonEmptyString(bar[key], `${path}.${key}`);
   return {
     metricId: requireNonEmptyString(bar.metricId, `${path}.metricId`),
+    processFieldName: optionalName("processFieldName"),
+    totalMetricId: optionalName("totalMetricId"),
     unit: requireString(bar.unit, `${path}.unit`),
     scaleMode: requireOneOf(bar.scaleMode, `${path}.scaleMode`, scaleModes),
     totalValue,

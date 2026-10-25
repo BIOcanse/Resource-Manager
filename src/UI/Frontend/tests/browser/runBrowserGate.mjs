@@ -115,6 +115,7 @@ const allJourneys = [
   ["metric-field-cards", metricFieldCardsJourney],
   ["metric-source-choice", async (...args) => (await import("./metricSourceChoiceJourney.js")).default(...args)],
   ["resource-table-source-choice", async (...args) => (await import("./resourceTableSourceChoiceJourney.js")).default(...args)],
+  ["resource-bar-source-choice", async (...args) => (await import("./resourceBarSourceChoiceJourney.js")).default(...args)],
   ["metric-picker-gpu-names", metricPickerGpuNamesJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
   ["gpu-committed-thresholds", gpuCommittedThresholdsJourney],

@@ -78,6 +78,8 @@ const defaultScenario = {
   // 指标目录里额外的部件地址："none" 没有；"reading-source" 加一个带候选来源的核显温度地址
   // （gpu.5.temperature，候选是 metricFieldsProbe 的 readingSourceDevices 字段，后端当前选中 ADLX 次选）。
   metricCatalogAddresses: "none",
+  // 资源条按进程字段订阅（measures=）时，这些字段的整机总量读不到：后端不发这一条（其余条照常）。
+  resourceBarMeasureTotalsMissing: [],
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
   dashboardSettings: null,
   gpuPlacementEnabled: false,
@@ -704,7 +706,8 @@ async function handleApi(request, response, url) {
     if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt));
     const breakdown = resourceBreakdown(
       capturedAt,
-      new Set(url.searchParams.getAll("processDetails")));
+      new Set(url.searchParams.getAll("processDetails")),
+      url.searchParams.getAll("measures"));
     return json(response, 200, {
       version: 10,
       capturedAt,
@@ -1722,7 +1725,7 @@ function resourceProcessDetails(url, capturedAt) {
   return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
 }
 
-function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set()) {
+function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = []) {
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
@@ -1756,6 +1759,8 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
       },
       {
         metricId: "memory.usage",
+        // 后端在自动的整机内存条上写出实际读的进程字段。
+        processFieldName: automaticProcessFields["memory.usage"],
         unit: scenario.resourceSharedMemory ? "B" : "GB",
         scaleMode: "capacity",
         totalValue: scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,
@@ -1768,9 +1773,39 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
           25,
           (value) => `${(value * 1024).toFixed(2)} MB`,
           processDetailSoftwareIds).map(row => scenario.resourceSharedMemory ? [...row, row[1] / 2] : row)
-      }
+      },
+      ...resourceMeasureBars(softwareCatalog, measures)
     ]
   };
+}
+
+// 按进程字段订阅的资源条（后端 ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars 的形状）：
+// metricId 和 processFieldName 是字段名，totalMetricId 是它比较的整机事实，只按容量比较；第一个软件拿全部进程之和，
+// 差额进 resource-residual:<totalMetricId>。后端只认三种能作资源事实的字段，别的 measures 不出条；
+// 总量读不到（resourceBarMeasureTotalsMissing）时也不出这一条。
+function resourceMeasureBars(softwareCatalog, measures) {
+  const known = [...new Set(measures)].filter(field => Object.hasOwn(processMemoryFacts, field)
+    && !(scenario.resourceBarMeasureTotalsMissing ?? []).includes(field));
+  return known.map(field => {
+    const fact = processMemoryFacts[field];
+    const percent = value => value * 100 / fact.capacityValue;
+    const residualId = `resource-residual:${fact.totalMetricId}`;
+    let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
+    if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
+    const residual = fact.totalValue - fact.processSum;
+    return {
+      metricId: field,
+      totalMetricId: fact.totalMetricId,
+      processFieldName: field,
+      unit: "B",
+      scaleMode: "capacity",
+      totalValue: fact.totalValue,
+      capacityValue: fact.capacityValue,
+      totalSystemPercent: percent(fact.totalValue),
+      sharedValue: null,
+      software: [[0, fact.processSum, percent(fact.processSum), 1, 5, []], [residualIndex, residual, percent(residual), 0, 0, []]]
+    };
+  });
 }
 
 function resourceFacts(url, capturedAt = now()) {
@@ -2252,7 +2287,7 @@ function subscriptionPayloadFactory(url) {
         return {
           version: 10,
           capturedAt,
-          breakdown: resourceBreakdown(capturedAt, processDetails)
+          breakdown: resourceBreakdown(capturedAt, processDetails, url.searchParams.getAll("measures"))
         };
       };
     }

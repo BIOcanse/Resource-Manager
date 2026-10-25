@@ -37,6 +37,7 @@ internal static class FrontendDashboardCache
                         || string.IsNullOrWhiteSpace(metric.GetString())
                         || !item.TryGetProperty("scaleMode", out var mode) || mode.ValueKind != JsonValueKind.String
                         || mode.GetString() is not ("active" or "capacity")) throw Invalid();
+                    ValidateSource(item);
                 }
                 else
                 {
@@ -45,9 +46,18 @@ internal static class FrontendDashboardCache
                         && (width.ValueKind != JsonValueKind.Number || !width.TryGetDouble(out var number)
                             || !double.IsFinite(number) || number < FrontendPoints.DashboardLayoutLimits.MinimumColumnWidth
                             || number > FrontendPoints.DashboardLayoutLimits.MaximumColumnWidth)) throw Invalid();
+                    ValidateSource(item);
                 }
             }
         }
+    }
+
+    // A bar's or column's source: absent or null is automatic, otherwise a non-empty backend
+    // process field name (docs/metric_item_source_choice_2026-10-25.md).
+    private static void ValidateSource(JsonElement item)
+    {
+        if (item.TryGetProperty("source", out var source) && source.ValueKind != JsonValueKind.Null
+            && (source.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(source.GetString()))) throw Invalid();
     }
 
     private static InvalidDataException Invalid() => new("Invalid frontend dashboard cache.");

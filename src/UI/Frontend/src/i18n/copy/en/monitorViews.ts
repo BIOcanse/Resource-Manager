@@ -16,6 +16,7 @@ export const enMonitorViewsCopy: Pick<
     noDataDetail: "No displayable data has arrived yet; it updates automatically once the data source is ready.",
     editorLabel: "Resource usage item editor",
     scaleModeLabel: (metric: string) => `${metric} scale mode`,
+    sourceProcessDetailsUnavailable: "Process details are not available yet for a bar showing a chosen source.",
     moveUp: (label: string) => `Move ${label} up`,
     moveUpTitle: "Move up",
     moveDown: (label: string) => `Move ${label} down`,

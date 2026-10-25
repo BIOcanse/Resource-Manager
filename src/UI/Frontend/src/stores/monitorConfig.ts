@@ -123,7 +123,9 @@ export function normalizeResourceBars(candidateBars?: ResourceBarSettings[] | nu
       id: textOrEmpty(bar.id) || `resource-${bar.metricId.replaceAll(".", "-")}`,
       metricId: bar.metricId.trim(),
       scaleMode: normalizeResourceBarScaleMode(bar.metricId.trim(), bar.scaleMode),
-      binding: normalizeMetricBinding(bar.metricId, bar.binding)
+      binding: normalizeMetricBinding(bar.metricId, bar.binding),
+      // 来源原样保留（null 是自动选择），见 ResourceBarSettings.source。
+      source: bar.source ?? null
     }));
 
   return normalized;

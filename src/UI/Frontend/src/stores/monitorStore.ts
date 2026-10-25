@@ -26,6 +26,7 @@ import type {
   ResourceTableViewMode
 } from "../types";
 import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
+import { resourceBarQuery, resourceBarViews, type ResourceBarView } from "../features/resourceBreakdown/resourceBarSources.ts";
 import { textOrEmpty } from "../utils";
 import {
   failedObservation,
@@ -155,7 +156,8 @@ export interface MonitorStore {
   metricModalTarget: Accessor<MetricModalTarget | null>;
   selectedMetricId: Accessor<string | null>;
   setSelectedMetricId: (metricId: string | null) => void;
-  orderedSnapshotBars: Accessor<ResourceBreakdownBar[]>;
+  /** 按资源条设置的顺序接到项目上的后端资源条（选了来源的条按项目 id 显示）。 */
+  orderedSnapshotBars: Accessor<ResourceBarView[]>;
   refreshCatalog: () => Promise<boolean>;
   refreshSettings: () => Promise<boolean>;
   addCard: () => void;
@@ -172,6 +174,8 @@ export interface MonitorStore {
   cancelResourceBarEdit: () => void;
   toggleResourceBar: (metricId: string, enabled: boolean) => void;
   updateResourceBarScale: (metricId: string, scaleMode: "capacity" | "active") => void;
+  /** 改一条资源条的来源：null 是自动选择，其余是进程字段名。进编辑草稿，保存时写前端布局缓存。 */
+  changeResourceBarSource: (metricId: string, source: string | null) => void;
   reorderResourceBars: (sourceMetricId: string, targetMetricId: string) => void;
   changeResourceTableMode: (mode: ResourceTableViewMode) => void;
   toggleResourceTableEditMode: () => void;
@@ -321,7 +325,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     detailSoftwareIds: resourceBreakdownProcessDetailSoftwareIds,
     barsSource: options.resourceMonitorSource,
     detailsSource: options.resourceProcessDetailsSource,
-    onBars: value => pruneResourceSelection(value.breakdown.bars ?? [])
+    onBars: value => pruneResourceSelection(resourceBarViews(value.breakdown.bars ?? [], activeResourceBars(), processFields()))
   });
   const resourceTableSubscriptionKey = createMemo(() => JSON.stringify({
     active: resourceTableNeeded() && (createResourceTableQuery().sampleMetricIds?.length ?? 0) > 0,
@@ -350,12 +354,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return observation.status === "loading" && resourceTableFacts()
       ? readyObservation(resourceTableFacts()?.capturedAt ?? undefined) : observation;
   });
-  const orderedSnapshotBars = createMemo(() => {
-    const bars = resourceBreakdownSnapshot()?.bars ?? [];
-    const order = new Map(activeResourceBars().map((bar, index) => [bar.metricId, index]));
-    return bars.filter((bar) => order.has(bar.metricId)).sort((left, right) =>
-      (order.get(left.metricId) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.metricId) ?? Number.MAX_SAFE_INTEGER));
-  });
+  const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));
   // 目录每 5 秒推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
   const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldCatalogDevice[]> | null>(null);
   const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<MonitorSourceBinding<readonly MetricFieldDevice[]> | null>(null);
@@ -483,7 +482,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }
 
   function requestedResourceBars(): NonNullable<ResourceBreakdownQuery["bars"]> {
-    return activeResourceBars().filter(bar => dashboardMetricAvailable(bar.metricId, bar.binding, catalog())).map(bar => ({ metricId: bar.metricId, scaleMode: bar.scaleMode }));
+    return activeResourceBars().filter(bar => dashboardMetricAvailable(bar.metricId, bar.binding, catalog())).map(resourceBarQuery);
   }
   function createResourceTableQuery(): ResourceMonitorQuery {
     return {
@@ -878,6 +877,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       : bar));
   }
 
+  function changeResourceBarSource(metricId: string, source: string | null) {
+    updateResourceBars((bars) => bars.map((bar) => bar.metricId === metricId ? { ...bar, source } : bar));
+  }
+
   function reorderResourceBars(sourceMetricId: string, targetMetricId: string) {
     if (sourceMetricId === targetMetricId) {
       return;
@@ -1146,6 +1149,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     cancelResourceBarEdit,
     toggleResourceBar,
     updateResourceBarScale,
+    changeResourceBarSource,
     reorderResourceBars,
     changeResourceTableMode,
     toggleResourceTableEditMode,

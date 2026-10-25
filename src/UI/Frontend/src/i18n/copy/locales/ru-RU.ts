@@ -729,6 +729,7 @@ const ruRuAppCopy: AppCopy = {
     noDataDetail: "Отображаемые данные ещё не поступили; они обновятся автоматически, когда источник данных будет готов.",
     editorLabel: "Редактор элементов использования ресурсов",
     scaleModeLabel: (metric: string) => `Режим шкалы: ${metric}`,
+    sourceProcessDetailsUnavailable: "Для полосы с выбранным источником сведения по процессам пока недоступны.",
     moveUp: (label: string) => `Переместить ${label} вверх`,
     moveUpTitle: "Переместить вверх",
     moveDown: (label: string) => `Переместить ${label} вниз`,

@@ -596,6 +596,27 @@
   overflow-wrap: anywhere;
 }
 
+/* 资源条的来源（先选项目、再选来源）：占编辑区一整行，选项是统一分段样式，和资源表列的来源一样。 */
+.resource-bar-source {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 13px;
+}
+
+.resource-bar-source-choices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.resource-bar-source-choices .segment {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
 .resource-bar-option .standard-select {
   min-width: 118px;
 }
