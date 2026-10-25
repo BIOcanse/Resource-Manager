@@ -4,6 +4,8 @@ internal static class CsCz
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Je dostupná aktualizace",
+        UpdateAvailableMessageFormat = "Je dostupná verze {0}. Kliknutím otevřete Resource Manager.",
         AppName = "Správce prostředků",
         WindowTitleFormat = "Správce prostředků - {0}",
         TrayTooltipFormat = "Správce prostředků - {0}",

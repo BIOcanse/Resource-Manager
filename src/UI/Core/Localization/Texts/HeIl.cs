@@ -4,6 +4,8 @@ internal static class HeIl
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "עדכון זמין",
+        UpdateAvailableMessageFormat = "גרסה {0} זמינה. לחצו לפתיחת Resource Manager.",
         AppName = "מנהל המשאבים",
         WindowTitleFormat = "מנהל המשאבים - {0}",
         TrayTooltipFormat = "מנהל המשאבים - {0}",

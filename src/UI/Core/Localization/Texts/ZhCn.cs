@@ -4,6 +4,8 @@ internal static class ZhCn
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "发现新版本",
+        UpdateAvailableMessageFormat = "版本 {0} 已可用。点击打开资源管理器。",
         AppName = "资源管理器",
         WindowTitleFormat = "资源管理器 - {0}",
         TrayTooltipFormat = "资源管理器 - {0}",

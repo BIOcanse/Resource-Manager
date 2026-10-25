@@ -4,6 +4,8 @@ internal static class FrFr
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Mise à jour disponible",
+        UpdateAvailableMessageFormat = "La version {0} est disponible. Cliquez pour ouvrir Resource Manager.",
         AppName = "Gestionnaire de ressources",
         WindowTitleFormat = "Gestionnaire de ressources - {0}",
         TrayTooltipFormat = "Gestionnaire de ressources - {0}",

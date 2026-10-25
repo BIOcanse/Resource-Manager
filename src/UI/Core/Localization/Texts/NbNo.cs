@@ -4,6 +4,8 @@ internal static class NbNo
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Oppdatering tilgjengelig",
+        UpdateAvailableMessageFormat = "Versjon {0} er tilgjengelig. Klikk for å åpne Resource Manager.",
         AppName = "Ressursbehandling",
         WindowTitleFormat = "Ressursbehandling - {0}",
         TrayTooltipFormat = "Ressursbehandling - {0}",

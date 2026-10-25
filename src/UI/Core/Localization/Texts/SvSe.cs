@@ -4,6 +4,8 @@ internal static class SvSe
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Uppdatering tillgänglig",
+        UpdateAvailableMessageFormat = "Version {0} är tillgänglig. Klicka för att öppna Resource Manager.",
         AppName = "Resurshanteraren",
         WindowTitleFormat = "Resurshanteraren - {0}",
         TrayTooltipFormat = "Resurshanteraren - {0}",

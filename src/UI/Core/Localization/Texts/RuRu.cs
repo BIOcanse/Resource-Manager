@@ -4,6 +4,8 @@ internal static class RuRu
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Доступно обновление",
+        UpdateAvailableMessageFormat = "Доступна версия {0}. Нажмите, чтобы открыть Resource Manager.",
         AppName = "Диспетчер ресурсов",
         WindowTitleFormat = "Диспетчер ресурсов - {0}",
         TrayTooltipFormat = "Диспетчер ресурсов - {0}",

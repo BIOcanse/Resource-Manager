@@ -4,6 +4,8 @@ internal static class RoRo
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Actualizare disponibilă",
+        UpdateAvailableMessageFormat = "Versiunea {0} este disponibilă. Faceți clic pentru a deschide Resource Manager.",
         AppName = "Manager de resurse",
         WindowTitleFormat = "Manager de resurse - {0}",
         TrayTooltipFormat = "Manager de resurse - {0}",

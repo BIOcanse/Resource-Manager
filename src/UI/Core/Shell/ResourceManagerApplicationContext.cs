@@ -22,6 +22,8 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly ForceTerminateHotkeyController forceTerminateHotkey;
     private readonly ContextMenuStrip trayMenu;
     private readonly NotifyIcon trayIcon;
+    private readonly TrayUpdateNotice updateNotice;
+    private CancellationTokenSource? updateNoticeCancellation;
     private BackendServiceSession? backendSession;
     private BackendServiceLossHandler? backendLossHandler;
     private ToolStripMenuItem? backendStatusMenuItem;
@@ -76,6 +78,18 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
                 _ = ShowMainWindowAsync(startFrontend: true, activate: true);
             }
         };
+
+        trayIcon.BalloonTipClicked += (_, _) =>
+            _ = ShowMainWindowAsync(startFrontend: true, activate: true);
+        updateNotice = new TrayUpdateNotice(Preferences.FrontendPreferencesOwner.Current,
+            () => mainForm is { IsDisposed: false, Visible: true, WindowState: not FormWindowState.Minimized },
+            (title, message) => trayIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info),
+            action =>
+            {
+                if (exiting || uiDispatcher.IsDisposed) return;
+                try { uiDispatcher.BeginInvoke(action); }
+                catch (InvalidOperationException) when (exiting || uiDispatcher.IsDisposed) { }
+            });
 
         taskManagerShortcutReplacement = new TaskManagerShortcutReplacementController(
             NativeUiPaths.AppSettingsPath,
@@ -412,6 +426,8 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             SetBackendConnectionState(BackendConnectionState.Ready);
             performanceOverlay.Start(session);
             desktopObservations.Start(session);
+            updateNoticeCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+            _ = updateNotice.RunAsync(session.OpenProductUpdateStreamAsync, updateNoticeCancellation.Token);
             if (mainForm is { IsDisposed: false } form)
             {
                 form.ShowBackendReady(projection);
@@ -628,6 +644,9 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void DisposeBackendGeneration()
     {
+        updateNoticeCancellation?.Cancel();
+        updateNoticeCancellation?.Dispose();
+        updateNoticeCancellation = null;
         desktopObservations.Stop();
         var lossHandler = backendLossHandler;
         var session = backendSession;

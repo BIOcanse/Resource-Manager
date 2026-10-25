@@ -4,6 +4,8 @@ internal static class NlNl
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Update beschikbaar",
+        UpdateAvailableMessageFormat = "Versie {0} is beschikbaar. Klik om Resource Manager te openen.",
         AppName = "Resourcebeheer",
         WindowTitleFormat = "Resourcebeheer - {0}",
         TrayTooltipFormat = "Resourcebeheer - {0}",

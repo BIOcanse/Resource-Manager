@@ -27,6 +27,36 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BackendServiceSessionTests
 {
     [Fact]
+    public async Task ProductUpdateStreamUsesUnifiedSubscriptionAndReadsCurrentKeyForEveryRequest()
+    {
+        await using var backend = await Backend.StartAsync(enabled: true);
+        using var session = backend.Session();
+        await session.EnsureConnectedAsync(default);
+        using (var response = await session.OpenProductUpdateStreamAsync(default))
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(1, backend.KeyReads);
+        var firstKey = backend.CurrentKey;
+        Assert.Equal(firstKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
+        using (var request = JsonDocument.Parse(Assert.Single(backend.SubscriptionBodies)))
+        {
+            Assert.Equal(1, request.RootElement.GetProperty("version").GetInt32());
+            var subscription = Assert.Single(request.RootElement.GetProperty("subscriptions").EnumerateArray());
+            Assert.Equal("updates", subscription.GetProperty("id").GetString());
+            Assert.Equal("/api/updates/product/status/subscribe", subscription.GetProperty("path").GetString());
+        }
+        await backend.SetDefaultAsync(false);
+        var denied = await Assert.ThrowsAsync<HttpRequestException>(() => session.OpenProductUpdateStreamAsync(default));
+        Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
+        Assert.Equal(2, backend.KeyReads);
+        Assert.Null(backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
+        await backend.SetDefaultAsync(true);
+        using (var response = await session.OpenProductUpdateStreamAsync(default))
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(3, backend.KeyReads);
+        Assert.Equal(backend.CurrentKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
+    }
+
+    [Fact]
     public async Task EmptyDefaultColdStartIsReadyAndProtectedProxyKeepsTheBackendDenialAndElevationEntry()
     {
         await using var backend = await Backend.StartAsync(enabled: false);
@@ -185,6 +215,7 @@ public sealed class BackendServiceSessionTests
         private int keyReads;
         private int probes;
         public readonly ConcurrentQueue<(string Path, string? Key)> Requests = new();
+        public readonly ConcurrentQueue<string> SubscriptionBodies = new();
         public readonly TaskCompletionSource FourProbes = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Exception? ReadFailure { get; set; }
         public ITrustedAccessKeyService Keys { get; }
@@ -238,6 +269,17 @@ public sealed class BackendServiceSessionTests
                 fixture.app.MapGet("/", () => Results.Content("<!doctype html><title>Recovery</title>", "text/html"));
                 fixture.app.MapGet("/assets/recovery.js", () => Results.Text("/* recovery shell */", "application/javascript"));
                 fixture.app.MapTrustedAccessEndpoints();
+                fixture.app.MapPost("/api/subscriptions/stream", async Task<IResult> (HttpContext context) =>
+                {
+                    // This fake stream does not compile selectors like the production endpoint;
+                    // explicitly model its denied-credential response before returning frames.
+                    if (!context.Request.Headers.TryGetValue(TrustedAccessHeaders.KeyHeader, out var key)
+                        || string.IsNullOrEmpty(fixture.CurrentKey) || key.ToString() != fixture.CurrentKey)
+                        return Results.Unauthorized();
+                    using var reader = new StreamReader(context.Request.Body);
+                    fixture.SubscriptionBodies.Enqueue(await reader.ReadToEndAsync());
+                    return Results.Text("{\"subscriptionId\":\"updates\",\"value\":{\"availableVersion\":null}}\n", "application/x-ndjson");
+                });
                 await fixture.app.StartAsync();
                 return fixture;
             }

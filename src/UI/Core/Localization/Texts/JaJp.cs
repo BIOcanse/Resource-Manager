@@ -4,6 +4,8 @@ internal static class JaJp
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "新しいバージョンがあります",
+        UpdateAvailableMessageFormat = "バージョン {0} が利用可能です。クリックして Resource Manager を開きます。",
         AppName = "リソース マネージャー",
         WindowTitleFormat = "リソース マネージャー - {0}",
         TrayTooltipFormat = "リソース マネージャー - {0}",

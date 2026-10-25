@@ -4,6 +4,8 @@ internal static class FiFi
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Päivitys saatavilla",
+        UpdateAvailableMessageFormat = "Versio {0} on saatavilla. Avaa Resource Manager napsauttamalla.",
         AppName = "Resurssienhallinta",
         WindowTitleFormat = "Resurssienhallinta - {0}",
         TrayTooltipFormat = "Resurssienhallinta - {0}",

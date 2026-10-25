@@ -4,6 +4,8 @@ internal static class ElGr
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Διαθέσιμη ενημέρωση",
+        UpdateAvailableMessageFormat = "Η έκδοση {0} είναι διαθέσιμη. Κάντε κλικ για να ανοίξετε το Resource Manager.",
         AppName = "Διαχείριση πόρων",
         WindowTitleFormat = "Διαχείριση πόρων - {0}",
         TrayTooltipFormat = "Διαχείριση πόρων - {0}",

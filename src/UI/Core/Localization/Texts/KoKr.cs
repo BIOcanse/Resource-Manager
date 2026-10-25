@@ -4,6 +4,8 @@ internal static class KoKr
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "새 버전 사용 가능",
+        UpdateAvailableMessageFormat = "버전 {0}을 사용할 수 있습니다. 클릭하여 Resource Manager를 여세요.",
         AppName = "리소스 관리자",
         WindowTitleFormat = "리소스 관리자 - {0}",
         TrayTooltipFormat = "리소스 관리자 - {0}",

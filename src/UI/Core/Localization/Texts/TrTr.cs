@@ -4,6 +4,8 @@ internal static class TrTr
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Güncelleme mevcut",
+        UpdateAvailableMessageFormat = "{0} sürümü kullanılabilir. Resource Manager uygulamasını açmak için tıklayın.",
         AppName = "Kaynak Yöneticisi",
         WindowTitleFormat = "Kaynak Yöneticisi - {0}",
         TrayTooltipFormat = "Kaynak Yöneticisi - {0}",

@@ -4,6 +4,8 @@ internal static class PlPl
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Dostępna aktualizacja",
+        UpdateAvailableMessageFormat = "Dostępna jest wersja {0}. Kliknij, aby otworzyć Resource Manager.",
         AppName = "Menedżer zasobów",
         WindowTitleFormat = "Menedżer zasobów - {0}",
         TrayTooltipFormat = "Menedżer zasobów - {0}",

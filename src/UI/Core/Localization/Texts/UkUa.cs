@@ -4,6 +4,8 @@ internal static class UkUa
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Доступне оновлення",
+        UpdateAvailableMessageFormat = "Доступна версія {0}. Натисніть, щоб відкрити Resource Manager.",
         AppName = "Диспетчер ресурсів",
         WindowTitleFormat = "Диспетчер ресурсів - {0}",
         TrayTooltipFormat = "Диспетчер ресурсів - {0}",

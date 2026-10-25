@@ -4,6 +4,8 @@ internal static class ArSa
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "يتوفر تحديث",
+        UpdateAvailableMessageFormat = "الإصدار {0} متاح. انقر لفتح Resource Manager.",
         AppName = "مدير الموارد",
         WindowTitleFormat = "مدير الموارد - {0}",
         TrayTooltipFormat = "مدير الموارد - {0}",

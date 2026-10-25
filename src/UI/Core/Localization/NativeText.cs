@@ -11,6 +11,8 @@ internal sealed record NativeText
     public required string AppName { get; init; }
     public required string WindowTitleFormat { get; init; }
     public required string TrayTooltipFormat { get; init; }
+    public required string UpdateAvailableTitle { get; init; }
+    public required string UpdateAvailableMessageFormat { get; init; }
 
     // 可用性面板
     public required string AvailabilityPanelName { get; init; }

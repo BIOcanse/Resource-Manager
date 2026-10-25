@@ -4,6 +4,8 @@ internal static class ViVn
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Có bản cập nhật",
+        UpdateAvailableMessageFormat = "Đã có phiên bản {0}. Nhấp để mở Resource Manager.",
         AppName = "Trình quản lý tài nguyên",
         WindowTitleFormat = "Trình quản lý tài nguyên - {0}",
         TrayTooltipFormat = "Trình quản lý tài nguyên - {0}",

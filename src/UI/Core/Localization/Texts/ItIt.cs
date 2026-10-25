@@ -4,6 +4,8 @@ internal static class ItIt
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Aggiornamento disponibile",
+        UpdateAvailableMessageFormat = "È disponibile la versione {0}. Fai clic per aprire Resource Manager.",
         AppName = "Gestione risorse",
         WindowTitleFormat = "Gestione risorse - {0}",
         TrayTooltipFormat = "Gestione risorse - {0}",

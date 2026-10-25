@@ -4,6 +4,8 @@ internal static class PtPt
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Atualização disponível",
+        UpdateAvailableMessageFormat = "A versão {0} está disponível. Clique para abrir o Resource Manager.",
         AppName = "Gestor de Recursos",
         WindowTitleFormat = "Gestor de Recursos - {0}",
         TrayTooltipFormat = "Gestor de Recursos - {0}",

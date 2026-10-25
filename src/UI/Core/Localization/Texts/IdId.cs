@@ -4,6 +4,8 @@ internal static class IdId
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Pembaruan tersedia",
+        UpdateAvailableMessageFormat = "Versi {0} tersedia. Klik untuk membuka Resource Manager.",
         AppName = "Pengelola Sumber Daya",
         WindowTitleFormat = "Pengelola Sumber Daya - {0}",
         TrayTooltipFormat = "Pengelola Sumber Daya - {0}",

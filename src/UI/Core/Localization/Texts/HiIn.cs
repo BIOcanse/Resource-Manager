@@ -4,6 +4,8 @@ internal static class HiIn
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "अपडेट उपलब्ध है",
+        UpdateAvailableMessageFormat = "संस्करण {0} उपलब्ध है। Resource Manager खोलने के लिए क्लिक करें।",
         AppName = "रिसोर्स मैनेजर",
         WindowTitleFormat = "रिसोर्स मैनेजर - {0}",
         TrayTooltipFormat = "रिसोर्स मैनेजर - {0}",

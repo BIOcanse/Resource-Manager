@@ -4,6 +4,8 @@ internal static class ThTh
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "มีอัปเดตพร้อมใช้งาน",
+        UpdateAvailableMessageFormat = "เวอร์ชัน {0} พร้อมใช้งาน คลิกเพื่อเปิด Resource Manager",
         AppName = "ตัวจัดการทรัพยากร",
         WindowTitleFormat = "ตัวจัดการทรัพยากร - {0}",
         TrayTooltipFormat = "ตัวจัดการทรัพยากร - {0}",

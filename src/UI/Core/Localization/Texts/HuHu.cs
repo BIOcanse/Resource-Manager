@@ -4,6 +4,8 @@ internal static class HuHu
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Frissítés érhető el",
+        UpdateAvailableMessageFormat = "Elérhető a(z) {0} verzió. Kattintson a Resource Manager megnyitásához.",
         AppName = "Erőforrás-kezelő",
         WindowTitleFormat = "Erőforrás-kezelő - {0}",
         TrayTooltipFormat = "Erőforrás-kezelő - {0}",

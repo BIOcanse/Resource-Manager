@@ -4,6 +4,8 @@ internal static class DaDk
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Opdatering tilgængelig",
+        UpdateAvailableMessageFormat = "Version {0} er tilgængelig. Klik for at åbne Resource Manager.",
         AppName = "Ressourcestyring",
         WindowTitleFormat = "Ressourcestyring - {0}",
         TrayTooltipFormat = "Ressourcestyring - {0}",

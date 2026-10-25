@@ -4,6 +4,8 @@ internal static class EsEs
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Actualización disponible",
+        UpdateAvailableMessageFormat = "La versión {0} está disponible. Haz clic para abrir Resource Manager.",
         AppName = "Administrador de recursos",
         WindowTitleFormat = "Administrador de recursos - {0}",
         TrayTooltipFormat = "Administrador de recursos - {0}",

@@ -94,8 +94,16 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return frontendClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    internal async Task<HttpResponseMessage> OpenPerformanceOverlayStreamAsync(
+    internal Task<HttpResponseMessage> OpenPerformanceOverlayStreamAsync(
         ResourceManager.NativeUi.Overlay.OverlaySubscription[] subscriptions,
+        CancellationToken cancellationToken)
+        => OpenSubscriptionStreamAsync(subscriptions, cancellationToken);
+
+    internal Task<HttpResponseMessage> OpenProductUpdateStreamAsync(CancellationToken cancellationToken)
+        => OpenSubscriptionStreamAsync(
+            new[] { new { id = "updates", path = "/api/updates/product/status/subscribe" } }, cancellationToken);
+
+    private async Task<HttpResponseMessage> OpenSubscriptionStreamAsync<T>(T subscriptions,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -113,7 +121,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         if (response.IsSuccessStatusCode) return response;
         var statusCode = response.StatusCode;
         response.Dispose();
-        throw new HttpRequestException($"Overlay stream returned {(int)statusCode}.");
+        throw new HttpRequestException($"Subscription stream returned {(int)statusCode}.", null, statusCode);
     }
 
 

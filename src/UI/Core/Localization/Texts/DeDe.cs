@@ -4,6 +4,8 @@ internal static class DeDe
 {
     public static readonly NativeText Text = new()
     {
+        UpdateAvailableTitle = "Update verfügbar",
+        UpdateAvailableMessageFormat = "Version {0} ist verfügbar. Klicken Sie, um Resource Manager zu öffnen.",
         AppName = "Ressourcen-Manager",
         WindowTitleFormat = "Ressourcen-Manager - {0}",
         TrayTooltipFormat = "Ressourcen-Manager - {0}",
