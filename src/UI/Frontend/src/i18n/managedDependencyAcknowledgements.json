@@ -28,6 +28,13 @@
     "kind": "managed dependency"
   },
   {
+    "name": "FanControlCore.Library",
+    "version": "0.1.0-dev.4",
+    "authors": "BIOcanse",
+    "license": "Apache-2.0",
+    "kind": "managed dependency"
+  },
+  {
     "name": "FreedomPoint.Core",
     "version": "0.1.0-dev.41",
     "license": "Not declared in package metadata",
