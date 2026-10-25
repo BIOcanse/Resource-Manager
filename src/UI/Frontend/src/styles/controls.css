@@ -62,7 +62,6 @@ button:disabled:disabled {
   color: var(--control-disabled-text);
   box-shadow: none;
   transform: none;
-  transition: none;
 }
 
 .hidden {

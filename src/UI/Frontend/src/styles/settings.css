@@ -417,7 +417,6 @@
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: color-mix(in oklab, var(--muted) 28%, var(--surface));
-  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .settings-switch span::after {
@@ -430,7 +429,6 @@
   border-radius: 50%;
   background: var(--surface);
   box-shadow: var(--elev-1), var(--edge-highlight);
-  transition: transform 120ms ease;
 }
 
 .settings-switch input:checked + span {

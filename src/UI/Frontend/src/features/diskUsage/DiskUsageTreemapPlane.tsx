@@ -50,7 +50,8 @@ export function DiskUsageTreemapPlane(props: {
   const [theme, setTheme] = createSignal(readPaintTheme());
 
   // 鼠标贴边时持续平移。指针离开或没贴边就停，不空转。
-  let edgeTimer = 0;
+  let edgeFrame = 0;
+  let edgeLastTime = 0;
   let pointerX = -1;
   let pointerY = -1;
 
@@ -275,7 +276,7 @@ export function DiskUsageTreemapPlane(props: {
   }
 
   /**
-   * 贴边平移。只在指针确实落在边缘带里的时候才跑定时器，一离开就停。
+   * 贴边平移。只在指针确实落在边缘带里的时候才排帧，一离开就停。
    *
    * 先前是只要动过鼠标就一直跑，只有 mouseleave 才停 —— 于是指针没触发
    * mouseleave 就离开画布时（弹出菜单盖上来、窗口失焦、指针飞出去），
@@ -292,33 +293,40 @@ export function DiskUsageTreemapPlane(props: {
       stopEdgePan();
       return;
     }
-    if (edgeTimer !== 0) {
+    if (edgeFrame !== 0) {
       return;
     }
-    edgeTimer = window.setInterval(() => {
-      const current = size();
-      if (pointerX < 0 || current.width <= 0) {
-        stopEdgePan();
-        return;
-      }
-      const step = edgePanDelta(pointerX, pointerY, current.width, current.height);
-      if (step.deltaX === 0 && step.deltaY === 0) {
-        stopEdgePan();
-        return;
-      }
-      setViewport((viewportNow) => panByPixels(
-        viewportNow,
-        current.width,
-        current.height,
-        step.deltaX,
-        step.deltaY));
-    }, 16);
+    edgeLastTime = performance.now();
+    edgeFrame = window.requestAnimationFrame(edgePanFrame);
+  }
+
+  /** 每帧按经过的时间挪（edgePanDelta 的 px/s），速度不随帧率和计时器抖动。 */
+  function edgePanFrame(now: number) {
+    edgeFrame = 0;
+    // 页面在后台时帧会停，回来第一帧的间隔可能很长；按最多 0.1 s 算，不一下跳出很远。
+    const elapsedSeconds = Math.min(Math.max(now - edgeLastTime, 0), 100) / 1000;
+    edgeLastTime = now;
+    const current = size();
+    if (pointerX < 0 || current.width <= 0) {
+      return;
+    }
+    const step = edgePanDelta(pointerX, pointerY, current.width, current.height, undefined, undefined, elapsedSeconds);
+    if (step.deltaX === 0 && step.deltaY === 0) {
+      return;
+    }
+    setViewport((viewportNow) => panByPixels(
+      viewportNow,
+      current.width,
+      current.height,
+      step.deltaX,
+      step.deltaY));
+    edgeFrame = window.requestAnimationFrame(edgePanFrame);
   }
 
   function stopEdgePan() {
-    if (edgeTimer !== 0) {
-      window.clearInterval(edgeTimer);
-      edgeTimer = 0;
+    if (edgeFrame !== 0) {
+      window.cancelAnimationFrame(edgeFrame);
+      edgeFrame = 0;
     }
   }
 

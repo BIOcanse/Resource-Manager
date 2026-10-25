@@ -80,11 +80,6 @@ button.resource-process-segment:active {
   transform: none;
 }
 
-.resource-table-head-cell:active,
-.edit-slot:active {
-  transform: none;
-}
-
 input,
 select,
 textarea {
@@ -94,7 +89,7 @@ textarea {
     box-shadow var(--motion-fast) var(--ease-standard);
 }
 
-/* 开关：轨道变色 + 滑块减速滑动（覆盖基础样式里的 120ms ease） */
+/* 开关：轨道变色 + 滑块减速滑动；滑块颜色（终端风格打开时变色）跟轨道同一时长 */
 .settings-switch span {
   transition:
     background var(--motion-medium) var(--ease-standard),
@@ -102,7 +97,26 @@ textarea {
 }
 
 .settings-switch span::after {
-  transition: transform var(--motion-medium) var(--ease-decel);
+  transition:
+    transform var(--motion-medium) var(--ease-decel),
+    background var(--motion-medium) var(--ease-standard);
+}
+
+/* 不是 button 的悬停、拖动反馈：颜色和 opacity、fill 跟按钮一样 fast + standard */
+.resource-table-head-cell,
+.resource-table-column-resizer::after,
+.cpu-core,
+.cpu-ccd,
+.settings-credit-link {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+.fan-curve-point {
+  transition: fill var(--motion-fast) var(--ease-standard);
 }
 
 /* --- 页面与分区入场 --- */
@@ -127,8 +141,15 @@ textarea {
   animation: motion-toast-in var(--motion-page) var(--ease-decel);
 }
 
-.standard-select-popover {
+.standard-select-popover,
+.standard-context-menu,
+.disk-usage-context-menu {
   animation: motion-rise-in var(--motion-fast) var(--ease-decel);
+}
+
+/* 页内页签切换内容：只淡入，不位移 */
+.ui-tabs-panel {
+  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
 }
 
 /* --- 资源条形图交互层 --- */
@@ -181,16 +202,20 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
     border-color var(--motion-fast) var(--ease-standard);
 }
 
-body[data-animations="normal"] .management-card {
+/* 颜色反馈各档都有（无动画档瞬时变色）；阴影抬起只在 normal */
+.management-card {
   transition:
-    background var(--motion-medium) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-medium) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard);
 }
 
-body[data-animations="normal"] .management-card:hover {
+.management-card:hover {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
   background: color-mix(in oklab, var(--surface-soft) 88%, var(--accent-soft));
+}
+
+body[data-animations="normal"] .management-card:hover {
   box-shadow: var(--elev-2), var(--edge-highlight);
 }
 
@@ -261,12 +286,13 @@ body[data-animations="ultra"] {
   --hairline: var(--line);
 }
 
-body[data-animations="normal"] .settings-row,
-body[data-animations="normal"] .device-port-item,
-body[data-animations="normal"] .optimization-report,
-body[data-animations="normal"] .device-port-icon {
+/* 颜色反馈和过渡本身不门控（无动画档由上面的全局规则清零时长）；抬起、按下、旋转只在 normal */
+.settings-row,
+.device-port-item,
+.optimization-report,
+.device-port-icon {
   transition:
-    background var(--motion-medium) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-medium) var(--ease-standard),
@@ -274,7 +300,7 @@ body[data-animations="normal"] .device-port-icon {
     opacity var(--motion-fast) var(--ease-standard);
 }
 
-body[data-animations="normal"] .settings-row:hover {
+.settings-row:hover {
   background: color-mix(in oklab, var(--surface-soft) 92%, var(--accent-soft));
 }
 
@@ -306,15 +332,9 @@ body[data-animations="ultra"] .resource-segment.precision-selected {
   filter: none;
 }
 
-body[data-animations="ultra"] .metric-card:not(.editing):hover {
-  transform: none;
-}
-
-body[data-animations="ultra"] .settings-row:hover,
 body[data-animations="ultra"] .device-port-item:hover,
 body[data-animations="ultra"] .optimization-report:hover,
 body[data-animations="ultra"] .modal-header .icon-button:hover {
-  transform: none;
   box-shadow: none;
 }
 
