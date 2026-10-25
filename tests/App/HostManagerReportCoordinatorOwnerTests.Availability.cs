@@ -42,7 +42,6 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (owner.GetStatus().EvaluationState != "failed") await Task.Delay(10, timeout.Token);
             var failed = await owner.GetReportsAsync(timeout.Token);
-            Assert.Equal("IOException: fixture evaluation failed", failed.Status.EvaluationFailureReason);
             Assert.Equal(committed.Reports, failed.Reports);
             Assert.Equal(committed.CapturedAt, failed.CapturedAt);
             Assert.True(failed.Status.LastEvaluationAt >= committed.Status.LastEvaluationAt);
@@ -52,7 +51,6 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             metrics.ReadFailure = null;
             var recovered = await owner.RefreshReportsAsync(timeout.Token);
             Assert.Equal("completed", recovered.Status.EvaluationState);
-            Assert.Null(recovered.Status.EvaluationFailureReason);
         }
         finally { await owner.StopAsync(CancellationToken.None); }
     }

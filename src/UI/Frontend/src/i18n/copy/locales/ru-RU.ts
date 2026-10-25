@@ -924,7 +924,7 @@ const ruRuAppCopy: AppCopy = {
   },
   optimization: {
     evaluationPending: "Оценка отчётов ещё не завершена.",
-    evaluationFailed: (reason: string) => `Не удалось оценить отчёты. Причина: ${reason}.`,
+    evaluationFailed: () => "Не удалось оценить отчёты.",
     rulesUnavailable: (count: number) => `Некоторые правила недоступны (${count}); отчёты остальных правил остаются доступны.`,
     scheduleStateLabel: "Состояние планирования оптимизации",
     modeBar: "Режим оптимизации производительности",
@@ -2134,6 +2134,7 @@ const ruRuAppCopy: AppCopy = {
     }
   },
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name} (процесс ${pid})`,
     panel: "Отчёт умного планирования",
     loading: "Загрузка",
     unavailable: "Состояние недоступно",

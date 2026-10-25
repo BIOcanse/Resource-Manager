@@ -13,13 +13,14 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
     internal static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(1);
     private const string DurableStoreKind = "rollback-state";
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions JsonOptions = new HostManagerRollbackStateStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
         MaxDepth = HostManagerRollbackStateEnvelopeCodec.MaximumJsonDepth
-    };
+    }).Options;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string statePath;
+    private readonly string manifestPath;
     private readonly string ownerLeasePath;
     private readonly IReadOnlyList<string> legacyPaths;
     private readonly TimeProvider timeProvider;
@@ -120,6 +121,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         }
 
         statePath = Path.GetFullPath(paths.CanonicalPath);
+        manifestPath = Path.GetFullPath(paths.RootManifestPath);
         ownerLeasePath = Path.GetFullPath(paths.OwnerLeasePath);
         legacyPaths = paths.LegacyPaths
             .Select(Path.GetFullPath)
@@ -216,8 +218,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 cachedDocument!.NativeHostSessionIncarnation + 1);
             var reserved = cachedDocument with
             {
-                NativeHostSessionIncarnation = nextIncarnation,
-                Message = $"Host Manager reserved native host session incarnation {nextIncarnation}."
+                NativeHostSessionIncarnation = nextIncarnation
             };
             await PersistAndPublishAsync(
                 reserved,
@@ -401,23 +402,32 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         var canonicalImage = await ReadBoundedImageAsync(statePath, cancellationToken);
         if (canonicalImage is not null)
         {
-            if (IsEnvelopeImage(canonicalImage))
+            if (IsCurrentStateImage(canonicalImage))
             {
                 var decoded = HostManagerRollbackStateEnvelopeCodec.Decode(canonicalImage);
                 rootManifest.ValidateExistingCanonical(canonicalImage);
-                PublishLoadedAuthority(
-                    decoded.State,
-                    decoded.Revision,
-                    canonicalImage,
-                    now);
+                PublishLoadedAuthority(decoded.State, decoded.Revision, canonicalImage, now);
                 return;
             }
 
-            var migrated = DecodeLegacyState(canonicalImage);
-            rootManifest.ValidateOrAdoptCanonical(canonicalImage);
+            var migrated = MigrateDisplayTextState(canonicalImage, statePath, out var revision, out var converted);
+            var backup = PreserveExactFile(statePath);
+            var manifestBackup = PreserveExactFile(manifestPath);
+            if (converted)
+            {
+                try { rootManifest.ValidateOrAdoptCanonical(canonicalImage); }
+                catch (InvalidDataException error)
+                {
+                    System.Diagnostics.Trace.TraceWarning("Old rollback root cannot be converted; its exact backup is retained: {0}", error.Message);
+                    converted = false;
+                    migrated = HostManagerRollbackStateDocument.Empty;
+                    revision = 0;
+                }
+            }
+            if (!converted) rootManifest.InitializeAfterPreservedReset(backup, manifestBackup);
             cachedDocument = migrated;
             persistedDocument = migrated;
-            persistedRevision = 0;
+            persistedRevision = revision;
             persistedCanonicalSha256 = SHA256.HashData(canonicalImage);
             canonicalAuthorityObserved = true;
             lastPersistedAt = now;
@@ -460,9 +470,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 continue;
             }
 
-            var candidate = IsEnvelopeImage(image)
+            var candidate = IsCurrentStateImage(image)
                 ? HostManagerRollbackStateEnvelopeCodec.Decode(image).State
-                : DecodeLegacyState(image);
+                : MigrateDisplayTextState(image, legacyPath, out _, out _);
+            PreserveExactFile(legacyPath);
             var identity = HostManagerRollbackStateEnvelopeCodec.Encode(candidate, revision: 1);
             if (selectedIdentity is not null
                 && !selectedIdentity.AsSpan().SequenceEqual(identity))
@@ -476,39 +487,6 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         }
 
         return selected;
-    }
-
-    private static HostManagerRollbackStateDocument DecodeLegacyState(byte[] image)
-    {
-        using var json = JsonDocument.Parse(
-            image.AsMemory(),
-            new JsonDocumentOptions
-            {
-                MaxDepth = HostManagerRollbackStateEnvelopeCodec.MaximumJsonDepth
-            });
-        var version = ReadVersion(json.RootElement);
-        var document = version switch
-        {
-            HostManagerRollbackStateDocument.CurrentVersion => NormalizeDocument(
-                json.RootElement.Deserialize<HostManagerRollbackStateDocument>(JsonOptions)),
-            1 => MigrateVersion1(
-                json.RootElement.Deserialize<LegacyHostManagerRollbackStateDocumentV1>(JsonOptions)),
-            _ => throw new InvalidDataException(
-                $"Host Manager rollback state version {version} is unsupported.")
-        };
-        return ReadStoredDocument(document);
-    }
-
-    private static bool IsEnvelopeImage(byte[] image)
-    {
-        using var json = JsonDocument.Parse(
-            image.AsMemory(),
-            new JsonDocumentOptions
-            {
-                MaxDepth = HostManagerRollbackStateEnvelopeCodec.MaximumJsonDepth
-            });
-        return json.RootElement.ValueKind == JsonValueKind.Object
-            && json.RootElement.TryGetProperty("schemaVersion", out _);
     }
 
     private static async Task<byte[]?> ReadBoundedImageAsync(
@@ -541,7 +519,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         await using (stream)
         {
             var length = stream.Length;
-            if (length is <= 0
+            if (length is < 0
                 || length > HostManagerRollbackStateEnvelopeCodec.MaximumCanonicalBytes
                 || length > int.MaxValue)
             {
@@ -580,7 +558,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         using (stream)
         {
             var length = stream.Length;
-            if (length is <= 0
+            if (length is < 0
                 || length > HostManagerRollbackStateEnvelopeCodec.MaximumCanonicalBytes
                 || length > int.MaxValue)
             {
@@ -780,14 +758,15 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         HostManagerRollbackStateDocument left, HostManagerRollbackStateDocument right)
     {
         if (left.Version != right.Version || left.LastRunAt != right.LastRunAt
-            || left.LastRestoreAt != right.LastRestoreAt || left.Message != right.Message)
+            || left.LastRestoreAt != right.LastRestoreAt || left.Coordinator != right.Coordinator)
             return false;
         for (var index = 0; index < left.AppliedPlacements.Count; index++)
         {
             var before = left.AppliedPlacements[index];
             var after = right.AppliedPlacements[index];
             if (before.TargetId != after.TargetId || before.SoftwareId != after.SoftwareId
-                || before.ResourceKind != after.ResourceKind || before.DisplayName != after.DisplayName
+                || before.ResourceKind != after.ResourceKind || before.ProcessId != after.ProcessId
+                || before.ProcessStartKey != after.ProcessStartKey || before.ProcessName != after.ProcessName
                 || before.AppliedAt != after.AppliedAt || before.UpdatedAt != after.UpdatedAt)
                 return false;
             for (var record = 0; record < before.Records.Count; record++)
@@ -903,10 +882,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             HostManagerRollbackStateDocument.CurrentVersion,
             document.LastRunAt,
             document.LastRestoreAt,
-            string.IsNullOrWhiteSpace(document.Message) ? HostManagerRollbackStateDocument.Empty.Message : document.Message,
             NormalizePlacements(document.AppliedPlacements ?? []))
         {
-            NativeHostSessionIncarnation = document.NativeHostSessionIncarnation
+            NativeHostSessionIncarnation = document.NativeHostSessionIncarnation,
+            Coordinator = document.Coordinator
         };
     }
 
@@ -928,75 +907,6 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 })
                 .ToArray()
         });
-    }
-
-    private static int ReadVersion(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Object
-            || !root.TryGetProperty("version", out var versionElement)
-            || versionElement.ValueKind != JsonValueKind.Number
-            || !versionElement.TryGetInt32(out var version))
-        {
-            throw new InvalidDataException("Host Manager rollback state has no valid version.");
-        }
-
-        return version;
-    }
-
-    private static HostManagerRollbackStateDocument MigrateVersion1(
-        LegacyHostManagerRollbackStateDocumentV1? legacy)
-    {
-        if (legacy is null)
-        {
-            throw new InvalidDataException("Host Manager rollback state document cannot be JSON null.");
-        }
-        if (legacy.Version != 1)
-        {
-            throw new InvalidDataException(
-                $"Host Manager rollback state version {legacy.Version} is unsupported.");
-        }
-        if (HasItems(legacy.PendingChanges)
-            || HasItems(legacy.AppliedTargets)
-            || HasItems(legacy.NativeActionAttempts))
-        {
-            throw new InvalidDataException(
-                "Host Manager rollback state v1 contains retired action authority and cannot be upgraded safely.");
-        }
-
-        return NormalizeDocument(new HostManagerRollbackStateDocument(
-            HostManagerRollbackStateDocument.CurrentVersion,
-            legacy.LastRunAt,
-            legacy.LastRestoreAt,
-            legacy.Message ?? HostManagerRollbackStateDocument.Empty.Message,
-            legacy.AppliedPlacements ?? [])
-        {
-            NativeHostSessionIncarnation = legacy.NativeHostSessionIncarnation
-        });
-    }
-
-    private static bool HasItems(JsonElement[]? values)
-        => values is { Length: > 0 };
-
-    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    private sealed class LegacyHostManagerRollbackStateDocumentV1
-    {
-        public int Version { get; init; }
-
-        public JsonElement[]? PendingChanges { get; init; }
-
-        public JsonElement[]? AppliedTargets { get; init; }
-
-        public DateTimeOffset? LastRunAt { get; init; }
-
-        public DateTimeOffset? LastRestoreAt { get; init; }
-
-        public string? Message { get; init; }
-
-        public IReadOnlyList<HostManagerAppliedPlacementReceipt>? AppliedPlacements { get; init; }
-
-        public JsonElement[]? NativeActionAttempts { get; init; }
-
-        public ulong NativeHostSessionIncarnation { get; init; }
     }
 
     private static IReadOnlyList<HostManagerAppliedPlacementReceipt> NormalizePlacements(

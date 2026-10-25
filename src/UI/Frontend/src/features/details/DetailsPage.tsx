@@ -12,6 +12,7 @@ import {
   TabsRoot,
   TabsTrigger
 } from "../../ui/primitives/Tabs.tsx";
+import type { SoftwareRecord } from "../../types.ts";
 import { uiText } from "../../text.ts";
 
 type DetailsTab = "device" | "gpu" | "cpu" | "report" | "targeted";
@@ -28,6 +29,7 @@ function detailsTabs(): Array<{ id: DetailsTab; label: string }> {
 }
 
 interface DetailsPageProps {
+  software: readonly SoftwareRecord[];
   runtimeCapabilities: RuntimeCapabilitiesStore;
   onOpenSoftwareSettings: (softwareId: string, softwareName: string) => void;
 }
@@ -85,7 +87,7 @@ export function DetailsPage(props: DetailsPageProps) {
           </TabsPanel>
           <TabsPanel value="report">
           <div class="details-resource-region">
-            <HostManagerSmartCoordinatorDetailsReport />
+            <HostManagerSmartCoordinatorDetailsReport software={props.software} />
           </div>
           </TabsPanel>
           <TabsPanel value="targeted">

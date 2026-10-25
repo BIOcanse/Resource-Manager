@@ -31,7 +31,7 @@ public sealed class HostManagerRollbackStateStoreTests
                 using (var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
                 {
                     await store.SaveAsync(document with { AppliedPlacements = document.AppliedPlacements.ToArray() }, CancellationToken.None);
-                    Assert.Equal(document.Message, (await store.LoadAsync(CancellationToken.None)).Message);
+                    Assert.Equal(document.Coordinator, (await store.LoadAsync(CancellationToken.None)).Coordinator);
                     store.Dispose();
                 }
                 Assert.Equal(committed, commits);
@@ -54,12 +54,12 @@ public sealed class HostManagerRollbackStateStoreTests
             {
                 var reserved = await store.ReserveNativeHostSessionIncarnationAsync(CancellationToken.None);
                 await store.SaveAsync(reserved, CancellationToken.None);
-                var transient = reserved with { Message = "new transient value" };
+                var transient = reserved with { Coordinator = new(1, 1919, 0, 0) };
                 await store.SaveAsync(transient, CancellationToken.None);
                 await store.SaveAsync(transient, CancellationToken.None);
             }
             using var reopened = new JsonHostManagerRollbackStateStore(path, time, TimeSpan.FromMinutes(1));
-            Assert.Equal("new transient value", (await reopened.LoadAsync(CancellationToken.None)).Message);
+            Assert.Equal(new HostManagerCoordinatorFacts(1, 1919, 0, 0), (await reopened.LoadAsync(CancellationToken.None)).Coordinator);
         }
         finally { Directory.Delete(root, recursive: true); }
     }
@@ -110,7 +110,7 @@ public sealed class HostManagerRollbackStateStoreTests
             var initial = HostManagerRollbackStateDocument.Empty with
             {
                 LastRunAt = time.GetUtcNow(),
-                Message = "initial"
+                Coordinator = new(1, 746, 0, 0)
             };
             await store.SaveAsync(initial, CancellationToken.None);
             Assert.False(File.Exists(path));
@@ -120,12 +120,12 @@ public sealed class HostManagerRollbackStateStoreTests
                 initial with
                 {
                     LastRunAt = time.GetUtcNow(),
-                    Message = "checkpoint"
+                    Coordinator = new(1, 1064, 0, 0)
                 },
                 CancellationToken.None);
 
             Assert.True(File.Exists(path));
-            Assert.Equal("checkpoint", ReadMessage(await File.ReadAllTextAsync(path)));
+            Assert.Equal(new HostManagerCoordinatorFacts(1, 1064, 0, 0), ReadCoordinator(await File.ReadAllTextAsync(path)));
             Assert.Empty(Directory.EnumerateFiles(root, "*.tmp"));
         }
         finally
@@ -152,7 +152,7 @@ public sealed class HostManagerRollbackStateStoreTests
                 var state = reserved with
                 {
                     AppliedPlacements = [Placement("cpu", "cpu-record")],
-                    Message = "placement"
+                    Coordinator = new(1, 953, 0, 0)
                 };
                 await store.SaveAsync(state, CancellationToken.None);
             }
@@ -243,7 +243,7 @@ public sealed class HostManagerRollbackStateStoreTests
     [Theory]
     [InlineData("null")]
     [InlineData("{not-json")]
-    public async Task LoadAsync_RejectsNullOrCorruptJson(string json)
+    public async Task LoadAsync_ResetsUnconvertibleOldJson(string json)
     {
         var root = CreateTempDirectory();
         var path = Path.Combine(root, "smart-optimization-state.json");
@@ -254,7 +254,7 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(DateTimeOffset.UtcNow),
                 TimeSpan.FromMinutes(1));
-            await Assert.ThrowsAnyAsync<Exception>(() => store.LoadAsync(CancellationToken.None));
+            Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
         }
         finally
         {
@@ -323,7 +323,7 @@ public sealed class HostManagerRollbackStateStoreTests
     [InlineData("pendingChanges")]
     [InlineData("appliedTargets")]
     [InlineData("nativeActionAttempts")]
-    public async Task LoadAsync_RejectsNonEmptyVersion1AuthorityWithoutOverwriting(string authorityProperty)
+    public async Task LoadAsync_PreservesNonEmptyVersion1AuthorityAndStartsEmpty(string authorityProperty)
     {
         var root = CreateTempDirectory();
         var path = Path.Combine(root, "smart-optimization-state.json");
@@ -336,9 +336,10 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(DateTimeOffset.UtcNow),
                 TimeSpan.FromMinutes(1));
-            await Assert.ThrowsAsync<InvalidDataException>(() => store.LoadAsync(CancellationToken.None));
+            Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
 
-            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(path));
+            var backup = Assert.Single(Directory.GetFiles(root, "smart-optimization-state.json.*.backup"));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
             Assert.Empty(Directory.EnumerateFiles(root, "*.tmp"));
         }
         finally
@@ -350,7 +351,7 @@ public sealed class HostManagerRollbackStateStoreTests
     [Theory]
     [InlineData(1, true)]
     [InlineData(99, false)]
-    public async Task LoadAsync_RejectsUnknownFieldsOrVersionsWithoutOverwriting(
+    public async Task LoadAsync_PreservesUnknownOldFormatAndStartsEmpty(
         int version,
         bool includeUnknownField)
     {
@@ -368,9 +369,10 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(DateTimeOffset.UtcNow),
                 TimeSpan.FromMinutes(1));
-            await Assert.ThrowsAnyAsync<Exception>(() => store.LoadAsync(CancellationToken.None));
+            Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
 
-            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(path));
+            var backup = Assert.Single(Directory.GetFiles(root, "smart-optimization-state.json.*.backup"));
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
             Assert.Empty(Directory.EnumerateFiles(root, "*.tmp"));
         }
         finally
@@ -434,7 +436,7 @@ public sealed class HostManagerRollbackStateStoreTests
             var accepted = HostManagerRollbackStateDocument.Empty with
             {
                 LastRunAt = time.GetUtcNow(),
-                Message = "accepted"
+                Coordinator = new(1, 825, 0, 0)
             };
             await store.SaveAsync(accepted, CancellationToken.None);
             time.Advance(TimeSpan.FromMinutes(1));
@@ -443,16 +445,16 @@ public sealed class HostManagerRollbackStateStoreTests
                 accepted with
                 {
                     LastRunAt = time.GetUtcNow(),
-                    Message = "rejected"
+                    Coordinator = new(1, 838, 0, 0)
                 },
                 CancellationToken.None));
             Assert.Equal(
                 HostManagerRollbackStateCommitOutcome.NotCommitted,
                 exception.Outcome);
 
-            Assert.Equal("accepted", (await store.LoadAsync(CancellationToken.None)).Message);
+            Assert.Equal(new HostManagerCoordinatorFacts(1, 825, 0, 0), (await store.LoadAsync(CancellationToken.None)).Coordinator);
             store.Dispose();
-            Assert.Equal("accepted", ReadMessage(await File.ReadAllTextAsync(path)));
+            Assert.Equal(new HostManagerCoordinatorFacts(1, 825, 0, 0), ReadCoordinator(await File.ReadAllTextAsync(path)));
         }
         finally
         {
@@ -464,21 +466,19 @@ public sealed class HostManagerRollbackStateStoreTests
     private static HostManagerAppliedPlacementReceipt Placement(string resourceKind, string recordId)
         => new(
             "target",
-            "Target",
             "software",
             resourceKind,
             [new HostManagerAppliedRecord(HostManagerAppliedRecordKinds.CpuAffinity, recordId)],
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
 
-    private static string ReadMessage(string json)
+    private static HostManagerCoordinatorFacts? ReadCoordinator(string json)
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement
             .GetProperty("state")
-            .GetProperty("message")
-            .GetString()
-            ?? string.Empty;
+            .GetProperty("coordinator")
+            .Deserialize<HostManagerCoordinatorFacts>(WebJson);
     }
 
     private static string CreateLegacyVersion1Json(

@@ -120,7 +120,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         await restored.StopAsync(CancellationToken.None);
         var trust = Assert.Single((await restored.GetReportsAsync(CancellationToken.None)).TrustedTargets);
         Assert.Equal("process:424242:1234", trust.TargetKey);
-        Assert.Equal("pwsh", trust.DisplayName);
+        Assert.Equal("pwsh", trust.Name);
         Assert.True(await restored.RemoveTrustedTargetAsync(trust.Id, CancellationToken.None));
     }
 

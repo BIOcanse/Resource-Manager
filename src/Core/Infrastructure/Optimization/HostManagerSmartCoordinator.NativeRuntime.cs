@@ -928,9 +928,8 @@ public sealed partial class HostManagerSmartCoordinator
             LastRunAt = snapshot.ObservedAtMilliseconds == 0
                 ? state.LastRunAt
                 : DateTimeOffset.FromUnixTimeMilliseconds(snapshot.ObservedAtMilliseconds),
-            Message = $"Host Manager Zig coordinator revision {snapshot.StateRevision}; "
-                + $"pending {snapshot.PendingCount}, inflight {snapshot.InflightCount}, "
-                + $"reasons 0x{(ulong)snapshot.ReasonMask:X}."
+            Coordinator = new(snapshot.StateRevision, snapshot.PendingCount,
+                snapshot.InflightCount, (ulong)snapshot.ReasonMask)
         };
     }
 

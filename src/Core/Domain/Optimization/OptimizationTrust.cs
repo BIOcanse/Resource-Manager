@@ -11,11 +11,10 @@ public sealed record TrustedOptimizationTarget(
     string Id,
     string TargetType,
     string TargetKey,
-    string DisplayName,
+    string Name,
     string ReportType,
     string ResourceKind,
     DateTimeOffset TrustedAt,
-    string TrustedReason,
     string CreatedFromReportId,
     DateTimeOffset? LastVerifiedAt,
     string State);

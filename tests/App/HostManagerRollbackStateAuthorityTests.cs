@@ -46,7 +46,6 @@ public sealed class HostManagerRollbackStateAuthorityTests
             [
                 new HostManagerAppliedPlacementReceipt(
                     "target",
-                    "Target",
                     "software",
                     "gpu",
                     [new HostManagerAppliedRecord("CpuAffinity", "record")],
@@ -366,7 +365,7 @@ public sealed class HostManagerRollbackStateAuthorityTests
             var reserved = await store.ReserveNativeHostSessionIncarnationAsync(
                 CancellationToken.None);
             var externalImage = HostManagerRollbackStateEnvelopeCodec.Encode(
-                reserved with { Message = "external mutation" },
+                reserved with { Coordinator = new(1, 0, 0, 0) },
                 revision: 1);
             await File.WriteAllBytesAsync(path, externalImage);
 
@@ -620,7 +619,6 @@ public sealed class HostManagerRollbackStateAuthorityTests
             [
                 new HostManagerAppliedPlacementReceipt(
                     "target",
-                    "Target",
                     "software",
                     "gpu",
                     [new HostManagerAppliedRecord(kind, "record")],
@@ -673,10 +671,11 @@ public sealed class HostManagerRollbackStateAuthorityTests
 
     private static Task WriteLegacyVersion2Async(string path, ulong incarnation)
     {
-        var state = HostManagerRollbackStateDocument.Empty with
+        var state = new
         {
-            NativeHostSessionIncarnation = incarnation,
-            Message = "legacy"
+            Version = 2, LastRunAt = (DateTimeOffset?)null, LastRestoreAt = (DateTimeOffset?)null,
+            Message = "legacy", AppliedPlacements = Array.Empty<object>(),
+            NativeHostSessionIncarnation = incarnation
         };
         return File.WriteAllTextAsync(
             path,

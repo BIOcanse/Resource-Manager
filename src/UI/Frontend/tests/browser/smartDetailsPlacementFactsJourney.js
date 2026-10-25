@@ -11,7 +11,7 @@ export default async function smartDetailsPlacementFactsJourney(page, baseUrl) {
       optimizationRuntime: true,
       smartPlacements: [{
         targetId: "software:frontend-harness.software",
-        displayName: "Harness App",
+        processName: "Harness App", processId: 42, processStartKey: "133700000000000000",
         softwareId: "frontend-harness.software",
         resourceKind: "cpu",
         records: [{ kind: "cpu_affinity", recordId: "placement-fixture" }],
@@ -35,10 +35,10 @@ export default async function smartDetailsPlacementFactsJourney(page, baseUrl) {
   assert.equal(await report.locator(".smart-details-summary .smart-details-tile").count(), 1);
   assert.equal(await record.locator(".smart-details-record-metrics span").count(), 0,
     "A placement receipt without execution metadata must not be labeled completed or needs-attention");
-  assert.match(await record.textContent() ?? "", /Harness App/);
+  assert.match(await record.textContent() ?? "", /Harness App（进程 42）/);
 
   await record.getByRole("button", { name: "详细信息", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Harness App详细信息", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Harness App（进程 42）详细信息", exact: true });
   await dialog.waitFor();
   const detailRows = dialog.locator(".user-details-row");
   const labels = await detailRows.locator("dt").allTextContents();

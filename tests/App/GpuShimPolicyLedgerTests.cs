@@ -220,6 +220,6 @@ public sealed class GpuShimPolicyLedgerTests
         };
 
     internal static HostManagerAppliedPlacementReceipt Placement(HostManagerAppliedRecord record)
-        => new("process-target", "GPU policy test", "software", OptimizationResourceKinds.Gpu,
+        => new("process-target", "software", OptimizationResourceKinds.Gpu,
             [record], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 }

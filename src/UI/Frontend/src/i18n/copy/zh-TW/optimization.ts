@@ -1,7 +1,7 @@
 export const zhOptimizationCopy = {
   optimization: {
     evaluationPending: "尚未完成報告評估。",
-    evaluationFailed: (reason: string) => `無法完成報告評估，原因：${reason}。`,
+    evaluationFailed: () => "無法完成報告評估。",
     rulesUnavailable: (count: number) => `部分規則無法使用（${count} 條）；仍可查看其餘規則的報告。`,
     scheduleStateLabel: "最佳化排程狀態",
     modeBar: "效能最佳化模式",

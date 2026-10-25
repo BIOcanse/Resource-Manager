@@ -150,7 +150,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     const target = report.target;
     const matched = management.software().find((item) =>
       textOrEmpty(item.id).toLowerCase() === textOrEmpty(target.softwareId ?? target.targetKey).toLowerCase()
-      || normalizeName(item.name) === normalizeName(target.displayName));
+      || normalizeName(item.name) === normalizeName(target.softwareName ?? target.name));
     if (!matched) {
       showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.softwareListNoMatch });
       return;

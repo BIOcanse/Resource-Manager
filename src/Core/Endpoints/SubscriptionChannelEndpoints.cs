@@ -298,10 +298,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     services.GetRequiredService<ICpuCoreResidencyReader>(),
                     interval)),
             ["/api/optimization/smart/state/subscribe"] =
-                new((subscription, services, interval) => CompileAlignedPeriodicAsyncSubscription(
-                    subscription,
-                    services.GetRequiredService<IHostManagerSmartCoordinator>().GetStateAsync,
-                    interval)),
+                new((subscription, services, interval) =>
+                {
+                    var coordinator = services.GetRequiredService<IHostManagerSmartCoordinator>();
+                    return CompileAlignedPeriodicAsyncSubscription(subscription,
+                        cancellationToken => HostManagerSmartStateWireProjection.ReadAsync(coordinator, cancellationToken), interval);
+                }),
             // 优化页的调度状态：模式、是否运行、故障关闭、待确认与已优化对象数都由协调器一次合成。
             ["/api/optimization/smart/status/subscribe"] =
                 new((subscription, services, interval) => CompileAlignedPeriodicAsyncSubscription(

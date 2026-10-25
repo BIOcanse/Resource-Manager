@@ -12,6 +12,7 @@ partial class HostManagerRollbackStateEnvelopeCodec
 {
     [System.Text.Json.Serialization.JsonSourceGenerationOptions(GenerationMode = System.Text.Json.Serialization.JsonSourceGenerationMode.Metadata)]
     [System.Text.Json.Serialization.JsonSerializable(typeof(HostManagerRollbackStateDocument))]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(HostManagerCoordinatorFacts))]
     [System.Text.Json.Serialization.JsonSerializable(typeof(HostManagerRollbackStateEnvelope))]
     private partial class HostManagerRollbackStateEnvelopeCodecJsonContext : System.Text.Json.Serialization.JsonSerializerContext;
 }

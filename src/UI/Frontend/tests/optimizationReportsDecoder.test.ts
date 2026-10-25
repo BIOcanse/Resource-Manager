@@ -19,7 +19,6 @@ for (const evaluationState of ["completed", "failed", "notEvaluated"] as const) 
     evaluationFailureReason: evaluationState === "failed" ? "IOException: failed" : null } };
   const status = optimizationReportsDecoder.decode(value).status;
   assert.equal(status.evaluationState, evaluationState);
-  assert.equal(status.evaluationFailureReason, value.status.evaluationFailureReason);
   assert.deepEqual(status.unavailableRules, ["cpu_throttle_temperature"]);
 }
 
@@ -27,7 +26,6 @@ const invalidCases: Array<[unknown, string]> = [
   [null, "$"],
   [{ ...source, status: { ...source.status, unavailableRules: [] } }, "$.status.unavailableRules"],
   [{ ...source, status: { ...source.status, evaluationState: "ready" } }, "$.status.evaluationState"],
-  [{ ...source, status: { ...source.status, evaluationFailureReason: 3 } }, "$.status.evaluationFailureReason"],
   [{ ...source, status: { ...source.status, unavailableRules: null } }, "$.status.unavailableRules"],
   [{ ...source, capturedAt: "not-a-date" }, "$.capturedAt"],
   [{ ...source, status: { ...source.status, configuredRuleCount: undefined } },

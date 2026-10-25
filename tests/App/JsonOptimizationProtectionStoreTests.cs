@@ -34,7 +34,7 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
 
         await store.SaveAsync([restored], CancellationToken.None);
         using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(StoragePath()));
-        var savedTarget = Assert.Single(saved.RootElement.EnumerateArray());
+        var savedTarget = Assert.Single(saved.RootElement.GetProperty("targets").EnumerateArray());
         Assert.Equal(OptimizationReportTargetTypes.PhysicalDisk,
             savedTarget.GetProperty("targetType").GetString());
         Assert.Equal("high_performance", savedTarget.GetProperty("softwareKind").GetString());
@@ -46,7 +46,7 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
     [InlineData("targetType", "unknown_target")]
     [InlineData("softwareKind", "unknown_software_kind")]
     [InlineData("state", "unknown_state")]
-    public async Task UnknownStoredValuesFailWithInvalidDataException(string field, string value)
+    public async Task UnconvertibleOldValuesAreBackedUpAndStartEmpty(string field, string value)
     {
         var target = CreateTarget() with
         {
@@ -56,8 +56,56 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
         };
         await WriteTargetsAsync([target]);
 
-        await Assert.ThrowsAsync<InvalidDataException>(
-            () => CreateStore().LoadAsync(CancellationToken.None));
+        var original = await File.ReadAllBytesAsync(StoragePath());
+        Assert.Empty(await CreateStore().LoadAsync(CancellationToken.None));
+        var backup = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
+        Assert.Equal(original, await File.ReadAllBytesAsync(backup));
+    }
+
+    [Fact]
+    public async Task LegacyDisplayTextIsBackedUpExactlyAndMigratedOnce()
+    {
+        const string original = """
+            [{"id":"protect:app","targetType":"software","targetKey":"software:app","displayName":"App display",
+              "softwareId":"app","softwareName":"App","softwareKind":"other","protectedAt":"2026-10-24T00:00:00Z",
+              "protectedReason":"用户从性能优化报告中设为保护级。","createdFromReportId":"report:app","lastVerifiedAt":null,
+              "state":"active","allowsPlacementAvoidance":true,"protectionLevel":2}]
+            """;
+        Directory.CreateDirectory(Path.GetDirectoryName(StoragePath())!);
+        await File.WriteAllTextAsync(StoragePath(), original);
+        var originalBytes = await File.ReadAllBytesAsync(StoragePath());
+        var target = Assert.Single(await CreateStore().LoadAsync(default));
+        Assert.Equal("App", target.SoftwareName);
+        Assert.Equal("report", target.ProtectionSource);
+        var backup = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
+        var current = await File.ReadAllBytesAsync(StoragePath());
+        using var json = JsonDocument.Parse(current);
+        Assert.Equal(1, json.RootElement.GetProperty("version").GetInt32());
+        var item = Assert.Single(json.RootElement.GetProperty("targets").EnumerateArray());
+        Assert.False(item.TryGetProperty("displayName", out _));
+        Assert.False(item.TryGetProperty("protectedReason", out _));
+        Assert.Equal("report", item.GetProperty("protectionSource").GetString());
+        Assert.Single(await CreateStore().LoadAsync(default));
+        Assert.Equal(current, await File.ReadAllBytesAsync(StoragePath()));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
+    }
+
+    [Theory]
+    [InlineData("not JSON")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("")]
+    public async Task UnconvertibleOldFileStartsEmptyWithExactBackup(string original)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StoragePath())!);
+        await File.WriteAllTextAsync(StoragePath(), original);
+        var originalBytes = await File.ReadAllBytesAsync(StoragePath());
+        Assert.Empty(await CreateStore().LoadAsync(default));
+        var backup = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
+        Assert.Empty(await CreateStore().LoadAsync(default));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
     }
 
     public void Dispose()
@@ -93,7 +141,6 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
             "protect:app",
             OptimizationReportTargetTypes.Software,
             "software:app",
-            "App",
             "app",
             "App",
             "other",

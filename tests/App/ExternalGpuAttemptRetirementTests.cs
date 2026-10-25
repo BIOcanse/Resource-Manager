@@ -217,7 +217,7 @@ public sealed class ExternalGpuAttemptRetirementTests
             new Dictionary<string, string> { ["runtimeActionResult"] = JsonSerializer.Serialize(result) });
         return HostManagerRollbackStateDocument.Empty with
         {
-            AppliedPlacements = [new("target", "Target", "software", "Gpu", [record], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)]
+            AppliedPlacements = [new("target", "software", "Gpu", [record], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)]
         };
     }
 }

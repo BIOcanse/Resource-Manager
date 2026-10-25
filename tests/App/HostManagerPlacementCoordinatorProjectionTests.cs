@@ -60,7 +60,7 @@ public sealed class HostManagerPlacementCoordinatorProjectionTests
             [ExternalGpuRuntimePlacementRecord.SettledKey] = "true",
             [ExternalGpuRuntimePlacementRecord.ResultKey] = System.Text.Json.JsonSerializer.Serialize(result)
         } };
-        var placement = new HostManagerAppliedPlacementReceipt("target", "Target", null, "gpu",
+        var placement = new HostManagerAppliedPlacementReceipt("target", null, "gpu",
             [pending], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
         var output = new NativePlacementAppliedInput[1];
         HostManagerPlacementCoordinatorProjection.ProjectApplied([placement], output);
@@ -246,7 +246,7 @@ public sealed class HostManagerPlacementCoordinatorProjectionTests
             var placement = Placement(oldRecord) with
             {
                 TargetId = "target:处理器🎮",
-                DisplayName = "目标🎮"
+                ProcessName = "目标🎮"
             };
             var placeholder = new HostManagerAppliedRecord(
                 HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
@@ -346,7 +346,6 @@ public sealed class HostManagerPlacementCoordinatorProjectionTests
     private static HostManagerAppliedPlacementReceipt Placement(params HostManagerAppliedRecord[] records)
         => new(
             "target",
-            "Target",
             null,
             "cpu",
             records,

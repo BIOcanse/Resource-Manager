@@ -12,6 +12,8 @@ import {
   requireString
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
+import { decodeCoordinatorFacts } from "../../api/hostManagerRollbackWire.ts";
+
 const optimizationModes = [
   "normal", "limited", "cpu", "gpu",
   "memory+cpu", "memory+gpu", "cpu+gpu", "smart"
@@ -37,7 +39,7 @@ export function decodeHostManagerSmartCoordinatorStatus(
       record.faultClosedReason,
       "$.faultClosedReason",
       requireString),
-    message: requireString(record.message, "$.message")
+    coordinator: decodeCoordinatorFacts(record.coordinator)
   };
 }
 

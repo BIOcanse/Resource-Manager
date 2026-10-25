@@ -1,5 +1,6 @@
 export const zhRuntimeAndReportsCopy = {
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name}（进程 ${pid}）`,
     panel: "智能调度报告",
     loading: "正在读取",
     unavailable: "状态不可用",

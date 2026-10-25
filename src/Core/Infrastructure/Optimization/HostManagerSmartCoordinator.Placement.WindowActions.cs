@@ -61,7 +61,8 @@ public sealed partial class HostManagerSmartCoordinator
     private async Task<HostManagerRollbackStateDocument> PersistGpuActionCheckpointAsync(
         HostManagerRollbackStateDocument state, string message, CancellationToken cancellationToken)
     {
-        var checkpoint = state with { LastRunAt = durableTimeSource.NextUtc(), Message = message };
+        logger.LogDebug("{Checkpoint}", message);
+        var checkpoint = state with { LastRunAt = durableTimeSource.NextUtc() };
         await stateStore.SaveAsync(checkpoint, cancellationToken).ConfigureAwait(false);
         return checkpoint;
     }

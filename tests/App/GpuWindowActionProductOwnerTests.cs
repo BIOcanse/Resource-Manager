@@ -42,7 +42,7 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
             var placement = state.AppliedPlacements[0];
             var desired = new HostManagerPlacementDesired(placement, placement.Records[0], 30)
             {
-                RuntimeGpuAction = new(new(placement.TargetId, placement.SoftwareId, placement.DisplayName,
+                RuntimeGpuAction = new(new(placement.TargetId, placement.SoftwareId, placement.ProcessName ?? "private-window",
                     [new(request.ProcessId, (ulong)request.CreationFileTimeUtc, "private-window", window.Identity.ExecutablePath)],
                     "fixture", 123, "window-rerender"), [2],
                     new Dictionary<int, GpuGraphicsApi> { [request.ProcessId] = GpuGraphicsApi.D3D11 })

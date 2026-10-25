@@ -30,7 +30,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var trust = await reportService.DismissReportAsync(id, cancellationToken);
-            return trust is null ? Results.NotFound(new EndpointErrorPayload("报告不存在或已经失效。")) : Results.Ok(trust);
+            return trust is null ? Results.NotFound(new EndpointErrorPayload("optimization-report-not-found")) : Results.Ok(trust);
         });
 
         app.MapDelete("/api/optimization/trust/{id}", async (
@@ -40,7 +40,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             return await reportService.RemoveTrustedTargetAsync(id, cancellationToken)
                 ? Results.NoContent()
-                : Results.NotFound(new EndpointErrorPayload("信任项不存在。"));
+                : Results.NotFound(new EndpointErrorPayload("optimization-trust-not-found"));
         });
 
         return app;

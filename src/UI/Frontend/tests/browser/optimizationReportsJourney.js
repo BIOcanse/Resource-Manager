@@ -125,7 +125,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     `Manual refresh did not publish through POST twice: ${JSON.stringify(reportRequests)}`);
 
   for (const [state, message] of [
-    ["evaluation-failed", "无法完成报告评估，原因：IOException。"],
+    ["evaluation-failed", "无法完成报告评估。"],
     ["partial", "部分规则不可用（1 条）；其余规则的报告仍可查看。"]
   ]) {
     await postScenario({ optimizationReports: state });
@@ -188,7 +188,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   let deleteCount = 0;
   const overview = await (await fetch(`${baseUrl}/api/optimization/reports`)).json();
   const identity = { id: "hm-trust-editor", targetType: "software", targetKey: "software:editor",
-    displayName: "Editor", reportType: "background_high_usage", resourceKind: "memory",
+    name: "Editor", reportType: "background_high_usage", resourceKind: "memory",
     trustedAt: overview.capturedAt, trustedReason: "", createdFromReportId: "former-report",
     lastVerifiedAt: overview.capturedAt, state: "active" };
   const fulfillOverview = route => route.fulfill({ json: { ...overview, reports: [],
@@ -208,7 +208,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.unroute("**/api/optimization/reports", fulfillOverview);
   await page.unroute("**/api/optimization/reports/refresh", fulfillOverview);
   let strayTrusted = false;
-  const strayTarget = { targetType: "process_instance", targetKey: "process:424242:134000000000000000", displayName: "pwsh",
+  const strayTarget = { targetType: "process_instance", targetKey: "process:424242:134000000000000000", name: "pwsh",
     softwareId: "tool", softwareName: "PowerShell", softwareKind: "other", displayKind: "other", processNames: ["pwsh"], processIds: [424242], driveLetter: null };
   const strayTrust = { ...identity, id: "hm-trust-stray", ...strayTarget, reportType: "suspected_stray_process", createdFromReportId: "stray-report" };
   const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "active", severity: "info", confidence: "high",
@@ -240,13 +240,13 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     "Stray report must render localized structured evidence");
   strayEvaluationFailed = true;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await page.getByText("无法完成报告评估，原因：IOException: fixture failure。", { exact: true }).waitFor();
+  await page.getByText("无法完成报告评估。", { exact: true }).waitFor();
   assert(await strayCard.isVisible(), "Evaluation failure discarded the committed report row");
   assert(await strayCard.getByRole("button", { name: "忽略", exact: true }).isEnabled(),
     "Unavailable evaluation must not block trusting a committed report");
   strayEvaluationFailed = false;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
-  await page.getByText("无法完成报告评估，原因：IOException: fixture failure。", { exact: true }).waitFor({ state: "detached" });
+  await page.getByText("无法完成报告评估。", { exact: true }).waitFor({ state: "detached" });
   await strayCard.getByRole("button", { name: "详细信息", exact: true }).click();
   const detail = page.getByRole("dialog");
   await detail.getByText('pwsh -File "stray-check.ps1"', { exact: true }).waitFor();
@@ -274,7 +274,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     await page.getByRole("navigation").getByRole("button", { name: app.page.optimization, exact: true }).click();
     await page.getByText(app.optimization.empty, { exact: true }).waitFor();
     for (const [state, message] of [
-      ["evaluation-failed", app.optimization.evaluationFailed("IOException")],
+      ["evaluation-failed", app.optimization.evaluationFailed()],
       ["partial", app.optimization.rulesUnavailable(1)]
     ]) {
       await postScenario({ optimizationReports: state });

@@ -49,8 +49,7 @@ public sealed record OptimizationReportEvidence(
     string ValueUnit,
     int ActiveSampleCount,
     int SampleCount,
-    double DurationSeconds,
-    IReadOnlyList<string> Details)
+    double DurationSeconds)
 {
     public OptimizationProcessEvidence? Process { get; init; }
 }

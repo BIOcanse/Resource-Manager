@@ -335,7 +335,7 @@ public sealed partial class HostManagerSmartCoordinator
                 target.DisplayName,
                 processId,
                 processStartKey,
-                target.ProcessNames.Count == 1 ? target.ProcessNames[0] : target.DisplayName,
+                target.ProcessNames.Count == 1 ? target.ProcessNames[0] : string.Empty,
                 target.ExecutablePaths.Count == 1 ? target.ExecutablePaths[0] : null,
                 target.CanApplyPhysicalCorePlacement,
                 target.GpuPlacementPolicy,
@@ -616,12 +616,13 @@ public sealed partial class HostManagerSmartCoordinator
         var now = durableTimeSource.NextUtc();
         var placement = new HostManagerAppliedPlacementReceipt(
             planned.Process.TargetId,
-            planned.Process.DisplayName,
             planned.Process.SoftwareId,
             OptimizationResourceKinds.Cpu,
             [record],
             existing?.AppliedAt ?? now,
-            now);
+            now) { ProcessId = planned.Process.ProcessId,
+                ProcessStartKey = planned.Process.ProcessStartKey.ToString(CultureInfo.InvariantCulture),
+                ProcessName = planned.Process.ProcessName };
         return new HostManagerPlacementDesired(
             placement,
             record,
@@ -1298,11 +1299,11 @@ public sealed partial class HostManagerSmartCoordinator
         string message,
         CancellationToken cancellationToken)
     {
+        logger.LogDebug("{Checkpoint}", message);
         await SaveRollbackStateAsync(
             state with
             {
-                LastRunAt = durableTimeSource.NextUtc(),
-                Message = message
+                LastRunAt = durableTimeSource.NextUtc()
             },
             cancellationToken);
     }

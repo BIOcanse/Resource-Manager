@@ -96,7 +96,7 @@ for (const language of languageOptions) {
   assert(softwareIssueMessage(catalog).includes("WinRing0x64.sys 1.2.0.5"));
   assert.equal(softwareIssueReferenceLabel({ label: "后端引用", url: "https://learn.microsoft.com/microsoft-recommended-driver-block-rules" }), uiText.management.issueText.driverReference);
   assert.equal(softwareIssueReferenceLabel({ label: "CVE-2020-14979", url: "https://nvd.nist.gov/vuln/detail/CVE-2020-14979" }), "CVE-2020-14979");
-  const report = { type: "system_interrupt_pressure", title: "", message: "", target: { targetType: "system", displayName: "", processNames: [] },
+  const report = { type: "system_interrupt_pressure", title: "", message: "", target: { targetType: "system", name: "", processNames: [] },
     context: null, evidence: { resourceKind: "system_interrupt", currentValue: 12, averageValue: 11, peakValue: 12, valueUnit: "ms", durationSeconds: 0, activeSampleCount: 1 },
     severity: "warning" } as unknown as OptimizationReportItem;
   const presentation = presentOptimizationReport(report);
@@ -106,14 +106,14 @@ for (const language of languageOptions) {
     ...report,
     type: "background_high_usage",
     severity: "critical",
-    target: { ...report.target, targetType: "software", displayName: "Game App" },
-    context: { contextKind: "game", foregroundSoftwareName: "Game App" },
+    target: { ...report.target, targetType: "software", name: "Game App" },
+    context: { contextKind: "game", evidence: [], foregroundSoftwareName: "Game App" },
     evidence: { ...report.evidence, resourceKind: "cpu" }
   } as OptimizationReportItem);
   assert(contextual.title.length > 0);
   assert(JSON.stringify(contextual.details).includes("Game App"), `${language.id}: game context display`);
   const stray = { ...report, type: "suspected_stray_process", severity: "info", confidence: "high",
-    target: { ...report.target, targetType: "process_instance", displayName: "pwsh", processIds: [42] },
+    target: { ...report.target, targetType: "process_instance", name: "pwsh", processIds: [42] },
     evidence: { ...report.evidence, resourceKind: "memory", currentValue: 1, valueUnit: "B",
       process: { processId: 42, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
         idleDurationSeconds: 900, commandLine: 'pwsh -File "任务.ps1"' } }

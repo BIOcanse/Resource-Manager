@@ -275,7 +275,6 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             {
                 LastEvaluationAt = DateTimeOffset.UtcNow,
                 EvaluationState = "completed",
-                EvaluationFailureReason = null
             } };
         }
         PruneRetainedMetadata(state, model);
@@ -497,7 +496,6 @@ internal sealed partial class HostManagerReportCoordinatorOwner
                 SampleIntervalSeconds)
             {
                 EvaluationState = evaluation.EvaluationState,
-                EvaluationFailureReason = evaluation.EvaluationFailureReason,
                 UnavailableRules = unavailableRules
             },
             softwareIssueSignals,

@@ -14,7 +14,7 @@ const wire = {
   pendingChangeCount: 3,
   appliedTargetCount: 92,
   faultClosedReason: "effect-scope-load-failed:UnauthorizedAccessException",
-  message: "ready"
+  coordinator: { revision: "18446744073709551615", pendingCount: 3, inflightCount: 0, reasonMask: "137438953616" }
 };
 assert.deepEqual(decodeHostManagerSmartCoordinatorStatus(wire), wire);
 assert.deepEqual(hostManagerSmartStatusDecoder.decode(wire), wire);
@@ -42,3 +42,11 @@ assert.equal(
   "/api/optimization/smart/status/subscribe?intervalMs=1");
 
 console.log("host manager smart status source: ok");
+
+assert.equal("message" in decodeHostManagerSmartCoordinatorStatus(wire), false);
+for (const invalid of ["-1", "1.5", "18446744073709551616", 62, null]) {
+  assert.throws(() => decodeHostManagerSmartCoordinatorStatus({ ...wire,
+    coordinator: { ...wire.coordinator, revision: invalid } }));
+}
+assert.throws(() => decodeHostManagerSmartCoordinatorStatus({ ...wire,
+  coordinator: { ...wire.coordinator, pendingCount: -1 } }));

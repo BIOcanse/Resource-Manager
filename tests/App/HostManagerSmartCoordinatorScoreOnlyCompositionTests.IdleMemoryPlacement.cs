@@ -25,8 +25,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ["appliedAffinityMask"] = "0x2"
             });
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false);
-        var placement = new HostManagerAppliedPlacementReceipt(HostManagerTargetIdentity.CreateProcessTargetId(pid, start),
-            "live process", "software:live-process", "cpu", [record], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var placement = new HostManagerAppliedPlacementReceipt(HostManagerTargetIdentity.CreateProcessTargetId(pid, start), "software:live-process", "cpu", [record], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         fixture.StateStore.Current = fixture.StateStore.Current with { AppliedPlacements = [placement] };
         fixture.ProcessPolicyWriter.PlacementReadHandler = (_, _) =>
             RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(new(pid, startedAt, "fixture", null, 2, null, null, null));
@@ -60,8 +59,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ["appliedProcessorGroup"] = "0", ["appliedProcessorNumber"] = "1"
             })).ToArray();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false);
-        var placement = new HostManagerAppliedPlacementReceipt(HostManagerTargetIdentity.CreateProcessTargetId(pid, start),
-            "exited game", "software:exited-game", "cpu", records, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var placement = new HostManagerAppliedPlacementReceipt(HostManagerTargetIdentity.CreateProcessTargetId(pid, start), "software:exited-game", "cpu", records, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         fixture.StateStore.Current = fixture.StateStore.Current with { AppliedPlacements = [placement] };
         fixture.ProcessPolicyWriter.IdealReadHandler = (_, _, _) =>
             RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(87, "thread exited");

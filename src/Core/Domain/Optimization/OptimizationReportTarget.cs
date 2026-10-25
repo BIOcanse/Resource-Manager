@@ -16,7 +16,7 @@ public static class OptimizationReportTargetTypes
 public sealed record OptimizationReportTarget(
     string TargetType,
     string TargetKey,
-    string DisplayName,
+    string Name,
     string? SoftwareId,
     string? SoftwareName,
     string? SoftwareKind,

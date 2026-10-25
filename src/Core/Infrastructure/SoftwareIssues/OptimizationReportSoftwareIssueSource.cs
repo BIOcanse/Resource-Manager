@@ -56,12 +56,8 @@ public sealed class OptimizationReportSoftwareIssueSource(
                             .First()
                             .Severity,
                         SoftwareIssueSources.DynamicReport,
-                        first.Label,
-                        string.Join(
-                            " | ",
-                            signals.Select(static signal => signal.Message)
-                                .Where(static message => !string.IsNullOrWhiteSpace(message))
-                                .Distinct(StringComparer.Ordinal)),
+                        string.Empty,
+                        string.Empty,
                         Dynamic: true,
                         [],
                         signals.Select(static signal => signal.ReportId)

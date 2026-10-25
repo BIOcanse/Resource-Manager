@@ -340,7 +340,7 @@ function reportSourceObservation(
     const capturedAt = snapshot.capturedAt ?? snapshot.data.capturedAt;
     if (status.evaluationState !== "completed") {
       return backendRetainedObservation(capturedAt, status.evaluationState === "failed"
-        ? uiText.optimization.evaluationFailed(status.evaluationFailureReason ?? "")
+        ? uiText.optimization.evaluationFailed()
         : uiText.optimization.evaluationPending);
     }
     if (status.unavailableRules.length > 0) {

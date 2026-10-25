@@ -19,8 +19,6 @@ public sealed record OptimizationSoftwareIssueSignal(
     string ReportId,
     string Kind,
     string Severity,
-    string Label,
-    string Message,
     string? SoftwareId,
     string? ArtifactPath)
 {

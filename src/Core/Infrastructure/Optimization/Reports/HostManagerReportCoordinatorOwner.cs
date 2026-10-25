@@ -418,8 +418,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                 Status = current.Status with
                 {
                     LastEvaluationAt = DateTimeOffset.UtcNow,
-                    EvaluationState = "failed",
-                    EvaluationFailureReason = $"{exception.GetType().Name}: {exception.Message}"
+                    EvaluationState = "failed"
                 }
             });
             throw;

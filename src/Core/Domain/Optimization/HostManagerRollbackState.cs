@@ -52,10 +52,11 @@ public sealed record HostManagerRollbackStateDocument(
     int Version,
     DateTimeOffset? LastRunAt,
     DateTimeOffset? LastRestoreAt,
-    string Message,
     IReadOnlyList<HostManagerAppliedPlacementReceipt> AppliedPlacements)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
+
+    public HostManagerCoordinatorFacts? Coordinator { get; init; }
 
     public ulong NativeHostSessionIncarnation { get; init; }
 
@@ -63,7 +64,6 @@ public sealed record HostManagerRollbackStateDocument(
         CurrentVersion,
         null,
         null,
-        "普通模式",
         []);
 }
 
@@ -72,11 +72,16 @@ public sealed record HostManagerAppliedRecord(
     string RecordId,
     IReadOnlyDictionary<string, string>? Metadata = null);
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record HostManagerAppliedPlacementReceipt(
     string TargetId,
-    string DisplayName,
     string? SoftwareId,
     string ResourceKind,
     IReadOnlyList<HostManagerAppliedRecord> Records,
     DateTimeOffset AppliedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    public int? ProcessId { get; init; }
+    public string? ProcessStartKey { get; init; }
+    public string? ProcessName { get; init; }
+}

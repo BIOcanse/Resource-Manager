@@ -830,7 +830,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         await restarted.StopAsync(CancellationToken.None);
         var restored = await restarted.GetReportsAsync(CancellationToken.None);
         var trust = Assert.Single(restored.TrustedTargets);
-        Assert.Equal("Editor", trust.DisplayName);
+        Assert.Equal("Editor", trust.Name);
         Assert.Equal("software:software:editor", trust.TargetKey);
         var active = Assert.Single(restored.Reports);
         Assert.Equal("software:editor", active.Target.SoftwareId);

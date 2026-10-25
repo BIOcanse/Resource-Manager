@@ -19,15 +19,15 @@ public sealed class HostManagerOptimizationWireContractTests
                 PendingChangeCount: 2,
                 AppliedTargetCount: 3,
                 FaultClosedReason: null,
-                "ready"),
+                new HostManagerCoordinatorFacts(62, 2, 0, 137438953616)),
             WebJson);
         Assert.Equal(
             [
                 "appliedTargetCount",
+                "coordinator",
                 "faultClosedReason",
                 "lastRestoreAt",
                 "lastRunAt",
-                "message",
                 "mode",
                 "pendingChangeCount",
                 "schedulerRunning"
@@ -45,10 +45,10 @@ public sealed class HostManagerOptimizationWireContractTests
     {
         const string existingDocument = """
             {
-              "version": 2,
+              "version": 3,
               "lastRunAt": null,
               "lastRestoreAt": null,
-              "message": "ordinary",
+              "coordinator": null,
               "appliedPlacements": [],
               "nativeHostSessionIncarnation": 7
             }
@@ -65,9 +65,9 @@ public sealed class HostManagerOptimizationWireContractTests
         Assert.Equal(
             [
                 "appliedPlacements",
+                "coordinator",
                 "lastRestoreAt",
                 "lastRunAt",
-                "message",
                 "nativeHostSessionIncarnation",
                 "version"
             ],

@@ -302,7 +302,7 @@ public sealed partial class HostManagerUserDataArrivalTests
         var paths = JsonHostManagerRollbackStateStore.ResolveProductionPaths(Path.Combine(root, "Bin", "ResourceManager"), root);
         var state = HostManagerRollbackStateDocument.Empty;
         if (outstanding)
-            state = state with { AppliedPlacements = [new("target", "Target", null, "Cpu", [new("CpuAffinity", "record")], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)] };
+            state = state with { AppliedPlacements = [new("target", null, "Cpu", [new("CpuAffinity", "record")], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)] };
         var image = HostManagerRollbackStateEnvelopeCodec.Encode(state, 1);
         Directory.CreateDirectory(Path.GetDirectoryName(paths.CanonicalPath)!);
         File.WriteAllBytes(paths.CanonicalPath, image);

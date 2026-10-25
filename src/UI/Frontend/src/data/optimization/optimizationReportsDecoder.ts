@@ -94,7 +94,6 @@ function decodeStatus(value: unknown, path: string): OptimizationRecorderStatus 
   }
   return Object.freeze({
     evaluationState: requireOneOf(record.evaluationState, `${path}.evaluationState`, ["notEvaluated", "completed", "failed"] as const),
-    evaluationFailureReason: requireNullable(record.evaluationFailureReason, `${path}.evaluationFailureReason`, requireNonEmptyString),
     unavailableRules: Object.freeze(unavailableRules),
     lastEvaluationAt: requireNullable(
       record.lastEvaluationAt,
@@ -135,8 +134,6 @@ function decodeReport(value: unknown, path: string): OptimizationReportItem {
     lastObservedAt: requireTimestamp(
       record.lastObservedAt,
       `${path}.lastObservedAt`),
-    title: requireString(record.title, `${path}.title`),
-    message: requireString(record.message, `${path}.message`),
     context: decodeContext(record.context, `${path}.context`),
     target: decodeTarget(record.target, `${path}.target`),
     evidence: decodeEvidence(record.evidence, `${path}.evidence`),
@@ -181,7 +178,7 @@ function decodeTarget(value: unknown, path: string): OptimizationReportTarget {
   return Object.freeze({
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireString(record.displayName, `${path}.displayName`),
+    name: requireString(record.name, `${path}.name`),
     softwareId: requireNullable(record.softwareId, `${path}.softwareId`, requireString),
     softwareName: requireNullable(record.softwareName, `${path}.softwareName`, requireString),
     softwareKind: requireNullable(record.softwareKind, `${path}.softwareKind`, requireString),
@@ -213,7 +210,6 @@ function decodeEvidence(value: unknown, path: string): OptimizationReportEvidenc
     durationSeconds: requireNonNegativeFiniteNumber(
       record.durationSeconds,
       `${path}.durationSeconds`),
-    details: Object.freeze(requireStringArray(record.details, `${path}.details`))
   });
 }
 
@@ -233,13 +229,8 @@ function decodeAction(value: unknown, path: string): OptimizationReportAction {
   const record = requireRecord(value, path);
   return Object.freeze({
     id: requireNonEmptyString(record.id, `${path}.id`),
-    label: requireString(record.label, `${path}.label`),
     kind: requireNonEmptyString(record.kind, `${path}.kind`),
     enabled: requireBoolean(record.enabled, `${path}.enabled`),
-    disabledReason: requireNullable(
-      record.disabledReason,
-      `${path}.disabledReason`,
-      requireString)
   });
 }
 
@@ -249,11 +240,10 @@ function decodeTrustedTarget(value: unknown, path: string): TrustedOptimizationT
     id: requireNonEmptyString(record.id, `${path}.id`),
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireString(record.displayName, `${path}.displayName`),
+    name: requireString(record.name, `${path}.name`),
     reportType: requireNonEmptyString(record.reportType, `${path}.reportType`),
     resourceKind: requireNonEmptyString(record.resourceKind, `${path}.resourceKind`),
     trustedAt: requireTimestamp(record.trustedAt, `${path}.trustedAt`),
-    trustedReason: requireString(record.trustedReason, `${path}.trustedReason`),
     createdFromReportId: requireNonEmptyString(
       record.createdFromReportId,
       `${path}.createdFromReportId`),
@@ -274,12 +264,11 @@ function decodeProtectedTarget(
     id: requireNonEmptyString(record.id, `${path}.id`),
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireString(record.displayName, `${path}.displayName`),
     softwareId: requireNullable(record.softwareId, `${path}.softwareId`, requireString),
     softwareName: requireNullable(record.softwareName, `${path}.softwareName`, requireString),
     softwareKind: requireNullable(record.softwareKind, `${path}.softwareKind`, requireString),
     protectedAt: requireTimestamp(record.protectedAt, `${path}.protectedAt`),
-    protectedReason: requireString(record.protectedReason, `${path}.protectedReason`),
+    protectionSource: requireString(record.protectionSource, `${path}.protectionSource`),
     createdFromReportId: requireNonEmptyString(
       record.createdFromReportId,
       `${path}.createdFromReportId`),

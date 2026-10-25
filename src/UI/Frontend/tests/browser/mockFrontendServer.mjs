@@ -2108,7 +2108,7 @@ function smartCoordinatorStatus() {
     pendingChangeCount: 0,
     appliedTargetCount: 0,
     faultClosedReason: null,
-    message: "frontend performance harness",
+    coordinator: null,
     ...scenario.smartStatus
   };
 }
@@ -2210,10 +2210,10 @@ function subscriptionPayloadFactory(url) {
       });
     case "/api/optimization/smart/state/subscribe":
       return () => ({
-        version: 2,
+        version: 3,
         lastRunAt: null,
         lastRestoreAt: null,
-        message: "frontend harness",
+        coordinator: null,
         appliedPlacements: scenario.smartPlacements
       });
     case "/api/optimization/smart/status/subscribe":

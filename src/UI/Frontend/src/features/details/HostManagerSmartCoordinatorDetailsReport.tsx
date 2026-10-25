@@ -8,7 +8,9 @@ import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext
 import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
 import { userFacingDateTime } from "../../presentation/userFacingText";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
-import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
+import { smartPlacementTarget } from "../../presentation/smartScheduling.ts";
+import { softwareRecordName } from "../../presentation/softwareFacts.ts";
+import type { SoftwareRecord, HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
 
@@ -20,7 +22,7 @@ interface DetailRecord {
   updatedAt: string;
 }
 
-export function HostManagerSmartCoordinatorDetailsReport() {
+export function HostManagerSmartCoordinatorDetailsReport(props: { software: readonly SoftwareRecord[] }) {
   const demandId = "details.smart-report";
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsSmartReport]);
   const frontendWork = useFrontendWork();
@@ -41,7 +43,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
         ? uiText.smartReport.loading
         : uiText.smartReport.empty;
   });
-  const records = createMemo(() => collectDetailRecords(state()));
+  const records = createMemo(() => collectDetailRecords(state(), props.software));
 
   createEffect(() => {
     const intervalMs = readIntervals.current()?.monitor;
@@ -119,13 +121,16 @@ function SummaryTile(props: { label: string; value: string }) {
   );
 }
 
-function collectDetailRecords(state?: HostManagerRollbackStateDocument): DetailRecord[] {
+function collectDetailRecords(state: HostManagerRollbackStateDocument | undefined, software: readonly SoftwareRecord[]): DetailRecord[] {
   if (!state) {
     return [];
   }
 
-  const placementRecords = state.appliedPlacements.flatMap((placement) =>
-    placement.records.map((record) => createDetailRecord(placement.displayName, placement.resourceKind, placement.updatedAt, record)));
+  const placementRecords = state.appliedPlacements.flatMap((placement) => {
+    const owner = software.find(record => record.id === placement.softwareId);
+    const target = smartPlacementTarget(placement, owner ? softwareRecordName(owner) : undefined);
+    return placement.records.map(record => createDetailRecord(target, placement.resourceKind, placement.updatedAt, record));
+  });
   return placementRecords
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }

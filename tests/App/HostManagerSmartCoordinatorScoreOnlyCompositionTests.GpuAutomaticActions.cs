@@ -236,7 +236,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ["hadValue"] = "false", ["previousValue"] = "", ["appliedValue"] = "GpuPreference=1;"
             });
         preferences.WriteValue(process.ExecutablePath!, "GpuPreference=1;");
-        var existing = new HostManagerAppliedPlacementReceipt(process.TargetId, "GPU target", process.SoftwareId,
+        var existing = new HostManagerAppliedPlacementReceipt(process.TargetId, process.SoftwareId,
             OptimizationResourceKinds.Gpu, [preference], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         fixture.StateStore.Current = fixture.StateStore.Current with { AppliedPlacements = [existing] };
         var desired = (await CreateGpuDesired(fixture.Coordinator, process, existing))!;

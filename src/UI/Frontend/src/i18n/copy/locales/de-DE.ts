@@ -924,7 +924,7 @@ const deDeAppCopy: AppCopy = {
   },
   optimization: {
     evaluationPending: "Die Berichtsauswertung ist noch nicht abgeschlossen.",
-    evaluationFailed: (reason: string) => `Berichte konnten nicht ausgewertet werden. Grund: ${reason}.`,
+    evaluationFailed: () => "Berichte konnten nicht ausgewertet werden.",
     rulesUnavailable: (count: number) => `Einige Regeln sind nicht verfügbar (${count}); Berichte anderer Regeln bleiben verfügbar.`,
     scheduleStateLabel: "Status der Optimierungsplanung",
     modeBar: "Modus der Leistungsoptimierung",
@@ -2134,6 +2134,7 @@ const deDeAppCopy: AppCopy = {
     }
   },
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name} (Prozess ${pid})`,
     panel: "Bericht der intelligenten Planung",
     loading: "Wird geladen",
     unavailable: "Status nicht verfügbar",

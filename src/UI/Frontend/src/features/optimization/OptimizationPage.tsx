@@ -31,7 +31,7 @@ import {
 } from "../../components/ObservationStateNotice";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../../text.ts";
-import { optimizationEvidenceValue } from "./optimizationPresentation";
+import { optimizationEvidenceValue, optimizationTargetName } from "./optimizationPresentation";
 import {
   optimizationModeHasDomain,
   toggleOptimizationDomain,
@@ -240,9 +240,9 @@ export function OptimizationPage(props: OptimizationPageProps) {
           <Show when={reportFilter() === "trusted"}>
             <div class="optimization-trusted-targets" aria-label={uiText.optimization.trusted}>
               <For each={trustedTargets().filter(target =>
-                matchesSearch(normalizeSearchQuery(searchQuery()), target.displayName, target.targetKey))}>
+                matchesSearch(normalizeSearchQuery(searchQuery()), optimizationTargetName(target), target.targetKey))}>
                 {(target) => <article class="optimization-report">
-                  <strong>{target.displayName || uiText.optimizationReport.currentTarget}</strong>
+                  <strong>{optimizationTargetName(target)}</strong>
                   <button class="secondary" type="button"
                     disabled={!reportActionsAvailable() || props.actionId === target.id}
                     onClick={() => props.onRemoveTrust(target)}>{uiText.optimization.removeTrust}</button>
@@ -406,7 +406,7 @@ function matchesOptimizationReportSearch(report: OptimizationReportItem, query: 
     presentOptimizationReport(report).summary,
     report.target.targetType,
     report.target.targetKey,
-    report.target.displayName,
+    report.target.name,
     report.target.softwareId,
     report.target.softwareName,
     report.target.softwareKind,
@@ -424,7 +424,7 @@ function matchesOptimizationReportSearch(report: OptimizationReportItem, query: 
     optimizationEvidenceValue(report.evidence, report.evidence.averageValue),
     optimizationEvidenceValue(report.evidence, report.evidence.peakValue),
     optimizationEvidenceValue(report.evidence, report.evidence.currentValue),
-    ...(report.evidence.details ?? []));
+    ...(report.target.processNames ?? []));
 }
 
 function normalizeSearchQuery(value: string) {

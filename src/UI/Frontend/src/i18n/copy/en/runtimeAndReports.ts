@@ -2,6 +2,7 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRuntime"> = {
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name} (process ${pid})`,
     panel: "Smart scheduling report",
     loading: "Loading",
     unavailable: "State unavailable",

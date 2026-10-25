@@ -1702,7 +1702,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "protection:final-admission",
                     "Process",
                     HostManagerTargetIdentity.CreateProcessTargetId(processId, startKey),
-                    "final protection",
                     softwareId,
                     "final protection",
                     SoftwareKinds.Other,
@@ -5318,7 +5317,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var now = DateTimeOffset.UtcNow;
         return new HostManagerAppliedPlacementReceipt(
             "process:legacy:1",
-            "legacy receipt",
             "software:legacy",
             "ProcessPolicy",
             [
@@ -6628,8 +6626,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var nextIncarnation = checked(Current.NativeHostSessionIncarnation + 1);
             Current = Current with
             {
-                NativeHostSessionIncarnation = nextIncarnation,
-                Message = $"Host Manager reserved native host session incarnation {nextIncarnation}."
+                NativeHostSessionIncarnation = nextIncarnation
             };
             return Task.FromResult(Current);
         }

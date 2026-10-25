@@ -118,7 +118,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             case "wrong-birth": process = process with { ProcessStartKey = process.ProcessStartKey + 1 }; break;
             case "wrong-image": process = process with { ExecutablePath = "C:\\other.exe" }; break;
             case "wrong-ledger": key = HostManagerPlacementReceiptKey.Create(OptimizationResourceKinds.Cpu, process.TargetId); break;
-            case "wrong-software": state = state with { AppliedPlacements = [new(process.TargetId, process.DisplayName,
+            case "wrong-software": state = state with { AppliedPlacements = [new(process.TargetId,
                 "software:other", OptimizationResourceKinds.Gpu, [], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)] }; break;
         }
         await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeObservationOwner(fixture.Coordinator, state, process, call, key: key));

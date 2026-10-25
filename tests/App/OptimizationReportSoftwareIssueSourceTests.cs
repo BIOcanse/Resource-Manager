@@ -117,8 +117,6 @@ public sealed class OptimizationReportSoftwareIssueSourceTests
             reportId,
             kind,
             SoftwareIssueSeverities.Warning,
-            label,
-            reportId,
             softwareId,
             artifactPath);
 

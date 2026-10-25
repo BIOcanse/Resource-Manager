@@ -188,7 +188,7 @@ public sealed partial class HostManagerSmartCoordinator
                 target = new MutableHostManagerTargetInfo(
                     targetId,
                     process.SoftwareId,
-                    CreateProcessDisplayName(process),
+                    process.SoftwareName,
                     process.SoftwareKind,
                     process.SoftwareDisplayKind,
                     process.BaseScore,
@@ -236,13 +236,4 @@ public sealed partial class HostManagerSmartCoordinator
             memoryFreeRatioCurrent);
     }
 
-    private static string CreateProcessDisplayName(SchedulingProcessFact process)
-    {
-        var processName = string.IsNullOrWhiteSpace(process.ProcessName)
-            ? $"PID {process.ProcessId}"
-            : process.ProcessName;
-        return processName.Equals(process.SoftwareName, StringComparison.OrdinalIgnoreCase)
-            ? $"{processName} ({process.ProcessId})"
-            : $"{process.SoftwareName} / {processName} ({process.ProcessId})";
-    }
 }

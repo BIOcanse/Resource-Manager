@@ -27,8 +27,8 @@ public sealed partial class HostManagerSmartCoordinator
             throw new InvalidOperationException("API observation requires its permitted, attributed exact process and an observation-only call.");
 
         var now = timeProvider.GetUtcNow();
-        var placement = new HostManagerAppliedPlacementReceipt(process.TargetId, process.DisplayName, process.SoftwareId,
-            OptimizationResourceKinds.Gpu, [], now, now);
+        var placement = new HostManagerAppliedPlacementReceipt(process.TargetId, process.SoftwareId,
+            OptimizationResourceKinds.Gpu, [], now, now) { ProcessId = process.ProcessId, ProcessStartKey = process.ProcessStartKey.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessName = process.ProcessName };
         if (HostManagerPlacementReceiptKey.Create(placement) != key)
             throw new InvalidOperationException("API observation must remain in its original software's GPU ledger.");
         var existing = state.AppliedPlacements.SingleOrDefault(item => HostManagerPlacementReceiptKey.Create(item) == key);

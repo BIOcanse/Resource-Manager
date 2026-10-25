@@ -924,7 +924,7 @@ const jaJpAppCopy: AppCopy = {
   },
   optimization: {
     evaluationPending: "レポートの評価はまだ完了していません。",
-    evaluationFailed: (reason: string) => `レポートを評価できませんでした。理由：${reason}。`,
+    evaluationFailed: () => "レポートを評価できませんでした。",
     rulesUnavailable: (count: number) => `一部のルールを利用できません（${count} 件）。他のルールのレポートは引き続き表示されます。`,
     scheduleStateLabel: "最適化スケジューリングの状態",
     modeBar: "パフォーマンス最適化モード",
@@ -2134,6 +2134,7 @@ const jaJpAppCopy: AppCopy = {
     }
   },
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name}（プロセス ${pid}）`,
     panel: "スマート スケジューリング レポート",
     loading: "読み込み中",
     unavailable: "状態を取得できません",

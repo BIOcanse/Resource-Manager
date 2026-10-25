@@ -50,6 +50,7 @@
     <EmbeddedResource Include="Fixtures\Operations\operation-coordinator-v1.bin" LogicalName="ResourceManager.Tests.Operations.operation-coordinator-v1.bin" WithCulture="false" />
     <EmbeddedResource Include="Fixtures\Operations\operation-coordinator-v1.bin.root.manifest" LogicalName="ResourceManager.Tests.Operations.operation-coordinator-v1.bin.root.manifest" WithCulture="false" />
     <EmbeddedResource Include="Fixtures\Control\control-instances.installed-c15.json" />
+    <EmbeddedResource Include="Fixtures\Optimization\rollback-state.c16-v2.json" />
     <EmbeddedResource Include="Fixtures\Software\manual-software-head-unversioned.json" />
     <EmbeddedResource Include="Fixtures\Metrics\c13-metric-catalog.json.gz" />
     <Using Include="Xunit" />

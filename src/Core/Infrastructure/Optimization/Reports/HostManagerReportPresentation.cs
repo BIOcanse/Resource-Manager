@@ -34,8 +34,6 @@ internal static class HostManagerReportPresentation
             updatedAt,
             createdAt,
             observedAt,
-            string.Empty,
-            string.Empty,
             new OptimizationActivityContext(
                 OptimizationActivityContextKinds.Normal,
                 null,
@@ -54,8 +52,7 @@ internal static class HostManagerReportPresentation
                 ValueUnit(rule.FactKind),
                 checked((int)Math.Min(output.ActiveSampleCount, int.MaxValue)),
                 checked((int)Math.Min(output.SampleCount, int.MaxValue)),
-                Math.Max(0, (observedAt - createdAt).TotalSeconds),
-                [])
+                Math.Max(0, (observedAt - createdAt).TotalSeconds))
             {
                 Process = IsStray(rule.FactKind) && targets.TryGetValue(output.TargetHandle, out var processTarget)
                     ? processTarget.Process : null
@@ -63,10 +60,8 @@ internal static class HostManagerReportPresentation
             [
                 new OptimizationReportAction(
                     "dismiss",
-                    string.Empty,
                     "dismiss",
-                    true,
-                    null)
+                    true)
             ]);
     }
 
@@ -87,11 +82,10 @@ internal static class HostManagerReportPresentation
             TrustId(row.TargetHandle, row.FamilyHandle),
             target.TargetType,
             target.TargetKey,
-            target.DisplayName,
+            target.Name,
             TrustScope(kind),
             ResourceKind(kind),
             trustedAt,
-            string.Empty,
             row.ReportHandle == 0 ? string.Empty : ReportId(row.ReportHandle),
             trustedAt,
             OptimizationTrustStates.Active);
@@ -152,7 +146,7 @@ internal static class HostManagerReportPresentation
                 => new OptimizationReportTarget(
                     OptimizationReportTargetTypes.CpuPackage,
                     $"cpu-package:{targetHandle}",
-                    "CPU",
+                    string.Empty,
                     null,
                     null,
                     null,

@@ -124,8 +124,8 @@ public sealed partial class HostManagerSmartCoordinator
                     HostManagerAppliedRecordKinds.CpuThreadIdealProcessor,
                     recordId);
                 var now = durableTimeSource.NextUtc();
-                var placement = new HostManagerAppliedPlacementReceipt(plan.Process.TargetId, plan.Process.DisplayName,
-                    plan.Process.SoftwareId, OptimizationResourceKinds.Cpu, [record], old.Placement?.AppliedAt ?? now, now);
+                var placement = new HostManagerAppliedPlacementReceipt(plan.Process.TargetId,
+                    plan.Process.SoftwareId, OptimizationResourceKinds.Cpu, [record], old.Placement?.AppliedAt ?? now, now) { ProcessId = plan.Process.ProcessId, ProcessStartKey = plan.Process.ProcessStartKey.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessName = plan.Process.ProcessName };
                 workspace.Desired.Add(new(placement, record, ToPlacementPriority(plan.Process.CanonicalCpuScore!.Value))
                 {
                     IdealProcessorMetadata = idealProcessorMetadata

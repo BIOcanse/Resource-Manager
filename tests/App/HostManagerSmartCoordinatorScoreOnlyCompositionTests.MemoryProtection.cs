@@ -99,7 +99,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private static ProtectedOptimizationTarget CreateMemoryProtection(
         string key, string state, int level)
-        => new("protection:memory", "Process", key, "memory protection", null, null, null,
+        => new("protection:memory", "Process", key, null, null, null,
             DateTimeOffset.UtcNow, "test", "report:memory", DateTimeOffset.UtcNow,
             state, AllowsPlacementAvoidance: true, ProtectionLevel: level);
 }

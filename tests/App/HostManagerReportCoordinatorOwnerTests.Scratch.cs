@@ -76,7 +76,6 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         await Assert.ThrowsAsync<IOException>(() => owner.RefreshReportsAsync(CancellationToken.None));
         var failureOverview = await owner.GetReportsAsync(CancellationToken.None);
         Assert.Equal("failed", failureOverview.Status.EvaluationState);
-        Assert.StartsWith("IOException:", failureOverview.Status.EvaluationFailureReason);
         Assert.Equal(status.ActiveReportCount, failureOverview.Status.ActiveReportCount);
         Assert.Equal(status.AvailableRuleCount, failureOverview.Status.AvailableRuleCount);
         var after = await inner.LoadAsync(CancellationToken.None);
@@ -87,7 +86,6 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var recovered = await owner.RefreshReportsAsync(CancellationToken.None);
         Assert.NotNull(recovered.Status.LastEvaluationAt);
         Assert.Equal("completed", recovered.Status.EvaluationState);
-        Assert.Null(recovered.Status.EvaluationFailureReason);
         Assert.Equal(ReportLedgerBytes(owner, ledger), ledger.ReadTable().RegisteredBytes);
     }
 

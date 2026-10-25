@@ -63,8 +63,6 @@ public sealed record OptimizationReportItem(
     DateTimeOffset UpdatedAt,
     DateTimeOffset FirstObservedAt,
     DateTimeOffset LastObservedAt,
-    string Title,
-    string Message,
     OptimizationActivityContext Context,
     OptimizationReportTarget Target,
     OptimizationReportEvidence Evidence,
@@ -72,10 +70,8 @@ public sealed record OptimizationReportItem(
 
 public sealed record OptimizationReportAction(
     string Id,
-    string Label,
     string Kind,
-    bool Enabled,
-    string? DisabledReason);
+    bool Enabled);
 
 public sealed record OptimizationRecorderStatus(
     DateTimeOffset? LastEvaluationAt,
@@ -88,6 +84,5 @@ public sealed record OptimizationRecorderStatus(
     int SampleIntervalSeconds)
 {
     public string EvaluationState { get; init; } = "notEvaluated";
-    public string? EvaluationFailureReason { get; init; }
     public IReadOnlyList<string> UnavailableRules { get; init; } = [];
 }

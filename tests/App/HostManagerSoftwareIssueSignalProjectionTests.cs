@@ -161,8 +161,6 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch,
-            id,
-            id,
             OptimizationActivityContext.Unknown(),
             target,
             new OptimizationReportEvidence(
@@ -173,8 +171,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
                 OptimizationValueUnits.Percent,
                 1,
                 1,
-                1,
-                []),
+                1),
             []);
 
     private static SystemInterruptSnapshot Interrupts(

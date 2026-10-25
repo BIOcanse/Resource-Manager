@@ -54,8 +54,6 @@ internal static class HostManagerSoftwareIssueSignalProjection
                 report.Id,
                 SoftwareIssueKinds.AbnormalMemoryUsage,
                 report.Severity,
-                string.Empty,
-                string.Empty,
                 report.Target.SoftwareId,
                 null)
             {
@@ -117,7 +115,7 @@ internal static class HostManagerSoftwareIssueSignalProjection
         var unit = kind == HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds
             ? "ms" : kind == HostManagerReportFactKind.InterruptCpuCapacityPercent ? "%" : "count";
         return new OptimizationSoftwareIssueSignal(report.Id, issueKind, report.Severity,
-            string.Empty, string.Empty, null, driver.ModulePath)
+            null, driver.ModulePath)
         {
             Evidence = [new SoftwareIssueEvidence(kind switch
             {

@@ -29,12 +29,11 @@ public sealed partial class HostManagerSmartCoordinator
         var remainingEffects = GpuActionFacts.PlacementEffects(remainingPlacements).Sum(static item => item.Records.Count);
         var restoredCount = GpuActionFacts.PlacementEffects(source.AppliedPlacements).Sum(static item => item.Records.Count) - remainingEffects;
         var retainedActions = remainingPlacements.Sum(static item => item.Records.Count) - remainingEffects;
-        var message = $"Host Manager restored {restoredCount} placement effects; {remainingEffects} effects remain pending; "
-            + $"{retainedActions} window action facts remain recorded.";
+        logger.LogDebug("Host Manager restored {RestoredCount} placement effects; {RemainingEffects} effects remain pending; {RetainedActions} window action facts remain recorded.",
+            restoredCount, remainingEffects, retainedActions);
         var checkpoint = source with
         {
             LastRestoreAt = attemptedAt,
-            Message = message,
             AppliedPlacements = remainingPlacements
         };
         await SaveRollbackStateAsync(checkpoint, CancellationToken.None);

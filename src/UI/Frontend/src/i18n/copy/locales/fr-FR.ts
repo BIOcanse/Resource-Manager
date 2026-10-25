@@ -924,7 +924,7 @@ const frFrAppCopy: AppCopy = {
   },
   optimization: {
     evaluationPending: "L’évaluation des rapports n’est pas encore terminée.",
-    evaluationFailed: (reason: string) => `Impossible d’évaluer les rapports. Motif : ${reason}.`,
+    evaluationFailed: () => "Impossible d’évaluer les rapports.",
     rulesUnavailable: (count: number) => `Certaines règles sont indisponibles (${count}) ; les rapports des autres règles restent disponibles.`,
     scheduleStateLabel: "État de la planification d'optimisation",
     modeBar: "Mode d'optimisation des performances",
@@ -2134,6 +2134,7 @@ const frFrAppCopy: AppCopy = {
     }
   },
   smartReport: {
+    processTarget: (name: string, pid: number) => `${name} (processus ${pid})`,
     panel: "Rapport de planification intelligente",
     loading: "Chargement",
     unavailable: "État indisponible",

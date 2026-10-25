@@ -34,8 +34,8 @@ public sealed class OptimizationProtectionService(
             {
                 var now = DateTimeOffset.UtcNow;
                 protection = new(CreateStableId($"protect|Software|{key}"), OptimizationReportTargetTypes.Software,
-                    key, software.Name, software.Id, software.Name, software.Kind, now,
-                    "software-detail-level2", "software-detail", now, OptimizationProtectionStates.Active,
+                    key, software.Id, software.Name, software.Kind, now,
+                    "software_detail", "software-detail", now, OptimizationProtectionStates.Active,
                     AllowsPlacementAvoidance: true, ProtectionLevel: OptimizationProtectionLevels.Level2NoOptimization);
                 next.Add(protection);
             }
@@ -67,12 +67,11 @@ public sealed class OptimizationProtectionService(
                     $"protect|{report.Target.TargetType}|{report.Target.TargetKey}"),
                 report.Target.TargetType,
                 report.Target.TargetKey,
-                report.Target.DisplayName,
                 report.Target.SoftwareId,
                 report.Target.SoftwareName,
                 report.Target.SoftwareKind,
                 now,
-                "用户从性能优化报告中设为保护级。",
+                "report",
                 report.Id,
                 now,
                 OptimizationProtectionStates.Active,
@@ -264,7 +263,7 @@ public sealed class OptimizationProtectionService(
         return (!string.IsNullOrWhiteSpace(item.SoftwareId)
                 && softwareIds.Contains(item.SoftwareId))
             || softwareNames.Contains(NormalizeTextKey(
-                item.SoftwareName ?? item.DisplayName));
+                item.SoftwareName));
     }
 
     private static string NormalizeTextKey(string? value)

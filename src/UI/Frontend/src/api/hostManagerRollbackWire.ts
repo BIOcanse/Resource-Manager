@@ -1,4 +1,5 @@
 import type {
+  HostManagerCoordinatorFacts,
   HostManagerAppliedPlacementReceipt,
   HostManagerAppliedRecord,
   HostManagerRollbackStateDocument
@@ -9,7 +10,7 @@ export function decodeHostManagerRollbackState(
 {
   const document = requireObject(value, "Host Manager state");
   const version = requireInteger(document.version, "version");
-  if (version !== 2) {
+  if (version !== 3) {
     throw new Error(`Unsupported Host Manager state version: ${version}`);
   }
 
@@ -17,7 +18,7 @@ export function decodeHostManagerRollbackState(
     version,
     lastRunAt: optionalNullableString(document.lastRunAt, "lastRunAt"),
     lastRestoreAt: optionalNullableString(document.lastRestoreAt, "lastRestoreAt"),
-    message: requireString(document.message, "message"),
+    coordinator: decodeCoordinatorFacts(document.coordinator),
     appliedPlacements: requireArray(
       document.appliedPlacements,
       "appliedPlacements").map(decodePlacement)
@@ -31,7 +32,9 @@ function decodePlacement(
   const placement = requireObject(value, `appliedPlacements[${index}]`);
   return {
     targetId: requireString(placement.targetId, "targetId"),
-    displayName: requireString(placement.displayName, "displayName"),
+    processId: placement.processId === null ? null : requireInteger(placement.processId, "processId"),
+    processStartKey: optionalNullableString(placement.processStartKey, "processStartKey") ?? null,
+    processName: optionalNullableString(placement.processName, "processName") ?? null,
     softwareId: optionalNullableString(placement.softwareId, "softwareId"),
     resourceKind: requireString(placement.resourceKind, "resourceKind"),
     records: requireArray(placement.records, "records").map(decodeRecord),
@@ -44,21 +47,8 @@ function decodeRecord(value: unknown, index: number): HostManagerAppliedRecord {
   const record = requireObject(value, `records[${index}]`);
   return {
     kind: requireString(record.kind, "kind"),
-    recordId: requireString(record.recordId, "recordId"),
-    metadata: decodeMetadata(record.metadata)
+    recordId: requireString(record.recordId, "recordId")
   };
-}
-
-function decodeMetadata(value: unknown): Record<string, string> | null | undefined {
-  if (value === undefined || value === null) {
-    return value;
-  }
-  const metadata = requireObject(value, "metadata");
-  return Object.fromEntries(
-    Object.entries(metadata).map(([key, entry]) => [
-      key,
-      requireString(entry, `metadata.${key}`)
-    ]));
 }
 
 function requireObject(
@@ -100,4 +90,26 @@ function optionalNullableString(
     return value;
   }
   return requireString(value, field);
+}
+
+export function decodeCoordinatorFacts(value: unknown): HostManagerCoordinatorFacts | null {
+  if (value === null) return null;
+  const facts = requireObject(value, "coordinator");
+  const exact = (value: unknown, field: string) => {
+    const text = requireString(value, field);
+    if (!/^(0|[1-9][0-9]*)$/.test(text) || BigInt(text) > 18446744073709551615n)
+      throw new Error(`Invalid exact unsigned integer: ${field}`);
+    return text;
+  };
+  const count = (value: unknown, field: string) => {
+    const number = requireInteger(value, field);
+    if (number < 0 || number > 4294967295) throw new Error(`Invalid count: ${field}`);
+    return number;
+  };
+  return {
+    revision: exact(facts.revision, "coordinator.revision"),
+    pendingCount: count(facts.pendingCount, "coordinator.pendingCount"),
+    inflightCount: count(facts.inflightCount, "coordinator.inflightCount"),
+    reasonMask: exact(facts.reasonMask, "coordinator.reasonMask")
+  };
 }

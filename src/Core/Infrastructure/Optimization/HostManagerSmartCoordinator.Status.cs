@@ -30,7 +30,7 @@ public sealed partial class HostManagerSmartCoordinator
             checked((int)(nativeWorkspace?.Snapshot.PendingCount ?? 0)),
             CountCurrentAppliedTargets(state, memoryOwners),
             faultClosedReason,
-            state.Message);
+            state.Coordinator);
     }
 
     private int CountCurrentAppliedTargets(

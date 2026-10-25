@@ -29,7 +29,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(await coordinator.GetStateAsync(cancellationToken));
+            return Results.Ok(await HostManagerSmartStateWireProjection.ReadAsync(coordinator, cancellationToken));
         }).AllowAnonymous();
 
         app.MapPost("/api/optimization/smart/mode", async (

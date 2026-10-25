@@ -132,8 +132,8 @@ public sealed partial class HostManagerSmartCoordinator
             var externalRecord = ExternalGpuRuntimePlacementRecord.Create(
                 process.ProcessId, process.ProcessStartKey, externalMetadata);
             var externalNow = timeProvider.GetUtcNow();
-            var externalPlacement = new HostManagerAppliedPlacementReceipt(process.TargetId, process.DisplayName,
-                process.SoftwareId, OptimizationResourceKinds.Gpu, [externalRecord], existing?.AppliedAt ?? externalNow, externalNow);
+            var externalPlacement = new HostManagerAppliedPlacementReceipt(process.TargetId,
+                process.SoftwareId, OptimizationResourceKinds.Gpu, [externalRecord], existing?.AppliedAt ?? externalNow, externalNow) { ProcessId = process.ProcessId, ProcessStartKey = process.ProcessStartKey.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessName = process.ProcessName };
             return new(externalPlacement, externalRecord, ToPlacementPriority(planned.CanonicalProcessScore))
                 { RuntimeGpuAction = action };
         }
@@ -161,8 +161,8 @@ public sealed partial class HostManagerSmartCoordinator
             [], "动作结果尚未结算；不代表动作没有发生。", RunningGpuPlacementActionStatuses.Unresolved));
         record = record with { Metadata = metadata };
         var now = timeProvider.GetUtcNow();
-        var placement = new HostManagerAppliedPlacementReceipt(process.TargetId, process.DisplayName,
-            process.SoftwareId, OptimizationResourceKinds.Gpu, [record], existing?.AppliedAt ?? now, now);
+        var placement = new HostManagerAppliedPlacementReceipt(process.TargetId,
+            process.SoftwareId, OptimizationResourceKinds.Gpu, [record], existing?.AppliedAt ?? now, now) { ProcessId = process.ProcessId, ProcessStartKey = process.ProcessStartKey.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessName = process.ProcessName };
         return new(placement, record, ToPlacementPriority(planned.CanonicalProcessScore)) { RuntimeGpuAction = action };
     }
 

@@ -97,6 +97,7 @@ export function AppRoutes(props: AppRoutesProps) {
             >
               <PageBoundary name={uiText.page.details}>
                 <DetailsPage
+                  software={props.management.software()}
                   runtimeCapabilities={props.runtimeCapabilities}
                   onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
                 />

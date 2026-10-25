@@ -5,6 +5,12 @@ import { compactUserDetailSections, userDetailItem, userDetailSection } from "..
 import { uiText } from "../../text.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 
+export function optimizationTargetName(target: { name: string; targetType: string }): string {
+  return target.name || (target.targetType === "cpu_package" ? uiText.smartReport.resource.cpu
+    : target.targetType === "system" ? uiText.optimizationReport.resource.systemInterrupt
+      : uiText.optimizationReport.currentTarget);
+}
+
 export interface OptimizationReportPresentation {
   title: string;
   summary: string;
@@ -12,8 +18,7 @@ export interface OptimizationReportPresentation {
 }
 
 export function presentOptimizationReport(report: OptimizationReportItem): OptimizationReportPresentation {
-  const name = userFacingOptionalValue(report.target.displayName, report.target.targetType === "system"
-    ? uiText.optimizationReport.resource.systemInterrupt : uiText.optimizationReport.currentTarget);
+  const name = optimizationTargetName(report.target);
   const resource = optimizationResourceLabel(report.evidence.resourceKind);
   return {
     title: reportTitle(report.type, name, resource),

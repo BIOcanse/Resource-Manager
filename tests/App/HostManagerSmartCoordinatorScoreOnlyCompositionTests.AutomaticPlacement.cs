@@ -508,7 +508,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             [
                 new HostManagerAppliedPlacementReceipt(
                     targetId,
-                    processName,
                     softwareId,
                     OptimizationResourceKinds.Cpu,
                     [record],

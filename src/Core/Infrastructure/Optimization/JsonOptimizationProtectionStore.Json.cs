@@ -10,6 +10,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 partial class JsonOptimizationProtectionStore
 {
     [System.Text.Json.Serialization.JsonSourceGenerationOptions(GenerationMode = System.Text.Json.Serialization.JsonSourceGenerationMode.Metadata)]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(OptimizationProtectionDocument))]
     [System.Text.Json.Serialization.JsonSerializable(typeof(List<ProtectedOptimizationTarget>))]
     [System.Text.Json.Serialization.JsonSerializable(typeof(IReadOnlyList<ProtectedOptimizationTarget>))]
     private partial class JsonOptimizationProtectionStoreJsonContext : System.Text.Json.Serialization.JsonSerializerContext;

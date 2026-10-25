@@ -304,20 +304,22 @@ export interface HostManagerSmartCoordinatorStatus {
   appliedTargetCount: number;
   /** null：运行时正常准入；非 null：运行时故障关闭，不会执行任何新调整，值是诊断原因码。 */
   faultClosedReason: string | null;
-  message: string;
+  coordinator: HostManagerCoordinatorFacts | null;
 }
 
 export interface HostManagerRollbackStateDocument {
   version: number;
   lastRunAt?: string | null;
   lastRestoreAt?: string | null;
-  message: string;
+  coordinator: HostManagerCoordinatorFacts | null;
   appliedPlacements: HostManagerAppliedPlacementReceipt[];
 }
 
 export interface HostManagerAppliedPlacementReceipt {
   targetId: string;
-  displayName: string;
+  processId: number | null;
+  processStartKey: string | null;
+  processName: string | null;
   softwareId?: string | null;
   resourceKind: string;
   records: HostManagerAppliedRecord[];
@@ -328,7 +330,13 @@ export interface HostManagerAppliedPlacementReceipt {
 export interface HostManagerAppliedRecord {
   kind: string;
   recordId: string;
-  metadata?: Record<string, string> | null;
+}
+
+export interface HostManagerCoordinatorFacts {
+  revision: string;
+  pendingCount: number;
+  inflightCount: number;
+  reasonMask: string;
 }
 
 // 容量数字用哪个进制显示：native = 各按本来的进制（内存类 1024、存储类 1000），
@@ -1604,7 +1612,6 @@ export interface DetailNotice {
 
 export interface OptimizationRecorderStatus {
   evaluationState: "notEvaluated" | "completed" | "failed";
-  evaluationFailureReason: string | null;
   unavailableRules: readonly string[];
   lastEvaluationAt?: string | null;
   lastObservedAt?: string | null;
@@ -1619,7 +1626,7 @@ export interface OptimizationRecorderStatus {
 export interface OptimizationReportTarget {
   targetType: string;
   targetKey: string;
-  displayName: string;
+  name: string;
   softwareId?: string | null;
   softwareName?: string | null;
   softwareKind?: string | null;
@@ -1648,15 +1655,12 @@ export interface OptimizationReportEvidence {
   activeSampleCount: number;
   sampleCount: number;
   durationSeconds: number;
-  details: readonly string[];
 }
 
 export interface OptimizationReportAction {
   id: string;
-  label: string;
   kind: string;
   enabled: boolean;
-  disabledReason?: string | null;
 }
 
 export interface OptimizationActivityContext {
@@ -1680,8 +1684,6 @@ export interface OptimizationReportItem {
   updatedAt?: string;
   firstObservedAt?: string;
   lastObservedAt?: string;
-  title: string;
-  message: string;
   context?: OptimizationActivityContext | null;
   target: OptimizationReportTarget;
   evidence: OptimizationReportEvidence;
@@ -1692,11 +1694,10 @@ export interface TrustedOptimizationTarget {
   id: string;
   targetType: string;
   targetKey: string;
-  displayName: string;
+  name: string;
   reportType: string;
   resourceKind: string;
   trustedAt: string;
-  trustedReason: string;
   createdFromReportId: string;
   lastVerifiedAt?: string | null;
   state: string;
@@ -1706,12 +1707,11 @@ export interface ProtectedOptimizationTarget {
   id: string;
   targetType: string;
   targetKey: string;
-  displayName: string;
   softwareId?: string | null;
   softwareName?: string | null;
   softwareKind?: string | null;
   protectedAt: string;
-  protectedReason: string;
+  protectionSource: string;
   createdFromReportId: string;
   lastVerifiedAt?: string | null;
   state: string;

@@ -104,7 +104,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             AppliedPlacements =
             [
-                new(targetId, processName, "software:failed-placement", OptimizationResourceKinds.Cpu,
+                new(targetId, "software:failed-placement", OptimizationResourceKinds.Cpu,
                     [record], DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
             ]
         };

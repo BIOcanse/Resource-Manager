@@ -16,7 +16,13 @@ public sealed record HostManagerSmartCoordinatorStatus(
     int PendingChangeCount,
     int AppliedTargetCount,
     string? FaultClosedReason,
-    string Message);
+    HostManagerCoordinatorFacts? Coordinator);
+
+public sealed record HostManagerCoordinatorFacts(
+    [property: System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.WriteAsString | System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)] ulong Revision,
+    uint PendingCount,
+    uint InflightCount,
+    [property: System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.WriteAsString | System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)] ulong ReasonMask);
 
 public sealed record HostManagerSmartCoordinatorModeRequest(
     string Mode);
