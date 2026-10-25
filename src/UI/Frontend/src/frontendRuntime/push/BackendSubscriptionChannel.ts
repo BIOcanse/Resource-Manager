@@ -131,6 +131,17 @@ export class BackendSubscriptionChannel {
     };
   }
 
+  /**
+   * 授权变了（界面的默认密钥被启用、重新生成，或用户显式重试）：结束当前的流，按当前订阅重新连接，集合不变也重连。
+   * 401/403 本身仍是终止、不自动重试；后端不会通知授权已恢复，只有知道授权变了的调用方才调这里。
+   * 重连是需求、不是新值：各订阅保持现有快照，直到新流送来值（和传输重开一样，见 PushValueSourceFamily）。
+   */
+  reconnect(): void {
+    this.throwIfDisposed();
+    this.stopActiveStream();
+    this.scheduleSynchronization();
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;

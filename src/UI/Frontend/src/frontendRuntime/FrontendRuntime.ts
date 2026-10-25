@@ -24,6 +24,8 @@ export interface FrontendRuntime {
   readonly operationRegistry: OperationRegistry;
   readonly taskCenter: TaskCenterProjection;
   readonly performance: FrontendPerformanceMonitor;
+  /** 授权变化后按当前订阅重新连接推送流（见 BackendSubscriptionChannel.reconnect）。 */
+  reconnectSubscriptions(): void;
   dispose(): void;
 }
 
@@ -68,6 +70,7 @@ export function createFrontendRuntime(
     operationRegistry,
     taskCenter,
     performance,
+    reconnectSubscriptions: () => subscriptionChannel.reconnect(),
     dispose: () => {
       if (disposed) {
         return;

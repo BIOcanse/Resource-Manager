@@ -5,6 +5,7 @@ import { userFacingErrorMessage } from "../../../presentation/userFacingText.ts"
 import { uiText } from "../../../text.ts";
 import { ConfirmDialog, type ConfirmDialogRecord, type ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
 import { useAccessRequestSnapshot } from "../../trustedAccess/AccessRequestSnapshotContext.tsx";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import {
   approveAccessRequest,
   createAccessKey,
@@ -50,6 +51,7 @@ type KeyListState =
 type ActionTarget = "create" | "default" | `key:${string}` | `request:${string}`;
 
 export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
+  const runtime = useFrontendRuntime();
   const pendingSnapshot = useAccessRequestSnapshot();
   const requestList = createMemo(() => accessRequestListView(pendingSnapshot()));
   const requestById = createMemo(() => new Map(requestList().requests.map((request) => [request.requestId, request])));
@@ -266,12 +268,16 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
     await runAction("default", props.copy.actionFailed, async () => {
       await setDefaultAccessKey("rotate", props.copy.actionFailed);
       setCreated(null);
+      // 界面用的就是默认密钥：旧密钥上的推送流已被后端结束，按新密钥重连。
+      runtime.reconnectSubscriptions();
       await load(false);
     });
   };
   const enableDefault = async () => {
     if (!await runAction("default", props.copy.actionFailed, async () => {
       await enableDefaultAccessKeyElevated(props.copy.actionFailed);
+      // 关闭期间推送流收到 401 已终止，集合没变也要重连。
+      runtime.reconnectSubscriptions();
       await load(keyList().status !== "ready");
     })) return;
     // 恢复入口已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区的标题）。
@@ -337,7 +343,11 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
           <div class="trusted-access-error trusted-access-load-failure" role="alert">
             <span>{failureText(failure().error, props.copy.loadFailed)}</span>
             <div class="trusted-access-actions">
-              <button type="button" class="secondary" disabled={busy()} onClick={() => void load()}>
+              <button type="button" class="secondary" disabled={busy()} onClick={() => {
+                // 显式重试：授权可能已在别处恢复（界面外的管理员启用），推送流也一起重连。
+                runtime.reconnectSubscriptions();
+                void load();
+              }}>
                 {props.copy.retry}
               </button>
               <Show when={failure().reason === "unauthorized"}>{enableDefaultAction()}</Show>

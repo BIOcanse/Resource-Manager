@@ -516,6 +516,54 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   owner.dispose();
 }
 
+// 授权恢复后显式重连：401 终止、不自己重试；reconnect() 后同一组订阅重新连接并收到值。
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "reauthorized"));
+  const harness = createStreamHarness();
+  let authorized = false;
+  let rejected = 0;
+  const channel = new BackendSubscriptionChannel({
+    backendSession: owner,
+    reconnectDelayMs: 1,
+    fetch: (async (input, init) => {
+      if (!authorized) {
+        rejected += 1;
+        return new Response(null, { status: 401 });
+      }
+      return harness.fetch(input, init);
+    }) as typeof fetch
+  });
+  const source = new BackendPushValueSource<number>({
+    key: "test.reauthorized", channel, buildUrl: () => "/api/current",
+    decoder: defineResponseDecoder("test.reauthorized-number", (value) => Number(value))
+  });
+  const statuses: string[] = [];
+  let data: number | null = null;
+  const release = source.subscribeSnapshot(1_000, (snapshot) => {
+    statuses.push(snapshot.status);
+    data = snapshot.data;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(rejected, 1, "401 ends the stream without retrying");
+  assert.equal(statuses.at(-1), "error");
+
+  authorized = true;
+  channel.reconnect();
+  assert.equal(statuses.at(-1), "error", "reconnecting is demand, not a new value: the current snapshot stays until the stream delivers");
+  await flush();
+  assert.equal(harness.streams.length, 1, "the unchanged subscription set connects again");
+  publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 7);
+  await flush();
+  assert.equal(statuses.at(-1), "ready");
+  assert.equal(data, 7);
+  assert.equal(rejected, 1);
+  release();
+  channel.dispose();
+  owner.dispose();
+}
+
 {
   const host = createHostTransport();
   const owner = new BackendSessionOwner({ transport: host.transport });

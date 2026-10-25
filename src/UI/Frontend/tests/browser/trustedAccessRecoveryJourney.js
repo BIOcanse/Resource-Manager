@@ -134,12 +134,9 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
   await page.waitForFunction(() => document.activeElement?.id === "trustedAccessDefaultTitle");
   assert.equal(defaultKeyWrites.length, 1, "re-enabling never uses the ordinary request channel");
   assert.equal((await scenario()).trustedAccess, "ready");
-  // 401 对订阅是终止性失败，订阅集合变化时才重新连接：离开设置页再回来，请求区恢复。
-  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
-  await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
-  await page.getByRole("button", { name: settingsText.sections.systemIntegration, exact: true }).click();
+  // 401 对订阅是终止性失败、不自己重试；启用成功后界面按当前订阅显式重连：不离开这一页，请求区就恢复。
   await panel.getByRole("region", { name: copy.requestsTitle, exact: true })
-    .getByText(copy.requestsEmpty, { exact: true }).waitFor({ timeout: 20_000 });
+    .getByText(copy.requestsEmpty, { exact: true }).waitFor({ timeout: 10_000 });
 
   assert.equal(rendered.length, 9);
   assert.deepEqual(errors, []);
