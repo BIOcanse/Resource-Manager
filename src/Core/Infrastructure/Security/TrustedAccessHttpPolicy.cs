@@ -218,6 +218,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/cpu/topology/exclusive-bindings",
             "GET /api/cpu/topology/fields",
             "GET /api/debug/amd-smu",
+            "GET /api/debug/business-blocks",
             "GET /api/debug/cpu-residency",
             "GET /api/debug/freedom-points",
             "GET /api/debug/gpu-control",
