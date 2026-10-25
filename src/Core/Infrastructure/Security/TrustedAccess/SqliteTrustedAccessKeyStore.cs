@@ -12,6 +12,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
     private const int MaximumCredentialCount = 10000;
     private readonly ITrustedAccessStorageFileBoundary fileBoundary;
     private readonly string connectionString;
+    private readonly Func<SqliteConnection, CancellationToken, Task> verifyCommittedDatabase;
     private TrustedAccessStoreRevision? sharedRevision;
     private MutationLease? activeLease;
 
@@ -30,11 +31,21 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
     public SqliteTrustedAccessKeyStore(
         string packageRoot,
         ITrustedAccessStorageFileBoundary fileBoundary)
+        : this(packageRoot, fileBoundary, VerifyIntegrityAsync)
+    {
+    }
+
+    internal SqliteTrustedAccessKeyStore(
+        string packageRoot,
+        ITrustedAccessStorageFileBoundary fileBoundary,
+        Func<SqliteConnection, CancellationToken, Task> verifyCommittedDatabase)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageRoot);
         ArgumentNullException.ThrowIfNull(fileBoundary);
+        ArgumentNullException.ThrowIfNull(verifyCommittedDatabase);
         PackageRoot = Path.GetFullPath(packageRoot);
         this.fileBoundary = fileBoundary;
+        this.verifyCommittedDatabase = verifyCommittedDatabase;
         DatabasePath = Path.Combine(PackageRoot, "UserData", "Security", "access-keys.db");
         connectionString = new SqliteConnectionStringBuilder
         {
@@ -55,6 +66,8 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
     public bool IsRevisionCurrent(string revision) => sharedRevision?.IsCurrent(revision) == true;
 
     public void InvalidateRevision() => RequireMutationLease().CommittedRevision = null;
+
+    public void ConfirmRevision(string revision) => RequireMutationLease().CommittedRevision = revision;
 
     public async Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false)
     {
@@ -112,6 +125,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
 
     public async Task<TrustedAccessKeyStoreState> LoadAsync(CancellationToken cancellationToken)
     {
+        if (activeLease is not null) activeLease.CommittedRevision = null;
         await using var connection = await OpenExistingConnectionAsync(cancellationToken);
         await VerifyIntegrityAsync(connection, cancellationToken);
         await VerifySchemaAsync(connection, cancellationToken);
@@ -125,11 +139,10 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
             defaultCredentialId,
             legacyAiMigrationCompleted) { Revision = revision };
         ValidateState(result);
-        if (activeLease is not null) activeLease.CommittedRevision = result.Revision;
         return result;
     }
 
-    public async Task InitializeAsync(
+    public async Task<TrustedAccessKeyStoreSaveResult> InitializeAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken)
     {
@@ -151,11 +164,10 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
         }
 
         fileBoundary.CreatePrivateFile(DatabasePath);
-        await CreateSchemaAndWriteStateAsync(initialState, cancellationToken);
-        RequireMutationLease().CommittedRevision = initialState.Revision;
+        return await CreateSchemaAndWriteStateAsync(initialState, cancellationToken);
     }
 
-    public async Task SaveAsync(
+    public async Task<TrustedAccessKeyStoreSaveResult> SaveAsync(
         TrustedAccessKeyStoreState state,
         string expectedRevision,
         CancellationToken cancellationToken)
@@ -165,32 +177,46 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
             throw new InvalidOperationException("A trusted access update must publish a new revision.");
         var lease = RequireMutationLease();
         lease.CommittedRevision = null;
-        await using var connection = await OpenExistingConnectionAsync(cancellationToken);
-        await VerifyIntegrityAsync(connection, cancellationToken);
-        await VerifySchemaAsync(connection, cancellationToken);
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-
-        await using (var revision = connection.CreateCommand())
+        var committed = false;
+        try
         {
-            revision.Transaction = transaction;
-            revision.CommandText = "SELECT revision FROM trusted_access_state WHERE id = 1;";
-            if (!string.Equals(await revision.ExecuteScalarAsync(cancellationToken) as string,
-                expectedRevision, StringComparison.Ordinal))
+            await using var connection = await OpenExistingConnectionAsync(cancellationToken);
+            await VerifyIntegrityAsync(connection, cancellationToken);
+            await VerifySchemaAsync(connection, cancellationToken);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+            await using (var revision = connection.CreateCommand())
             {
-                throw new InvalidOperationException("Trusted access storage changed; the stale update was rejected.");
+                revision.Transaction = transaction;
+                revision.CommandText = "SELECT revision FROM trusted_access_state WHERE id = 1;";
+                if (!string.Equals(await revision.ExecuteScalarAsync(cancellationToken) as string,
+                    expectedRevision, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("Trusted access storage changed; the stale update was rejected.");
+                }
             }
+
+            await ExecuteAsync(connection, transaction, "DELETE FROM trusted_access_state WHERE id = 1;", cancellationToken);
+            await ExecuteAsync(connection, transaction, "DELETE FROM trusted_access_keys;", cancellationToken);
+            await InsertKeysAsync(connection, transaction, state.Keys, cancellationToken);
+            await InsertStateAsync(connection, transaction, state, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Cancellation has one last observation before commit. From commit through
+            // owner publication it cannot turn a committed write into a rollback.
+            await transaction.CommitAsync(CancellationToken.None);
+            committed = true;
+            lease.CommittedRevision = state.Revision;
+            await verifyCommittedDatabase(connection, CancellationToken.None);
+        }
+        catch (Exception error)
+        {
+            return new TrustedAccessKeyStoreSaveResult(committed, error);
         }
 
-        await ExecuteAsync(connection, transaction, "DELETE FROM trusted_access_state WHERE id = 1;", cancellationToken);
-        await ExecuteAsync(connection, transaction, "DELETE FROM trusted_access_keys;", cancellationToken);
-        await InsertKeysAsync(connection, transaction, state.Keys, cancellationToken);
-        await InsertStateAsync(connection, transaction, state, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        await VerifyIntegrityAsync(connection, cancellationToken);
-        lease.CommittedRevision = state.Revision;
+        return new TrustedAccessKeyStoreSaveResult(Committed: true);
     }
 
-    public async Task RecoverAsync(
+    public async Task<TrustedAccessKeyStoreSaveResult> RecoverAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken)
     {
@@ -203,7 +229,7 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
             fileBoundary.DeletePrivateFile(familyPath);
         }
 
-        await InitializeAsync(initialState, cancellationToken);
+        return await InitializeAsync(initialState, cancellationToken);
     }
 
     private void EnsureSharedRevision(bool initialize)
@@ -340,63 +366,75 @@ public sealed class SqliteTrustedAccessKeyStore : ITrustedAccessKeyStore, IDispo
         }
     }
 
-    private async Task CreateSchemaAndWriteStateAsync(
+    private async Task<TrustedAccessKeyStoreSaveResult> CreateSchemaAndWriteStateAsync(
         TrustedAccessKeyStoreState state,
         CancellationToken cancellationToken)
     {
-        fileBoundary.VerifyPrivateFile(DatabasePath);
-        await using var connection = new SqliteConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using (var pragma = connection.CreateCommand())
+        var committed = false;
+        try
         {
-            pragma.CommandText = "PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;";
-            await pragma.ExecuteNonQueryAsync(cancellationToken);
-        }
+            fileBoundary.VerifyPrivateFile(DatabasePath);
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = "PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;";
+                await pragma.ExecuteNonQueryAsync(cancellationToken);
+            }
 
-        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-        await using (var command = connection.CreateCommand())
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = """
+                    CREATE TABLE trusted_access_keys (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        purpose TEXT NOT NULL CHECK (purpose IN ('control', 'openai', 'anthropic')),
+                        secret_hash BLOB NOT NULL CHECK (length(secret_hash) = 32),
+                        created_utc_ticks INTEGER NOT NULL,
+                        UNIQUE (purpose, secret_hash)
+                    ) STRICT;
+
+                    CREATE TABLE trusted_access_key_scopes (
+                        credential_id TEXT NOT NULL,
+                        scope TEXT NOT NULL,
+                        PRIMARY KEY (credential_id, scope),
+                        FOREIGN KEY (credential_id) REFERENCES trusted_access_keys(id) ON DELETE CASCADE
+                    ) STRICT;
+
+                    CREATE TABLE trusted_access_state (
+                        id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+                        default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
+                        default_credential_id TEXT NULL,
+                        legacy_ai_migration_completed INTEGER NOT NULL CHECK (legacy_ai_migration_completed IN (0, 1)),
+                        revision TEXT NOT NULL CHECK (length(revision) = 32),
+                        CHECK ((default_enabled = 0 AND default_credential_id IS NULL)
+                            OR (default_enabled = 1 AND default_credential_id IS NOT NULL)),
+                        FOREIGN KEY (default_credential_id) REFERENCES trusted_access_keys(id)
+                    ) STRICT;
+
+                    CREATE INDEX ix_trusted_access_keys_purpose_created
+                        ON trusted_access_keys(purpose, created_utc_ticks DESC);
+                    PRAGMA user_version=2;
+                    """;
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await InsertKeysAsync(connection, transaction, state.Keys, cancellationToken);
+            await InsertStateAsync(connection, transaction, state, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            await transaction.CommitAsync(CancellationToken.None);
+            committed = true;
+            RequireMutationLease().CommittedRevision = state.Revision;
+            await verifyCommittedDatabase(connection, CancellationToken.None);
+            VerifyDatabaseFamilyAcl();
+        }
+        catch (Exception error)
         {
-            command.Transaction = transaction;
-            command.CommandText = """
-                CREATE TABLE trusted_access_keys (
-                    id TEXT NOT NULL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    purpose TEXT NOT NULL CHECK (purpose IN ('control', 'openai', 'anthropic')),
-                    secret_hash BLOB NOT NULL CHECK (length(secret_hash) = 32),
-                    created_utc_ticks INTEGER NOT NULL,
-                    UNIQUE (purpose, secret_hash)
-                ) STRICT;
-
-                CREATE TABLE trusted_access_key_scopes (
-                    credential_id TEXT NOT NULL,
-                    scope TEXT NOT NULL,
-                    PRIMARY KEY (credential_id, scope),
-                    FOREIGN KEY (credential_id) REFERENCES trusted_access_keys(id) ON DELETE CASCADE
-                ) STRICT;
-
-                CREATE TABLE trusted_access_state (
-                    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
-                    default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
-                    default_credential_id TEXT NULL,
-                    legacy_ai_migration_completed INTEGER NOT NULL CHECK (legacy_ai_migration_completed IN (0, 1)),
-                    revision TEXT NOT NULL CHECK (length(revision) = 32),
-                    CHECK ((default_enabled = 0 AND default_credential_id IS NULL)
-                        OR (default_enabled = 1 AND default_credential_id IS NOT NULL)),
-                    FOREIGN KEY (default_credential_id) REFERENCES trusted_access_keys(id)
-                ) STRICT;
-
-                CREATE INDEX ix_trusted_access_keys_purpose_created
-                    ON trusted_access_keys(purpose, created_utc_ticks DESC);
-                PRAGMA user_version=2;
-                """;
-            await command.ExecuteNonQueryAsync(cancellationToken);
+            return new TrustedAccessKeyStoreSaveResult(committed, error);
         }
-
-        await InsertKeysAsync(connection, transaction, state.Keys, cancellationToken);
-        await InsertStateAsync(connection, transaction, state, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        await VerifyIntegrityAsync(connection, cancellationToken);
-        VerifyDatabaseFamilyAcl();
+        return new TrustedAccessKeyStoreSaveResult(Committed: true);
     }
 
     private async Task InsertKeysAsync(

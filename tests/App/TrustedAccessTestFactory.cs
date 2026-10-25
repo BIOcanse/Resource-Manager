@@ -41,6 +41,8 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
     // The in-memory fixture has no separate committed revision publication.
     public void InvalidateRevision() { }
 
+    public void ConfirmRevision(string revision) { }
+
     public async Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false)
     {
         await mutationLock.WaitAsync(cancellationToken);
@@ -120,7 +122,7 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
         }
     }
 
-    public Task InitializeAsync(
+    public Task<TrustedAccessKeyStoreSaveResult> InitializeAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken)
     {
@@ -135,10 +137,10 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
             state = CloneState(initialState);
         }
 
-        return Task.CompletedTask;
+        return Task.FromResult(new TrustedAccessKeyStoreSaveResult(Committed: true));
     }
 
-    public Task SaveAsync(TrustedAccessKeyStoreState updatedState, string expectedRevision, CancellationToken cancellationToken)
+    public Task<TrustedAccessKeyStoreSaveResult> SaveAsync(TrustedAccessKeyStoreState updatedState, string expectedRevision, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (SaveFailure is not null) throw SaveFailure;
@@ -157,10 +159,10 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
 
         if (!SuppressChangeNotifications) Changed?.Invoke(null);
 
-        return Task.CompletedTask;
+        return Task.FromResult(new TrustedAccessKeyStoreSaveResult(Committed: true));
     }
 
-    public Task RecoverAsync(
+    public Task<TrustedAccessKeyStoreSaveResult> RecoverAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken)
     {
@@ -172,7 +174,7 @@ internal sealed class TrustedAccessTestStore(string packageRoot) : ITrustedAcces
 
         if (!SuppressChangeNotifications) Changed?.Invoke(null);
 
-        return Task.CompletedTask;
+        return Task.FromResult(new TrustedAccessKeyStoreSaveResult(Committed: true));
     }
 
     public Task<IReadOnlyList<StoredTrustedAccessKey>> ReadLegacyAiCredentialsAsync(

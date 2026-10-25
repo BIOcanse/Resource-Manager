@@ -32,7 +32,7 @@ public sealed partial class DeviceInformationEndpointTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
         builder.Services.AddHostedService(_ => provider);
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var method in new[] { "MapDeviceTopologyEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, [app]);

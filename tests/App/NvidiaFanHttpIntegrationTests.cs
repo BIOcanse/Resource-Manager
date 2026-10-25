@@ -276,7 +276,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         // An unselected route may bind its service, but this fixture never creates that worker.
         builder.Services.AddSingleton<IGpuTelemetryWorkerClient>(_ => throw new InvalidOperationException("Unselected specialized GPU route."));
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         app.Use(async (context, next) =>
         {
             try { await next(context); }

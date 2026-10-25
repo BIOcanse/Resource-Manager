@@ -41,7 +41,7 @@ public sealed class PerformanceOverlaySubscriptionTests
         builder.Services.AddSingleton<IFrameTimingObservationSource>(frameSource);
         builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resourceSource);
         builder.Services.AddSingleton<IMetricSnapshotObservationSource>(metricSource);
-        await using var app = builder.Build();
+        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
             .GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [app]);

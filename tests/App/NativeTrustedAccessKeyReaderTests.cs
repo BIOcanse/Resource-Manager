@@ -125,9 +125,12 @@ public sealed class NativeTrustedAccessKeyReaderTests(Xunit.Abstractions.ITestOu
             baseline = () => ReadBenchmarkFixture(temporary.Root, directoryFacts, fileFacts);
             output.WriteLine("SourceReconstructed unelevated baseline: path metadata/two ACL queries/read/parse against captured fixture owner and ACL facts; this does not run the production security validator. Privileged production-owner benchmark remains unverified.");
         }
-        var reader = new NativeTrustedAccessKeyReader(temporary.Root, baseline);
+        var validations = 0;
+        var reader = new NativeTrustedAccessKeyReader(temporary.Root, () => { validations++; return baseline(); });
         Measure("full file validation on each native request", baseline);
         Measure("cached native request with identity/change metadata", reader.Read);
+        Assert.Equal(1, validations);
+        output.WriteLine("Warm cache ran the actual identity/change checks on unchanged storage; no contents or ACL revalidation occurred in measured requests. The cold validator used captured fixture facts, not production privileged ACLs.");
 
         void Measure(string label, Func<string?> read)
         {

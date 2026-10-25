@@ -278,7 +278,7 @@ public sealed partial class AcpiInformationSubscriptionTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
         builder.Services.AddHostedService(_ => provider);
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var name in new[] { "MapDeviceTopologyEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
         await app.StartAsync();

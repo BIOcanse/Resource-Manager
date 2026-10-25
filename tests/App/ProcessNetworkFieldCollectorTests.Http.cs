@@ -109,7 +109,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(fixture.Sampler);
         builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Subscriptions.Provider);
         builder.Services.AddHostedService(_ => fixture.Sampler);
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var method in new[] { "MapResourceMonitorEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
         await app.StartAsync();

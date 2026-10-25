@@ -12,7 +12,7 @@ namespace Resource_Manager_APP.Tests;
 
 internal static class TrustedAccessEndpointTestAuthentication
 {
-    public static void Add(IServiceCollection services, params string[] scopes)
+    public static AddedCredential Add(IServiceCollection services, params string[] scopes)
     {
         var fixture = TrustedAccessTestFactory.Create();
         var key = fixture.Owner.CreateAsync(new AccessKeyCreateRequest(
@@ -20,6 +20,14 @@ internal static class TrustedAccessEndpointTestAuthentication
         services.AddSingleton<ITrustedAccessKeyService>(_ => fixture.Owner);
         services.AddSingleton<ILoopbackApiAdministratorReader>(new NonAdministrator());
         services.AddSingleton(new Credential(key.ApiKey));
+        return new AddedCredential(fixture.Owner, key);
+    }
+
+    public static WebApplication Build(WebApplicationBuilder builder)
+    {
+        var app = builder.Build();
+        LoopbackApiPipelineConfigurator.Compile(false).ConfigureApplication(app);
+        return app;
     }
 
     public static HttpClient Client(WebApplication app)
@@ -40,6 +48,12 @@ internal static class TrustedAccessEndpointTestAuthentication
     }
 
     private sealed record Credential(string ApiKey);
+
+    public sealed record AddedCredential(ITrustedAccessKeyService Owner, AccessKeyCreated Key)
+    {
+        public string ApiKey => Key.ApiKey;
+        public string CredentialId => Key.Credential.Id;
+    }
 
     private sealed class NonAdministrator : ILoopbackApiAdministratorReader
     {

@@ -54,7 +54,7 @@ public sealed class MetricFieldCatalogRebindingTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
-        await using var app = builder.Build();
+        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
             .GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
         await app.StartAsync();

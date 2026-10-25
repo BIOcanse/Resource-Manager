@@ -196,7 +196,7 @@ public sealed class CpuTopologyEndpointTests
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.Services.RemoveAll<IHostedService>();
         builder.Services.AddSingleton(reader);
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         var endpoints = typeof(ResourceManagerEndpointRouteBuilderExtensions);
         endpoints.GetMethod("MapSystemEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
             .Invoke(null, [app, StartupCapabilitySet.NormalReadOnly]);

@@ -31,31 +31,38 @@ public interface ITrustedAccessKeyStore
     // consistency check. A later successful lock-held reload reconciles it.
     void InvalidateRevision();
 
+    // The owner confirms the default file and migration state after LoadAsync.
+    // A database read alone must never make an inconsistent revision publishable.
+    void ConfirmRevision(string revision);
+
     // The owner holds this across database and default-key file mutations. The
-    // lease marks the shared revision unavailable until a verified Load/commit
-    // supplies its committed revision. Only explicit initialization creates it.
+    // lease marks the shared revision unavailable until the owner confirms a
+    // consistent load, or a commit supplies its revision. Only explicit init creates it.
     Task<IDisposable> AcquireMutationLockAsync(CancellationToken cancellationToken, bool ensureInitialized = false);
 
     IDisposable SubscribeToChanges(Action<Exception?> changed);
 
     Task<TrustedAccessKeyStoreState> LoadAsync(CancellationToken cancellationToken);
 
-    Task InitializeAsync(
+    Task<TrustedAccessKeyStoreSaveResult> InitializeAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken);
 
-    Task SaveAsync(
+    Task<TrustedAccessKeyStoreSaveResult> SaveAsync(
         TrustedAccessKeyStoreState state,
         string expectedRevision,
         CancellationToken cancellationToken);
 
-    Task RecoverAsync(
+    Task<TrustedAccessKeyStoreSaveResult> RecoverAsync(
         TrustedAccessKeyStoreState initialState,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<StoredTrustedAccessKey>> ReadLegacyAiCredentialsAsync(
         CancellationToken cancellationToken);
 }
+
+// Once committed, a completion/verification failure must not roll the file back.
+public sealed record TrustedAccessKeyStoreSaveResult(bool Committed, Exception? Failure = null);
 
 public interface ITrustedAccessStorageFileBoundary
 {

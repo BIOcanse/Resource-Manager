@@ -62,8 +62,8 @@ public sealed class TrustedAccessKeyService(
                 Hash(apiKey),
                 DateTimeOffset.UtcNow);
             var updated = CopyState(current, current.Keys.Append(credential).ToArray());
-            await store.SaveAsync(updated, current.Revision, cancellationToken);
-            PublishSnapshot(updated);
+            var save = await SaveStateAsync(updated, current.Revision, cancellationToken);
+            await PublishCommittedStateAsync(updated, save);
             logger?.LogInformation(
                 "Trusted access key {CredentialId} was created for purpose {Purpose}.",
                 credential.Id,
@@ -117,43 +117,11 @@ public sealed class TrustedAccessKeyService(
                 isDefault ? replacement.Id : current.DefaultCredentialId,
                 current.LegacyAiMigrationCompleted);
 
-            // File replacement must succeed before changing the credential cache
-            // or its stream tokens. The mutation lease blocks other owners from
-            // authenticating against the intermediate file/database combination.
-            var previousDefaultKey = isDefault ? keyFile.Read() : null;
+            var save = isDefault
+                ? await SaveDefaultFileAsync(current, updated, apiKey, cancellationToken)
+                : await SaveStateAsync(updated, current.Revision, cancellationToken);
 
-            try
-            {
-                if (isDefault) keyFile.WriteAtomic(apiKey);
-                await store.SaveAsync(updated, current.Revision, cancellationToken);
-            }
-            catch
-            {
-                if (isDefault)
-                {
-                    try
-                    {
-                        // The writer can throw after replacement, for example
-                        // during final ACL verification. Avoid a second write if
-                        // it failed before replacement and the original survived.
-                        if (!string.Equals(keyFile.Read(), previousDefaultKey, StringComparison.Ordinal))
-                            keyFile.WriteAtomic(previousDefaultKey!);
-                    }
-                    catch (Exception rollbackException)
-                    {
-                        logger?.LogError(
-                            rollbackException,
-                            "Trusted access default key file could not be restored after a failed rotation.");
-                        store.InvalidateRevision();
-                        InvalidateSnapshot();
-                    }
-                }
-
-                throw;
-            }
-
-            PublishSnapshot(updated);
-            CancelRevocation(oldCredential.Id);
+            await PublishCommittedStateAsync(updated, save);
             logger?.LogInformation(
                 "Trusted access key {CredentialId} was rotated to {ReplacementCredentialId}.",
                 oldCredential.Id,
@@ -196,8 +164,8 @@ public sealed class TrustedAccessKeyService(
             var updated = CopyState(
                 current,
                 current.Keys.Where(item => !item.Id.Equals(id, StringComparison.Ordinal)).ToArray());
-            await store.SaveAsync(updated, current.Revision, cancellationToken);
-            PublishSnapshot(updated);
+            var save = await SaveStateAsync(updated, current.Revision, cancellationToken);
+            await PublishCommittedStateAsync(updated, save);
             logger?.LogInformation("Trusted access key {CredentialId} was revoked.", id);
             return true;
         }
@@ -254,39 +222,9 @@ public sealed class TrustedAccessKeyService(
                 credential.Id,
                 current.LegacyAiMigrationCompleted);
 
-            keyFile.WriteAtomic(apiKey);
-            if (existing is not null)
-            {
-                CancelRevocation(existing.Id);
-                PublishSnapshot(DisableDefaultSnapshot(updated));
-            }
+            var save = await SaveDefaultFileAsync(current, updated, apiKey, cancellationToken);
 
-            try
-            {
-                await store.SaveAsync(updated, current.Revision, cancellationToken);
-            }
-            catch
-            {
-                if (existing is not null)
-                {
-                    PublishSnapshot(DisableDefaultSnapshot(updated));
-                }
-
-                try
-                {
-                    keyFile.WriteAtomic(string.Empty);
-                }
-                catch (Exception rollbackException)
-                {
-                    logger?.LogError(
-                        rollbackException,
-                        "Trusted access default key file could not be cleared after a failed enable operation.");
-                }
-
-                throw;
-            }
-
-            PublishSnapshot(updated);
+            await PublishCommittedStateAsync(updated, save);
             logger?.LogInformation("Trusted access default key {CredentialId} was enabled.", credential.Id);
             return new AccessKeyCreated(ToSummary(credential, updated), apiKey);
         }
@@ -339,82 +277,96 @@ public sealed class TrustedAccessKeyService(
         try
         {
             using var lease = await store.AcquireMutationLockAsync(cancellationToken, ensureInitialized: true);
-            if (recover)
+            try
             {
-                var empty = EmptyState(legacyAiMigrationCompleted: true);
-                PublishSnapshot(empty);
-                var recovered = CreateDefaultState([], legacyAiMigrationCompleted: true);
-                keyFile.WriteAtomic(recovered.ApiKey);
-                try
+                if (recover)
                 {
-                    await store.RecoverAsync(recovered.State, cancellationToken);
-                }
-                catch
-                {
-                    keyFile.WriteAtomic(string.Empty);
-                    throw;
-                }
-
-                PublishSnapshot(recovered.State);
-                EnsureWatching();
-                logger?.LogInformation("Trusted access storage was explicitly recovered.");
-                return;
-            }
-
-            TrustedAccessKeyStoreState initialized;
-            if (store.DatabaseExists)
-            {
-                var existing = await store.LoadAsync(cancellationToken);
-                if (existing.LegacyAiMigrationCompleted)
-                {
-                    if (!existing.DefaultEnabled && keyFile.Read() != string.Empty)
+                    var empty = EmptyState(legacyAiMigrationCompleted: true);
+                    PublishSnapshot(empty);
+                    var recovered = CreateDefaultState([], legacyAiMigrationCompleted: true);
+                    keyFile.WriteAtomic(recovered.ApiKey);
+                    TrustedAccessKeyStoreSaveResult recoverySave;
+                    try
+                    {
+                        recoverySave = await store.RecoverAsync(recovered.State, cancellationToken);
+                        RequireCommitted(recoverySave);
+                    }
+                    catch
                     {
                         keyFile.WriteAtomic(string.Empty);
+                        throw;
                     }
 
-                    if (existing.DefaultEnabled)
+                    await PublishCommittedStateAsync(recovered.State, recoverySave);
+                    EnsureWatching();
+                    logger?.LogInformation("Trusted access storage was explicitly recovered.");
+                    return;
+                }
+
+                TrustedAccessKeyStoreState initialized;
+                TrustedAccessKeyStoreSaveResult? initializationSave = null;
+                if (store.DatabaseExists)
+                {
+                    var existing = await LoadConsistentStateAsync(requireMigration: false, cancellationToken);
+                    if (existing.LegacyAiMigrationCompleted)
                     {
-                        EnsureDefaultFileMatches(existing);
-                    }
+                        if (!existing.DefaultEnabled && keyFile.Read() != string.Empty)
+                        {
+                            keyFile.WriteAtomic(string.Empty);
+                        }
 
-                    initialized = existing;
+                        if (existing.DefaultEnabled)
+                        {
+                            EnsureDefaultFileMatches(existing);
+                        }
+
+                        initialized = existing;
+                    }
+                    else
+                    {
+                        var legacy = await store.ReadLegacyAiCredentialsAsync(cancellationToken);
+                        initialized = MergeLegacyAiCredentials(existing, legacy);
+                        if (initialized.DefaultEnabled)
+                        {
+                            EnsureDefaultFileMatches(initialized);
+                        }
+                        else if (keyFile.Read() != string.Empty)
+                        {
+                            keyFile.WriteAtomic(string.Empty);
+                        }
+
+                        initializationSave = await SaveStateAsync(initialized, existing.Revision, cancellationToken);
+                    }
                 }
                 else
                 {
                     var legacy = await store.ReadLegacyAiCredentialsAsync(cancellationToken);
-                    initialized = MergeLegacyAiCredentials(existing, legacy);
-                    if (initialized.DefaultEnabled)
+                    var created = CreateDefaultState(legacy, legacyAiMigrationCompleted: true);
+                    initialized = created.State;
+                    keyFile.WriteAtomic(created.ApiKey);
+                    try
                     {
-                        EnsureDefaultFileMatches(initialized);
+                        initializationSave = await store.InitializeAsync(initialized, cancellationToken);
+                        RequireCommitted(initializationSave);
                     }
-                    else if (keyFile.Read() != string.Empty)
+                    catch
                     {
                         keyFile.WriteAtomic(string.Empty);
+                        throw;
                     }
-
-                    await store.SaveAsync(initialized, existing.Revision, cancellationToken);
                 }
+
+                if (initializationSave is null) PublishSnapshot(initialized);
+                else await PublishCommittedStateAsync(initialized, initializationSave);
+                EnsureWatching();
+                logger?.LogInformation("Trusted access storage initialization completed.");
             }
-            else
+            catch
             {
-                var legacy = await store.ReadLegacyAiCredentialsAsync(cancellationToken);
-                var created = CreateDefaultState(legacy, legacyAiMigrationCompleted: true);
-                initialized = created.State;
-                keyFile.WriteAtomic(created.ApiKey);
-                try
-                {
-                    await store.InitializeAsync(initialized, cancellationToken);
-                }
-                catch
-                {
-                    keyFile.WriteAtomic(string.Empty);
-                    throw;
-                }
+                store.InvalidateRevision();
+                InvalidateSnapshot();
+                throw;
             }
-
-            PublishSnapshot(initialized);
-            EnsureWatching();
-            logger?.LogInformation("Trusted access storage initialization completed.");
         }
         finally
         {
@@ -486,6 +438,35 @@ public sealed class TrustedAccessKeyService(
         }
     }
 
+    private async Task<TrustedAccessKeyStoreSaveResult> SaveDefaultFileAsync(
+        TrustedAccessKeyStoreState current, TrustedAccessKeyStoreState updated,
+        string defaultKey, CancellationToken cancellationToken)
+    {
+        var previous = keyFile.Read();
+        try
+        {
+            keyFile.WriteAtomic(defaultKey);
+            return await SaveStateAsync(updated, current.Revision, cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                if (!string.Equals(keyFile.Read(), previous, StringComparison.Ordinal))
+                    keyFile.WriteAtomic(previous ?? string.Empty);
+            }
+            catch (Exception rollbackError)
+            {
+                store.InvalidateRevision();
+                InvalidateSnapshot();
+                logger?.LogError(rollbackError,
+                    "Trusted access default key {CredentialId} file rollback failed; credentials are unavailable.",
+                    current.DefaultCredentialId);
+            }
+            throw;
+        }
+    }
+
     private async Task DisableDefaultAsync(
         TrustedAccessKeyStoreState current,
         CancellationToken cancellationToken)
@@ -498,14 +479,8 @@ public sealed class TrustedAccessKeyService(
             false,
             null,
             current.LegacyAiMigrationCompleted);
-        PublishSnapshot(updated);
-        if (oldDefaultId is not null)
-        {
-            CancelRevocation(oldDefaultId);
-        }
-
-        keyFile.WriteAtomic(string.Empty);
-        await store.SaveAsync(updated, current.Revision, cancellationToken);
+        var save = await SaveDefaultFileAsync(current, updated, string.Empty, cancellationToken);
+        await PublishCommittedStateAsync(updated, save);
         logger?.LogInformation("Trusted access default key {CredentialId} was disabled.", oldDefaultId);
     }
 
@@ -590,10 +565,7 @@ public sealed class TrustedAccessKeyService(
         try
         {
             EnsureWatching();
-            var state = await store.LoadAsync(cancellationToken);
-            if (!state.LegacyAiMigrationCompleted)
-                throw new InvalidOperationException("Trusted access storage requires explicit administrator initialization.");
-            EnsureDefaultFileMatches(state);
+            var state = await LoadConsistentStateAsync(requireMigration: true, cancellationToken);
             var current = Volatile.Read(ref credentialSnapshot);
             return current?.State.Revision == state.Revision ? current : PublishSnapshot(state);
         }
@@ -603,6 +575,63 @@ public sealed class TrustedAccessKeyService(
             InvalidateSnapshot();
             throw;
         }
+    }
+
+    private async Task<TrustedAccessKeyStoreState> LoadConsistentStateAsync(
+        bool requireMigration, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var state = await store.LoadAsync(cancellationToken);
+            if (requireMigration && !state.LegacyAiMigrationCompleted)
+                throw new InvalidOperationException("Trusted access storage requires explicit administrator initialization.");
+            EnsureDefaultFileMatches(state);
+            store.ConfirmRevision(state.Revision);
+            return state;
+        }
+        catch
+        {
+            store.InvalidateRevision();
+            InvalidateSnapshot();
+            throw;
+        }
+    }
+
+    private async Task<TrustedAccessKeyStoreSaveResult> SaveStateAsync(TrustedAccessKeyStoreState state, string expectedRevision,
+        CancellationToken cancellationToken)
+    {
+        var result = await store.SaveAsync(state, expectedRevision, cancellationToken);
+        RequireCommitted(result);
+        return result;
+    }
+
+    private static void RequireCommitted(TrustedAccessKeyStoreSaveResult result)
+    {
+        if (!result.Committed)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(result.Failure
+                ?? new IOException("Trusted access storage did not commit the update.")).Throw();
+    }
+
+    private async Task PublishCommittedStateAsync(TrustedAccessKeyStoreState state, TrustedAccessKeyStoreSaveResult result)
+    {
+        // A committed transaction must keep its new file. If completion reported
+        // an error, distinguish a sound commit from genuinely unavailable storage
+        // before authorizing from it. This is outside every file rollback block.
+        if (result.Failure is not null)
+        {
+            var persisted = await LoadConsistentStateAsync(requireMigration: true, CancellationToken.None);
+            if (persisted.Revision != state.Revision)
+            {
+                store.InvalidateRevision();
+                InvalidateSnapshot();
+                throw new InvalidDataException("The committed trusted access revision could not be verified.");
+            }
+        }
+        PublishSnapshot(state);
+        if (result.Failure is not null)
+            logger?.LogWarning(result.Failure,
+                "Trusted access storage published committed revision {Revision} after a post-commit verification failure.",
+                state.Revision);
     }
 
     private void InvalidateSnapshot()

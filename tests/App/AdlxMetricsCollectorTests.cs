@@ -305,7 +305,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var builder=WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
         builder.Services.AddSingleton(catalog); builder.Services.AddSingleton<IMetricSampler>(sampler); builder.Services.AddSingleton<IMetricSnapshotPushSource>(sampler);
-        var app=builder.Build();
+        var app=TrustedAccessEndpointTestAuthentication.Build(builder);
         if (streamCompleted is not null)
             app.Use(async (context, next) =>
             {

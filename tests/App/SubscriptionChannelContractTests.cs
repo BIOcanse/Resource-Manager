@@ -547,7 +547,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(source);
         builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(source);
         builder.Services.AddSingleton<IRuntimePlanProvider>(new DefaultRuntimePlanProvider());
-        var app = builder.Build();
+        var app = global::Resource_Manager_APP.Tests.TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var method in new[]
         {
             "MapResourceMonitorEndpoints",
@@ -559,6 +559,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
                 .Invoke(null, [app]);
         }
 
+        ResourceManagerEndpointRouteBuilderExtensions.MapApiNotFoundEndpoint(app);
         await app.StartAsync();
         return app;
     }

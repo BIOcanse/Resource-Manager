@@ -398,7 +398,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         builder.Services.AddSingleton<IMetricSampler>(source);
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
         if (topology is not null) builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(topology);
-        var app = builder.Build();
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var name in new[] { "MapMetricFieldEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
         await app.StartAsync();
