@@ -36,6 +36,8 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     private Action<Guid, int, IGpuAllocationPayload, DateTime>? handler;
     private Action<Exception?>? completed;
     private (string Name, long Scan)? end;
+    private readonly TaskCompletionSource firstEndScanQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task FirstEndScanQueued => firstEndScanQueued.Task;
     internal readonly HashSet<Guid> Enabled = [];
     internal int Captures;
     internal int Stops;
@@ -61,7 +63,11 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     }
     public void BeginScan(string sessionName, long scan, long eventsLost)
         => Boundary(2, sessionName, scan, eventsLost);
-    public void EndScan(string sessionName, long scan) => end = (sessionName, scan);
+    public void EndScan(string sessionName, long scan)
+    {
+        end = (sessionName, scan);
+        firstEndScanQueued.TrySetResult();
+    }
     public void Flush() { if (!HoldEnd) DeliverEnd(); }
     internal void DeliverEnd()
     {

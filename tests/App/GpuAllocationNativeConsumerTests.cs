@@ -16,9 +16,20 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalog = new VersionedProcessAttributionCatalogProvider();
+        using var allowCaptureReturn = new ManualResetEventSlim(false);
+        var capturePayloadsApplied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var factory = new GpuAllocationTestSessionFactory
         {
-            Configure = session => { session.Pid = Environment.ProcessId; session.HoldEnd = true; }
+            Configure = session =>
+            {
+                session.Pid = Environment.ProcessId;
+                session.HoldEnd = true;
+                session.DuringCapture = () =>
+                {
+                    capturePayloadsApplied.TrySetResult();
+                    allowCaptureReturn.Wait();
+                };
+            }
         };
         using var collector = factory.Collector();
         var now = DateTimeOffset.UtcNow.UtcTicks;
@@ -40,17 +51,29 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             ProcessSampleDetailLevel.SmartSchedulingLite, SchedulingProcessMetricMask.GpuDedicatedMemory);
         await using var output = sampler.SubscribeAsync("smart.gpu", request,
             TimeSpan.FromSeconds(30), stop.Token).GetAsyncEnumerator();
-        var round = output.MoveNextAsync().AsTask();
-        await AwaitGpuAsync(() => factory.Sessions.Count > 0 && factory.Current.Captures == 1);
-        Assert.False(round.IsCompleted);
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        factory.Current.DeliverEnd();
-        Assert.True(await round.WaitAsync(stop.Token));
-        Assert.Empty(factory.Current.Enabled);
-        var facts = sampler.ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
-        var fact = Assert.Single(facts!.Processes, process => process.ProcessId == Environment.ProcessId);
-        Assert.Equal(1024, Assert.Single(fact.Gpus).ResidentMemoryBytes);
-        Assert.Equal(1, factory.Current.Captures);
+        try
+        {
+            var round = output.MoveNextAsync().AsTask();
+            await capturePayloadsApplied.Task.WaitAsync(stop.Token);
+            Assert.Equal(1, factory.Current.Captures);
+            Assert.False(factory.Current.FirstEndScanQueued.IsCompleted);
+            Assert.False(round.IsCompleted);
+            Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+
+            // CaptureState's entry counter is not an end-boundary delivery permit.
+            allowCaptureReturn.Set();
+            await factory.Current.FirstEndScanQueued.WaitAsync(stop.Token);
+            Assert.False(round.IsCompleted);
+            factory.Current.DeliverEnd();
+            Assert.True(await round.WaitAsync(stop.Token));
+            Assert.Empty(factory.Current.Enabled);
+            var facts = sampler.ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
+            Assert.NotNull(facts);
+            var fact = Assert.Single(facts.Processes, process => process.ProcessId == Environment.ProcessId);
+            Assert.Equal(1024, Assert.Single(fact.Gpus).ResidentMemoryBytes);
+            Assert.Equal(1, factory.Current.Captures);
+        }
+        finally { allowCaptureReturn.Set(); }
         await sampler.StopAsync(default);
     }
 
