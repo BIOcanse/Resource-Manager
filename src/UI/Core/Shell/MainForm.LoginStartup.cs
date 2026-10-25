@@ -30,7 +30,7 @@ public sealed partial class MainForm
             else enabled = owner.Read(currentUser);
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or SecurityException
-            or InvalidOperationException or ArgumentException)
+            or InvalidOperationException or ArgumentException or InvalidDataException)
         {
             error = update ? "write-failed" : "unavailable";
             Trace.TraceWarning("Frontend logon registration failed ({0}).", failure.GetType().Name);
