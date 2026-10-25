@@ -9,7 +9,6 @@ using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -26,9 +25,11 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         var attribution = new WindowsResourceBreakdownSampler.ProcessAttributionSnapshot(
             [], new Dictionary<int, WindowsResourceBreakdownSampler.ProcessResourceSample>(),
             new Dictionary<int, ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution>(), scores, []);
-        // The source is never started. Only its evidence read is replaced; the real provider still
-        // filters, groups, scales and constructs both ETW and remaining system-residual rows.
-        using var source = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance);
+        // The controller owns the unstarted source. Evidence and process identity are fixture facts;
+        // the real provider filters, groups, scales and constructs ETW and system-residual rows.
+        await using var harness = VidMmBusinessBlockTestHarness.Create();
+        harness.CurrentProcessBirth = static pid => pid == 4747 ? 123456UL : null;
+        var source = harness.Zone;
         var reads = 0;
         var etw = new DxgkrnlVidMmEtwResidualBreakdownProvider(source, window =>
         {
@@ -47,6 +48,7 @@ public sealed partial class BackendFrontendWireAcceptanceTests
                     1, 1, CapturedAt, CapturedAt, CapturedAt, CapturedAt.AddSeconds(5), null, null)).ToArray()
         };
         Assert.Equal(etwEvidence ? 1 : 0, reads);
+        Assert.Empty(harness.Sessions.Snapshot());
         var processes = bars.SelectMany(bar => bar.Software).SelectMany(software => software.Processes).ToArray();
         Assert.All(processes, process => Assert.Equal(
             process.AttributionKind == ResourceProcessAttributionKinds.SystemResidual ? "" : "evidence-worker", process.Name));

@@ -549,7 +549,10 @@ public sealed class BusinessBlockControllerTests
         await controller.StartAsync("shared", UserReason("shared-root"));
         await controller.StartAsync("dependent", UserReason("dependent-root"));
         controller.ReportFailure("failed", new InvalidOperationException("reported"), "fake-operation");
-        await WaitUntilAsync(() => !Facts(controller, "dependent").ExecutionOutstanding);
+        // The failed block's own stop runs asynchronously; wait for both executions, as the test above does.
+        await WaitUntilAsync(() =>
+            !Facts(controller, "failed").ExecutionOutstanding &&
+            !Facts(controller, "dependent").ExecutionOutstanding);
 
         Assert.Equal(BusinessBlockState.Failed, Facts(controller, "failed").State);
         Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "dependent").State);

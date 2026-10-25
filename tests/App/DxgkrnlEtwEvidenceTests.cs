@@ -56,7 +56,6 @@ public sealed class DxgkrnlEtwEvidenceTests
         var provider = new DxgkrnlVidMmEtwResidualBreakdownProvider(harness.Zone);
         var request = new ResourceResidualBreakdownRequest(
             ResourceBreakdownMetricIds.GpuPrefix + "0.vram",
-            "GPU 0 VRAM",
             64 * 1024 * 1024,
             8d * 1024 * 1024 * 1024,
             1,

@@ -40,12 +40,19 @@ public sealed class GpuAllocationFrequencyTests
     public async Task BoundaryManifestEventDoesNotFailTheDueCapture()
     {
         var factory = new GpuAllocationTestSessionFactory();
-        using var collector = factory.Collector(timeProvider: new NoTimers());
+        await using var harness = factory.Harness(timeProvider: new NoTimers());
+        var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await lease.Ready;
+        Assert.Equal(1, factory.Current.ManifestEvents); // Session creation enables the boundary provider.
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var first = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        Assert.NotNull(first);
+        Assert.Equal(1024, first.Adapters[23][41].PrivateBytes);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
 
-        Assert.Equal(2, factory.Current.ManifestEvents);
+        Assert.Equal(3, factory.Current.ManifestEvents); // Startup plus one enable per due capture.
+        Assert.Equal(2, factory.Current.Captures);
         var value = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         Assert.NotNull(value);
         Assert.Equal(1024, value.Adapters[23][41].PrivateBytes);
