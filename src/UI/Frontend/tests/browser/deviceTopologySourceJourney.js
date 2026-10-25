@@ -2,12 +2,14 @@ import { metricFieldDevices } from "./metricFieldsProbe.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
 import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
+import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
   const channelPath = "/api/subscriptions/stream";
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
+  const channelProbe = await observeSubscriptionChannel(page);
 
   await page.setViewportSize({ width: 800, height: 500 });
   // Configure the isolated server before the only document/owner is created.
@@ -34,6 +36,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const firstDirect = await readTelemetry(page, directPath);
   assertSingleLogicalSubscription(firstActivation, "device topology");
   assertSinglePhysicalChannel(firstChannel);
+  await channelProbe.assertSinglePhysicalChannel();
   assert(firstDirect.started === 0,
     `Device topology used a direct GET instead of its callback value: ${JSON.stringify(firstDirect)}`);
 
@@ -251,6 +254,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     `Device topology reactivation overlapped logical subscriptions: ${JSON.stringify(reactivated)}`);
   const reactivatedChannel = await readTelemetry(page, channelPath);
   assertSinglePhysicalChannel(reactivatedChannel);
+  await channelProbe.assertSinglePhysicalChannel();
 
   const finalDirect = await readTelemetry(page, directPath);
   assert(finalDirect.started === 0,
@@ -429,10 +433,11 @@ function assertSingleLogicalSubscription(telemetry, label) {
   `${label} did not retain exactly one logical subscription: ${JSON.stringify(telemetry)}`);
 }
 
+// The mock's close of an aborted stream can reach it after the next POST on another connection, so
+// overlap is measured at the browser (channelProbe); the server counts still prove one live stream.
 function assertSinglePhysicalChannel(telemetry) {
   assert(telemetry.physicalStarted >= 1
     && telemetry.physicalInFlight === 1
-    && telemetry.physicalMaxInFlight === 1
     && telemetry.physicalCompleted === 0
     && telemetry.physicalStarted === telemetry.physicalAborted + 1,
   `Shared callback transport was not single-flight: ${JSON.stringify(telemetry)}`);
