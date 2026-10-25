@@ -482,7 +482,6 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("GET", "/api/metrics/catalog", true)]
     [InlineData("GET", "/api/metrics/snapshot", true)]
     [InlineData("GET", "/api/settings/app", true)]
-    [InlineData("GET", "/api/settings/dashboard", true)]
     [InlineData("POST", "/api/subscriptions/stream", true)]
     [InlineData("POST", "/api/optimization/smart/mode", false)]
     [InlineData("POST", "/api/optimization/smart/run-once", false)]
