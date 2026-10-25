@@ -160,7 +160,9 @@ function decodeBar(
 
   return {
     metricId: requireNonEmptyString(bar.metricId, `${path}.metricId`),
-    label: requireNonEmptyString(bar.label, `${path}.label`),
+    // Metric presentation belongs to the frontend (localizedMetricLabel by metricId); the backend
+    // publishes facts and may leave this label empty.
+    label: requireString(bar.label, `${path}.label`),
     unit: requireString(bar.unit, `${path}.unit`),
     scaleMode: requireOneOf(bar.scaleMode, `${path}.scaleMode`, scaleModes),
     totalValue,

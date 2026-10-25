@@ -5,6 +5,7 @@ import {
   type ResourceBreakdownWireSnapshot
 } from "../src/api/resourceBreakdownWire.ts";
 import { formatBytesPerSecond } from "../src/presentation/byteUnits.ts";
+import { localizedMetricLabel } from "../src/presentation/metricLabels.ts";
 import { formatResourceBarValue } from "../src/features/resourceBreakdown/resourceBreakdownValue.ts";
 import type { ResourceBreakdownBar } from "../src/types";
 
@@ -55,6 +56,14 @@ assert.equal(sharedBar.sharedValue, 24);
 assert.equal(sharedBar.software[0].sharedValue, 24);
 assert.equal(sharedBar.software[0].processes[0].sharedValue, 24);
 assert.equal(sharedBar.software[0].value, 64);
+
+// The backend publishes facts only, so a bar label may be empty; the frontend names the bar by its metric ID.
+const unlabeledWire = structuredClone(wire);
+unlabeledWire.bars[0].label = "";
+const unlabeledBar = decodeResourceBreakdownWireSnapshot(unlabeledWire).bars![0];
+assert.equal(unlabeledBar.metricId, "memory.usage");
+assert.equal(unlabeledBar.label, "");
+assert.ok(localizedMetricLabel(unlabeledBar.metricId, unlabeledBar.label).length > 0);
 
 const emptyValueWire: ResourceBreakdownWireSnapshot = {
   ...wire,
