@@ -11,6 +11,56 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MetricReadingSourceSelectionTests
 {
     [Fact]
+    public void ComponentCatalogPublishesAllCandidatesAndOnlyTheTrackersSelectedHandle()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx"));
+        var tracker = new MetricReadingSourceTracker();
+        var withoutTracker = NativeMetricSnapshotCommittedProjection.Create(frame, 1);
+        Assert.All(ResourceManager.App.Application.Metrics.MetricCatalog.FromSnapshot(withoutTracker)
+            .Single(item => item.Id == "gpu.0.temperature").CandidateSources,
+            candidate => Assert.False(candidate.IsSelected));
+        var unverified = NativeMetricSnapshotCommittedProjection.Create(frame, 1, tracker.Select(frame, 1));
+        var initial = ResourceManager.App.Application.Metrics.MetricCatalog.FromSnapshot(unverified)
+            .Single(item => item.Id == "gpu.0.temperature");
+        Assert.Equal(2, initial.CandidateSources.Count);
+        Assert.All(initial.CandidateSources, candidate =>
+        {
+            Assert.Equal("unverified", candidate.SourceAvailability);
+            Assert.False(candidate.IsSelected);
+        });
+        tracker.Observe(frame, 1, [Complete(20, 2)]);
+        var selection = tracker.Select(frame, 1);
+        var committed = NativeMetricSnapshotCommittedProjection.Create(frame, 1, selection);
+        var updated = MetricReadingCatalog.Update(unverified, committed);
+        var candidates = ResourceManager.App.Application.Metrics.MetricCatalog.FromSnapshot(updated)
+            .Single(item => item.Id == "gpu.0.temperature").CandidateSources;
+        Assert.Equal("field-2", Assert.Single(candidates, item => item.IsSelected).FieldName);
+        Assert.Equal("gpu-opaque", candidates[0].DeviceIdentity);
+        Assert.Equal("unverified", candidates.Single(item => item.FieldName == "field-1").SourceAvailability);
+        Assert.Equal(selection.Fields[2], candidates.Single(item => item.IsSelected).Reading);
+        Assert.Equal(2UL, selection.LegacyHandles["gpu.0.temperature"]);
+    }
+
+    [Fact]
+    public void ComponentCandidatesIncludeCrossDeviceReadingAliasesWithoutSelectingAgain()
+    {
+        var cpu = Binding(1, 10, "amd.smu", MetricFieldCode.CpuIgpuTemperature, "cpu-opaque")
+            with { LegacyMetricId = "cpu.igpuTemperature" };
+        var frame = Frame(cpu, Temperature(2, 10, "amd.smu"), Temperature(3, 20, "amd.adlx"));
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 1) with { IntegratedGpuDeviceIdentity = "gpu-opaque" }]);
+        var selection = tracker.Select(frame, 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame, 1, selection);
+        var candidates = ResourceManager.App.Application.Metrics.MetricCatalog.FromSnapshot(snapshot)
+            .Single(item => item.Id == "cpu.igpuTemperature").CandidateSources;
+        Assert.Equal(3, candidates.Count);
+        Assert.Equal("field-2", Assert.Single(candidates, candidate => candidate.IsSelected).FieldName);
+        Assert.Equal("cpu-opaque", candidates.Single(candidate => candidate.FieldName == "field-1").DeviceIdentity);
+        Assert.Equal("unverified", candidates.Single(candidate => candidate.FieldName == "field-3").SourceAvailability);
+        Assert.Equal(2UL, selection.LegacyHandles["cpu.igpuTemperature"]);
+    }
+
+    [Fact]
     public void SelectionReusesStableCatalogFactsWhileReturningFreshResults()
     {
         const int iterations = 32;

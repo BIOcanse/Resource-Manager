@@ -38,12 +38,29 @@ public static partial class MetricCatalog
         var aliases = fields.SelectMany(static binding => binding.RequestAliases.Prepend(binding.RequestAddress)
                 .Select(alias => (Alias: alias, Binding: binding)))
             .ToLookup(static entry => entry.Alias, static entry => entry.Binding, StringComparer.OrdinalIgnoreCase);
+        var readings = fields.Where(static binding => binding.Field.Reading is not null)
+            .ToLookup(static binding => binding.Field.Reading!.Id, StringComparer.Ordinal);
 
         for (var index = 0; index < definitions.Count; index++)
         {
             var definition = definitions[index];
             var candidates = aliases[definition.Id].ToArray();
             if (candidates.Length == 0) continue;
+            if (!candidates.Any(binding => string.Equals(binding.RequestAddress, definition.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                candidates = candidates.Concat(candidates.Where(static binding => binding.Field.Reading is not null)
+                        .SelectMany(binding => readings[binding.Field.Reading!.Id]))
+                    .DistinctBy(static binding => binding.RequestAddress, StringComparer.OrdinalIgnoreCase).ToArray();
+                definition = definition with
+                {
+                    CandidateSources = candidates.OrderBy(static binding => binding.Field.Reading?.SourceRank ?? int.MaxValue)
+                        .ThenBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
+                        .Select(binding => new MetricSourceCandidate(binding.Field.Name, binding.DeviceIdentity,
+                            binding.SourceId, binding.Field.Reading, binding.Field.Reading?.SourceAvailability ?? "unverified",
+                            binding.SelectedRequestAliases.Contains(definition.Id, StringComparer.OrdinalIgnoreCase))).ToArray()
+                };
+                definitions[index] = definition;
+            }
             var preferredAvailable = candidates.Any(static binding => binding.Field.Reading is
                 { IsPreferredSource: true, SourceAvailability: "available" });
             var unsupported = candidates.All(static binding => binding.Field.Reading?.SourceAvailability == "unsupported");

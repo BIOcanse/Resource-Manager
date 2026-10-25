@@ -228,9 +228,10 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         await using var app = await StartAsync(source);
         using var client = Client(app);
         var unsupported = ProcessMetricFieldRegistry.Definitions.Select(static field => field.Name)
+            .Where(static name => ProcessMemoryFactFields.TotalMetricId(name) is null)
             .Append("unknown.fact")
             .ToArray();
-        Assert.Contains("process_all_working_set_actual", unsupported);
+        Assert.Contains("process_all_peak_private_commit_actual", unsupported);
         foreach (var item in unsupported)
         {
             foreach (var items in new[] { item, "memory.usage," + item })
@@ -260,20 +261,52 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         await app.StopAsync();
     }
 
-    [Fact]
-    public async Task ResourceFactsReadCurrentOnlyAndSubscribeThroughExistingDemandOwner()
+    [Theory]
+    [InlineData("memory.usage", false)]
+    [InlineData("memory.usage", true)]
+    [InlineData("process_all_working_set_actual", false)]
+    [InlineData("process_all_working_set_actual", true)]
+    [InlineData("process_all_private_working_set_actual", false)]
+    [InlineData("process_all_private_working_set_actual", true)]
+    [InlineData("process_all_private_commit_actual", false)]
+    [InlineData("process_all_private_commit_actual", true)]
+    public async Task ResourceFactsReadCurrentOnlyAndSubscribeThroughExistingDemandOwner(string item, bool includeFoundations)
     {
         var time = DateTimeOffset.Parse("2026-10-24T12:00:00Z");
-        var source = new ResourceMonitorSource(CreateSnapshot(time));
+        var snapshot = CreateSnapshot(time);
+        var rows = snapshot.Bars[0].Software.SelectMany(owner => owner.Processes.Select(process =>
+            new SchedulingProcessFact(process.ProcessId, (ulong)process.ProcessStartKey!.Value, process.Name, process.ExecutablePath,
+                owner.SoftwareId, owner.Name, owner.Kind, owner.DisplayKind, owner.BaseScore,
+                SchedulingProcessMetricMask.None, 0, 0, 1, []))).ToArray();
+        if (item != "memory.usage")
+            snapshot = snapshot with
+            {
+                ProcessMemoryFacts = [new(item, ProcessMemoryFactFields.TotalMetricId(item)!, 3, 100, 2,
+                    rows.Select(row => new ProcessMemoryValue(row.ProcessId, (long)row.ProcessStartKey, 1)).ToArray())],
+                Datasets = [.. snapshot.Datasets, CurrentDataset(item, time)]
+            };
+        var source = new ResourceMonitorSource(snapshot)
+        {
+            Foundations = new(SamplingObservationStatus.Current, 1, time.UtcTicks, 2, 0, 0, 0,
+                SchedulingProcessMetricMask.None, SchedulingProcessMetricMask.None, [])
+            { HasSeparateFoundationPayloads = true, InventoryProcesses = rows, AttributionProcesses = rows }
+        };
+        var items = includeFoundations ? item + ",process.inventory,process.attribution" : item;
         await using var app = await StartAsync(source);
         using var client = Client(app);
         using var direct = JsonDocument.Parse(await client.GetStringAsync(
-            "/api/resource-facts/snapshot?items=memory.usage&processDetailLevel=full"));
+            $"/api/resource-facts/snapshot?items={items}&processDetailLevel=full"));
         Assert.Equal(2, direct.RootElement.GetProperty("version").GetInt32());
         Assert.Equal(2, direct.RootElement.GetProperty("processes").GetArrayLength());
+        Assert.Equal(item != "memory.usage" || includeFoundations ? 2 : 0,
+            direct.RootElement.GetProperty("attributions").GetArrayLength());
+        Assert.Single(direct.RootElement.GetProperty("metrics").EnumerateArray());
         Assert.False(direct.RootElement.TryGetProperty("rows", out _));
         var currentRequest = Assert.Single(source.SnapshotRequests);
-        Assert.Equal(["memory.usage"], currentRequest.MetricIds);
+        Assert.Equal([item], currentRequest.MetricIds);
+        Assert.Equal(item != "memory.usage", currentRequest.IncludeProcessMemoryFacts);
+        Assert.Equal(includeFoundations ? [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] : [],
+            currentRequest.PublicationDatasetIds);
         Assert.Empty(currentRequest.ScaleModes);
         Assert.Equal(ProcessSampleDetailLevel.ResourceTableFull, currentRequest.ProcessDetailLevel);
         using var old = await client.GetAsync("/api/resource-table/snapshot");
@@ -282,7 +315,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         {
             Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
-                new { id = "facts", path = "/api/resource-facts/subscribe?items=memory.usage&intervalMs=1700&processDetailLevel=full" } } })
+                new { id = "facts", path = $"/api/resource-facts/subscribe?items={items}&intervalMs=1700&processDetailLevel=full" } } })
         };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
@@ -293,6 +326,8 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         Assert.Equal("resource-facts:facts", subscription.ChannelKey);
         Assert.Equal(TimeSpan.FromMilliseconds(1700), subscription.Interval);
         Assert.Equal(currentRequest.MetricIds, subscription.Request.MetricIds);
+        Assert.Equal(currentRequest.PublicationDatasetIds, subscription.Request.PublicationDatasetIds);
+        Assert.Equal(item != "memory.usage" || includeFoundations ? 2 : 0, source.FoundationReads.Count);
         Assert.Equal(currentRequest.ProcessDetailLevel, subscription.Request.ProcessDetailLevel);
         Assert.Single(source.SnapshotRequests);
         await timeout.CancelAsync();
@@ -474,6 +509,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IResourceBreakdownSampler>(source);
         builder.Services.AddSingleton<IResourceBreakdownPushSource>(source);
+        builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(source);
         builder.Services.AddSingleton<IRuntimePlanProvider>(new DefaultRuntimePlanProvider());
         var app = builder.Build();
         foreach (var method in new[]
@@ -514,11 +550,21 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
     }
 
     private sealed class ResourceMonitorSource(ResourceBreakdownSnapshot snapshot)
-        : IResourceBreakdownSampler, IResourceBreakdownPushSource
+        : IResourceBreakdownSampler, IResourceBreakdownPushSource, ISchedulingProcessFactObservationSource
     {
         public ConcurrentQueue<ResourceBreakdownSampleRequest> SnapshotRequests { get; } = new();
 
         public ConcurrentQueue<PushRequest> PushRequests { get; } = new();
+        public SchedulingProcessFactSnapshot? Foundations { get; init; }
+        public ConcurrentQueue<SchedulingProcessFactRequest> FoundationReads { get; } = new();
+        public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request)
+        {
+            Assert.Equal(SchedulingProcessMetricMask.None, request.RequestedMetricMask);
+            FoundationReads.Enqueue(request);
+            return Foundations;
+        }
+        public IDisposable AcquireSubscription(string id, SchedulingProcessMetricMask metrics, TimeSpan interval)
+            => throw new InvalidOperationException("The existing resource demand owner owns foundation sampling.");
 
         public Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
             ResourceBreakdownSampleRequest request,
@@ -552,7 +598,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         {
             PushRequests.Enqueue(new PushRequest(subscriptionId, request, interval));
             // Match the production source: an empty selection ends without publishing.
-            if (request.MetricIds.Count == 0)
+            if (request.MetricIds.Count == 0 && request.PublicationDatasetIds.Count == 0)
             {
                 yield break;
             }

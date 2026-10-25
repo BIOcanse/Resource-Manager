@@ -171,6 +171,7 @@ public sealed record ResourceBreakdownSnapshot(
     IReadOnlyList<ResourceBreakdownBar> Bars)
 {
     public ProcessMetricFieldSnapshot? ProcessFields { get; init; }
+    public IReadOnlyList<ProcessMemoryFact> ProcessMemoryFacts { get; init; } = [];
 
     public ResourceBreakdownSamplingState Sampling { get; init; }
         = ResourceBreakdownSamplingState.Ready(CapturedAt);

@@ -17,12 +17,14 @@ public static class MetricReadingCatalog
                 || pair.Value.DeviceIdentity != next.DeviceIdentity || pair.Value.SourceId != next.SourceId
                 || pair.Value.Field.Name != next.Field.Name) continue;
             if (pair.Value.Field.Reading == next.Field.Reading
-                && pair.Value.RequestAliases.SequenceEqual(next.RequestAliases, StringComparer.OrdinalIgnoreCase)) continue;
+                && pair.Value.RequestAliases.SequenceEqual(next.RequestAliases, StringComparer.OrdinalIgnoreCase)
+                && pair.Value.SelectedRequestAliases.SequenceEqual(next.SelectedRequestAliases, StringComparer.OrdinalIgnoreCase)) continue;
             merged ??= new(catalog.FieldBindings, StringComparer.OrdinalIgnoreCase);
             merged[pair.Key] = pair.Value with
             {
                 Field = pair.Value.Field with { Reading = next.Field.Reading },
-                RequestAliases = next.RequestAliases
+                RequestAliases = next.RequestAliases,
+                SelectedRequestAliases = next.SelectedRequestAliases
             };
         }
         return merged is null ? catalog : catalog with { FieldBindings = merged };
@@ -39,12 +41,14 @@ public static class MetricReadingCatalog
                 || pair.Value.DeviceIdentity != next.DeviceIdentity || pair.Value.SourceId != next.SourceId
                 || pair.Value.Field.Name != next.Field.Name) continue;
             if (pair.Value.Field.Reading == next.Field.Reading
-                && pair.Value.RequestAliases.SequenceEqual(next.RequestAliases, StringComparer.OrdinalIgnoreCase)) continue;
+                && pair.Value.RequestAliases.SequenceEqual(next.RequestAliases, StringComparer.OrdinalIgnoreCase)
+                && pair.Value.SelectedRequestAliases.SequenceEqual(next.SelectedRequestAliases, StringComparer.OrdinalIgnoreCase)) continue;
             merged ??= new(catalog.FieldBindings, StringComparer.OrdinalIgnoreCase);
             merged[pair.Key] = pair.Value with
             {
                 Field = pair.Value.Field with { Reading = next.Field.Reading },
-                RequestAliases = next.RequestAliases
+                RequestAliases = next.RequestAliases,
+                SelectedRequestAliases = next.SelectedRequestAliases
             };
         }
         return merged is null ? catalog : catalog with { FieldBindings = merged };

@@ -104,6 +104,8 @@ public static class NativeMetricSnapshotCommittedProjection
                     {
                         NpuEngine = binding.NpuEngine,
                         Device = binding.Device,
+                        SelectedRequestAliases = sourceSelection is null ? []
+                            : requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [],
                         RequestAliases = (requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [])
                             .Append(MetricReadingSourceTracker.LegacyAddress(binding))
                             .Where(static alias => alias.Length != 0)

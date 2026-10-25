@@ -28,6 +28,36 @@ public sealed class ResourceFactsPublicationTests
         var expired = ResourceFactsSnapshot.Create(new(time, []), [], foundations with { InventoryProcesses = [] });
         Assert.Empty(expired.Attributions); Assert.Empty(expired.Processes); Assert.Empty(expired.Software);
     }
+
+    [Fact]
+    public void MissingSystemTotalDoesNotClearProcessValuesAndFailedDatasetClearsFacts()
+    {
+        const string field = "process_all_private_commit_actual";
+        var source = Snapshot();
+        source = source with
+        {
+            Bars = [],
+            ProcessMemoryFacts = [new(field, "virtualMemory.usage", null, null, 12, [new(42, long.MaxValue, 12)])],
+            Datasets = [source.Datasets[0] with { DatasetId = SamplingDatasetIds.ForProcessMetric(field) }]
+        };
+        var foundations = Foundations();
+        var published = ResourceFactsSnapshot.Create(source, [field], foundations);
+        var metric = Assert.Single(published.Metrics);
+        Assert.Equal(Assert.Single(published.Attributions).ProcessIndex,
+            Assert.Single(Assert.Single(metric.Software).Processes).ProcessIndex);
+        Assert.Null(metric.TotalValue);
+        Assert.Null(metric.CapacityValue);
+        Assert.Equal(12, metric.ProcessSumValue);
+        Assert.Equal(12, Assert.Single(Assert.Single(metric.Software).Processes).Value);
+        Assert.Empty(ResourceFactsSnapshot.Create(source, []).Processes);
+        source = source with { Datasets = [source.Datasets[0] with { Status = "failed" }] };
+        var failed = ResourceFactsSnapshot.Create(source, [field], foundations);
+        Assert.Empty(failed.Metrics);
+        Assert.Single(failed.Processes);
+        Assert.Single(failed.Attributions);
+        Assert.Equal(new DateTimeOffset(foundations.ObservedAtUtcTicks, TimeSpan.Zero), failed.CapturedAt);
+    }
+
     [Fact]
     public void EmptyFactsMatchProjectionOfAnEmptySelectionUsingProductionJsonContext()
     {
@@ -74,6 +104,39 @@ public sealed class ResourceFactsPublicationTests
         Assert.Null(empty.CapturedAt);
     }
 
+    internal static SchedulingProcessFactSnapshot Foundations(long startKey = long.MaxValue)
+    {
+        var time = DateTimeOffset.UnixEpoch;
+        var process = new SchedulingProcessFact(42, (ulong)startKey, "example.exe", null, "example", "Example", "other", "other",
+            5, SchedulingProcessMetricMask.None, 0, 0, 1, []) { UserName = "user", Architecture = "x64" };
+        return new(SamplingObservationStatus.Current, 1, time.UtcTicks, 1, 0, 0, 0,
+            SchedulingProcessMetricMask.None, SchedulingProcessMetricMask.None, [])
+        { HasSeparateFoundationPayloads = true, InventoryProcesses = [process], AttributionProcesses = [process] };
+    }
+
+    [Fact]
+    public void MemoryFieldsReferenceOneFoundationInstanceAndNeverAttachOldValuesToAReusedPid()
+    {
+        string[] fields = ["process_all_working_set_actual", "process_all_private_commit_actual"];
+        var source = Snapshot() with
+        {
+            Bars = [],
+            ProcessMemoryFacts = fields.Select(field => new ProcessMemoryFact(field, ProcessMemoryFactFields.TotalMetricId(field)!,
+                20, 100, 12, [new(42, long.MaxValue, 12)])).ToArray(),
+            Datasets = [Snapshot().Datasets[0] with { DatasetId = SamplingDatasetIds.ForProcessMetric(fields[0]) }]
+        };
+        var foundations = Foundations();
+        var facts = ResourceFactsSnapshot.Create(source, fields, foundations);
+        Assert.Single(facts.Processes);
+        var attribution = Assert.Single(facts.Attributions);
+        Assert.All(facts.Metrics, metric => Assert.Equal(attribution.ProcessIndex,
+            Assert.Single(Assert.Single(metric.Software).Processes).ProcessIndex));
+        var reused = ResourceFactsSnapshot.Create(source, fields, foundations with
+        { InventoryProcesses = Foundations(long.MaxValue - 1).InventoryProcesses });
+        Assert.Empty(reused.Processes);
+        Assert.Empty(reused.Attributions);
+        Assert.All(reused.Metrics, metric => { Assert.Empty(metric.Software); Assert.Equal(20, metric.TotalValue); });
+    }
     internal static ResourceBreakdownSnapshot Snapshot()
     {
         var time = DateTimeOffset.UnixEpoch;

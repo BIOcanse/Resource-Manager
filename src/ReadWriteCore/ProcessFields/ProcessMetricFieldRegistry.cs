@@ -25,7 +25,17 @@ public sealed record ProcessMetricFieldDefinition(
 {
     public string Resource => "process";
     public string Vendor => "all";
+    public ProcessMetricReading? Reading => Code switch
+    {
+        ProcessMetricFieldCode.WorkingSet => new("memory", "working_set_including_shared"),
+        ProcessMetricFieldCode.PrivateWorkingSet => new("memory", "private_working_set"),
+        ProcessMetricFieldCode.PrivateCommit => new("memory", "private_commit"),
+        ProcessMetricFieldCode.PeakPrivateCommit => new("memory", "peak_private_commit"),
+        _ => null
+    };
 }
+
+public sealed record ProcessMetricReading(string Resource, string Quantity);
 
 public static class ProcessMetricFieldRegistry
 {

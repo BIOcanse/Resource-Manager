@@ -90,6 +90,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             detailLevel,
             schedulingMetricMask)
         {
+            ProcessMemoryFactIds = relevantSources.SelectMany(static source => source.Request.ProcessMemoryFactIds)
+                .Where(name => metricIds.Contains(name, StringComparer.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             PublicationDatasetIds = itemIds
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase)
@@ -110,8 +112,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (result.Count > 0)
         {
             result.Add(SamplingDatasetIds.ProcessInventory);
-            if (request.SchedulingMetricMask != SchedulingProcessMetricMask.None
-                || request.MetricIds.Any(IsSupportedBarMetric))
+            if (RequiresProcessAttribution(request) || request.SchedulingMetricMask != SchedulingProcessMetricMask.None)
                 result.Add(SamplingDatasetIds.ProcessAttribution);
         }
         return result;
@@ -129,6 +130,11 @@ public sealed partial class WindowsResourceBreakdownSampler
                 request.SchedulingMetricMask));
         result.UnionWith(request.PublicationDatasetIds.Where(static id =>
             id is SamplingDatasetIds.ProcessInventory or SamplingDatasetIds.ProcessAttribution));
+        if (request.IncludeProcessMemoryFacts)
+        {
+            result.Add(SamplingDatasetIds.ProcessInventory);
+            result.Add(SamplingDatasetIds.ProcessAttribution);
+        }
         return result;
     }
 
@@ -137,6 +143,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         ArgumentNullException.ThrowIfNull(request);
         return request.MetricIds.Any(IsSupportedBarMetric)
+            || request.IncludeProcessMemoryFacts && request.MetricIds.Any(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null)
             || request.PublicationDatasetIds.Contains(
                 SamplingDatasetIds.ProcessAttribution,
                 StringComparer.OrdinalIgnoreCase);
@@ -213,6 +220,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             request.ProcessDetailLevel,
             request.SchedulingMetricMask)
         {
+            ProcessMemoryFactIds = request.ProcessMemoryFactIds.Where(selected.Contains).ToArray(),
             PublicationDatasetIds = request.PublicationDatasetIds,
             DatasetRefreshIntervals = request.DatasetRefreshIntervals
         };
@@ -278,7 +286,9 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         ArgumentNullException.ThrowIfNull(request);
         return CreateHardwareRequest(
-            request.MetricIds,
+            request.IncludeProcessMemoryFacts
+                ? request.MetricIds.Concat(request.ProcessMemoryFactIds.Select(ProcessMemoryFactFields.TotalMetricId).OfType<string>()).ToArray()
+                : request.MetricIds,
             request.SchedulingMetricMask);
     }
 

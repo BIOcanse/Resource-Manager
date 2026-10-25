@@ -15,4 +15,8 @@ public sealed record MetricDefinition(
     public string? DeviceIdentity { get; init; }
     public string? SourceId { get; init; }
     public string ValueKind { get; init; } = "float64";
+    public IReadOnlyList<MetricSourceCandidate> CandidateSources { get; init; } = [];
 }
+
+public sealed record MetricSourceCandidate(string FieldName, string DeviceIdentity, string SourceId,
+    MetricReadingSource? Reading, string SourceAvailability, bool IsSelected);

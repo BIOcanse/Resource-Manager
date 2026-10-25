@@ -15,6 +15,9 @@ public sealed record ResourceBreakdownSampleRequest(
     SchedulingProcessMetricMask SchedulingMetricMask =
         SchedulingProcessMetricMask.None)
 {
+    public IReadOnlyList<string> ProcessMemoryFactIds { get; init; } = [];
+    public bool IncludeProcessMemoryFacts => ProcessMemoryFactIds.Count != 0;
+
     public IReadOnlyList<string> PublicationDatasetIds { get; init; } = [];
 
     public IReadOnlyDictionary<string, TimeSpan> DatasetRefreshIntervals { get; init; }
@@ -38,7 +41,7 @@ public sealed record ResourceBreakdownSampleRequest(
                 .Where(static id => id.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase);
-            return $"{(byte)ProcessDetailLevel}:{(ulong)SchedulingMetricMask}:{string.Join(',', metrics)}:{string.Join(',', scaleModes)}:{string.Join(',', publications)}";
+            return $"{(byte)ProcessDetailLevel}:{(ulong)SchedulingMetricMask}:{string.Join(',', metrics)}:{string.Join(',', scaleModes)}:{string.Join(',', publications)}:{string.Join(',', ProcessMemoryFactIds.Order(StringComparer.OrdinalIgnoreCase))}";
         }
     }
 
@@ -107,6 +110,8 @@ public sealed record ResourceBreakdownSampleRequest(
             detailLevel,
             schedulingMetricMask)
         {
+            ProcessMemoryFactIds = requests.SelectMany(static request => request.ProcessMemoryFactIds)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             PublicationDatasetIds = publicationDatasetIds,
             DatasetRefreshIntervals = datasetRefreshIntervals
         };

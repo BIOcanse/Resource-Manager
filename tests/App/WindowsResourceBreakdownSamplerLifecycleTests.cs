@@ -856,6 +856,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         internal int GetCount => Volatile.Read(ref getCount);
 
         internal MetricSampleRequest? LastSubscriptionRequest { get; private set; }
+        internal MetricSampleRequest? LastReadRequest { get; private set; }
 
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
             => GetSnapshotAsync(MetricSampleRequest.All, cancellationToken);
@@ -890,7 +891,10 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         }
 
         public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
-            => snapshot;
+        {
+            LastReadRequest = request;
+            return snapshot;
+        }
     }
 
     private static (uint ActiveSourceCount, uint KnownItemCount)

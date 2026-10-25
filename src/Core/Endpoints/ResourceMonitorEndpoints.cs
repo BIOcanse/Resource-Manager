@@ -146,17 +146,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             new Dictionary<string, string>(),
             query.TryGetValue("processDetailLevel", out var detail)
                 ? ParseProcessSampleDetailLevel(detail.ToString()) ?? ProcessSampleDetailLevel.ResourceTableBasic
-                : ProcessSampleDetailLevel.ResourceTableBasic) { PublicationDatasetIds = foundations };
+                : ProcessSampleDetailLevel.ResourceTableBasic)
+        {
+            PublicationDatasetIds = foundations,
+            ProcessMemoryFactIds = metrics.Where(static item => ProcessMemoryFactFields.TotalMetricId(item) is not null).ToArray()
+        };
     }
 
     private static SchedulingProcessFactSnapshot? ReadResourceFoundations(ResourceBreakdownSampleRequest request, IServiceProvider services)
-        => request.PublicationDatasetIds.Count == 0 ? null
+        => request.PublicationDatasetIds.Count == 0 && !request.IncludeProcessMemoryFacts ? null
             : services.GetRequiredService<ISchedulingProcessFactObservationSource>().ReadLatest(new(
                 SchedulingProcessMetricMask.None, new SchedulingGpuInventorySnapshot(
                     SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
 
     private static bool IsResourceFactsItemSupported(string item)
-        => ResourceBreakdownScaleModes.SupportsCapacity(item)
+        => ProcessMemoryFactFields.TotalMetricId(item) is not null
+            || ResourceBreakdownScaleModes.SupportsCapacity(item)
             || item.ToLowerInvariant() is ResourceBreakdownMetricIds.DiskIo
                 or ResourceBreakdownMetricIds.DiskRead or ResourceBreakdownMetricIds.DiskWrite
                 or ResourceBreakdownMetricIds.NetworkTraffic or ResourceBreakdownMetricIds.NetworkReceive

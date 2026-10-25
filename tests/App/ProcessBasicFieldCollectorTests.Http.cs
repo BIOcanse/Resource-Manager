@@ -19,6 +19,14 @@ public sealed partial class ProcessBasicFieldCollectorTests
         using var catalog = JsonDocument.Parse(await client.GetStringAsync("/api/resource-breakdown/fields/catalog"));
         Assert.Equal(34, catalog.RootElement.GetArrayLength());
         Assert.Equal(19, catalog.RootElement.EnumerateArray().Count(f => f.GetProperty("sourceId").GetString() == "windows.process.query"));
+        var quantities = catalog.RootElement.EnumerateArray()
+            .Where(field => field.TryGetProperty("reading", out var reading) && reading.ValueKind == JsonValueKind.Object)
+            .Select(field => field.GetProperty("reading").GetProperty("quantity").GetString()).ToArray();
+        Assert.Equal(4, quantities.Length);
+        Assert.Contains("working_set_including_shared", quantities);
+        Assert.Contains("private_working_set", quantities);
+        Assert.Contains("private_commit", quantities);
+        Assert.Contains("peak_private_commit", quantities);
         string[] names = [Names[1], Names[5], NetworkNames[0]];
         var snapshotUrl = "/api/resource-breakdown/snapshot?ids=" + string.Join(',', names);
         var subscribeUrl = "/api/resource-monitor/subscribe?scope=bars&intervalMs=1000&ids=" + string.Join(',', names);

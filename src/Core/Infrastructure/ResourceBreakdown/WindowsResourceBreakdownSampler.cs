@@ -828,7 +828,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             request.ProcessDetailLevel,
             cpuDeltaTracker,
             basicMask,
-            preserveProductIdentity: definitions.Length == 0 || definitions.Length != cleanMetricIds.Length
+            preserveProductIdentity: request.IncludeProcessMemoryFacts || definitions.Length == 0 || definitions.Length != cleanMetricIds.Length
                 || request.SchedulingMetricMask != SchedulingProcessMetricMask.None || publishesProcessAttribution);
         var processCapturedAt = processBatch.CapturedAt;
         if (processBatch.Status != SamplingObservationStatus.Current)
@@ -847,16 +847,15 @@ public sealed partial class WindowsResourceBreakdownSampler(
         {
             processAttribution = await CreateProcessAttributionSnapshotAsync(processSamples, cancellationToken);
         }
-        var hardwareRequest = CreateHardwareRequest(
-            cleanMetricIds,
-            request.SchedulingMetricMask);
+        var hardwareRequest = CreateHardwareRequest(request with { MetricIds = cleanMetricIds });
         HardwareMetricSnapshot? hardwareSnapshot = null;
         if (!hardwareRequest.IsEmpty)
         {
             hardwareSnapshot = await ReadHardwareSnapshotAsync(
                 hardwareRequest,
                 cancellationToken,
-                requireHostedHardwareObservation);
+                requireHostedHardwareObservation,
+                allowMissingSnapshot: !cleanMetricIds.Any(IsSupportedBarMetric));
         }
         var gpuAttribution = adapters.Count > 0
             ? processGpuReader.ReadBreakdownSnapshot(adapters, processSamples.Where(static sample => sample.StartKey is > 0)
@@ -930,7 +929,10 @@ public sealed partial class WindowsResourceBreakdownSampler(
             processFieldParts.Add(CreateProcessBasicFields(definitions, processSamples, processCapturedAt, processBatch.CpuInterval, ioRates));
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.Now, bars)
         {
-            ProcessFields = processFieldParts.Count > 0 ? ProcessMetricFieldSnapshot.Merge(processFieldParts) : null
+            ProcessFields = processFieldParts.Count > 0 ? ProcessMetricFieldSnapshot.Merge(processFieldParts) : null,
+            ProcessMemoryFacts = request.IncludeProcessMemoryFacts && processAttribution is not null
+                ? CreateProcessMemoryFacts(definitions.Where(field => request.ProcessMemoryFactIds.Contains(field.Name, StringComparer.OrdinalIgnoreCase)).ToArray(),
+                    processSamples, hardwareSnapshot) : []
         };
         SchedulingProcessFactSnapshot? schedulingSnapshot = null;
         if (request.SchedulingMetricMask != SchedulingProcessMetricMask.None
@@ -973,10 +975,11 @@ public sealed partial class WindowsResourceBreakdownSampler(
             tracker.Clear();
     }
 
-    private async Task<HardwareMetricSnapshot> ReadHardwareSnapshotAsync(
+    private async Task<HardwareMetricSnapshot?> ReadHardwareSnapshotAsync(
         MetricSampleRequest request,
         CancellationToken cancellationToken,
-        bool requireHostedObservation)
+        bool requireHostedObservation,
+        bool allowMissingSnapshot = false)
     {
         if (!requireHostedObservation)
         {
@@ -989,9 +992,10 @@ public sealed partial class WindowsResourceBreakdownSampler(
             as IMetricSnapshotObservationSource
             ?? throw new InvalidOperationException(
                 "Hosted resource sampling requires a hosted hardware observation source.");
-        return observationSource.ReadLatest(request)
-            ?? throw new InvalidOperationException(
-                "The hosted hardware dataset has not published a snapshot yet.");
+        var snapshot = observationSource.ReadLatest(request);
+        if (snapshot is null && !allowMissingSnapshot)
+            throw new InvalidOperationException("The hosted hardware dataset has not published a snapshot yet.");
+        return snapshot;
     }
 
     private sealed class ObservationSubscriptionLease(

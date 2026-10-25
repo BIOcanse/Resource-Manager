@@ -12,6 +12,33 @@ public sealed class ResourceBreakdownSnapshotStateTests
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public void ProcessMemoryFactsFollowFieldSelectionReplacementAndFailure()
+    {
+        const string working = "process_all_working_set_actual";
+        const string commit = "process_all_private_commit_actual";
+        var state = new ResourceBreakdownSnapshotState();
+        var time = DateTimeOffset.UtcNow;
+        var request = Request(working, commit) with { ProcessMemoryFactIds = [working, commit] };
+        var fields = ProcessMetricFieldRegistry.Definitions.Where(field => request.MetricIds.Contains(field.Name)).ToArray();
+        var sample = new ResourceBreakdownSnapshot(time, [])
+        {
+            ProcessFields = new(time, null, fields, []),
+            ProcessMemoryFacts = [new(working, "memory.usage", 100, 200, 10, []),
+                new(commit, "virtualMemory.usage", 300, 400, 20, [])]
+        };
+        ApplyDirect(state, request, sample);
+        Assert.Equal(2, state.ReadOrCreate(time, request).ProcessMemoryFacts.Count);
+        var onlyCommit = Request(commit) with { ProcessMemoryFactIds = [commit] };
+        Assert.Equal(commit, Assert.Single(state.ReadOrCreate(time, onlyCommit).ProcessMemoryFacts).MetricId);
+        Assert.Empty(state.ReadOrCreate(time, Request(commit)).ProcessMemoryFacts);
+        ApplyDirect(state, onlyCommit, sample with { ProcessMemoryFacts = [] });
+        Assert.Empty(state.ReadOrCreate(time, request).ProcessMemoryFacts);
+        ApplyDirect(state, request, sample);
+        state.MarkFailed(request, time.AddSeconds(1), new InvalidOperationException("capture failed"));
+        Assert.Empty(state.ReadOrCreate(time.AddSeconds(1), request).ProcessMemoryFacts);
+    }
+
+    [Fact]
     public void ReadOrCreate_WithoutCompletedSampleIsWarmingAndEmpty()
     {
         var state = new ResourceBreakdownSnapshotState();

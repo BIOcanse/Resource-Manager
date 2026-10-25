@@ -11,6 +11,8 @@ public sealed record MetricDeviceFieldBinding(
     string SourceId)
 {
     public IReadOnlyList<string> RequestAliases { get; init; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string> SelectedRequestAliases { get; init; } = [];
     // Some public fields are projections of a source-planner trigger. The
     // trigger is not a public value address and must remain out of payloads.
     [System.Text.Json.Serialization.JsonIgnore]
