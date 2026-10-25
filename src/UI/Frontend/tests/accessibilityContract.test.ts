@@ -127,7 +127,9 @@ assert.match(modalFocus, /event\.key === "Escape"/);
 assert.match(modalFocus, /event\.key !== "Tab"/);
 assert.match(modalFocus, /child\.inert = true/);
 assert.match(modalFocus, /initialFocus/);
-assert.match(modalFocus, /focusTarget\.focus\(\{ preventScroll: true \}\)/);
+assert.match(modalFocus, /restoreFocusTarget\(opener, openerFocusKey\)/);
+// Portal 里的对话框也要把应用根设为 inert：从遮罩一路往上到 body，每层的兄弟都设 inert。
+assert.match(modalFocus, /kept !== document\.body/);
 for (const modalConsumer of [
   softwareDetailModal,
   userDetailsDialog,

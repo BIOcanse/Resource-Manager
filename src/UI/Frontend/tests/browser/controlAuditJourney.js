@@ -116,6 +116,14 @@ export default async function controlAuditJourney(page, baseUrl) {
   noticeAvailable = true;
   await page.getByRole("button", { name: "重新读取", exact: true }).click();
   await page.locator(".control-first-run-notice").waitFor();
+  // 须知经 Portal 挂到 body：对话框之外的应用根也必须设为 inert，读屏和指针都到不了背后的页面。
+  const inertState = await page.evaluate(() => ({
+    root: document.getElementById("root")?.inert === true,
+    noticeInert: Boolean(document.querySelector(".control-first-run-notice")?.closest("[inert]")),
+    rootContainsNotice: Boolean(document.getElementById("root")?.querySelector(".control-first-run-notice"))
+  }));
+  assert.deepEqual(inertState, { root: true, noticeInert: false, rootContainsNotice: false },
+    `The portal notice left the application root interactive: ${JSON.stringify(inertState)}`);
   // 键盘按“下一步”换到第二屏后，焦点落在第二屏的按钮上，而不是随第一屏的按钮掉到 body。
   await page.locator(".control-first-run-notice").getByRole("button", { name: "下一步", exact: true }).focus();
   await page.keyboard.press("Enter");

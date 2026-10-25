@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { restoreFocusTarget, scheduleFocusRestore } from "../interactions/focusReturn.ts";
 
 export interface StandardContextMenuItem {
   id: string;
@@ -261,34 +262,4 @@ function lastEnabledMenuItemIndex(items: readonly StandardContextMenuItem[]) {
     }
   }
   return -1;
-}
-
-function restoreFocusTarget(
-  opener: HTMLElement | null,
-  focusKey: string | undefined
-) {
-  const target = opener?.isConnected && (!focusKey || opener.dataset.focusKey === focusKey)
-    ? opener
-    : focusKey
-      ? document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focusKey)}"]`)
-      : null;
-  if (target && !target.inert && !target.closest("[inert]")) {
-    target.focus({ preventScroll: true });
-  }
-}
-
-function scheduleFocusRestore(
-  opener: HTMLElement | null,
-  focusKey: string | undefined
-) {
-  queueMicrotask(() => {
-    requestAnimationFrame(() => {
-      const activeElement = document.activeElement;
-      if (activeElement === document.body
-        || !(activeElement instanceof HTMLElement)
-        || !activeElement.isConnected) {
-        restoreFocusTarget(opener, focusKey);
-      }
-    });
-  });
 }

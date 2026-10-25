@@ -1,4 +1,5 @@
 import { createEffect, onCleanup, type Accessor } from "solid-js";
+import { restoreFocusTarget } from "./focusReturn.ts";
 
 interface ModalFocusOptions {
   open: Accessor<boolean>;
@@ -27,7 +28,7 @@ export function useModalFocus(options: ModalFocusOptions) {
       ? document.activeElement
       : null;
     const openerFocusKey = opener?.dataset.focusKey;
-    const inertedSiblings = inertBackdropSiblings(options.backdrop());
+    const inertedOutside = inertOutsideBackdrop(options.backdrop());
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isTopModal(token)) {
@@ -88,14 +89,11 @@ export function useModalFocus(options: ModalFocusOptions) {
     onCleanup(() => {
       document.removeEventListener("keydown", handleKeyDown, true);
       removeModalToken(token);
-      for (const { element, wasInert } of inertedSiblings) {
+      for (const { element, wasInert } of inertedOutside) {
         element.inert = wasInert;
       }
 
-      const focusTarget = resolveFocusReturnTarget(opener, openerFocusKey);
-      if (focusTarget && !focusTarget.inert && !focusTarget.closest("[inert]")) {
-        focusTarget.focus({ preventScroll: true });
-      }
+      restoreFocusTarget(opener, openerFocusKey);
     });
   });
 }
@@ -111,20 +109,30 @@ export function getFocusableDialogElements(dialog: HTMLElement) {
     && element.getClientRects().length > 0);
 }
 
-function inertBackdropSiblings(backdrop: HTMLElement | undefined) {
+/**
+ * 把对话框之外的整个页面设为 inert：从遮罩往上走到 body，每一层都把祖先链以外的兄弟元素设为 inert。
+ * 对话框挂在应用根里时，这就是它旁边的应用内容；经 Portal 挂到 body 时，它旁边的应用根（#root）也在其中。
+ * 记下每个元素原来的 inert，关闭时原样恢复（叠开的对话框各自恢复自己改过的那部分）。
+ */
+function inertOutsideBackdrop(backdrop: HTMLElement | undefined) {
   const records: InertRecord[] = [];
-  const parent = backdrop?.parentElement;
-  if (!parent || !backdrop) {
-    return records;
-  }
-
-  for (const child of parent.children) {
-    if (child === backdrop || !(child instanceof HTMLElement)) {
-      continue;
+  let kept: HTMLElement | null = backdrop ?? null;
+  // DOM 深度上限：正常页面不到 30 层；防的是异常结构下无止境地往上走。
+  for (let depth = 0; kept && kept !== document.body && depth < 256; depth += 1) {
+    const parent: HTMLElement | null = kept.parentElement;
+    if (!parent) {
+      break;
     }
 
-    records.push({ element: child, wasInert: child.inert });
-    child.inert = true;
+    for (const child of parent.children) {
+      if (child === kept || !(child instanceof HTMLElement)) {
+        continue;
+      }
+
+      records.push({ element: child, wasInert: child.inert });
+      child.inert = true;
+    }
+    kept = parent;
   }
   return records;
 }
@@ -138,16 +146,4 @@ function removeModalToken(token: symbol) {
   if (index >= 0) {
     modalStack.splice(index, 1);
   }
-}
-
-function resolveFocusReturnTarget(opener: HTMLElement | null, focusKey: string | undefined) {
-  if (opener?.isConnected && (!focusKey || opener.dataset.focusKey === focusKey)) {
-    return opener;
-  }
-
-  if (!focusKey) {
-    return null;
-  }
-
-  return document.querySelector<HTMLElement>(`[data-focus-key="${CSS.escape(focusKey)}"]`);
 }
