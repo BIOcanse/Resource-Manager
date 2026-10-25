@@ -2,9 +2,11 @@ import { onCleanup } from "solid-js";
 import { SettingsPage } from "./SettingsPage";
 import type { SettingsStore } from "../../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
+import type { ProductUpdateStore } from "../../stores/productUpdateStore";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;
+  productUpdates: ProductUpdateStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
 }
 
@@ -51,8 +53,12 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onAutoStartChange={settings.updateAutoStart}
         onServiceRecoveryChange={settings.updateServiceRecovery}
         serviceRecovery={settings.serviceRecovery()}
-        onAutoUpdateChange={settings.updateAutoUpdate}
+        productUpdates={props.productUpdates}
+        committedUpdateSettings={settings.settings().update}
+        onUpdateModeChange={settings.updateUpdateMode}
+        onPeriodicUpdateCheckChange={settings.updatePeriodicUpdateCheck}
         onCheckIntervalChange={settings.updateCheckInterval}
+        onNotificationSwitchChange={settings.updateNotificationSwitch}
         onEditableHotkeyChange={settings.updateEditableHotkey}
         onLocalPublicServiceChange={settings.updateLocalPublicService}
         onPublicFileIndexChange={settings.updatePublicFileIndex}

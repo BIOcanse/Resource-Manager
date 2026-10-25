@@ -95,3 +95,28 @@ test("cache explanation and reset are translated in every selectable locale", as
   assert.equal(explanations.size, 9);
   assert.equal(labels.size, 9);
 });
+
+test("the notification section defaults to its points, saves with the global scope and survives the other scopes", async () => {
+  assert.deepEqual(pointPreferences().notifications,
+    { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, updateInAppNotifiedVersion: null });
+  assert.equal(points.UpdateInApp, "on");
+  assert.equal(points.UpdateSystem, "on");
+  const disk = storage();
+  // A cache saved before the section existed reads the section's points and keeps its other choices.
+  const { notifications: _absent, ...older } = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const } };
+  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify(older));
+  const client = createFrontendPreferencesClient(disk);
+  const loaded = await client.read();
+  assert.equal(loaded.appearance.theme, "dark");
+  assert.deepEqual(loaded.notifications, pointPreferences().notifications);
+  await client.save({ ...loaded, notifications: { updateInApp: "off", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" } }, "global");
+  // Dashboard and overlay saves from views holding the old section do not write it.
+  await client.save({ ...loaded, dashboard: null }, "dashboard");
+  await client.save({ ...loaded, overlays: { game: pointOverlayPresentation() } }, { overlay: "game" });
+  const current = await createFrontendPreferencesClient(disk).read();
+  assert.deepEqual(current.notifications, { updateInApp: "off", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
+  assert.ok(current.overlays.game);
+  // The switches are frontend preferences and never enter an app-settings request.
+  const settings = { ...defaultAppSettings(), notifications: { updateInApp: "off" as const, updateSystem: "off" as const } };
+  assert.equal("notifications" in backendSettings(settings), false);
+});

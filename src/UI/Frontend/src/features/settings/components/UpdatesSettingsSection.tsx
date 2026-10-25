@@ -1,12 +1,15 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createSignal, onMount } from "solid-js";
 import { getJson, postJson } from "../../../api";
 import { ObservationStateNotice } from "../../../components/ObservationStateNotice";
 import { failedObservation, loadingObservation } from "../../../observation/observationState";
-import type { AppUpdateSettings } from "../../../types";
+import type { AppNotificationSettings, AppUpdateMode, AppUpdateSettings } from "../../../types";
 import type { SettingsTextBundle } from "../../../i18n/settingsTypes.ts";
 import { VersionSelector, type VersionChoice } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
-import { postShellMessage } from "../../../utils";
+import type { ProductUpdateStore } from "../../../stores/productUpdateStore.ts";
+import { updateCheckIntervalHours } from "../../../stores/settingsStore.ts";
+import { formatConnectedDuration, formatUtcTime } from "../../../data/productUpdateStatus.ts";
+import { NumberField, SegmentedControl } from "./SettingsControls";
 
 interface ProductVersionOption extends Omit<VersionChoice, "unavailableReason"> {
   version: string;
@@ -29,20 +32,30 @@ interface ProductVersionCatalog {
 
 export function UpdatesSettingsSection(props: {
   settings: AppUpdateSettings | undefined;
+  /** 已保存的更新设置；“下次检查”一行按它判断间隔检查是否开着。 */
+  committedSettings: AppUpdateSettings | undefined;
+  notifications: AppNotificationSettings | undefined;
+  productUpdates: ProductUpdateStore;
   text: SettingsTextBundle;
-  onAutoUpdateChange: (enabled: boolean) => void;
+  onModeChange: (mode: AppUpdateMode) => void;
+  onPeriodicCheckChange: (enabled: boolean) => void;
   onCheckIntervalChange: (hours: number) => void;
+  onNotificationSwitchChange: (path: keyof AppNotificationSettings, enabled: boolean) => void;
 }) {
   const [catalog, setCatalog] = createSignal<ProductVersionCatalog | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [selected, setSelected] = createSignal<string | null>(null);
-  const [updateState, setUpdateState] = createSignal<ProductUpdateState | null>(null);
-  const [statusFailed, setStatusFailed] = createSignal(false);
-  const [actionPending, setActionPending] = createSignal(false);
-  let statusReading = false;
+  const [preparePending, setPreparePending] = createSignal(false);
   const text = () => props.text.updates;
   const copy = () => productUpdateCopy(props.text.language);
   const selectedOption = () => catalog()?.options.find((option) => option.choice === selected());
+  // 更新状态来自后端推送（设置页和界面内提示共用一份），不再定时读取。
+  const updateState = props.productUpdates.status;
+  const statusFailed = props.productUpdates.statusFailed;
+  const actionPending = () => preparePending() || props.productUpdates.applyPending();
+  const mode = () => props.settings?.mode ?? "automatic";
+  const automaticOff = () => mode() === "off";
+  const committedPeriodic = () => props.committedSettings?.mode !== "off" && props.committedSettings?.periodicCheckEnabled === true;
 
   async function refresh() {
     setLoading(true);
@@ -55,83 +68,73 @@ export function UpdatesSettingsSection(props: {
       setLoading(false);
     }
   }
-  async function refreshUpdateState() {
-    if (statusReading || actionPending()) return;
-    statusReading = true;
-    const previous = updateState();
-    try {
-      const state = await getJson<ProductUpdateState>("/api/updates/product/status");
-      // A read started before a command must not replace that command's result.
-      if (!actionPending() && updateState() === previous) {
-        setUpdateState(state);
-        setStatusFailed(false);
-      }
-    } catch {
-      if (!actionPending() && updateState() === previous) setStatusFailed(true);
-    }
-    finally { statusReading = false; }
-  }
-  onMount(() => { void refresh(); void refreshUpdateState(); });
-  const interval = window.setInterval(() => {
-    void refreshUpdateState();
-  }, 3000);
-  onCleanup(() => window.clearInterval(interval));
+  onMount(() => { void refresh(); });
 
   async function prepareUpdate() {
     const option = selectedOption();
     if (!option?.selectable || actionPending() || statusFailed() || updateState()?.stage === "pendingApply" || isUpdateBusy(updateState()?.stage)) return;
     const approved = window.confirm(text().confirmPrepare(option.version));
     if (!approved) return;
-    setActionPending(true);
+    setPreparePending(true);
     try {
-      setUpdateState(await postJson<ProductUpdateState>("/api/updates/product/prepare",
+      props.productUpdates.accept(await postJson<ProductUpdateState>("/api/updates/product/prepare",
         { choice: option.choice }, text().prepareFailed));
-      setStatusFailed(false);
     } catch (error) {
-      setUpdateState(updateFailure(error, "update.preparationFailed"));
-    } finally { setActionPending(false); }
+      props.productUpdates.accept(updateFailure(error, "update.preparationFailed"));
+    } finally { setPreparePending(false); }
   }
 
-  async function applyUpdate() {
-    if (actionPending() || statusFailed() || updateState()?.stage !== "pendingApply") return;
-    if (!window.confirm(text().confirmPrepare(updateState()?.targetVersion ?? ""))) return;
-    setActionPending(true);
-    try {
-      const state = await postJson<ProductUpdateState>("/api/updates/product/apply", {}, copy().error("update.applyFailed"));
-      setUpdateState(state);
-      setStatusFailed(false);
-      if (state.stage === "waitingForExit") postShellMessage("update.applyExit");
-    } catch (error) {
-      setUpdateState(updateFailure(error, "update.applyFailed"));
-    } finally { setActionPending(false); }
-  }
+  const notificationSwitch = (path: keyof AppNotificationSettings, title: string, description: string) =>
+    <div class="settings-row">
+      <div class="settings-row-copy">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <label class="settings-switch">
+        <input type="checkbox" checked={(props.notifications?.[path] ?? "on") === "on"}
+          aria-label={title}
+          onChange={(event) => props.onNotificationSwitchChange(path, event.currentTarget.checked)} />
+        <span />
+      </label>
+    </div>;
 
   return <div class="settings-section-panel">
     <div class="settings-row">
       <div class="settings-row-copy">
-        <strong>{text().autoUpdateTitle}</strong>
-        <span>{text().autoUpdateDescription}</span>
+        <strong>{text().modeTitle}</strong>
+        <span>{text().modeDescription}</span>
       </div>
-      <label class="settings-switch">
-        <input type="checkbox" checked={props.settings?.autoUpdateEnabled === true}
-          aria-label={text().autoUpdateTitle}
-          onChange={(event) => props.onAutoUpdateChange(event.currentTarget.checked)} />
-        <span />
-      </label>
+      <SegmentedControl value={mode()} options={text().modeOptions} ariaLabel={text().modeTitle}
+        onChange={props.onModeChange} />
     </div>
     <div class="settings-row">
-      <label class="settings-row-copy" for="update-check-interval"><strong>{copy().interval}</strong></label>
-      <input id="update-check-interval" type="number" min="1" max="168" step="1"
-        value={props.settings?.checkIntervalHours ?? 6}
-        onChange={(event) => {
-          const value = event.currentTarget.valueAsNumber;
-          if (Number.isInteger(value) && value >= 1 && value <= 168) props.onCheckIntervalChange(value);
-        }} />
+      <div class="settings-row-copy">
+        <strong>{text().periodicTitle}</strong>
+        <span>{text().periodicDescription}</span>
+        <span>{text().internetNote}</span>
+        <Show when={automaticOff()}><span role="note">{text().offReason}</span></Show>
+      </div>
+      <div class="settings-update-interval-control">
+        <label class="settings-switch" title={automaticOff() ? text().offReason : undefined}>
+          <input type="checkbox" checked={props.settings?.periodicCheckEnabled === true}
+            aria-label={text().periodicTitle} disabled={automaticOff()}
+            onChange={(event) => props.onPeriodicCheckChange(event.currentTarget.checked)} />
+          <span />
+        </label>
+        <NumberField label={text().intervalLabel(updateCheckIntervalHours.minimum, updateCheckIntervalHours.maximum)}
+          ariaLabel={text().intervalTitle}
+          value={props.settings?.checkIntervalHours ?? updateCheckIntervalHours.defaultValue}
+          min={updateCheckIntervalHours.minimum} max={updateCheckIntervalHours.maximum} step={1}
+          disabled={automaticOff()} onChange={props.onCheckIntervalChange} />
+      </div>
     </div>
+    {notificationSwitch("updateInApp", text().inAppNoticeTitle, text().inAppNoticeDescription)}
+    {notificationSwitch("updateSystem", text().systemNoticeTitle, text().systemNoticeDescription)}
     <div class="settings-row">
       <div class="settings-row-copy">
         <strong>{text().installedVersionTitle}</strong>
         <span>{catalog()?.installedVersion ?? (text().unknownVersion)}</span>
+        <small>{text().manualCheckNote}</small>
       </div>
       <button type="button" class="secondary" disabled={loading()} onClick={() => void refresh()}>
         {loading() ? text().checking : text().checkForUpdates}
@@ -170,9 +173,20 @@ export function UpdatesSettingsSection(props: {
       </Show>
     </>}</Show>
     <Show when={statusFailed()}><p role="alert">{updateState() ? copy().stale : copy().unavailable}</p></Show>
+    <Show when={!statusFailed() && updateState()?.automaticCheckStatus === "waitingForInternet"}><p role="status">{text().waitingForInternet}</p></Show>
     <Show when={!statusFailed() && updateState()?.checkResult === "noUpdate"}><p role="status">{copy().noUpdate}</p></Show>
     <Show when={!statusFailed() && updateState()?.checkResult === "available"}><p role="status">{copy().available}</p></Show>
-    <Show when={!statusFailed() && updateState()?.lastCheckedAt}><p>{text().lastChecked}{new Date(updateState()!.lastCheckedAt!).toLocaleString(props.text.language)}</p></Show>
+    <Show when={!statusFailed() && updateState()?.availableVersion}>{(version) =>
+      <p>{text().availableVersion}{version()}</p>}</Show>
+    <Show when={!statusFailed() && updateState()?.lastCheckedAt}>{(time) =>
+      <p>{text().lastChecked}{formatUtcTime(time())}</p>}</Show>
+    <Show when={!statusFailed() && updateState()}>{(state) => <p>
+      {text().nextCheck}{state().nextCheckAt ? formatUtcTime(state().nextCheckAt!)
+        : committedPeriodic() ? text().nextCheckAfterInternet : text().nextCheckOff}
+    </p>}</Show>
+    <Show when={!statusFailed() && typeof updateState()?.onlineTimeSinceLastCheckSeconds === "number"}>
+      <p>{text().connectedElapsed}{formatConnectedDuration(updateState()!.onlineTimeSinceLastCheckSeconds!)}</p>
+    </Show>
     <Show when={!statusFailed() && updateState() && (updateState()?.stage !== "idle" || updateState()?.errorCode)}>
       <p role={updateState()?.errorCode ? "alert" : "status"}>
         {updateState()?.stage === "waitingForExit"
@@ -188,7 +202,10 @@ export function UpdatesSettingsSection(props: {
       <p>{text().selectedTarget}{updateState()?.targetVersion}</p>
     </Show>
     <Show when={!statusFailed() && updateState()?.stage === "pendingApply"}>
-      <button type="button" disabled={actionPending()} onClick={() => void applyUpdate()}>{copy().apply}</button>
+      <button type="button" disabled={actionPending()}
+        onClick={() => void props.productUpdates.apply((version) => window.confirm(text().confirmPrepare(version)), props.text.language)}>
+        {copy().apply}
+      </button>
     </Show>
   </div>;
 }

@@ -16,12 +16,19 @@ export type {
 
 export type ToastTone = FeedbackTone;
 
+/** 提示里的入口按钮；点击后提示关闭，再执行 onSelect。 */
+export interface ToastAction {
+  label: string;
+  onSelect: () => void;
+}
+
 export interface ToastItem {
   id: string;
   tone: ToastTone;
   title: string;
   message?: string;
   details?: string[];
+  actions?: ToastAction[];
 }
 
 export type ToastInput = string | {
@@ -29,7 +36,9 @@ export type ToastInput = string | {
   title?: string;
   message?: string;
   details?: string[];
-  durationMs?: number;
+  actions?: ToastAction[];
+  /** 省略时按语气取默认时长；null 表示一直显示到用户关闭。 */
+  durationMs?: number | null;
 };
 
 export function ConfirmDialogHost(props: {
@@ -64,18 +73,30 @@ export function ToastHost(props: {
                 <Show when={item.message}>
                   {(message) => <p>{message()}</p>}
                 </Show>
-                <Show when={(item.details?.length ?? 0) > 0}>
+                <Show when={(item.details?.length ?? 0) > 0 || (item.actions?.length ?? 0) > 0}>
                   <div class="toast-actions">
-                    <button
-                      class="secondary details-button"
-                      type="button"
-                      onClick={() => {
-                        setSelectedDetails(item);
-                        props.onDismiss(item.id);
-                      }}
-                    >
-                      {uiText.misc.details}
-                    </button>
+                    <For each={item.actions ?? []}>
+                      {(action) => (
+                        <button class="secondary" type="button" onClick={() => {
+                          props.onDismiss(item.id);
+                          action.onSelect();
+                        }}>
+                          {action.label}
+                        </button>
+                      )}
+                    </For>
+                    <Show when={(item.details?.length ?? 0) > 0}>
+                      <button
+                        class="secondary details-button"
+                        type="button"
+                        onClick={() => {
+                          setSelectedDetails(item);
+                          props.onDismiss(item.id);
+                        }}
+                      >
+                        {uiText.misc.details}
+                      </button>
+                    </Show>
                   </div>
                 </Show>
               </div>

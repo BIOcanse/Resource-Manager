@@ -55,6 +55,8 @@ export namespace ResourceManager {
       readonly MetricOrder: __fpDeepReadonly<readonly string[]>;
       readonly DashboardLayoutDefaults: __fpDeepReadonly<{ readonly builtInMetricIds: readonly string[]; readonly cards: readonly { readonly id: string; readonly main: string; readonly small: readonly string[]; readonly scope: "system" | "gpu"; readonly required: boolean }[]; readonly resourceBars: readonly { readonly id: string; readonly metricId: string; readonly scaleMode: "capacity" | "active"; readonly scope: "system" | "gpu"; readonly required: boolean }[]; readonly softwareColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: "system" | "gpu" }[]; readonly processColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: "system" | "gpu" }[] }>;
       readonly DashboardLayoutLimits: __fpDeepReadonly<{ readonly smallMetricLimit: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }>;
+      readonly UpdateInApp: __fpDeepReadonly<"on" | "off">;
+      readonly UpdateSystem: __fpDeepReadonly<"on" | "off">;
     }
     export interface __fpRuntimeInitialValues {
     }

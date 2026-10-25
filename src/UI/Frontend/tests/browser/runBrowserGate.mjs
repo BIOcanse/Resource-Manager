@@ -1,6 +1,7 @@
 import fanManagementModesJourney from "./fanManagementModesJourney.js";
 import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.js";
 import productUpdatesJourney from "./productUpdatesJourney.js";
+import updateNoticeJourney from "./updateNoticeJourney.js";
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
 import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
 import diskUsageLocalTreemapJourney from "./diskUsageLocalTreemapJourney.js";
@@ -71,6 +72,7 @@ const allJourneys = [
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],
+  ["update-notice", updateNoticeJourney],
   ["language-load-failure", async (...args) => (await import("./languageLoadFailureJourney.js")).default(...args)],
   ["frontend-refresh-intervals", frontendRefreshIntervalsJourney],
   ["management-inventory-revisions", managementInventoryRevisionJourney],

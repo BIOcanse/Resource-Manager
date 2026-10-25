@@ -7,6 +7,7 @@ import type { ManagementStore } from "../stores/managementStore";
 import type { MonitorStore } from "../stores/monitorStore";
 import type { OptimizationStore } from "../stores/optimizationStore";
 import type { SettingsStore } from "../stores/settingsStore";
+import type { ProductUpdateStore } from "../stores/productUpdateStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
 import { uiText } from "../text.ts";
@@ -45,6 +46,7 @@ interface AppRoutesProps {
   management: ManagementStore;
   optimization: OptimizationStore;
   settings: SettingsStore;
+  productUpdates: ProductUpdateStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
   highlightedSoftwareId: Accessor<string | null>;
   onResourceTableSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
@@ -122,6 +124,7 @@ export function AppRoutes(props: AppRoutesProps) {
           <PageBoundary name={uiText.page.settings}>
             <SettingsWorkspace
               settings={props.settings}
+              productUpdates={props.productUpdates}
               runtimeCapabilities={props.runtimeCapabilities}
             />
           </PageBoundary>

@@ -89,21 +89,40 @@ internal sealed record FrontendOverlayPresentation
     }
 }
 
+// 新版本提示的两条途径（界面内提示、Windows 系统通知）各自的开关，以及界面内提示已提示过的版本。
+// 已提示版本只由网页前端写入；原生壳只校验、保存并读取 UpdateSystem。
+internal sealed record FrontendNotifications
+{
+    public string UpdateInApp { get; init; } = FrontendPoints.UpdateInApp;
+    public string UpdateSystem { get; init; } = FrontendPoints.UpdateSystem;
+    public string? UpdateInAppNotifiedVersion { get; init; }
+
+    internal void Validate()
+    {
+        if (UpdateInApp is not ("on" or "off") || UpdateSystem is not ("on" or "off")
+            || UpdateInAppNotifiedVersion is not null
+                && (string.IsNullOrWhiteSpace(UpdateInAppNotifiedVersion) || UpdateInAppNotifiedVersion.Length > 64))
+            throw new InvalidDataException("Invalid frontend notification cache.");
+    }
+}
+
 internal sealed record FrontendPreferences
 {
     public int OverlaySelectionVersion { get; init; } = 1;
     public FrontendAppearance Appearance { get; init; } = new();
     public FrontendRefresh Refresh { get; init; } = new();
+    public FrontendNotifications Notifications { get; init; } = new();
     public JsonElement? Dashboard { get; init; }
     public IReadOnlyDictionary<string, FrontendOverlayPresentation> Overlays { get; init; } =
         new Dictionary<string, FrontendOverlayPresentation>(StringComparer.OrdinalIgnoreCase);
 
     internal void Validate()
     {
-        if (OverlaySelectionVersion != 1 || Appearance is null || Refresh is null || Overlays is null)
+        if (OverlaySelectionVersion != 1 || Appearance is null || Refresh is null || Notifications is null || Overlays is null)
             throw new InvalidDataException("Invalid frontend preferences cache.");
         Appearance.Validate();
         Refresh.Validate();
+        Notifications.Validate();
         FrontendDashboardCache.Validate(Dashboard);
         foreach (var (id, overlay) in Overlays)
         {

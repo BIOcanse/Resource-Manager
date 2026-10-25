@@ -67,8 +67,13 @@ interface SettingsPageProps {
   onAutoStartChange: (enabled: boolean) => void;
   onServiceRecoveryChange: (enabled: boolean, delay: number, count: number) => void;
   serviceRecovery?: import("../../types").ServiceRecoveryDiagnostics;
-  onAutoUpdateChange: (enabled: boolean) => void;
+  productUpdates: import("../../stores/productUpdateStore").ProductUpdateStore;
+  /** 已保存的更新设置：下次检查时间这一行按它说明“未开启”，草稿里未保存的改动不改变后端状态。 */
+  committedUpdateSettings: import("../../types").AppUpdateSettings | undefined;
+  onUpdateModeChange: (mode: import("../../types").AppUpdateMode) => void;
+  onPeriodicUpdateCheckChange: (enabled: boolean) => void;
   onCheckIntervalChange: (hours: number) => void;
+  onNotificationSwitchChange: (path: keyof import("../../types").AppNotificationSettings, enabled: boolean) => void;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
   onLocalPublicServiceChange: (enabled: boolean) => void;
   onPublicFileIndexChange: (enabled: boolean) => void;
@@ -312,9 +317,14 @@ export function SettingsPage(props: SettingsPageProps) {
           <Show when={props.activeSection === "updates"}>
             <UpdatesSettingsSection
               settings={props.settings.update}
+              committedSettings={props.committedUpdateSettings}
+              notifications={props.settings.notifications}
+              productUpdates={props.productUpdates}
               text={text()}
-              onAutoUpdateChange={props.onAutoUpdateChange}
+              onModeChange={props.onUpdateModeChange}
+              onPeriodicCheckChange={props.onPeriodicUpdateCheckChange}
               onCheckIntervalChange={props.onCheckIntervalChange}
+              onNotificationSwitchChange={props.onNotificationSwitchChange}
             />
           </Show>
           <Show when={props.activeSection === "credits"}>

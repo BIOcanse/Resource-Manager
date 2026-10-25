@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test:product-updates": "node --experimental-transform-types --experimental-strip-types tests/productUpdatePresentation.test.ts",
+    "test:product-updates": "node --experimental-transform-types --experimental-strip-types tests/productUpdatePresentation.test.ts && node --experimental-transform-types --conditions=browser --experimental-strip-types tests/productUpdateNotice.test.ts",
     "test:report-settings": "node --experimental-transform-types --experimental-strip-types tests/reportRuleSettings.test.ts",
     "dev": "vite --host 127.0.0.1",
     "prebuild": "pwsh -NoProfile -File ../../../scripts/build/Generate-FrontendPreferences.ps1",

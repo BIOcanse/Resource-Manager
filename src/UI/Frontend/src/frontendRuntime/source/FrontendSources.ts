@@ -1,4 +1,9 @@
 import {
+  buildProductUpdateStatusSubscriptionUrl,
+  productUpdateStatusDecoder
+} from "../../data/productUpdateStatus.ts";
+import type { ProductUpdateState } from "../../features/settings/productUpdatePresentation.ts";
+import {
   buildLocalSystemStatusSubscriptionUrl,
   type LocalSystemStatus
 } from "../../data/localSystem/localSystemStatusApi.ts";
@@ -163,6 +168,7 @@ export interface FrontendSources {
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
   readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
   readonly accessRequests: CurrentValueSource<AccessRequestPendingSnapshot>;
+  readonly productUpdateStatus: CurrentValueSource<ProductUpdateState>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
@@ -247,6 +253,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildOperationsSubscriptionUrl,
       decoder: operationsStateDecoder
+    }),
+    productUpdateStatus: new BackendCurrentValueSource<ProductUpdateState>({
+      key: "updates.product.status",
+      channel: subscriptionChannel,
+      buildUrl: buildProductUpdateStatusSubscriptionUrl,
+      decoder: productUpdateStatusDecoder
     }),
     managementInventoryRevision: new BackendCurrentValueSource<ManagementInventoryRevisionSnapshot>({
       key: "management.inventory-revision",

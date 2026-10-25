@@ -230,6 +230,8 @@ export interface AppSettings {
   publicService?: AppLocalPublicServiceSettings;
   aiModelService?: AppAiModelServiceSettings;
   update?: AppUpdateSettings;
+  /** 前端偏好（原生壳持有的偏好缓存），不进入后端设置请求。 */
+  notifications?: AppNotificationSettings;
 }
 
 export interface ReportRuleValues {
@@ -259,9 +261,16 @@ export interface ReportRuleSetting {
 }
 export interface ReportRuleSettingsResponse { rules: ReportRuleSetting[]; }
 
+export type AppUpdateMode = "off" | "notify" | "automatic";
 export interface AppUpdateSettings {
+  mode: AppUpdateMode;
+  periodicCheckEnabled: boolean;
   checkIntervalHours: number;
-  autoUpdateEnabled: boolean;
+}
+/** 新版本提示途径的开关：界面内提示由网页前端执行，Windows 系统通知由原生壳执行。 */
+export interface AppNotificationSettings {
+  updateInApp: "on" | "off";
+  updateSystem: "on" | "off";
 }
 
 export interface AppPerformanceSettings {

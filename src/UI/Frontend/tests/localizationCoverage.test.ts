@@ -79,7 +79,10 @@ const settingsCases: FunctionCase<SettingsTextBundle>[] = [
   { path: "systemIntegration.trustedAccess.requestExpired", render: copy => copy.systemIntegration.trustedAccess.requestExpired, parameters: [], requiresTranslation: true },
   { path: "systemIntegration.trustedAccess.reviewRequests", render: copy => copy.systemIntegration.trustedAccess.reviewRequests, parameters: [], requiresTranslation: true },
   { path: "systemIntegration.trustedAccess.defaultAccessLossWarning", render: copy => copy.systemIntegration.trustedAccess.defaultAccessLossWarning, parameters: [], requiresTranslation: true },
-  { path: "systemIntegration.trustedAccess.scopeLabels.keys.manage", render: copy => copy.systemIntegration.trustedAccess.scopeLabels["keys.manage"], parameters: [], requiresTranslation: true }
+  { path: "systemIntegration.trustedAccess.scopeLabels.keys.manage", render: copy => copy.systemIntegration.trustedAccess.scopeLabels["keys.manage"], parameters: [], requiresTranslation: true },
+  { path: "updates.intervalLabel", render: copy => copy.updates.intervalLabel(24, 168), parameters: ["24", "168"], requiresTranslation: true },
+  { path: "updates.noticeMessage", render: copy => copy.updates.noticeMessage("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true },
+  { path: "updates.noticeReadyMessage", render: copy => copy.updates.noticeReadyMessage("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true }
 ];
 
 const englishApp = await loadAppCopy("en-US");

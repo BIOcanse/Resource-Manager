@@ -1,5 +1,5 @@
 import type { KnownAccessScope } from "../features/trustedAccess/trustedAccessTypes.ts";
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -385,8 +385,30 @@ export interface TrustedAccessCopy {
 }
 
 export interface UpdatesCopy {
-  autoUpdateTitle: string;
-  autoUpdateDescription: string;
+  modeTitle: string;
+  modeDescription: string;
+  modeOptions: Array<{ id: AppUpdateMode; label: string; description?: string }>;
+  periodicTitle: string;
+  periodicDescription: string;
+  internetNote: string;
+  offReason: string;
+  intervalTitle: string;
+  intervalLabel: (minimum: number, maximum: number) => string;
+  inAppNoticeTitle: string;
+  inAppNoticeDescription: string;
+  systemNoticeTitle: string;
+  systemNoticeDescription: string;
+  manualCheckNote: string;
+  waitingForInternet: string;
+  availableVersion: string;
+  nextCheck: string;
+  nextCheckAfterInternet: string;
+  nextCheckOff: string;
+  connectedElapsed: string;
+  noticeTitle: string;
+  noticeMessage: (version: string) => string;
+  noticeReadyMessage: (version: string) => string;
+  noticeOpenUpdates: string;
   installedVersionTitle: string;
   unknownVersion: string;
   checking: string;

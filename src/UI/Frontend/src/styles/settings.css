@@ -577,8 +577,10 @@
   width: 180px;
 }
 
-/* 资源条动画帧率：模式控件右侧跟一个只在自定义时出现的帧率输入，底边对齐。 */
-.settings-frame-rate-control {
+/* 资源条动画帧率：模式控件右侧跟一个只在自定义时出现的帧率输入，底边对齐。
+   更新区的间隔检查：开关右侧跟间隔输入，同样底边对齐。 */
+.settings-frame-rate-control,
+.settings-update-interval-control {
   min-width: 0;
   display: flex;
   align-items: end;
@@ -587,7 +589,8 @@
   gap: 8px;
 }
 
-.settings-frame-rate-control .settings-number-field {
+.settings-frame-rate-control .settings-number-field,
+.settings-update-interval-control .settings-number-field {
   width: 150px;
 }
 

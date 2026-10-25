@@ -85,7 +85,10 @@ const defaultScenario = {
   // 可信访问密钥的后端状态：ready 正常；read-failure 读取密钥列表返回 503；
   // default-key-off 默认密钥已关闭，界面的每个 /api 请求都返回 401（后端不再接受界面的密钥）。
   trustedAccess: "ready",
-  pausedSubscriptionPaths: []
+  pausedSubscriptionPaths: [],
+  // 产品更新状态（GET /api/updates/product/status 与它的推送订阅同源）：只写与默认状态不同的字段；
+  // "invalid" 让推送发出不合合同的帧、GET 返回 503，模拟状态不可用。未知字段和不合合同的值直接拒绝。
+  productUpdateStatus: {}
 };
 const trustedAccessScenarios = new Set(["ready", "read-failure", "default-key-off"]);
 const trustedAccessDefaultScopes = ["read", "metrics.read", "processes.read", "session", "adapters.register.self",
@@ -131,6 +134,14 @@ const ndjsonPublishers = new Map();
 const operationSubscribers = new Set();
 const managementInventoryRevisionSubscribers = new Set();
 const subscriptionChannelResponses = new Set();
+const productUpdateStatusSubscribers = new Set();
+// 后端帧的真实形状（codex/update-notice，与 GET /api/updates/product/status 相同）。
+const defaultProductUpdateStatus = Object.freeze({
+  stage: "idle", targetVersion: null, workspace: null, error: null, updatedAt: "2026-10-25T19:00:00+00:00",
+  errorCode: null, errorParameters: null, lastCheckedAt: null, checkResult: null, availableVersion: null,
+  nextCheckAt: null, onlineTimeSinceLastCheckSeconds: 0, automaticCheckStatus: "idle", failedVersion: null,
+  checkedInstalledVersion: null, incompatibleVersions: []
+});
 let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
@@ -142,12 +153,13 @@ let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
-  version: "1.0.32",
+  version: "1.0.33",
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
   debug: {
     debugModeEnabled: scenario.debugMode
-  }
+  },
+  update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 }
 };
 const appSettings = structuredClone(defaultAppSettings);
 let metricSlot = {
@@ -550,10 +562,12 @@ async function handleApi(request, response, url) {
     }
     if (request.method === "PATCH") {
       const patch = JSON.parse(await readBody(request));
-      if (patch.changes?.appearance || ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
+      if (patch.changes?.appearance || patch.changes?.notifications || ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
         .some(key => key in (patch.changes?.performance ?? {}))) {
         return json(response, 400, { error: "Presentation does not belong to the backend." });
       }
+      const updateProblem = invalidUpdateSettingsPatch(patch.changes?.update);
+      if (updateProblem) return json(response, 400, { error: updateProblem });
       await delay(normalizeDelay(scenario.settingsPatchDelayMs));
       if (scenario.settingsConflict === true
         || patch.expectedRevision !== scenario.settingsRevision) {
@@ -565,6 +579,11 @@ async function handleApi(request, response, url) {
       return json(response, 200, appSettingsResult());
     }
     return json(response, 405, { error: "settings method not supported" });
+  }
+  if (path === "/api/updates/product/status" && request.method === "GET") {
+    return scenario.productUpdateStatus === "invalid"
+      ? json(response, 503, { errorCode: "update.statusUnavailable" })
+      : json(response, 200, currentProductUpdateStatus());
   }
   if (path === "/api/settings/app/reapply") {
     return json(response, 200, appSettingsResult());
@@ -1235,6 +1254,7 @@ function applyScenarioPatch(patch) {
   if (Object.hasOwn(patch, "trustedAccess") && !trustedAccessScenarios.has(patch.trustedAccess)) {
     throw new Error(`Unknown trustedAccess scenario: ${JSON.stringify(patch.trustedAccess)}`);
   }
+  if (Object.hasOwn(patch, "productUpdateStatus")) validateProductUpdateStatusScenario(patch.productUpdateStatus);
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
@@ -1257,6 +1277,55 @@ function applyScenarioPatch(patch) {
   if (typeof patch.debugMode === "boolean") {
     appSettings.debug.debugModeEnabled = patch.debugMode;
   }
+  if (Object.hasOwn(patch, "productUpdateStatus")) publishProductUpdateStatus();
+}
+
+// 后端合同：update.mode 三档，间隔检查开关，间隔 24–168 小时；旧的 autoUpdateEnabled 与已取消的联网等待开关不存在。
+function invalidUpdateSettingsPatch(update) {
+  if (update === undefined) return null;
+  if (!isRecord(update)) return "update must be an object";
+  for (const key of Object.keys(update)) {
+    if (!["mode", "periodicCheckEnabled", "checkIntervalHours"].includes(key)) return `unknown update setting ${key}`;
+  }
+  if (Object.hasOwn(update, "mode") && !["off", "notify", "automatic"].includes(update.mode)) return "invalid update.mode";
+  if (Object.hasOwn(update, "periodicCheckEnabled") && typeof update.periodicCheckEnabled !== "boolean") return "invalid update.periodicCheckEnabled";
+  if (Object.hasOwn(update, "checkIntervalHours") && !(Number.isSafeInteger(update.checkIntervalHours)
+    && update.checkIntervalHours >= 24 && update.checkIntervalHours <= 168)) return "update.checkIntervalHours must be 24-168";
+  return null;
+}
+
+const utcTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,7})?)?(?:Z|\+00:00)$/;
+function validateProductUpdateStatusScenario(value) {
+  if (value === "invalid") return;
+  if (!isRecord(value)) throw new Error("productUpdateStatus must be \"invalid\" or an object of status fields");
+  for (const [key, field] of Object.entries(value)) {
+    if (!Object.hasOwn(defaultProductUpdateStatus, key)) throw new Error(`Unknown productUpdateStatus field: ${key}`);
+    const valid = key === "stage" ? typeof field === "string" && field.length > 0
+      : key === "errorParameters" ? field === null || (isRecord(field) && Object.values(field).every(item => typeof item === "string"))
+        : key === "onlineTimeSinceLastCheckSeconds" ? field === null || (typeof field === "number" && Number.isFinite(field) && field >= 0)
+          : key === "automaticCheckStatus" ? ["disabled", "waitingForInternet", "checking", "scheduled", "idle"].includes(field)
+          : key === "incompatibleVersions" ? Array.isArray(field) && field.every(item => typeof item === "string")
+          : key === "lastCheckedAt" || key === "nextCheckAt" || key === "updatedAt" ? field === null || (typeof field === "string" && utcTimePattern.test(field))
+            : field === null || (typeof field === "string" && field.length > 0);
+    if (!valid) throw new Error(`Invalid productUpdateStatus.${key}: ${JSON.stringify(field)}`);
+  }
+}
+
+function currentProductUpdateStatus() {
+  return scenario.productUpdateStatus === "invalid"
+    ? { invalid: true }
+    : { ...defaultProductUpdateStatus, ...structuredClone(scenario.productUpdateStatus) };
+}
+
+function publishProductUpdateStatus() {
+  for (const subscriber of [...productUpdateStatusSubscribers]) publishProductUpdateStatusValue(subscriber);
+}
+
+function publishProductUpdateStatusValue(subscriber) {
+  const { response, requestUrl, write } = subscriber;
+  if (response.destroyed || response.writableEnded) return;
+  write(currentProductUpdateStatus());
+  recordLogicalPublication(requestUrl);
 }
 
 function resetScenario() {
@@ -1890,7 +1959,8 @@ async function subscriptionChannelStream(request, response) {
     }
     const operation = requestUrl.pathname === "/api/operations/subscribe";
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
-    const eventOnly = operation || managementInventoryRevision;
+    const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus;
     const createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl);
     if (!eventOnly && createPayload === null) {
       return json(response, 400, { error: "unsupported subscription path" });
@@ -1900,6 +1970,7 @@ async function subscriptionChannelStream(request, response) {
       requestUrl,
       operation,
       managementInventoryRevision,
+      productUpdateStatus,
       createPayload
     });
   }
@@ -1927,6 +1998,21 @@ async function subscriptionChannelStream(request, response) {
       publishOperationValue(subscriber, currentOperationsValue());
       releases.push(() => {
         operationSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.productUpdateStatus) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(response, subscription.id, value)
+      };
+      productUpdateStatusSubscribers.add(subscriber);
+      publishProductUpdateStatusValue(subscriber);
+      releases.push(() => {
+        productUpdateStatusSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -2008,7 +2094,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/optimization/smart/status/subscribe",
   "/api/operations/subscribe",
   "/api/management/inventory-revisions/subscribe",
-  "/api/access-requests/subscribe"
+  "/api/access-requests/subscribe",
+  "/api/updates/product/status/subscribe"
 ]);
 
 function smartCoordinatorStatus() {

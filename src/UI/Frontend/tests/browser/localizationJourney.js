@@ -89,7 +89,12 @@ export default async function localizationJourney(page, baseUrl) {
   await page.route("**/api/updates/product/versions", route => route.fulfill({ json: {
     installedVersion: "0.3.5", status: "loaded", complete: true, checkedAt: "2026-10-01T12:00:00Z", options: history
   } }));
-  await page.route("**/api/updates/product/status", route => route.fulfill({ json: { stage, errorCode } }));
+  // 更新状态来自统一订阅通道的推送（mock 场景值 productUpdateStatus）。
+  const publishUpdateStatus = async () => {
+    const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productUpdateStatus: { stage, errorCode, nextCheckAt: "2026-10-27T08:00:00Z", onlineTimeSinceLastCheckSeconds: 61 } }) });
+    if (!response.ok) throw new Error(`update status scenario rejected: ${response.status}`);
+  };
   await page.setViewportSize({ width: 1180, height: 850 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
@@ -241,8 +246,19 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
     stage = "idle";
     errorCode = null;
+    await publishUpdateStatus();
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
-    await page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true }).waitFor();
+    const modeGroup = page.getByRole("radiogroup", { name: settings.updates.modeTitle, exact: true });
+    for (const mode of settings.updates.modeOptions) await modeGroup.getByRole("radio", { name: mode.label, exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true }).waitFor();
+    await page.getByText(settings.updates.intervalLabel(24, 168), { exact: true }).waitFor();
+    await page.getByText(settings.updates.internetNote, { exact: true }).waitFor();
+    await page.getByText(settings.updates.manualCheckNote, { exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.updates.inAppNoticeTitle, exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.updates.systemNoticeTitle, exact: true }).waitFor();
+    await page.getByText(settings.updates.systemNoticeDescription, { exact: true }).waitFor();
+    await page.getByText(`${settings.updates.nextCheck}2026-10-27 08:00 UTC`, { exact: true }).waitFor();
+    await page.getByText(`${settings.updates.connectedElapsed}0:01:01`, { exact: true }).waitFor();
     await page.getByText(settings.updates.versionsDescription, { exact: true }).waitFor();
     await page.getByText(settings.updates.latest, { exact: true }).waitFor();
     await page.getByText(settings.updates.latestStable, { exact: true }).waitFor();
@@ -260,11 +276,13 @@ export default async function localizationJourney(page, baseUrl) {
     await click;
     stage = "error";
     errorCode = "update.versionNotNewer";
+    await publishUpdateStatus();
     await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     await page.getByRole("alert").filter({ hasText: productUpdateCopy(option.id).error(errorCode) }).waitFor();
     stage = "verifying";
     errorCode = null;
+    await publishUpdateStatus();
     await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     await page.getByRole("status").filter({ hasText: settings.updates.stages.verifying }).waitFor();

@@ -29,7 +29,7 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.32", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.33", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -123,7 +123,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.32", `${label}: version`);
+    assert.equal(settings.version, "1.0.33", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -614,10 +614,13 @@ await new Promise<void>((resolve, reject) => {
       source.publishReady({ ...result("applied", "normal", "system"), runtimeApplicationDisposition: "committedAndApplied" });
       assert.equal(store.saveState(), "idle");
       assert.equal(store.runtimeFailureCode(), null);
-      assert.equal(store.settings().update!.checkIntervalHours, 6);
-      store.updateCheckInterval(24); store.updateAutoUpdate(true);
-      assert.deepEqual(store.draftSettings().update, { checkIntervalHours: 24, autoUpdateEnabled: true });
+      assert.deepEqual(store.settings().update, { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 });
+      store.updateCheckInterval(48); store.updateUpdateMode("notify"); store.updatePeriodicUpdateCheck(true);
+      assert.deepEqual(store.draftSettings().update, { mode: "notify", periodicCheckEnabled: true, checkIntervalHours: 48 });
       store.updateCheckInterval(999); assert.equal(store.draftSettings().update!.checkIntervalHours, 168);
+      store.updateCheckInterval(6); assert.equal(store.draftSettings().update!.checkIntervalHours, 24, "the backend minimum is one day");
+      store.updateNotificationSwitch("updateSystem", false);
+      assert.deepEqual(store.draftSettings().notifications, { updateInApp: "on", updateSystem: "off" });
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

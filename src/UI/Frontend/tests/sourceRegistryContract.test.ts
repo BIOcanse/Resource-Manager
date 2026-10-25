@@ -27,7 +27,10 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 17);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 18);
+// 产品更新状态只走统一订阅通道的推送（设置页更新区与界面内新版本提示共用）。
+assert.match(sources, /productUpdateStatus:\s*new BackendCurrentValueSource/);
+assert.match(sources, /key:\s*"updates\.product\.status"/);
 assert.match(sources, /key:\s*"resource-monitor\.process-details"/);
 assert.match(sources, /managementInventoryRevision:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"management\.inventory-revision"/);

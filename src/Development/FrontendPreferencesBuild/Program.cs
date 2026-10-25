@@ -54,13 +54,13 @@ internal static class Program
         var declarationPath = Path.Combine(root, "src/UI/Frontend/preferences.points.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(declarationPath));
         var definitions = document.RootElement.GetProperty("points").EnumerateArray().Select(value => value.Clone()).ToArray();
-        if (definitions.Length != 27) throw new InvalidDataException("Expected 27 frontend points.");
+        if (definitions.Length != 29) throw new InvalidDataException("Expected 29 frontend points.");
         var style = definitions.Single(item => item.GetProperty("symbol").GetString() == "UiStyle").GetProperty("value").GetString()!;
         var theme = definitions.Single(item => item.GetProperty("symbol").GetString() == "Theme").GetProperty("value").GetString()!;
         var appearance = UiStyleCatalog.Normalize(style, theme);
         if (appearance.UiStyle != style || appearance.Theme != theme)
             throw new InvalidDataException("Frontend appearance points must select a palette supported by their style.");
-        var layout = basis.CreateExtensionLayout("resource-manager-backend", "frontend", 4);
+        var layout = basis.CreateExtensionLayout("resource-manager-backend", "frontend", 5);
         var points = ImmutableArray.CreateBuilder<PointDeclaration>();
         var counts = new Dictionary<(ushort Group, PointKind Kind), ushort>();
         var values = new Dictionary<PointPath, PointValueSet>();

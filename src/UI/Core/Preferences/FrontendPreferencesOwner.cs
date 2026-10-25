@@ -102,7 +102,7 @@ internal sealed partial class FrontendPreferencesOwner
         lock (gate)
         {
             var current = Read();
-            return Save(current with { Appearance = value.Appearance, Refresh = value.Refresh });
+            return Save(current with { Appearance = value.Appearance, Refresh = value.Refresh, Notifications = value.Notifications });
         }
     }
 

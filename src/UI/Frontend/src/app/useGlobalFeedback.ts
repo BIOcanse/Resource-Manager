@@ -58,13 +58,14 @@ export function useGlobalFeedback() {
         tone,
         title: input.title ?? toastTitleForTone(tone),
         message: input.message ? userFacingMessage(input.message, toastTitleForTone(tone)) : undefined,
-        details: input.details?.filter(Boolean)
+        details: input.details?.filter(Boolean),
+        actions: input.actions
       };
     setToasts((current) => [toast, ...current].slice(0, 5));
     const durationMs = typeof input === "string"
       ? 4800
-      : input.durationMs ?? (tone === "error" ? 9000 : tone === "warning" ? 7000 : 5200);
-    window.setTimeout(() => dismissToast(id), durationMs);
+      : input.durationMs === undefined ? (tone === "error" ? 9000 : tone === "warning" ? 7000 : 5200) : input.durationMs;
+    if (durationMs !== null) window.setTimeout(() => dismissToast(id), durationMs);
   }
 
   function showErrorToast(error: unknown, fallback: string) {

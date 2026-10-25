@@ -49,6 +49,8 @@ import type {
   AppReadingSourceMode,
   AppResourceBarFrameRateMode,
   AppUiStyle,
+  AppUpdateMode,
+  AppNotificationSettings,
   SettingsSection
 } from "../types";
 import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
@@ -66,7 +68,7 @@ import { RequestProblem } from "../frontendRuntime/request/RequestProblem.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import {
   applyFrontendPreferences, backendSettings, frontendPreferencesClient, pointPreferences,
-  preferencesFromSettings, resolveFrontendRefresh, type FrontendPreferencesClient
+  preferencesFromSettings, resolveFrontendRefresh, type FrontendNotifications, type FrontendPreferencesCache, type FrontendPreferencesClient
 } from "../preferences/frontendPreferences.ts";
 
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
@@ -121,8 +123,13 @@ export interface SettingsStore {
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
   updateAutoStart: (enabled: boolean) => void;
   updateServiceRecovery: (enabled: boolean, delay: number, count: number) => void;
-  updateAutoUpdate: (enabled: boolean) => void;
+  updateUpdateMode: (mode: AppUpdateMode) => void;
+  updatePeriodicUpdateCheck: (enabled: boolean) => void;
   updateCheckInterval: (hours: number) => void;
+  updateNotificationSwitch: (path: keyof AppNotificationSettings, enabled: boolean) => void;
+  /** 偏好缓存里已保存的提示分区（开关与界面内提示已提示过的版本）；缓存读到之前为 undefined。 */
+  frontendNotifications: Accessor<FrontendNotifications | undefined>;
+  recordUpdateInAppNotified: (version: string) => Promise<void>;
   updateEditableHotkey: (hotkey: AppEditableHotkeySettings) => void;
   updateLocalPublicService: (enabled: boolean) => void;
   updatePublicFileIndex: (enabled: boolean) => void;
@@ -148,6 +155,23 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   const preferenceOwner = options.preferences ?? frontendPreferencesClient();
   let preferences = pointPreferences();
   let preferencesReady = false;
+  // 偏好缓存的写入按顺序执行，每次都从上一次写入的结果出发，
+  // 设置页的保存和界面内提示记下的版本不会互相用旧值覆盖。
+  let pendingPreferenceWrite: Promise<unknown> | null = null;
+  const [frontendNotifications, setFrontendNotifications] = createSignal<FrontendNotifications | undefined>(undefined);
+  function writePreferences(build: (current: FrontendPreferencesCache) => FrontendPreferencesCache) {
+    const run = async () => {
+      preferences = await preferenceOwner.save(build(preferences), "global");
+      setFrontendNotifications(preferences.notifications);
+      return preferences;
+    };
+    // 没有进行中的写入时立即写；有时排在它之后。
+    const write = pendingPreferenceWrite ? pendingPreferenceWrite.then(run, run) : run();
+    const settled = write.catch(() => undefined);
+    pendingPreferenceWrite = settled;
+    void settled.then(() => { if (pendingPreferenceWrite === settled) pendingPreferenceWrite = null; });
+    return write;
+  }
   const [settings, setSettings] = createSignal<AppSettings>(defaultAppSettings());
   const [draftSettings, setDraftSettings] = createSignal<AppSettings>(defaultAppSettings());
   const [frontendRefreshIntervals, setFrontendRefreshIntervals] = createSignal<FrontendRefreshIntervals | null>(null);
@@ -167,6 +191,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   void preferenceOwner.read().then(value => {
     preferences = value;
     preferencesReady = true;
+    setFrontendNotifications(value.notifications);
     setFrontendRefreshIntervals(resolveFrontendRefresh(value.refresh));
     projectSource(source.snapshot);
   }).catch(() => setLoadState("error"));
@@ -222,7 +247,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setRuntimeCapabilityConstrainedPaths([]);
     try {
       if (Object.keys(changes).length === 0) {
-        preferences = await preferenceOwner.save(desiredPreferences, "global");
+        await writePreferences(current => preferencesFromSettings(next, current));
         const newerEdits = createSettingsPatch(
           submittedDraft as unknown as Record<string, unknown>,
           draftSettings() as unknown as Record<string, unknown>);
@@ -243,7 +268,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         setRuntimeFailureCode(result.runtimeFailureCode ?? null);
         throw new Error(uiText.misc.settingsNotCommitted);
       }
-      if (preferenceChanges) preferences = await preferenceOwner.save(desiredPreferences, "global");
+      if (preferenceChanges) await writePreferences(current => preferencesFromSettings(next, current));
       const newerEdits = createSettingsPatch(
         submittedDraft as unknown as Record<string, unknown>,
         draftSettings() as unknown as Record<string, unknown>);
@@ -389,6 +414,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setSaveState("saving");
     try {
       preferences = await preferenceOwner.reset();
+      setFrontendNotifications(preferences.notifications);
       batch(() => {
         setSettings(applyFrontendPreferences(settings(), preferences));
         setDraftSettings(applyFrontendPreferences(draftSettings(), preferences));
@@ -458,6 +484,11 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     serviceRecovery,
     activeSection,
     setActiveSection,
+    frontendNotifications,
+    recordUpdateInAppNotified: async (version) => {
+      await writePreferences(current => ({ ...current,
+        notifications: { ...current.notifications, updateInAppNotifiedVersion: version } }));
+    },
     refresh,
     saveDraft,
     reapply,
@@ -593,13 +624,22 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       ...systemIntegration,
       autoStartEnabled: enabled
     })),
-    updateAutoUpdate: (enabled) => updateDraft((currentSettings) => ({
+    updateUpdateMode: (mode) => updateDraft((currentSettings) => ({
       ...currentSettings,
-      update: { ...currentSettings.update!, autoUpdateEnabled: enabled }
+      update: { ...currentSettings.update!, mode }
+    })),
+    updatePeriodicUpdateCheck: (enabled) => updateDraft((currentSettings) => ({
+      ...currentSettings,
+      update: { ...currentSettings.update!, periodicCheckEnabled: enabled }
     })),
     updateCheckInterval: (hours) => updateDraft((currentSettings) => ({
       ...currentSettings,
-      update: { ...currentSettings.update!, checkIntervalHours: normalizeInteger(hours, 1, 168, 6) }
+      update: { ...currentSettings.update!, checkIntervalHours: normalizeInteger(hours,
+        updateCheckIntervalHours.minimum, updateCheckIntervalHours.maximum, updateCheckIntervalHours.defaultValue) }
+    })),
+    updateNotificationSwitch: (path, enabled) => updateDraft((currentSettings) => ({
+      ...currentSettings,
+      notifications: { ...normalizeAppSettings(currentSettings).notifications!, [path]: enabled ? "on" : "off" }
     })),
     updateTaskManagerShortcutReplacement: (enabled) => updateSystemIntegration((systemIntegration) => ({
       ...systemIntegration,
@@ -677,7 +717,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.32",
+    version: "1.0.33",
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -697,6 +737,7 @@ export function defaultAppSettings(): AppSettings {
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
     },
     appearance: pointPreferences().appearance,
+    notifications: notificationSwitches(pointPreferences().notifications),
     systemIntegration: {
       restartAfterCrashEnabled: true,
       crashRestartDelaySeconds: 10,
@@ -722,14 +763,14 @@ export function defaultAppSettings(): AppSettings {
       endpoint: "http://127.0.0.1:1234",
       autoStartEnabled: false
     },
-    update: { autoUpdateEnabled: false, checkIntervalHours: 6 }
+    update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: updateCheckIntervalHours.defaultValue }
   };
 }
 
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.32",
+    version: "1.0.33",
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
@@ -752,6 +793,7 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       localSystemRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("localSystem", settings?.performance?.localSystemRefreshIntervalMs)
     },
     appearance: normalizeAppearanceSettings(settings?.appearance),
+    notifications: notificationSwitches(settings?.notifications ?? defaults.notifications!),
     systemIntegration: {
       restartAfterCrashEnabled: settings?.systemIntegration?.restartAfterCrashEnabled !== false,
       crashRestartDelaySeconds: normalizeInteger(settings?.systemIntegration?.crashRestartDelaySeconds, 1, 3600, 10),
@@ -772,9 +814,21 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       endpoint: normalizeLmStudioEndpoint(settings?.aiModelService?.endpoint),
       autoStartEnabled: settings?.aiModelService?.autoStartEnabled ?? defaults.aiModelService!.autoStartEnabled
     },
-    update: { autoUpdateEnabled: settings?.update?.autoUpdateEnabled === true,
-      checkIntervalHours: normalizeInteger(settings?.update?.checkIntervalHours, 1, 168, 6) }
+    update: {
+      mode: updateModes.includes(settings?.update?.mode as AppUpdateMode) ? settings!.update!.mode : defaults.update!.mode,
+      periodicCheckEnabled: settings?.update?.periodicCheckEnabled === true,
+      checkIntervalHours: normalizeInteger(settings?.update?.checkIntervalHours,
+        updateCheckIntervalHours.minimum, updateCheckIntervalHours.maximum, updateCheckIntervalHours.defaultValue)
+    }
   };
+}
+
+const updateModes: readonly AppUpdateMode[] = ["off", "notify", "automatic"];
+/** 后端限制的自动检查间隔（小时）；设置页的输入框显示同一范围。 */
+export const updateCheckIntervalHours = { minimum: 24, maximum: 168, defaultValue: 24 } as const;
+
+function notificationSwitches(value: AppNotificationSettings): AppNotificationSettings {
+  return { updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on" };
 }
 
 function normalizeLmStudioEndpoint(endpoint?: string | null): string {

@@ -28,8 +28,11 @@ import {
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { AccessRequestSnapshotProvider } from "./features/trustedAccess/AccessRequestSnapshotContext.tsx";
 import { TrustedAccessPendingBanner } from "./features/settings/components/TrustedAccessPendingBanner.tsx";
+import { createProductUpdateStore } from "./stores/productUpdateStore";
+import { bindProductUpdateNotice } from "./stores/productUpdateNotice.ts";
+import { productUpdateCopy } from "./features/settings/productUpdatePresentation.ts";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
-import { applyLanguage, uiText } from "./text.ts";
+import { applyLanguage, currentSettingsText, uiText } from "./text.ts";
 import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
 import { applyByteUnitMode } from "./presentation/byteUnits.ts";
 import { applyReadingSourceMode } from "./presentation/readingSources.ts";
@@ -69,6 +72,34 @@ export default function App() {
   const settings = createSettingsStore({
     source: frontendRuntime.sources.appSettings,
     requestClient: frontendRuntime.requestClient
+  });
+  const productUpdates = createProductUpdateStore({
+    source: frontendRuntime.sources.productUpdateStatus,
+    active: frontendWork.frontendVisible
+  });
+  // 发现新版本时界面内提示一次（docs: update-notice 合同“提示一次”）；入口跳到更新与版本，待应用时可立即应用。
+  bindProductUpdateNotice({
+    status: productUpdates.status,
+    notifications: settings.frontendNotifications,
+    record: settings.recordUpdateInAppNotified,
+    show: (state) => {
+      const text = currentSettingsText();
+      const ready = state.stage === "pendingApply" && state.targetVersion === state.availableVersion;
+      showToast({
+        tone: "info",
+        title: text.updates.noticeTitle,
+        message: ready ? text.updates.noticeReadyMessage(state.availableVersion) : text.updates.noticeMessage(state.availableVersion),
+        durationMs: null,
+        actions: [
+          { label: text.updates.noticeOpenUpdates, onSelect: () => {
+            settings.setActiveSection("updates");
+            setActivePage("settings");
+          } },
+          ...ready ? [{ label: productUpdateCopy(text.language).apply, onSelect: () => void productUpdates.apply(
+            (version) => window.confirm(currentSettingsText().updates.confirmPrepare(version)), currentSettingsText().language) }] : []
+        ]
+      });
+    }
   });
   const management = createManagementStore({
     activePage,
@@ -356,6 +387,7 @@ export default function App() {
           management={management}
           optimization={optimization}
           settings={settings}
+          productUpdates={productUpdates}
           runtimeCapabilities={runtimeCapabilities}
           highlightedSoftwareId={softwareActions.highlightedSoftwareId}
           onResourceTableSoftwareContextMenu={softwareActions.openResourceTableSoftwareContextMenu}

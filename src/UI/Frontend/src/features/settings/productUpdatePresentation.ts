@@ -6,13 +6,26 @@ export interface ProductUpdateState {
   errorCode?: string | null;
   errorParameters?: Record<string, string> | null;
   lastCheckedAt?: string | null;
-  checkResult?: "noUpdate" | "available" | "failed" | "checking" | "checked" | null;
+  /** 上次检查的结果（noUpdate、available、failed…）；其他值不显示。 */
+  checkResult?: string | null;
+  /** 自动检查现在处在哪一步；“正在等待联网”看这里，不看 checkResult。 */
+  automaticCheckStatus?: ProductAutomaticCheckStatus | null;
+  /** 状态更新时间（UTC）。 */
+  updatedAt?: string | null;
   failedVersion?: string | null;
+  /** 上次成功检查得出的同渠道、严格更高的版本；没有为 null。 */
+  availableVersion?: string | null;
+  /** 按当前联网状态推算的下次自动检查时间（UTC）；断网或未开间隔检查时为 null。 */
+  nextCheckAt?: string | null;
+  /** 自上次检查起已累计的联网时长（秒）；间隔只计联网的时间。 */
+  onlineTimeSinceLastCheckSeconds?: number | null;
 }
+
+export const productAutomaticCheckStatuses = ["disabled", "waitingForInternet", "checking", "scheduled", "idle"] as const;
+export type ProductAutomaticCheckStatus = typeof productAutomaticCheckStatuses[number];
 
 const languages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const;
 const copy = {
-  interval: ["检查间隔（小时）", "檢查間隔（小時）", "Check interval (hours)", "確認間隔（時間）", "확인 간격(시간)", "Intervalle de vérification (heures)", "Prüfintervall (Stunden)", "Intervalo de búsqueda (horas)", "Интервал проверки (часы)"],
   apply: ["立即应用", "立即套用", "Apply now", "今すぐ適用", "지금 적용", "Appliquer maintenant", "Jetzt anwenden", "Aplicar ahora", "Применить сейчас"],
   pending: ["更新包已准备好；关闭所有桌面会话中的资源管理器界面后自动应用，或点击立即应用。", "更新套件已準備好；關閉所有桌面工作階段中的資源管理器介面後自動套用，或點選立即套用。", "Update package ready. Close Resource Manager windows in all desktop sessions for automatic application, or choose Apply now.", "更新パッケージの準備ができました。すべてのデスクトップセッションで Resource Manager の画面を閉じるか、今すぐ適用を選択してください。", "업데이트 패키지가 준비되었습니다. 모든 데스크톱 세션에서 Resource Manager 창을 닫거나 지금 적용을 선택하세요.", "Le paquet est prêt. Fermez les fenêtres Resource Manager dans toutes les sessions de bureau ou choisissez Appliquer maintenant.", "Das Update-Paket ist bereit. Schließen Sie die Resource-Manager-Fenster in allen Desktop-Sitzungen oder wählen Sie Jetzt anwenden.", "El paquete está listo. Cierre las ventanas de Resource Manager en todas las sesiones de escritorio o seleccione Aplicar ahora.", "Пакет готов. Закройте окна Resource Manager во всех сеансах рабочего стола или выберите «Применить сейчас»."],
   unavailable: ["更新状态暂不可用，正在重试。", "更新狀態暫不可用，正在重試。", "Update status unavailable; retrying.", "更新状態を取得できません。再試行中です。", "업데이트 상태를 확인할 수 없습니다. 다시 시도 중입니다.", "État de mise à jour indisponible ; nouvelle tentative en cours.", "Update-Status nicht verfügbar; erneuter Versuch läuft.", "Estado de actualización no disponible; reintentando.", "Статус обновления недоступен; повторная попытка."],

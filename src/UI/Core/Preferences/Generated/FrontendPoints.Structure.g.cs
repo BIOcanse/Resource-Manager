@@ -71,6 +71,10 @@ public static class @FrontendPoints
     public static readonly global::System.Text.Json.JsonElement @DashboardLayoutDefaults = @FrontendPointsValues.@__fpValue_DashboardLayoutDefaults;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200350001UL)]
     public static readonly PointDashboardLayoutLimits @DashboardLayoutLimits = @FrontendPointsValues.@__fpValue_DashboardLayoutLimits;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350000UL)]
+    public static readonly string @UpdateInApp = @FrontendPointsValues.@__fpValue_UpdateInApp;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200350001UL)]
+    public static readonly string @UpdateSystem = @FrontendPointsValues.@__fpValue_UpdateSystem;
 }
 public sealed class @FrontendPointsRuntime
 {
