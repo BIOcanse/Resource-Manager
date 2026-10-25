@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fanModeFacts } from "./fanModeFacts.js";
-import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 /**
  * 控制面的数值滑条走交互协议的运行时（features/control/ControlNumberSlider.tsx），真实鼠标事件，简体中文。
@@ -13,7 +13,8 @@ import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
  * - 单击和原生 range 相同：同一串单击，原生 range 每次得到的值和这里一样（点在滑块上不改，点在滑轨上到那里）；
  * - 拖动中按 Esc、按右键取消：什么都不写，回到拖动前的值；
  * - 方向键、PageUp / PageDown、Home / End 照原生 range 一步一写；
- * - 外观不变：四种界面风格下，可用和置灰两种状态，滑条的截图和原样的原生 range（同一处换上去的原生元素）逐字节相同，
+ * - 外观不变：四种界面风格下，可用和置灰两种状态，滑条的截图和原样的原生 range（同一处换上去的原生元素）逐像素相同
+ *   （只容浏览器光栅化圆角抗锯齿时差 1 级的抖动），
  *   截图存在 RM_BROWSER_ARTIFACT_DIR。
  * 量程 0–100、步长 5，实际读数 40。
  */
@@ -45,6 +46,13 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
     objects = [...objects.filter(item => item.objectId !== id), ...(settings.length ? [{ objectId: id, settings }] : [])];
     return route.fulfill({ json: state() });
   });
+  /*
+   * 动画关掉（“无动画”）：滑块到终态、页面的颜色过渡都立即完成，每一步之后的状态是确定的，不靠等待时间。
+   * 默认的“自动”按这台机器的 GPU 计划决定开不开，负载重时还在半路的运动会让下一步按在没停稳的滑块上
+   * （按在滑块上是抓住，保持按下时相对圆心的偏移，滑块没停在 65 时拖到 30 处得到 35），
+   * 截图之间也会落在过渡的不同时刻。手感和动效由 motion-feel、switch-interaction 等旅程覆盖。
+   */
+  await seedFrontendPreferences(page, value => { value.appearance.animations = "none"; });
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const openControl = async () => {
@@ -264,7 +272,6 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
       if (state === "disabled") assert.equal(await target.isDisabled(), true, "The unchecked capability's slider is greyed out");
       await page.mouse.move(0, 0);
       await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
-      await settle();
       // 截滑条所在的滑轨格（含实际值刻度）；换成原生 range 时滑条隐藏，所以先拿住元素。
       const editor = await target.evaluateHandle(element => element.parentElement);
       const path = join(shots, `slider-${uiStyle}-${state}.png`);
@@ -272,11 +279,54 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
       const swapped = await swapInNative(await target.elementHandle());
       const original = await editor.screenshot({ path: join(shots, `slider-${uiStyle}-${state}-native.png`) });
       await swapBack(swapped);
-      assert.ok(ours.equals(original), `${uiStyle} ${state}: the slider looks exactly like the native range (${path})`);
-      looks.push(path);
+      /*
+       * 逐像素比，只容浏览器光栅化本身的抖动：Edge 把滑轨圆角的抗锯齿边缘画成相邻两级灰度之一，
+       * 同一个原生 range、什么都没变，连截两次也会在圆角上差 1 级（batch-3 和本地 --jobs 2 下都见过，
+       * 4 个像素 213 / 214、37 / 38）。所以“一样”是：尺寸相同，每个像素每个通道差不超过 1，这样的像素不超过 8 个。
+       * 外观真的不同（颜色、尺寸、滑块、刻度）时差的是整片像素、几十级，照样报出来。
+       */
+      const diff = await pixelDiff(page, ours, original);
+      assert.ok(diff.sameSize && diff.maxDelta <= 1 && diff.pixels <= 8,
+        `${uiStyle} ${state}: the slider looks exactly like the native range (${path}): ${JSON.stringify(diff)}`);
+      looks.push({ path, ...diff });
     }
   }
   return { parity, looks, nativeThumbPress: "on-thumb clicks keep the value in both" };
+}
+
+/** 两张 PNG 截图逐像素比：尺寸是否相同、有几个像素不同、任一通道最大差几级。在页面里用 canvas 解码。 */
+async function pixelDiff(page, a, b) {
+  return page.evaluate(async ([first, second]) => {
+    const load = async (data) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${data}`;
+      await image.decode();
+      return image;
+    };
+    const read = (image) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      return context.getImageData(0, 0, canvas.width, canvas.height).data;
+    };
+    const [x, y] = await Promise.all([load(first), load(second)]);
+    if (x.width !== y.width || x.height !== y.height) return { sameSize: false, pixels: -1, maxDelta: -1 };
+    const p = read(x);
+    const q = read(y);
+    let pixels = 0;
+    let maxDelta = 0;
+    for (let i = 0; i < p.length; i += 4) {
+      let delta = 0;
+      for (let k = 0; k < 4; k += 1) delta = Math.max(delta, Math.abs(p[i + k] - q[i + k]));
+      if (delta > 0) {
+        pixels += 1;
+        maxDelta = Math.max(maxDelta, delta);
+      }
+    }
+    return { sameSize: true, pixels, maxDelta };
+  }, [a.toString("base64"), b.toString("base64")]);
 }
 
 /**
