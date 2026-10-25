@@ -13,16 +13,16 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NvidiaMetricWriteOwnerLibraryIntegrationTests
 {
     [Fact]
-    public void OriginalPercentageFormatAndNamedWarningTemplatesStayWithHostFormatter()
+    public void ControlMessagesAreCodesWithoutHostFormattedText()
     {
-        var actual = ResourceManager.App.Infrastructure.Control.Writers.NvidiaGpuControlCopy.Describe(
-            NvidiaControlMessage.M17, new object?[] { 80.25, 120.75 });
-        Assert.Equal($"这块卡的功耗上限要走 NVAPI 通道（可调 {80.25:0}%~{120.75:0}%），写入还没接入。", actual);
-        Assert.Equal("显卡拒绝了写入：{Object} / {Capability} = {Value}，NVML 状态码 {Code}",
+        // The backend hands out the message code only; the frontend words it from the typed arguments.
+        Assert.Equal("nvidia.M17", ResourceManager.App.Infrastructure.Control.Writers.NvidiaGpuControlCopy.Describe(
+            NvidiaControlMessage.M17, new object?[] { 80.25, 120.75 }));
+        Assert.Equal("nvidia.M10",
             ResourceManager.App.Infrastructure.Control.Writers.NvidiaGpuControlCopy.Describe(NvidiaControlMessage.M10, Array.Empty<object?>()));
-        Assert.Equal("锁显卡时钟失败：{Capability} → [{Min}, {Max}] MHz，NVML 返回 {Code}。",
+        Assert.Equal("nvidia.M35",
             ResourceManager.App.Infrastructure.Control.Writers.NvidiaGpuControlCopy.Describe(NvidiaControlMessage.M35, Array.Empty<object?>()));
-        Assert.Equal("写显卡温度阈值失败：{Capability} = {Celsius} °C，NVML 返回 {Code}。",
+        Assert.Equal("nvidia.M45",
             ResourceManager.App.Infrastructure.Control.Writers.NvidiaGpuControlCopy.Describe(NvidiaControlMessage.M45, Array.Empty<object?>()));
     }
     [Fact]
