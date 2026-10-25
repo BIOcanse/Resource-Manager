@@ -821,7 +821,7 @@ export class SourceRegistry {
 export function canonicalizeSourceQuery<TQuery>(
   query: TQuery
 ): CanonicalSourceQuery<TQuery> {
-  const value = cloneCanonicalQueryValue(query, new WeakSet<object>()) as TQuery;
+  const value = cloneCanonicalQueryValue(query) as TQuery;
   return Object.freeze({
     key: JSON.stringify(value),
     value
@@ -840,9 +840,7 @@ function normalizeCanonicalQuery<TQuery>(
   query: CanonicalSourceQuery<TQuery>
 ): CanonicalSourceQuery<TQuery> {
   const key = normalizeQueryKey(query.key);
-  const value = cloneCanonicalQueryValue(
-    query.value,
-    new WeakSet<object>()) as TQuery;
+  const value = cloneCanonicalQueryValue(query.value) as TQuery;
   return Object.freeze({ key, value });
 }
 
@@ -866,44 +864,69 @@ function parameterizedSourceKey(familyKey: string, queryKey: string): string {
   return `${familyKey}?query=${encodeURIComponent(queryKey)}`;
 }
 
-function cloneCanonicalQueryValue(value: unknown, seen: WeakSet<object>): unknown {
-  if (value === null || typeof value === "string" || typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new Error("Source query numbers must be finite.");
+type CanonicalQueryFrame =
+  | { kind: "enter"; value: unknown; assign: (clone: unknown) => void }
+  | { kind: "exit"; source: object; clone: object };
+
+// 用显式栈复制：进入帧复制一个值并把子值按键序压栈，退出帧在子值都填好后冻结并把它移出当前路径。
+// 当前路径用来拒绝环；同一对象在不同分支出现（共享而非成环）照常复制。
+function cloneCanonicalQueryValue(root: unknown): unknown {
+  let result: unknown;
+  const path = new Set<object>();
+  const stack: CanonicalQueryFrame[] = [
+    { kind: "enter", value: root, assign: (clone) => { result = clone; } }
+  ];
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    if (frame.kind === "exit") {
+      Object.freeze(frame.clone);
+      path.delete(frame.source);
+      continue;
     }
-    return Object.is(value, -0) ? 0 : value;
-  }
-  if (typeof value !== "object") {
-    throw new Error(`Unsupported source query value: ${typeof value}.`);
-  }
-  if (seen.has(value)) {
-    throw new Error("Source queries cannot contain cycles.");
-  }
-  seen.add(value);
-  try {
+    const value = frame.value;
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+      frame.assign(value);
+      continue;
+    }
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) {
+        throw new Error("Source query numbers must be finite.");
+      }
+      frame.assign(Object.is(value, -0) ? 0 : value);
+      continue;
+    }
+    if (typeof value !== "object") {
+      throw new Error(`Unsupported source query value: ${typeof value}.`);
+    }
+    if (path.has(value)) {
+      throw new Error("Source queries cannot contain cycles.");
+    }
+    let clone: Record<string | number, unknown>;
+    let children: [key: string | number, child: unknown][];
     if (Array.isArray(value)) {
-      return Object.freeze(value.map((item) => cloneCanonicalQueryValue(item, seen)));
+      clone = new Array(value.length) as unknown as Record<number, unknown>;
+      children = value.map((item, index) => [index, item]);
+    } else {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error("Source query objects must be plain objects.");
+      }
+      if (Object.getOwnPropertySymbols(value).length > 0) {
+        throw new Error("Source query objects cannot contain symbol keys.");
+      }
+      clone = {};
+      children = Object.keys(value).sort()
+        .map((key) => [key, (value as Record<string, unknown>)[key]]);
     }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new Error("Source query objects must be plain objects.");
+    path.add(value);
+    frame.assign(clone);
+    stack.push({ kind: "exit", source: value, clone });
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const [key, child] = children[index]!;
+      stack.push({ kind: "enter", value: child, assign: (childClone) => { clone[key] = childClone; } });
     }
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      throw new Error("Source query objects cannot contain symbol keys.");
-    }
-    const result: Record<string, unknown> = {};
-    for (const key of Object.keys(value).sort()) {
-      result[key] = cloneCanonicalQueryValue(
-        (value as Record<string, unknown>)[key],
-        seen);
-    }
-    return Object.freeze(result);
-  } finally {
-    seen.delete(value);
   }
+  return result;
 }
 
 function normalizeDemand(demand: SourceDemand): SourceDemand {

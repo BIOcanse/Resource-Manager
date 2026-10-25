@@ -26,27 +26,40 @@ export function applySettingsPatch<T extends object>(settings: T, patch: Setting
   return result;
 }
 
+// 用显式栈逐层比较：两边都是对象的键先放一个空的子补丁再压栈；
+// 子补丁总在父补丁之后创建，最后倒序清掉空的子补丁时，子总先于父被检查。
 function diffObject(
   baseline: Record<string, unknown>,
   draft: Record<string, unknown>
 ): SettingsPatch {
-  const patch: SettingsPatch = {};
-  for (const [key, draftValue] of Object.entries(draft)) {
-    const baselineValue = baseline[key];
-    if (isPlainObject(baselineValue) && isPlainObject(draftValue)) {
-      const nested = diffObject(baselineValue, draftValue);
-      if (Object.keys(nested).length > 0) {
-        patch[key] = nested;
+  const root: SettingsPatch = {};
+  const nestedPatches: { parent: SettingsPatch; key: string; patch: SettingsPatch }[] = [];
+  const pending = [{ baseline, draft, patch: root }];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    for (const [key, draftValue] of Object.entries(current.draft)) {
+      const baselineValue = current.baseline[key];
+      if (isPlainObject(baselineValue) && isPlainObject(draftValue)) {
+        const nested: SettingsPatch = {};
+        current.patch[key] = nested;
+        nestedPatches.push({ parent: current.patch, key, patch: nested });
+        pending.push({ baseline: baselineValue, draft: draftValue, patch: nested });
+        continue;
       }
-      continue;
-    }
 
-    if (!areJsonValuesEqual(baselineValue, draftValue)) {
-      patch[key] = structuredClone(draftValue);
+      if (!areJsonValuesEqual(baselineValue, draftValue)) {
+        current.patch[key] = structuredClone(draftValue);
+      }
+    }
+  }
+  for (let index = nestedPatches.length - 1; index >= 0; index -= 1) {
+    const { parent, key, patch } = nestedPatches[index]!;
+    if (Object.keys(patch).length === 0) {
+      delete parent[key];
     }
   }
 
-  return patch;
+  return root;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

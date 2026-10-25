@@ -707,7 +707,18 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.throws(() => canonicalizeSourceQuery({ value: Number.POSITIVE_INFINITY }));
   const cyclic: { self?: unknown } = {};
   cyclic.self = cyclic;
-  assert.throws(() => canonicalizeSourceQuery(cyclic));
+  assert.throws(() => canonicalizeSourceQuery(cyclic), /cycles/);
+  // 同一对象出现在两个分支是共享不是环，照常复制；-0 归一为 0，数组顺序保留。
+  const shared = { b: [0, -0], a: null };
+  const sharedQuery = canonicalizeSourceQuery({ right: shared, left: shared });
+  assert.equal(sharedQuery.key, '{"left":{"a":null,"b":[0,0]},"right":{"a":null,"b":[0,0]}}');
+  assert.equal(Object.is(sharedQuery.value.left.b[1], 0), true);
+  assert.equal(Object.isFrozen(sharedQuery.value.right.b), true);
+  // 深层环同样拒绝。
+  const deepCycle: { next?: unknown } = {};
+  deepCycle.next = { inner: [{ back: deepCycle }] };
+  assert.throws(() => canonicalizeSourceQuery(deepCycle), /cycles/);
+  assert.throws(() => canonicalizeSourceQuery({ nested: { value: () => 1 } }), /Unsupported/);
 }
 
 function readySnapshot(epoch: string, revision: number): BackendSessionSnapshot {

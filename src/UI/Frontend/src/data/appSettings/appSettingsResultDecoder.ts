@@ -172,17 +172,18 @@ function optionalNullableInteger(
 function deepFreezeClone<T>(value: T): T {
   const clone = structuredClone(value);
   const seen = new WeakSet<object>();
-  const freeze = (item: unknown): void => {
+  const pending: unknown[] = [clone];
+  while (pending.length > 0) {
+    const item = pending.pop();
     if (typeof item !== "object" || item === null || seen.has(item)) {
-      return;
+      continue;
     }
     seen.add(item);
     for (const nested of Object.values(item)) {
-      freeze(nested);
+      pending.push(nested);
     }
     Object.freeze(item);
-  };
-  freeze(clone);
+  }
   return clone;
 }
 
