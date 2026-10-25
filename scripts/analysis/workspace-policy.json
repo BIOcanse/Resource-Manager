@@ -1,0 +1,1 @@
+{"schemaVersion":1,"enabled":true,"referenceRoots":[],"defaults":{"maxRecentCompleted":3,"maxBytes":17179869184,"maxNodes":750000,"maxMilliseconds":300000},"roots":[{"id":"rm-local","path":"{RepositoryRoot}/.local","excludedNames":["tools","tool-installations","development-runtime"]}]}

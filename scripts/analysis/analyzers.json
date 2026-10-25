@@ -1,0 +1,12 @@
+{
+  "sdkVersion": "10.0.300",
+  "codeqlVersion": "2.27.2",
+  "codeqlQueryPackVersion": "1.10.1",
+  "packages": [
+    { "id": "Microsoft.VisualStudio.Threading.Analyzers", "version": "18.12.1", "tool": "Threading", "prefix": "VSTHRD" },
+    { "id": "Meziantou.Analyzer", "version": "3.0.316", "tool": "Meziantou", "prefix": "MA" },
+    { "id": "Roslynator.Analyzers", "version": "5.0.1", "tool": "Roslynator", "prefix": "RCS" },
+    { "id": "SonarAnalyzer.CSharp", "version": "10.35.0.4138", "tool": "Sonar", "prefix": "S" },
+    { "id": "IDisposableAnalyzers", "version": "4.0.8", "tool": "IDisposable", "prefix": "IDISP", "disabledReason": "AD0001: SuppressFinalizeAnalyzer throws InvalidCastException for unmanaged function-pointer invocations in ResourceManager.ReadWriteCore. Package dropped for this scan; no rule suppression or product change." }
+  ]
+}

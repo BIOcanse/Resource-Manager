@@ -1,0 +1,7 @@
+name: Resource Manager native shims and probes
+paths:
+  - src/Core/Native
+  - tests/Native
+paths-ignore:
+  - tests/Validation/NonAdaptedOptimizationLab
+  - '**/third_party/**'

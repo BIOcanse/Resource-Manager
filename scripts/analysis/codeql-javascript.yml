@@ -1,0 +1,7 @@
+name: Resource Manager frontend
+paths:
+  - src/UI/Frontend/src
+paths-ignore:
+  - tests/Validation/NonAdaptedOptimizationLab
+  - '**/third_party/**'
+  - '**/node_modules/**'

@@ -1,0 +1,20 @@
+<Project>
+  <!-- Imported only by Invoke-DotnetStaticAnalysis.ps1, never by the product. -->
+  <PropertyGroup Condition="'$(ResourceManagerStaticAnalysis)' == 'true'">
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <RunAnalyzersDuringBuild>true</RunAnalyzersDuringBuild>
+    <RunAnalyzers>true</RunAnalyzers>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <_StaticAnalysisRelativeProject>$([System.IO.Path]::GetRelativePath('$(StaticAnalysisRepository)', '$(MSBuildProjectFullPath)'))</_StaticAnalysisRelativeProject>
+    <_StaticAnalysisProjectKey>$([System.String]::Copy('$(_StaticAnalysisRelativeProject)').Replace('\','__').Replace('/','__').Replace('.csproj',''))</_StaticAnalysisProjectKey>
+    <ErrorLog>$(StaticAnalysisOutput)/raw/$(_StaticAnalysisProjectKey).sarif;version=2.1</ErrorLog>
+  </PropertyGroup>
+  <Import Project="$(StaticAnalysisOutput)/AnalyzerReferences.targets"
+          Condition="'$(ResourceManagerStaticAnalysis)' == 'true'" />
+  <Target Name="RecordStaticAnalysisCompilation" BeforeTargets="CoreCompile"
+          Condition="'$(ResourceManagerStaticAnalysis)' == 'true'">
+    <WriteLinesToFile File="$(StaticAnalysisOutput)/raw/$(_StaticAnalysisProjectKey).sources.txt"
+                      Lines="@(Compile->'%(FullPath)')" Overwrite="true" />
+  </Target>
+</Project>

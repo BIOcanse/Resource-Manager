@@ -1,0 +1,1 @@
+{"name":"resource-manager-static-analysis","private":true,"type":"module","devDependencies":{"@microsoft/eslint-formatter-sarif":"3.1.0","eslint":"9.39.1","eslint-plugin-solid":"0.14.5","knip":"5.66.3","typescript":"6.0.3","typescript-eslint":"8.71.0"}}
