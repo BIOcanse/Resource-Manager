@@ -4,6 +4,7 @@ import {
   requireBoolean,
   requireFiniteNumber,
   requireNonEmptyString,
+  requireOneOf,
   requireRecord,
   requireSafeInteger,
   requireString,
@@ -13,10 +14,12 @@ import type {
   BackendMessage,
   MetricDefinition,
   MetricSnapshot,
+  MetricSourceCandidate,
   MetricValue
 } from "../../types.ts";
 import { presentMetricDefinition, presentMetricValue } from "../../presentation/metricPresentation.ts";
 import type { RawMetricIdentity } from "./metricWire.ts";
+import { decodeReading, metricFieldSourceAvailabilities } from "../metricFields/metricFieldSource.ts";
 
 export const metricCatalogDecoder = defineResponseDecoder<MetricDefinition[]>(
   "monitor.metric-catalog.v2",
@@ -57,8 +60,23 @@ function decodeMetricDefinition(value: unknown, path: string): MetricDefinition 
     selectable: optionalBoolean(record.selectable, `${path}.selectable`),
     disabledReason: optionalBackendMessage(record.disabledReason, `${path}.disabledReason`),
     scopeKind: optionalNullableString(record.scopeKind, `${path}.scopeKind`),
-    scopeKey: optionalNullableString(record.scopeKey, `${path}.scopeKey`)
+    scopeKey: optionalNullableString(record.scopeKey, `${path}.scopeKey`),
+    candidateSources: requireArray(record.candidateSources, `${path}.candidateSources`)
+      .map((item, index) => decodeCandidateSource(item, `${path}.candidateSources[${index}]`))
   });
+}
+
+// 部件地址的候选来源，按后端排序原样保留（docs/metric_reading_source_selection.md「部件目录的候选来源」）。
+function decodeCandidateSource(value: unknown, path: string): MetricSourceCandidate {
+  const record = requireRecord(value, path);
+  return {
+    fieldName: requireNonEmptyString(record.fieldName, `${path}.fieldName`),
+    deviceIdentity: requireNonEmptyString(record.deviceIdentity, `${path}.deviceIdentity`),
+    sourceId: requireString(record.sourceId, `${path}.sourceId`),
+    reading: decodeReading(record.reading, `${path}.reading`),
+    sourceAvailability: requireOneOf(record.sourceAvailability, `${path}.sourceAvailability`, metricFieldSourceAvailabilities),
+    isSelected: requireBoolean(record.isSelected, `${path}.isSelected`)
+  };
 }
 
 function decodeMetricValue(value: unknown, path: string): MetricValue {

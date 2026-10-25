@@ -3,14 +3,15 @@ import { metricFieldDevices, readingSourceDevices, readingSourceIds } from "./me
 
 /**
  * 先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
- * 选中核显温度后，列表下面出现“来源”，列出同一读取项的全部来源（不支持的不列），本机首选在前并标出；
- * 改选次选来源后，列表里这一项仍标为选中，卡片上换成次选来源自己的名字和数值。
- * 只有一个来源的项目不摆“来源”。不保存布局，只核对弹窗和卡片草稿。
+ * 目录里有核显温度的部件地址 gpu.5.temperature，后端给它列了三个候选来源、当前选中 ADLX 次选。
+ * 选中核显温度后，列表下面出现“来源”：第一项是自动选择并写出后端现在选的来源，其后是后端候选（按后端顺序，
+ * 本机首选标出）；选自动选择，选中的是部件地址；改选次选来源后，列表里这一项仍标为选中，
+ * 卡片上换成次选来源自己的名字和数值。只有一个来源的项目不摆“来源”。不保存布局，只核对弹窗和卡片草稿。
  */
 export default async function metricSourceChoiceJourney(page, baseUrl) {
   const response = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices] })
+    body: JSON.stringify({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices], metricCatalogAddresses: "reading-source" })
   });
   if (!response.ok) throw new Error("Unable to enable the reading-source fixture");
   const app = await loadAppCopy("zh-CN");
@@ -38,18 +39,26 @@ export default async function metricSourceChoiceJourney(page, baseUrl) {
   const preferredName = app.fieldLabel.gpu_amd_apu_temperature_reported_celsius.label;
   const alternateName = app.fieldLabel.gpu_amd_edge_temperature_celsius.label;
   const aliasName = app.fieldLabel.cpu_amd_apu_graphics_temperature_celsius.label;
-  // 首选和跨设备别名同名次，首选在前；次选在后；不支持的 NVMe 传感器、别的读取项都不在。
-  const expected = [preferredName, aliasName, alternateName];
-  if (labels.length !== 3 || !expected.every((name, index) => labels[index].startsWith(name))) {
+  // 自动选择写出后端选中的 ADLX；其后是后端候选的顺序（首选、跨设备别名、次选）；不支持的 NVMe 传感器、别的读取项都不在。
+  const automaticPrefix = text.sourceAutomatic(alternateName).split(alternateName)[0];
+  const expected = [`${automaticPrefix}${alternateName}`, preferredName, aliasName, alternateName];
+  if (labels.length !== 4 || !expected.every((name, index) => labels[index].startsWith(name))) {
     throw new Error(`Source choices ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
   }
-  if (!labels[0].endsWith(text.sourcePreferred) || labels.slice(1).some((label) => label.endsWith(text.sourcePreferred))) {
+  if (!labels[1].endsWith(text.sourcePreferred) || [0, 2, 3].some((index) => labels[index].endsWith(text.sourcePreferred))) {
     throw new Error(`Only the preferred source carries the mark: ${JSON.stringify(labels)}`);
   }
-  if (await radios.nth(0).getAttribute("aria-checked") !== "true") throw new Error("The chosen field is not the checked source");
+  if (await radios.nth(1).getAttribute("aria-checked") !== "true") throw new Error("The chosen field is not the checked source");
 
-  await radios.nth(2).click();
-  if (await radios.nth(2).getAttribute("aria-checked") !== "true" || await radios.nth(0).getAttribute("aria-checked") !== "false") {
+  // 自动选择：选中的是部件地址。
+  await radios.nth(0).click();
+  if (await radios.nth(0).getAttribute("aria-checked") !== "true"
+    || await option("gpu.5.temperature").getAttribute("aria-selected") !== "true") {
+    throw new Error("Choosing automatic did not select the part address");
+  }
+
+  await radios.nth(3).click();
+  if (await radios.nth(3).getAttribute("aria-checked") !== "true" || await radios.nth(0).getAttribute("aria-checked") !== "false") {
     throw new Error("Choosing a source did not move the check");
   }
   if (!await option(readingSourceIds.preferred).evaluate((element) => element.classList.contains("selected"))) {

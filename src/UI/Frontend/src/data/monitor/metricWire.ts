@@ -1,4 +1,4 @@
-import type { BackendMessage } from "../../types.ts";
+import type { BackendMessage, MetricSourceCandidate } from "../../types.ts";
 
 /** Backend facts only. Presentation belongs to presentation/metricPresentation.ts. */
 export interface RawMetricIdentity {
@@ -17,6 +17,7 @@ export interface RawMetricDefinition extends RawMetricIdentity {
   disabledReason?: BackendMessage | null;
   scopeKind?: string | null;
   scopeKey?: string | null;
+  candidateSources?: readonly MetricSourceCandidate[];
 }
 
 export interface RawMetricValue extends RawMetricIdentity {

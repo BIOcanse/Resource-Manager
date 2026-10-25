@@ -10,10 +10,35 @@ import {
 
 const catalog = metricCatalogDecoder.decode([{
   id: "cpu.usage",
-  unit: "%"
+  unit: "%",
+  candidateSources: []
 }]);
 assert.equal(catalog[0].id, "cpu.usage");
-assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.usage" }]));
+assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.usage", candidateSources: [] }]));
+
+// 部件地址的候选来源：按后端排序原样保留，reading 可空，可用性只认三种事实；缺了这个数组就不是当前 wire。
+const candidateReading = {
+  id: "cpu-tctl", quantity: "cpu.control_temperature", sourceRank: 10, sourceAvailability: "available",
+  isPreferredSource: true, preferredDeviceIdentity: "cpu|0", preferredFieldName: "cpu_amd_tctl_celsius"
+};
+const [address] = metricCatalogDecoder.decode([{
+  id: "cpu.temperature", unit: "°C", fieldName: "cpu_amd_tctl_celsius", deviceIdentity: "cpu|0",
+  candidateSources: [
+    { fieldName: "cpu_amd_tctl_celsius", deviceIdentity: "cpu|0", sourceId: "amd.smu", reading: candidateReading, sourceAvailability: "available", isSelected: true },
+    { fieldName: "cpu_lhm_tctl_celsius", deviceIdentity: "cpu|0", sourceId: "lhm", reading: null, sourceAvailability: "unverified", isSelected: false }
+  ]
+}]);
+assert.deepEqual(address.candidateSources?.map((source) => [source.fieldName, source.sourceId, source.sourceAvailability, source.isSelected]), [
+  ["cpu_amd_tctl_celsius", "amd.smu", "available", true],
+  ["cpu_lhm_tctl_celsius", "lhm", "unverified", false]
+]);
+assert.deepEqual(address.candidateSources?.[0].reading, candidateReading);
+assert.equal(address.candidateSources?.[1].reading, null);
+assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.usage", unit: "%" }]), /candidateSources/);
+assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.temperature", unit: "°C", candidateSources: [
+  { fieldName: "f", deviceIdentity: "d", sourceId: "s", reading: null, sourceAvailability: "maybe", isSelected: false }] }]), /sourceAvailability/);
+assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.temperature", unit: "°C", candidateSources: [
+  { fieldName: "f", deviceIdentity: "d", sourceId: "s", reading: null, sourceAvailability: "available" }] }]), /isSelected/);
 
 const snapshot = metricSnapshotDecoder.decode({
   version: 5,

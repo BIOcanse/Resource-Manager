@@ -16,10 +16,10 @@ export default async function metricPickerGpuNamesJourney(page, baseUrl) {
     const original = await route.fetch();
     const catalog = await original.json();
     return route.fulfill({ json: [...catalog,
-      { id: "gpu.0.usage", unit: "%", deviceIdentity: "opaque-a", selectable: true, detail: "untrusted old detail" },
-      { id: "gpu.0.vram", unit: "B", deviceIdentity: "opaque-a", selectable: true },
-      { id: "gpu.1.usage", unit: "%", deviceIdentity: "opaque-b", selectable: true },
-      { id: "gpu.2.usage", unit: "%", deviceIdentity: "absent", selectable: true }
+      { id: "gpu.0.usage", unit: "%", deviceIdentity: "opaque-a", selectable: true, detail: "untrusted old detail", candidateSources: [] },
+      { id: "gpu.0.vram", unit: "B", deviceIdentity: "opaque-a", selectable: true, candidateSources: [] },
+      { id: "gpu.1.usage", unit: "%", deviceIdentity: "opaque-b", selectable: true, candidateSources: [] },
+      { id: "gpu.2.usage", unit: "%", deviceIdentity: "absent", selectable: true, candidateSources: [] }
     ] });
   });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

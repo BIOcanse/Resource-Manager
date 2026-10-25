@@ -1,9 +1,10 @@
-// 先选项目、再选来源：同一读取项的来源按后端排序列出，自动选择是部件地址，不支持的来源不列。
+// 先选项目、再选来源：部件地址的来源是后端候选来源（自动选择用 isSelected 那个），
+// 不属于部件地址的设备字段按读取项分组；都按后端排序，不支持的来源不列。
 import assert from "node:assert/strict";
 import { metricSourceChoices } from "../src/features/monitor/metricSources.ts";
 import { deviceFieldScopeKind, fieldCardId } from "../src/features/monitor/fieldCards.ts";
 import type { MetricFieldReading } from "../src/data/metricFields/metricFieldSource.ts";
-import type { MetricDefinition } from "../src/types.ts";
+import type { MetricDefinition, MetricSourceCandidate } from "../src/types.ts";
 
 const reading = (id: string, sourceRank: number, extra: Partial<MetricFieldReading> = {}): MetricFieldReading => ({
   id, quantity: "gpu.edge_temperature", sourceRank, sourceAvailability: "available", isPreferredSource: false,
@@ -19,29 +20,45 @@ const adlx = field("adlx_edge", "gpu-0", reading("edge", 20));
 const unsupported = field("wmi_edge", "gpu-0", reading("edge", 30, { sourceAvailability: "unsupported" }));
 const hotspot = field("smu_hotspot", "gpu-0", reading("hotspot", 10, { isPreferredSource: true }));
 const single = field("fan_rpm", "fan-0", null);
+const candidate = (metric: MetricDefinition, isSelected: boolean, extra: Partial<MetricSourceCandidate> = {}): MetricSourceCandidate => ({
+  fieldName: metric.id.split("@")[0], deviceIdentity: metric.scopeKey!, sourceId: "fixture", reading: metric.reading ?? null,
+  sourceAvailability: metric.reading?.sourceAvailability ?? "unverified", isSelected, ...extra
+});
+const unverified = field("lhm_edge", "gpu-0", null);
+const absent = field("gone_edge", "gpu-9", null);
+// 后端的候选顺序就是展示顺序（这里故意让被选中的 ADLX 排第二）；后端已在 MetricCatalog 按 rank 排好。
 const address: MetricDefinition = {
   id: "gpu.0.temperature", label: "GPU temperature", group: "gpu.0", unit: "°C", preferredSlot: "main",
-  fieldName: "smu_edge", deviceIdentity: "gpu-0"
+  fieldName: "adlx_edge", deviceIdentity: "gpu-0",
+  candidateSources: [candidate(smu, false), candidate(adlx, true), candidate(unverified, false),
+    candidate(unsupported, false), candidate(absent, false)]
 };
-// Listed in reverse rank order so the test also checks that the backend rank orders the choices.
-const catalog = [address, unsupported, adlx, hotspot, smu, single];
+const catalog = [address, unsupported, adlx, hotspot, smu, single, unverified];
 
 const fromAddress = metricSourceChoices("gpu.0.temperature", catalog);
 assert.deepEqual(fromAddress.map((choice) => [choice.metricId, choice.automatic, choice.preferred]), [
   ["gpu.0.temperature", true, false],
   [smu.id, false, true],
-  [adlx.id, false, false]
-], "Automatic first, then the sources by backend rank; the unsupported source is not offered");
-assert.equal(fromAddress[0].source, smu, "Automatic names the source the backend currently maps the address to");
+  [adlx.id, false, false],
+  [unverified.id, false, false]
+], "Automatic first, then the backend candidates in backend order; unsupported and undiscovered candidates are not offered");
+assert.equal(fromAddress[0].source, adlx, "Automatic names the candidate the backend marks selected, not the reading's preferred source");
 
 assert.deepEqual(metricSourceChoices(adlx.id, catalog).map((choice) => choice.metricId),
   fromAddress.map((choice) => choice.metricId), "Choosing a source keeps the same item and choices");
+assert.deepEqual(metricSourceChoices(unverified.id, catalog).map((choice) => choice.metricId),
+  fromAddress.map((choice) => choice.metricId), "A candidate without a reading still belongs to its address");
+assert.equal(metricSourceChoices("gpu.0.temperature", [{ ...address, candidateSources: address.candidateSources!.map((item) => ({ ...item, isSelected: false })) }, smu, adlx])[0].source,
+  null, "No selected candidate: automatic names no source");
+assert.deepEqual(metricSourceChoices("gpu.0.temperature", [{ ...address, candidateSources: [] }, smu, adlx]), [],
+  "An address without candidates has nothing to choose; the reading group is not used for it");
 assert.deepEqual(metricSourceChoices(hotspot.id, catalog), [], "A different quantity with one source has nothing to choose");
 assert.deepEqual(metricSourceChoices(single.id, catalog), [], "A field without a reading has nothing to choose");
 assert.deepEqual(metricSourceChoices(null, catalog), []);
 assert.deepEqual(metricSourceChoices("missing", catalog), []);
 
-// Without a part address the sources are still offered, without an automatic choice.
-assert.deepEqual(metricSourceChoices(smu.id, [smu, adlx]).map((choice) => choice.automatic), [false, false]);
+// 不属于部件地址的字段：同一读取项按后端 rank 排，没有“自动选择”，不支持的不列。
+assert.deepEqual(metricSourceChoices(smu.id, [unsupported, adlx, smu]).map((choice) => [choice.metricId, choice.automatic, choice.preferred]),
+  [[smu.id, false, true], [adlx.id, false, false]]);
 
-console.log("metricSources: item then source choices follow the backend reading groups");
+console.log("metricSources: item then source choices follow the backend candidates and reading groups");

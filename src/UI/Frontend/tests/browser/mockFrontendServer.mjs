@@ -75,6 +75,9 @@ const defaultScenario = {
   // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
   // 字段目录（/api/metrics/fields/catalog/subscribe）由同一份设备值生成。
   metricFieldDevices: [],
+  // 指标目录里额外的部件地址："none" 没有；"reading-source" 加一个带候选来源的核显温度地址
+  // （gpu.5.temperature，候选是 metricFieldsProbe 的 readingSourceDevices 字段，后端当前选中 ADLX 次选）。
+  metricCatalogAddresses: "none",
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
   dashboardSettings: null,
   gpuPlacementEnabled: false,
@@ -651,12 +654,12 @@ async function handleApi(request, response, url) {
     return json(response, 200, { recording: {}, summary: null, frameIntervals: [], fpsDistribution: [], resourceSamples: [] });
   }
   if (path === "/api/metrics/catalog") {
-    return json(response, 200, scenario.gpuPressureFixture
-      ? [...metricCatalog,
+    return json(response, 200, [...metricCatalog,
+      ...(scenario.gpuPressureFixture ? [
         metric("gpu.0.usage", "GPU 占用", "GPU", "%"),
         metric("gpu.0.vram", "GPU 显存", "GPU", "B"),
-        metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")]
-      : metricCatalog);
+        metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")] : []),
+      ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])]);
   }
   if (path === "/api/metrics/snapshot") {
     return json(response, 200, metricSnapshot(url.searchParams.getAll("ids")));
@@ -1247,6 +1250,7 @@ function delay(milliseconds) {
 // 外观、动效和刷新选择是前端偏好（docs/frontend_preferences_2026-10-24.md），后端设置不携带，
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
+const scenarioChoices = { metricCatalogAddresses: ["none", "reading-source"] };
 
 function applyScenarioPatch(patch) {
   const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
@@ -1255,6 +1259,9 @@ function applyScenarioPatch(patch) {
     throw new Error(`Unknown trustedAccess scenario: ${JSON.stringify(patch.trustedAccess)}`);
   }
   if (Object.hasOwn(patch, "productUpdateStatus")) validateProductUpdateStatusScenario(patch.productUpdateStatus);
+  for (const [key, allowed] of Object.entries(scenarioChoices)) {
+    if (Object.hasOwn(patch, key) && !allowed.includes(patch[key])) throw new Error(`Unknown ${key} scenario: ${JSON.stringify(patch[key])}`);
+  }
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
@@ -1419,8 +1426,21 @@ async function serveStatic(response, pathname) {
   }
 }
 
-function metric(id, label, group, unit) {
-  return { id, unit, selectable: true };
+function metric(id, label, group, unit, candidateSources = []) {
+  return { id, unit, selectable: true, candidateSources };
+}
+
+// 部件地址的候选来源，形状同后端 MetricSourceCandidate；按后端排序（rank，再按请求地址）。
+function readingSourceAddress() {
+  const reading = (id, extra) => ({ id, quantity: "q", sourceRank: 10, sourceAvailability: "available", isPreferredSource: false,
+    preferredDeviceIdentity: "gpu|reading", preferredFieldName: "gpu_amd_apu_temperature_reported_celsius", ...extra });
+  const candidate = (fieldName, deviceIdentity, readingValue, isSelected) => ({ fieldName, deviceIdentity, sourceId: "fixture",
+    reading: readingValue, sourceAvailability: readingValue.sourceAvailability, isSelected });
+  return { ...metric("gpu.5.temperature", "", "", "°C", [
+    candidate("gpu_amd_apu_temperature_reported_celsius", "gpu|reading", reading("apu-edge", { isPreferredSource: true }), false),
+    candidate("cpu_amd_apu_graphics_temperature_celsius", "cpu-package|reading", reading("apu-edge"), false),
+    candidate("gpu_amd_edge_temperature_celsius", "gpu|reading", reading("apu-edge", { sourceRank: 20 }), true)
+  ]), fieldName: "gpu_amd_edge_temperature_celsius", deviceIdentity: "gpu|reading" };
 }
 
 function metricSnapshot(requestedIds) {

@@ -116,6 +116,23 @@ export interface MetricDefinition {
   readingSource?: ReadingSourceDisplay;
   /** 设备字段的读取项（后端原样）；同一 id 的字段是同一物理量的不同来源。不是设备字段或没有读取项时没有。 */
   reading?: MetricFieldReading | null;
+  /**
+   * 后端目录给的部件地址候选来源（按后端排序，原样）。只有后端目录条目有；部件地址以外的条目是空数组。
+   * 设备字段卡片条目（前端拼的）没有。
+   */
+  candidateSources?: readonly MetricSourceCandidate[];
+}
+
+/** 部件地址能映射到的一个原始字段（docs/metric_reading_source_selection.md「部件目录的候选来源」）。 */
+export interface MetricSourceCandidate {
+  readonly fieldName: string;
+  readonly deviceIdentity: string;
+  readonly sourceId: string;
+  readonly reading: MetricFieldReading | null;
+  /** 只取已有能力事实；没有事实是 unverified。 */
+  readonly sourceAvailability: "available" | "unsupported" | "unverified";
+  /** 这个部件地址现在（自动选择）用的就是它；尚无选中来源时全为 false。 */
+  readonly isSelected: boolean;
 }
 
 export interface MetricValue {

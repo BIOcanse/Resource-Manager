@@ -66,19 +66,21 @@ const rawItems = Object.fromEntries(readings.map(([id, unit, numericValue]) => [
 }]));
 const rawSnapshot = { version: 5, capturedAt: observedAt, catalogRevision: "recorded-raw-v5", items: rawItems };
 const snapshot = metricSnapshotDecoder.decode(rawSnapshot);
-const catalog = metricCatalogDecoder.decode(readings.map(([id, unit]) => ({ id, unit, selectable: true })));
+const catalog = metricCatalogDecoder.decode(readings.map(([id, unit]) => ({ id, unit, selectable: true, candidateSources: [] })));
 
 // The already shipped overlay manifest records the established nine-language alias names.
 const recordedLabels = JSON.parse(readFileSync(new URL("../../Core/Overlay/metric-labels.json", import.meta.url), "utf8")) as Record<string, Record<string, string>>;
-const allAliasDefinitions = Object.keys(recordedLabels).map(id => ({ id: id.replaceAll("{index}", "2"), unit: "%" }));
+const allAliasDefinitions = Object.keys(recordedLabels).map(id => ({ id: id.replaceAll("{index}", "2"), unit: "%", candidateSources: [] }));
 const aliasCatalog = metricCatalogDecoder.decode(allAliasDefinitions);
 const unavailable = metricCatalogDecoder.decode([{
   id: "cpu.temperature", unit: "°C", selectable: false,
-  requiredComponentId: "intel-msr-pawnio-provider", disabledReason: { domain: 3, code: 2, args: ["intel-msr-pawnio-provider"] }
+  requiredComponentId: "intel-msr-pawnio-provider", disabledReason: { domain: 3, code: 2, args: ["intel-msr-pawnio-provider"] },
+  candidateSources: []
 }])[0];
 const canonical = metricCatalogDecoder.decode([{
   id: "cpu_all_usage_percent@opaque-device", unit: "%", fieldCode: 1,
-  fieldName: "cpu_all_usage_percent", deviceIdentity: "opaque-device", sourceId: "windows.cpu", valueKind: "float64", scopeKind: "cpu"
+  fieldName: "cpu_all_usage_percent", deviceIdentity: "opaque-device", sourceId: "windows.cpu", valueKind: "float64", scopeKind: "cpu",
+  candidateSources: []
 }])[0];
 const languages = languageOptions.filter(option => option.id !== "system");
 assert.equal(languages.length, 9);
@@ -148,6 +150,6 @@ for (const status of [0, 2, 3, 4, 5, 6, 7]) {
   assert.equal(appendPerformancePoint(unavailableFrame, [{ id: "cpu.usage", label: "CPU", color: "#000" }]).values["cpu.usage"], null);
 }
 assert.throws(() => metricSnapshotDecoder.decode({ ...rawSnapshot, version: 4 }), /version/);
-assert.equal(metricCatalogDecoder.decode([{ id: "cpu.usage", unit: "%", label: "untrusted", group: "untrusted", preferredSlot: "untrusted" }])[0].group, "cpu");
+assert.equal(metricCatalogDecoder.decode([{ id: "cpu.usage", unit: "%", label: "untrusted", group: "untrusted", preferredSlot: "untrusted", candidateSources: [] }])[0].group, "cpu");
 assert.equal(metricDisplayValue(metricSnapshotDecoder.decode({ ...rawSnapshot, items: { "cpu.usage": { ...rawItems["cpu.usage"], displayValue: "untrusted" } } }).items["cpu.usage"]), "25%");
 console.log(`Raw metric presentation passed: ${languages.length} languages, ${aliasCatalog.length} recorded aliases, ${readings.length} raw readings, ${formatGoldens.cases.length * formatGoldens.scales.length} .NET numeric format goldens.`);

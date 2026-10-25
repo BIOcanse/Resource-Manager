@@ -204,7 +204,7 @@ function decodeValue(value: unknown, path: string): MetricFieldValue {
 }
 
 /** 读取项可空；还没发这个对象的后端（字段上没有 reading）同样当作没有读取项。 */
-function decodeReading(value: unknown, path: string): MetricFieldReading | null {
+export function decodeReading(value: unknown, path: string): MetricFieldReading | null {
   if (value === undefined || value === null) return null;
   const record = requireRecord(value, path);
   return {
