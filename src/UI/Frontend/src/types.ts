@@ -564,6 +564,8 @@ export interface ResourceTableColumn {
   width: number;
   /** 列的来源（同 ResourceTableColumnSettings.source）；null 是自动选择。 */
   source: string | null;
+  /** 这一列的指标实际读的进程字段（资源事实的 processFieldName）；不是进程字段或还没有数据时为 null。 */
+  processFieldName: string | null;
 }
 
 export interface ResourceTableValue {

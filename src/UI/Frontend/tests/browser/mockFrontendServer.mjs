@@ -1455,7 +1455,12 @@ const processFieldCatalog = [
   ["process_all_private_commit_actual", "unsigned64", "B", "windows.process.query", "private_commit"],
   ["process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query", "peak_private_commit"]
 ].map(([name, valueKind, unit, sourceId, quantity]) => ({ name, valueKind, unit, sourceId, resource: "process", vendor: "all",
-  reading: quantity === null ? null : { resource: "memory", quantity } }));
+  reading: quantity === null ? null : { resource: "memory", quantity },
+  // 后端：工作集、私有工作集、私有提交量能作资源事实，峰值提交量和非内存字段不能。
+  supportsResourceFacts: quantity !== null && quantity !== "peak_private_commit" }));
+
+// 自动的整机内存指标实际读的进程字段（后端在资源事实和资源条上写的 processFieldName）。
+const automaticProcessFields = { "memory.usage": "process_all_private_working_set_actual", "virtualMemory.usage": "process_all_private_commit_actual" };
 
 // 资源事实接受的进程内存字段：整机比较事实、整机量、容量和全部进程之和（按软件平分）。
 const GiB = 1024 ** 3;
@@ -1793,14 +1798,14 @@ function resourceFacts(url, capturedAt = now()) {
         rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
           processes: [{ processIndex, value: residual, systemPercent: percent(residual), softwarePercent: 100, baseScore: 0, sharedValue: null }] });
       }
-      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, totalValue: fact.totalValue, capacityValue: fact.capacityValue,
+      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, totalValue: fact.totalValue, capacityValue: fact.capacityValue,
         totalSystemPercent: percent(fact.totalValue), processSumValue: count > 0 ? fact.processSum : 0, sharedValue: null, software: rows };
     }
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
     const sharedValue = memory ? 134217728 : null;
     return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
-      totalMetricId: null, totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
+      totalMetricId: null, processFieldName: automaticProcessFields[metricId] ?? null, totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
       software: software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
         baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
         processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };

@@ -693,7 +693,6 @@ const ruRuAppCopy: AppCopy = {
     },
     systemResidualRow: (metric: string) => `Резерв системы и драйверов · ${metric}`,
     columnSourceLabel: (column: string) => `Источник: ${column}`,
-    sourceAutomatic: "Автоматически",
     memoryQuantities: {
       working_set_including_shared: "Рабочий набор (с общими страницами)",
       private_working_set: "Частный рабочий набор",

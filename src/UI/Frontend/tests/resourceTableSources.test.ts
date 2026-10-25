@@ -12,8 +12,10 @@ import {
 import { uiText } from "../src/text.ts";
 
 // 后端 ProcessMetricFieldRegistry 的 wire 形状：内存四种口径带 reading，其余为 null。
-const wireField = (name: string, quantity: string | null) => ({ name, valueKind: "unsigned64", unit: "B", sourceId: "windows.process.query",
-  resource: "process", vendor: "all", reading: quantity === null ? null : { resource: "memory", quantity } });
+// supportsResourceFacts 是后端说的（工作集、私有工作集、私有提交量 true，峰值提交量 false），前端只读它。
+const wireField = (name: string, quantity: string | null, supportsResourceFacts = quantity !== null && quantity !== "peak_private_commit") => ({
+  name, valueKind: "unsigned64", unit: "B", sourceId: "windows.process.query",
+  resource: "process", vendor: "all", reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts });
 const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_handle_count_actual", null),
   wireField("process_all_working_set_actual", "working_set_including_shared"),
@@ -28,16 +30,25 @@ assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null)
 assert.throws(() => processFieldCatalogDecoder.decode([wireField("x", "shared_bytes")]), /quantity/,
   "An unknown memory quantity is a wire change, not something to guess");
 assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null), resource: "gpu" }]), /resource/);
+assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null), supportsResourceFacts: undefined }]), /supportsResourceFacts/,
+  "Whether a field can be a resource fact is a backend fact; a catalog without it is not the current wire");
 
 // 内存列：自动选择在前，然后是资源事实接受的口径（峰值提交量不进资源事实），按目录顺序。别的列没有来源。
 const choices = resourceColumnSourceChoices("memory", fields);
 assert.deepEqual(choices.map((choice) => choice.source),
   [null, "process_all_working_set_actual", "process_all_private_working_set_actual", "process_all_private_commit_actual"]);
-assert.deepEqual(choices.map(resourceColumnSourceLabel), [uiText.resourceTable.sourceAutomatic,
+assert.deepEqual(choices.map((choice) => resourceColumnSourceLabel(choice, fields)), [uiText.metricPicker.sourceAutomatic(null),
   uiText.resourceTable.memoryQuantities.working_set_including_shared, uiText.resourceTable.memoryQuantities.private_working_set,
   uiText.resourceTable.memoryQuantities.private_commit]);
 assert.deepEqual(resourceColumnSourceChoices("cpu", fields), []);
 assert.deepEqual(resourceColumnSourceChoices("memory", []), [], "No catalog yet: nothing to choose");
+// 能不能作来源只听目录：后端改标峰值提交量后它就出现，名字没有文案时写字段名。
+const peakAllowed = processFieldCatalogDecoder.decode([wireField("process_all_peak_private_commit_actual", "peak_private_commit", true)]);
+assert.deepEqual(resourceColumnSourceChoices("memory", peakAllowed).map((choice) => resourceColumnSourceLabel(choice, peakAllowed)),
+  [uiText.metricPicker.sourceAutomatic(null), "process_all_peak_private_commit_actual"]);
+// 自动选择写出后端这次实际读的字段（资源事实的 processFieldName）。
+assert.equal(resourceColumnSourceLabel(choices[0], fields, "process_all_private_working_set_actual"),
+  uiText.metricPicker.sourceAutomatic(uiText.resourceTable.memoryQuantities.private_working_set));
 
 // 列请求的指标：自动选择是列原来的指标，选了来源就是那个字段。
 assert.equal(resourceTableMetricId({ id: "memory" }), "memory.usage");
@@ -49,6 +60,10 @@ assert.equal(resourceTableMetricId({ id: "name" }), null);
 // 表头写出口径；自动选择和私有工作集用原来的说明。
 assert.deepEqual(resourceTableColumnText({ id: "memory", source: null }, fields),
   { label: uiText.resourceTable.columns.memory, basis: uiText.resourceBreakdown.memoryTableBasis });
+assert.deepEqual(resourceTableColumnText({ id: "memory", source: null }, fields, "process_all_private_working_set_actual"), {
+  label: uiText.resourceTable.columns.memory,
+  basis: `${uiText.metricPicker.sourceAutomatic(uiText.resourceTable.memoryQuantities.private_working_set)}\n${uiText.resourceBreakdown.memoryTableBasis}` });
+assert.equal(resourceTableColumnText({ id: "cpu", source: null }, fields, null).basis, undefined);
 assert.deepEqual(resourceTableColumnText({ id: "memory", source: "process_all_private_commit_actual" }, fields), {
   label: uiText.resourceTable.memoryColumnBySource(uiText.resourceTable.memoryQuantities.private_commit),
   basis: uiText.resourceTable.memorySourceBasis.private_commit });
@@ -66,7 +81,7 @@ const wire = {
     { softwareId: "resource-residual:virtualMemory.usage", name: "", kind: "windows_system", attributionKind: "system-residual" }],
   processes: [{ processId: 42, processStartKey: "100", name: "example.exe", executablePath: null, userName: "user", architecture: "x64", attributionKind: "other" },
     { processId: -1, processStartKey: null, name: "", executablePath: null, userName: null, architecture: null, attributionKind: "system-residual" }],
-  metrics: [{ metricId: "process_all_private_commit_actual", unit: "B", totalMetricId: "virtualMemory.usage", totalValue: 6 * GiB, capacityValue: 24 * GiB,
+  metrics: [{ metricId: "process_all_private_commit_actual", unit: "B", totalMetricId: "virtualMemory.usage", processFieldName: "process_all_private_commit_actual", totalValue: 6 * GiB, capacityValue: 24 * GiB,
     totalSystemPercent: 25, processSumValue: GiB, sharedValue: null, software: [
       { softwareId: "example", value: GiB, systemPercent: 100 / 24, processCount: 1, baseScore: 5, sharedValue: null,
         processes: [{ processIndex: 0, value: GiB, systemPercent: 100 / 24, softwarePercent: 100, baseScore: 5, sharedValue: null }] },
@@ -79,11 +94,14 @@ assert.equal(facts.metrics[0].totalMetricId, "virtualMemory.usage");
 assert.equal(facts.metrics[0].processSumValue, GiB);
 assert.throws(() => decodeResourceFacts({ ...wire, metrics: [{ ...wire.metrics[0], totalMetricId: undefined }] }), /totalMetricId/);
 assert.throws(() => decodeResourceFacts({ ...wire, metrics: [{ ...wire.metrics[0], processSumValue: undefined }] }), /processSumValue/);
+assert.equal(facts.metrics[0].processFieldName, "process_all_private_commit_actual");
+assert.throws(() => decodeResourceFacts({ ...wire, metrics: [{ ...wire.metrics[0], processFieldName: undefined }] }), /processFieldName/);
 
 const commitColumns = [{ id: "name", visible: true, width: 200 }, { id: "memory", visible: true, width: 110, source: "process_all_private_commit_actual" }];
 const table = projectResourceFacts(facts, commitColumns, "software", "memory", "desc");
 assert.equal(table.columns[1].source, "process_all_private_commit_actual");
 assert.equal(table.columns[1].unit, "B");
+assert.equal(table.columns[1].processFieldName, "process_all_private_commit_actual", "The column carries the field its metric actually read");
 const summary = table.rows[0];
 assert.equal(summary.values.memory.value, 6 * GiB, "The total row is the system commit charge, not the process sum");
 assert.equal(summary.values.memory.percent, 25);

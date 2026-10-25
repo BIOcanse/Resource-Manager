@@ -693,7 +693,6 @@ const frFrAppCopy: AppCopy = {
     },
     systemResidualRow: (metric: string) => `Réservé système/pilote · ${metric}`,
     columnSourceLabel: (column: string) => `Source de ${column}`,
-    sourceAutomatic: "Automatique",
     memoryQuantities: {
       working_set_including_shared: "Ensemble de travail (pages partagées incluses)",
       private_working_set: "Ensemble de travail privé",

@@ -18,6 +18,7 @@ export function resourceTableColumnsEqual(
       && column.visible === candidate.visible
       && column.sortable === candidate.sortable
       && column.width === candidate.width
-      && column.source === candidate.source;
+      && column.source === candidate.source
+      && column.processFieldName === candidate.processFieldName;
   });
 }

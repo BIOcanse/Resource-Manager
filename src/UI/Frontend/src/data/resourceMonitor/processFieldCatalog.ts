@@ -2,6 +2,7 @@ import type { RequestClient } from "../../frontendRuntime/request/RequestClient.
 import {
   defineResponseDecoder,
   requireArray,
+  requireBoolean,
   requireNonEmptyString,
   requireNullable,
   requireOneOf,
@@ -34,6 +35,8 @@ export interface ProcessMetricField {
   readonly sourceId: string;
   /** 没有读取项口径的字段为 null。 */
   readonly reading: ProcessMetricFieldReading | null;
+  /** 后端说这个字段能不能作资源事实（资源表的列、资源条的来源）：工作集、私有工作集、私有提交量是，峰值提交量不是。 */
+  readonly supportsResourceFacts: boolean;
 }
 
 export const processFieldCatalogDecoder = defineResponseDecoder<readonly ProcessMetricField[]>(
@@ -47,6 +50,7 @@ export const processFieldCatalogDecoder = defineResponseDecoder<readonly Process
       unit: requireString(record.unit, `${path}.unit`),
       valueKind: requireNonEmptyString(record.valueKind, `${path}.valueKind`),
       sourceId: requireNonEmptyString(record.sourceId, `${path}.sourceId`),
+      supportsResourceFacts: requireBoolean(record.supportsResourceFacts, `${path}.supportsResourceFacts`),
       reading: requireNullable(record.reading, `${path}.reading`, (reading, readingPath) => {
         const fact = requireRecord(reading, readingPath);
         return {

@@ -202,6 +202,7 @@ export function ResourceTable(props: ResourceTableProps) {
           catalog={props.catalog}
           columns={props.columnSettings}
           processFields={props.processFields}
+          snapshotColumns={props.snapshot?.columns ?? []}
           onToggle={props.onToggleColumn}
           onSourceChange={props.onColumnSourceChange}
         />
@@ -300,10 +301,17 @@ function ResourceTableColumnEditor(props: {
   catalog: MetricDefinition[];
   columns: ResourceTableColumnSettings[];
   processFields: readonly ProcessMetricField[];
+  /** 当前快照的列：自动选择的列带着后端这次实际读的字段。 */
+  snapshotColumns: readonly ResourceTableColumn[];
   onToggle: (columnId: string, visible: boolean) => void;
   onSourceChange: (columnId: string, source: string | null) => void;
 }) {
   const byId = () => new Map(props.columns.map((column) => [column.id, column]));
+  // 自动选择这一项写出后端这次实际读的字段：只有这一列现在就是自动选择时快照里的字段才是它。
+  const automaticField = (columnId: string) => {
+    const column = props.snapshotColumns.find((candidate) => candidate.id === columnId);
+    return column && column.source === null ? column.processFieldName : null;
+  };
   // 先选项目、再选来源：有不止一个来源的列在勾选项后面摆“来源”，第一项是自动选择。
   const sourceColumns = createMemo(() => resourceTableEditorColumns(props.columns, props.catalog, props.mode)
     .map((column) => ({ id: column.id, choices: resourceColumnSourceChoices(column.id, props.processFields) }))
@@ -346,7 +354,7 @@ function ResourceTableColumnEditor(props: {
                   {(choice, index) => (
                     <RadioGroupItem value={`source-${index}`} class="segment"
                       title={resourceTableColumnText({ id: column.id, source: choice().source }, props.processFields).basis}>
-                      {resourceColumnSourceLabel(choice())}
+                      {resourceColumnSourceLabel(choice(), props.processFields, automaticField(column.id))}
                     </RadioGroupItem>
                   )}
                 </Index>
@@ -445,9 +453,11 @@ function VirtualResourceTable(props: {
     }
     return low;
   };
-  // 表头、单元格提示用的列名和说明：选了来源的列写出口径。
-  const columnTexts = createMemo(() => new Map(columns().map((column) => [column.id, resourceTableColumnText(column, props.processFields)])));
-  const columnText = (column: ResourceTableColumn) => columnTexts().get(column.id) ?? resourceTableColumnText(column, props.processFields);
+  // 表头、单元格提示用的列名和说明：选了来源的列写出口径，自动选择写出后端这次实际读的字段。
+  const columnTexts = createMemo(() => new Map(columns().map((column) => [column.id,
+    resourceTableColumnText(column, props.processFields, column.processFieldName)])));
+  const columnText = (column: ResourceTableColumn) => columnTexts().get(column.id)
+    ?? resourceTableColumnText(column, props.processFields, column.processFieldName);
   const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
   const visibleRange = createMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
@@ -1215,18 +1225,18 @@ function contextMenuEventForElement(element: HTMLElement) {
 function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
   const processMode = mode === "process";
   return [
-    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null },
-    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null }] : []),
-    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null },
+    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null, processFieldName: null },
+    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null }] : []),
+    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null, processFieldName: null },
     ...(processMode ? [
-      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null },
-      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null }
+      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null, processFieldName: null },
+      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null }
     ] : []),
-    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null },
-    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null },
+    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null, processFieldName: null },
+    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null, processFieldName: null },
     ...gpuResourceTableColumns(catalog),
-    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null },
-    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null }
+    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null, processFieldName: null },
+    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null, processFieldName: null }
   ];
 }
 
@@ -1240,7 +1250,8 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
       visible: true,
       sortable: true,
       width: metric.id.endsWith(".vram") ? 132 : 108,
-      source: null
+      source: null,
+      processFieldName: null
     }));
 }
 

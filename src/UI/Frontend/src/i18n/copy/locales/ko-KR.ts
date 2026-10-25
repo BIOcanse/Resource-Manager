@@ -693,7 +693,6 @@ const koKrAppCopy: AppCopy = {
     },
     systemResidualRow: (metric: string) => `시스템/드라이버 예약 · ${metric}`,
     columnSourceLabel: (column: string) => `${column} 소스`,
-    sourceAutomatic: "자동 선택",
     memoryQuantities: {
       working_set_including_shared: "작업 집합(공유 페이지 포함)",
       private_working_set: "전용 작업 집합",

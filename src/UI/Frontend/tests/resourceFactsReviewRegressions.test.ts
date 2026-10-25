@@ -14,7 +14,7 @@ function software(id: string, name: string, value: number): ResourceSoftwareSegm
       systemPercent: value, softwarePercent: 100, baseScore: 0 }] };
 }
 function metric(metricId: string, software: ResourceSoftwareSegment[]): ResourceFactsMetric {
-  return { metricId, unit: metricId === "memory.usage" ? "B" : "%", scaleMode: "capacity", totalMetricId: null, processSumValue: null,
+  return { metricId, unit: metricId === "memory.usage" ? "B" : "%", scaleMode: "capacity", totalMetricId: null, processSumValue: null, processFieldName: null,
     totalValue: 10, capacityValue: 100, totalSystemPercent: 10, software };
 }
 function factsFor(groups: { name: string; memory?: number }[]): ResourceFacts {

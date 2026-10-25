@@ -125,7 +125,6 @@ export const enMonitorCopy: Pick<
     },
     systemResidualRow: (metric: string) => `System/driver reserved · ${metric}`,
     columnSourceLabel: (column: string) => `${column} source`,
-    sourceAutomatic: "Automatic",
     memoryQuantities: {
       working_set_including_shared: "Working set (incl. shared pages)",
       private_working_set: "Private working set",

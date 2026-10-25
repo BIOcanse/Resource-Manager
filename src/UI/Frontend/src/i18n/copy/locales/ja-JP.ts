@@ -693,7 +693,6 @@ const jaJpAppCopy: AppCopy = {
     },
     systemResidualRow: (metric: string) => `システム／ドライバー予約 · ${metric}`,
     columnSourceLabel: (column: string) => `${column}のソース`,
-    sourceAutomatic: "自動選択",
     memoryQuantities: {
       working_set_including_shared: "ワーキングセット（共有ページを含む）",
       private_working_set: "プライベートワーキングセット",

@@ -693,7 +693,6 @@ const deDeAppCopy: AppCopy = {
     },
     systemResidualRow: (metric: string) => `System-/Treiberreserviert · ${metric}`,
     columnSourceLabel: (column: string) => `Quelle für ${column}`,
-    sourceAutomatic: "Automatisch",
     memoryQuantities: {
       working_set_including_shared: "Working Set (inkl. gemeinsamer Seiten)",
       private_working_set: "Privater Working Set",

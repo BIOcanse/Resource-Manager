@@ -121,7 +121,6 @@ export const zhMonitorCopy = {
     },
     systemResidualRow: (metric: string) => `系统/驱动保留 · ${metric}`,
     columnSourceLabel: (column: string) => `${column}的来源`,
-    sourceAutomatic: "自动选择",
     memoryQuantities: {
       working_set_including_shared: "工作集（含共享页）",
       private_working_set: "私有工作集",

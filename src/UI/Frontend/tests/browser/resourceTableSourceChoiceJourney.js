@@ -3,8 +3,9 @@ import { formatBytes } from "../../src/presentation/byteUnits.ts";
 
 /**
  * 资源表内存列先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
- * 编辑列时内存列下面摆“来源”，第一项是自动选择（已勾），其后是后端进程字段目录里的内存口径
- * （峰值提交量不进资源事实，不列）。选私有提交量并保存：资源事实只请求这个字段，表头写出口径，
+ * 编辑列时内存列下面摆“来源”，第一项是自动选择（已勾），写出后端这次实际读的字段（资源事实的 processFieldName，
+ * 夹具是私有工作集），表头说明的第一行也写出它；其后是后端进程字段目录里标了 supportsResourceFacts 的内存口径
+ * （峰值提交量后端标为 false，不列）。选私有提交量并保存：资源事实只请求这个字段，表头写出口径，
  * 进程行显示私有提交量，总计行是后端给的系统提交量（不是进程之和），差额在“系统/驱动保留”行；
  * 选择存进前端布局缓存，重新载入后仍在。改回自动选择：恢复请求 memory.usage，表头和数值回到原样。
  */
@@ -55,10 +56,14 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   await sources.waitFor();
   const radios = sources.getByRole("radio");
   const labels = (await radios.allTextContents()).map((label) => label.trim());
-  const expected = [table.sourceAutomatic, table.memoryQuantities.working_set_including_shared,
+  const automatic = app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set);
+  const expected = [automatic, table.memoryQuantities.working_set_including_shared,
     table.memoryQuantities.private_working_set, table.memoryQuantities.private_commit];
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`Memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
   if (await radios.nth(0).getAttribute("aria-checked") !== "true") throw new Error("Automatic is not the checked source by default");
+  if (await header(table.columns.memory).getAttribute("title") !== `${automatic}\n${app.resourceBreakdown.memoryTableBasis}`) {
+    throw new Error("The automatic memory header does not name the field the backend actually reads");
+  }
 
   // 私有提交量。
   await radios.nth(3).click();
@@ -103,7 +108,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
 
 /**
  * 九语检查（localizationJourney 调用，调用前已在监视控制台、资源表内存列可见）：编辑列时内存列的“来源”
- * 名称、四个选项和私有提交量的说明按当前语言显示；选私有提交量后表头写出口径；取消编辑后表头回到原样，不保存。
+ * 名称、四个选项（自动选择写出实际读的私有工作集）和私有提交量的说明按当前语言显示；选私有提交量后表头写出口径；取消编辑后表头回到原样，不保存。
  */
 export async function checkResourceTableSourceText(page, app, language) {
   const table = app.resourceTable;
@@ -114,7 +119,7 @@ export async function checkResourceTableSourceText(page, app, language) {
   await sources.waitFor({ timeout: 15_000 });
   const radios = sources.getByRole("radio");
   const labels = (await radios.allTextContents()).map((label) => label.trim());
-  const expected = [table.sourceAutomatic, table.memoryQuantities.working_set_including_shared,
+  const expected = [app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set), table.memoryQuantities.working_set_including_shared,
     table.memoryQuantities.private_working_set, table.memoryQuantities.private_commit];
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
   if (await radios.nth(1).getAttribute("title") !== table.memorySourceBasis.working_set_including_shared

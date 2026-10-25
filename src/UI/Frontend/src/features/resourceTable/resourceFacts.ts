@@ -11,10 +11,13 @@ type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" 
 /**
  * 资源事实的一个指标。totalValue/capacityValue 是 totalMetricId 指向的整机事实（如私有提交量对应系统提交量），
  * 不是进程之和；processSumValue 是本帧有值的真实进程之和（不含系统残差）。只有进程字段指标带这两项，其余为 null。
+ * processFieldName 是这一指标实际读的进程字段：自动的 memory.usage 写私有工作集、virtualMemory.usage 写私有提交量，
+ * 按字段请求的写它自己；不是进程字段的指标为 null。
  */
 export interface ResourceFactsMetric extends ResourceBreakdownBar {
   totalMetricId: string | null;
   processSumValue: number | null;
+  processFieldName: string | null;
 }
 
 export interface ResourceFacts {
@@ -52,6 +55,7 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
     return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
       totalMetricId: requireNullable(metric.totalMetricId, `${path}.totalMetricId`, requireNonEmptyString),
       processSumValue: nullableNumber(metric, "processSumValue", path),
+      processFieldName: requireNullable(metric.processFieldName, `${path}.processFieldName`, requireNonEmptyString),
       totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
       software: requireArray(metric.software, `${path}.software`).map((value, index) => {
@@ -91,7 +95,11 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
 
 export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", locale?: string): ResourceTableSnapshot {
   const options = settings;
-  const columns = options.filter(column => column.visible).map(column => ({ ...column, source: column.source ?? null, unit: facts.metrics.find(metric => resourceTableMetricId(column) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth }));
+  const columns = options.filter(column => column.visible).map(column => {
+    const metric = facts.metrics.find(candidate => resourceTableMetricId(column) === candidate.metricId);
+    return { ...column, source: column.source ?? null, unit: metric?.unit ?? "", processFieldName: metric?.processFieldName ?? null,
+      sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth };
+  });
   // 列按自己的来源认领指标：自动选择认列原来的指标，选了来源就认那个进程字段。
   const columnByMetric = new Map<string, string>();
   for (const column of options) {
