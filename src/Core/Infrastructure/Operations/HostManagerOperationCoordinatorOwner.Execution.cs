@@ -61,13 +61,13 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 return null;
             }
             var batch = workspace!.PlanAndReadActionsLocked(
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
                 NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
             var operations = workspace.ReadCommittedProjectionLocked()
                 .ToDictionary(static operation => operation.OperationId);
-            var createdAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var createdAt = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             foreach (var action in batch.Actions)
             {
                 if (!operations.TryGetValue(action.OperationId, out var operation))
@@ -227,7 +227,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         {
             completion = new(
                 HostManagerOperationEffectOutcome.Uncertain,
-                error.Message);
+                HostManagerOperationFeedback.Failure(error));
         }
         finally
         {
@@ -264,7 +264,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                     ticket,
                     NativeOperationActionFeedbackOutcome.CancelRetryableFailure,
                     HostManagerOperationEffectReceiptOutcome.EffectNotObserved,
-                    "没有找到可精确绑定的当前进程动作实例。",
+                    HostManagerOperationFeedback.Reason(ResourceManager.App.Domain.Messages.BackendMessageCodes.Operation.NoExecutionEvidence),
                     ownerStopping)
                 .ConfigureAwait(false);
             return;
@@ -274,7 +274,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ticket,
                 NativeOperationActionFeedbackOutcome.CancelCompleted,
                 HostManagerOperationEffectReceiptOutcome.Canceled,
-                "动作实例已到达取消安全点。",
+                string.Empty,
                 ownerStopping)
             .ConfigureAwait(false);
     }
@@ -284,6 +284,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         CancellationToken ownerStopping)
     {
         HostManagerOperationEffectReceipt evidence;
+        HostManagerOperationEffectReceipt? originalEvidence = null;
+        var missingPriorEvidence = false;
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
@@ -291,12 +293,19 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             {
                 return;
             }
-            evidence = receipts.FindLatest(
+            var operation = workspace!.ReadCommittedProjectionLocked().Single(record => record.OperationId == ticket.Action.OperationId);
+            // A recovery action has its own authorization token. Readback must bind the original effect attempt, never that new action token.
+            var prior = receipts.FindLatest(
                     ticket.Action.OperationId,
-                    ticket.Action.AttemptToken,
-                    ticket.ReceiptId)
-                ?? receipts.Require(ticket.ReceiptId);
-            RequireExactReadbackBinding(ticket, evidence);
+                    operation.AttemptToken,
+                    ticket.ReceiptId);
+            evidence = prior ?? receipts.Require(ticket.ReceiptId);
+            originalEvidence = prior;
+            RequireExactReadbackBinding(ticket, evidence, prior is null ? ticket.Action.AttemptToken : operation.AttemptToken);
+            missingPriorEvidence = prior is null && !operation.AttemptToken.IsZero;
+            if (missingPriorEvidence)
+                logger.LogWarning("Operation {OperationId} has no receipt for original effect attempt {AttemptToken}; recovery is uncertain and will not re-execute the effect.",
+                    FormatHandle(operation.OperationId), FormatHandle(operation.AttemptToken));
         }
         finally
         {
@@ -306,15 +315,18 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         HostManagerOperationEffectCompletion readback;
         try
         {
-            readback = await effectRouter.Require(ticket.Kind)
-                .ReadbackAsync(ticket, evidence, ownerStopping)
-                .ConfigureAwait(false);
+            readback = missingPriorEvidence
+                ? new(HostManagerOperationEffectOutcome.Uncertain,
+                    HostManagerOperationFeedback.Reason(ResourceManager.App.Domain.Messages.BackendMessageCodes.Operation.OutcomeUncertain))
+                : await effectRouter.Require(ticket.Kind)
+                    .ReadbackAsync(ticket, evidence, ownerStopping)
+                    .ConfigureAwait(false);
         }
         catch (Exception error)
         {
             readback = new(
                 HostManagerOperationEffectOutcome.Uncertain,
-                error.Message);
+                HostManagerOperationFeedback.Failure(error));
         }
         var (feedback, outcome) = readback.Outcome switch
         {
@@ -339,7 +351,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 feedback,
                 outcome,
                 readback.Message,
-                ownerStopping)
+                ownerStopping,
+                originalEvidence)
             .ConfigureAwait(false);
     }
 
@@ -357,7 +370,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             }
             var candidateReceipts = receipts.Clone();
             var current = candidateReceipts.Require(ticket.ReceiptId);
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             candidateReceipts.Upsert(current with
             {
                 State = HostManagerOperationEffectReceiptState.Started,
@@ -410,7 +423,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             }
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             var input = new NativeOperationCompletionInput
             {
                 OperationId = ticket.Action.OperationId,
@@ -544,7 +557,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         NativeOperationActionFeedbackOutcome feedback,
         HostManagerOperationEffectReceiptOutcome receiptOutcome,
         string message,
-        CancellationToken ownerStopping)
+        CancellationToken ownerStopping,
+        HostManagerOperationEffectReceipt? recoveredPrior = null)
     {
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
@@ -555,7 +569,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             }
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             var isResult =
                 receiptOutcome == HostManagerOperationEffectReceiptOutcome.Succeeded;
             var hasMessage = !string.IsNullOrWhiteSpace(message);
@@ -621,6 +635,30 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                     ? messagePayload.Handle
                     : current.ErrorHandle
             });
+            if (recoveredPrior is not null && receiptOutcome != HostManagerOperationEffectReceiptOutcome.Uncertain)
+            {
+                var prior = candidateReceipts.Require(recoveredPrior.ReceiptId);
+                RequireExactReadbackBinding(ticket, prior, recoveredPrior.AttemptToken);
+                if (prior.State != HostManagerOperationEffectReceiptState.Settled)
+                {
+                    // Conclusive readback closes this exact old effect attempt; its identity and original request evidence are retained.
+                    var priorEvidence = candidatePayloads.Add(
+                        isResult ? HostManagerOperationRequestSchemas.EffectObservation : HostManagerOperationRequestSchemas.OperationError,
+                        HostManagerOperationRequestSchemas.Version,
+                        isResult ? HostManagerOperationPayloadRole.EffectObservation : HostManagerOperationPayloadRole.Error,
+                        prior.SessionInstanceId, prior.OperationId, prior.AttemptToken,
+                        HostManagerOperationRequestCodec.EncodeText(OutcomeEvidenceToken(receiptOutcome)));
+                    candidateReceipts.Upsert(prior with
+                    {
+                        State = HostManagerOperationEffectReceiptState.Settled,
+                        Outcome = receiptOutcome,
+                        ReceiptRevision = checked(prior.ReceiptRevision + 1),
+                        UpdatedUtcMilliseconds = now,
+                        ObservationHandle = isResult ? priorEvidence.Handle : default,
+                        ErrorHandle = isResult ? default : priorEvidence.Handle
+                    });
+                }
+            }
             CommitCurrentLocked(
                 accepted
                     ? "action-feedback-publication"
@@ -644,19 +682,19 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ticket,
                 NativeOperationActionFeedbackOutcome.StartRetryableFailure,
                 HostManagerOperationEffectReceiptOutcome.EffectNotObserved,
-                "动作票据在执行前已超过显式截止时间。",
+                HostManagerOperationFeedback.Reason(ResourceManager.App.Domain.Messages.BackendMessageCodes.Operation.NoExecutionEvidence),
                 ownerStopping),
             NativeOperationActionKind.Cancel => ApplyActionFeedbackAsync(
                 ticket,
                 NativeOperationActionFeedbackOutcome.CancelRetryableFailure,
                 HostManagerOperationEffectReceiptOutcome.EffectNotObserved,
-                "取消票据在执行前已超过显式截止时间。",
+                HostManagerOperationFeedback.Reason(ResourceManager.App.Domain.Messages.BackendMessageCodes.Operation.NoExecutionEvidence),
                 ownerStopping),
             _ => ApplyActionFeedbackAsync(
                 ticket,
                 NativeOperationActionFeedbackOutcome.RecoveredUncertain,
                 HostManagerOperationEffectReceiptOutcome.Uncertain,
-                "恢复票据在 readback 前已超过显式截止时间。",
+                HostManagerOperationFeedback.Reason(ResourceManager.App.Domain.Messages.BackendMessageCodes.Operation.OutcomeUncertain),
                 ownerStopping)
         };
 
@@ -732,12 +770,13 @@ public sealed partial class HostManagerOperationCoordinatorOwner
 
     private void RequireExactReadbackBinding(
         HostManagerOperationActionTicket ticket,
-        HostManagerOperationEffectReceipt evidence)
+        HostManagerOperationEffectReceipt evidence,
+        NativeOperationHandle128 effectAttemptToken)
     {
         if (workspace is null
             || evidence.SessionInstanceId != workspace.SessionInstanceId
             || evidence.OperationId != ticket.Action.OperationId
-            || evidence.AttemptToken != ticket.Action.AttemptToken
+            || evidence.AttemptToken != effectAttemptToken
             || evidence.EffectKind != EffectKindCode(ticket.Kind))
         {
             throw new InvalidDataException(

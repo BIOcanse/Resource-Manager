@@ -1,5 +1,4 @@
 using ResourceManager.App.Domain.Dependencies;
-using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Software;
@@ -8,83 +7,33 @@ public sealed partial class SoftwareRegistryView
 {
     private static SoftwareRecord ToDependencyRecord(OptionalDependencyStatus status)
     {
+        var hasContent = DirectoryHasContent(status.InstallDirectory);
         return new SoftwareRecord(
-            $"dependency:{status.Definition.Id}",
-            status.Definition.Name,
-            SoftwareKinds.Managed,
-            SoftwareDisplayKinds.Managed,
-            status.State,
-            ["组件依赖"],
-            [status.EffectiveInstallDirectory],
-            string.Empty,
-            new SoftwareOperationCapabilities(
-                DirectoryHasContent(status.InstallDirectory),
-                "ManagedRootCleanup",
-                string.Empty,
-                string.Empty,
-                BackendMessage.Create(
-                    BackendMessageDomains.Dependency,
-                    BackendMessageCodes.Dependency.UninstallAction),
-                BackendMessage.Create(
-                    BackendMessageDomains.Dependency,
-                    DirectoryHasContent(status.InstallDirectory)
-                        ? BackendMessageCodes.Dependency.ManagedRootRemovable
-                        : BackendMessageCodes.Dependency.ManagedRootEmpty)),
-            SoftwareManagementRoles.Dependency,
-            MessageCode: status.Message);
+            $"dependency:{status.Definition.Id}", status.Definition.Id, SoftwareKinds.Managed,
+            status.State, [new(SoftwareSourceKinds.Dependency)], [status.EffectiveInstallDirectory],
+            new SoftwareOperationCapabilities(hasContent, "ManagedRootCleanup",
+                hasContent ? SoftwareUninstallConstraints.None : SoftwareUninstallConstraints.EmptyManagedRoot),
+            SoftwareManagementRoles.Dependency);
     }
 
-    private static SoftwareRecord ToManualSoftwareRecord(
-        ManualSoftwareRecord record,
-        string? softwareIdentityId)
+    private static SoftwareRecord ToManualSoftwareRecord(ManualSoftwareRecord record, string? softwareIdentityId)
     {
         return new SoftwareRecord(
-            record.Id,
-            record.Name,
-            record.Kind,
-            SoftwareDisplayKinds.Project(record.Kind),
-            record.State,
-            record.Sources,
-            record.RootPaths,
-            record.Message,
-            NoUninstall(BackendMessageCodes.Software.ManualClassificationNoUninstall),
-            null,
-            SoftwareIdentityId: softwareIdentityId,
-            SourceSoftwareId: record.SourceSoftwareId);
+            record.Id, record.Name, record.Kind, "manual", [new(SoftwareSourceKinds.Manual)], record.RootPaths,
+            NoUninstall(SoftwareUninstallConstraints.ManualRegistration), null,
+            SoftwareIdentityId: softwareIdentityId, SourceSoftwareId: record.SourceSoftwareId,
+            RegistrationFacts: new(SoftwareSourceKinds.Manual));
     }
 
     private static SoftwareRecord ToOtherSoftwareRecord(InstalledSoftwareEntry entry)
     {
         var hasUninstallEntry = !string.IsNullOrWhiteSpace(entry.UninstallString);
         return new SoftwareRecord(
-            entry.Id,
-            entry.Name,
-            SoftwareKinds.Other,
-            SoftwareDisplayKinds.General,
-            "installed",
-            ["Windows卸载注册表"],
-            entry.RootPaths,
-            string.Empty,
+            entry.Id, entry.Name, SoftwareKinds.Other, "installed",
+            [new(SoftwareSourceKinds.WindowsRegistry)], entry.RootPaths,
             hasUninstallEntry
-                ? new SoftwareOperationCapabilities(
-                    true,
-                    "WindowsUninstaller",
-                    string.Empty,
-                    string.Empty,
-                    BackendMessage.Create(
-                        BackendMessageDomains.Software,
-                        BackendMessageCodes.Software.UninstallAction),
-                    BackendMessage.Create(
-                        BackendMessageDomains.Software,
-                        BackendMessageCodes.Software.WindowsUninstallerDescription))
-                : NoUninstall(BackendMessageCodes.Software.NoUninstallUnknownRoot),
-            null,
-            MessageCode: BackendMessage.Create(
-                BackendMessageDomains.Software,
-                hasUninstallEntry
-                    ? BackendMessageCodes.Software.HasUninstallEntry
-                    : BackendMessageCodes.Software.MissingUninstallEntry),
-            Publisher: entry.Publisher,
-            Version: entry.Version);
+                ? new SoftwareOperationCapabilities(true, "WindowsUninstaller", SoftwareUninstallConstraints.None)
+                : NoUninstall(SoftwareUninstallConstraints.MissingUninstallEntry),
+            null, Publisher: entry.Publisher, Version: entry.Version);
     }
 }

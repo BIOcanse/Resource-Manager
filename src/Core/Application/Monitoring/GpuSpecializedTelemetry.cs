@@ -77,20 +77,6 @@ public static partial class GpuSpecializedTelemetry
         };
     }
 
-    public static string GetDisplayName(GpuSpecializedUsageKind kind)
-    {
-        return kind switch
-        {
-            GpuSpecializedUsageKind.NvidiaRt => "RT 占用",
-            GpuSpecializedUsageKind.NvidiaCuda => "CUDA 占用",
-            GpuSpecializedUsageKind.NvidiaTensor => "Tensor 占用",
-            GpuSpecializedUsageKind.AmdGcn => "GCN 占用",
-            GpuSpecializedUsageKind.AmdRdna => "RDNA 占用",
-            GpuSpecializedUsageKind.AmdCdna => "CDNA 占用",
-            _ => "GPU specialized usage"
-        };
-    }
-
     public static string GetArchitectureName(GpuArchitectureFamily architecture)
     {
         return architecture switch

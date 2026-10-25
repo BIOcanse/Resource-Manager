@@ -9,6 +9,7 @@ import type {
   ControlActualState,
   ControlActualValue
 } from "../../features/control/controlTypes.ts";
+import { readControlReason } from "../../features/control/controlApi.ts";
 
 function optionalNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -34,7 +35,7 @@ export const controlActualStateDecoder = defineResponseDecoder<ControlActualStat
             number: optionalNumber(entry.number),
             toggle: typeof entry.toggle === "boolean" ? entry.toggle : null,
             unit: optionalString(entry.unit),
-            unreadableReason: optionalString(entry.unreadableReason)
+            unreadableReason: readControlReason(entry.unreadableReason, `$.values[${index}].unreadableReason`)
           };
         }),
       readAt: requireString(record.readAt, "$.readAt")

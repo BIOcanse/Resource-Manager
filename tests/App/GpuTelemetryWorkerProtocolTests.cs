@@ -41,7 +41,6 @@ public sealed class GpuTelemetryWorkerProtocolTests
                     [
                         new GpuTelemetryCounterSample(
                             "gpu.1.tensor.active",
-                            "Tensor active",
                             GpuTelemetryCounterClass.ProfilerMetric,
                             12.5,
                             "%",
@@ -69,5 +68,6 @@ public sealed class GpuTelemetryWorkerProtocolTests
         Assert.Single(roundTrip.Adapters[0].Counters);
         Assert.True(roundTrip.Adapters[0].Counters[0].IsIntrusive);
         Assert.Equal("nvidia.cupti", roundTrip.Providers[0].ProviderId);
+        Assert.DoesNotContain("displayName", json, StringComparison.OrdinalIgnoreCase);
     }
 }

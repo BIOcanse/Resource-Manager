@@ -53,12 +53,12 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                     var controlTarget = FindManagedTarget(binding, control, discoveredControls);
                     var capability = controlTarget?.Capabilities.SingleOrDefault(item => item.Id == control.RawCapability);
                     return capability is { Supported: true } ? support
-                        : new(false, capability?.UnavailableReason ?? "host-control-target-not-bound", support.Dependencies);
+                        : new(false, capability?.UnavailableReason?.Code ?? "host-control-target-not-bound", support.Dependencies);
                 }
                 var target = FindPowerLimitTarget(binding, discoveredControls);
                 var write = target?.Capabilities.SingleOrDefault(static item => item.Id == "gpu.power-limit");
                 return write is null ? OperationSupport.Unsupported("field-write-not-bound")
-                    : new(write.Supported, write.Supported ? null : write.UnavailableReason ?? "field-write-unavailable",
+                    : new(write.Supported, write.Supported ? null : write.UnavailableReason?.Code ?? "field-write-unavailable",
                         [NativeMetricSnapshotSourceCatalog.NvidiaNvml]);
             }, WriteFieldAsync, binding => controlSampler?.ControlContract(binding));
     }
@@ -100,7 +100,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                 var report = await writeLayer.WriteAsync(new([new(controlTarget.Id,
                     [new(contract.RawCapability, Number: number, Toggle: value.Boolean, Unit: contract.RawUnit)])]), cancellationToken);
                 var outcome = report.Outcomes.Single();
-                return new(field, outcome.Status, outcome.Message) { Evidence = outcome.Evidence };
+                return new(field, outcome.Status, outcome.Reason?.Code) { Evidence = outcome.Evidence };
             }, token);
         }
         var target = FindPowerLimitTarget(binding, controlCatalog.ReadObjects());
@@ -110,7 +110,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
         var report = await writeLayer.WriteAsync(new([new(target.Id,
             [new("gpu.power-limit", Number: value.Number, Unit: binding.Field.Unit)])]), token);
         var result = report.Outcomes.Single();
-        return new(field, result.Status, result.Message);
+        return new(field, result.Status, result.Reason?.Code);
     }
     private static ControlObject? FindManagedTarget(MetricDeviceFieldBinding binding,
         WindowsMetricControlBinding contract, ControlObjectCatalog? controls)
@@ -155,9 +155,3 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
     }
 
 }
-
-
-
-
-
-

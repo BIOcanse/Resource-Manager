@@ -13,12 +13,12 @@ export default async function controlAuditJourney(page, baseUrl) {
   ] }];
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B"].map(id => ({
-      id, kind: "fan", displayName: `Fan ${id}`, isControllable: true,
+      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
       platform: { operatingSystem: "windows", vendor: "test" }, terms: ["curve-firmware"],
       capabilities: [
-        { id: "fan.duty", label: "Duty", valueKind: "number", supported: true, requiredAccessLevel: "normal",
+        { id: "fan.duty", valueKind: "number", supported: true, requiredAccessLevel: "normal",
           range: { minimum: 0, maximum: 100, step: 1, unit: "%" } },
-        { id: "fan.curve", label: "Curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }
+        { id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }
       ]
     }))
   } }));

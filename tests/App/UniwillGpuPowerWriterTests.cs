@@ -6,7 +6,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class UniwillGpuPowerWriterTests
 {
     private const string Offset = "gpu.ctgp-offset";
-    private static ControlCapability Capability(string id = Offset) => new(id, id, ControlValueKinds.Number, true);
+    private static ControlCapability Capability(string id = Offset) => new(id, ControlValueKinds.Number, true);
     private static ControlObject Target => new("gpu:test", ControlObjectKinds.Gpu, "GPU",
         new(ControlOperatingSystems.Windows, ControlVendors.Nvidia), [], AdapterIndex: 0,
         GpuAttachment: ControlGpuAttachments.Discrete) { AdapterKey = 123 };
@@ -140,7 +140,7 @@ public sealed class UniwillGpuPowerWriterTests
     {
         var hardware = new FakeHardware { TargetConfirmed = false };
         var writer = new UniwillGpuPowerWriter(hardware);
-        Assert.Equal(UniwillGpuPowerWriter.TargetUnconfirmed, writer.Probe(Target, Capability(id)).Reason);
+        Assert.Equal(UniwillGpuPowerWriter.TargetUnconfirmed, writer.Probe(Target, Capability(id)).Reason?.Code);
         Assert.Null(await writer.ReadAsync(Target, Capability(id), default));
         Assert.Equal(ControlApplyStatuses.Failed, (await writer.WriteAsync(Target, Capability(id), new(id, Number: 10), default)).Status);
         Assert.False(await writer.RestoreAsync(Target, Capability(id), new HashSet<string>(), default));
@@ -204,11 +204,11 @@ public sealed class UniwillGpuPowerWriterTests
     {
         var hardware = new FakeHardware { IsBudgetFirmwareConfirmed = false };
         var writer = new UniwillGpuPowerWriter(hardware);
-        Assert.Equal(UniwillGpuPowerWriter.FirmwareUnconfirmed, writer.Probe(Target, Capability(id)).Reason);
+        Assert.Equal(UniwillGpuPowerWriter.FirmwareUnconfirmed, writer.Probe(Target, Capability(id)).Reason?.Code);
         Assert.Null(await writer.ReadAsync(Target, Capability(id), default));
         var result = await writer.WriteAsync(Target, Capability(id), new(id, Number: 10), default);
         Assert.Equal(ControlApplyStatuses.Failed, result.Status);
-        Assert.Equal(UniwillGpuPowerWriter.FirmwareUnconfirmed, result.Message);
+        Assert.Equal(UniwillGpuPowerWriter.FirmwareUnconfirmed, result.Reason?.Code);
         Assert.False(await writer.RestoreAsync(Target, Capability(id), new HashSet<string>(), default));
         Assert.Equal(0, hardware.Reads);
         Assert.Empty(hardware.Writes);
@@ -283,7 +283,7 @@ public sealed class UniwillGpuPowerWriterTests
             var writer = new UniwillGpuPowerWriter(hardware, path);
             var outcome = await writer.WriteAsync(Target, Capability(), new(Offset, Number: 25), default);
             Assert.Equal(ControlApplyStatuses.Failed, outcome.Status);
-            Assert.Equal(UniwillGpuPowerWriter.BaselineUnavailable, outcome.Message);
+            Assert.Equal(UniwillGpuPowerWriter.BaselineUnavailable, outcome.Reason?.Code);
             Assert.False(await writer.RestoreAsync(Target, Capability(), new HashSet<string> { "gpu.dynamic-boost-offset" }, default));
             Assert.Empty(hardware.Writes);
             Assert.Equal(contents, File.ReadAllText(path));
@@ -304,7 +304,7 @@ public sealed class UniwillGpuPowerWriterTests
             var result = await new UniwillGpuPowerWriter(hardware, Path.Combine(blockedParent, "baseline.json"))
                 .WriteAsync(Target, Capability(), new(Offset, Number: 25), default);
             Assert.Equal(ControlApplyStatuses.Failed, result.Status);
-            Assert.Equal(UniwillGpuPowerWriter.BaselineUnavailable, result.Message);
+            Assert.Equal(UniwillGpuPowerWriter.BaselineUnavailable, result.Reason?.Code);
             Assert.Empty(hardware.Writes);
             Assert.Equal(0x82, hardware.Enable);
             Assert.Equal(18, hardware.Ctgp);

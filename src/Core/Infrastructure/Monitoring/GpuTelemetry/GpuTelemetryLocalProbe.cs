@@ -130,7 +130,6 @@ public sealed class GpuTelemetryLocalProbe(
 
         return new GpuTelemetryCounterSample(
             GpuSpecializedTelemetry.BuildCounterId(adapterIndex, kind),
-            GpuSpecializedTelemetry.GetDisplayName(kind),
             kind == GpuSpecializedUsageKind.NvidiaTensor
                 ? GpuTelemetryCounterClass.ProfilerMetric
                 : GpuTelemetryCounterClass.HardwareCounter,

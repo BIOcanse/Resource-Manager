@@ -30,7 +30,7 @@ public sealed class DiskUsageScanEndpointWireTests
             "00000000000000000000000000000001",
             "disk-usage.scan",
             "disk-usage:scan",
-            "Scan disk usage",
+            new HostManagerOperationSubject(Scope: "global"),
             HostManagerOperationStates.Running,
             ulong.MaxValue,
             ulong.MaxValue - 1,
@@ -46,8 +46,7 @@ public sealed class DiskUsageScanEndpointWireTests
                 ulong.MaxValue - 1,
                 ulong.MaxValue,
                 ulong.MaxValue,
-                "scan",
-                "Working"),
+                null),
             null,
             null);
         var commands = new RecordingCommandService(snapshot);

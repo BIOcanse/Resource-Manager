@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
 
 export default async function managementFeedbackJourney(page, baseUrl) {
   const errors = [];
@@ -12,22 +13,21 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   });
   assert.equal(response.ok, true);
   const runtimeId = "shared-webview2-runtime";
-  await page.route("**/api/components", route => route.fulfill({ json: [{
-    definition: { id: runtimeId, name: "Runtime fixture", vendor: "Microsoft", category: "runtime",
-      managementRole: "dependency", requiresExternalTermsAcknowledgement: true,
-      externalTermsUrl: "https://example.test/terms", capabilities: [] },
-    installed: false, installerAvailable: true, canInstall: true, canDownload: true,
-    providers: [], installerSourceKind: "direct"
-  }, {
-    definition: { id: "search-fixture", name: "Search fixture", managementRole: "dependency", capabilities: [] },
-    providers: [{ providerKind: "hardware_monitor" }]
-  }] }));
+  await page.route("**/api/components", route => route.fulfill({ json: [
+    componentFixture(runtimeId, { installerAvailable: true, installerPath: "C:/Fixture/MicrosoftEdgeWebview2Setup.exe" }),
+    componentFixture("hardware-sensors-pawnio-provider"),
+    componentFixture()
+  ] }));
+  await page.route("**/api/components/hardware-bridge/versions", route => route.fulfill({ json: componentVersionFixture() }));
   await page.route("**/api/browser-runtimes*", route => route.fulfill({ json: {
     sharedRuntime: null, browserFallback: null, candidates: [], installComponentId: runtimeId,
     capturedAt: new Date().toISOString()
   } }));
-  const record = { id: "manual:feedback", name: "Manual fixture", kind: "other", displayKind: "other",
-    softwareIdentityId: "feedback-app", rootPaths: [], operations: { canUninstall: false } };
+  const record = { id: "manual:feedback", name: "Manual fixture", kind: "other", state: "manual",
+    sourceFacts: [{ kind: "manual" }], registrationFacts: { kind: "manual", processCount: 0, serviceCount: 0 },
+    requiresRootPathConfirmation: false, identityConfirmed: true,
+    softwareIdentityId: "feedback-app", rootPaths: [],
+    operations: { canUninstall: false, uninstallKind: "None", uninstallConstraint: "manual_registration" } };
   await page.route("**/api/software", route => route.fulfill({ json: [record] }));
   let metadataReady = false;
   await page.route("**/api/software/metadata/feedback-app?*", route => {
@@ -48,12 +48,14 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
   await page.locator("#managementTab-Dependency").click();
+  const initialApp = await loadAppCopy("zh-CN");
+  const sensorName = initialApp.status.component.names.hardwareSensorsPawnIo;
   for (const query of ["hardware_monitor", "HARDWARE_MONITOR"]) {
     await page.getByRole("searchbox").fill(query);
-    await page.locator(".component-item").filter({ hasText: "Search fixture" }).waitFor();
+    await page.locator(".component-item").filter({ hasText: sensorName }).waitFor();
   }
   await page.getByRole("searchbox").fill("unmatched-provider-kind");
-  await page.locator(".component-item").filter({ hasText: "Search fixture" }).waitFor({ state: "hidden" });
+  await page.locator(".component-item").filter({ hasText: sensorName }).waitFor({ state: "hidden" });
   await page.getByRole("searchbox").fill("");
   let previous = "zh-CN";
   const languages = [];
@@ -70,9 +72,23 @@ export default async function managementFeedbackJourney(page, baseUrl) {
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
     await page.locator("#managementTab-BrowserRuntime").click();
     await page.getByRole("button", { name: app.browserRuntime.downloadShared, exact: true }).click();
-    const acquisition = page.getByRole("dialog", { name: "Runtime fixture", exact: true });
+    const acquisition = page.getByRole("dialog", { name: app.status.component.names.sharedWebView2Runtime, exact: true });
     await acquisition.getByText(app.componentAcquisition.installIntro, { exact: true }).waitFor();
     await acquisition.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
+
+    await page.locator("#managementTab-Dependency").click();
+    const bridge = page.locator(".component-item").filter({ hasText: app.status.component.names.hardwareBridge });
+    await bridge.getByRole("button", { name: app.managementPage.detailsOf(app.status.component.names.hardwareBridge), exact: true }).click();
+    const componentDetail = page.getByRole("dialog", { name: app.status.component.names.hardwareBridge, exact: true });
+    await componentDetail.getByText(app.componentCatalog.installNotes.hardwareBridge, { exact: true }).waitFor();
+    await componentDetail.getByText(app.componentCatalog.capabilitiesCaption, { exact: true }).waitFor();
+    await componentDetail.getByText(app.componentCatalog.capabilities.power, { exact: true }).waitFor();
+    await componentDetail.locator(`button[aria-label="${app.softwareDetail.close}"]`).click();
+    await bridge.getByRole("button", { name: app.management.downloadAndInstall, exact: true }).click();
+    const versions = page.getByRole("dialog", { name: app.status.component.names.hardwareBridge, exact: true });
+    await versions.getByText(app.componentCatalog.versionFailures.network, { exact: true }).waitFor();
+    await versions.getByText(app.componentCatalog.versionFailures["no-stable-release"], { exact: true }).waitFor();
+    await versions.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
 
     await page.locator("#managementTab-other").click();
     const card = page.locator(".software-item").filter({ hasText: record.name });
@@ -95,5 +111,5 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   }
   assert.equal(deletes, 0, "Canceled registration removals must not write");
   assert.deepEqual(errors, []);
-  return { languages, providerKindSearch: true, runtimeDownloadDialog: true, manualRemovalCopyAndCancel: true, metadataFailureAndRetry: true };
+  return { languages, providerKindSearch: true, runtimeDownloadDialog: true, componentDetailAndVersionReasons: true, manualRemovalCopyAndCancel: true, metadataFailureAndRetry: true };
 }

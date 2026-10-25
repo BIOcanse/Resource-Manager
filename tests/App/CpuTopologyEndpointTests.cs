@@ -98,6 +98,9 @@ public sealed class CpuTopologyEndpointTests
         var legacy = Assert.Single(populatedFrames, frame => frame.GetProperty("subscriptionId").GetString() == "cpu-first")
             .GetProperty("value");
         Assert.Equal("Subscription Test CPU", legacy.GetProperty("cpuName").GetString());
+        Assert.False(legacy.TryGetProperty("notes", out _));
+        Assert.All(legacy.GetProperty("ccds").EnumerateArray(), ccd => Assert.False(ccd.TryGetProperty("label", out _)));
+        Assert.All(legacy.GetProperty("physicalCores").EnumerateArray(), core => Assert.False(core.TryGetProperty("label", out _)));
         Assert.Equal(34, legacy.GetProperty("logicalProcessors")[0].GetProperty("usagePercent").GetDouble());
         var information = Assert.Single(populatedFrames, frame => frame.GetProperty("subscriptionId").GetString() == "cpu-second")
             .GetProperty("value");

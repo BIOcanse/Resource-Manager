@@ -28,27 +28,18 @@ public sealed partial class SoftwareRegistryView
 
         var policyKind = ResolvePolicyProjectedKind(group);
         var projectedKind = policyKind ?? record.Kind;
-        var projectedDisplayKind = projectedKind switch
-        {
-            SoftwareKinds.Game => SoftwareDisplayKinds.Game,
-            SoftwareKinds.HighPerformance => SoftwareDisplayKinds.HighPerformance,
-            _ => record.DisplayKind
-        };
         var roots = ResolvePolicyRootPaths(record.RootPaths, assignment.RootPaths, projectedKind);
-        var sources = record.Sources
-            .Concat([$"策略组:{group.DisplayName}"])
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var sources = record.SourceFacts
+            .Append(new SoftwareSourceFact(SoftwareSourceKinds.Policy, PolicyGroupId: group.GroupId, PolicyGroupName: group.DisplayName))
+            .Distinct()
             .ToArray();
-        var message = AppendPolicyMessage(record.Message, group.DisplayName);
 
         return record with
         {
             Kind = projectedKind,
             HasExplicitKind = record.HasExplicitKind || policyKind is not null,
-            DisplayKind = projectedDisplayKind,
-            Sources = sources,
-            RootPaths = roots,
-            Message = message
+            SourceFacts = sources,
+            RootPaths = roots
         };
     }
 
@@ -107,16 +98,4 @@ public sealed partial class SoftwareRegistryView
             || leaf.Contains("启动器", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string AppendPolicyMessage(string message, string groupName)
-    {
-        var policyText = $"本机策略组：{groupName}";
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return policyText;
-        }
-
-        return message.Contains(policyText, StringComparison.OrdinalIgnoreCase)
-            ? message
-            : $"{message} · {policyText}";
-    }
 }

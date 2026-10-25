@@ -59,10 +59,15 @@ public sealed record ControlDesiredState(
             StringComparison.Ordinal));
 }
 
-/// <summary>Stable presentation reason with typed parameters; Message remains diagnostic detail.</summary>
-public sealed record ControlApplyReason(string Code, ControlReasonArguments? Arguments = null);
+/// <summary>A machine outcome and its raw parameters. Presentation belongs to consumers.</summary>
+public sealed record ControlApplyReason(string Code, ControlReasonArguments? Arguments = null)
+{
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(code))]
+    public static implicit operator ControlApplyReason?(string? code) => code is null ? null : new(code);
+}
 public sealed record ControlReasonArguments(
-    string? RequiredAccessLevel = null, double? Minimum = null, double? Maximum = null, string? Unit = null);
+    string? RequiredAccessLevel = null, double? Minimum = null, double? Maximum = null, string? Unit = null,
+    double? Requested = null, double? Observed = null);
 
 /// <summary>施加一项设定之后的结果。</summary>
 public static class ControlApplyStatuses
@@ -83,12 +88,11 @@ public sealed record ControlApplyOutcome(
     string ObjectId,
     string CapabilityId,
     string Status,
-    string? Message = null)
+    ControlApplyReason? Reason = null)
 {
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public ResourceManager.ReadWrite.FieldWriteReceipt? Evidence { get; init; }
-
-    public ControlApplyReason? Reason { get; init; }
+    public int? NativeStatus { get; init; }
 }
 
 /// <summary>一次施加的整体结果。</summary>
@@ -103,4 +107,3 @@ public sealed record ControlApplyReport(
 public sealed record ControlStateView(
     ControlDesiredState Desired,
     ControlApplyReport LastApply);
-

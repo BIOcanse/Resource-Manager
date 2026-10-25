@@ -20,6 +20,17 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SoftwareRegistryViewTests
 {
     [Fact]
+    public void SoftwareContractsContainFactsWithoutPresentationFields()
+    {
+        var fields = typeof(SoftwareRecord).GetProperties().Select(property => property.Name).ToHashSet();
+        foreach (var removed in new[] { "Sources", "Message", "MessageCode", "DisplayKind" }) Assert.DoesNotContain(removed, fields);
+        var capabilities = typeof(SoftwareOperationCapabilities).GetProperties().Select(property => property.Name).ToHashSet();
+        Assert.Equal(new[] { "CanUninstall", "UninstallConstraint", "UninstallKind" }, capabilities.Order().ToArray());
+        Assert.Contains("SourceFacts", fields);
+        Assert.Contains("RegistrationFacts", fields);
+    }
+
+    [Fact]
     public async Task RefreshSoftwareAsync_PublishesNativeInventoryChangesOnceAndNotEqualReads()
     {
         var entries = new List<InstalledSoftwareEntry>
@@ -65,7 +76,7 @@ public sealed class SoftwareRegistryViewTests
         const string root = @"C:\Users\Owner\AppData\Local\Editor";
         var now = DateTimeOffset.UtcNow;
         var view = CreateRuntimeReminderView(
-            [new("manual:old", "Editor", SoftwareKinds.HighPerformance, "high_performance", "manual", [], [root], "", id, now, now)],
+            [new("manual:old", "Editor", SoftwareKinds.HighPerformance, [root], id, now, now)],
             [new(id, "Editor", null, null, root, [root], null, $@"Users\{sid}\Uninstall\Editor")]);
         var listed = Assert.Single(await view.GetSoftwareAsync(sid, default), record => record.Id == id);
         using var provider = RuntimeProcessAttributionCatalogProviderTests.CreateProvider(view);
@@ -86,7 +97,7 @@ public sealed class SoftwareRegistryViewTests
     {
         var now = DateTimeOffset.UtcNow;
         var view = CreateRuntimeReminderView([
-            new("manual:old", "Steam", SoftwareKinds.Other, "other", "manual", [], [@"D:\Steam"], "", "installed:steam", now, now)],
+            new("manual:old", "Steam", SoftwareKinds.Other, [@"D:\Steam"], "installed:steam", now, now)],
             [new("installed:steam", "Steam", null, null, @"D:\Steam", [@"D:\Steam"], null, "steam"),
              new("installed:game", "Game", null, null, @"D:\Steam\Games\Game", [@"D:\Steam\Games\Game"], null, "game")]);
         var records = await view.GetSoftwareAsync(default);
@@ -197,7 +208,7 @@ public sealed class SoftwareRegistryViewTests
         Assert.Equal(SoftwareKinds.HighPerformance, record.Kind);
         Assert.True(record.HasExplicitKind);
         Assert.Equal("game-skyrim-special-edition", record.SoftwareIdentityId);
-        Assert.Contains(record.Sources, static source => source.StartsWith("软件身份目录 1.0.0", StringComparison.Ordinal));
+        Assert.Contains(record.SourceFacts, static source => source.Kind == SoftwareSourceKinds.IdentityCatalog && source.CatalogVersion == "1.0.0");
     }
 
     [Fact]
@@ -209,11 +220,7 @@ public sealed class SoftwareRegistryViewTests
             "manual:skyrim",
             "Skyrim 自定义分类",
             SoftwareKinds.Game,
-            SoftwareDisplayKinds.Game,
-            "manual",
-            ["手动补录"],
             [@"F:\Portable\Skyrim"],
-            "用户维护的分类。",
             sourceSoftwareId,
             now,
             now);
@@ -308,7 +315,7 @@ public sealed class SoftwareRegistryViewTests
         var chronicon = Assert.Single(records, record => record.Id == chroniconId);
         Assert.Equal(SoftwareKinds.Game, chronicon.Kind);
         Assert.True(chronicon.HasExplicitKind);
-        Assert.Equal(SoftwareDisplayKinds.Game, chronicon.DisplayKind);
+        Assert.Contains(chronicon.SourceFacts, source => source.Kind == SoftwareSourceKinds.Policy);
         Assert.Equal([@"D:\Games\Steam\steamapps\common\Chronicon"], chronicon.RootPaths);
 
         var steam = Assert.Single(records, record => record.Id == "windows-installed:steam");
@@ -346,7 +353,7 @@ public sealed class SoftwareRegistryViewTests
 
         var adapted = Assert.Single(records, record => record.Id == "adapter:word-memory");
         Assert.Equal(SoftwareKinds.Adapted, adapted.Kind);
-        Assert.Equal(SoftwareDisplayKinds.Adapted, adapted.DisplayKind);
+        Assert.Equal(SoftwareSourceKinds.Adapter, adapted.RegistrationFacts?.Kind);
         Assert.DoesNotContain(records, record => record.Id == "windows-installed:word-memory");
     }
 
@@ -369,11 +376,10 @@ public sealed class SoftwareRegistryViewTests
 
         var self = Assert.Single(records, record => record.Id == RuntimeAttributionIds.ResourceManagerSelf);
         Assert.Equal(SoftwareKinds.Adapted, self.Kind);
-        Assert.Contains("本地资源自管", self.Sources);
-        Assert.Contains("内置调度控制", self.Message);
-        Assert.DoesNotContain("资源标记", self.Message);
+        Assert.Contains(self.SourceFacts, source => source.Kind == SoftwareSourceKinds.Self);
+        Assert.Equal(SoftwareSourceKinds.Self, self.RegistrationFacts?.Kind);
+        Assert.Equal(SoftwareUninstallConstraints.Self, self.Operations.UninstallConstraint);
         Assert.NotEmpty(self.RootPaths);
-        Assert.DoesNotContain("/api/adapters/resource-manager/ledger", self.Message);
     }
 
     [Fact]

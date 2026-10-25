@@ -30,8 +30,8 @@ public interface IControlWriter
     string? ChannelOf(ControlObject target, string capabilityId) => null;
 
     /// <summary>Validate related requested settings before either is written. Does not access hardware.</summary>
-    IReadOnlyDictionary<string, string> ValidateSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
-        => new Dictionary<string, string>();
+    IReadOnlyDictionary<string, ControlApplyReason> ValidateSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
+        => new Dictionary<string, ControlApplyReason>();
 
     /// <summary>Order related settings so each intermediate hardware state is valid. Leave unowned settings unchanged.</summary>
     IReadOnlyList<ControlSetting> OrderSettings(ControlObject target, IReadOnlyList<ControlSetting> settings) => settings;
@@ -118,7 +118,7 @@ public interface IControlWriter
 /// </summary>
 public readonly record struct ControlWriteAvailability(
     bool CanWrite,
-    string? Reason = null,
+    ControlApplyReason? Reason = null,
     /// <summary>
     /// 硬件实际允许的范围。只有写入器读得到（比如 NVAPI 报的功耗上下限），
     /// 所以由它给；为 null 表示沿用目录里的形状。
@@ -155,7 +155,7 @@ public readonly record struct ControlWriteAvailability(
     /// 它们不是硬件的问题。
     /// </summary>
     public static ControlWriteAvailability No(
-        string reason,
+        ControlApplyReason reason,
         ControlNumberRange? range = null,
         string kind = ControlUnavailableKinds.Platform,
         /// <summary>写不了但读得到时置真，界面会把这个值单独列出来。</summary>

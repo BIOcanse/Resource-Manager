@@ -39,8 +39,8 @@ export default createSettingsLocale("fr-FR", {
     "latestStable": "Dernière version stable",
     "verified": "Version vérifiée",
     "unavailableReasons": {
-      "无法确认当前安装版本，升级选择已关闭。": "Version installée inconnue ; sélection de mise à niveau désactivée.",
-      "只能选择高于当前安装版本的发行版。": "Seules les versions plus récentes que celle installée peuvent être sélectionnées."
+      "installedVersionUnknown": "Version installée inconnue ; sélection de mise à niveau désactivée.",
+      "notNewer": "Seules les versions plus récentes que celle installée peuvent être sélectionnées."
     }
   },
   "navigationLabel": "Rubriques des paramètres",

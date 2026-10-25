@@ -260,8 +260,8 @@ export function byteQuantityKindForMetric(
  * 资源表一个单元格显示什么。
  *
  * 单元格只有两种：带单位的数值单元，和纯文本单元（进程号、用户、架构）。
- * 后端对数值单元只发 value 和 unit，不发文本；文本单元反过来只发文本、单位为空。
- * 读不到时后端给 availability，这里统一出「无数据」。
+ * 表格由前端从资源事实生成；文本单元使用本地投影的 displayValue，数值在这里格式化。
+ * 读不到时根据本地单元的 availability 显示无数据。
  */
 export function resourceTableCellText(
   cell: ResourceTableValue | null | undefined,
@@ -271,7 +271,10 @@ export function resourceTableCellText(
     return "--";
   }
   if (!cell.unit) {
-    return cell.displayValue || "--";
+    if (cell.displayValue) return cell.displayValue;
+    return typeof cell.value === "number" && Number.isFinite(cell.value)
+      ? String(cell.value)
+      : "--";
   }
   if (typeof cell.value !== "number" || !Number.isFinite(cell.value)) {
     return cell.availability ? "N/A" : "--";

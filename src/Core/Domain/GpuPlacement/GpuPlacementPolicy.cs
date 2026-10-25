@@ -259,7 +259,8 @@ public sealed record GpuPlacementProviderCapability(
     string ProviderId,
     string GraphicsApi,
     string? Architecture,
-    string Reason);
+    string ReasonCode,
+    IReadOnlyList<string> MissingFiles);
 
 public sealed record GpuPlacementProcessCapabilities(
     string ProcessKey,
@@ -268,14 +269,14 @@ public sealed record GpuPlacementProcessCapabilities(
 
 public sealed record GpuPlacementExactTargetOption(
     string TargetGpu,
-    string DisplayName,
+    string? AdapterName,
     bool Available,
-    string? Reason = null);
+    string? ReasonCode = null);
 
 public sealed record GpuPlacementTargetInventory(
     string State,
     IReadOnlyList<GpuPlacementExactTargetOption> ExactTargets,
-    string? Reason = null);
+    string? ReasonCode = null);
 
 public sealed record GpuPlacementProcessHistoryDocument(
     string Version,

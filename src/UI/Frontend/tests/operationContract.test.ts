@@ -36,7 +36,9 @@ assert.doesNotMatch(
   /getJson<OperationSnapshot\[\]>/);
 assert.doesNotMatch(sources.api, /operationsStateDecoder|operationSnapshotDecoder/);
 assert.doesNotMatch(sources.api, /\/api\/operations/);
-assert.match(sources.decoder, /host-manager\.operations\.state\.v1/);
+assert.match(sources.decoder, /host-manager\.operations\.state\.v2/);
+assert.match(sources.decoder, /host-manager\.operation\.v2/);
+assert.doesNotMatch(sources.decoder, /record\.(?:title|result|error|message|diagnostic|faultMessage)\b/);
 assert.match(sources.decoder, /canonical uint64 decimal string/);
 assert.match(sources.operationsApi, /RequestClient/);
 assert.match(sources.operationsApi, /\/api\/operations\/subscribe/);

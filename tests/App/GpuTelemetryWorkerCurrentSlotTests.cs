@@ -147,7 +147,6 @@ public sealed class GpuTelemetryWorkerCurrentSlotTests
     private static GpuTelemetryCounterSample Counter(string id, double? value)
         => new(
             id,
-            id,
             GpuTelemetryCounterClass.HardwareCounter,
             value,
             "%",

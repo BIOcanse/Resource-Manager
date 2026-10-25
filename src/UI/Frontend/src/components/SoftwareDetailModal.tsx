@@ -1,3 +1,4 @@
+import { formatGpuProviderCapability, formatGpuLaunchOutcome } from "./gpuPlacementPresentation.ts";
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "./RuntimePolicyDeliveryNotice";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
@@ -29,7 +30,6 @@ import type {
   GpuPlacementRuntimeSwitchMethod,
   GpuPlacementObservedProcess,
   GpuPlacementProcessPolicy,
-  GpuPlacementProviderCapability,
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareSettingsSnapshot,
   SoftwareDetailModel
@@ -409,8 +409,8 @@ function GpuPlacementPolicySection(props: {
     (capability) => canConfigureRuntimePlacement(capability.runtime.state)) === true;
   const unavailableCapabilityReasons = () => [...new Set((props.settings?.processCapabilities ?? []).flatMap(
     (capability) => [
-      formatProviderCapability(uiText.softwareDetail.providerPhase.startup, capability.startup),
-      formatProviderCapability(uiText.softwareDetail.providerPhase.runtime, capability.runtime)
+      formatGpuProviderCapability(uiText.softwareDetail.providerPhase.startup, capability.startup),
+      formatGpuProviderCapability(uiText.softwareDetail.providerPhase.runtime, capability.runtime)
     ]))];
   const dirty = () => {
     const saved = savedPolicy();
@@ -697,7 +697,7 @@ function CpuManualPlacementSection(props: {
                     <article class="cpu-manual-ccd">
                       <div class="cpu-manual-ccd-header">
                         <div>
-                          <strong>{ccd.label}</strong>
+                          <strong>{`CCD ${ccd.index}`}</strong>
                           <span>{uiText.softwareDetail.cpu.coreCount(ccd.physicalCoreIndexes.length)}</span>
                         </div>
                         <CpuManualPlacementToggles
@@ -1009,8 +1009,8 @@ function GpuPlacementProcessSection(props: {
                           "gpu-runtime-compatibility-warning": capabilities().startup.state !== "supported"
                             || capabilities().runtime.state !== "supported"
                         }}>
-                          {formatProviderCapability(uiText.softwareDetail.providerPhase.startup, capabilities().startup)}；
-                          {formatProviderCapability(uiText.softwareDetail.providerPhase.runtime, capabilities().runtime)}
+                          {formatGpuProviderCapability(uiText.softwareDetail.providerPhase.startup, capabilities().startup)}；
+                          {formatGpuProviderCapability(uiText.softwareDetail.providerPhase.runtime, capabilities().runtime)}
                         </p>
                       )}
                     </Show>
@@ -1093,18 +1093,6 @@ function PolicyToggle(props: {
       </Show>
     </div>
   );
-}
-
-function formatProviderCapability(
-  phase: string,
-  capability: GpuPlacementProviderCapability) {
-  const state = capability.state === "supported"
-    ? uiText.softwareDetail.providerPhase.available
-    : capability.state === "unsupported"
-      ? uiText.softwareDetail.providerPhase.unsupported
-      : uiText.softwareDetail.providerPhase.unknown;
-  const architecture = capability.architecture ? ` / ${capability.architecture}` : "";
-  return `${phase} ${state}（${capability.graphicsApi}${architecture}）：${capability.reason}`;
 }
 
 function PolicyNumberInput(props: {
@@ -1251,27 +1239,4 @@ function formatProcessMeta(process: GpuPlacementObservedProcess) {
 
 function formatDateTime(value?: string | null) {
   return value ? userFacingDateTime(value) : "";
-}
-
-function formatGpuLaunchOutcome(outcome: string) {
-  switch (outcome) {
-    case "provider-ready":
-      return uiText.softwareDetail.gpuLaunchOutcome.ready;
-    case "pass-through-started":
-      return uiText.softwareDetail.gpuLaunchOutcome.systemDefault;
-    case "provider-unavailable-fallback":
-      return uiText.softwareDetail.gpuLaunchOutcome.switchedToSystemDefault;
-    case "bootstrap-failed-fallback":
-      return uiText.softwareDetail.gpuLaunchOutcome.switchedToSystemDefault;
-    case "provider-timeout":
-      return uiText.softwareDetail.gpuLaunchOutcome.prepareTimeout;
-    case "debugger-detach-failed":
-      return uiText.softwareDetail.gpuLaunchOutcome.startupIncomplete;
-    case "recursion-blocked":
-      return uiText.softwareDetail.gpuLaunchOutcome.repeatedLaunchStopped;
-    case "launch-failed":
-      return uiText.softwareDetail.gpuLaunchOutcome.launchFailed;
-    default:
-      return uiText.softwareDetail.gpuLaunchOutcome.unknown;
-  }
 }

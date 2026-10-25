@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
+import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import { isUpdateBusy, productUpdateCopy, updateErrors, updateFailure } from "../src/features/settings/productUpdatePresentation.ts";
 
 test("every selectable locale resolves update controls and all stable failure codes", () => {
@@ -37,4 +38,17 @@ test("failure mapping retains stable parameters and never exposes exception pros
 test("pending packages allow explicit application without masquerading as active update work", () => {
   for (const stage of ["checking", "downloading", "verifying", "waitingForExit"]) assert.equal(isUpdateBusy(stage), true);
   for (const stage of [undefined, "idle", "pendingApply", "completed", "error"]) assert.equal(isUpdateBusy(stage), false);
+});
+
+test("version eligibility facts resolve through every selectable settings bundle", async () => {
+  const english = (await loadSettingsText("en-US")).updates;
+  for (const { id } of languageOptions.filter(({ id }) => id !== "system")) {
+    const updates = (await loadSettingsText(id)).updates;
+    for (const eligibility of ["installedVersionUnknown", "notNewer"]) {
+      const reason = updates.unavailableReasons[eligibility];
+      assert.ok(reason?.trim(), `${id}.${eligibility}`);
+      if (id !== "en-US") assert.notEqual(reason, english.unavailableReasons[eligibility], `${id}.${eligibility}`);
+    }
+    assert.equal("只能选择高于当前安装版本的发行版。" in updates.unavailableReasons, false);
+  }
 });

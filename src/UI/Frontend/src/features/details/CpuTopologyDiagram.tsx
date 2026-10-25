@@ -264,7 +264,7 @@ export function CpuTopologyDiagram(props: {
                         aria-pressed={isSelected(selected(), "ccd", ccd.id)}
                         onClick={() => toggleSelection(setSelected, "ccd", ccd.id)}
                       >
-                        <span>{ccd.label}</span>
+                        <span>{ccdName(ccd)}</span>
                         <small>{formatUsage(ccd.usagePercent)}</small>
                       </button>
                       <CpuCacheHierarchy
@@ -562,9 +562,17 @@ function CpuScoreInput(props: {
   );
 }
 
-/** 后端 label 固定是英文 "Core N"，界面按核心序号用当前语言拼名字。 */
 function coreName(core: CpuPhysicalCoreModel) {
   return uiText.cpuTopology.coreName(core.index);
+}
+
+function ccdName(ccd: CpuCcdModel) {
+  return `CCD ${ccd.index}`;
+}
+
+function ccdPositionName(model: CpuTopologySnapshot, id: string) {
+  const ccd = model.ccds.find((item) => item.id.toLowerCase() === id.toLowerCase());
+  return ccd ? ccdName(ccd) : undefined;
 }
 
 function renderableSourceData<T>(source: SourceSnapshot<T>): T | undefined {
@@ -633,7 +641,7 @@ function CpuTopologyDetailsDialog(props: {
                 <section class="user-details-section">
                   <h3>{coreName(current())}</h3>
                   <dl>
-                    <div class="user-details-row"><dt>CCD</dt><dd>{ccd()?.label ?? current().ccdId}</dd></div>
+                    <div class="user-details-row"><dt>CCD</dt><dd>{ccd() ? ccdName(ccd()!) : current().ccdId}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.usage}</dt><dd>{formatUsage(current().usagePercent)}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.performanceScore}</dt><dd>{formatScore(current().performanceScore)}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.logicalProcessors}</dt><dd>{logical().map((item) => item.id).join(", ") || "--"}</dd></div>
@@ -749,7 +757,7 @@ function formatRequestedCpuPositions(model: CpuTopologySnapshot, positionIds: st
   }
   return positionIds
     .map((id) =>
-      model.ccds.find((ccd) => ccd.id.toLowerCase() === id.toLowerCase())?.label
+      ccdPositionName(model, id)
       ?? physicalCoreName(model, (core) => core.id.toLowerCase() === id.toLowerCase())
       ?? id)
     .join(", ");

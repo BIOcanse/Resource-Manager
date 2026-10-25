@@ -28,8 +28,6 @@ function dependencyRenderers(): Record<number, Renderer> {
   return {
     1: () => copy.managedRootRemovable,
     2: () => copy.managedRootEmpty,
-    3: () => copy.categoryTag,
-    4: () => copy.uninstallAction,
     5: () => copy.installedInManagedRoot,
     6: () => copy.installerCached,
     7: () => copy.downloadableWithVersionChoice,
@@ -91,20 +89,7 @@ function operationRenderers(): Record<number, Renderer> {
 }
 
 function softwareRenderers(): Record<number, Renderer> {
-  const copy = uiText.backendMessage.software;
   return {
-    1: () => copy.hasUninstallEntry,
-    2: () => copy.missingUninstallEntry,
-    3: () => copy.uninstallAction,
-    4: () => copy.cannotUninstallAction,
-    5: () => copy.windowsUninstallerDescription,
-    6: () => copy.noUninstallUnknownRoot,
-    7: () => copy.manualClassificationNoUninstall,
-    8: () => copy.controlledNoUninstall,
-    9: () => copy.selfNoUninstall,
-    10: () => copy.adaptedNoUninstall,
-    11: () => copy.legacyControlledNoUninstall,
-    12: () => copy.portableNoUninstall,
     13: () => uiText.managementFeedback.managedRootRemoved,
     14: () => uiText.managementFeedback.uninstallerLaunchRequested
   };

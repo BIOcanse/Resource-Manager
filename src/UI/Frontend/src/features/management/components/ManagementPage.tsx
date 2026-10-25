@@ -1,3 +1,4 @@
+import { componentCapabilityLabel, componentInstallNote } from "../../../presentation/componentPresentation.ts";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Check, Info, MoreHorizontal, Settings } from "lucide-solid";
 import { sharedBrowserRuntimeComponentId } from "../../browserRuntimes/browserRuntimeTypes";
@@ -10,8 +11,7 @@ import {
   FrontendVisibilityDemandBinding,
   useFrontendVisibilityDemand
 } from "../../../frontendWork/useFrontendVisibilityDemand";
-import { componentDisplayName, componentPurpose, userFacingMessage } from "../../../presentation/userFacingText";
-import { isSettledDependencyMessage } from "../../../presentation/backendMessage";
+import { componentDisplayName, componentPurpose } from "../../../presentation/userFacingText";
 import type { SoftwareContextMenuTarget } from "../../../components/SoftwareContextMenu";
 import {
   browserRuntimeManagementSubpageId,
@@ -32,6 +32,8 @@ import {
 import { SoftwareIssueTagStrip } from "../../../components/SoftwareIssuePresentation";
 import { isUnclassifiedSoftware, runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../../../presentation/softwareClassification.ts";
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
+import { softwareRecordName, softwareSourceLabels, softwareUninstallDescription, softwareSummary } from "../../../presentation/softwareFacts.ts";
+export { softwareSummary } from "../../../presentation/softwareFacts.ts";
 
 // 分类名按当前语言求值，不能在模块顶层固化。
 export function managementKinds(): Array<{ id: ManagementKind; label: string }> {
@@ -241,7 +243,7 @@ function ComponentCard(props: {
 }) {
   const demandId = frontendVisibilityDemandId(
     "management.component",
-    props.component.definition?.id ?? props.component.definition?.name);
+    props.component.definition?.id);
   const key = () => managementActionKey("component", props.component.definition?.id);
   const activeLabel = () => props.actionLabels[key()];
   const dependencySoftware = () => findDependencySoftwareForComponent(props.component, props.software);
@@ -256,7 +258,7 @@ function ComponentCard(props: {
       />
       <div class="component-summary">
         <strong class="management-card-title">
-          {componentDisplayName(props.component.definition?.id, props.component.definition?.name)}
+          {componentDisplayName(props.component.definition?.id)}
         </strong>
         <div class="management-card-purpose">{componentPurpose(props.component.definition?.id)}</div>
       </div>
@@ -298,7 +300,7 @@ function ComponentCard(props: {
           </button>
         </Show>
         <DetailsButton
-          label={uiText.managementPage.detailsOf(componentDisplayName(props.component.definition?.id, props.component.definition?.name))}
+          label={uiText.managementPage.detailsOf(componentDisplayName(props.component.definition?.id))}
           onClick={() => props.onOpenDetail(props.component)}
         />
       </div>
@@ -325,14 +327,10 @@ function SoftwareCard(props: {
   const statusLabel = () => activeLabel() || (isUnclassifiedSoftware(props.software) ? uiText.softwareKind.Unclassified : canUninstall() ? "" : uiText.management.installed);
   // 这张卡要不要说话：状态已经由右侧表达，只复述状态的消息一律不显示。
   const cardPurpose = () => {
-    if (isUnclassifiedSoftware(props.software) || isSettledDependencyMessage(props.software.messageCode)) {
+    if (isUnclassifiedSoftware(props.software)) {
       return "";
     }
-    const purpose = props.software.messageCode
-      ? softwareSummary(props.software)
-      : userFacingMessage(
-        props.software.message,
-        softwareDisplayKindLabel(props.software.kind, props.software.displayKind));
+    const purpose = softwareSummary(props.software);
     return repeatsStatus(purpose, statusLabel()) ? "" : purpose;
   };
 
@@ -348,7 +346,7 @@ function SoftwareCard(props: {
       />
       <div class="software-summary">
         <div class="management-card-title-row">
-          <strong class="management-card-title">{props.software.name ?? "--"}</strong>
+          <strong class="management-card-title">{softwareRecordName(props.software) || "--"}</strong>
           <Show when={props.software.requiresRootPathConfirmation}>
             <AlertTriangle
               class="management-root-warning-icon"
@@ -394,7 +392,7 @@ function SoftwareCard(props: {
         </Show>
         <SettingsButton onClick={() => props.onOpenDetail(props.software)} />
         <MoreActionsButton
-          label={uiText.managementPage.moreActionsOf(props.software.name ?? uiText.managementPage.currentSoftware)}
+          label={uiText.managementPage.moreActionsOf(softwareRecordName(props.software) || uiText.managementPage.currentSoftware)}
           focusKey={`management-software-actions:${props.software.id}`}
           onOpen={(event) => props.onContextMenu(event, props.software)}
         />
@@ -504,9 +502,9 @@ function canAddManualSoftware(kind: ManagementKind) {
 function softwareContextTargetFromSoftware(software: SoftwareRecord): SoftwareContextMenuTarget {
   return {
     kind: "software",
-    name: software.name ?? "--",
+    name: softwareRecordName(software) || "--",
     softwareId: software.id,
-    softwareName: software.name,
+    softwareName: softwareRecordName(software),
     rootPaths: software.rootPaths ?? []
   };
 }
@@ -548,12 +546,13 @@ function getManagementRoleItems(
     .map((component) => ({ type: "component" as const, value: component }));
   // 共享 WebView2 运行时只在「运行时管理」里列；它在软件清单里的同名记录也要一起去掉，
   // 否则会以后端原名的软件卡片回到依赖列表。
+  const componentIds = new Set(roleComponents.map((component) => component.definition?.id));
   const componentNameSet = new Set(roleComponents
-    .map((component) => normalizeName(component.definition?.name))
+    .map((component) => normalizeName(componentDisplayName(component.definition?.id)))
     .filter(Boolean));
   const extraSoftwareItems = software
     .filter((item) => !isUnconfirmedSoftware(item) && item.managementRole === wireRole)
-    .filter((item) => !componentNameSet.has(normalizeName(item.name)))
+    .filter((item) => !componentIds.has(item.id.replace(/^dependency:/, "")) && !componentNameSet.has(normalizeName(item.name)))
     .map((item) => ({ type: "software" as const, value: item }));
   return [...componentItems, ...extraSoftwareItems];
 }
@@ -573,47 +572,34 @@ function matchesComponentSearch(component: ManagedComponent, query: string) {
   const definition = component.definition ?? {};
   return matchesSearch(query,
     definition.id,
-    definition.name,
-    definition.purpose,
+    componentDisplayName(definition.id),
+    componentPurpose(definition.id),
     definition.vendor,
-    definition.category,
     definition.managementRole,
     definition.sourcePageUrl,
-    definition.installNote,
+    componentInstallNote(definition.id),
     component.state,
-    component.stateLabel,
     renderBackendMessage(component.message),
     component.installRoot,
     component.installerDirectory,
     component.installerPath,
     ...(component.providers ?? []).flatMap((provider) => [
       provider.providerId,
-      provider.name,
       provider.state,
       provider.providerKind,
-      provider.message,
-      ...(provider.capabilities ?? [])
+      renderBackendMessage(provider.message),
+      ...(provider.capabilities ?? []).map(componentCapabilityLabel)
     ]));
-}
-
-// 事实（发布者、版本）与消息码渲染出的短语按同一个分隔符拼成一句描述。
-export function softwareSummary(software: SoftwareRecord) {
-  return [software.publisher, software.version, renderBackendMessage(software.messageCode)]
-    .map((part) => (part ?? "").trim())
-    .filter(Boolean)
-    .join(" · ");
 }
 
 function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
   return matchesSearch(query,
     software.id,
-    software.name,
+    softwareRecordName(software),
     software.kind,
-    software.displayKind,
     software.managementRole,
-    softwareDisplayKindLabel(software.kind, software.displayKind),
+    softwareDisplayKindLabel(software.kind),
     software.state,
-    software.message,
     softwareSummary(software),
     ...(software.issues ?? []).flatMap((issue) => [
       issue.kind,
@@ -622,12 +608,10 @@ function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
       issue.source,
       ...(issue.references ?? []).flatMap((reference) => [reference.label, reference.url])
     ]),
-    ...(software.sources ?? []),
+    ...softwareSourceLabels(software),
     ...(software.rootPaths ?? []),
     software.operations?.uninstallKind,
-    software.operations?.uninstallLabel,
-    software.operations?.uninstallMessage,
-    renderBackendMessage(software.operations?.uninstallMessageCode));
+    softwareUninstallDescription(software));
 }
 
 function normalizeSearchQuery(value: string) {
@@ -658,7 +642,7 @@ export function findDependencySoftwareForComponent(component: ManagedComponent, 
   if (component.definition?.managementRole !== "dependency") {
     return undefined;
   }
-  const componentName = normalizeName(component.definition?.name);
+  const componentName = normalizeName(componentDisplayName(component.definition?.id));
   const componentId = normalizeName(component.definition?.id);
   return software.find((item) =>
     item.managementRole === "dependency"

@@ -39,8 +39,8 @@ export default createSettingsLocale("ja-JP", {
     "latestStable": "最新の安定版",
     "verified": "検証済みリリース",
     "unavailableReasons": {
-      "无法确认当前安装版本，升级选择已关闭。": "現在のインストール済みバージョンが不明なため、更新の選択は無効です。",
-      "只能选择高于当前安装版本的发行版。": "インストール済みバージョンより新しいリリースのみ選択できます。"
+      "installedVersionUnknown": "現在のインストール済みバージョンが不明なため、更新の選択は無効です。",
+      "notNewer": "インストール済みバージョンより新しいリリースのみ選択できます。"
     }
   },
   "navigationLabel": "設定の分類",

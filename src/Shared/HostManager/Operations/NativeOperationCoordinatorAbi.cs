@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeOperationCoordinatorAbi
 {
-    public const uint Version = 0x0001_0000;
+    public const uint Version = 0x0002_0000;
     public const uint NoSlot = uint.MaxValue;
 }
 
@@ -69,9 +69,9 @@ internal enum NativeOperationSubmitValidity : ulong
 {
     None = 0,
     Domain = 1UL << 0,
-    Title = 1UL << 1,
+    Subject = 1UL << 1,
     Request = 1UL << 2,
-    Known = Domain | Title | Request
+    Known = Domain | Subject | Request
 }
 
 [Flags]
@@ -79,7 +79,7 @@ internal enum NativeOperationFlags : ulong
 {
     None = 0,
     DomainValid = 1UL << 0,
-    TitleValid = 1UL << 1,
+    SubjectValid = 1UL << 1,
     RequestValid = 1UL << 2,
     ResultValid = 1UL << 3,
     ErrorValid = 1UL << 4,
@@ -87,7 +87,7 @@ internal enum NativeOperationFlags : ulong
     CancelRequested = 1UL << 6,
     Terminal = 1UL << 7,
     ImportedRecovery = 1UL << 8,
-    Known = DomainValid | TitleValid | RequestValid | ResultValid | ErrorValid
+    Known = DomainValid | SubjectValid | RequestValid | ResultValid | ErrorValid
         | ProgressValid | CancelRequested | Terminal | ImportedRecovery
 }
 
@@ -129,10 +129,10 @@ internal enum NativeOperationProgressValidity : ulong
     BytesTotal = 1UL << 2,
     SpeedBytesPerSecond = 1UL << 3,
     Stage = 1UL << 4,
-    Message = 1UL << 5,
+    DetailFact = 1UL << 5,
     Checkpoint = 1UL << 6,
     Known = PercentMilli | BytesDone | BytesTotal | SpeedBytesPerSecond
-        | Stage | Message | Checkpoint
+        | Stage | DetailFact | Checkpoint
 }
 
 [Flags]
@@ -204,7 +204,7 @@ internal unsafe struct NativeOperationSubmitInput
     public NativeOperationHandle128 OperationId;
     public NativeOperationHandle128 DomainId;
     public NativeOperationHandle128 KindHandle;
-    public NativeOperationHandle128 TitleHandle;
+    public NativeOperationHandle128 SubjectHandle;
     public NativeOperationHandle128 RequestHandle;
     public long Priority;
     public uint MaximumAttempts;
@@ -365,8 +365,8 @@ internal unsafe struct NativeOperationProgressInput
     public ulong BytesDone;
     public ulong BytesTotal;
     public ulong SpeedBytesPerSecond;
-    public NativeOperationHandle128 StageHandle;
-    public NativeOperationHandle128 MessageHandle;
+    public NativeOperationHandle128 StageFactHandle;
+    public NativeOperationHandle128 DetailFactHandle;
     public NativeOperationHandle128 CheckpointHandle;
     public ulong ValidMask;
     public ulong Flags;
@@ -414,7 +414,7 @@ internal unsafe struct NativeOperationOutput
     public NativeOperationHandle128 OperationId;
     public NativeOperationHandle128 DomainId;
     public NativeOperationHandle128 KindHandle;
-    public NativeOperationHandle128 TitleHandle;
+    public NativeOperationHandle128 SubjectHandle;
     public NativeOperationHandle128 RequestHandle;
     public NativeOperationHandle128 ResultHandle;
     public NativeOperationHandle128 ErrorHandle;
@@ -444,8 +444,8 @@ internal unsafe struct NativeOperationOutput
     public ulong BytesDone;
     public ulong BytesTotal;
     public ulong SpeedBytesPerSecond;
-    public NativeOperationHandle128 StageHandle;
-    public NativeOperationHandle128 MessageHandle;
+    public NativeOperationHandle128 StageFactHandle;
+    public NativeOperationHandle128 DetailFactHandle;
     public NativeOperationHandle128 CheckpointHandle;
     public ulong Flags;
     public ulong AttemptConfigurationGeneration;

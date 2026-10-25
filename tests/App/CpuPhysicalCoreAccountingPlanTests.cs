@@ -88,7 +88,6 @@ public sealed class CpuPhysicalCoreAccountingPlanTests
             SimultaneousMultithreading = false,
             PhysicalCores = topology.PhysicalCores.Reverse().Select(core => core with
             {
-                Label = "Different display label",
                 UsagePercent = 99,
                 PerformanceScore = 900,
                 LogicalProcessorIds = core.LogicalProcessorIds.Reverse().ToArray()

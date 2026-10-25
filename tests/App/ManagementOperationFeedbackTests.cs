@@ -35,7 +35,7 @@ public sealed class ManagementOperationFeedbackTests
         Assert.Equal(100ul, update.BytesDone);
         Assert.Equal(400ul, update.BytesTotal);
         Assert.Equal(20ul, update.SpeedBytesPerSecond);
-        Assert.Equal("download", update.Stage);
+        Assert.Equal(HostManagerOperationStage.Download, update.Stage);
         Assert.Equal(ticket, sink.Ticket);
         Assert.Equal(HostManagerOperationEffectOutcome.RetryableFailure, completion.Outcome);
         var feedback = Assert.IsType<HostManagerOperationFeedback>(HostManagerOperationFeedback.Read(completion.Message));
@@ -57,7 +57,7 @@ public sealed class ManagementOperationFeedbackTests
         Assert.Equal(BackendMessageDomains.Dependency, wire.ResultMessage!.Domain);
         Assert.Equal(code, wire.ResultMessage.Code);
         Assert.Equal("component:shared-webview2-runtime", wire.DomainKey);
-        Assert.Null(wire.Result);
+        Assert.Null(typeof(HostManagerOperationWireSnapshot).GetProperty("Diagnostic"));
     }
 
     [Theory]
@@ -81,18 +81,19 @@ public sealed class ManagementOperationFeedbackTests
         var wire = HostManagerOperationWireProjection.Project(Operation(null, HostManagerOperationFeedback.Failure(error)));
         Assert.Equal(BackendMessageDomains.Operation, wire.ErrorMessage!.Domain);
         Assert.Equal(reason, wire.ErrorMessage.Code);
-        Assert.Equal(error.Message, wire.Error);
+        Assert.Equal(error.Message, HostManagerOperationFeedback.Read(HostManagerOperationFeedback.Failure(error))!.Diagnostic);
+        Assert.Null(typeof(HostManagerOperationWireSnapshot).GetProperty("Diagnostic"));
     }
 
     [Fact]
-    public void CleanupResultIsACodeAndHistoricalTextRemainsReadable()
+    public void CleanupResultIsACodeAndUnstructuredTextIsNotExposed()
     {
         var result = HostManagerOperationFeedback.Result("RemovedManagedRoot",
             BackendMessage.Create(BackendMessageDomains.Software, BackendMessageCodes.Software.ManagedRootRemoved));
         var wire = HostManagerOperationWireProjection.Project(Operation(result, null));
         Assert.Equal(BackendMessageCodes.Software.ManagedRootRemoved, wire.ResultMessage!.Code);
         Assert.Equal("RemovedManagedRoot", wire.ResultCode);
-        Assert.Equal("old journal entry", HostManagerOperationWireProjection.Project(Operation("old journal entry", null)).Result);
+        Assert.Null(HostManagerOperationWireProjection.Project(Operation("old journal entry", null)).ResultMessage);
     }
 
     [Theory]
@@ -137,7 +138,7 @@ public sealed class ManagementOperationFeedbackTests
     {
         var now = DateTimeOffset.UtcNow;
         return new("00000000000000000000000000000001", "component.install", "component:shared-webview2-runtime",
-            "Install runtime", error is null ? "succeeded" : "failed", 1, 1, 1, 3, now, now, now, false, null, result, error);
+            new HostManagerOperationSubject(TargetId: "shared-webview2-runtime"), error is null ? "succeeded" : "failed", 1, 1, 1, 3, now, now, now, false, null, result, error);
     }
 
     private static HostManagerOperationActionTicket Ticket(bool install)

@@ -10,7 +10,7 @@ public sealed class AmdDesktopGpuControlWriterTests : IDisposable
     private string Baseline => Path.Combine(folder, "baseline.json");
     private static ControlObject Gpu(string chassis = ControlChassisKinds.Fixed, string attachment = ControlGpuAttachments.Discrete, string vendor = ControlVendors.Amd)
         => new("gpu:test", ControlObjectKinds.Gpu, "AMD Test", new(ControlOperatingSystems.Windows, vendor), [], Terms: [chassis], GpuAttachment: attachment, AdapterIndex: 1);
-    private static ControlCapability Cap(string id = "gpu.power-limit-offset") => new(id, id, ControlValueKinds.Number, false);
+    private static ControlCapability Cap(string id = "gpu.power-limit-offset") => new(id, ControlValueKinds.Number, false);
     [Fact]
     public async Task UnsupportedRoutesNeverTouchHardware()
     {
@@ -83,7 +83,7 @@ public sealed class AmdDesktopGpuControlWriterTests : IDisposable
         var io = new Hardware();
         var writer = new AmdDesktopGpuControlWriter(io, Baseline);
         var fan = Gpu() with { Kind = ControlObjectKinds.Fan, Id = "fan:gpu1" };
-        var cap = new ControlCapability("fan.zero-rpm", "Zero RPM", ControlValueKinds.Toggle, false);
+        var cap = new ControlCapability("fan.zero-rpm", ControlValueKinds.Toggle, false);
         Assert.True(writer.Probe(fan, cap).CanWrite);
         Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(fan, cap, new(cap.Id, Toggle: false), default)).Status);
         var actual = await writer.ReadAsync(fan, cap, default);

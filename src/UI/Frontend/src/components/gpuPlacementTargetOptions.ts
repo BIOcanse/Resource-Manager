@@ -1,5 +1,6 @@
 import type { GpuPlacementExactTargetOption } from "../types";
 import { uiText } from "../text.ts";
+import { gpuPlacementReason } from "./gpuPlacementPresentation.ts";
 
 export type GpuPolicySelectOption = readonly [string, string, boolean?];
 
@@ -68,7 +69,8 @@ function mapExactTargets(
   exactTargets: readonly GpuPlacementExactTargetOption[]): GpuPolicySelectOption[] {
   return exactTargets.map((target) => [
     target.targetGpu,
-    target.available ? target.displayName : `${target.displayName}${target.reason ? ` · ${target.reason}` : ""}`,
+    `${formatGpuTarget(target.targetGpu)}${target.adapterName ? ` · ${target.adapterName}` : ""}`
+      + (target.available ? "" : ` · ${gpuPlacementReason(target.reasonCode)}`),
     !target.available
   ]);
 }

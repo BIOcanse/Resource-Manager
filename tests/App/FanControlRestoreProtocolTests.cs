@@ -34,12 +34,12 @@ public sealed class FanControlRestoreProtocolTests
         {
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture fan",
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
-            var capability = new ControlCapability("fan.lock-maximum", "Maximum", ControlValueKinds.Toggle, true);
+            var capability = new ControlCapability("fan.lock-maximum", ControlValueKinds.Toggle, true);
             var outcome = await new FanControlWriter(client).WriteAsync(target, capability,
                 new("fan.lock-maximum", Toggle: wantsMaximum), default);
             Assert.Equal(expected ? ControlApplyStatuses.Applied : ControlApplyStatuses.Failed, outcome.Status);
             if (!expected && !automatic)
-                Assert.Equal("写下去了，但回读的值没有变。", outcome.Message);
+                Assert.Equal("control-readback-mismatch", outcome.Reason?.Code);
         }
         finally
         {
@@ -101,7 +101,7 @@ public sealed class FanControlRestoreProtocolTests
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
             var writer = new FanControlWriter(client);
             var curve = new ControlCurvePoint[] { new(60, 35), new(95, 100) };
-            var result = await writer.RestoreAsync(target, new(capability, capability, ControlValueKinds.Curve, true),
+            var result = await writer.RestoreAsync(target, new(capability, ControlValueKinds.Curve, true),
                 retainOther ? new HashSet<string> { "fan.lock-maximum" } : new HashSet<string>(), default,
                 execution is null ? null : new ControlSetting(capability, CurveExecution: execution));
             Assert.Equal(expected, result);
@@ -114,12 +114,12 @@ public sealed class FanControlRestoreProtocolTests
                 if (restoreSupport <= 0)
                 {
                     Assert.Empty(auto);
-                    var outcome = await writer.WriteAsync(target, new(capability, capability, ControlValueKinds.Toggle, true),
+                    var outcome = await writer.WriteAsync(target, new(capability, ControlValueKinds.Toggle, true),
                         new(capability, Number: 40, Toggle: true, Curve: curve), default);
                     Assert.Equal(ControlApplyStatuses.Failed, outcome.Status);
-                    Assert.Equal(FanControlWriter.RestoreProtocolRequired, outcome.Message);
+                    Assert.Equal(FanControlWriter.RestoreProtocolRequired, outcome.Reason?.Code);
                     Assert.Equal(operations.Length, File.ReadAllLines(operationsPath).Length);
-                    var probe = writer.Probe(target, new(capability, capability, ControlValueKinds.Toggle, true));
+                    var probe = writer.Probe(target, new(capability, ControlValueKinds.Toggle, true));
                     Assert.False(probe.CanWrite); Assert.True(probe.CanRead);
                     Assert.Equal(ControlUnavailableKinds.Prerequisite, probe.UnavailableKind);
                 }

@@ -65,6 +65,14 @@ assert.deepEqual(metadataGroup.processIds, [1, 2, 3]);
 assert.deepEqual(metadataGroup.processNames, ["Worker.EXE", "Other.exe"]);
 assert.deepEqual(metadataGroup.executablePaths, ["C:/APP/Worker.EXE"]);
 
+// Identity text belongs to the frontend projection and is read by the cell renderer.
+const identitySoftware = software("100", "Identity group", 1);
+identitySoftware.processes[0] = { ...identitySoftware.processes[0], userName: "TEST-PC\\operator", architecture: "x64" };
+const identityRow = projectResourceFacts({ capturedAt: time, metrics: [metric("memory.usage", [identitySoftware])] }, columns, "process", "name", "asc").rows[1];
+assert.equal(resourceTableCellText(identityRow.values.pid), "101");
+assert.equal(resourceTableCellText(identityRow.values.user), "TEST-PC\\operator");
+assert.equal(resourceTableCellText(identityRow.values.architecture), "x64");
+
 // A ready dataset may contain one available adapter and one explicitly unavailable adapter.
 // Null total, null percentage or null capacity each makes only that summary cell unavailable.
 const gpuColumns = [0, 1, 2].map(index => ({ id: `gpu.${index}.usage`, visible: true, width: 108 }));

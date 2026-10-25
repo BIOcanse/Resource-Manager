@@ -634,7 +634,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .Select(index => new CpuPhysicalCoreModel(
                 $"core:{index}",
                 index,
-                $"Core {index}",
                 index < 2 ? "ccd:0" : "ccd:1",
                 0,
                 1,
@@ -678,8 +677,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             2,
             false,
             [
-                new CpuCcdModel("ccd:0", 0, "CCD 0", null, [0, 1], [0, 1], "fixture"),
-                new CpuCcdModel("ccd:1", 1, "CCD 1", null, [2, 3], [2, 3], "fixture")
+                new CpuCcdModel("ccd:0", 0, null, [0, 1], [0, 1], "fixture"),
+                new CpuCcdModel("ccd:1", 1, null, [2, 3], [2, 3], "fixture")
             ],
             physicalCores,
             logicalProcessors,

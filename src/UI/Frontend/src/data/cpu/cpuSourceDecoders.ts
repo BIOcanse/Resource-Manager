@@ -62,8 +62,7 @@ export const cpuTopologyDecoder = defineResponseDecoder<CpuTopologySnapshot | nu
       logicalProcessors: requireArray(record.logicalProcessors, "$.logicalProcessors")
         .map((item, index) => decodeLogicalProcessor(
           item,
-          `$.logicalProcessors[${index}]`)),
-      notes: requireStringArray(record.notes, "$.notes")
+          `$.logicalProcessors[${index}]`))
     };
   });
 
@@ -130,7 +129,6 @@ function decodeCcd(value: unknown, path: string): CpuCcdModel {
   return {
     id: requireNonEmptyString(record.id, `${path}.id`),
     index: requireNonNegativeSafeInteger(record.index, `${path}.index`),
-    label: requireNonEmptyString(record.label, `${path}.label`),
     usagePercent: optionalNumber(record.usagePercent, `${path}.usagePercent`),
     physicalCoreIndexes: requireNumberArray(
       record.physicalCoreIndexes,
@@ -147,7 +145,6 @@ function decodePhysicalCore(value: unknown, path: string): CpuPhysicalCoreModel 
   return {
     id: requireNonEmptyString(record.id, `${path}.id`),
     index: requireNonNegativeSafeInteger(record.index, `${path}.index`),
-    label: requireNonEmptyString(record.label, `${path}.label`),
     ccdId: requireNonEmptyString(record.ccdId, `${path}.ccdId`),
     efficiencyClass: requireSafeInteger(record.efficiencyClass, `${path}.efficiencyClass`),
     performanceScore: requireFiniteNumber(record.performanceScore, `${path}.performanceScore`),

@@ -130,12 +130,10 @@ public sealed class OptimizationReportSoftwareIssueSourceTests
             id,
             id,
             kind,
-            kind,
             "installed",
             [],
             [],
-            string.Empty,
-            new SoftwareOperationCapabilities(false, "None", "不可卸载", "test"),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null,
             SoftwareIdentityId: identityId);
 

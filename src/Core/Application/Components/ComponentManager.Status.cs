@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Metrics;
 
@@ -47,8 +47,7 @@ public sealed partial class ComponentManager
         return new ComponentStatus(
             definition,
             state,
-            StateLabel(state),
-            "Driver/runtime supplied",
+            "",
             "",
             null,
             false,
@@ -78,13 +77,11 @@ public sealed partial class ComponentManager
             : providerRuntimeAvailable
                 ? ComponentStatusStates.InstalledUnverified
                 : ComponentStatusStates.Installed;
-        var providerMessage = providerStatus.FirstOrDefault()?.Message;
 
         return new ComponentStatus(
             definition,
             state,
-            StateLabel(state),
-            "Bundled with Resource Manager",
+            "",
             "",
             null,
             false,
@@ -139,7 +136,6 @@ public sealed partial class ComponentManager
         return new ComponentStatus(
             definition,
             state,
-            StateLabel(state),
             dependencyStatus.EffectiveInstallDirectory,
             dependencyStatus.InstallerDirectory,
             dependencyStatus.InstallerPath,

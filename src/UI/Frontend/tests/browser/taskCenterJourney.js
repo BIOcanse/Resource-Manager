@@ -78,7 +78,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   assert(selectedAfterHome?.includes("进行中"),
     `Task Center Home did not activate Active: ${selectedAfterHome}`);
 
-  await dialog.locator(".task-center-item-title-row strong").filter({ hasText: /^安装组件$/ }).waitFor({ state: "visible" });
+  await dialog.locator(".task-center-item-title-row strong").filter({ hasText: /^安装组件: frontend-harness$/ }).waitFor({ state: "visible" });
   await dialog.getByText("40%", { exact: true }).waitFor({ state: "visible" });
   await dialog.getByText("详情", { exact: true }).click();
   await dialog.getByText("000000000000000000000000000000a1", { exact: true })
@@ -96,7 +96,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await taskButton.click();
   await dialog.waitFor({ state: "visible", timeout: 3000 });
   const cancelButton = dialog.getByRole("button", {
-    name: "取消 安装组件（000000a1）"
+    name: "取消 安装组件: frontend-harness（000000a1）"
   });
   await cancelButton.click();
   await page.waitForFunction(async (path) => {
@@ -206,7 +206,9 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
       assert(tabLabels.some(value => value.includes(label)), `${option.id}: stale task center tab ${label}`);
     }
     await localizedDialog.getByRole("tab").filter({ hasText: app.taskCenter.tabActive }).click();
-    await localizedDialog.locator(".task-center-item-title-row strong").filter({ hasText: app.taskCenter.operation.componentInstall }).waitFor();
+    await localizedDialog.getByText(`${app.taskCenter.operation.componentInstall}: frontend-harness`, { exact: true }).waitFor();
+    await localizedDialog.locator(".task-center-item details").first().evaluate(element => { element.open = true; });
+    await localizedDialog.getByText(app.managementFeedback.stageDownload, { exact: true }).waitFor();
     const rendered = await localizedDialog.innerText();
     for (const prose of ["安装前端测试组件", "正在安装"]) {
       assert(!rendered.includes(prose), `${option.id}: backend prose leaked into Task Center: ${prose}`);
@@ -216,6 +218,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     await localizedDialog.getByText(app.managementFeedback.managedRootRemoved, { exact: true }).waitFor();
     await localizedDialog.getByText(app.managementFeedback.networkFailure, { exact: true }).waitFor();
     await localizedDialog.getByText("component:failed-runtime", { exact: true }).first().waitFor();
+    assert(!(await localizedDialog.innerText()).includes("fixture connection refused"), `${option.id}: diagnostic escaped as display copy`);
     checkedLanguages.push(option.id);
     previousLanguage = option.id;
     await page.keyboard.press("Escape");

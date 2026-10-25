@@ -12,13 +12,13 @@ public sealed class ControlCatalogLockTests
     public void MissingWriterIsNeverAdvertisedAsAnAccessLevelFix(string level)
     {
         var catalog = new WindowsControlObjectCatalog(null!, [], new Access(level), null!, null!);
-        var capability = new ControlCapability("gpu.core-voltage-offset", "Voltage", ControlValueKinds.Number,
-            false, "Not implemented", ControlUnavailableKinds.NotImplemented, RequiredAccessLevel: ControlAccessLevels.Root);
+        var capability = new ControlCapability("gpu.core-voltage-offset", ControlValueKinds.Number,
+            false, "control-writer-not-implemented", ControlUnavailableKinds.NotImplemented, RequiredAccessLevel: ControlAccessLevels.Root);
         var target = new ControlObject("gpu:test", ControlObjectKinds.Gpu, "GPU",
             new(ControlOperatingSystems.Windows, ControlVendors.Nvidia), [capability]);
         var result = catalog.ResolveCapability(target, capability);
         Assert.Equal(ControlUnavailableKinds.NotImplemented, result.UnavailableKind);
-        Assert.Equal("Not implemented", result.UnavailableReason);
+        Assert.Equal("control-writer-not-implemented", result.UnavailableReason?.Code);
         Assert.False(result.Supported);
     }
 

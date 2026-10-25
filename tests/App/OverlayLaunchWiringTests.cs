@@ -178,8 +178,8 @@ public sealed class OverlayLaunchWiringTests
         [], null, DateTimeOffset.UnixEpoch, enabled);
 
     private static SoftwareRecord Software(string path) => new(
-        "software", "Software", SoftwareKinds.Game, "game", "registered",
-        [], [], string.Empty, new SoftwareOperationCapabilities(false, "", "", ""),
+        "software", "Software", SoftwareKinds.Game, "registered",
+        [], [], new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
         null, ExecutablePaths: [path]);
 
     private sealed class StaticGpuPolicyStore(GpuPlacementPolicyDocument document) : IGpuPlacementPolicyStore

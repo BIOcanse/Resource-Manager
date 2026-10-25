@@ -32,8 +32,8 @@ public sealed partial class SqlitePersistenceTests
             var registration = Assert.Single(registry.GetSnapshot());
             Assert.Equal(SoftwareKinds.Game, registration.Kind);
             var software = new SoftwareRecord(registration.SoftwareId, registration.Name,
-                registration.Kind, SoftwareDisplayKinds.Project(registration.Kind), "portable", [],
-                registration.RootPaths, "", new(false, "None", "", ""), null);
+                registration.Kind, "portable", [],
+                registration.RootPaths, new(false, "None", "missing_uninstall_entry"), null);
             using var identityCatalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
                 "game-genshin-impact", "Genshin Impact", SoftwareKinds.Game, "test",
                 ExecutableNames: ["YuanShen.exe"]));

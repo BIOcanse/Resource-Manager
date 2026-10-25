@@ -13,12 +13,13 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   const issue = { id: "classification:unclassified", kind: "unclassified", severity: "info",
     source: "runtime_attribution", label: "", message: "", dynamic: false, references: [], reportIds: [] };
   const software = ["runtime_product", "runtime_package", "runtime_root"].map((kind, index) => ({
-    id: `runtime:${index}`, name: `Runtime App ${index}`, kind, displayKind: "other", state: "runtime",
-    sources: [kind], rootPaths: index === 0 ? [] : [`C:/Apps/Runtime${index}`], message: "",
-    operations: { canUninstall: false, uninstallKind: "None", uninstallLabel: "", uninstallMessage: "" },
+    id: `runtime:${index}`, name: `Runtime App ${index}`, kind, state: "runtime",
+    sourceFacts: [{ kind: "runtime" }], rootPaths: index === 0 ? [] : [`C:/Apps/Runtime${index}`],
+    requiresRootPathConfirmation: false, identityConfirmed: true,
+    operations: { canUninstall: false, uninstallKind: "None", uninstallConstraint: "missing_uninstall_entry" },
     issues: [issue]
   }));
-  software.push({ ...software[0], id: "runtime:game", name: "Windows Game", kind: "game", displayKind: "game",
+  software.push({ ...software[0], id: "runtime:game", name: "Windows Game", kind: "game",
     categorySource: "Windows GameConfigStore\\Children\\MatchedExeFullPath", issues: [] });
   await page.route("**/api/software", route => route.fulfill({ json: software.map((item, index) =>
     classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item).filter((_, index) => !removed || index !== 0) }));

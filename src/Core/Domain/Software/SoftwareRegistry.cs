@@ -58,11 +58,9 @@ public sealed record SoftwareRecord(
     string Id,
     string Name,
     string Kind,
-    string DisplayKind,
     string State,
-    IReadOnlyList<string> Sources,
+    IReadOnlyList<SoftwareSourceFact> SourceFacts,
     IReadOnlyList<string> RootPaths,
-    string Message,
     SoftwareOperationCapabilities Operations,
     string? ManagementRole,
     bool RequiresRootPathConfirmation = false,
@@ -71,24 +69,57 @@ public sealed record SoftwareRecord(
     IReadOnlyList<string>? ExecutablePaths = null,
     string? SoftwareIdentityId = null,
     IReadOnlyList<SoftwareIssueTag>? Issues = null,
-    /// <summary>这条记录要说的话。给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 Message。</summary>
-    BackendMessage? MessageCode = null,
     /// <summary>发布者与版本是事实，不走消息码；前端负责拼接与省略。</summary>
     string? Publisher = null,
     string? Version = null,
     /// <summary>Manual or policy classification, which precedes OS/catalog category evidence.</summary>
     bool HasExplicitKind = false,
     string? SourceSoftwareId = null,
-    string? CategorySource = null);
+    string? CategorySource = null,
+    SoftwareRegistrationFacts? RegistrationFacts = null);
+
+public sealed record SoftwareSourceFact(
+    string Kind,
+    string? CatalogVersion = null,
+    string? CatalogSource = null,
+    string? PolicyGroupId = null,
+    string? PolicyGroupName = null);
+
+public sealed record SoftwareRegistrationFacts(
+    string Kind,
+    int ProcessCount = 0,
+    int ServiceCount = 0,
+    string? EndpointState = null);
+
+public static class SoftwareSourceKinds
+{
+    public const string Dependency = "dependency";
+    public const string WindowsRegistry = "windows_registry";
+    public const string Self = "self";
+    public const string Adapter = "adapter";
+    public const string Controlled = "controlled";
+    public const string Portable = "portable";
+    public const string Manual = "manual";
+    public const string IdentityCatalog = "identity_catalog";
+    public const string Policy = "policy";
+    public const string Runtime = "runtime";
+}
 
 public sealed record SoftwareOperationCapabilities(
     bool CanUninstall,
     string UninstallKind,
-    string UninstallLabel,
-    string UninstallMessage,
-    /// <summary>操作名与说明的消息码；给了码就以码为准。</summary>
-    BackendMessage? UninstallLabelCode = null,
-    BackendMessage? UninstallMessageCode = null);
+    string UninstallConstraint);
+
+public static class SoftwareUninstallConstraints
+{
+    public const string None = "none";
+    public const string EmptyManagedRoot = "empty_managed_root";
+    public const string MissingUninstallEntry = "missing_uninstall_entry";
+    public const string ManualRegistration = "manual_registration";
+    public const string MissingStrategy = "missing_strategy";
+    public const string Self = "self";
+    public const string Portable = "portable";
+}
 
 public sealed record SoftwareOperationRequest(
     string Id,
@@ -106,11 +137,7 @@ public sealed record ManualSoftwareRecord(
     string Id,
     string Name,
     string Kind,
-    string DisplayKind,
-    string State,
-    IReadOnlyList<string> Sources,
     IReadOnlyList<string> RootPaths,
-    string Message,
     string? SourceSoftwareId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);

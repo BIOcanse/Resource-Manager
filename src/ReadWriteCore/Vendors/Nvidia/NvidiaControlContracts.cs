@@ -12,6 +12,11 @@ public sealed record NvidiaControlApplyOutcome(string ObjectId, string Capabilit
 {
     /// <summary>Original NVML setter status when that setter was invoked; acceptance is not readback verification.</summary>
     public int? NativeStatus { get; init; }
+    public double? Requested { get; init; }
+    public double? Observed { get; init; }
+    public double? Minimum { get; init; }
+    public double? Maximum { get; init; }
+    public string? Unit { get; init; }
 }
 public sealed record NvidiaControlActualValue(string ObjectId, string CapabilityId, double? Number = null, string? Unit = null, string? UnreadableReason = null);
 public readonly record struct NvidiaControlWriteAvailability(bool CanWrite, string? Reason = null,

@@ -10,6 +10,8 @@ public sealed record ControlOverclockConsentRequest(bool Accepted);
 /// <summary>切到哪一档调节权限。认不出来的值按最低那一档处理。</summary>
 public sealed record ControlAccessLevelRequest(string? Level);
 
+internal sealed record ControlRequestErrorPayload(ControlApplyReason Reason);
+
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapControlEndpoints(this IEndpointRouteBuilder app, StartupCapabilitySet startupCapabilities)
@@ -106,7 +108,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+                return ControlRequestFailure(app, error);
             }
         });
 
@@ -131,7 +133,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+                return ControlRequestFailure(app, error);
             }
         });
 
@@ -267,7 +269,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
             {
-                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+                return ControlRequestFailure(app, error);
             }
         });
 
@@ -283,7 +285,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             catch (ArgumentException error)
             {
-                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+                return ControlRequestFailure(app, error);
             }
         });
 
@@ -319,10 +321,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (InvalidOperationException error)
             {
                 // 设备还在场：说清楚为什么删不了，而不是点了没反应。
-                return Results.BadRequest(new EndpointErrorPayload(error.Message));
+                return ControlRequestFailure(app, error);
             }
         });
 
         return app;
+    }
+    private static IResult ControlRequestFailure(IEndpointRouteBuilder app, Exception error)
+    {
+        if (error is ControlRequestException rejection)
+            return Results.BadRequest(new ControlRequestErrorPayload(rejection.Reason));
+        app.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ControlRequests")
+            .LogWarning(error, "Control request rejected.");
+        return Results.BadRequest(new ControlRequestErrorPayload(new("control-invalid-request")));
     }
 }

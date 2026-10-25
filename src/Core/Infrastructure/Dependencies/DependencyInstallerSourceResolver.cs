@@ -54,7 +54,7 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
             Available: true,
             Version: source.VerifiedTag,
             AssetName: source.VerifiedAssetName,
-            UnavailableReason: null);
+            UnavailableReasonCode: null);
 
         var options = new List<DependencyVersionOption> { verified };
         try
@@ -72,8 +72,8 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
                 .ToArray();
             var latest = releases.FirstOrDefault();
             var stable = releases.FirstOrDefault(item => !item.Release.Prerelease && item.Parsed?.Stable == true);
-            options.Add(ToPinned(DependencyVersionChoices.Latest, latest, "没有可用的发布版本。"));
-            options.Add(ToPinned(DependencyVersionChoices.LatestStable, stable, "没有可用的稳定版本。"));
+            options.Add(ToPinned(DependencyVersionChoices.Latest, latest, "no-release"));
+            options.Add(ToPinned(DependencyVersionChoices.LatestStable, stable, "no-stable-release"));
             foreach (var release in releases)
             {
                 options.Add(new DependencyVersionOption(
@@ -81,7 +81,7 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
                     Available: release.Parsed is not null,
                     release.Release.Tag,
                     release.Asset!.Name,
-                    release.Parsed is null ? "该上游版本号不能可靠排序，无法确认升级方向。" : null,
+                    release.Parsed is null ? "version-unorderable" : null,
                     release.Parsed?.Series,
                     release.Release.Prerelease || release.Parsed?.Stable != true ? "preview" : "stable",
                     release.Release.PublishedAt));
@@ -102,13 +102,13 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
                 Available: false,
                 Version: null,
                 AssetName: null,
-                UnavailableReason: DescribeFailure(exception)));
+                UnavailableReasonCode: DescribeFailure(exception)));
             options.Add(new DependencyVersionOption(
                 DependencyVersionChoices.LatestStable,
                 Available: false,
                 Version: null,
                 AssetName: null,
-                UnavailableReason: DescribeFailure(exception)));
+                UnavailableReasonCode: DescribeFailure(exception)));
             return new DependencyVersionOptions(definition.Id, kind, options, "error", false);
         }
     }
@@ -175,7 +175,7 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
             return new DependencyVersionOption(choice, false, null, null, unavailableReason);
         return new DependencyVersionOption(choice, item.Parsed is not null,
             item.Release.Tag, item.Asset.Name,
-            item.Parsed is null ? "该上游版本号不能可靠排序。" : null,
+            item.Parsed is null ? "version-unorderable" : null,
             item.Parsed?.Series,
             item.Release.Prerelease || item.Parsed?.Stable != true ? "preview" : "stable",
             item.Release.PublishedAt);
@@ -196,7 +196,7 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
             .FirstOrDefault();
         if (selected.Release is null || selected.Asset is null)
             throw new InvalidOperationException(stableOnly
-                ? "没有可用的稳定版本。" : "没有可用的发布版本。");
+                ? "no-stable-release" : "no-release");
         EnsureAllowedAssetUrl(selected.Asset.DownloadUrl);
         return new ResolvedInstallerSource(
             selected.Asset.DownloadUrl, selected.Release.Tag, selected.Asset.Name);
@@ -252,9 +252,9 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
 
     private static string DescribeFailure(Exception exception) => exception switch
     {
-        TaskCanceledException => "连接 GitHub 超时。",
-        HttpRequestException => "无法连接 GitHub。",
-        JsonException => "GitHub 返回的数据无法解析。",
-        _ => exception.Message
+        TaskCanceledException => "timeout",
+        HttpRequestException => "network",
+        JsonException => "invalid-data",
+        _ => "catalog-failure"
     };
 }

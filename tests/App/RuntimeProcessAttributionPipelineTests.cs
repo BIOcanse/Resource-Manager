@@ -360,8 +360,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         var software = CreateSoftware("catalog:app-wps-office", "My Office", []) with
         {
             HasExplicitKind = explicitKind,
-            Kind = SoftwareKinds.HighPerformance,
-            DisplayKind = SoftwareDisplayKinds.HighPerformance
+            Kind = SoftwareKinds.HighPerformance
         };
         using var pipeline = CreatePipeline([software], identityCatalog: catalog,
             windowsGamePaths: new HashSet<string> { path });
@@ -438,8 +437,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         var software = CreateSoftware("catalog:app-wps-office", "WPS Office",
             confirmedRoot ? [@"D:\Software\WPS Office"] : []) with
         {
-            Kind = kind,
-            DisplayKind = SoftwareDisplayKinds.Project(kind)
+            Kind = kind
         };
         using var pipeline = CreatePipeline([software], identityCatalog: catalog);
         var result = pipeline.Match(new RuntimeProcessIdentity(
@@ -834,12 +832,10 @@ public sealed class RuntimeProcessAttributionPipelineTests
             id,
             name,
             SoftwareKinds.Other,
-            "other",
             "installed",
-            ["test"],
+            [],
             rootPaths,
-            "",
-            new SoftwareOperationCapabilities(false, "None", "不可卸载", ""),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null);
     }
 

@@ -14,12 +14,10 @@ public sealed partial class SoftwareRegistryView
 
         return first with
         {
-            Sources = records.SelectMany(static record => record.Sources).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            SourceFacts = records.SelectMany(static record => record.SourceFacts).Distinct().ToArray(),
             RootPaths = records.SelectMany(static record => record.RootPaths).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Kind = ResolveMergedKind(records),
             HasExplicitKind = records.Any(static record => record.HasExplicitKind),
-            DisplayKind = ResolveMergedDisplayKind(records),
-            Message = string.Join(" | ", records.Select(static record => record.Message).Where(static item => !string.IsNullOrWhiteSpace(item))),
             RequiresRootPathConfirmation = records.Any(static record => record.RequiresRootPathConfirmation),
             IdentityConfirmed = records.Any(static record => record.IdentityConfirmed),
             SuggestedRootPaths = records
@@ -46,14 +44,6 @@ public sealed partial class SoftwareRegistryView
             .OrderBy(static record => KindSort(record.Kind))
             .First()
             .Kind;
-    }
-
-    private static string ResolveMergedDisplayKind(IReadOnlyList<SoftwareRecord> records)
-    {
-        return records
-            .OrderBy(static record => KindSort(record.Kind))
-            .First()
-            .DisplayKind;
     }
 
     private static int KindSort(string kind)

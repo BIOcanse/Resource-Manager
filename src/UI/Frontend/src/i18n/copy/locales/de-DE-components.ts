@@ -1,0 +1,58 @@
+import type { AppCopy } from "../index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "Installationshinweise",
+  "capabilitiesCaption": "Funktionen",
+  "unknownCapability": "Unbekannte Funktion",
+  "capabilities": {
+    "power": "Leistung",
+    "voltage": "Spannung",
+    "current": "Stromstärke",
+    "temperature": "Temperatur",
+    "fan": "Lüfter",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "Messwerte je Kern",
+    "webRuntime": "Weboberflächen-Laufzeit",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "Zeitfenster",
+    "voltageOffset": "Spannungsversatz",
+    "hardwareMonitor": "Mainboard- und Speichersensoren",
+    "memoryTemperature": "Speichertemperatur",
+    "cpuFanRpm": "CPU-Lüfterdrehzahl",
+    "cpuFanPercent": "CPU-Lüfter in Prozent",
+    "gpuFanRpm": "GPU-Lüfterdrehzahl",
+    "gpuFanPercent": "GPU-Lüfter in Prozent",
+    "vendorAdapters": "Notebook-Herstelleradapter",
+    "gpuClocks": "GPU-Taktraten",
+    "gpuMemory": "Grafikspeicher",
+    "gpuPower": "GPU-Leistung",
+    "gpuTemperature": "GPU-Temperatur",
+    "gpuCooler": "GPU-Lüfter und Kühler",
+    "gpuVoltage": "GPU-Spannung",
+    "gpuCurrent": "GPU-Stromstärke",
+    "gpuBoardPower": "GPU-Platinenleistung",
+    "gpuHotspot": "GPU-Hotspot-Temperatur",
+    "gpuIntake": "GPU-Ansaugtemperatur",
+    "gpuFan": "GPU-Lüfter"
+  },
+  "installNotes": {
+    "webRuntime": "Offizieller Microsoft Evergreen Bootstrapper, von WebView2-Anwendungen auf dem gesamten Computer gemeinsam genutzt.",
+    "amdSmu": "Den signierten PawnIO-Treiber ausdrücklich installieren und prüfen, danach RyzenSMU- und AMDFamily17-Module für PM-Tabellen abrufen. Das Basispaket aktiviert den Treiber niemals stillschweigend.",
+    "intelMsr": "PawnIO ausdrücklich installieren; bei der Prüfung wird IntelMSR abgerufen. AMD nutzt denselben Systemtreiber, die Module bleiben getrennt. Firmware-Sperren und Grenzen signierter Module werden nicht umgangen.",
+    "sensorDriver": "Mainboard- und Speichersensoren teilen den ausdrücklich installierten PawnIO-Treiber. Der offizielle Kern enthält signierte LPC-, EC- und SMBus-Module und startet weder GUI noch Netzwerkdienst.",
+    "hardwareBridge": "Separates GPL-3.0-Hilfsprogramm mit ZenStates-Core. Startet und beendet sich bei Bedarf mit der Hauptanwendung und übernimmt Leistungsgrenzen sowie Curve-Optimizer-Spannungsschreibzugriffe.",
+    "hardwareMonitor": "Mitgelieferter MPL-2.0-Kern ausschließlich für Mainboard und Speicher. Benötigt PawnIO; Funktionen richten sich nach tatsächlichen Messungen.",
+    "notebookFan": "Mitgelieferter Nur-Lese-Adapter für installierte OEM-Treiber, Dienste oder DLLs. Unterstützt derzeit Mechrevo/Tongfang UWACPI. Installiert oder verteilt OEM-Treiber niemals stillschweigend.",
+    "driverRuntime": "Lädt die Laufzeit des installierten Grafiktreibers dynamisch. Das Basispaket verteilt keine Hersteller-Treiber-DLLs; Funktionen richten sich nach tatsächlichen Messwerten."
+  },
+  "versionFailures": {
+    "no-release": "Keine Veröffentlichung verfügbar.",
+    "no-stable-release": "Keine stabile Veröffentlichung verfügbar.",
+    "version-unorderable": "Die Version des Anbieters kann nicht zuverlässig eingeordnet und daher nicht ausgewählt werden.",
+    "timeout": "Zeitüberschreitung bei der Verbindung zu GitHub.",
+    "network": "Verbindung zu GitHub nicht möglich.",
+    "invalid-data": "Die von GitHub gelieferten Daten konnten nicht gelesen werden.",
+    "catalog-failure": "Der Versionskatalog konnte nicht gelesen werden. Erneut versuchen."
+  }
+};

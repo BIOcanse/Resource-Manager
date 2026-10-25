@@ -16,7 +16,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         {
             RequireMutableLocked();
             if (!HostManagerOperationKinds.All.Contains(command.Kind)
-                || string.IsNullOrWhiteSpace(command.Title)
+                || command.Subject is null
                 || command.RequestSchemaId == 0
                 || command.RequestSchemaVersion == 0
                 || command.CanonicalRequest is null)
@@ -41,14 +41,14 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 operationId,
                 default,
                 HostManagerOperationRequestCodec.EncodeText(command.Kind));
-            var title = candidatePayloads.Add(
-                HostManagerOperationRequestSchemas.UserTitle,
+            var subject = candidatePayloads.Add(
+                HostManagerOperationRequestSchemas.Subject,
                 HostManagerOperationRequestSchemas.Version,
-                HostManagerOperationPayloadRole.Title,
+                HostManagerOperationPayloadRole.Subject,
                 workspace.SessionInstanceId,
                 operationId,
                 default,
-                HostManagerOperationRequestCodec.EncodeText(command.Title));
+                HostManagerOperationRequestCodec.EncodeSubject(command.Subject));
             var request = candidatePayloads.Add(
                 command.RequestSchemaId,
                 command.RequestSchemaVersion,
@@ -59,7 +59,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 command.CanonicalRequest);
             var domainHandle = default(NativeOperationHandle128);
             var validity =
-                NativeOperationSubmitValidity.Title
+                NativeOperationSubmitValidity.Subject
                 | NativeOperationSubmitValidity.Request;
             if (!string.IsNullOrWhiteSpace(command.DomainKey))
             {
@@ -74,7 +74,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 domainHandle = domain.Handle;
                 validity |= NativeOperationSubmitValidity.Domain;
             }
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var now = timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
             var monotonic =
                 NativeOperationCoordinatorWorkspace.MonotonicMilliseconds();
             var input = new NativeOperationSubmitInput
@@ -82,7 +82,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 OperationId = operationId,
                 DomainId = domainHandle,
                 KindHandle = kind.Handle,
-                TitleHandle = title.Handle,
+                SubjectHandle = subject.Handle,
                 RequestHandle = request.Handle,
                 Priority = policy.Priority,
                 MaximumAttempts = policy.MaximumAttempts,
@@ -141,7 +141,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             {
                 OperationId = handle,
                 ObservedUtcMilliseconds =
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
                 ObservedMonotonicMilliseconds =
                     NativeOperationCoordinatorWorkspace.MonotonicMilliseconds(),
                 Flags = 0
@@ -198,7 +198,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 AttemptToken = ticket.Action.AttemptToken,
                 ProgressSequence = operation.ProgressSequence + 1,
                 ObservedUtcMilliseconds =
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
                 ObservedMonotonicMilliseconds =
                     NativeOperationCoordinatorWorkspace.MonotonicMilliseconds()
             };
@@ -224,27 +224,15 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             }
             if (progress.Stage is not null)
             {
-                input.StageHandle = candidatePayloads.Add(
+                input.StageFactHandle = candidatePayloads.Add(
                     HostManagerOperationRequestSchemas.ProgressStage,
                     HostManagerOperationRequestSchemas.Version,
                     HostManagerOperationPayloadRole.ProgressStage,
                     workspace.SessionInstanceId,
                     ticket.Action.OperationId,
                     ticket.Action.AttemptToken,
-                    HostManagerOperationRequestCodec.EncodeText(progress.Stage)).Handle;
+                    HostManagerOperationRequestCodec.EncodeStage(progress.Stage.Value)).Handle;
                 validity |= NativeOperationProgressValidity.Stage;
-            }
-            if (progress.Message is not null)
-            {
-                input.MessageHandle = candidatePayloads.Add(
-                    HostManagerOperationRequestSchemas.ProgressMessage,
-                    HostManagerOperationRequestSchemas.Version,
-                    HostManagerOperationPayloadRole.ProgressMessage,
-                    workspace.SessionInstanceId,
-                    ticket.Action.OperationId,
-                    ticket.Action.AttemptToken,
-                    HostManagerOperationRequestCodec.EncodeText(progress.Message)).Handle;
-                validity |= NativeOperationProgressValidity.Message;
             }
             if (progress.Checkpoint is not null)
             {

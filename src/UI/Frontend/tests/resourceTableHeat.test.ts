@@ -7,8 +7,8 @@ function row(id: string, memory: number | null, cpu: number): ResourceTableRow {
     id, kind: id === "summary" ? "summary" : "software", depth: 0,
     name: id, status: "", processCount: 1, impactScore: 0,
     values: {
-      memory: { value: memory, displayValue: `${memory} GB`, percent: 90 },
-      cpu: { value: cpu, displayValue: `${cpu}%`, percent: cpu }
+      memory: { value: memory, unit: "B", percent: 90 },
+      cpu: { value: cpu, unit: "%", percent: cpu }
     }
   };
 }

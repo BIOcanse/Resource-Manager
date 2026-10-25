@@ -17,9 +17,7 @@ public sealed class DependencyInstallerSourceResolverTests
         IReadOnlyList<string>? assetPatterns = null) =>
         new(
             Id: "test-dependency",
-            Name: "Test Dependency",
             Vendor: "Test",
-            Category: "Test",
             SourcePageUrl: "https://github.com/owner/repo",
             DownloadUrl: null,
             ExternalTermsUrl: "https://github.com/owner/repo/blob/master/LICENSE",
@@ -29,7 +27,7 @@ public sealed class DependencyInstallerSourceResolverTests
             RequiresExternalTermsAcknowledgement: true,
             RequiresElevation: false,
             InstalledProbeRelativePaths: [],
-            InstallNote: "test",
+            InstalledProductNames: ["Test Dependency"],
             ReleaseSource: new GitHubReleaseSource(
                 Owner: "owner",
                 Repository: "repo",
@@ -155,7 +153,7 @@ public sealed class DependencyInstallerSourceResolverTests
         Assert.True(verified.Available);
         Assert.Equal("v1.2.3", verified.Version);
         Assert.False(latest.Available);
-        Assert.False(string.IsNullOrWhiteSpace(latest.UnavailableReason));
+        Assert.Equal("network", latest.UnavailableReasonCode);
     }
 
     [Fact]
@@ -219,6 +217,14 @@ public sealed class DependencyInstallerSourceResolverTests
         }
     }
 
+    [Fact]
+    public async Task EmptyReleaseCatalogReturnsDistinctAvailabilityCodes()
+    {
+        var options = await CreateResolver(payload: "[]").GetVersionOptionsAsync(GitHubDefinition(), CancellationToken.None);
+        Assert.Equal("no-release", options.Options.Single(option => option.Choice == DependencyVersionChoices.Latest).UnavailableReasonCode);
+        Assert.Equal("no-stable-release", options.Options.Single(option => option.Choice == DependencyVersionChoices.LatestStable).UnavailableReasonCode);
+        Assert.True(options.Options.Single(option => option.Choice == DependencyVersionChoices.Verified).Available);
+    }
     private sealed class StubHandler(
         HttpStatusCode statusCode,
         string? payload,

@@ -274,8 +274,8 @@ fn validateRecord(
     }
     if (((persisted.flags & protocol.OperationFlags.domain_valid) != 0) ==
         persisted.domain_id.isZero()) return .invalid_argument;
-    if (((persisted.flags & protocol.OperationFlags.title_valid) != 0) ==
-        persisted.title_handle.isZero()) return .invalid_argument;
+    if (((persisted.flags & protocol.OperationFlags.subject_valid) != 0) ==
+        persisted.subject_handle.isZero()) return .invalid_argument;
     if (((persisted.flags & protocol.OperationFlags.request_valid) != 0) ==
         persisted.request_handle.isZero()) return .invalid_argument;
     if (((persisted.flags & protocol.OperationFlags.result_valid) != 0) ==
@@ -401,9 +401,9 @@ fn validateRecord(
         return .invalid_argument;
     }
     if (((persisted.progress_valid_mask & protocol.ProgressValid.stage) != 0) ==
-        persisted.stage_handle.isZero()) return .invalid_argument;
-    if (((persisted.progress_valid_mask & protocol.ProgressValid.message) != 0) ==
-        persisted.message_handle.isZero()) return .invalid_argument;
+        persisted.stage_fact_handle.isZero()) return .invalid_argument;
+    if (((persisted.progress_valid_mask & protocol.ProgressValid.detail_fact) != 0) ==
+        persisted.detail_fact_handle.isZero()) return .invalid_argument;
     if (((persisted.progress_valid_mask & protocol.ProgressValid.checkpoint) != 0) ==
         persisted.checkpoint_handle.isZero()) return .invalid_argument;
     if (persisted.progress_sequence == 0 and persisted.progress_valid_mask != 0) {
@@ -419,7 +419,7 @@ fn recordFromPersistence(persisted: *const protocol.PersistenceRecord) Record {
         .operation_id = persisted.operation_id,
         .domain_id = persisted.domain_id,
         .kind_handle = persisted.kind_handle,
-        .title_handle = persisted.title_handle,
+        .subject_handle = persisted.subject_handle,
         .request_handle = persisted.request_handle,
         .result_handle = persisted.result_handle,
         .error_handle = persisted.error_handle,
@@ -448,8 +448,8 @@ fn recordFromPersistence(persisted: *const protocol.PersistenceRecord) Record {
         .bytes_done = persisted.bytes_done,
         .bytes_total = persisted.bytes_total,
         .speed_bytes_per_second = persisted.speed_bytes_per_second,
-        .stage_handle = persisted.stage_handle,
-        .message_handle = persisted.message_handle,
+        .stage_fact_handle = persisted.stage_fact_handle,
+        .detail_fact_handle = persisted.detail_fact_handle,
         .checkpoint_handle = persisted.checkpoint_handle,
         .flags = persisted.flags,
         .attempt_configuration_generation = persisted.attempt_configuration_generation,
@@ -727,7 +727,7 @@ fn validTestRecord() protocol.PersistenceRecord {
         .operation_id = .{ .high = 0, .low = 1 },
         .domain_id = .{ .high = 0, .low = 0 },
         .kind_handle = .{ .high = 0, .low = 2 },
-        .title_handle = .{ .high = 0, .low = 0 },
+        .subject_handle = .{ .high = 0, .low = 0 },
         .request_handle = .{ .high = 0, .low = 0 },
         .result_handle = .{ .high = 0, .low = 0 },
         .error_handle = .{ .high = 0, .low = 0 },
@@ -757,8 +757,8 @@ fn validTestRecord() protocol.PersistenceRecord {
         .bytes_done = 0,
         .bytes_total = 0,
         .speed_bytes_per_second = 0,
-        .stage_handle = .{ .high = 0, .low = 0 },
-        .message_handle = .{ .high = 0, .low = 0 },
+        .stage_fact_handle = .{ .high = 0, .low = 0 },
+        .detail_fact_handle = .{ .high = 0, .low = 0 },
         .checkpoint_handle = .{ .high = 0, .low = 0 },
         .flags = 0,
         .attempt_configuration_generation = 0,

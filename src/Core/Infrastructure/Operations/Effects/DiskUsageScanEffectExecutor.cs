@@ -38,11 +38,11 @@ internal sealed class DiskUsageScanEffectExecutor(
         }
         catch (IOException error)
         {
-            return new(HostManagerOperationEffectOutcome.RetryableFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.RetryableFailure, HostManagerOperationFeedback.Failure(error));
         }
         catch (Exception error)
         {
-            return new(HostManagerOperationEffectOutcome.TerminalFailure, error.Message);
+            return new(HostManagerOperationEffectOutcome.TerminalFailure, HostManagerOperationFeedback.Failure(error));
         }
     }
 

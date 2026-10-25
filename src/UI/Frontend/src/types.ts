@@ -133,7 +133,7 @@ export interface MetricSnapshot {
 }
 
 export interface GpuSpecializedTelemetrySnapshot {
-  version: 2;
+  version: 3;
   capturedAt: string;
   adapters: GpuSpecializedTelemetryAdapter[];
 }
@@ -148,7 +148,6 @@ export interface GpuSpecializedTelemetryAdapter {
 
 export interface GpuSpecializedTelemetryCounter {
   counterId: string;
-  displayName: string;
   counterClass: number;
   value?: number | null;
   unit: string;
@@ -515,9 +514,8 @@ export interface ResourceTableColumn {
 export interface ResourceTableValue {
   value?: number | null;
   percent?: number | null;
-  // 只有文本单元（进程号、用户、架构）带文本；数值单元是空串，
-  // 由 resourceTableCellText 按 unit 和 value 出文本。
-  displayValue: string;
+  /** Text produced by the frontend table projection; never read from the facts wire. */
+  displayValue?: string | null;
   unit: string;
   availability?: string | null;
   heatPercent?: number | null;
@@ -551,12 +549,13 @@ export interface SystemProcessOperationItem {
   processStartKey?: string | null;
   processName?: string | null;
   state: string;
-  message: string;
+  outcome: SystemProcessOutcome;
+  nativeErrorCode?: number | null;
   path?: string | null;
 }
 
 export interface SystemProcessOperationResult {
-  message: string;
+  action: "Terminate" | "Dump";
   items: SystemProcessOperationItem[];
   directoryPath?: string | null;
 }
@@ -564,7 +563,6 @@ export interface SystemProcessOperationResult {
 export interface LocalOnlineSearchResult {
   query: string;
   url: string;
-  message: string;
 }
 
 export interface ResourceTableSort {
@@ -603,24 +601,19 @@ export interface ControlledRegistration {
 
 export interface ManagedComponentDefinition {
   id?: string;
-  name?: string;
-  purpose?: string;
   vendor?: string;
-  category?: string;
   sourcePageUrl?: string;
-  externalTermsUrl?: string;
+  externalTermsUrl?: string | null;
   managementRole?: ManagementRole;
   isBundled?: boolean;
   requiresElevation?: boolean;
   requiresExternalTermsAcknowledgement?: boolean;
-  installNote?: string;
   capabilities?: ComponentCapability[];
   [key: string]: unknown;
 }
 
 export interface ComponentCapability {
   id?: string;
-  label?: string;
   providerKind?: string;
   providerId?: string;
   [key: string]: unknown;
@@ -628,10 +621,10 @@ export interface ComponentCapability {
 
 export interface ComponentProviderState {
   providerId?: string;
-  name?: string;
   state?: string;
   providerKind?: string;
-  message?: string;
+  message?: BackendMessage;
+  runtimePath?: string | null;
   capabilities?: string[];
   [key: string]: unknown;
 }
@@ -645,7 +638,7 @@ export interface ComponentVersionOption {
   available: boolean;
   version?: string | null;
   assetName?: string | null;
-  unavailableReason?: string | null;
+  unavailableReasonCode?: string | null;
   series?: string | null;
   channel?: string | null;
   publishedAt?: string | null;
@@ -663,11 +656,10 @@ export interface ManagedComponent {
   definition?: ManagedComponentDefinition;
   installerSourceKind?: ComponentInstallerSourceKind;
   state?: string;
-  stateLabel?: string;
   message?: BackendMessage;
   installRoot?: string;
   installerDirectory?: string;
-  installerPath?: string;
+  installerPath?: string | null;
   canDownload?: boolean;
   canInstall?: boolean;
   canVerify?: boolean;
@@ -681,10 +673,10 @@ export interface SoftwareRecord {
   id: string;
   name: string;
   kind: string;
-  displayKind?: string;
   managementRole?: ManagementRole | null;
   state?: string;
-  sources?: string[];
+  sourceFacts?: SoftwareSourceFact[];
+  registrationFacts?: SoftwareRegistrationFacts | null;
   categorySource?: string | null;
   rootPaths?: string[];
   suggestedRootPaths?: string[];
@@ -693,20 +685,29 @@ export interface SoftwareRecord {
   issues?: SoftwareIssueTag[];
   requiresRootPathConfirmation?: boolean;
   identityConfirmed?: boolean;
-  message?: string;
-  /** 给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 message。 */
-  messageCode?: BackendMessage;
   /** 发布者与版本是事实，由前端拼接与省略。 */
   publisher?: string | null;
   version?: string | null;
   operations?: {
     canUninstall?: boolean;
     uninstallKind?: string;
-    uninstallLabel?: string;
-    uninstallMessage?: string;
-    uninstallLabelCode?: BackendMessage;
-    uninstallMessageCode?: BackendMessage;
+    uninstallConstraint?: "none" | "empty_managed_root" | "missing_uninstall_entry" | "manual_registration" | "missing_strategy" | "self" | "portable";
   };
+}
+
+export interface SoftwareSourceFact {
+  kind: "dependency" | "windows_registry" | "self" | "adapter" | "controlled" | "portable" | "manual" | "identity_catalog" | "policy" | "runtime";
+  catalogVersion?: string | null;
+  catalogSource?: string | null;
+  policyGroupId?: string | null;
+  policyGroupName?: string | null;
+}
+
+export interface SoftwareRegistrationFacts {
+  kind: "self" | "adapter" | "controlled" | "portable" | "manual";
+  processCount: number;
+  serviceCount: number;
+  endpointState?: string | null;
 }
 
 export interface SoftwareIssueReference {
@@ -843,7 +844,8 @@ export interface GpuPlacementProviderCapability {
   providerId: string;
   graphicsApi: string;
   architecture?: string | null;
-  reason: string;
+  reasonCode: string;
+  missingFiles: string[];
 }
 
 export interface GpuPlacementProcessCapabilities {
@@ -854,15 +856,15 @@ export interface GpuPlacementProcessCapabilities {
 
 export interface GpuPlacementExactTargetOption {
   targetGpu: string;
-  displayName: string;
+  adapterName?: string | null;
   available: boolean;
-  reason?: string | null;
+  reasonCode?: string | null;
 }
 
 export interface GpuPlacementTargetInventory {
   state: "current" | "unavailable";
   exactTargets: GpuPlacementExactTargetOption[];
-  reason?: string | null;
+  reasonCode?: string | null;
 }
 
 export interface GpuPlacementSoftwareSettingsSnapshot {
@@ -1304,7 +1306,6 @@ export interface CpuTopologySnapshot {
   ccds: CpuCcdModel[];
   physicalCores: CpuPhysicalCoreModel[];
   logicalProcessors: CpuLogicalProcessorModel[];
-  notes: string[];
 }
 
 export interface CpuCoreResidencySnapshot {
@@ -1453,7 +1454,6 @@ export interface CpuSpecificationModel {
 export interface CpuCcdModel {
   id: string;
   index: number;
-  label: string;
   usagePercent?: number | null;
   physicalCoreIndexes: number[];
   logicalProcessorIds: number[];
@@ -1463,7 +1463,6 @@ export interface CpuCcdModel {
 export interface CpuPhysicalCoreModel {
   id: string;
   index: number;
-  label: string;
   ccdId: string;
   efficiencyClass: number;
   performanceScore: number;
@@ -1515,15 +1514,14 @@ export interface OperationProgress {
   bytesDone: string | null;
   bytesTotal: string | null;
   speedBytesPerSecond: string | null;
-  stage: string | null;
-  message: string | null;
+  stage: "Download" | null;
 }
 
 export interface OperationSnapshot {
   id: string;
   kind: string;
   domainKey: string | null;
-  title: string | null;
+  subject: OperationSubject | null;
   state: OperationState;
   configurationGeneration: string;
   stateRevision: string;
@@ -1534,8 +1532,6 @@ export interface OperationSnapshot {
   completedAt: string | null;
   cancelRequested: boolean;
   progress: OperationProgress | null;
-  result: string | null;
-  error: string | null;
   resultCode?: string | null;
   resultMessage?: BackendMessage | null;
   errorMessage?: BackendMessage | null;
@@ -1713,4 +1709,14 @@ export interface OptimizationReportOverview {
   trustedTargets: readonly TrustedOptimizationTarget[];
   protectedTargets: readonly ProtectedOptimizationTarget[];
   status: OptimizationRecorderStatus;
+}
+
+
+export type SystemProcessOutcome = 'Terminated' | 'DumpCreated' | 'BackendProtected' | 'CriticalProcessProtected' | 'IdentityChanged' | 'ProcessExited' | 'AccessDenied' | 'NativeFailure' | 'FileFailure' | 'RequestRejected';
+
+export interface OperationSubject {
+  targetId: string | null;
+  scope: string | null;
+  mode: string | null;
+  targetPath: string | null;
 }

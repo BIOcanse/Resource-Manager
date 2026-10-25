@@ -8,12 +8,13 @@ import { VersionSelector, type VersionChoice } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
 import { postShellMessage } from "../../../utils";
 
-interface ProductVersionOption extends VersionChoice {
+interface ProductVersionOption extends Omit<VersionChoice, "unavailableReason"> {
   version: string;
   assetName: string;
   downloadUrl: string;
   checksumUrl: string;
   selectable: boolean;
+  eligibility: "eligible" | "installedVersionUnknown" | "notNewer";
 }
 
 interface ProductVersionCatalog {

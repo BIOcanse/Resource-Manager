@@ -1,4 +1,5 @@
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
+import { componentFixture } from "./componentFixtures.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -30,10 +31,7 @@ export default async function localizationJourney(page, baseUrl) {
   let verificationRequests = 0;
   const pendingVerificationReleases = [];
   const verificationStartWaiters = [];
-  await page.route("**/api/components", route => route.fulfill({ json: [{
-    definition: { id: "hardware-bridge", name: "HardwareBridge", managementRole: "dependency", capabilities: [] },
-    installed: false, canInstall: true, canVerify: true, providers: [], message: { domain: 1, code: 9, args: [] }
-  }] }));
+  await page.route("**/api/components", route => route.fulfill({ json: [componentFixture()] }));
   await page.route("**/api/components/hardware-bridge/verify", async route => {
     if (route.request().method() !== "POST") throw new Error("Verification must use the existing POST endpoint");
     verificationRequests++;
@@ -86,7 +84,7 @@ export default async function localizationJourney(page, baseUrl) {
     { choice: "version:0.3.9", version: "0.3.9", series: "0.3", channel: "preview", selectable: true },
     { choice: "version:0.3.8", version: "0.3.8", series: "0.3", channel: "stable", selectable: true },
     { choice: "version:0.3.1", version: "0.3.1", series: "0.3", channel: "stable", selectable: false,
-      unavailableReason: "只能选择高于当前安装版本的发行版。" }
+      eligibility: "notNewer" }
   ];
   await page.route("**/api/updates/product/versions", route => route.fulfill({ json: {
     installedVersion: "0.3.5", status: "loaded", complete: true, checkedAt: "2026-10-01T12:00:00Z", options: history
@@ -252,7 +250,7 @@ export default async function localizationJourney(page, baseUrl) {
     if (await oldVersion.count() !== 0) throw new Error(`${option.id}: minor versions were not collapsed`);
     await page.locator(".version-selector-expand").click();
     if (!await oldVersion.isDisabled()) throw new Error(`${option.id}: an old version can be selected`);
-    await page.getByText(settings.updates.unavailableReasons["只能选择高于当前安装版本的发行版。"], { exact: true }).waitFor();
+    await page.getByText(settings.updates.unavailableReasons["notNewer"], { exact: true }).waitFor();
     await page.locator('input[value="latest"]').check();
     const confirmation = page.waitForEvent("dialog");
     const click = page.getByRole("button", { name: settings.updates.prepare, exact: true }).click();

@@ -98,7 +98,7 @@ public sealed class ElevatedProcessActionTests
     [Fact]
     public void NativeTerminationResultsUseEveryDeclaredLanguageAndRetainBothCounts()
     {
-        const string payload = "{\"message\":\"已结束 1 / 2 个进程。\",\"items\":[{\"state\":\"Succeeded\"},{\"state\":\"Skipped\"}]}";
+        const string payload = "{\"action\":\"Terminate\",\"items\":[{\"state\":\"Succeeded\",\"outcome\":\"Terminated\"},{\"state\":\"Skipped\",\"outcome\":\"ProcessExited\"}]}";
         foreach (var language in NativeLanguage.SupportedIds)
         {
             var text = NativeTextCatalog.For(language);
@@ -108,6 +108,16 @@ public sealed class ElevatedProcessActionTests
             Assert.Contains("1", actual); Assert.Contains("2", actual);
             if (language != "zh-CN") Assert.NotEqual("已结束 1 / 2 个进程。", actual);
         }
+    }
+
+    [Theory]
+    [InlineData("Dump", "Terminated", "Succeeded")]
+    [InlineData("Terminate", "DumpCreated", "Succeeded")]
+    [InlineData("Terminate", "Terminated", "Failed")]
+    public void NativeTerminationConsumerRejectsInconsistentFacts(string action, string outcome, string state)
+    {
+        var payload = System.Text.Json.JsonSerializer.Serialize(new { action, items = new[] { new { outcome, state } } });
+        Assert.Throws<InvalidDataException>(() => BackendServiceSession.SummarizeTermination(payload, NativeTextCatalog.For("en-US")));
     }
 
     [Fact]

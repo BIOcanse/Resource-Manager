@@ -246,8 +246,8 @@ pub const Session = struct {
         if ((input.valid_mask & protocol.SubmitValid.domain) != 0) {
             flags |= protocol.OperationFlags.domain_valid;
         }
-        if ((input.valid_mask & protocol.SubmitValid.title) != 0) {
-            flags |= protocol.OperationFlags.title_valid;
+        if ((input.valid_mask & protocol.SubmitValid.subject) != 0) {
+            flags |= protocol.OperationFlags.subject_valid;
         }
         if ((input.valid_mask & protocol.SubmitValid.request) != 0) {
             flags |= protocol.OperationFlags.request_valid;
@@ -259,7 +259,7 @@ pub const Session = struct {
             .operation_id = input.operation_id,
             .domain_id = input.domain_id,
             .kind_handle = input.kind_handle,
-            .title_handle = input.title_handle,
+            .subject_handle = input.subject_handle,
             .request_handle = input.request_handle,
             .priority = input.priority,
             .submit_sequence = self.submit_sequence,
@@ -913,10 +913,10 @@ pub const Session = struct {
             record.speed_bytes_per_second = input.speed_bytes_per_second;
         }
         if ((input.valid_mask & protocol.ProgressValid.stage) != 0) {
-            record.stage_handle = input.stage_handle;
+            record.stage_fact_handle = input.stage_fact_handle;
         }
-        if ((input.valid_mask & protocol.ProgressValid.message) != 0) {
-            record.message_handle = input.message_handle;
+        if ((input.valid_mask & protocol.ProgressValid.detail_fact) != 0) {
+            record.detail_fact_handle = input.detail_fact_handle;
         }
         if ((input.valid_mask & protocol.ProgressValid.checkpoint) != 0) {
             record.checkpoint_handle = input.checkpoint_handle;
@@ -1404,8 +1404,8 @@ fn resetAttemptTransient(record: *Record) void {
     record.bytes_done = 0;
     record.bytes_total = 0;
     record.speed_bytes_per_second = 0;
-    record.stage_handle = .{ .high = 0, .low = 0 };
-    record.message_handle = .{ .high = 0, .low = 0 };
+    record.stage_fact_handle = .{ .high = 0, .low = 0 };
+    record.detail_fact_handle = .{ .high = 0, .low = 0 };
     record.checkpoint_handle = .{ .high = 0, .low = 0 };
     record.flags &= ~(protocol.OperationFlags.result_valid |
         protocol.OperationFlags.error_valid |
@@ -1473,8 +1473,8 @@ fn sameSubmissionIdentity(record: *const Record, input: *const protocol.SubmitIn
             protocol.SubmitValid.domain
         else
             0) |
-        (if ((record.flags & protocol.OperationFlags.title_valid) != 0)
-            protocol.SubmitValid.title
+        (if ((record.flags & protocol.OperationFlags.subject_valid) != 0)
+            protocol.SubmitValid.subject
         else
             0) |
         (if ((record.flags & protocol.OperationFlags.request_valid) != 0)
@@ -1484,7 +1484,7 @@ fn sameSubmissionIdentity(record: *const Record, input: *const protocol.SubmitIn
     return record_valid_mask == input.valid_mask and
         protocol.equalHandle(record.kind_handle, input.kind_handle) and
         protocol.equalHandle(record.domain_id, input.domain_id) and
-        protocol.equalHandle(record.title_handle, input.title_handle) and
+        protocol.equalHandle(record.subject_handle, input.subject_handle) and
         protocol.equalHandle(record.request_handle, input.request_handle);
 }
 

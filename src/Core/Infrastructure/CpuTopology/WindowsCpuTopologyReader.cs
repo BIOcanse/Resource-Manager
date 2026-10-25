@@ -67,7 +67,6 @@ public sealed partial class WindowsCpuTopologyReader(
             physicalCores.Add(new CpuPhysicalCoreModel(
                 coreId,
                 core.Index,
-                $"Core {core.Index}",
                 ccd.Id,
                 core.EfficiencyClass,
                 performanceScore,
@@ -114,7 +113,6 @@ public sealed partial class WindowsCpuTopologyReader(
                 return new CpuCcdModel(
                     ccd.Id,
                     ccd.Index,
-                    $"CCD {ccd.Index}",
                     CpuTopologyMath.AverageUsage(logicalIds.Select(id => TryGetUsage(usageValues, id))),
                     coreIndexes,
                     logicalIds,
@@ -128,13 +126,6 @@ public sealed partial class WindowsCpuTopologyReader(
             })
             .ToArray();
         var visualLayout = CpuTopologyVisualLayoutResolver.Resolve(cpuPreset, ccds.Length);
-
-        if (coreRecords.Any(static core => core.LogicalProcessors.Count > 1))
-        {
-            notes.Add("物理核心占用由该核心下的逻辑处理器平均聚合。");
-        }
-
-        notes.Add("Windows 进程/线程 affinity mask 的目标是逻辑处理器 bit；选择物理核心或 CCD 时会展开成逻辑处理器集合。");
 
         return new CpuTopologySnapshot(
             DateTimeOffset.Now,

@@ -18,6 +18,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerPlanCompilerTests
 {
     [Fact]
+    public void DefaultProfilePublishesTheOperationFactPayloadAbi()
+    {
+        var plan = Compile(StrictHostManagerProfileLoader.LoadBytes(ReadDefaultProfile(), "test/default.json"));
+
+        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.OperationCoordinator.AbiVersion);
+        Assert.Equal(NativeOperationCoordinatorAbi.Version, plan.OperationCoordinator.Build.AbiVersion);
+        Assert.True(plan.BuildSpecialize.OperationCoordinator.IsPublished);
+        Assert.True(plan.BuildSpecialize.IsPublished);
+        Assert.True(plan.OperationCoordinator.Build.IsPublished);
+        Assert.True(plan.OperationCoordinator.IsPublished);
+        Assert.True(plan.IsPublished);
+
+        var legacyBuild = plan.OperationCoordinator.Build with { AbiVersion = 0x0001_0000U };
+        Assert.False(legacyBuild.IsPublished);
+        Assert.False((plan.OperationCoordinator with { Build = legacyBuild }).IsPublished);
+        Assert.False((plan with { OperationCoordinator = plan.OperationCoordinator with { Build = legacyBuild } }).IsPublished);
+    }
+
+    [Fact]
     public void DefaultProfile_CompilesCompleteHostPublicAndPrivateResourcePlans()
     {
         var loaded = StrictHostManagerProfileLoader.LoadBytes(

@@ -9,7 +9,7 @@ public sealed class NativeOperationCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0001_0000U, NativeOperationCoordinatorAbi.Version);
+        Assert.Equal(0x0002_0000U, NativeOperationCoordinatorAbi.Version);
         Assert.Equal(16, Unsafe.SizeOf<NativeOperationHandle128>());
         Assert.Equal(168, Unsafe.SizeOf<NativeOperationCoordinatorConfiguration>());
         Assert.Equal(112, Unsafe.SizeOf<NativeOperationCoordinatorCapacity>());

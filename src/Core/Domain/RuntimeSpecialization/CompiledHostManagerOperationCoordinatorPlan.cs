@@ -7,7 +7,7 @@ public sealed record CompiledHostManagerOperationCoordinatorBuildPlan(
     string NativeModule,
     CompiledHostManagerOperationCoordinatorCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x0001_0000U
+    public bool IsPublished => AbiVersion == 0x0002_0000U
         && string.Equals(
             NativeModule,
             "operation_coordinator",

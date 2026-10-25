@@ -22,15 +22,15 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(),
     objects: [{
-      id: objectId, kind: "gpu", displayName: "Toggle GPU", isControllable: true,
+      id: objectId, kind: "gpu", reportedName: "Toggle GPU", isControllable: true,
       platform: { operatingSystem: "windows", vendor: "amd" },
-      capabilities: [{ id: capabilityId, label: "Dynamic Boost", valueKind: "toggle", supported: true, requiredAccessLevel: "normal" }]
+      capabilities: [{ id: capabilityId, valueKind: "toggle", supported: true, requiredAccessLevel: "normal" }]
     }]
   } }));
   await page.route("**/api/control/state**", route => {
     if (route.request().method() === "POST") {
       retries.push(route.request().url());
-      outcomes = settings.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "applied", message: null }));
+      outcomes = settings.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "applied", reason: null }));
       return route.fulfill({ json: state() });
     }
     if (route.request().method() !== "PUT") return route.fulfill({ json: state() });
@@ -39,8 +39,8 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
     const released = settings.filter(previous => !next.some(entry => entry.capabilityId === previous.capabilityId));
     settings = next;
     outcomes = [
-      ...next.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: failWrite ? "failed" : "applied", message: null, reason: failWrite ? { code: "control-write-failed" } : null })),
-      ...released.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "failed", message: "Restore failed", reason: { code: "control-release-failed" } }))
+      ...next.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: failWrite ? "failed" : "applied", reason: failWrite ? { code: "control-write-failed" } : null })),
+      ...released.map(entry => ({ objectId, capabilityId: entry.capabilityId, status: "failed", reason: { code: "control-release-failed" } }))
     ];
     failWrite = false;
     return route.fulfill({ json: state() });

@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Domain.Dependencies;
@@ -67,9 +67,7 @@ public static class DependencyVersionChoices
 
 public sealed record OptionalDependencyDefinition(
     string Id,
-    string Name,
     string Vendor,
-    string Category,
     string SourcePageUrl,
     string? DownloadUrl,
     string? ExternalTermsUrl,
@@ -79,7 +77,7 @@ public sealed record OptionalDependencyDefinition(
     bool RequiresExternalTermsAcknowledgement,
     bool RequiresElevation,
     IReadOnlyList<string> InstalledProbeRelativePaths,
-    string InstallNote,
+    IReadOnlyList<string> InstalledProductNames,
     GitHubReleaseSource? ReleaseSource = null,
     /// <summary>安装器之外还需要的运行时文件；没有就是 null。</summary>
     DependencyPayloadSource? PayloadSource = null)
@@ -101,14 +99,14 @@ public sealed record ResolvedInstallerSource(
 
 /// <summary>
 /// 版本对话框要显示的内容：一个已验证版本 + 一个最新版本。任一项不可用时用
-/// <see cref="DependencyVersionOption.UnavailableReason"/> 说明原因，而不是从列表里消失。
+/// <see cref="DependencyVersionOption.UnavailableReasonCode"/> 说明原因，而不是从列表里消失。
 /// </summary>
 public sealed record DependencyVersionOption(
     string Choice,
     bool Available,
     string? Version,
     string? AssetName,
-    string? UnavailableReason,
+    string? UnavailableReasonCode,
     string? Series = null,
     string? Channel = null,
     DateTimeOffset? PublishedAt = null);

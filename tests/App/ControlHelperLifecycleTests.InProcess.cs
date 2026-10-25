@@ -13,13 +13,15 @@ public sealed partial class ControlHelperLifecycleTests
     {
         var creates = 0;
         var closes = 0;
+        var log = new FanBoundaryLogger<FanControlCoreClient>();
         await using var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
         {
             creates++;
             return new DelegateFanSession(_ => throw new ApplicationException("injected fan failure"), () => closes++);
-        });
+        }, log);
         Assert.Null(await client.SendAsync("read", null, default));
-        Assert.Equal("injected fan failure", client.UnavailableReason);
+        Assert.Equal("fan-core-failed", client.UnavailableReason);
+        Assert.Contains(log.Messages, message => message.Contains("request failed (read)", StringComparison.Ordinal));
         Assert.Null(await client.SendAsync("read", null, default));
         Assert.Equal(1, creates);
         await client.DisposeAsync();

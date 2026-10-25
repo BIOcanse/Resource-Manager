@@ -136,6 +136,7 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       lastSeen: (time: string) => `Last ${time}`
     },
     gpuLaunchOutcome: {
+      configured: "Launch environment configured; device selection not yet observed",
       ready: "GPU setting ready",
       systemDefault: "Using the system default",
       switchedToSystemDefault: "Switched to the system default",
@@ -146,6 +147,25 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       unknown: "Launch result unknown"
     },
     providerPhase: {
+      reasons: {
+        "startup-provider-missing": "Launch provider files are missing; saved settings will not execute.",
+        "runtime-observation-required": "Waiting for the current GPU process and renderer to be confirmed; only confirmed external recreation routes can execute.",
+        "runtime-route-unverified": "No verified runtime GPU switching route without injection is available.",
+        "executable-path-missing": "The full executable path is not yet known.",
+        "executable-path-invalid": "The executable path is invalid.",
+        "executable-missing": "The executable does not currently exist.",
+        "system-path-blocked": "Processes in the Windows system directory cannot use precise GPU providers.",
+        "self-process-blocked": "Resource Manager processes cannot use precise GPU providers.",
+        "architecture-unreadable": "The executable architecture could not be read.",
+        "architecture-unsupported": "Precise GPU providers support native x64 executables only.",
+        "graphics-api-unidentified": "No graphics API is recorded; waiting for initial identification.",
+        "startup-vulkan-instance-only": "Vulkan launch selection uses an explicit layer and API 1.1+ instances in a new non-elevated process; existing devices do not migrate. GPU shim must be allowed.",
+        "startup-d3d-creation-only": "Only later device creation through these entry points is affected; existing devices do not migrate. GPU shim must be allowed.",
+        "graphics-api-unsupported": "The graphics API has no applicable precise route; saved settings will not execute.",
+        "inventory-unavailable": "The current GPU inventory is unavailable; exact targets cannot execute.",
+        "target-missing": "The saved GPU is absent from the current complete device inventory.",
+        "d3d12-factory-limit": "Factories must be acquired after loading; previously held factories are not guaranteed.",
+      },
       startup: "Launch",
       runtime: "Runtime",
       available: "available",

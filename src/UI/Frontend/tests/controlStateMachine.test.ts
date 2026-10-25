@@ -4,13 +4,14 @@ import {
   hasPendingChanges
 } from "../src/features/control/controlStateMachine.ts";
 import type { ControlApplyOutcome, ControlSetting } from "../src/features/control/controlTypes.ts";
+import { uiText } from "../src/text.ts";
 
 const capability = "gpu.power-limit";
 const setting = (value: number): ControlSetting => ({ capabilityId: capability, number: value });
 const outcome = (
   status: ControlApplyOutcome["status"],
-  message: string | null = null
-): ControlApplyOutcome => ({ objectId: "gpu:1", capabilityId: capability, status, message });
+  code: string | null = null
+): ControlApplyOutcome => ({ objectId: "gpu:1", capabilityId: capability, status, reason: code ? { code } : null });
 
 // 没设过就是没设过，不该显示成任何"应用"状态。
 assert.equal(controlItemStatusOf(capability, [], [], [], false).status, "unset");
@@ -41,10 +42,10 @@ const unsupported = controlItemStatusOf(
   capability,
   [setting(120)],
   [setting(120)],
-  [outcome("unsupported", "需要 NVIDIA NVAPI Provider")],
+  [outcome("unsupported", "control-backend-unavailable")],
   false);
 assert.equal(unsupported.status, "unsupported");
-assert.equal(unsupported.message, "需要 NVIDIA NVAPI Provider");
+assert.equal(unsupported.message, uiText.control.recovery.backendUnavailable);
 
 // 本地改动优先于回执：刚拖完滑块还没提交时，上一次回执说的是旧值的事。
 assert.equal(
@@ -71,14 +72,14 @@ assert.equal(hasPendingChanges([curve(50)], [curve(40)]), true);
 assert.equal(hasPendingChanges([{ ...curve(40), curveExecution: "software" }], [{ ...curve(40), curveExecution: "firmware" }]), true);
 assert.equal(hasPendingChanges([{ ...setting(40), unit: "W" }], [{ ...setting(40), unit: "MHz" }]), true);
 assert.equal(controlItemStatusOf(capability, [], [setting(40)], [], false).status, "edited");
-assert.equal(controlItemStatusOf(capability, [], [], [outcome("failed", "release failed")], false).status, "failed");
+assert.equal(controlItemStatusOf(capability, [], [], [outcome("failed", "control-release-failed")], false).status, "failed");
 console.log("controlStateMachine: ok");
 
 const { canRetryControlObject } = await import("../src/features/control/controlStateMachine.ts");
 const retrySetting = { capabilityId: "bad", toggle: false };
 for (const status of ["failed", "unsupported"] as const) {
   const state = { desired: { objects: [{ objectId: "a", settings: [retrySetting] }] },
-    lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status, message: "diagnostic" }], appliedAt: "" } };
+    lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status, reason: { code: "control-write-rejected" } }], appliedAt: "" } };
   assert.equal(hasPendingChanges([retrySetting], state.desired.objects[0].settings), false);
   assert.equal(canRetryControlObject(state, "a"), true);
   assert.equal(canRetryControlObject(state, "b"), false);
@@ -86,4 +87,4 @@ for (const status of ["failed", "unsupported"] as const) {
 assert.equal(canRetryControlObject({ desired: { objects: [], pendingReleases: [{ objectId: "a", settings: [retrySetting] }] },
   lastApply: { outcomes: [], appliedAt: "" } }, "a"), true);
 assert.equal(canRetryControlObject({ desired: { objects: [{ objectId: "a", settings: [retrySetting] }] },
-  lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status: "applied", message: null }], appliedAt: "" } }, "a"), false);
+  lastApply: { outcomes: [{ objectId: "a", capabilityId: "bad", status: "applied", reason: null }], appliedAt: "" } }, "a"), false);

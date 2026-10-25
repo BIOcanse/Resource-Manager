@@ -20,10 +20,10 @@ public sealed record CpuTopologySnapshot(
     IReadOnlyList<CpuCcdModel> Ccds,
     IReadOnlyList<CpuPhysicalCoreModel> PhysicalCores,
     IReadOnlyList<CpuLogicalProcessorModel> LogicalProcessors,
-    IReadOnlyList<string> Notes)
+    [property: JsonIgnore] IReadOnlyList<string> Notes)
 {
     public IReadOnlyList<CpuCacheInformation> Caches { get; init; } = [];
-    // Internal provenance for canonical fields; the legacy wire model keeps its existing shape.
+    // Internal provenance for canonical fields.
     [JsonIgnore] public CpuOsTopologyInformation? OsTopologyInformation { get; init; }
 }
 
@@ -45,7 +45,6 @@ public sealed record CpuSpecificationModel(
 public sealed record CpuCcdModel(
     string Id,
     int Index,
-    string Label,
     double? UsagePercent,
     IReadOnlyList<int> PhysicalCoreIndexes,
     IReadOnlyList<int> LogicalProcessorIds,
@@ -55,7 +54,6 @@ public sealed record CpuCcdModel(
 public sealed record CpuPhysicalCoreModel(
     string Id,
     int Index,
-    string Label,
     string CcdId,
     int EfficiencyClass,
     double PerformanceScore,
@@ -97,5 +95,3 @@ public static class CpuTopologyMath
     }
 
 }
-
-

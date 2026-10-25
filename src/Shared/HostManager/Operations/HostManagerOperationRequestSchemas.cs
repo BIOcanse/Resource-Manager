@@ -4,7 +4,7 @@ internal static class HostManagerOperationRequestSchemas
 {
     public const uint KindName = 0x0001;
     public const uint DomainKey = 0x0002;
-    public const uint UserTitle = 0x0003;
+    public const uint Subject = 0x0003;
     // 0x01x1 / 0x02x1 是只带"是否确认条款"的旧载荷；0x01x2 / 0x02x2 在其后追加了版本选择。
     // 载荷格式按 schema id 区分，其余动作仍用布尔载荷，不受影响。
     public const uint ComponentDownload = 0x0111;
@@ -17,7 +17,7 @@ internal static class HostManagerOperationRequestSchemas
     public const uint UserSoftwareUninstall = 0x0302;
     public const uint DiskUsageScan = 0x0601;
     public const uint ProgressStage = 0x1001;
-    public const uint ProgressMessage = 0x1002;
+    public const uint ProgressDetailFact = 0x1002;
     public const uint OperationCheckpoint = 0x1003;
     public const uint OperationResult = 0x2001;
     public const uint OperationError = 0x2002;
@@ -25,4 +25,3 @@ internal static class HostManagerOperationRequestSchemas
     public const uint EffectObservation = 0x3002;
     public const uint Version = 1;
 }
-

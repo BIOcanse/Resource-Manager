@@ -114,10 +114,11 @@ const allJourneys = [
   ["r2-remediation", r2RemediationJourney]
 ];
 const journeyFilter = process.env.RM_BROWSER_JOURNEY?.trim();
+const requestedJourneys = new Set(journeyFilter?.split(",").map(name => name.trim()).filter(Boolean));
 const journeys = journeyFilter
-  ? allJourneys.filter(([name]) => name === journeyFilter)
+  ? allJourneys.filter(([name]) => requestedJourneys.has(name))
   : allJourneys;
-if (journeys.length === 0) {
+if (journeys.length === 0 || (journeyFilter && journeys.length !== requestedJourneys.size)) {
   throw new Error(`Unknown browser journey: ${journeyFilter}`);
 }
 

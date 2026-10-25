@@ -1,18 +1,22 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
-// Keep the operation journal's text payload format; decode once at the HTTP boundary.
+// Structured owner facts inside the coordinator's opaque canonical payload catalog.
 internal sealed record HostManagerOperationFeedback(
     string? ResultCode,
     BackendMessage Message,
     string? Diagnostic = null)
 {
-    private const string Prefix = "operation-feedback.v1:";
+    private const string Prefix = "operation-feedback.v2:";
+
+    internal string Encode()
+        => Prefix + JsonSerializer.Serialize(this, OperationFeedbackJsonContext.Default.HostManagerOperationFeedback);
 
     internal static string Result(string code, BackendMessage message)
-        => Prefix + JsonSerializer.Serialize(new HostManagerOperationFeedback(code, message));
+        => Prefix + JsonSerializer.Serialize(new HostManagerOperationFeedback(code, message), OperationFeedbackJsonContext.Default.HostManagerOperationFeedback);
 
     internal static string Failure(Exception error)
         => Reason(error switch
@@ -27,10 +31,14 @@ internal sealed record HostManagerOperationFeedback(
 
     internal static string Reason(byte code, string? diagnostic = null)
         => Prefix + JsonSerializer.Serialize(new HostManagerOperationFeedback(
-            null, BackendMessage.Create(BackendMessageDomains.Operation, code), diagnostic));
+            null, BackendMessage.Create(BackendMessageDomains.Operation, code), diagnostic), OperationFeedbackJsonContext.Default.HostManagerOperationFeedback);
 
     internal static HostManagerOperationFeedback? Read(string? value)
         => value?.StartsWith(Prefix, StringComparison.Ordinal) == true
-            ? JsonSerializer.Deserialize<HostManagerOperationFeedback>(value[Prefix.Length..])
+            ? JsonSerializer.Deserialize(value[Prefix.Length..], OperationFeedbackJsonContext.Default.HostManagerOperationFeedback)
             : null;
 }
+
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(HostManagerOperationFeedback))]
+internal partial class OperationFeedbackJsonContext : JsonSerializerContext;

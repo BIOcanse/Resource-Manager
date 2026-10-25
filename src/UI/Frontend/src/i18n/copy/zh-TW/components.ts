@@ -1,0 +1,58 @@
+import type { AppCopy } from "../zh/index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "安裝說明",
+  "capabilitiesCaption": "能力",
+  "unknownCapability": "未知能力",
+  "capabilities": {
+    "power": "功耗",
+    "voltage": "電壓",
+    "current": "電流",
+    "temperature": "溫度",
+    "fan": "風扇",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "每核心指標",
+    "webRuntime": "Web 介面執行階段",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "時間窗",
+    "voltageOffset": "電壓偏移",
+    "hardwareMonitor": "主機板與記憶體感測",
+    "memoryTemperature": "記憶體溫度",
+    "cpuFanRpm": "CPU 風扇轉速",
+    "cpuFanPercent": "CPU 風扇百分比",
+    "gpuFanRpm": "GPU 風扇轉速",
+    "gpuFanPercent": "GPU 風扇百分比",
+    "vendorAdapters": "筆電廠商介接",
+    "gpuClocks": "GPU 頻率",
+    "gpuMemory": "顯示記憶體",
+    "gpuPower": "GPU 功耗",
+    "gpuTemperature": "GPU 溫度",
+    "gpuCooler": "GPU 風扇與冷卻器",
+    "gpuVoltage": "GPU 電壓",
+    "gpuCurrent": "GPU 電流",
+    "gpuBoardPower": "GPU 總板功耗",
+    "gpuHotspot": "GPU 熱點溫度",
+    "gpuIntake": "GPU 進風溫度",
+    "gpuFan": "GPU 風扇"
+  },
+  "installNotes": {
+    "webRuntime": "Microsoft 官方 Evergreen Bootstrapper，安裝後供全機 WebView2 軟體共用。",
+    "amdSmu": "明確安裝並驗證官方簽章 PawnIO 驅動程式，再取得 RyzenSMU 與 AMDFamily17 模組以讀取 PM table。基礎套件不會靜默啟用驅動程式。",
+    "intelMsr": "明確安裝 PawnIO 後，驗證時取得 IntelMSR 模組。與 AMD 通道共用系統驅動程式，模組獨立管理；不繞過韌體鎖定或簽章模組限制。",
+    "sensorDriver": "主機板與記憶體共用明確安裝的 PawnIO 驅動程式。官方核心庫內含簽章 LPC、EC、SMBus 模組，不啟動 GUI 或網路服務。",
+    "hardwareBridge": "獨立輔助程式依 GPL-3.0 發行，連結 ZenStates-Core，隨主程式依需求啟停；處理功耗上限與 Curve Optimizer 電壓寫入。",
+    "hardwareMonitor": "核心庫依 MPL-2.0 隨產品提供，僅擷取主機板與記憶體，需要 PawnIO；能力以本機實際取樣為準。",
+    "notebookFan": "隨產品提供，透過已安裝 OEM 驅動程式、服務或 DLL 的唯讀介面擷取風扇數據；目前支援 Mechrevo/Tongfang UWACPI，不靜默安裝或散布 OEM 驅動程式。",
+    "driverRuntime": "從已安裝顯示卡驅動程式動態載入執行階段；基礎套件不散布廠商驅動 DLL，能力以本機實際讀數為準。"
+  },
+  "versionFailures": {
+    "no-release": "沒有可用的發行版本。",
+    "no-stable-release": "沒有可用的穩定版本。",
+    "version-unorderable": "上游版本號無法可靠排序，不能選取。",
+    "timeout": "連線 GitHub 逾時。",
+    "network": "無法連線 GitHub。",
+    "invalid-data": "無法解析 GitHub 傳回的資料。",
+    "catalog-failure": "無法讀取版本目錄，請重試。"
+  }
+};

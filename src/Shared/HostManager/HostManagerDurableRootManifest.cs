@@ -140,6 +140,30 @@ internal sealed class HostManagerDurableRootManifest
         }
     }
 
+    // The file owner may reset an unreadable store only at an explicit mutation, after both original files are preserved.
+    internal void InitializeAfterPreservedReset(string? canonicalBackupPath, string? manifestBackupPath)
+    {
+        if (canonicalBackupPath is null)
+        {
+            if (File.Exists(canonicalPath)) throw new IOException("The preserved reset canonical file appeared outside the owner.");
+        }
+        else RequireExactBackup(canonicalPath, canonicalBackupPath);
+        if (manifestBackupPath is null)
+        {
+            if (File.Exists(manifestPath)) throw new IOException("The preserved reset root manifest appeared outside the owner.");
+        }
+        else RequireExactBackup(manifestPath, manifestBackupPath);
+        Write(ManifestState.Initializing(Guid.NewGuid()));
+    }
+
+    private static void RequireExactBackup(string original, string backup)
+    {
+        using var source = File.OpenRead(original);
+        using var preserved = File.OpenRead(backup);
+        if (source.Length != preserved.Length || !CryptographicOperations.FixedTimeEquals(SHA256.HashData(source), SHA256.HashData(preserved)))
+            throw new IOException("The durable store byte-exact backup differs from its source.");
+    }
+
     internal HostManagerDurableRootTransition BeginCanonicalTransition(
         ReadOnlySpan<byte> canonicalImage)
     {

@@ -114,6 +114,11 @@ export default async function softwareIssueJourney(page, baseUrl) {
     await localizedCard.getByText(app.management.issueText.abnormal_memory_usage, { exact: true }).waitFor();
     await localizedCard.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const detail = page.getByRole("dialog", { name: "示例软件", exact: true });
+    const detailText = await detail.textContent();
+    for (const phrase of [app.softwareFacts.processCount(2), app.softwareFacts.serviceCount(3), app.softwareFacts.endpointState.online,
+      app.backendMessage.software.noUninstallUnknownRoot]) {
+      assert(detailText.includes(phrase), `${option.id}: software fact text missing: ${phrase}`);
+    }
     await detail.getByText(app.management.issueText.winringMessage, { exact: true }).waitFor();
     assert((await detail.textContent()).includes("example.sys: 12 ms"), `${option.id}: driver evidence missing`);
     assert((await detail.textContent()).includes(app.management.issueText.memoryAdvice), `${option.id}: localized memory advice missing`);

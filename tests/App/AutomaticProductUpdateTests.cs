@@ -500,7 +500,8 @@ public sealed class AutomaticProductUpdateTests
     {
         var name = $"ResourceManager-{version}-win-x64.zip";
         var url = $"https://github.com/BIOcanse/Resource-Manager/releases/download/{version}/{name}";
-        return new("version:" + version, version, "0.3", channel, null, name, url, url + ".sha256", selectable, null);
+        return new("version:" + version, version, "0.3", channel, null, name, url, url + ".sha256", selectable,
+            selectable ? ProductVersionEligibility.Eligible : ProductVersionEligibility.NotNewer);
     }
 
     private sealed class MutableClock : TimeProvider

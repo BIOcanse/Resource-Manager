@@ -13,7 +13,7 @@ public sealed record ControlActualValue(
     IReadOnlyList<ControlCurvePoint>? Curve = null,
     string? Unit = null,
     /// <summary>读不到时说明为什么。读不到和"读到 0"是两回事。</summary>
-    string? UnreadableReason = null);
+    ControlApplyReason? UnreadableReason = null);
 
 /// <summary>
 /// 实际状态：这台机器现在实际是什么样。

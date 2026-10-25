@@ -199,7 +199,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     {
         public ControlObjectCatalog ReadObjects() => new([new("cpu:product-recorded", ControlObjectKinds.Cpu, "CPU",
             new(ControlOperatingSystems.Windows, ControlVendors.Intel),
-            [new("cpu.power-limit", "PL1", ControlValueKinds.Number, true, Range: new(5, 200, 1, "W"),
+            [new("cpu.power-limit", ControlValueKinds.Number, true, Range: new(5, 200, 1, "W"),
                 RequiredAccessLevel: ControlAccessLevels.Root)])], DateTimeOffset.UtcNow);
     }
     private sealed class CanonicalAccess : IControlAccessLevel
@@ -219,7 +219,3 @@ public sealed partial class MetricCatalogueSubscriptionTests
         public void Dispose() { }
     }
 }
-
-
-
-

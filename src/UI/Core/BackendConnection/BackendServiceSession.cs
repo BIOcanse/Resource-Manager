@@ -116,8 +116,24 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     internal static string SummarizeTermination(string payload, NativeText text)
     {
         using var json = JsonDocument.Parse(payload);
+        if (json.RootElement.GetProperty("action").GetString() != "Terminate")
+            throw new InvalidDataException("The process result action does not match the termination request.");
         var items = json.RootElement.GetProperty("items");
-        var succeeded = items.EnumerateArray().Count(item => item.GetProperty("state").GetString() == "Succeeded");
+        var succeeded = 0;
+        foreach (var item in items.EnumerateArray())
+        {
+            var outcome = item.GetProperty("outcome").GetString();
+            var expectedState = outcome switch
+            {
+                "Terminated" => "Succeeded",
+                "BackendProtected" or "CriticalProcessProtected" or "IdentityChanged" or "ProcessExited" => "Skipped",
+                "AccessDenied" or "NativeFailure" or "FileFailure" or "RequestRejected" => "Failed",
+                _ => throw new InvalidDataException("The termination outcome is unknown.")
+            };
+            if (item.GetProperty("state").GetString() != expectedState)
+                throw new InvalidDataException("The process state and outcome disagree.");
+            if (outcome == "Terminated") succeeded++;
+        }
         return string.Format(text.TerminateResultFormat, succeeded, items.GetArrayLength());
     }
 

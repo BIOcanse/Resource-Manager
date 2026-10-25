@@ -39,26 +39,26 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
         var executable = EvaluateExecutable(executablePath, observedArchitecture);
         if (executable.State != GpuPlacementCapabilityStates.Supported)
         {
-            var blocked = Capability(executable.State, executable.Architecture, executable.Reason);
+            var blocked = Capability(executable.State, executable.Architecture, executable.ReasonCode);
             return new GpuPlacementProcessCapabilities(processKey, blocked, blocked);
         }
 
         var startupApi = EvaluateGraphicsApi(graphicsApi, forStartup: true);
         var startupMissing = GpuStartupProviderArtifacts.MissingFiles(baseDirectory, [startupApi.ProviderId]);
         var startup = startupApi.State != GpuPlacementCapabilityStates.Supported
-            ? Capability(startupApi.State, executable.Architecture, startupApi.Reason,
+            ? Capability(startupApi.State, executable.Architecture, startupApi.ReasonCode,
                 startupApi.GraphicsApi, startupApi.ProviderId)
             : startupMissing.Count == 0
             ? Capability(
                 GpuPlacementCapabilityStates.Supported,
                 executable.Architecture,
-                $"{startupApi.Reason}启动链只影响其后创建的 instance/设备，仍须允许 GPU shim。",
+                startupApi.ReasonCode,
                 startupApi.GraphicsApi, startupApi.ProviderId)
             : Capability(
                 GpuPlacementCapabilityStates.Unsupported,
                 executable.Architecture,
-                $"启动期精确 Provider 文件缺失：{string.Join("、", startupMissing)}。已保存设置不会执行。",
-                startupApi.GraphicsApi, startupApi.ProviderId);
+                "startup-provider-missing",
+                startupApi.GraphicsApi, startupApi.ProviderId, startupMissing);
 
         var (runtimeFile, runtimeProvider) = graphicsApi switch
         {
@@ -70,8 +70,8 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
         var needsRuntimeObservation = runtimeFile.Length != 0 && File.Exists(runtimeFile);
         var runtime = Capability(needsRuntimeObservation ? GpuPlacementCapabilityStates.Unknown : GpuPlacementCapabilityStates.Unsupported,
             executable.Architecture, needsRuntimeObservation
-                ? "等待当前 GPU 进程和渲染器的精确确认；仅确认过的外部重建路径可执行。"
-                : "此软件尚无已验证的无注入运行期换卡路径。",
+                ? "runtime-observation-required"
+                : "runtime-route-unverified",
             GpuGraphicsApiRoutes.DisplayName(graphicsApi), runtimeProvider);
 
         return new GpuPlacementProcessCapabilities(processKey, startup, runtime);
@@ -86,7 +86,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unknown,
                 NormalizeArchitecture(observedArchitecture),
-                "尚未取得可执行文件完整路径，无法验证精确 GPU Provider 能力。",
+                "executable-path-missing",
                 null);
         }
 
@@ -100,7 +100,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unknown,
                 NormalizeArchitecture(observedArchitecture),
-                "可执行文件路径无效，无法验证精确 GPU Provider 能力。",
+                "executable-path-invalid",
                 null);
         }
 
@@ -109,7 +109,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unknown,
                 NormalizeArchitecture(observedArchitecture),
-                "可执行文件当前不存在，无法验证精确 GPU Provider 能力。",
+                "executable-missing",
                 null);
         }
 
@@ -119,7 +119,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unsupported,
                 NormalizeArchitecture(observedArchitecture),
-                "Windows 系统目录下的进程不接受精确 GPU Provider。",
+                "system-path-blocked",
                 path);
         }
 
@@ -131,7 +131,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unsupported,
                 NormalizeArchitecture(observedArchitecture),
-                "Resource Manager 自身进程不接受精确 GPU Provider。",
+                "self-process-blocked",
                 path);
         }
 
@@ -140,7 +140,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unknown,
                 NormalizeArchitecture(observedArchitecture),
-                "无法读取可执行文件架构，精确 GPU Provider 能力未知。",
+                "architecture-unreadable",
                 path);
         }
 
@@ -149,7 +149,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unsupported,
                 $"machine-0x{machine:x4}",
-                "当前精确 GPU Provider 只支持原生 x64 可执行文件。",
+                "architecture-unsupported",
                 path);
         }
 
@@ -169,28 +169,25 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new GraphicsApiCapability(
                 GpuPlacementCapabilityStates.Unknown,
                 SupportedGraphicsApis,
-                "软件信息尚未记录图形 API，等待后台首次识别。");
+                "graphics-api-unidentified");
         }
 
         if (forStartup && api == GpuGraphicsApi.Vulkan)
         {
             return new GraphicsApiCapability(GpuPlacementCapabilityStates.Supported, "Vulkan",
-                "已观察到 Vulkan。启动路径使用普通权限新进程的 explicit layer 与 API 1.1+ instance 选卡，不迁移既有设备。",
+                "startup-vulkan-instance-only",
                 GpuPlacementProviderIds.VulkanExplicitLayer);
         }
 
         var supportedApis = new List<string>();
-        var entryPoints = new List<string>();
         if (GpuGraphicsApiRoutes.RuntimeProvider(api) is not null && api.Value.HasFlag(GpuGraphicsApi.D3D11))
         {
             supportedApis.Add("D3D11");
-            entryPoints.Add("D3D11CreateDevice/D3D11CreateDeviceAndSwapChain");
         }
 
         if (GpuGraphicsApiRoutes.RuntimeProvider(api) is not null && api.Value.HasFlag(GpuGraphicsApi.D3D12))
         {
             supportedApis.Add("D3D12");
-            entryPoints.Add("D3D12CreateDevice / ID3D12DeviceFactory::CreateDevice（通过 D3D12GetInterface 在加载后获取的工厂；不保证预先持有的工厂）");
         }
 
         if (supportedApis.Count != 0)
@@ -198,26 +195,28 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
             return new GraphicsApiCapability(
                 GpuPlacementCapabilityStates.Supported,
                 string.Join("/", supportedApis),
-                $"软件信息已记录 {string.Join("/", supportedApis)}；仅覆盖 {string.Join("、", entryPoints)}。");
+                "startup-d3d-creation-only");
         }
 
         return new GraphicsApiCapability(
             GpuPlacementCapabilityStates.Unsupported,
             GpuGraphicsApiRoutes.DisplayName(api),
-            $"已记录 {GpuGraphicsApiRoutes.DisplayName(api)}；当前没有适用的精确路径。已保存设置不会执行。");
+            "graphics-api-unsupported");
     }
 
     private static GpuPlacementProviderCapability Capability(
         string state,
         string? architecture,
-        string reason,
+        string reasonCode,
         string graphicsApi = SupportedGraphicsApis,
-        string providerId = D3d11ProxyShimRuntime.ProviderId) => new(
+        string providerId = D3d11ProxyShimRuntime.ProviderId,
+        IReadOnlyList<string>? missingFiles = null) => new(
             state,
             providerId,
             graphicsApi,
             architecture,
-            reason);
+            reasonCode,
+            missingFiles ?? []);
 
     private static string? NormalizeArchitecture(string? architecture) =>
         string.IsNullOrWhiteSpace(architecture) ? null : architecture.Trim();
@@ -238,12 +237,12 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
     private sealed record ExecutableCapability(
         string State,
         string? Architecture,
-        string Reason,
+        string ReasonCode,
         string? ExecutablePath);
 
     private sealed record GraphicsApiCapability(
         string State,
         string GraphicsApi,
-        string Reason,
+        string ReasonCode,
         string ProviderId = D3d11ProxyShimRuntime.ProviderId);
 }

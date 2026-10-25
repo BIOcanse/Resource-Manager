@@ -1,5 +1,7 @@
+import { componentInstallNote, componentCapabilityLabel } from "../presentation/componentPresentation.ts";
 import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { softwareCategorySourceLabel } from "../presentation/softwareClassification.ts";
+import { softwareDescription, softwareRecordName, softwareUninstallDescription } from "../presentation/softwareFacts.ts";
 import { systemProcessResultDetail, systemProcessResultSummary } from "../presentation/systemProcessResult";
 import type { Accessor, Setter } from "solid-js";
 import {
@@ -318,7 +320,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await openPath(path, fileLocationSelectMode(target));
-      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, uiText.softwareActions.openedFileLocation), details: [result.openedPath ?? path] });
+      showToast({ tone: "success", title: uiText.feedback.success, message: uiText.softwareActions.openedFileLocation, details: [result.openedPath ?? path] });
     } catch (error) {
       showErrorToast(error, uiText.softwareActions.openFileLocationFailed);
     }
@@ -350,7 +352,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await openProperties(path);
-      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, uiText.softwareActions.openedProperties), details: [result.openedPath ?? path] });
+      showToast({ tone: "success", title: uiText.feedback.success, message: uiText.softwareActions.openedProperties, details: [result.openedPath ?? path] });
     } catch (error) {
       showErrorToast(error, uiText.softwareActions.openPropertiesFailed);
     }
@@ -624,12 +626,12 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
   function createComponentDetailModel(component: ManagedComponent): SoftwareDetailModel {
     const definition = component.definition ?? {};
-    const name = componentDisplayName(definition.id, definition.name);
+    const name = componentDisplayName(definition.id);
     const purpose = componentPurpose(definition.id);
     const installRoot = textOrEmpty(component.installRoot);
     const state = isComponentInstalled(component)
       ? uiText.softwareActions.installed
-      : userFacingState(component.stateLabel || component.state);
+      : userFacingState(component.state);
     const roleLabel = managementRoleLabel(definition.managementRole);
     const rootPaths = uniqueTextValues([installRoot]).filter(pathLooksUsable);
     return {
@@ -652,7 +654,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         [uiText.softwareActions.field.state, state],
         [uiText.softwareActions.field.vendor, definition.vendor],
         [uiText.softwareActions.field.category, componentCategory()],
-        [uiText.softwareActions.field.purpose, purpose]
+        [uiText.softwareActions.field.purpose, purpose],
+        [uiText.componentCatalog.installationCaption, componentInstallNote(definition.id)],
+        [uiText.componentCatalog.capabilitiesCaption, (definition.capabilities ?? []).map(item => componentCapabilityLabel(item.id))]
       ],
       softwareIdentityId: "",
       metadataRows: [],
@@ -671,16 +675,16 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         [uiText.softwareActions.field.requiresElevation, formatBoolean(definition.requiresElevation)],
         [uiText.softwareActions.field.requiresExternalTerms, formatBoolean(definition.requiresExternalTermsAcknowledgement)]
       ],
-      capabilities: [],
-      providers: []
+      capabilities: (definition.capabilities ?? []).map(capability => ({ ...capability, label: componentCapabilityLabel(capability.id) })),
+      providers: component.providers ?? []
     };
   }
 
   function createInstalledSoftwareDetailModel(record: SoftwareRecord): SoftwareDetailModel {
-    const name = textOrEmpty(record.name) || "--";
+    const name = textOrEmpty(softwareRecordName(record)) || "--";
     const rootPaths = uniqueTextValues(record.rootPaths ?? []).filter(pathLooksUsable);
     const operations = record.operations ?? {};
-    const displayKind = softwareDisplayKindLabel(record.kind, record.displayKind);
+    const displayKind = softwareDisplayKindLabel(record.kind);
 
     return {
       type: "software",
@@ -690,7 +694,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       kind: record.kind,
       displayKind,
       state: userFacingState(record.state),
-      message: userFacingMessage(record.message, displayKind),
+      message: softwareDescription(record) || displayKind,
       rootPaths,
       suggestedRootPaths: uniqueTextValues(record.suggestedRootPaths ?? []).filter(pathLooksUsable),
       executablePaths: uniqueTextValues(record.executablePaths ?? []).filter(pathLooksUsable),
@@ -702,7 +706,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         [uiText.softwareActions.field.type, displayKind],
         [uiText.management.categorySource, softwareCategorySourceLabel(record.categorySource)],
         [uiText.softwareActions.field.state, userFacingState(record.state)],
-        [uiText.softwareActions.field.stateDescription, userFacingMessage(record.message, displayKind)]
+        [uiText.softwareActions.field.stateDescription, softwareDescription(record) || displayKind]
       ],
       softwareIdentityId: textOrEmpty(record.softwareIdentityId),
       metadataRows: [],
@@ -714,8 +718,8 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       operationRows: [
         [uiText.softwareActions.field.uninstallCapability, operations.canUninstall
           ? uiText.softwareActions.canUninstall
-          : userFacingMessage(operations.uninstallMessage, uiText.softwareActions.cannotUninstall)],
-        [uiText.softwareActions.field.uninstallDescription, userFacingMessage(operations.uninstallMessage, operations.canUninstall ? uiText.softwareActions.uninstallViaSoftware : uiText.softwareActions.cannotUninstall)]
+          : softwareUninstallDescription(record)],
+        [uiText.softwareActions.field.uninstallDescription, softwareUninstallDescription(record)]
       ],
       capabilities: [],
       providers: []
@@ -773,7 +777,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path }, uiText.softwareActions.openPathFailed);
-      setSoftwareDetailNotice({ message: userFacingMessage(result.message, uiText.softwareActions.openedPath), tone: "success", details: [result.openedPath ?? path] });
+      setSoftwareDetailNotice({ message: uiText.softwareActions.openedPath, tone: "success", details: [result.openedPath ?? path] });
     } catch (error) {
       setSoftwareDetailNotice({ message: userFacingErrorMessage(error, uiText.softwareActions.openPathFailed), tone: "error", details: [path] });
     }

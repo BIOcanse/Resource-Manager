@@ -135,33 +135,26 @@ public sealed class ManagementInventoryRevisionOwnerTests
             id,
             name,
             SoftwareKinds.Other,
-            "Other",
             "installed",
-            ["Windows"],
+            [],
             [@"C:\Apps\Editor"],
-            string.Empty,
-            new SoftwareOperationCapabilities(false, string.Empty, string.Empty, string.Empty),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null);
 
     private static ComponentStatus Component(string id, string state)
     {
         var definition = new ComponentDefinition(
             id,
-            "Component",
             "Vendor",
-            "Category",
-            "Purpose",
             "https://example.invalid/source",
             null,
             "dependency",
             false,
             false,
             false,
-            [],
-            string.Empty);
+            []);
         return new ComponentStatus(
             definition,
-            state,
             state,
             @"C:\Dependencies\one",
             @"C:\Dependencies\one\installer",

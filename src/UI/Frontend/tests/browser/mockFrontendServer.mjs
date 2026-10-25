@@ -1,4 +1,5 @@
 import { mockFrontendRefreshIntervals } from "../fixtures/frontendRefreshIntervalFixture.ts";
+import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -227,14 +228,16 @@ const mockSoftware = {
   id: "frontend-harness.software",
   name: "示例软件",
   kind: "other",
-  displayKind: "other",
   state: "installed",
-  message: "已安装",
+  sourceFacts: [{ kind: "windows_registry" }, { kind: "adapter" }],
+  registrationFacts: { kind: "adapter", processCount: 2, serviceCount: 3, endpointState: "online" },
+  requiresRootPathConfirmation: false,
+  identityConfirmed: true,
   executablePaths: ["C:\\FrontendHarness\\example.exe"],
   rootPaths: ["C:\\FrontendHarness"],
   processIds: [4242],
   processNames: ["example.exe"],
-  operations: { canUninstall: false },
+  operations: { canUninstall: false, uninstallKind: "None", uninstallConstraint: "missing_uninstall_entry" },
   issues: [
     {
       id: "app-notebook-fan-control-winring0x64-known-vulnerabilities",
@@ -332,12 +335,12 @@ async function handleApi(request, response, url) {
   const path = url.pathname;
   if (path === "/api/control/objects") {
     return json(response, 200, { readAt: now(), objects: [{
-      id: "gpu:test", kind: "gpu", displayName: "Fixture GPU",
+      id: "gpu:test", kind: "gpu", reportedName: "Fixture GPU", adapterIndex: 0,
       platform: { operatingSystem: "windows", vendor: "nvidia" }, isControllable: true,
       capabilities: [
-        { id: "gpu.temperature-limit", label: "Temperature limit", valueKind: "number", supported: false, unavailableReason: "Read-only hardware reading", unavailableKind: "platform", requiredAccessLevel: "normal", range: { minimum: 89, maximum: 89, step: 1, unit: "°C", defaultValue: 89 } },
-        { id: "gpu.dynamic-boost-enabled", label: "Dynamic Boost", valueKind: "toggle", supported: true, requiredAccessLevel: "normal" },
-        { id: "gpu.voltage-offset", label: "Voltage", valueKind: "number", supported: false, unavailableReason: "Requires Root", unavailableKind: "access-level", requiredAccessLevel: "root", range: { minimum: -100, maximum: 100, step: 1, unit: "mV", defaultValue: 0 } }
+        { id: "gpu.temperature-limit", valueKind: "number", supported: false, unavailableReason: { code: "nvidia.M63" }, unavailableKind: "platform", requiredAccessLevel: "normal", range: { minimum: 89, maximum: 89, step: 1, unit: "°C", defaultValue: 89 } },
+        { id: "gpu.dynamic-boost-enabled", valueKind: "toggle", supported: true, requiredAccessLevel: "normal" },
+        { id: "gpu.core-voltage-offset", valueKind: "number", supported: false, unavailableReason: { code: "control-access-level-required", arguments: { requiredAccessLevel: "root" } }, unavailableKind: "access-level", requiredAccessLevel: "root", range: { minimum: -100, maximum: 100, step: 1, unit: "mV", defaultValue: 0 } }
       ]
     }] });
   }
@@ -521,7 +524,7 @@ async function handleApi(request, response, url) {
       id: `d5${(++diskScanSequence).toString(16).padStart(30, "0")}`,
       kind: "disk-usage.scan",
       domainKey: null,
-      title: "Disk usage scan",
+      subject: { targetId: null, scope: "global", mode: "fast", targetPath: null },
       state: "running",
       configurationGeneration: "1",
       stateRevision: "1",
@@ -531,9 +534,7 @@ async function handleApi(request, response, url) {
       updatedAt: createdAt,
       completedAt: null,
       cancelRequested: false,
-      progress: null,
-      result: null,
-      error: null
+      progress: null
     };
     commitOperationsValue();
     diskScanCompletionTimer = setTimeout(() => {
@@ -544,8 +545,7 @@ async function handleApi(request, response, url) {
         state: "succeeded",
         stateRevision: "2",
         updatedAt: completedAt,
-        completedAt,
-        result: "Disk usage scan completed"
+        completedAt
       };
       diskUsageSummary.completedAt = completedAt;
       diskUsageSummary.totalBytes = 92_000_000;
@@ -823,7 +823,13 @@ async function handleApi(request, response, url) {
     commitOperationsValue();
     return json(response, 200, fixtureOperations()[0]);
   }
-  if (path === "/api/components" || path === "/api/controlled") {
+  if (path === "/api/components") {
+    return json(response, 200, [componentFixture(), componentFixture("shared-webview2-runtime")]);
+  }
+  if (path === "/api/components/hardware-bridge/versions") {
+    return json(response, 200, componentVersionFixture());
+  }
+  if (path === "/api/controlled") {
     return json(response, 200, []);
   }
   if (path === "/api/browser-runtimes") {
@@ -860,7 +866,7 @@ function fixtureOperations() {
     id: "000000000000000000000000000000a1",
     kind: "component.install",
     domainKey: "component.frontend-harness",
-    title: "安装前端测试组件",
+    subject: { targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
     state: scenario.operationCanceled ? "canceled" : "running",
     configurationGeneration: "1",
     stateRevision: scenario.operationCanceled ? "2" : "1",
@@ -878,11 +884,8 @@ function fixtureOperations() {
       bytesDone: "4096",
       bytesTotal: "10240",
       speedBytesPerSecond: "1024",
-      stage: "install",
-      message: "正在安装"
-    },
-    result: null,
-    error: null
+      stage: "Download"
+    }
   };
   return [
     active,
@@ -890,7 +893,7 @@ function fixtureOperations() {
       id: "000000000000000000000000000000a2",
       kind: "software.uninstall",
       domainKey: "software.frontend-harness",
-      title: "卸载示例软件",
+      subject: { targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
       state: "succeeded",
       configurationGeneration: "1",
       stateRevision: "3",
@@ -901,16 +904,14 @@ function fixtureOperations() {
       completedAt: "2026-08-22T11:50:03.000Z",
       cancelRequested: false,
       progress: null,
-      result: null,
       resultCode: "RemovedManagedRoot",
       resultMessage: { domain: 4, code: 13, args: [] },
-      errorMessage: null,
-      error: null
+      errorMessage: null
     },
     {
       ...active, id: "000000000000000000000000000000a3", domainKey: "component:failed-runtime",
       state: "failed", completedAt: active.updatedAt, cancelRequested: false, progress: null,
-      result: null, error: "fixture connection refused", errorMessage: { domain: 6, code: 1, args: [] }
+      errorMessage: { domain: 6, code: 1, args: [] }
     }
   ];
 }
@@ -920,7 +921,7 @@ function fixtureManyOperations() {
     id: `0000000000000000000000000000${(index + 16).toString(16).padStart(4, "0")}`,
     kind: "component.install",
     domainKey: `component.frontend-harness.${index + 1}`,
-    title: `已完成前端测试组件 ${index + 1}`,
+    subject: { targetId: `frontend-harness-${index + 1}`, scope: null, mode: null, targetPath: null },
     state: "succeeded",
     configurationGeneration: "1",
     stateRevision: "3",
@@ -930,9 +931,7 @@ function fixtureManyOperations() {
     updatedAt: "2026-08-22T11:40:03.000Z",
     completedAt: "2026-08-22T11:40:03.000Z",
     cancelRequested: false,
-    progress: null,
-    result: "安装完成",
-    error: null
+    progress: null
   }));
 }
 
@@ -1428,7 +1427,6 @@ function fixtureCpuTopology(capturedAt = now()) {
     ccds: [{
       id: "ccd:0",
       index: 0,
-      label: "CCD 0",
       usagePercent: 31,
       physicalCoreIndexes: [0, 1],
       logicalProcessorIds: [0, 1, 2, 3],
@@ -1437,7 +1435,6 @@ function fixtureCpuTopology(capturedAt = now()) {
     physicalCores: [0, 1].map((index) => ({
       id: `core:${index}`,
       index,
-      label: `核心 ${index}`,
       ccdId: "ccd:0",
       efficiencyClass: 0,
       performanceScore: 100 - index * 5,
@@ -1459,7 +1456,6 @@ function fixtureCpuTopology(capturedAt = now()) {
       usagePercent: 10 + id * 7,
       affinitySelectable: id !== 3
     })),
-    notes: []
   };
 }
 
@@ -1693,8 +1689,8 @@ function obsoleteResourceTableFixture(processMode, capturedAt = now()) {
     impactScore: 12,
     status: "running",
     values: {
-      cpu: { displayValue: "", unit: "%", value: 12, percent: 12, heatPercent: 12 },
-      memory: { displayValue: "", unit: "B", value: 536870912, sharedValue: 134217728, heatPercent: 10 }
+      cpu: { unit: "%", value: 12, percent: 12, heatPercent: 12 },
+      memory: { unit: "B", value: 536870912, sharedValue: 134217728, heatPercent: 10 }
     }
   };
   const rows = resourceTableRows(processMode, common);
@@ -1821,7 +1817,7 @@ function resourceTableRows(processMode, common) {
           processId,
           processStartKey: String(132000000000000000n + BigInt(processId)),
           processIds: [processId],
-          values: { ...common.values, pid: { displayValue: String(processId), unit: "" } }
+          values: { ...common.values, pid: { value: processId, unit: "" } }
         }
       : {
           ...common,
@@ -1906,14 +1902,13 @@ function createOperationsValue() {
       : [];
   if (diskScanOperation) operations.push(diskScanOperation);
   return {
-    schema: "host-manager.operations.state.v1",
+    schema: "host-manager.operations.state.v2",
     capturedAt: now(),
     publicationRevision: String(++operationsPublicationRevision),
     configurationGeneration: "1",
     ready: true,
     persistenceFaulted: false,
     faultStage: null,
-    faultMessage: null,
     operations
   };
 }
@@ -2139,7 +2134,7 @@ function subscriptionPayloadFactory(url) {
       return publishedAt => ({ readAt: publishedAt, values: scenario.controlActualValues ?? [
         { objectId: "gpu:test", capabilityId: "gpu.temperature-limit", number: 89, unit: "°C" },
         { objectId: "gpu:test", capabilityId: "gpu.dynamic-boost-enabled", toggle: false },
-        { objectId: "gpu:test", capabilityId: "gpu.voltage-offset", number: 0, unit: "mV" }
+        { objectId: "gpu:test", capabilityId: "gpu.core-voltage-offset", number: 0, unit: "mV" }
       ] });
     case "/api/metrics/subscribe": {
       if (url.searchParams.has("fields")) {

@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
 
@@ -28,8 +29,7 @@ internal sealed class DurableDependencyProgress(
                         : checked((ulong)Math.Max(
                             0,
                             Math.Round(value.SpeedBytesPerSecond.Value))),
-                    "download",
-                    null),
+                    HostManagerOperationStage.Download),
                 cancellationToken)
             .AsTask()
             .GetAwaiter()

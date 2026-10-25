@@ -39,8 +39,8 @@ export default createSettingsLocale("ko-KR", {
     "latestStable": "최신 안정 릴리스",
     "verified": "검증된 릴리스",
     "unavailableReasons": {
-      "无法确认当前安装版本，升级选择已关闭。": "설치된 버전을 알 수 없어 업그레이드 선택이 비활성화되었습니다.",
-      "只能选择高于当前安装版本的发行版。": "설치된 버전보다 새로운 릴리스만 선택할 수 있습니다."
+      "installedVersionUnknown": "설치된 버전을 알 수 없어 업그레이드 선택이 비활성화되었습니다.",
+      "notNewer": "설치된 버전보다 새로운 릴리스만 선택할 수 있습니다."
     }
   },
   "navigationLabel": "설정 항목",

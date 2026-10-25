@@ -1,0 +1,203 @@
+{
+  "instances": [
+    {
+      "id": "gpu:model:0123456789abcdef",
+      "kind": "gpu",
+      "displayName": "AMD Radeon(TM) 610M",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "amd"
+      },
+      "gpuAttachment": "integrated",
+      "identityIsUnique": false,
+      "firstSeenAt": "2026-10-23T00:06:22.383249+00:00",
+      "lastSeenAt": "2026-10-23T07:47:54.1975536+00:00",
+      "defaultSettings": [
+        {
+          "capabilityId": "gpu.curve-optimizer",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        }
+      ]
+    },
+    {
+      "id": "gpu:uid:gpu-11111111-2222-4333-8444-555555555555",
+      "kind": "gpu",
+      "displayName": "NVIDIA GeForce RTX 5060 Laptop GPU",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "nvidia"
+      },
+      "gpuAttachment": "discrete",
+      "identityIsUnique": true,
+      "firstSeenAt": "2026-10-23T00:06:22.383249+00:00",
+      "lastSeenAt": "2026-10-23T07:47:54.1975536+00:00",
+      "defaultSettings": [
+        {
+          "capabilityId": "gpu.core-clock-offset",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.memory-clock-offset",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.core-clock-minimum",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.core-clock-maximum",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.memory-clock-minimum",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.memory-clock-maximum",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.core-voltage-offset",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.power-limit",
+          "number": 50,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.frame-rate-limit",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.ctgp-offset",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "gpu.dynamic-boost-offset",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        }
+      ]
+    },
+    {
+      "id": "cpu:model:0123456789abcdef",
+      "kind": "cpu",
+      "displayName": "AMD Ryzen 9 8940HX with Radeon Graphics",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "amd"
+      },
+      "gpuAttachment": null,
+      "identityIsUnique": false,
+      "firstSeenAt": "2026-10-23T00:06:22.383249+00:00",
+      "lastSeenAt": "2026-10-23T07:47:54.1975536+00:00",
+      "defaultSettings": [
+        {
+          "capabilityId": "cpu.pbo-scalar",
+          "number": 1,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        },
+        {
+          "capabilityId": "cpu.curve-optimizer",
+          "number": 0,
+          "toggle": null,
+          "curve": null,
+          "curveExecution": null,
+          "unit": null
+        }
+      ]
+    },
+    {
+      "id": "fan:oem0",
+      "kind": "fan",
+      "displayName": "\u98CE\u62471",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "oem"
+      },
+      "gpuAttachment": null,
+      "identityIsUnique": false,
+      "firstSeenAt": "2026-10-23T00:06:22.383249+00:00",
+      "lastSeenAt": "2026-10-23T07:47:54.1975536+00:00",
+      "defaultSettings": []
+    },
+    {
+      "id": "fan:gpu1",
+      "kind": "fan",
+      "displayName": "\u98CE\u62473",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "nvidia"
+      },
+      "gpuAttachment": null,
+      "identityIsUnique": false,
+      "firstSeenAt": "2026-10-23T00:06:22.383249+00:00",
+      "lastSeenAt": "2026-10-23T00:33:52.9424606+00:00",
+      "defaultSettings": []
+    },
+    {
+      "id": "fan:oem1",
+      "kind": "fan",
+      "displayName": "\u98CE\u62472",
+      "platform": {
+        "operatingSystem": "windows",
+        "vendor": "oem"
+      },
+      "gpuAttachment": null,
+      "identityIsUnique": false,
+      "firstSeenAt": "2026-10-23T00:23:56.3621168+00:00",
+      "lastSeenAt": "2026-10-23T07:47:54.1975536+00:00",
+      "defaultSettings": []
+    }
+  ]
+}

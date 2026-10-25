@@ -70,7 +70,7 @@ public sealed class GpuTelemetryWorkerLifecycleTests
         GpuTelemetryWorkerSnapshot.CurrentProtocolVersion, 0, DateTimeOffset.UtcNow, 0,
         GpuTelemetryWorkerStatus.Online,
         [new(0, 1, "recorded GPU", "10DE", "recorded",
-            [new("gpu.0.compute", "compute", GpuTelemetryCounterClass.HardwareCounter,
+            [new("gpu.0.compute", GpuTelemetryCounterClass.HardwareCounter,
                 value, "%", "recorded", false, null)])], [], null);
 
     private static double? Value(GpuTelemetryWorkerSnapshot snapshot)

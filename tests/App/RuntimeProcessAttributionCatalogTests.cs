@@ -201,12 +201,10 @@ public sealed class RuntimeProcessAttributionCatalogTests
             id,
             name,
             SoftwareKinds.Other,
-            "other",
             "installed",
-            ["test"],
+            [],
             rootPaths,
-            "",
-            new SoftwareOperationCapabilities(false, "None", "不可卸载", ""),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null);
     }
 

@@ -1,3 +1,5 @@
+import { componentDisplayName } from "../../../presentation/userFacingText.ts";
+import { componentVersionFailure } from "../../../presentation/componentPresentation.ts";
 import { Show, createSignal } from "solid-js";
 import {
   DialogActions,
@@ -80,7 +82,7 @@ export function ComponentAcquisitionDialog(props: {
           onDismiss={props.onCancel}
         >
           <DialogHeader
-            title={request.component.definition?.name ?? uiText.stores.fallbackComponentName}
+            title={componentDisplayName(request.component.definition?.id)}
             titleId="componentAcquisitionTitle"
             closeLabel={uiText.feedback.close}
             onDismiss={props.onCancel}
@@ -130,7 +132,7 @@ export function ComponentAcquisitionDialog(props: {
                   <Show when={request.versions.length > 0}>
                     <fieldset class="component-acquisition-versions">
                       <legend>{uiText.componentAcquisition.versionLegend}</legend>
-                      <VersionSelector options={request.versions}
+                      <VersionSelector options={request.versions.map(option => ({ ...option, unavailableReason: componentVersionFailure(option.unavailableReasonCode) }))}
                         choice={effectiveChoice(request)} onSelect={setChoice}
                         text={currentSettingsText().updates}
                         installedVersionUnknown={request.component.installed === true} />

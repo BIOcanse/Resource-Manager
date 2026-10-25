@@ -22,7 +22,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .Select(entry =>
                 {
                     var handle = bridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value);
-                    return new NvidiaControlDiagnosticPayload(entry.Id, entry.DisplayName, entry.AdapterIndex, handle is not null, handle is null ? null : bridge.ReadPowerLimitRange(handle.Value), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.GraphicsClockDomain), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.MemoryClockDomain), handle is null ? null : bridge.DumpPowerPolicyVariants(handle.Value), powerBridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value)is { } readDevice ? powerBridge.ReadPowerLimit(readDevice) : null);
+                    return new NvidiaControlDiagnosticPayload(entry.Id, entry.ReportedName ?? entry.Id, entry.AdapterIndex, handle is not null, handle is null ? null : bridge.ReadPowerLimitRange(handle.Value), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.GraphicsClockDomain), handle is null ? null : bridge.ReadClockOffsetMhz(handle.Value, NvidiaNvapiControlBridge.MemoryClockDomain), handle is null ? null : bridge.DumpPowerPolicyVariants(handle.Value), powerBridge.FindHandleByAdapterIndex(entry.AdapterIndex!.Value)is { } readDevice ? powerBridge.ReadPowerLimit(readDevice) : null);
                 })
                 .ToArray();
             return Results.Ok(rows);

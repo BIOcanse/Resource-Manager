@@ -25,7 +25,32 @@ import {
 {
   const decoded = decodeResourceMonitorWireSnapshot(readyResourceMonitorWire());
   assert.equal(decoded.breakdown.bars?.[0]?.software[0]?.processes[0]?.processId, 42);
-  assert.equal(decoded.table?.rows[0]?.id, "summary:total");
+  assert.equal(decoded.breakdown.bars?.[0]?.software[0]?.processes[0]?.processStartKey, "134325768300000000");
+}
+
+{
+  // The neutral facts frame carries identity and readings, never table cells.
+  const wire = {
+    version: 1, capturedAt,
+    software: [{ softwareId: "software:test", name: "Test App", kind: "other", attributionKind: "other" }],
+    processes: [{ processId: 4242, processStartKey: "134325768300000000", name: "worker.exe",
+      executablePath: "C:/Apps/worker.exe", userName: "TEST-PC\\user", architecture: "x64", attributionKind: "process" }],
+    metrics: [{ metricId: "cpu.usage", unit: "%", totalValue: 12, capacityValue: 100, totalSystemPercent: 12, sharedValue: null,
+      software: [{ softwareId: "software:test", value: 12, systemPercent: 12, processCount: 1, baseScore: 0, sharedValue: null,
+        processes: [{ processIndex: 0, value: 12, systemPercent: 12, softwarePercent: 100, baseScore: 0, sharedValue: null }] }] }]
+  };
+  const decoded = decodeResourceMonitorWireSnapshot(wire);
+  const metric = decoded.facts!.metrics[0];
+  const process = metric.software[0].processes[0];
+  assert.equal(decoded.capturedAt, capturedAt);
+  assert.equal(process.processId, 4242);
+  assert.equal(process.processStartKey, "134325768300000000");
+  assert.equal(process.userName, "TEST-PC\\user");
+  assert.equal(process.architecture, "x64");
+  assert.equal(process.value, 12);
+  assert.equal("displayValue" in process, false);
+  assert.throws(() => decodeResourceMonitorWireSnapshot({ ...wire, processes: [{ ...wire.processes[0], processStartKey: 42 }] }), ResponseDecodeError);
+  assert.throws(() => decodeResourceMonitorWireSnapshot({ ...wire, processes: [] }), ResponseDecodeError);
 }
 
 {
@@ -42,7 +67,7 @@ import {
   wire.breakdown.bars = [];
   wire.breakdown.softwareCatalog = [];
   const decoded = decodeResourceMonitorWireSnapshot(wire);
-  assert.equal(decoded.table.capturedAt, undefined);
+  assert.equal(decoded.breakdown.capturedAt, undefined);
   assert.equal(decoded.capturedAt, undefined);
 }
 
@@ -58,7 +83,7 @@ import {
   const wire = readyResourceMonitorWire();
   const decoded = decodeResourceMonitorWireSnapshot(wire);
   assert.equal(decoded.capturedAt, capturedAt);
-  assert.equal(decoded.table.capturedAt, capturedAt);
+  assert.equal(decoded.breakdown.capturedAt, capturedAt);
 }
 
 {

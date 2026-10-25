@@ -17,7 +17,7 @@ internal static class GpuPlacementTargetInventoryProjection
 
         if (snapshot?.GpuInventory.IsCurrentComplete() != true)
         {
-            const string reason = "当前 GPU 清单不可用，精确目标暂不可执行。";
+            const string reason = "inventory-unavailable";
             return new GpuPlacementTargetInventory(
                 GpuPlacementTargetInventoryStates.Unavailable,
                 referenced.Select(target => Missing(target, reason)).ToArray(),
@@ -37,7 +37,7 @@ internal static class GpuPlacementTargetInventoryProjection
                 names.TryGetValue(adapter.Index, out var name);
                 return new GpuPlacementExactTargetOption(
                     target,
-                    string.IsNullOrWhiteSpace(name) ? $"指定 GPU {adapter.Index}" : $"GPU {adapter.Index} · {name}",
+                    name,
                     true);
             })
             .ToList();
@@ -47,7 +47,7 @@ internal static class GpuPlacementTargetInventoryProjection
 
         foreach (var target in referenced.Where(target => !availableTargets.Contains(target)))
         {
-            available.Add(Missing(target, "该已保存 GPU 当前不在完整设备清单中。"));
+            available.Add(Missing(target, "target-missing"));
         }
 
         return new GpuPlacementTargetInventory(
@@ -58,7 +58,7 @@ internal static class GpuPlacementTargetInventoryProjection
 
     private static GpuPlacementExactTargetOption Missing(string target, string reason) => new(
         target,
-        $"{target.ToUpperInvariant()}（不可用）",
+        null,
         false,
         reason);
 }

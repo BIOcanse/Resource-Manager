@@ -30,6 +30,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private readonly HostManagerOperationAttemptArbiter attemptArbiter = new();
     private readonly string hostManagerDataRoot;
     private readonly ILogger<HostManagerOperationCoordinatorOwner> logger;
+    private readonly TimeProvider timeProvider;
     private NativeOperationCoordinatorWorkspace? workspace;
     private NativeOperationCoordinatorWorkspace? pendingWorkspaceClose;
     private readonly Func<ulong, IComputeScratch> createScratch;
@@ -74,13 +75,15 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
         HostManagerOperationEffectRouter effectRouter,
         IHostEnvironment environment,
         ILogger<HostManagerOperationCoordinatorOwner> logger,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        TimeProvider? timeProvider = null)
     {
         this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.effectRouter = effectRouter;
         this.logger = logger;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
         hostManagerDataRoot = Path.Combine(
             ResourceManager.App.Infrastructure.Optimization.HostManagerDurableStorePaths.ResolveRuntimeDataRoot(
                 PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath)), "HostManager");
@@ -178,7 +181,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             appliedPlan?.HotPublish.ConfigurationGeneration ?? 0,
             publicationRevision,
             NextCommittedStateRevisionLocked(),
-            DateTimeOffset.UtcNow);
+            timeProvider.GetUtcNow());
         Volatile.Write(ref committedState, next);
         publicationSignal.Publish();
     }
@@ -186,7 +189,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private void PublishHealthOnlyLocked()
     {
         var current = Volatile.Read(ref committedState);
-        var capturedAt = DateTimeOffset.UtcNow;
+        var capturedAt = timeProvider.GetUtcNow();
         if (capturedAt < current.CapturedAt)
         {
             capturedAt = current.CapturedAt;
@@ -252,10 +255,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             sourcePayloads,
             operation.DomainId,
             (operation.Flags & (ulong)NativeOperationFlags.DomainValid) != 0);
-        var title = ReadOptionalText(
-            sourcePayloads,
-            operation.TitleHandle,
-            (operation.Flags & (ulong)NativeOperationFlags.TitleValid) != 0);
+        var subject = (operation.Flags & (ulong)NativeOperationFlags.SubjectValid) != 0
+            ? HostManagerOperationRequestCodec.DecodeSubject(sourcePayloads.Require(operation.SubjectHandle).Payload)
+            : null;
         var result = ReadOptionalText(
             sourcePayloads,
             operation.ResultHandle,
@@ -285,16 +287,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
                     & (ulong)NativeOperationProgressValidity.SpeedBytesPerSecond) != 0
                     ? operation.SpeedBytesPerSecond
                     : null,
-                ReadOptionalText(
-                    sourcePayloads,
-                    operation.StageHandle,
-                    (operation.ProgressValidMask
-                        & (ulong)NativeOperationProgressValidity.Stage) != 0),
-                ReadOptionalText(
-                    sourcePayloads,
-                    operation.MessageHandle,
-                    (operation.ProgressValidMask
-                        & (ulong)NativeOperationProgressValidity.Message) != 0));
+                (operation.ProgressValidMask & (ulong)NativeOperationProgressValidity.Stage) != 0
+                    ? HostManagerOperationRequestCodec.DecodeStage(sourcePayloads.Require(operation.StageFactHandle).Payload)
+                    : null);
         }
         var state = MapState((NativeOperationState)operation.State);
         var updatedAt = DateTimeOffset.FromUnixTimeMilliseconds(
@@ -303,7 +298,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             FormatHandle(operation.OperationId),
             kind,
             domain,
-            title,
+            subject,
             state,
             configurationGeneration,
             operation.StateRevision,

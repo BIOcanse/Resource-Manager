@@ -306,7 +306,7 @@ public sealed class ReadWriteCoreIntegrationTests
 
     private static ControlObject Gpu(string id, ulong key, int displayIndex, string access = ControlAccessLevels.Normal)
         => new(id, ControlObjectKinds.Gpu, "GPU", new(ControlOperatingSystems.Windows, ControlVendors.Nvidia),
-            [new("gpu.power-limit", "Power limit", ControlValueKinds.Number, true, Range: new(50, 200, 1, "W", 100),
+            [new("gpu.power-limit", ControlValueKinds.Number, true, Range: new(50, 200, 1, "W", 100),
                 RequiredAccessLevel: access)], AdapterIndex: displayIndex) { AdapterKey = key };
 
     private sealed class Fixture : IDisposable

@@ -57,9 +57,9 @@ public sealed class ProductVersionCatalogService
                         ProductUpdateSource.Repository, release.Tag, name + ".sha256"))
                     continue;
                 var selectable = installedKnown && installed is not null && parsed.CompareTo(installed) > 0;
-                var reason = !installedKnown
-                    ? "无法确认当前安装版本，升级选择已关闭。"
-                    : !selectable ? "只能选择高于当前安装版本的发行版。" : null;
+                var eligibility = !installedKnown
+                    ? ProductVersionEligibility.InstalledVersionUnknown
+                    : !selectable ? ProductVersionEligibility.NotNewer : ProductVersionEligibility.Eligible;
                 entries.Add((new ProductVersionOption(
                     "version:" + release.Tag,
                     release.Tag,
@@ -70,7 +70,7 @@ public sealed class ProductVersionCatalogService
                     archive.DownloadUrl,
                     checksum.DownloadUrl,
                     selectable,
-                    reason), parsed));
+                    eligibility), parsed));
             }
             var ordered = entries.OrderByDescending(item => item.Parsed)
                 .Select(item => item.Option).ToArray();

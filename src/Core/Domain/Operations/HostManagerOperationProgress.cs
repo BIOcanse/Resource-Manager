@@ -6,5 +6,10 @@ public sealed record HostManagerOperationProgress(
     ulong? BytesDone,
     ulong? BytesTotal,
     ulong? SpeedBytesPerSecond,
-    string? Stage,
-    string? Message);
+    HostManagerOperationStage? Stage);
+
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<HostManagerOperationStage>))]
+public enum HostManagerOperationStage : byte
+{
+    Download = 1
+}

@@ -43,7 +43,10 @@ export function sameOperationSnapshot(
   return left.id === right.id
     && left.kind === right.kind
     && left.domainKey === right.domainKey
-    && left.title === right.title
+    && left.subject?.targetId === right.subject?.targetId
+    && left.subject?.scope === right.subject?.scope
+    && left.subject?.mode === right.subject?.mode
+    && left.subject?.targetPath === right.subject?.targetPath
     && left.state === right.state
     && left.configurationGeneration === right.configurationGeneration
     && left.stateRevision === right.stateRevision
@@ -54,8 +57,6 @@ export function sameOperationSnapshot(
     && left.completedAt === right.completedAt
     && left.cancelRequested === right.cancelRequested
     && sameProgress(left.progress, right.progress)
-    && left.result === right.result
-    && left.error === right.error
     && (left.resultCode ?? null) === (right.resultCode ?? null)
     && sameMessage(left.resultMessage, right.resultMessage)
     && sameMessage(left.errorMessage, right.errorMessage);
@@ -72,7 +73,6 @@ export function sameOperationsState(
     || left.ready !== right.ready
     || left.persistenceFaulted !== right.persistenceFaulted
     || left.faultStage !== right.faultStage
-    || left.faultMessage !== right.faultMessage
     || left.operations.length !== right.operations.length) {
     return false;
   }
@@ -102,8 +102,7 @@ function sameProgress(
     && left.bytesDone === right.bytesDone
     && left.bytesTotal === right.bytesTotal
     && left.speedBytesPerSecond === right.speedBytesPerSecond
-    && left.stage === right.stage
-    && left.message === right.message;
+    && left.stage === right.stage;
 }
 
 function sameMessage(left: BackendMessage | null | undefined, right: BackendMessage | null | undefined): boolean {

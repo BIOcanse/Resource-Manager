@@ -1,4 +1,5 @@
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
@@ -34,8 +35,7 @@ internal sealed record HostManagerOperationProgressUpdate(
     ulong? BytesDone = null,
     ulong? BytesTotal = null,
     ulong? SpeedBytesPerSecond = null,
-    string? Stage = null,
-    string? Message = null,
+    HostManagerOperationStage? Stage = null,
     byte[]? Checkpoint = null);
 
 internal interface IHostManagerOperationEffectExecutor

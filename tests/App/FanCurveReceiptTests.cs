@@ -30,11 +30,11 @@ public sealed partial class FanCurveReceiptTests
     {
         await using var helper = new CurveHelper($"\"ok\":true,\"curve\":{curve}");
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
-            new("fan.curve", "Curve", ControlValueKinds.Curve, true),
+            new("fan.curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 35), new(120, 100)], CurveExecution: ControlFanCurveExecutions.Software), default);
 
         Assert.Equal(ControlApplyStatuses.Failed, result.Status);
-        Assert.Equal("写下去了，但回读的值没有变。", result.Message);
+        Assert.Equal("control-readback-mismatch", result.Reason?.Code);
         var actual = await helper.Client.ReadCurveAsync(0, default);
         Assert.Equal(new ControlCurvePoint[] { new(60, 35), new(120, 100) }, actual);
         Assert.Equal(1, File.ReadAllLines(helper.Operations).Count(operation => operation == "curve"));
@@ -54,7 +54,7 @@ public sealed partial class FanCurveReceiptTests
     {
         await using var helper = new CurveHelper($"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}");
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
-            new("fan.curve", "Curve", ControlValueKinds.Curve, true),
+            new("fan.curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 30), new(95, 90)], CurveExecution: ControlFanCurveExecutions.Firmware), default);
 
         Assert.Equal(ControlApplyStatuses.Applied, result.Status);
@@ -71,7 +71,7 @@ public sealed partial class FanCurveReceiptTests
         await using var helper = new CurveHelper($"\"ok\":true,\"execution\":\"software\",\"curve\":{CompleteCurve}",
             "\"ok\":true,\"execution\":null,\"curve\":null");
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
-            new("fan.curve", "Curve", ControlValueKinds.Curve, true),
+            new("fan.curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 35), new(120, 100)], CurveExecution: ControlFanCurveExecutions.Software), default);
         Assert.Equal(ControlApplyStatuses.Applied, result.Status);
         Assert.Null(await helper.Client.ReadCurveAsync(0, default));
@@ -120,7 +120,7 @@ public sealed partial class FanCurveReceiptTests
         Assert.NotNull(previous);
         var id = action is "duty" or "release-duty" ? "fan.duty"
             : action == "release-curve" ? "fan.curve" : "fan.lock-maximum";
-        var capability = new ControlCapability(id, id, id == "fan.curve" ? ControlValueKinds.Curve
+        var capability = new ControlCapability(id, id == "fan.curve" ? ControlValueKinds.Curve
             : id == "fan.duty" ? ControlValueKinds.Number : ControlValueKinds.Toggle, true);
         var writer = new FanControlWriter(helper.Client);
         if (action.StartsWith("release-", StringComparison.Ordinal))

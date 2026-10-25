@@ -90,7 +90,7 @@ internal static partial class NativeSoftwareIdentityCatalogProjector
                 record.Id,
                 record.Name,
                 record.Kind,
-                record.DisplayKind,
+                SoftwareDisplayKinds.Project(record.Kind),
                 record.RootPaths
                     .Select(CanonicalPath)
                     .Where(static value => value is not null)

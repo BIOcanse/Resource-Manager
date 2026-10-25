@@ -16,10 +16,9 @@ public sealed partial class SoftwareRegistryView
         return record with
         {
             Kind = identity.Kind,
-            DisplayKind = SoftwareDisplayKinds.Project(identity.Kind),
             SoftwareIdentityId = identity.Id,
-            Sources = record.Sources
-                .Append($"软件身份目录 {softwareIdentityCatalog.Version} · {identity.Source}")
+            SourceFacts = record.SourceFacts
+                .Append(new SoftwareSourceFact(SoftwareSourceKinds.IdentityCatalog, softwareIdentityCatalog.Version, identity.Source))
                 .ToArray()
         };
     }

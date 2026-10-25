@@ -46,18 +46,18 @@ class FakeOperationSource {
   const resultMessage = { domain: 1, code: 22, args: [] };
   const errorMessage = { domain: 6, code: 1, args: [] };
   source.snapshot = operationRegistrySnapshot(1, [operation({
-    title: "Install runtime", domainKey: "component:runtime", resultCode: "InstallerLaunched",
-    resultMessage, errorMessage, error: "network diagnostic", result: null,
-    progress: { sequence: "1", percent: 50, bytesDone: "5", bytesTotal: "10", speedBytesPerSecond: null, stage: "download", message: "transfer" }
+    subject: { targetId: "runtime", scope: null, mode: null, targetPath: null }, domainKey: "component:runtime", resultCode: "InstallerLaunched",
+    resultMessage, errorMessage,
+    progress: { sequence: "1", percent: 50, bytesDone: "5", bytesTotal: "10", speedBytesPerSecond: null, stage: "Download" }
   })]);
   const projection = new TaskCenterProjection(tasks, source);
   const item = projection.snapshot.items[0];
   assert.equal(item.resultCode, "InstallerLaunched");
   assert.deepEqual(item.resultMessage, resultMessage);
   assert.deepEqual(item.errorMessage, errorMessage);
-  assert.equal(item.error, "network diagnostic");
+  assert.equal("error" in item, false);
   assert.equal(item.domainKey, "component:runtime");
-  assert.equal(item.progressMessage, "transfer");
+  assert.equal(item.progressStage, "Download");
   projection.dispose();
   tasks.dispose();
 }
@@ -96,9 +96,8 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
     "transient");
   const projectedOperation = projection.snapshot.items.find((item) =>
     item.source === "operation")!;
-  assert.equal(projectedOperation.title, uiText.taskCenter.operation.componentInstall);
-  assert.notEqual(projectedOperation.title, operation().title,
-    "backend operation prose must not become the task title");
+  assert.equal(projectedOperation.title, `${uiText.taskCenter.operation.componentInstall}: internal-component-id`);
+  assert.equal("title" in operation(), false);
   assert.equal(
     projection.snapshot.items.find((item) => item.source === "operation")?.domainKey,
     "component.example");
@@ -275,14 +274,12 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
   const sourceProgress = operation().progress!;
   operationSource.publish(operationRegistrySnapshot(2, [operation({
     state: "failed",
-    progress: Object.freeze({ ...sourceProgress, message: "Backend progress prose" }),
-    result: "Backend result prose",
-    error: "Backend error prose"
+    progress: Object.freeze({ ...sourceProgress })
   })]));
   const failedOperation = projection.snapshot.items.find((item) => item.source === "operation")!;
-  assert.equal(failedOperation.progressMessage, "Backend progress prose");
-  assert.equal(failedOperation.result, "Backend result prose");
-  assert.equal(failedOperation.error, "Backend error prose");
+  assert.equal(failedOperation.progressStage, "Download");
+  assert.equal("result" in failedOperation, false);
+  assert.equal("error" in failedOperation, false);
   assert.equal("resultSummary" in failedOperation, false);
   assert.equal("errorSummary" in failedOperation, false);
   assert.equal("message" in failedOperation.progress!, false);
@@ -318,7 +315,7 @@ function operation(
     id: "00000000000000000000000000000001",
     kind: "component.install",
     domainKey: "component.example",
-    title: "安装组件 internal-component-id",
+    subject: { targetId: "internal-component-id", scope: null, mode: null, targetPath: null },
     state: "running",
     configurationGeneration: "1",
     stateRevision: "1",
@@ -334,11 +331,8 @@ function operation(
       bytesDone: "1",
       bytesTotal: "4",
       speedBytesPerSecond: "1",
-      stage: "running",
-      message: null
+      stage: "Download",
     }),
-    result: null,
-    error: null,
     ...overrides
   });
 }

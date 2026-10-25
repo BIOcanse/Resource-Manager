@@ -163,13 +163,34 @@ public sealed class IntelCpuControlOwnerLibraryIntegrationTests : IDisposable
     }
 
     [Fact]
-    public void HostVerifiedMessagesRetainOriginalG6Formatting()
+    public async Task HostVerifiedReasonsKeepMachineCodesAndRawReadbackFacts()
     {
-        var arguments = new object?[] { 45.125, "W" };
-        Assert.Equal($"已写入并回读；实际硬件档位 {45.125:G6} W。",
-            ResourceManager.App.Infrastructure.Control.Writers.IntelCpuControlCopy.Describe(IntelCpuControlMessage.PowerVerified, arguments));
-        Assert.Equal($"已写入并回读 {-100.125:G6} mV。",
-            ResourceManager.App.Infrastructure.Control.Writers.IntelCpuControlCopy.Describe(IntelCpuControlMessage.VoltageVerified, new object?[] { -100.125 }));
+        var state = new RecordedState();
+        var callbacks = new List<(IntelCpuControlMessage Code, object?[] Arguments)>();
+        using var resource = new IntelCpuControlResource(() => new RecordedHardware(state), Baseline, (code, arguments) =>
+        {
+            callbacks.Add((code, arguments.ToArray()));
+            return ResourceManager.App.Infrastructure.Control.Writers.IntelCpuControlCopy.Describe(code, arguments);
+        });
+        var power = await resource.WriteAsync(Target, Power, new(Power.Id, 45.125, "W"), default);
+        Assert.Equal("applied", power.Status);
+        Assert.Equal("intel-cpu.PowerVerified", power.Message);
+        Assert.Equal(45.125, power.Requested);
+        Assert.Equal(45.125, power.Observed);
+        Assert.Equal("W", power.Unit);
+        var powerArguments = Assert.Single(callbacks, entry => entry.Code == IntelCpuControlMessage.PowerVerified).Arguments;
+        Assert.Equal(45.125, Assert.IsType<double>(powerArguments[0]));
+        Assert.Equal("W", Assert.IsType<string>(powerArguments[1]));
+
+        var capability = new IntelCpuControlCapability("cpu.core-voltage-offset", new(-250, 100, 1, "mV"));
+        var voltage = await resource.WriteAsync(Target, capability, new(capability.Id, -100.125, "mV"), default);
+        Assert.Equal("applied", voltage.Status);
+        Assert.Equal("intel-cpu.VoltageVerified", voltage.Message);
+        Assert.Equal(-100.125, voltage.Requested);
+        Assert.Equal(IntelOcMailbox.Decode(state.Voltage[0]), voltage.Observed);
+        Assert.Equal("mV", voltage.Unit);
+        var voltageArguments = Assert.Single(callbacks, entry => entry.Code == IntelCpuControlMessage.VoltageVerified).Arguments;
+        Assert.Equal(IntelOcMailbox.Decode(state.Voltage[0]), Assert.IsType<double>(Assert.Single(voltageArguments)));
     }
 
     private sealed class RecordedState

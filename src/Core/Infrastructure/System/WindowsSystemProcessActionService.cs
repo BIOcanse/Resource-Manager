@@ -16,7 +16,8 @@ namespace ResourceManager.App.Infrastructure.LocalSystem;
 
 public sealed class WindowsSystemProcessActionService(
     IWebHostEnvironment environment,
-    IInteractiveUserSessionBroker sessionBroker) : ISystemProcessActionService
+    IInteractiveUserSessionBroker sessionBroker,
+    ILogger<WindowsSystemProcessActionService>? logger = null) : ISystemProcessActionService
 {
     private const int MaxProcessOperationCount = 64;
     private const int MiniDumpWithFullMemory = 0x00000002;
@@ -34,7 +35,7 @@ public sealed class WindowsSystemProcessActionService(
             NativeUiLaunchHostedService.ResolveNativeUiPath(),
             UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
 
-        return new LocalOnlineSearchResult(query, url, "已用默认浏览器打开在线搜索。");
+        return new LocalOnlineSearchResult(query, url);
     }
 
     public LocalPathOpenResult OpenProperties(LocalPathPropertiesRequest request, SoftwareOperationCaller caller)
@@ -54,8 +55,7 @@ public sealed class WindowsSystemProcessActionService(
         return new LocalPathOpenResult(
             normalizedPath,
             normalizedPath,
-            "Properties",
-            "已打开属性窗口。");
+            "Properties");
     }
 
     public SystemProcessOperationResult TerminateProcesses(SystemProcessOperationRequest request, SafeAccessTokenHandle callerToken)
@@ -65,14 +65,10 @@ public sealed class WindowsSystemProcessActionService(
         var items = new List<SystemProcessOperationItem>();
         foreach (var target in targets)
         {
-            items.Add(TerminateProcess(target, callerToken));
+            items.Add(TerminateProcess(target, callerToken, logger));
         }
 
-        var succeeded = items.Count(static item => item.State.Equals("Succeeded", StringComparison.OrdinalIgnoreCase));
-        return new SystemProcessOperationResult(
-            succeeded == items.Count
-                ? $"已结束 {succeeded} 个进程。"
-                : $"已结束 {succeeded} / {items.Count} 个进程。",
+        return new SystemProcessOperationResult(SystemProcessAction.Terminate,
             items);
     }
 
@@ -87,29 +83,26 @@ public sealed class WindowsSystemProcessActionService(
             dumpDirectory = ProcessDumpDirectoryAccess.Prepare(packageRoot, callerSid);
             foreach (var target in targets)
             {
-                items.Add(CreateProcessDump(target, dumpDirectory, callerToken));
+                items.Add(CreateProcessDump(target, dumpDirectory, callerToken, logger));
             }
         }
 
-        var succeeded = items.Count(static item => item.State.Equals("Succeeded", StringComparison.OrdinalIgnoreCase));
-        return new SystemProcessOperationResult(
-            succeeded == items.Count
-                ? $"已创建 {succeeded} 个转储文件。"
-                : $"已创建 {succeeded} / {items.Count} 个转储文件。",
+        return new SystemProcessOperationResult(SystemProcessAction.Dump,
             items,
             dumpDirectory);
     }
 
-    internal static SystemProcessOperationItem TerminateProcess(NormalizedProcessTarget target, SafeAccessTokenHandle callerToken)
+    internal static SystemProcessOperationItem TerminateProcess(NormalizedProcessTarget target, SafeAccessTokenHandle callerToken,
+        ILogger<WindowsSystemProcessActionService>? logger = null)
     {
         var processId = target.ProcessId;
         if (processId == Environment.ProcessId)
         {
-            return OperationItem(target, "ResourceManager", "Skipped", "拒绝结束 Resource Manager 后端进程。");
+            return OperationItem(target, "ResourceManager", "Skipped", SystemProcessOutcome.BackendProtected);
         }
         if (processId <= 4)
         {
-            return OperationItem(target, "System", "Skipped", "CriticalProcessProtected");
+            return OperationItem(target, "System", "Skipped", SystemProcessOutcome.CriticalProcessProtected);
         }
 
         var handle = IntPtr.Zero;
@@ -126,23 +119,24 @@ public sealed class WindowsSystemProcessActionService(
                     target,
                     processName,
                     "Skipped",
-                    mismatch ? "进程实例已变化，未执行操作。" : "进程不存在或已经退出。");
+                    mismatch ? SystemProcessOutcome.IdentityChanged : SystemProcessOutcome.ProcessExited);
             }
 
             // Use the same identity-checked effect handle; an unreadable critical flag is a failure.
             if (ReadProcessCriticality(handle))
             {
-                return OperationItem(target, processName, "Skipped", "CriticalProcessProtected");
+                return OperationItem(target, processName, "Skipped", SystemProcessOutcome.CriticalProcessProtected);
             }
             if (!NativeMethods.TerminateProcess(handle, 1))
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
-            return OperationItem(target, processName, "Succeeded", "已结束进程。");
+            return OperationItem(target, processName, "Succeeded", SystemProcessOutcome.Terminated);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or UnauthorizedAccessException)
         {
-            return OperationItem(target, null, "Failed", ex.Message);
+            logger?.LogWarning(ex, "Process termination failed for {ProcessId} ({ProcessStartKey}).", target.ProcessId, target.ProcessStartKey);
+            return OperationItem(target, null, "Failed", FailureOutcome(ex), nativeErrorCode: (ex as Win32Exception)?.NativeErrorCode);
         }
         finally
         {
@@ -156,7 +150,8 @@ public sealed class WindowsSystemProcessActionService(
     internal static SystemProcessOperationItem CreateProcessDump(
         NormalizedProcessTarget target,
         string dumpDirectory,
-        SafeAccessTokenHandle callerToken)
+        SafeAccessTokenHandle callerToken,
+        ILogger<WindowsSystemProcessActionService>? logger = null)
     {
         var processId = target.ProcessId;
         var handle = IntPtr.Zero;
@@ -173,7 +168,7 @@ public sealed class WindowsSystemProcessActionService(
                     target,
                     processName,
                     "Skipped",
-                    mismatch ? "进程实例已变化，未创建转储。" : "进程不存在或已经退出。");
+                    mismatch ? SystemProcessOutcome.IdentityChanged : SystemProcessOutcome.ProcessExited);
             }
 
             var fileName = $"{SanitizeFileName(processName ?? "process")}_{processId}_{DateTimeOffset.Now:yyyyMMdd_HHmmss}.dmp";
@@ -192,11 +187,12 @@ public sealed class WindowsSystemProcessActionService(
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
-            return OperationItem(target, processName, "Succeeded", "已创建内存转储文件。", dumpPath);
+            return OperationItem(target, processName, "Succeeded", SystemProcessOutcome.DumpCreated, dumpPath);
         }
         catch (Exception ex) when (ex is IOException or Win32Exception or InvalidOperationException or UnauthorizedAccessException)
         {
-            return OperationItem(target, null, "Failed", ex.Message);
+            logger?.LogWarning(ex, "Process dump failed for {ProcessId} ({ProcessStartKey}).", target.ProcessId, target.ProcessStartKey);
+            return OperationItem(target, null, "Failed", FailureOutcome(ex), nativeErrorCode: (ex as Win32Exception)?.NativeErrorCode);
         }
         finally
         {
@@ -206,6 +202,15 @@ public sealed class WindowsSystemProcessActionService(
             }
         }
     }
+
+    private static SystemProcessOutcome FailureOutcome(Exception error)
+        => error switch
+        {
+            UnauthorizedAccessException or Win32Exception { NativeErrorCode: 5 } => SystemProcessOutcome.AccessDenied,
+            Win32Exception => SystemProcessOutcome.NativeFailure,
+            IOException => SystemProcessOutcome.FileFailure,
+            _ => SystemProcessOutcome.RequestRejected
+        };
 
     private static string CleanQuery(string? query)
     {
@@ -314,16 +319,16 @@ public sealed class WindowsSystemProcessActionService(
         NormalizedProcessTarget target,
         string? processName,
         string state,
-        string message,
-        string? path = null)
+        SystemProcessOutcome outcome,
+        string? path = null, int? nativeErrorCode = null)
         => new(
             target.ProcessId,
             processName,
             state,
-            message,
+            outcome,
             path,
             target.ProcessStartKey.ToString(
-                System.Globalization.CultureInfo.InvariantCulture));
+                System.Globalization.CultureInfo.InvariantCulture), nativeErrorCode);
 
     private static string NormalizeExistingPath(string path)
     {

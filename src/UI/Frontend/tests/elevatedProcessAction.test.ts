@@ -25,8 +25,9 @@ Object.defineProperty(globalThis, "window", { configurable: true, value: { chrom
   removeEventListener(_type: string, listener: (event: { data: unknown }) => void) { listeners.delete(listener); }
 } } } });
 const targets = [{ processId: 71, processStartKey: "132537599910000000" }];
-const result: SystemProcessOperationResult = { message: "已结束 1 个进程。", items: [
-  { processId: 71, processStartKey: targets[0].processStartKey, processName: "fixture", state: "Succeeded", message: "已结束进程。" }
+const result: SystemProcessOperationResult = { action: "Terminate", directoryPath: null, items: [
+  { processId: 71, processStartKey: targets[0].processStartKey, processName: "fixture", state: "Succeeded",
+    outcome: "Terminated", path: null, nativeErrorCode: null }
 ] };
 const denied = () => new ApiRequestError("raw backend error", {
   kind: "http", status: 403, payload: { code: "ProcessActionRequiresElevation" }, retryable: false
@@ -46,10 +47,10 @@ try {
     };
     const completed = await call({ result });
     assert.deepEqual(completed, result);
-    assert.equal(systemProcessResultSummary(completed).message, copy.softwareActions.processActionResult(1, 1));
-    const protectedItem = { ...result.items[0], state: "Skipped", message: "CriticalProcessProtected" };
+    assert.equal(systemProcessResultSummary(completed).message, copy.managementFeedback.processTerminateSummary(1, 1));
+    const protectedItem = { ...result.items[0], state: "Skipped", outcome: "CriticalProcessProtected" as const };
     assert.equal(systemProcessResultDetail(protectedItem), `fixture: ${copy.softwareActions.criticalProcessProtected}`);
-    assert.equal(systemProcessResultSummary({ message: "raw", items: [protectedItem] }).complete, false);
+    assert.equal(systemProcessResultSummary({ action: "Terminate", items: [protectedItem] }).complete, false);
     assert.deepEqual(sent.at(-1)?.batch, { action: "terminate", targets });
     await assert.rejects(call({ canceled: true }), (error: unknown) => error instanceof ApiRequestError
       && error.kind === "aborted" && error.userMessage === copy.misc.transportCanceled && !error.retryable);
@@ -58,11 +59,23 @@ try {
     await assert.rejects(call({ result: { ...result, items: [{ ...result.items[0], processStartKey: "132537599910000001" }] } }),
       (error: unknown) => error instanceof ApiRequestError && error.kind === "invalid-response"
         && error.userMessage === copy.apiError.terminateFailed && !error.retryable);
+    for (const invalid of [
+      { ...result, action: "Dump" },
+      { ...result, items: [{ ...result.items[0], outcome: "DumpCreated" }] },
+      { ...result, items: [{ ...result.items[0], outcome: "Raw prose" }] },
+      { ...result, items: [{ ...result.items[0], state: "Failed" }] },
+      { ...result, items: [{ ...result.items[0], processStartKey: 132537599910000000 }] }
+    ]) await assert.rejects(call({ result: invalid }), (error: unknown) => error instanceof ApiRequestError && error.kind === "invalid-response");
+    const failedItem = { ...result.items[0], state: "Failed", outcome: "NativeFailure" as const, nativeErrorCode: 87 };
+    assert.equal(systemProcessResultDetail(failedItem), `fixture: ${copy.managementFeedback.processNativeFailure}`);
+    assert.equal(systemProcessResultSummary({ action: "Dump", items: [{ ...result.items[0], outcome: "DumpCreated" }] }).message,
+      copy.managementFeedback.processDumpSummary(1, 1));
     await assert.rejects(call({ error: "process-action-unavailable" }),
       (error: unknown) => error instanceof ApiRequestError && error.userMessage === copy.apiError.terminateFailed);
   }
   const before = sent.length;
-  assert.equal(await withProcessActionElevation("dump", targets, async () => result, "fallback"), result);
+  const dumpResult: SystemProcessOperationResult = { ...result, action: "Dump", items: [{ ...result.items[0], outcome: "DumpCreated" }] };
+  assert.deepEqual(await withProcessActionElevation("dump", targets, async () => dumpResult, "fallback"), dumpResult);
   const unrelated = new ApiRequestError("denied", { kind: "http", status: 403, payload: { code: "Other" }, retryable: false });
   await assert.rejects(withProcessActionElevation("dump", targets, async () => { throw unrelated; }, "fallback"), error => error === unrelated);
   assert.equal(sent.length, before);

@@ -5,6 +5,7 @@ import {
   getGpuPerformanceScoreSource,
   getGpuSchedulingModelSource,
   gpuPerformanceScoreSnapshotDecoder,
+  gpuSpecializedTelemetryDecoder,
   normalizeGpuSpecializedTelemetryQuery,
   normalizeGpuSchedulingModelQuery,
   unrecognizedGpuNames
@@ -12,6 +13,28 @@ import {
 import { defaultGpuSoftwareBaseScore } from "../src/features/gpuScheduling/gpuSoftwareBaseScore.ts";
 
 const capturedAt = "2026-08-29T12:00:00.000Z";
+
+const specialized = gpuSpecializedTelemetryDecoder.decode({
+  version: 3,
+  capturedAt,
+  adapters: [{
+    adapterIndex: 0,
+    adapterName: "Device-reported GPU",
+    vendorId: "10DE",
+    architecture: "NVIDIA CUDA-only",
+    counters: [{
+      counterId: "gpu.0.nvidia.cuda.usage",
+      counterClass: 3,
+      value: 25,
+      unit: "%",
+      providerId: "windows.pdh.gpu-engine",
+      isIntrusive: false
+    }]
+  }]
+});
+assert.equal(specialized.adapters[0]?.counters[0]?.value, 25);
+assert.equal(Object.hasOwn(specialized.adapters[0]!.counters[0]!, "displayName"), false);
+assert.throws(() => gpuSpecializedTelemetryDecoder.decode({ version: 2, capturedAt, adapters: [] }), /version/);
 
 assert.deepEqual(
   normalizeGpuSchedulingModelQuery({ gpuIndexes: [2, 0, 2, -1, 1.5] }),

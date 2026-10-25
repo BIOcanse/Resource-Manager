@@ -1,4 +1,6 @@
+import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
+import { softwareFactsCopy } from "../softwareFacts.ts";
 import { enBackendMessagesCopy } from "./backendMessages.ts";
 import { enDetailsCopy } from "./details.ts";
 import { enDeviceAdaptersCopy } from "./deviceAdapters.ts";
@@ -24,7 +26,9 @@ import type { AppCopy } from "../zh/index.ts";
 
 // 英文基底：非中文语言在此之上合并各自补丁。
 export const enAppCopy: AppCopy = {
+  componentCatalog,
   managementFeedback,
+  softwareFacts: softwareFactsCopy["en-US"],
   ...enShellCopy,
   ...enSoftwareCopy,
   ...enMonitorCopy,

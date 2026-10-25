@@ -10,25 +10,32 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 public sealed class IntelCpuControlWriter : IControlWriter, IControlDetectionCache, IDisposable
 {
     internal IntelCpuControlResource Resource { get; }
-    public IntelCpuControlWriter(IHostEnvironment environment)
+    private readonly ILogger<IntelCpuControlWriter>? logger;
+    public IntelCpuControlWriter(IHostEnvironment environment, ILogger<IntelCpuControlWriter>? logger = null)
         : this(() => IntelCpuHardwareBinding.Open(environment.ContentRootPath), Path.Combine(
-            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "intel-cpu-baselines.json")) { }
-    internal IntelCpuControlWriter(Func<IIntelCpuHardware> open, string baselinePath)
-        => Resource = new(open, baselinePath, IntelCpuControlCopy.Describe);
+            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "intel-cpu-baselines.json"), logger) { }
+    internal IntelCpuControlWriter(Func<IIntelCpuHardware> open, string baselinePath, ILogger<IntelCpuControlWriter>? logger = null)
+    {
+        this.logger = logger;
+        Resource = new(open, baselinePath, IntelCpuControlCopy.Describe);
+    }
 
     public string? ChannelOf(ControlObject target, string capabilityId)
         => Resource.ChannelOf(Target(target), capabilityId) is null ? null : ControlChannels.IntelMsr;
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
         var result = Resource.Probe(Target(target), Capability(capability));
-        return new(result.CanWrite, result.Reason, Range(result.Range), result.UnavailableKind, result.CanRead);
+        return new(result.CanWrite, Reason(result.Reason, result.UnavailableKind == ControlUnavailableKinds.Component
+            ? "control-helper-missing" : "control-backend-unavailable"), Range(result.Range), result.UnavailableKind, result.CanRead);
     }
     public async Task<ControlApplyOutcome> WriteAsync(ControlObject target, ControlCapability capability,
         ControlSetting setting, CancellationToken cancellationToken)
     {
         var result = await Resource.WriteAsync(Target(target), Capability(capability),
             new(setting.CapabilityId, setting.Number, setting.Unit), cancellationToken).ConfigureAwait(false);
-        return new(result.ObjectId, result.CapabilityId, result.Status, result.Message)
+        var reason = Reason(result.Message, "control-write-failed");
+        return new(result.ObjectId, result.CapabilityId, result.Status, reason is null ? null : reason with
+        { Arguments = new(Unit: result.Unit, Requested: result.Requested, Observed: result.Observed) })
         {
             Evidence = result.Status == ControlApplyStatuses.Applied
                 ? new(IntelCpuControlResource.VoltagePlane(capability.Id) is not null
@@ -53,31 +60,23 @@ public sealed class IntelCpuControlWriter : IControlWriter, IControlDetectionCac
         capability.Range is { } range ? new(range.Minimum, range.Maximum, range.Step, range.Unit, range.DefaultValue) : null);
     private static ControlNumberRange? Range(IntelCpuControlNumberRange? range)
         => range is null ? null : new(range.Minimum, range.Maximum, range.Step, range.Unit, range.DefaultValue);
+
+    private ControlApplyReason? Reason(string? value, string failure)
+    {
+        if (value is null) return null;
+        const string prefix = "intel-cpu.";
+        if (value.StartsWith(prefix, StringComparison.Ordinal)
+            && Enum.TryParse<IntelCpuControlMessage>(value[prefix.Length..], out var code) && Enum.IsDefined(code))
+            return new(value);
+        logger?.LogWarning("Intel control failure: {Detail}", value);
+        return new(failure);
+    }
 }
 
 internal static class IntelCpuControlCopy
 {
     internal static string Describe(IntelCpuControlMessage message, IReadOnlyList<object?> arguments)
     {
-        var format = message switch
-        {
-            IntelCpuControlMessage.MmioWriteNotImplemented => "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。",
-            IntelCpuControlMessage.RegisterWriteNotImplemented => "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。",
-            IntelCpuControlMessage.MailboxModuleUnavailable => "当前签名模块未开放 OC 邮箱。",
-            IntelCpuControlMessage.FirmwarePowerLimitLocked => "固件锁定了 Intel 功耗上限寄存器。",
-            IntelCpuControlMessage.PowerLimitModuleUnavailable => "当前模块未开放功耗上限写入。",
-            IntelCpuControlMessage.NumberRequired => "需要有效数值。",
-            IntelCpuControlMessage.OutOfRange => "数值超出当前硬件范围。",
-            IntelCpuControlMessage.VoltageVerified => "已写入并回读 {0:G6} mV。",
-            IntelCpuControlMessage.VoltageReadbackMismatch => "电压回读不一致；固件可能锁定或联动了电压域。",
-            IntelCpuControlMessage.FirmwarePowerRegisterLocked => "固件已锁定功耗寄存器。",
-            IntelCpuControlMessage.PowerReadbackMismatch => "写入已返回，但回读不一致；固件可能拒绝或覆盖了设置。",
-            IntelCpuControlMessage.PowerVerified => "已写入并回读；实际硬件档位 {0:G6} {1}。",
-            IntelCpuControlMessage.BaselineUnavailable => "无法取得或保存调整前的值，不能保证撤销恢复。",
-            _ => throw new ArgumentOutOfRangeException(nameof(message))
-        };
-        return arguments.Count == 0 ? format
-            : string.Format(System.Globalization.CultureInfo.CurrentCulture, format, arguments.ToArray());
+        return "intel-cpu." + message.ToString();
     }
 }
-

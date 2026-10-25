@@ -133,6 +133,7 @@ export const zhSoftwareDetailCopy = {
       lastSeen: (time: string) => `最后 ${time}`
     },
     gpuLaunchOutcome: {
+      configured: "启动环境已配置，设备选择尚未观察到",
       ready: "显卡设置已就绪",
       systemDefault: "使用系统默认设置",
       switchedToSystemDefault: "已改用系统默认设置",
@@ -143,6 +144,25 @@ export const zhSoftwareDetailCopy = {
       unknown: "启动结果未知"
     },
     providerPhase: {
+      reasons: {
+        "startup-provider-missing": "启动 Provider 文件缺失；已保存设置不会执行。",
+        "runtime-observation-required": "等待当前 GPU 进程与渲染器确认；只有已确认的外部重建路径可以执行。",
+        "runtime-route-unverified": "尚无已验证的无注入运行期换卡路径。",
+        "executable-path-missing": "尚未取得可执行文件完整路径。",
+        "executable-path-invalid": "可执行文件路径无效。",
+        "executable-missing": "可执行文件当前不存在。",
+        "system-path-blocked": "Windows 系统目录下的进程不接受精确 GPU Provider。",
+        "self-process-blocked": "Resource Manager 自身进程不接受精确 GPU Provider。",
+        "architecture-unreadable": "无法读取可执行文件架构。",
+        "architecture-unsupported": "精确 GPU Provider 仅支持原生 x64 可执行文件。",
+        "graphics-api-unidentified": "尚未记录图形 API，等待首次识别。",
+        "startup-vulkan-instance-only": "Vulkan 启动选择使用普通权限新进程的 explicit layer 与 API 1.1+ instance；不迁移既有设备，仍须允许 GPU shim。",
+        "startup-d3d-creation-only": "仅影响这些入口之后创建的设备，不迁移既有设备；仍须允许 GPU shim。",
+        "graphics-api-unsupported": "图形 API 没有适用的精确路径；设置不会执行。",
+        "inventory-unavailable": "当前 GPU 清单不可用，精确目标暂不可执行。",
+        "target-missing": "已保存 GPU 当前不在完整设备清单中。",
+        "d3d12-factory-limit": "工厂须在加载后获取；不保证预先持有的工厂。",
+      },
       startup: "启动",
       runtime: "运行",
       available: "可用",

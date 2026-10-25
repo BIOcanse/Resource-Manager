@@ -1,4 +1,6 @@
+import { operationsFeedback } from "../operationsFeedback.ts";
 export const managementFeedback = {
+  ...operationsFeedback["en-US"],
   "resultCode": "Result code",
   "removeManual": "Remove manual registration",
   "confirmManual": "Remove this manual registration and classification? Software files will remain installed and unchanged.",

@@ -17,8 +17,8 @@ const topology = cpuTopologyDecoder.decode({
     name: "Fixture CPU",
     vendor: "Fixture",
     family: "Fixture",
-    physicalCoreCount: 0,
-    logicalProcessorCount: 0,
+    physicalCoreCount: 1,
+    logicalProcessorCount: 1,
     source: "fixture"
   },
   topologySource: "fixture",
@@ -26,17 +26,21 @@ const topology = cpuTopologyDecoder.decode({
   affinityTargetKind: "logical_processor_mask",
   visualLayoutKind: "grid",
   visualLayoutSource: "fixture",
-  physicalCoreCount: 0,
-  logicalProcessorCount: 0,
-  ccdCount: 0,
+  physicalCoreCount: 1,
+  logicalProcessorCount: 1,
+  ccdCount: 1,
   simultaneousMultithreading: false,
-  ccds: [],
-  physicalCores: [],
-  logicalProcessors: [],
-  notes: []
+  ccds: [{ id: "ccd:0", index: 0, physicalCoreIndexes: [0], logicalProcessorIds: [0], source: "fixture" }],
+  physicalCores: [{ id: "core:0", index: 0, ccdId: "ccd:0", efficiencyClass: 0, performanceScore: 100,
+    logicalProcessorIds: [0], cacheLevels: [] }],
+  logicalProcessors: [{ id: 0, processorGroup: 0, groupRelativeIndex: 0, physicalCoreId: "core:0",
+    ccdId: "ccd:0", performanceScore: 100, affinitySelectable: true }]
 });
 assert.ok(topology);
 assert.equal(topology.cpuName, "Fixture CPU");
+assert.equal("notes" in topology, false);
+assert.equal("label" in topology.ccds[0], false);
+assert.equal("label" in topology.physicalCores[0], false);
 assert.throws(() => cpuTopologyDecoder.decode({ ...topology, physicalCores: null }));
 
 const residency = cpuResidencyDecoder.decode({

@@ -30,14 +30,14 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     internal const string DynamicBoostEnabledCapabilityId = "gpu.dynamic-boost-enabled";
     internal const string DynamicBoostOffsetCapabilityId = "gpu.dynamic-boost-offset";
 
-    private const string PlatformMissing = "没有 Uniwill 平台接口。";
-    internal const string TargetUnconfirmed = "整机固件预算只用于唯一确认的内置 NVIDIA 独显；外接或身份不明的显卡不可调整。";
-    internal const string FirmwareUnconfirmed = "未确认此机型固件支持 GPU 功耗控制，不能调整。";
-    private const string BudgetUnknown = "读不到功率预算。";
-    private const string WriteRefused = "写入后无法确认寄存器值。";
-    private const string EnableRefused = "使能位未确认，未继续写入额度。";
-    private const string FirmwareManaged = "功率预算现在由固件自管，EC 里这几个值不是当前生效值。";
-    internal const string BaselineUnavailable = "无法读取或保存功率预算恢复基线，未继续调整。";
+    private const string PlatformMissing = "uniwill-platform-missing";
+    internal const string TargetUnconfirmed = "uniwill-target-unconfirmed";
+    internal const string FirmwareUnconfirmed = "uniwill-firmware-unconfirmed";
+    private const string BudgetUnknown = "uniwill-budget-unreadable";
+    private const string WriteRefused = "uniwill-register-unverified";
+    private const string EnableRefused = "uniwill-enable-unverified";
+    private const string FirmwareManaged = "uniwill-firmware-managed";
+    internal const string BaselineUnavailable = "uniwill-baseline-unavailable";
 
     private const byte TakeoverBits =
         UniwillEcRegisters.CtgpDbEnableGeneralBit | UniwillEcRegisters.CtgpDbEnableCtgpBit;
@@ -131,7 +131,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
 
         if (!IsMine(target, capability.Id) || setting.CapabilityId != capability.Id)
         {
-            return Task.FromResult(Failed(target, capability, "控制项不匹配。"));
+            return Task.FromResult(Failed(target, capability, "control-capability-mismatch"));
         }
         if (!IsBudgetTarget(target)) return Task.FromResult(Failed(target, capability, TargetUnconfirmed));
         if (!bridge.IsAvailable)
@@ -210,7 +210,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     {
         if (setting.Toggle is not { } wanted || setting.Number is not null)
         {
-            return Failed(target, capability, "这一项要一个开关值，收到的不是。");
+            return Failed(target, capability, "control-toggle-required");
         }
         if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current)
         {
@@ -236,7 +236,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         if (setting.Number is not { } value || !double.IsFinite(value)
             || value < 0 || value > byte.MaxValue || value != Math.Truncate(value) || setting.Toggle is not null)
         {
-            return Failed(target, capability, "功率偏移必须是范围内的非负整数。");
+            return Failed(target, capability, "control-nonnegative-integer-required");
         }
         if (ReadBudget(target) is not { } budget)
         {
@@ -244,7 +244,8 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         }
         if (value > RequestMaximum(budget, capability.Id))
         {
-            return Failed(target, capability, "请求超出当前功率偏移范围。");
+            return Failed(target, capability, new("control-out-of-range",
+                new(Minimum: 0, Maximum: RequestMaximum(budget, capability.Id), Unit: ControlUnits.Watt, Requested: value)));
         }
         if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } enable || !CaptureBaseline(target, enable))
             return Failed(target, capability, BaselineUnavailable);
@@ -274,8 +275,8 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             wanted,
             effective);
         // The OEM also writes these registers. A mismatch alone cannot identify clamping.
-        return Failed(target, capability,
-            $"请求 {wanted} W，回读 {effective} W，未确认应用。");
+        return Failed(target, capability, new("control-readback-mismatch",
+            new(Unit: ControlUnits.Watt, Requested: wanted, Observed: effective)));
     }
 
     private bool EnsureTakeover()
@@ -337,7 +338,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     private static ControlApplyOutcome Failed(
         ControlObject target,
         ControlCapability capability,
-        string reason)
+        ControlApplyReason reason)
         => new(target.Id, capability.Id, ControlApplyStatuses.Failed, reason);
 
     private readonly record struct GpuPowerBudget(

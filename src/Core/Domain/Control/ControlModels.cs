@@ -62,7 +62,6 @@ public static class ControlAccessLevels
     public static readonly IReadOnlyList<string> All = [Normal, Root];
     public static int Rank(string? level) => level == Root ? 1 : 0;
     public static bool Allows(string? current, string? required) => Rank(current) >= Rank(required);
-    public static string DisplayName(string? level) => level == Root ? "Root" : "普通";
 }
 
 /// <summary>
@@ -264,11 +263,10 @@ public static class ControlValueKinds
 public sealed record ControlCapability(
     /// <summary>稳定标识，例如 <c>fan.lock-maximum</c>。</summary>
     string Id,
-    string Label,
     string ValueKind,
     /// <summary>现在能不能用。不能用时 <see cref="UnavailableReason"/> 必须有值。</summary>
     bool Supported,
-    string? UnavailableReason = null,
+    ControlApplyReason? UnavailableReason = null,
     /// <summary>
     /// 不能用属于哪一类，见 <see cref="ControlUnavailableKinds"/>。
     /// 能用时为 null。界面靠它决定画锁还是画叉。
@@ -276,7 +274,6 @@ public sealed record ControlCapability(
     string? UnavailableKind = null,
     /// <summary>缺哪个可选组件才不能用。没有就是 null。</summary>
     string? RequiredComponentId = null,
-    string? RequiredComponentName = null,
     /// <summary>数值型能力的范围与单位；其余类型为 null。</summary>
     ControlNumberRange? Range = null,
     /// <summary>
@@ -315,7 +312,7 @@ public sealed record ControlObject(
     /// <summary>形如 <c>gpu:{identityKey}</c>，全局唯一且跨重启稳定。</summary>
     string Id,
     string Kind,
-    string DisplayName,
+    string? ReportedName,
     ControlObjectPlatform Platform,
     IReadOnlyList<ControlCapability> Capabilities,
     /// <summary>补充说明，例如这个风扇是哪个采集器报上来的。</summary>
@@ -341,7 +338,8 @@ public sealed record ControlObject(
     /// 写入器靠它把对象接回真实的那块卡：NVAPI / ADLX 各有自己的句柄体系，
     /// 唯一共同的锚点就是系统枚举出来的适配器序号。非显卡对象为 null。
     /// </summary>
-    int? AdapterIndex = null)
+    int? AdapterIndex = null,
+    int? Ordinal = null)
 {
     /// <summary>当前监控适配器的 Windows LUID；只供执行层核对，不持久化为配置身份。</summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -358,4 +356,3 @@ public sealed record ControlObject(
 public sealed record ControlObjectCatalog(
     IReadOnlyList<ControlObject> Objects,
     DateTimeOffset ReadAt);
-

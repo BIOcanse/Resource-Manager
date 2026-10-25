@@ -70,14 +70,13 @@ public sealed partial class OptionalDependencyManager
         OptionalDependencyDefinition definition,
         InstalledSoftwareEntry entry)
     {
-        var definitionName = NormalizeMatchText(definition.Name);
         var entryName = NormalizeMatchText(entry.Name);
         var vendor = NormalizeMatchText(definition.Vendor);
         var publisher = NormalizeMatchText(entry.Publisher ?? "");
 
         return (!string.IsNullOrWhiteSpace(entryName)
-                && (entryName.Contains(definitionName, StringComparison.OrdinalIgnoreCase)
-                    || definitionName.Contains(entryName, StringComparison.OrdinalIgnoreCase)))
+                && definition.InstalledProductNames.Any(name =>
+                    entryName.Contains(NormalizeMatchText(name), StringComparison.OrdinalIgnoreCase)))
             || (!string.IsNullOrWhiteSpace(vendor)
                 && !string.IsNullOrWhiteSpace(publisher)
                 && publisher.Contains(vendor, StringComparison.OrdinalIgnoreCase)

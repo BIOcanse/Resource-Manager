@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ResourceManager.App.Application.Monitoring;
 
 namespace ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry;
@@ -7,7 +8,8 @@ public static class GpuTelemetryWorkerProtocol
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        TypeInfoResolver = GpuTelemetryJsonContext.Default
     };
 
     public static string SerializeRequest(GpuTelemetryWorkerRequest request)
@@ -36,3 +38,9 @@ public static class GpuTelemetryWorkerProtocol
             ?? throw new InvalidOperationException("GPU telemetry worker snapshot payload is empty.");
     }
 }
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    PropertyNameCaseInsensitive = true, GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GpuTelemetryWorkerRequest))]
+[JsonSerializable(typeof(GpuTelemetryWorkerSnapshot))]
+internal partial class GpuTelemetryJsonContext : JsonSerializerContext;

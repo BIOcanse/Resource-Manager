@@ -168,10 +168,10 @@ public sealed class CpuBaselineRatioCatalogTests
             var ccdId = $"ccd:{ccdIndex}";
             foreach (var index in coreIndexes)
             {
-                cores.Add(new CpuPhysicalCoreModel($"core:{index}", index, $"Core {index}", ccdId, 0, 100, null, [index], []));
+                cores.Add(new CpuPhysicalCoreModel($"core:{index}", index, ccdId, 0, 100, null, [index], []));
                 logical.Add(new CpuLogicalProcessorModel(index, index / 64, index % 64, $"core:{index}", ccdId, 100, null, true));
             }
-            ccds.Add(new CpuCcdModel(ccdId, ccdIndex, $"CCD {ccdIndex}", null, coreIndexes, coreIndexes, source));
+            ccds.Add(new CpuCcdModel(ccdId, ccdIndex, null, coreIndexes, coreIndexes, source));
         }
         return new CpuTopologySnapshot(DateTimeOffset.UnixEpoch, name,
             new CpuSpecificationModel(name, vendor, "fixture", cores.Count, logical.Count, null, null, null, null, "fixture"),

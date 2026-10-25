@@ -171,7 +171,7 @@ export function MetricModal(props: MetricModalProps) {
     return {
       componentId,
       name,
-      stateLabel: userFacingState(component.stateLabel ?? component.state),
+      stateLabel: userFacingState(component.state),
       message: "",
       missing: !isComponentInstalled(component)
     };

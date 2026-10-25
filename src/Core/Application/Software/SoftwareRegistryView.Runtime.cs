@@ -1,5 +1,4 @@
 using ResourceManager.App.Domain.ProcessAttribution;
-using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Software;
@@ -20,7 +19,7 @@ public sealed partial class SoftwareRegistryView
                 {
                     records[index] = record with
                     {
-                        Kind = runtime.Kind, DisplayKind = runtime.DisplayKind,
+                        Kind = runtime.Kind,
                         CategorySource = runtime.CategorySource
                     };
                 }
@@ -30,9 +29,9 @@ public sealed partial class SoftwareRegistryView
             if (runtime.Kind == SoftwareKinds.Unattributed) continue;
 
             records.Add(new SoftwareRecord(
-                runtime.Id, runtime.Name, runtime.Kind, runtime.DisplayKind,
-                "runtime", [runtime.Kind], runtime.RootPaths, string.Empty,
-                NoUninstall(BackendMessageCodes.Software.NoUninstallUnknownRoot), null,
+                runtime.Id, runtime.Name, runtime.Kind,
+                "runtime", [new(SoftwareSourceKinds.Runtime)], runtime.RootPaths,
+                NoUninstall(SoftwareUninstallConstraints.MissingUninstallEntry), null,
                 CategorySource: runtime.CategorySource));
         }
     }

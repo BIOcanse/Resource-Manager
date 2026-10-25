@@ -76,6 +76,14 @@ try {
   }
 
   {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ reason: {
+      code: "control-preset-count-limit", arguments: { maximum: 32 }
+    } }), { status: 400, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+    await assert.rejects(requestJson("/api/control/presets/test/name", { fallbackError: "fallback" }),
+      (error: unknown) => error instanceof ApiRequestError && error.message.includes("32") && !error.message.includes("control-preset"));
+  }
+
+  {
     globalThis.fetch = (async () => new Response(JSON.stringify({ ready: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" }

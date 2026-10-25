@@ -1,0 +1,58 @@
+import type { AppCopy } from "../zh/index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "Installation notes",
+  "capabilitiesCaption": "Capabilities",
+  "unknownCapability": "Unknown capability",
+  "capabilities": {
+    "power": "Power",
+    "voltage": "Voltage",
+    "current": "Current",
+    "temperature": "Temperature",
+    "fan": "Fans",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "Per-core readings",
+    "webRuntime": "Web interface runtime",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "Time window",
+    "voltageOffset": "Voltage offset",
+    "hardwareMonitor": "Motherboard and memory sensors",
+    "memoryTemperature": "Memory temperature",
+    "cpuFanRpm": "CPU fan speed",
+    "cpuFanPercent": "CPU fan percentage",
+    "gpuFanRpm": "GPU fan speed",
+    "gpuFanPercent": "GPU fan percentage",
+    "vendorAdapters": "Notebook vendor adapters",
+    "gpuClocks": "GPU clocks",
+    "gpuMemory": "Video memory",
+    "gpuPower": "GPU power",
+    "gpuTemperature": "GPU temperature",
+    "gpuCooler": "GPU fans and coolers",
+    "gpuVoltage": "GPU voltage",
+    "gpuCurrent": "GPU current",
+    "gpuBoardPower": "GPU board power",
+    "gpuHotspot": "GPU hotspot temperature",
+    "gpuIntake": "GPU intake temperature",
+    "gpuFan": "GPU fans"
+  },
+  "installNotes": {
+    "webRuntime": "Official Microsoft Evergreen Bootstrapper; installed once for WebView2 applications across the machine.",
+    "amdSmu": "Explicitly install and verify the signed PawnIO driver, then fetch RyzenSMU and AMDFamily17 modules for PM tables. The base package never silently enables the driver.",
+    "intelMsr": "Explicitly install PawnIO; verification fetches IntelMSR. AMD shares the system driver while modules stay separate. Firmware locks and signed-module limits are respected.",
+    "sensorDriver": "Motherboard and memory sensors share the explicitly installed PawnIO driver. The official core includes signed LPC, EC and SMBus modules and starts no GUI or network service.",
+    "hardwareBridge": "Separate GPL-3.0 helper linking ZenStates-Core; starts and stops on demand with the main application. Handles power limits and Curve Optimizer voltage writes.",
+    "hardwareMonitor": "MPL-2.0 core bundled with the product for motherboard and memory only. Requires PawnIO; capabilities depend on actual sampling.",
+    "notebookFan": "Bundled read-only adapter for installed OEM drivers, services or DLLs. Currently supports Mechrevo/Tongfang UWACPI. Never silently installs or distributes OEM drivers.",
+    "driverRuntime": "Dynamically loads the installed graphics driver runtime. The base package distributes no vendor driver DLLs; capabilities depend on actual readings."
+  },
+  "versionFailures": {
+    "no-release": "No release is available.",
+    "no-stable-release": "No stable release is available.",
+    "version-unorderable": "The upstream version cannot be ordered reliably and cannot be selected.",
+    "timeout": "The GitHub connection timed out.",
+    "network": "Cannot connect to GitHub.",
+    "invalid-data": "Cannot parse the data returned by GitHub.",
+    "catalog-failure": "Cannot read the release catalog. Try again."
+  }
+};

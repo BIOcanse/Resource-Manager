@@ -192,8 +192,8 @@ public sealed class SoftwareUninstallerCallerTests
     {
         private readonly OptionalDependencyStatus status = new(
             new OptionalDependencyDefinition(
-                "one", "One", "Vendor", "Test", "https://example.invalid", null, null,
-                "one.exe", [], "one", false, false, [], ""),
+                "one", "Vendor", "https://example.invalid", null, null,
+                "one.exe", [], "one", false, false, [], ["One"]),
             "installed",
             dependencyRoot,
             Path.Combine(dependencyRoot, "installers"),

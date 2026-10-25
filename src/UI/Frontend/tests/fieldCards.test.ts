@@ -17,6 +17,7 @@ import {
   metricCardReading,
   metricDisplayValue,
   metricUnitLabel,
+  resourceTableCellText,
   splitMetricUnit
 } from "../src/presentation/metricLabels.ts";
 import { uiText } from "../src/text.ts";
@@ -185,3 +186,10 @@ assert.match(store, /metricBindingForDefinition\(\s*cardCatalog\(\)\.find/, "the
 assert.match(store, /!fieldCardSlot\(card\.main, card\.mainBinding\)/, "device fields stay out of the legacy metric subscription");
 
 console.log("fieldCards: ok");
+
+assert.equal(resourceTableCellText({ value: 4242, unit: "" }), "4242");
+assert.equal(resourceTableCellText({ value: null, unit: "" }), "--");
+assert.equal(resourceTableCellText({ displayValue: "TEST-PC\\test-user", unit: "" }), "TEST-PC\\test-user");
+assert.equal(resourceTableCellText({ displayValue: "x64", unit: "" }), "x64");
+assert.equal(resourceTableCellText({ displayValue: null, unit: "", availability: "Unavailable" }), "--");
+assert.equal(resourceTableCellText({ value: 12, unit: "%" }), "12.0%");

@@ -105,8 +105,8 @@ public sealed class TargetedRecordingServiceTests : IDisposable
     private sealed class FakeSoftware : ISoftwareRegistryView
     {
         private static readonly IReadOnlyList<SoftwareRecord> Records =
-        [new SoftwareRecord("software", "Example", "game", "game", "Running", [], [], "",
-            new SoftwareOperationCapabilities(false, "", "", ""), null)];
+        [new SoftwareRecord("software", "Example", "game", "Running", [], [],
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"), null)];
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
             => Task.FromResult(Records);
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)

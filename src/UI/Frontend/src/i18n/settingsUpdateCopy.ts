@@ -39,8 +39,8 @@ export const enUpdatesCopy: UpdatesCopy = {
   latestStable: "Latest stable release",
   verified: "Verified release",
   unavailableReasons: {
-    "无法确认当前安装版本，升级选择已关闭。": "Installed version is unknown; upgrade selection is disabled.",
-    "只能选择高于当前安装版本的发行版。": "Only releases newer than the installed version can be selected."
+    "installedVersionUnknown": "Installed version is unknown; upgrade selection is disabled.",
+    "notNewer": "Only releases newer than the installed version can be selected."
   }
 };
 
@@ -74,7 +74,7 @@ export const zhCnUpdatesCopy: UpdatesCopy = {
   latestStable: "最新稳定版本",
   verified: "已验证版本",
   unavailableReasons: {
-    "无法确认当前安装版本，升级选择已关闭。": "无法确认当前安装版本，升级选择已关闭。",
-    "只能选择高于当前安装版本的发行版。": "只能选择高于当前安装版本的发行版。"
+    "installedVersionUnknown": "无法确认当前安装版本，升级选择已关闭。",
+    "notNewer": "只能选择高于当前安装版本的发行版。"
   }
 };

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Buffers.Binary;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 
@@ -13,11 +14,20 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
     private ulong maximumConfigurationGeneration;
     private FileStream? ownerLease;
     private bool disposed;
+    private readonly ILogger? logger;
+    private byte[]? originalBankSha256;
+    private byte[]? originalManifestSha256;
+    private bool bankIdentityCaptured;
+    private bool manifestIdentityCaptured;
+    private bool pendingLegacyMigration;
+    private bool canonicalTransitionStarted;
+    internal bool HasUnresolvedLoad { get; private set; }
 
     internal HostManagerOperationCanonicalStore(
         string envelopePath,
         CompiledHostManagerOperationCoordinatorCapacityPlan capacity,
-        ulong maximumConfigurationGeneration)
+        ulong maximumConfigurationGeneration,
+        ILogger? logger = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(envelopePath);
         ArgumentNullException.ThrowIfNull(capacity);
@@ -33,6 +43,7 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
         leasePath = this.envelopePath + ".lock";
         this.capacity = capacity;
         this.maximumConfigurationGeneration = maximumConfigurationGeneration;
+        this.logger = logger;
     }
 
     internal void AcquireOwnerLease()
@@ -68,27 +79,92 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
     internal HostManagerOperationCanonicalEnvelope? LoadValidated()
     {
         RequireOwnerLease();
-        byte[] image;
         try
         {
-            image = File.ReadAllBytes(envelopePath);
+            byte[] image;
+            using (var file = new FileStream(envelopePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                if (file.Length < 352 || (ulong)file.Length > capacity.MaximumEnvelopeByteCount || file.Length > int.MaxValue)
+                    throw new InvalidDataException("The operation canonical file length is outside its explicit capacity.");
+                image = new byte[(int)file.Length];
+                file.ReadExactly(image);
+            }
+            originalBankSha256 = SHA256.HashData(image);
+            bankIdentityCaptured = true;
+            CaptureManifestIdentity();
+            var legacy = image.Length >= 20 && BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(8)) == 1
+                && BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(16)) == 0x0001_0000;
+            var envelope = legacy
+                ? HostManagerOperationCanonicalEnvelopeCodec.DecodeLegacyV1(image, capacity, maximumConfigurationGeneration)
+                : HostManagerOperationCanonicalEnvelopeCodec.Decode(image, capacity, maximumConfigurationGeneration);
+            if (legacy)
+            {
+                if (originalManifestSha256 is not null) _ = HostManagerDurableRootManifest.ValidateForTransfer(envelopePath);
+                pendingLegacyMigration = true;
+                var converted = HostManagerOperationLegacyMigration.Convert(envelope);
+                _ = HostManagerOperationCanonicalEnvelopeCodec.Encode(converted, capacity);
+                // The initial owner commit still binds the original durable image until migration has been atomically accepted.
+                return converted with { FullEnvelopeSha256 = envelope.FullEnvelopeSha256.ToArray() };
+            }
+            if (originalManifestSha256 is not null) _ = HostManagerDurableRootManifest.ValidateForTransfer(envelopePath);
+            return envelope;
         }
-        catch (FileNotFoundException)
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
-            rootManifest.RequireVirginOrInitializing();
+            if (bankIdentityCaptured || File.Exists(envelopePath))
+            {
+                RejectLoadedImage(error);
+                return null;
+            }
+            try
+            {
+                rootManifest.RequireVirginOrInitializing();
+                return null;
+            }
+            catch (Exception manifestError) when (IsUnreadableSource(manifestError))
+            {
+                RejectLoadedImage(manifestError);
+                return null;
+            }
+        }
+        catch (Exception error) when (IsUnreadableSource(error))
+        {
+            RejectLoadedImage(error);
             return null;
         }
-        catch (DirectoryNotFoundException)
+    }
+
+    private static bool IsUnreadableSource(Exception error)
+        => error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or OverflowException;
+
+    private void CaptureManifestIdentity()
+    {
+        var path = envelopePath + ".root.manifest";
+        originalManifestSha256 = File.Exists(path) ? HashFile(path) : null;
+        manifestIdentityCaptured = true;
+    }
+
+    internal void RejectLoadedImage(Exception error)
+    {
+        HasUnresolvedLoad = true;
+        pendingLegacyMigration = false;
+        logger?.LogError(error,
+            "Operation bank {Path} could not be converted or validated. Original bank and manifest remain untouched; current operation state is empty. The first explicit new operation will preserve both originals before resetting this owner.", envelopePath);
+    }
+
+    internal bool TryDeferUncommittedLegacyMigration(Exception error)
+    {
+        if (!pendingLegacyMigration || canonicalTransitionStarted || error is not (IOException or UnauthorizedAccessException)) return false;
+        try
         {
-            rootManifest.RequireVirginOrInitializing();
-            return null;
+            if (originalBankSha256 is null || !HashFile(envelopePath).AsSpan().SequenceEqual(originalBankSha256)) return false;
+            var manifest = envelopePath + ".root.manifest";
+            if (originalManifestSha256 is null ? File.Exists(manifest)
+                : !File.Exists(manifest) || !HashFile(manifest).AsSpan().SequenceEqual(originalManifestSha256)) return false;
         }
-        var envelope = HostManagerOperationCanonicalEnvelopeCodec.Decode(
-            image,
-            capacity,
-            maximumConfigurationGeneration);
-        rootManifest.ValidateOrAdoptCanonical(image);
-        return envelope;
+        catch (Exception readError) when (readError is IOException or UnauthorizedAccessException) { return false; }
+        RejectLoadedImage(error);
+        return true;
     }
 
     internal HostManagerOperationCanonicalEnvelope Commit(
@@ -113,10 +189,25 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
             throw new InvalidDataException(
                 "The candidate operation envelope does not bind the expected prior image.");
         }
-        VerifyDestinationIdentity(expectedPriorEnvelopeSha256);
-        var image = HostManagerOperationCanonicalEnvelopeCodec.Encode(
-            candidate,
-            candidateCapacity);
+        // Startup/planner publications of the documented empty state are reads, not permission to replace unresolved recovery evidence.
+        if (HasUnresolvedLoad && candidate.NativeImage.Records.Length == 0)
+            return candidate with { FullEnvelopeSha256 = HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest() };
+        var image = HostManagerOperationCanonicalEnvelopeCodec.Encode(candidate, candidateCapacity);
+        if (HasUnresolvedLoad || pendingLegacyMigration)
+        {
+            if (bankIdentityCaptured && (originalBankSha256 is null ? File.Exists(envelopePath)
+                : !File.Exists(envelopePath) || !HashFile(envelopePath).AsSpan().SequenceEqual(originalBankSha256)))
+                throw new IOException("The preserved operation bank changed outside the active owner.");
+            var backup = PreserveOriginal(HasUnresolvedLoad ? "unconverted" : "legacy-v1");
+            if (HasUnresolvedLoad)
+                rootManifest.InitializeAfterPreservedReset(backup.Bank, backup.Manifest);
+            else rootManifest.ValidateOrAdoptCanonical(File.ReadAllBytes(envelopePath));
+            logger?.LogWarning("Operation bank {Path} {Action}; byte-exact original backup: {Backup}. Recovery evidence is retained there.",
+                envelopePath, HasUnresolvedLoad ? "is reset for an explicit new operation after an unresolved load" : "is migrated from envelope-v1/ABI1 to facts-only envelope-v2/ABI2", backup.Bank ?? backup.Manifest ?? "(no source files)");
+        }
+        else if (originalBankSha256 is not null)
+            rootManifest.ValidateOrAdoptCanonical(File.ReadAllBytes(envelopePath));
+        if (!HasUnresolvedLoad) VerifyDestinationIdentity(expectedPriorEnvelopeSha256);
         var directory = Path.GetDirectoryName(envelopePath)
             ?? throw new InvalidOperationException(
                 "The operation canonical envelope path has no parent directory.");
@@ -138,6 +229,7 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
                 file.Write(image);
                 file.Flush(flushToDisk: true);
             }
+            canonicalTransitionStarted = true;
             var transition = rootManifest.BeginCanonicalTransition(image);
             WindowsNativeAtomicFileCommitter.CommitReplace(
                 temporaryPath,
@@ -153,6 +245,11 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
                 candidateCapacity,
                 candidateMaximumConfigurationGeneration);
             rootManifest.FinalizeCanonicalTransition(transition);
+            HasUnresolvedLoad = false;
+            pendingLegacyMigration = false;
+            canonicalTransitionStarted = false;
+            originalBankSha256 = null;
+            originalManifestSha256 = null;
             capacity = candidateCapacity;
             maximumConfigurationGeneration =
                 candidateMaximumConfigurationGeneration;
@@ -162,6 +259,53 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
         {
             _ = WindowsNativeAtomicFileCommitter.DeleteExact(temporaryPath);
         }
+    }
+
+    private (string? Bank, string? Manifest) PreserveOriginal(string reason)
+    {
+        if (!bankIdentityCaptured)
+        {
+            originalBankSha256 = File.Exists(envelopePath) ? HashFile(envelopePath) : null;
+            bankIdentityCaptured = true;
+        }
+        if (!manifestIdentityCaptured) CaptureManifestIdentity();
+        var source = originalBankSha256;
+        var manifestSource = envelopePath + ".root.manifest";
+        if (originalManifestSha256 is null ? File.Exists(manifestSource)
+            : !File.Exists(manifestSource) || !HashFile(manifestSource).AsSpan().SequenceEqual(originalManifestSha256))
+            throw new IOException("The original operation root manifest changed outside the active owner.");
+        var stem = envelopePath + "." + reason + ".byte-exact." + Convert.ToHexString(source ?? originalManifestSha256 ?? SHA256.HashData([])).ToLowerInvariant() + ".backup";
+        var bank = stem;
+        var collisions = 0;
+        while ((source is not null && File.Exists(bank) && !HashFile(bank).AsSpan().SequenceEqual(source))
+            || (originalManifestSha256 is not null && File.Exists(bank + ".root.manifest")
+                && !HashFile(bank + ".root.manifest").AsSpan().SequenceEqual(originalManifestSha256)))
+        {
+            if (++collisions > 32) throw new IOException("No unique operation bank backup path could be reserved.");
+            bank = stem[..^7] + "." + Guid.NewGuid().ToString("N") + ".backup";
+        }
+        if (source is not null) WritePreserved(envelopePath, bank, source);
+        var manifest = originalManifestSha256 is null ? null : bank + ".root.manifest";
+        if (manifest is not null) WritePreserved(manifestSource, manifest, originalManifestSha256!);
+        return (source is null ? null : bank, manifest);
+    }
+
+    private static void WritePreserved(string sourcePath, string path, byte[] expectedSha256)
+    {
+        if (!File.Exists(path))
+        {
+            File.Copy(sourcePath, path, overwrite: false);
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough);
+            file.Flush(true);
+        }
+        if (!HashFile(path).AsSpan().SequenceEqual(expectedSha256))
+            throw new IOException("The preserved operation bank backup could not be verified.");
+    }
+
+    private static byte[] HashFile(string path)
+    {
+        using var file = File.OpenRead(path);
+        return SHA256.HashData(file);
     }
 
     public void Dispose()

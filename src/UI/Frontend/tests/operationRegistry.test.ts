@@ -118,14 +118,14 @@ class FakeRequestClient {
   assert.deepEqual(selectOperations(fixture.registry.snapshot, { active: true }), [running]);
 
   const replacement = operation({
-    title: "Backend current value",
+    subject: { targetId: "changed-target", scope: null, mode: null, targetPath: null },
     stateRevision: "2",
     updatedAt: "2026-08-22T12:00:02.000Z"
   });
   fixture.source.publish(state("1", [replacement]));
   assert.equal(
-    fixture.registry.get(running.id)?.title,
-    "Backend current value",
+    fixture.registry.get(running.id)?.subject?.targetId,
+    "changed-target",
     "the frontend must display the latest callback instead of judging its revision");
 
   fixture.source.publish(state("2", []));
@@ -247,7 +247,7 @@ function operation(
     id: "00000000000000000000000000000001",
     kind: "component.install",
     domainKey: "component.example",
-    title: "Install component",
+    subject: { targetId: "example", scope: null, mode: null, targetPath: null },
     state: stateValue,
     configurationGeneration: "1",
     stateRevision: "1",
@@ -263,11 +263,8 @@ function operation(
       bytesDone: "1",
       bytesTotal: "4",
       speedBytesPerSecond: "1",
-      stage: "running",
-      message: null
+      stage: "Download",
     }),
-    result: null,
-    error: null,
     ...overrides
   });
 }
@@ -277,14 +274,13 @@ function state(
   operations: readonly OperationSnapshot[]
 ): HostManagerOperationsState {
   return Object.freeze({
-    schema: "host-manager.operations.state.v1",
+    schema: "host-manager.operations.state.v2",
     capturedAt: "2026-08-22T12:00:10.000Z",
     publicationRevision,
     configurationGeneration: "1",
     ready: true,
     persistenceFaulted: false,
     faultStage: null,
-    faultMessage: null,
     operations: Object.freeze([...operations])
   });
 }
@@ -308,7 +304,7 @@ function requestOutcome(
       id: "request-1",
       sequence: 1,
       key: "test",
-      decoderId: "host-manager.operation.v1",
+      decoderId: "host-manager.operation.v2",
       method: "POST",
       backendEpoch,
       startedAt: 0,

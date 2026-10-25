@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Metrics;
@@ -26,33 +27,22 @@ public sealed partial class ComponentManager
                 ? ComponentProviderStates.Installed
                 : ComponentProviderStates.Missing;
 
-        var message = active
-            ? "已从实时指标读到该 Provider 数据。"
-            : runtimeProbe is not null && (runtimeProbe.RuntimeAvailable || bundled)
-                ? string.IsNullOrWhiteSpace(runtimeProbe.RuntimePath)
-                    ? runtimeProbe.Message
-                    : $"{runtimeProbe.Message} 路径：{runtimeProbe.RuntimePath}"
-            : definition.Id switch
-            {
-                "shared-webview2-runtime" => "未检测到共享 WebView2 运行时，可从运行时管理页受控安装。",
-                "amd-smu-pawnio-provider" => "PawnIO 驱动可受控安装；未检测到运行库，或 AMD SMU Provider 读数尚未通过验证。",
-                "amd-adlx-provider" => "AMD ADLX 运行库或实时读数尚未通过验证。",
-                "nvidia-nvapi-provider" => "NVIDIA NVAPI 由显卡驱动提供；运行库未检测到，或 NVAPI Provider 读数尚未通过验证。",
-                "librehardwaremonitor-provider" => "LibreHardwareMonitor 核心库随产品提供；需显式安装 PawnIO，实时传感能力按本机实际返回。",
-                "notebook-oem-fan-provider" => "内置笔记本 OEM 风扇组件已安装；当前机型尚未返回可验证风扇读数。",
-                _ => "Provider 未返回可验证读数。"
-            };
+        var message = BackendMessage.Create(BackendMessageDomains.Dependency,
+            active ? BackendMessageCodes.Dependency.ProviderVerified
+                : runtimeProbe?.RuntimeAvailable == true
+                    ? BackendMessageCodes.Dependency.ProviderRuntimeUnverified
+                    : BackendMessageCodes.Dependency.ProviderBridgeMissing);
 
         return
         [
             new ComponentProviderStatus(
                 definition.Capabilities.FirstOrDefault()?.ProviderId ?? definition.Id,
-                definition.Name,
                 definition.Vendor,
                 definition.Capabilities.FirstOrDefault()?.ProviderKind ?? ComponentProviderKinds.Provider,
                 state,
                 message,
-                definition.Capabilities.Select(static capability => capability.Label).Distinct().ToArray())
+                runtimeProbe?.RuntimePath,
+                definition.Capabilities.Select(static capability => capability.Id).Distinct().ToArray())
         ];
     }
 

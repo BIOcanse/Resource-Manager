@@ -23,7 +23,7 @@ internal sealed record HostManagerOperationCanonicalEnvelope(
 internal static class HostManagerOperationCanonicalEnvelopeCodec
 {
     private const ulong Magic = 0x0031_5650_4F48_4D52;
-    private const uint EnvelopeVersion = 1;
+    private const uint EnvelopeVersion = 2;
     private const uint HeaderSize = 320;
     private const uint PayloadCatalogVersion = 1;
     private const uint ReceiptCatalogVersion = 1;
@@ -43,7 +43,10 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
             throw new InvalidDataException("The operation canonical envelope length is invalid.");
         var image = new byte[(int)stream.Length];
         stream.ReadExactly(image);
-        var envelope = Decode(image, capacity, ulong.MaxValue);
+        // Transfer/admission reads only obligation facts; it may run before the service file owner migrates an installed v1 bank.
+        var legacy = image.Length >= 20 && ReadUInt32(image, 8) == 1 && ReadUInt32(image, 16) == 0x0001_0000;
+        var envelope = legacy ? DecodeLegacyV1(image, capacity, ulong.MaxValue) : Decode(image, capacity, ulong.MaxValue);
+        NativeOperationCanonicalChecksum.Validate(envelope.NativeImage);
         return HasOutstandingObligations(envelope);
     }
 
@@ -159,6 +162,22 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
         ReadOnlySpan<byte> image,
         CompiledHostManagerOperationCoordinatorCapacityPlan capacity,
         ulong maximumConfigurationGeneration)
+        => DecodeCore(image, capacity, maximumConfigurationGeneration, EnvelopeVersion, NativeOperationCoordinatorAbi.Version);
+
+    // The file owner migrates this schema; pre-owner transfer readers inspect only its numeric recovery obligations.
+    // Ordinary operation APIs still publish current facts only.
+    internal static HostManagerOperationCanonicalEnvelope DecodeLegacyV1(
+        ReadOnlySpan<byte> image,
+        CompiledHostManagerOperationCoordinatorCapacityPlan capacity,
+        ulong maximumConfigurationGeneration)
+        => DecodeCore(image, capacity, maximumConfigurationGeneration, 1, 0x0001_0000);
+
+    private static HostManagerOperationCanonicalEnvelope DecodeCore(
+        ReadOnlySpan<byte> image,
+        CompiledHostManagerOperationCoordinatorCapacityPlan capacity,
+        ulong maximumConfigurationGeneration,
+        uint envelopeVersion,
+        uint nativeAbiVersion)
     {
         ArgumentNullException.ThrowIfNull(capacity);
         if (image.Length < HeaderSize + SHA256.HashSizeInBytes
@@ -180,9 +199,9 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
         }
         var header = body[..checked((int)HeaderSize)];
         if (ReadUInt64(header, 0) != Magic
-            || ReadUInt32(header, 8) != EnvelopeVersion
+            || ReadUInt32(header, 8) != envelopeVersion
             || ReadUInt32(header, 12) != HeaderSize
-            || ReadUInt32(header, 16) != NativeOperationCoordinatorAbi.Version
+            || ReadUInt32(header, 16) != nativeAbiVersion
             || ReadUInt32(header, 20) != PayloadCatalogVersion
             || ReadUInt32(header, 24) != ReceiptCatalogVersion
             || ReadUInt32(header, 28) != 0
@@ -247,7 +266,8 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
         var native = ReadNativeSection(
             body.Slice(nativeOffset, nativeLength),
             nativeRecordCount);
-        if (native.Header.ConfigurationGeneration != configurationGeneration
+        if (native.Header.AbiVersion != nativeAbiVersion
+            || native.Header.ConfigurationGeneration != configurationGeneration
             || native.Header.SessionInstanceId != sessionInstanceId
             || native.Header.ClockInstanceId != sourceClockInstanceId)
         {

@@ -36,6 +36,13 @@ function optionalString(value: unknown, path: string): string | null {
   return value === null || value === undefined ? null : requireString(value, path);
 }
 
+function optionalOrdinal(value: unknown, path: string): number | null {
+  if (value === null || value === undefined) return null;
+  const number = requireFiniteNumber(value, path);
+  if (!Number.isInteger(number) || number < 0) throw new ResponseDecodeError(path, "a nonnegative integer");
+  return number;
+}
+
 function readRange(value: unknown, path: string): ControlNumberRange | null {
   if (value === null || value === undefined) {
     return null;
@@ -59,14 +66,13 @@ function readRange(value: unknown, path: string): ControlNumberRange | null {
 function readCapability(value: unknown, path: string): ControlCapability {
   const record = requireRecord(value, path);
   const supported = requireBoolean(record.supported, `${path}.supported`);
-  const unavailableReason = optionalString(record.unavailableReason, `${path}.unavailableReason`);
+  const unavailableReason = readControlReason(record.unavailableReason, `${path}.unavailableReason`);
   // 不可用就必须说明原因 —— 生产端保证，消费端不去猜。
   if (!supported && !unavailableReason) {
     throw new ResponseDecodeError(path, "an unavailable capability to carry its reason");
   }
   return {
     id: requireNonEmptyString(record.id, `${path}.id`),
-    label: requireNonEmptyString(record.label, `${path}.label`),
     valueKind: requireOneOf(record.valueKind, `${path}.valueKind`, valueKinds),
     supported,
     unavailableReason,
@@ -78,9 +84,6 @@ function readCapability(value: unknown, path: string): ControlCapability {
         `${path}.unavailableKind`,
         controlUnavailableKinds),
     requiredComponentId: optionalString(record.requiredComponentId, `${path}.requiredComponentId`),
-    requiredComponentName: optionalString(
-      record.requiredComponentName,
-      `${path}.requiredComponentName`),
     range: readRange(record.range, `${path}.range`),
     channel: optionalString(record.channel, `${path}.channel`),
     requiredAccessLevel: requireOneOf(
@@ -108,7 +111,9 @@ function readObject(value: unknown, path: string): ControlObject {
   return {
     id: requireNonEmptyString(record.id, `${path}.id`),
     kind: requireNonEmptyString(record.kind, `${path}.kind`),
-    displayName: requireString(record.displayName, `${path}.displayName`),
+    reportedName: optionalString(record.reportedName, `${path}.reportedName`),
+    ordinal: optionalOrdinal(record.ordinal, `${path}.ordinal`),
+    adapterIndex: optionalOrdinal(record.adapterIndex, `${path}.adapterIndex`),
     platform: {
       operatingSystem: requireNonEmptyString(
         platform.operatingSystem,
@@ -321,7 +326,7 @@ function readSetting(value: unknown, path: string): ControlSetting {
   };
 }
 
-function readReason(value: unknown, path: string): ControlApplyOutcome["reason"] {
+export function readControlReason(value: unknown, path: string): import("./controlTypes.ts").ControlApplyReason | null {
   if (value == null) return null;
   const record = requireRecord(value, path);
   const args = record.arguments == null ? null : requireRecord(record.arguments, `${path}.arguments`);
@@ -329,7 +334,7 @@ function readReason(value: unknown, path: string): ControlApplyOutcome["reason"]
   return { code: requireNonEmptyString(record.code, `${path}.code`), arguments: args ? {
     requiredAccessLevel: args.requiredAccessLevel == null ? null
       : requireOneOf(args.requiredAccessLevel, `${path}.arguments.requiredAccessLevel`, controlAccessLevels),
-    minimum: number("minimum"), maximum: number("maximum"), unit: optionalString(args.unit, `${path}.arguments.unit`)
+    minimum: number("minimum"), maximum: number("maximum"), requested: number("requested"), observed: number("observed"), unit: optionalString(args.unit, `${path}.arguments.unit`)
   } : null };
 }
 
@@ -339,8 +344,8 @@ function readOutcome(value: unknown, path: string): ControlApplyOutcome {
     objectId: requireNonEmptyString(record.objectId, `${path}.objectId`),
     capabilityId: requireNonEmptyString(record.capabilityId, `${path}.capabilityId`),
     status: requireOneOf(record.status, `${path}.status`, applyStatuses),
-    message: optionalString(record.message, `${path}.message`),
-    reason: readReason(record.reason, `${path}.reason`)
+    nativeStatus: record.nativeStatus == null ? null : requireFiniteNumber(record.nativeStatus, `${path}.nativeStatus`),
+    reason: readControlReason(record.reason, `${path}.reason`)
   };
 }
 
@@ -428,7 +433,9 @@ function readInstanceCatalog(value: unknown): ControlInstanceCatalog {
         instance: {
           id: requireNonEmptyString(instance.id, `${at}.id`),
           kind: requireNonEmptyString(instance.kind, `${at}.kind`),
-          displayName: requireString(instance.displayName, `${at}.displayName`),
+          reportedName: optionalString(instance.reportedName, `${at}.reportedName`),
+          ordinal: optionalOrdinal(instance.ordinal, `${at}.ordinal`),
+          adapterIndex: optionalOrdinal(instance.adapterIndex, `${at}.adapterIndex`),
           platform: {
             operatingSystem: requireNonEmptyString(
               platform.operatingSystem,

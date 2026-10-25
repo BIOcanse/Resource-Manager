@@ -97,8 +97,8 @@ public sealed class SoftwareProtectionEndpointTests
     {
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken token)
             => Task.FromResult<IReadOnlyList<SoftwareRecord>>(
-                [new("app", "Fixture", "General", "General", "ready", [], [], "",
-                    new(false, "", "", ""), null)]);
+                [new("app", "Fixture", "other", "ready", [], [],
+                    new(false, "None", "missing_uninstall_entry"), null)]);
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken token)
             => GetSoftwareAsync(token);
     }

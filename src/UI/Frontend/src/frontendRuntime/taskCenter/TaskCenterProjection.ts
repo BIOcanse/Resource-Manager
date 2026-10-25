@@ -1,4 +1,4 @@
-import type { BackendMessage, OperationSnapshot } from "../../types.ts";
+import type { BackendMessage, OperationSnapshot, OperationSubject } from "../../types.ts";
 import type {
   OperationRegistrySnapshot
 } from "../operations/OperationRegistry.ts";
@@ -32,6 +32,7 @@ export interface TaskCenterItem {
   readonly title: string;
   readonly kind: string;
   readonly domainKey: string | null;
+  readonly subject?: OperationSubject | null;
   readonly status: string;
   readonly active: boolean;
   readonly visibility: TaskCenterItemVisibility;
@@ -48,9 +49,7 @@ export interface TaskCenterItem {
   readonly resultCode: string | null;
   readonly resultMessage: BackendMessage | null;
   readonly errorMessage: BackendMessage | null;
-  readonly result: string | null;
-  readonly error: string | null;
-  readonly progressMessage: string | null;
+  readonly progressStage: "Download" | null;
 }
 
 export interface TaskCenterSnapshot {
@@ -258,7 +257,7 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     actionBlockedReason: active ? null : uiText.taskCenter.blocked.taskFinished,
     backendDisconnected: false,
     resultCode: null, resultMessage: null, errorMessage: null,
-    result: null, error: null, progressMessage: null,
+    progressStage: null,
     stateUncertain: false
   });
 }
@@ -277,9 +276,10 @@ function projectOperation(
     id: `operation:${operation.id}`,
     ownerId: operation.id,
     source: "operation",
-    title: operationTitleForKind(operation.kind),
+    title: operationTitle(operation),
     kind: operation.kind,
     domainKey: operation.domainKey,
+    subject: operation.subject,
     status: operation.state,
     active,
     visibility: "user",
@@ -309,9 +309,7 @@ function projectOperation(
     resultCode: operation.resultCode ?? null,
     resultMessage: operation.resultMessage ?? null,
     errorMessage: operation.errorMessage ?? null,
-    result: operation.result,
-    error: operation.error,
-    progressMessage: operation.progress?.message ?? null,
+    progressStage: operation.progress?.stage ?? null,
     stateUncertain: operation.state === "stateUncertain"
   });
 }
@@ -326,6 +324,12 @@ export function operationTitleForKind(kind: string): string {
     "disk-usage.scan": uiText.taskCenter.operation.diskUsageScan
   };
   return titles[kind] ?? uiText.taskCenter.operation.generic;
+}
+
+export function operationTitle(operation: Pick<OperationSnapshot, "kind" | "subject">): string {
+  const action = operationTitleForKind(operation.kind);
+  const target = operation.subject?.targetId ?? operation.subject?.targetPath;
+  return target ? `${action}: ${target}` : action;
 }
 
 function operationBackendDisconnected(snapshot: OperationRegistrySnapshot): boolean {

@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AmdIntegratedGpuBaselineTests
 {
-    private static readonly ControlCapability Capability = new("gpu.curve-optimizer", "CO", ControlValueKinds.Number, true,
+    private static readonly ControlCapability Capability = new("gpu.curve-optimizer", ControlValueKinds.Number, true,
         Range: new(-30, 10, 1, ControlUnits.Step));
     private static ControlObject Target(string id) => new(id, ControlObjectKinds.Gpu, "AMD iGPU",
         new(ControlOperatingSystems.Windows, ControlVendors.Amd), [Capability], GpuAttachment: ControlGpuAttachments.Integrated);

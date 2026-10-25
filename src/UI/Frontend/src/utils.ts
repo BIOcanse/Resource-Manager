@@ -123,11 +123,9 @@ export function pathLooksUsable(value: unknown) {
 }
 
 export function normalizeSoftwareKind(software: SoftwareRecord): "adapted" | "controlled" | "game" | "high_performance" | "other" {
-  // kind 与 displayKind 现在都是标识，直接比标识，不再认措辞。
   const kind = software.kind;
-  const displayKind = software.displayKind ?? "";
   for (const candidate of ["adapted", "controlled", "game", "high_performance"] as const) {
-    if (kind === candidate || displayKind === candidate) {
+    if (kind === candidate) {
       return candidate;
     }
   }

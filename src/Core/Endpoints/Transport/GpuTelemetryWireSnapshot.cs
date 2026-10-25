@@ -7,7 +7,7 @@ public sealed record GpuTelemetryWireSnapshot(
     DateTimeOffset CapturedAt,
     IReadOnlyList<GpuTelemetryAdapterSnapshot> Adapters)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public static GpuTelemetryWireSnapshot From(
         GpuTelemetryWorkerSnapshot snapshot)

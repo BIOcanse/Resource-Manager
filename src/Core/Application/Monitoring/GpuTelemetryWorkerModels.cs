@@ -35,7 +35,7 @@ public sealed record GpuTelemetryWorkerRequest(
     GpuTelemetryWorkerDetailLevel DetailLevel,
     int TimeoutMilliseconds)
 {
-    public const byte CurrentProtocolVersion = 1;
+    public const byte CurrentProtocolVersion = 2;
 
     public static GpuTelemetryWorkerRequest Create(
         IEnumerable<string>? counterIds = null,
@@ -110,7 +110,6 @@ public sealed record GpuTelemetryAdapterSnapshot(
 
 public sealed record GpuTelemetryCounterSample(
     string CounterId,
-    string DisplayName,
     GpuTelemetryCounterClass CounterClass,
     double? Value,
     string? Unit,

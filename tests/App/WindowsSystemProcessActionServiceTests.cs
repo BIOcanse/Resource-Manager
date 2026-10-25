@@ -56,7 +56,7 @@ public sealed class WindowsSystemProcessActionServiceTests : IDisposable
         using var identity = WindowsIdentity.GetCurrent();
         var result = WindowsSystemProcessActionService.TerminateProcess(new(4, 1), identity.AccessToken);
         Assert.Equal("Skipped", result.State);
-        Assert.Equal("CriticalProcessProtected", result.Message);
+        Assert.Equal(SystemProcessOutcome.CriticalProcessProtected, result.Outcome);
     }
 
     [Fact]
@@ -81,11 +81,13 @@ public sealed class WindowsSystemProcessActionServiceTests : IDisposable
             var skipped = WindowsSystemProcessActionService.TerminateProcess(
                 new(process.Id, checked(startKey + 1)), identity.AccessToken);
             Assert.Equal("Skipped", skipped.State);
+            Assert.Equal(SystemProcessOutcome.IdentityChanged, skipped.Outcome);
             Assert.False(process.HasExited);
 
             var succeeded = WindowsSystemProcessActionService.TerminateProcess(
                 new(process.Id, startKey), identity.AccessToken);
             Assert.Equal("Succeeded", succeeded.State);
+            Assert.Equal(SystemProcessOutcome.Terminated, succeeded.Outcome);
             Assert.Equal(
                 startKey.ToString(CultureInfo.InvariantCulture),
                 succeeded.ProcessStartKey);
@@ -106,6 +108,7 @@ public sealed class WindowsSystemProcessActionServiceTests : IDisposable
             var skipped = WindowsSystemProcessActionService.CreateProcessDump(
                 new(process.Id, checked(startKey + 1)), testRoot, identity.AccessToken);
             Assert.Equal("Skipped", skipped.State);
+            Assert.Equal(SystemProcessOutcome.IdentityChanged, skipped.Outcome);
             Assert.False(process.HasExited);
             Assert.Empty(Directory.EnumerateFiles(testRoot, "*.dmp"));
         }

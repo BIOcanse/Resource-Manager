@@ -15,7 +15,7 @@ const operation = {
   id: "00000000000000000000000000000001",
   kind: "component.install",
   domainKey: "component.example",
-  title: "Install component",
+  subject: { targetId: "example", scope: null, mode: null, targetPath: null },
   state: "running",
   configurationGeneration: "18446744073709551615",
   stateRevision: "42",
@@ -31,22 +31,18 @@ const operation = {
     bytesDone: "1024",
     bytesTotal: "4096",
     speedBytesPerSecond: "18446744073709551615",
-    stage: "download",
-    message: "running"
-  },
-  result: null,
-  error: null
+    stage: "Download",
+  }
 };
 
 const envelope = {
-  schema: "host-manager.operations.state.v1",
+  schema: "host-manager.operations.state.v2",
   capturedAt: "2026-08-22T12:00:02.000Z",
   publicationRevision: "18446744073709551615",
   configurationGeneration: "7",
   ready: true,
   persistenceFaulted: false,
   faultStage: null,
-  faultMessage: null,
   operations: [operation]
 };
 
@@ -58,6 +54,10 @@ assert.equal(
 assert.notEqual(decoded, envelope);
 assert.notEqual(decoded.operations[0], operation);
 assert.equal(operationSnapshotDecoder.decode(operation).id, operation.id);
+const withUnrecognizedDiagnostics = operationsStateDecoder.decode({ ...envelope, faultMessage: "internal fault",
+  operations: [{ ...operation, diagnostic: "internal exception" }] });
+assert.equal("faultMessage" in withUnrecognizedDiagnostics, false);
+assert.equal("diagnostic" in withUnrecognizedDiagnostics.operations[0], false);
 
 assert.equal(isCanonicalUInt64Decimal("0"), true);
 assert.equal(isCanonicalUInt64Decimal("18446744073709551615"), true);
@@ -81,7 +81,7 @@ const invalidCases: Array<[unknown, string]> = [
   [{ ...envelope, operations: [{ ...operation, id: "A".repeat(32) }] }, "$.operations[0].id"],
   [{ ...envelope, operations: [{ ...operation, stateRevision: 42 }] }, "$.operations[0].stateRevision"],
   [{ ...envelope, operations: [{ ...operation, attemptNumber: 4 }] }, "$.operations[0].attemptNumber"],
-  [{ ...envelope, operations: [{ ...operation, result: { value: "done" } }] }, "$.operations[0].result"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetId: 123 } }] }, "$.operations[0].subject.targetId"],
   [{
     ...envelope,
     operations: [{

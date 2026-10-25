@@ -8,14 +8,13 @@ import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
 
 const validEnvelope = {
-  schema: "host-manager.operations.state.v1",
+  schema: "host-manager.operations.state.v2",
   capturedAt: "2026-08-22T15:20:30.000Z",
   publicationRevision: "1",
   configurationGeneration: "7",
   ready: true,
   persistenceFaulted: false,
   faultStage: null,
-  faultMessage: null,
   operations: []
 };
 
@@ -54,7 +53,7 @@ try {
     getOperationsState(client),
     (error: unknown) => error instanceof RequestProblem
       && error.kind === "invalid-response"
-      && error.attempt.decoderId === "host-manager.operations.state.v1");
+      && error.attempt.decoderId === "host-manager.operations.state.v2");
 } finally {
   owner.dispose();
   globalThis.fetch = originalFetch;

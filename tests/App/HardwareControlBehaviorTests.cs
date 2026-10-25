@@ -74,7 +74,7 @@ public sealed class HardwareControlBehaviorTests
         await plane.ReassertAsync(default);
         var rejected = await plane.ApplyDesiredStateAsync(Desired("replacement"), default);
         await plane.SetObjectSettingsAsync("device", [], default);
-        Assert.Equal("startup-profile-read-only", Assert.Single(rejected.LastApply.Outcomes).Message);
+        Assert.Equal("startup-profile-read-only", Assert.Single(rejected.LastApply.Outcomes).Reason?.Code);
         Assert.Empty(writes.Written);
         Assert.Empty(writes.Released);
         Assert.Equal(0, store.Saves);

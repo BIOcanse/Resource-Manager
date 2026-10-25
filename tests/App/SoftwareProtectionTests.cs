@@ -57,6 +57,6 @@ public sealed class SoftwareProtectionTests
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<SoftwareRecord>>(
             [Record("app"), Record("other")]);
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken token) => GetSoftwareAsync(token);
-        private static SoftwareRecord Record(string id) => new(id, id, "General", "General", "ready", [], [], "", new(false, "", "", ""), null);
+        private static SoftwareRecord Record(string id) => new(id, id, "General", "ready", [], [], new(false, "None", "missing_uninstall_entry"), null);
     }
 }

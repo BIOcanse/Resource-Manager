@@ -42,7 +42,7 @@ internal static class HostManagerOperationRequestCodec
         ComponentActionRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentDownload,
-            $"下载组件 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentDownload,
             id,
@@ -54,7 +54,7 @@ internal static class HostManagerOperationRequestCodec
         ComponentActionRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentInstall,
-            $"安装组件 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentInstall,
             id,
@@ -67,7 +67,7 @@ internal static class HostManagerOperationRequestCodec
         SoftwareOperationCaller caller)
         => CreateUserAcquisitionRequest(
             HostManagerOperationKinds.ComponentInstall,
-            $"安装组件 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.UserComponentInstall,
             id,
@@ -80,7 +80,7 @@ internal static class HostManagerOperationRequestCodec
         OptionalDependencyDownloadRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyDownload,
-            $"下载依赖 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyDownload,
             id,
@@ -92,7 +92,7 @@ internal static class HostManagerOperationRequestCodec
         OptionalDependencyInstallRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyLaunchInstaller,
-            $"启动依赖安装器 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyInstaller,
             id,
@@ -105,7 +105,7 @@ internal static class HostManagerOperationRequestCodec
         SoftwareOperationCaller caller)
         => CreateUserAcquisitionRequest(
             HostManagerOperationKinds.DependencyLaunchInstaller,
-            $"启动依赖安装器 {ValidateText(id, nameof(id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.UserDependencyInstaller,
             id,
@@ -117,7 +117,7 @@ internal static class HostManagerOperationRequestCodec
         SoftwareOperationRequest request, SoftwareOperationCaller caller)
         => new(
             HostManagerOperationKinds.SoftwareUninstall,
-            $"卸载软件 {ValidateText(request.Id, nameof(request.Id))}",
+            new HostManagerOperationSubject(TargetId: ValidateText(request.Id, nameof(request.Id))),
             $"software:{request.Id}",
             HostManagerOperationRequestSchemas.UserSoftwareUninstall,
             HostManagerOperationRequestSchemas.Version,
@@ -171,7 +171,7 @@ internal static class HostManagerOperationRequestCodec
         // 同一时刻只允许一个磁盘扫描：域键固定，协调器自己会挡掉重复提交。
         return new HostManagerOperationSubmitCommand(
             HostManagerOperationKinds.DiskUsageScan,
-            "扫描磁盘占用",
+            new HostManagerOperationSubject(Scope: request.Scope, Mode: request.Mode, TargetPath: request.Target),
             "disk-usage:scan",
             HostManagerOperationRequestSchemas.DiskUsageScan,
             HostManagerOperationRequestSchemas.Version,
@@ -238,6 +238,35 @@ internal static class HostManagerOperationRequestCodec
     internal static byte[] EncodeText(string value)
         => Encode(writer => WriteString(writer, value));
 
+    internal static byte[] EncodeSubject(HostManagerOperationSubject subject)
+        => Encode(writer =>
+        {
+            foreach (var value in new[] { subject.TargetId, subject.Scope, subject.Mode, subject.TargetPath })
+            {
+                writer.Write(!string.IsNullOrEmpty(value));
+                if (!string.IsNullOrEmpty(value)) WriteString(writer, value);
+            }
+        });
+
+    internal static HostManagerOperationSubject DecodeSubject(ReadOnlySpan<byte> payload)
+    {
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var values = new string?[4];
+        for (var index = 0; index < values.Length; index++)
+            values[index] = reader.ReadBoolean() ? ReadString(reader) : null;
+        RequireEnd(stream);
+        return new(values[0], values[1], values[2], values[3]);
+    }
+
+    internal static byte[] EncodeStage(HostManagerOperationStage stage)
+        => Enum.IsDefined(stage) ? [(byte)stage] : throw new ArgumentOutOfRangeException(nameof(stage));
+
+    internal static HostManagerOperationStage DecodeStage(ReadOnlySpan<byte> payload)
+        => payload.Length == 1 && Enum.IsDefined((HostManagerOperationStage)payload[0])
+            ? (HostManagerOperationStage)payload[0]
+            : throw new InvalidDataException("The operation stage fact is invalid.");
+
     internal static byte[] EncodeEffectExpectedBefore(NativeOperationHandle128 requestHandle)
         => HostManagerOperationEffectEvidenceCodec.EncodeEffectExpectedBefore(requestHandle);
 
@@ -256,7 +285,7 @@ internal static class HostManagerOperationRequestCodec
     /// <summary>组件与依赖的获取动作：除了条款确认，还带用户选择的版本（null 表示已验证版本）。</summary>
     private static HostManagerOperationSubmitCommand CreateAcquisitionRequest(
         string kind,
-        string title,
+        HostManagerOperationSubject subject,
         string domainKey,
         uint schemaId,
         string id,
@@ -264,7 +293,7 @@ internal static class HostManagerOperationRequestCodec
         string? versionChoice)
         => new(
             kind,
-            title,
+            subject,
             domainKey,
             schemaId,
             HostManagerOperationRequestSchemas.Version,
@@ -283,7 +312,7 @@ internal static class HostManagerOperationRequestCodec
 
     private static HostManagerOperationSubmitCommand CreateUserAcquisitionRequest(
         string kind,
-        string title,
+        HostManagerOperationSubject subject,
         string domainKey,
         uint schemaId,
         string id,
@@ -297,7 +326,7 @@ internal static class HostManagerOperationRequestCodec
         _ = new System.Security.Principal.SecurityIdentifier(caller.WindowsSid);
         return new HostManagerOperationSubmitCommand(
             kind,
-            title,
+            subject,
             domainKey,
             schemaId,
             HostManagerOperationRequestSchemas.Version,
@@ -314,14 +343,14 @@ internal static class HostManagerOperationRequestCodec
 
     private static HostManagerOperationSubmitCommand CreateBooleanRequest(
         string kind,
-        string title,
+        HostManagerOperationSubject subject,
         string domainKey,
         uint schemaId,
         string id,
         bool value)
         => new(
             kind,
-            title,
+            subject,
             domainKey,
             schemaId,
             HostManagerOperationRequestSchemas.Version,

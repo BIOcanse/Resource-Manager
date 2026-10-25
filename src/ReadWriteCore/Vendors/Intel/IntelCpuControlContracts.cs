@@ -6,7 +6,12 @@ public sealed record IntelCpuControlTarget(string Id, bool IsWindowsIntelCpu = t
 public sealed record IntelCpuControlCapability(string Id, IntelCpuControlNumberRange? Range = null);
 public sealed record IntelCpuControlNumberRange(double Minimum, double Maximum, double Step, string Unit, double? DefaultValue = null);
 public sealed record IntelCpuControlSetting(string CapabilityId, double? Number = null, string? Unit = null);
-public sealed record IntelCpuControlOutcome(string ObjectId, string CapabilityId, string Status, string? Message = null);
+public sealed record IntelCpuControlOutcome(string ObjectId, string CapabilityId, string Status, string? Message = null)
+{
+    public double? Requested { get; init; }
+    public double? Observed { get; init; }
+    public string? Unit { get; init; }
+}
 public sealed record IntelCpuControlActualValue(string ObjectId, string CapabilityId, double? Number = null, string? Unit = null);
 public readonly record struct IntelCpuControlAvailability(bool CanWrite, string? Reason = null,
     IntelCpuControlNumberRange? Range = null, string? UnavailableKind = null, bool CanRead = false)

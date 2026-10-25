@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Domain.DiskUsage;
 using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Operations;
@@ -13,9 +14,16 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
 
     // The owner writes every native record, payload, receipt, checksum and root
     // manifest. No import fixture synthesizes or edits the binary format.
-    internal static async Task<OperationImportImage> CreateOperationImportImageAsync(string producerRoot, string state)
+    internal static async Task<OperationImportImage> CreateOperationImportImageAsync(string producerRoot, string state, uint? requestSchemaId = null, bool diskScan = false)
     {
-        await using var fixture = await Fixture.CreateAsync(producerRoot, CreateSmallPlan());
+        await using var fixture = await Fixture.CreateAsync(producerRoot, CreateSmallPlan(root =>
+        {
+            if (!diskScan) return;
+            // Generate a real persisted disk attempt with one explicitly permitted retry; the product default remains one attempt.
+            var kind = root["hot_publish"]!["operation_coordinator"]!["kinds"]!.AsArray()
+                .Single(node => node!["name"]!.GetValue<string>() == HostManagerOperationKinds.DiskUsageScan);
+            kind!["maximum_attempts"] = 2;
+        }));
         var paths = HostManagerDurableStorePaths.Resolve(producerRoot).Single(store => store.Kind == "operation-coordinator");
         Assert.Equal(paths.CanonicalPath, fixture.EnvelopePath);
         var blocked = state is HostManagerOperationStates.Running or HostManagerOperationStates.Queued or HostManagerOperationStates.Canceled;
@@ -23,7 +31,8 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         var entered = NewSignal();
         var release = NewSignal();
         string? runningId = null;
-        fixture.ComponentExecutor.OnExecute = async (_, cancellationToken) =>
+        var executor = diskScan ? fixture.DiskExecutor : fixture.ComponentExecutor;
+        executor.OnExecute = async (_, cancellationToken) =>
         {
             if (blocked)
             {
@@ -38,7 +47,11 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         };
         try
         {
-            var submitted = await fixture.SubmitComponentDownloadAsync();
+            var command = diskScan
+                ? HostManagerOperationRequestCodec.DiskUsageScan(new DiskUsageScanRequest(DiskUsageScanScopes.Folder, DiskUsageScanModes.Full, @"C:\fixture"))
+                : HostManagerOperationRequestCodec.ComponentDownload("fixture-component", new ComponentActionRequest(true));
+            if (requestSchemaId is { } schema) command = command with { RequestSchemaId = schema };
+            var submitted = await fixture.Owner.SubmitAsync(command, CancellationToken.None);
             runningId = submitted.Id;
             if (blocked)
             {

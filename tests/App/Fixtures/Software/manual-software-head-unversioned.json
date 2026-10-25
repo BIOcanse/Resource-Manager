@@ -1,0 +1,71 @@
+[
+  {
+    "id": "manual:2da40a27e4d2",
+    "name": "Adapter Tool",
+    "kind": "adapted",
+    "displayKind": "adapted",
+    "state": "manual",
+    "sources": [
+      "\u624B\u52A8\u8865\u5F55"
+    ],
+    "rootPaths": [
+      "D:\\Apps\\Adapter Tool"
+    ],
+    "message": "\u7528\u6237\u624B\u52A8\u8865\u5F55\u4E3A\u9002\u914D\u8F6F\u4EF6\uFF1B\u6309\u6839\u76EE\u5F55\u8BC6\u522B\u8FD0\u884C\u8FDB\u7A0B\uFF0C\u5E76\u5C1D\u8BD5\u8BFB\u53D6\u5176\u9002\u914D\u63A7\u5236\u7AEF\u70B9\u3002",
+    "sourceSoftwareId": null,
+    "createdAt": "2026-10-01T12:34:56+08:00",
+    "updatedAt": "2026-10-23T23:45:01-05:00"
+  },
+  {
+    "id": "manual:ea49bdcff87e",
+    "name": "Portable Game",
+    "kind": "game",
+    "displayKind": "game",
+    "state": "manual",
+    "sources": [
+      "\u624B\u52A8\u8865\u5F55"
+    ],
+    "rootPaths": [
+      "D:\\Games\\Portable Game"
+    ],
+    "message": "\u7528\u6237\u624B\u52A8\u5206\u7C7B\u4E3A\u6E38\u620F\uFF1B\u6E38\u620F\u6A21\u5F0F\u53EF\u4F18\u5148\u4F7F\u7528\u66F4\u5F3A\u7684\u540E\u53F0\u8BA9\u8DEF\u7B56\u7565\u3002",
+    "sourceSoftwareId": null,
+    "createdAt": "2026-10-01T12:34:56+08:00",
+    "updatedAt": "2026-10-23T23:45:01-05:00"
+  },
+  {
+    "id": "windows-installed:editor",
+    "name": "Editor Profile",
+    "kind": "high_performance",
+    "displayKind": "high_performance",
+    "state": "manual",
+    "sources": [
+      "\u624B\u52A8\u5206\u7C7B",
+      "\u6765\u81EA\u8F6F\u4EF6\u5217\u8868"
+    ],
+    "rootPaths": [
+      "D:\\Apps\\Editor"
+    ],
+    "message": "\u7528\u6237\u624B\u52A8\u5206\u7C7B\u4E3A\u9AD8\u6027\u80FD\u8F6F\u4EF6\uFF1B\u9700\u8981\u8D44\u6E90\u503E\u659C\uFF0C\u4F46\u4E0D\u9ED8\u8BA4\u4F7F\u7528\u6E38\u620F\u540C\u7B49\u7EA7\u7B56\u7565\u3002",
+    "sourceSoftwareId": "windows-installed:editor",
+    "createdAt": "2026-10-01T12:34:56+08:00",
+    "updatedAt": "2026-10-23T23:45:01-05:00"
+  },
+  {
+    "id": "manual:e1cf200486c7",
+    "name": "General Application",
+    "kind": "other",
+    "displayKind": "other",
+    "state": "manual",
+    "sources": [
+      "\u624B\u52A8\u8865\u5F55"
+    ],
+    "rootPaths": [
+      "D:\\Apps\\General Application"
+    ],
+    "message": "\u7528\u6237\u624B\u52A8\u8865\u5F55\u7684\u8F6F\u4EF6\uFF1B\u5237\u65B0 Windows \u8F6F\u4EF6\u5217\u8868\u4E0D\u4F1A\u5220\u9664\u3002",
+    "sourceSoftwareId": null,
+    "createdAt": "2026-10-01T12:34:56+08:00",
+    "updatedAt": "2026-10-23T23:45:01-05:00"
+  }
+]

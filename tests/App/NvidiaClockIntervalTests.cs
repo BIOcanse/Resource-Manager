@@ -93,8 +93,8 @@ public sealed class NvidiaClockIntervalTests
         => new($"gpu.{domain}-clock-{endpoint}", Number: value, Unit: ControlUnits.Megahertz);
     private static ControlObject Gpu(string domain) => new("gpu:recorded", ControlObjectKinds.Gpu, "Recorded GPU",
         new(ControlOperatingSystems.Windows, ControlVendors.Nvidia),
-        [new($"gpu.{domain}-clock-minimum", "Minimum", ControlValueKinds.Number, true, Range: new(0, 3000, 15, "MHz")),
-         new($"gpu.{domain}-clock-maximum", "Maximum", ControlValueKinds.Number, true, Range: new(0, 3000, 15, "MHz"))],
+        [new($"gpu.{domain}-clock-minimum", ControlValueKinds.Number, true, Range: new(0, 3000, 15, "MHz")),
+         new($"gpu.{domain}-clock-maximum", ControlValueKinds.Number, true, Range: new(0, 3000, 15, "MHz"))],
         AdapterIndex: 0, GpuAttachment: ControlGpuAttachments.Discrete);
     private sealed class Catalog(ControlObject gpu) : IControlObjectCatalog
     { public ControlObjectCatalog ReadObjects() => new([gpu], DateTimeOffset.UtcNow); }

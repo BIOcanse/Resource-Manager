@@ -23,10 +23,9 @@ public sealed class ControlWriterDispatchTests
         [
             new ControlCapability(
                 "gpu.core-clock-offset",
-                "核心频率偏移",
                 ControlValueKinds.Number,
                 Supported: false,
-                UnavailableReason: "写入器还没接",
+                UnavailableReason: "control-writer-not-implemented",
                 Range: range ?? new ControlNumberRange(-500, 500, 5, "MHz", 0),
                 RequiredAccessLevel: accessLevel)
         ],
@@ -127,7 +126,7 @@ public sealed class ControlWriterDispatchTests
     {
         var writer = new FakeWriter
         {
-            Availability = ControlWriteAvailability.No("这块卡不开放这一项。")
+            Availability = ControlWriteAvailability.No("fixture-capability-unavailable")
         };
         var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer], StubAccessLevel.Normal);
 
@@ -140,7 +139,7 @@ public sealed class ControlWriterDispatchTests
             CancellationToken.None);
 
         Assert.Equal(ControlApplyStatuses.Unsupported, report.Outcomes[0].Status);
-        Assert.Equal("这块卡不开放这一项。", report.Outcomes[0].Message);
+        Assert.Equal("fixture-capability-unavailable", report.Outcomes[0].Reason?.Code);
         Assert.Empty(writer.Written);
     }
 

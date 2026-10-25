@@ -192,7 +192,12 @@ public sealed class NvidiaGpuControlResource : IDisposable
         ArgumentNullException.ThrowIfNull(setting);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(Write(target, capability, setting));
+        var result = Write(target, capability, setting);
+        return Task.FromResult(result with
+        {
+            Requested = setting.Number is { } number && double.IsFinite(number) ? number : null,
+            Unit = result.Unit ?? capability.Range?.Unit ?? setting.Unit
+        });
     }
 
     private NvidiaControlApplyOutcome Write(
@@ -262,7 +267,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
                 capability,
                 powerLimitCode == 0
                     ? WriteRejected
-                    : $"{WriteRejected}（{DescribeNvmlCode(powerLimitCode)}）")
+                    : DescribeNvmlCode(powerLimitCode))
                 with { NativeStatus = capability.Id == PowerLimitCapabilityId && powerLimitCode != 0 ? powerLimitCode : null };
         }
 
@@ -458,9 +463,10 @@ public sealed class NvidiaGpuControlResource : IDisposable
                 2 => Describe(NvidiaControlMessage.M36, minimum, maximum),
                 4 => Describe(NvidiaControlMessage.M37),
                 _ => Describe(NvidiaControlMessage.M38, code)
-            });
+            }) with { NativeStatus = code, Minimum = minimum, Maximum = maximum, Unit = NvidiaControlUnits.Megahertz };
         }
-        return new NvidiaControlApplyOutcome(target.Id, capability.Id, NvidiaControlStatuses.Applied, null);
+        return new NvidiaControlApplyOutcome(target.Id, capability.Id, NvidiaControlStatuses.Applied, null)
+            { NativeStatus = 0, Minimum = minimum, Maximum = maximum, Unit = NvidiaControlUnits.Megahertz };
     }
 
     internal int WriteClockRange(int adapterIndex, uint clockType, bool isMinimum, uint wanted,
@@ -582,25 +588,28 @@ public sealed class NvidiaGpuControlResource : IDisposable
                 capability.Id,
                 wanted,
                 code);
-            return Failed(target, capability, TemperatureWriteRefused(code));
+            return Failed(target, capability, TemperatureWriteRefused(code))
+                with { NativeStatus = code, Unit = NvidiaControlUnits.Celsius };
         }
 
         if (powerBridge.ReadTemperatureThreshold(device, thresholdType) is not { } readBack)
         {
-            return Failed(target, capability, Describe(NvidiaControlMessage.M46));
+            return Failed(target, capability, Describe(NvidiaControlMessage.M46))
+                with { NativeStatus = 0, Unit = NvidiaControlUnits.Celsius };
         }
         if (Math.Abs(readBack - wanted) > 0.5)
         {
             return Failed(
                 target,
                 capability,
-                Describe(NvidiaControlMessage.M47, Math.Round(readBack)));
+                Describe(NvidiaControlMessage.M47, Math.Round(readBack)))
+                with { NativeStatus = 0, Observed = readBack, Unit = NvidiaControlUnits.Celsius };
         }
         return new NvidiaControlApplyOutcome(
             target.Id,
             capability.Id,
             NvidiaControlStatuses.Applied,
-            null) { NativeStatus = capability.Id == PowerLimitCapabilityId ? 0 : null };
+            null) { NativeStatus = 0, Observed = readBack, Unit = NvidiaControlUnits.Celsius };
     }
 
     /// <summary>
@@ -745,5 +754,3 @@ public sealed class NvidiaGpuControlResource : IDisposable
         string reason)
         => new(target.Id, capability.Id, NvidiaControlStatuses.Failed, reason);
 }
-
-

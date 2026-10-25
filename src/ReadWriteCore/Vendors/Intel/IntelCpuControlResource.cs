@@ -104,7 +104,8 @@ public sealed class IntelCpuControlResource : IDisposable
                     IntelOcMailbox.Write(io, plane, encoded);
                     var after = IntelOcMailbox.Read(io, plane);
                     return Task.FromResult(Result(target, capability, after == encoded ? "applied" : "failed",
-                        after == encoded ? Describe(IntelCpuControlMessage.VoltageVerified, IntelOcMailbox.Decode(after)) : Describe(IntelCpuControlMessage.VoltageReadbackMismatch)));
+                        after == encoded ? Describe(IntelCpuControlMessage.VoltageVerified, IntelOcMailbox.Decode(after)) : Describe(IntelCpuControlMessage.VoltageReadbackMismatch))
+                        with { Requested = number, Observed = IntelOcMailbox.Decode(after), Unit = "mV" });
                 }
                 var units = io.ReadMsr(IntelRaplEncoding.UnitsRegister);
                 var original = io.ReadMsr(IntelRaplEncoding.LimitRegister);
@@ -116,9 +117,11 @@ public sealed class IntelCpuControlResource : IDisposable
                 var next = window ? IntelRaplEncoding.SetWindow(original, units, shortTerm, number) : IntelRaplEncoding.SetPower(original, units, shortTerm, number);
                 io.WriteMsr(IntelRaplEncoding.LimitRegister, next);
                 var readback = io.ReadMsr(IntelRaplEncoding.LimitRegister);
-                if ((readback & mask) != (next & mask)) return Task.FromResult(Result(target, capability, "failed", Describe(IntelCpuControlMessage.PowerReadbackMismatch)));
                 var actual = window ? IntelRaplEncoding.ReadWindow(readback, units, shortTerm) : IntelRaplEncoding.ReadPower(readback, units, shortTerm);
-                return Task.FromResult(Result(target, capability, "applied", Describe(IntelCpuControlMessage.PowerVerified, actual, capability.Range?.Unit)));
+                if ((readback & mask) != (next & mask)) return Task.FromResult(Result(target, capability, "failed", Describe(IntelCpuControlMessage.PowerReadbackMismatch))
+                    with { Requested = number, Observed = actual, Unit = capability.Range?.Unit });
+                return Task.FromResult(Result(target, capability, "applied", Describe(IntelCpuControlMessage.PowerVerified, actual, capability.Range?.Unit))
+                    with { Requested = number, Observed = actual, Unit = capability.Range?.Unit });
             }
             catch (Exception error) when (Unavailable(error) || error is ArgumentOutOfRangeException)
             { return Task.FromResult(Result(target, capability, "failed", error.Message)); }

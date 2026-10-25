@@ -7,9 +7,9 @@ export default async function controlSlowRequestJourney(page, baseUrl) {
   const state = () => ({ desired: { objects }, lastApply: { outcomes: [], appliedAt: new Date().toISOString() } });
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: [{
-      id: "slow", kind: "fan", displayName: "Slow Fan", isControllable: true,
+      id: "slow", kind: "fan", reportedName: "Slow Fan", isControllable: true,
       platform: { operatingSystem: "windows", vendor: "test" }, terms: ["curve-firmware"],
-      capabilities: [{ id: "fan.curve", label: "Curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
+      capabilities: [{ id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }]
   } }));
   await page.route("**/api/control/objects/slow/curve", async route => {

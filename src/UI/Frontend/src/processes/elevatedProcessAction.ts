@@ -2,12 +2,22 @@ import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
 import { ApiRequestError } from "../api/httpTransport.ts";
 import { uiText } from "../text.ts";
 import type { SystemProcessIdentity, SystemProcessOperationResult } from "../types";
+import { systemProcessOperationDecoder } from "../data/systemProcessOperationDecoder.ts";
 
 export async function withProcessActionElevation(
   action: "terminate" | "dump", targets: readonly SystemProcessIdentity[],
   request: () => Promise<SystemProcessOperationResult>, fallbackError: string
 ): Promise<SystemProcessOperationResult> {
-  try { return await request(); }
+  const accept = (value: unknown): SystemProcessOperationResult => {
+    try {
+      const result = systemProcessOperationDecoder.decode(value);
+      if (result.action !== (action === "terminate" ? "Terminate" : "Dump") || !isExactResult(result, targets)) throw new Error();
+      return result;
+    } catch {
+      throw new ApiRequestError(fallbackError, { kind: "invalid-response", retryable: false });
+    }
+  };
+  try { return accept(await request()); }
   catch (error) {
     if (!(error instanceof ApiRequestError) || error.status !== 403
         || !error.payload || typeof error.payload !== "object"
@@ -35,11 +45,8 @@ export async function withProcessActionElevation(
           reject(new ApiRequestError(uiText.misc.transportTimeout, { kind: "timeout", retryable: false }));
           return;
         }
-        if (!isExactResult(response.result, targets)) {
-          reject(new ApiRequestError(fallbackError, { kind: "invalid-response", retryable: false }));
-          return;
-        }
-        resolve(response.result);
+        try { resolve(accept(response.result)); }
+        catch (error) { reject(error); }
       });
       if (!unsubscribe) {
         globalThis.clearTimeout(timer);

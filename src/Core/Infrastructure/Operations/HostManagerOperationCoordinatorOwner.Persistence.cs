@@ -114,7 +114,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             replacementStore = new HostManagerOperationCanonicalStore(
                 envelopePath,
                 desired.Recreate.Capacity,
-                desired.HotPublish.ConfigurationGeneration);
+                desired.HotPublish.ConfigurationGeneration,
+                logger);
             replacementStore.AcquireOwnerLease();
             var persisted = replacementStore.LoadValidated();
             var sessionId = persisted?.SessionInstanceId
@@ -127,10 +128,20 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 createScratch);
             if (persisted is not null)
             {
-                replacementWorkspace.ImportCanonicalNativeImageLocked(
-                    persisted.NativeImage,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                    NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
+                try
+                {
+                    replacementWorkspace.ImportCanonicalNativeImageLocked(
+                        persisted.NativeImage,
+                        timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
+                        NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
+                }
+                catch (Exception error) when (error is InvalidDataException or ArgumentException or OverflowException)
+                {
+                    replacementStore.RejectLoadedImage(error);
+                    replacementWorkspace.Dispose();
+                    replacementWorkspace = new NativeOperationCoordinatorWorkspace(desired, sessionId, clockId, createScratch);
+                    persisted = null;
+                }
             }
 
             workspace = replacementWorkspace;
@@ -145,7 +156,18 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ?? HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest();
             replacementWorkspace = null;
             replacementStore = null;
-            CommitCurrentLocked("initial-recovery-publication");
+            try { CommitCurrentLocked("initial-recovery-publication"); }
+            catch (HostManagerOperationMigrationDeferredException)
+            {
+                // Only a migration write that left both source files unchanged may publish empty instead of blocking startup.
+                workspace.Dispose();
+                workspace = new NativeOperationCoordinatorWorkspace(desired, sessionId, clockId, createScratch);
+                payloads = new();
+                receipts = new();
+                publicationRevision = 0;
+                lastEnvelopeSha256 = HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest();
+                CommitCurrentLocked("initial-recovery-publication");
+            }
             ready = true;
             PublishHealthOnlyLocked();
             settlementAttempted = true;
@@ -351,6 +373,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         }
         catch (Exception error)
         {
+            if (stage == "initial-recovery-publication" && store!.TryDeferUncommittedLegacyMigration(error))
+                throw new HostManagerOperationMigrationDeferredException(error);
             LatchPersistenceFaultLocked(error, stage);
             throw;
         }
@@ -431,7 +455,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 committed.ConfigurationGeneration,
                 committed.PublicationRevision,
                 NextCommittedStateRevisionLocked(),
-                DateTimeOffset.UtcNow));
+                timeProvider.GetUtcNow()));
     }
 
     private NativeOperationCoordinatorWorkspace
@@ -449,7 +473,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         {
             replacement.ImportCanonicalNativeImageLocked(
                 exported,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
                 NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
             return replacement;
         }

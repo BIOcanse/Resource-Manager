@@ -35,7 +35,7 @@ public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
         var trimmed = (name ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > MaximumNameLength)
         {
-            throw new ArgumentException($"配置的名字要有，并且不超过 {MaximumNameLength} 个字。");
+            throw new ControlRequestException(new("control-preset-name-invalid", new(Maximum: MaximumNameLength)));
         }
 
         var catalog = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -62,8 +62,7 @@ public sealed class ControlPresets(IControlPresetStore store) : IControlPresets
                 string.Equals(entry.ObjectId, objectId, StringComparison.Ordinal));
             if (underObject >= MaximumPresetCountPerObject)
             {
-                throw new InvalidOperationException(
-                    $"每个设备最多存 {MaximumPresetCountPerObject} 份配置，先删掉一些再存。");
+                throw new ControlRequestException(new("control-preset-count-limit", new(Maximum: MaximumPresetCountPerObject)));
             }
             presets = [.. catalog.Presets, new ControlPreset(
                 Guid.NewGuid().ToString("n"),

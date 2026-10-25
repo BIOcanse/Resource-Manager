@@ -60,8 +60,8 @@ internal sealed class CpuTopologyProviderTestFixture : IAsyncDisposable
         new CpuSpecificationModel("Subscription Test CPU", "Test", "Test", 1, 1, 3000, 2000, 256, 1024, "test"),
         "test", "test", CpuTopologyAffinityTargetKinds.LogicalProcessorMask,
         CpuTopologyVisualLayoutKinds.Grid, "test", 1, 1, 1, false,
-        [new CpuCcdModel("ccd:0", 0, "CCD 0", usage, [0], [0], "test")],
-        [new CpuPhysicalCoreModel("core:0", 0, "Core 0", "ccd:0", 0, 1, usage, [0], [])],
+        [new CpuCcdModel("ccd:0", 0, usage, [0], [0], "test")],
+        [new CpuPhysicalCoreModel("core:0", 0, "ccd:0", 0, 1, usage, [0], [])],
         [new CpuLogicalProcessorModel(0, 0, 0, "core:0", "ccd:0", 1, usage, true)],
         []);
 

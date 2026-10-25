@@ -9,6 +9,7 @@ export interface VersionChoice {
   publishedAt?: string | null;
   available?: boolean;
   selectable?: boolean;
+  eligibility?: "eligible" | "installedVersionUnknown" | "notNewer";
   unavailableReason?: string | null;
 }
 
@@ -39,6 +40,8 @@ export function VersionSelector(props: {
     option.available !== false && option.selectable !== false && !props.installedVersionUnknown;
   const reason = (option: VersionChoice) => props.installedVersionUnknown
     ? text().installedUnknown
+    : option.eligibility && option.eligibility !== "eligible"
+      ? text().unavailableReasons[option.eligibility]
     : option.unavailableReason ? text().unavailableReasons[option.unavailableReason] ?? option.unavailableReason : null;
 
   function toggle(series: string) {

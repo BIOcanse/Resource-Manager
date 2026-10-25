@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 export default async function frontendAuditJourney(page, baseUrl) {
   const errors = [];
@@ -7,6 +8,22 @@ export default async function frontendAuditJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
   await wait(t => t["/api/components"]?.completed >= 1 && t["/api/operations/subscribe"]?.publications >= 1);
+  const app = await loadAppCopy("zh-CN");
+  await page.locator(".management-card-title").filter({ hasText: app.status.component.names.hardwareBridge }).waitFor();
+  const componentResponse = await fetch(`${baseUrl}/api/components`);
+  assert.equal(componentResponse.ok, true);
+  const components = await componentResponse.json();
+  assert.ok(components.length > 0, "The audit must exercise the current component decoder with actual facts");
+  for (const component of components) {
+    assert.equal("stateLabel" in component, false);
+    for (const key of ["name", "category", "purpose", "installNote"])
+      assert.equal(key in component.definition, false, `Component wire still contains ${key}`);
+    for (const capability of component.definition.capabilities) assert.equal("label" in capability, false);
+    for (const provider of component.providers) {
+      assert.equal("name" in provider, false);
+      assert.equal(typeof provider.message, "object");
+    }
+  }
   const before = await telemetry();
   await patch({ operationCanceled: true });
   await wait(t => t["/api/components"]?.completed > before["/api/components"].completed);
@@ -19,7 +36,7 @@ export default async function frontendAuditJourney(page, baseUrl) {
   await visible(true);
   await wait(t => t["/api/operations/subscribe"]?.logicalInFlight === 1);
   assert.deepEqual(errors, []);
-  return { componentCompletionRefreshesOnlyItsInventory: true, hiddenStreamReleased: true, visibleCurrentReadRestored: true };
+  return { componentFactsOnlyWire: true, localizedComponentFromFacts: true, componentCompletionRefreshesOnlyItsInventory: true, hiddenStreamReleased: true, visibleCurrentReadRestored: true };
 
   async function visible(value) {
     await page.evaluate(value => {

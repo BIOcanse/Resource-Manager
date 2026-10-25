@@ -1,3 +1,5 @@
+import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
+import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
 import type {
   BackendMessage,
   AiGatewayCompatibilityProfile,
@@ -22,14 +24,12 @@ import type {
   GpuPerformanceScoreOverrideResult,
   GpuPerformanceScoreSnapshot,
   GpuSpecializedTelemetrySnapshot,
-  ManagedComponent,
   LocalOnlineSearchResult,
   ManualSoftwareRequest,
   MetricDefinition,
   PortableSoftwareRootConfirmationResult,
   ResourceBarSettings,
   AppOptimizationMode,
-  SoftwareRecord,
   SystemProcessIdentity,
   SystemProcessOperationResult,
   TrustedOptimizationTarget
@@ -211,11 +211,11 @@ export async function fetchComponentVersionOptions(id: string) {
 }
 
 export async function openPath(path: string, select = false) {
-  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path, select }, uiText.apiError.openPathFailed);
+  return postJson<{ path: string; openedPath: string; mode: string }>("/api/system/open-path", { path, select }, uiText.apiError.openPathFailed);
 }
 
 export async function openProperties(path: string) {
-  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-properties", { path }, uiText.apiError.openPropertiesFailed);
+  return postJson<{ path: string; openedPath: string; mode: string }>("/api/system/open-properties", { path }, uiText.apiError.openPropertiesFailed);
 }
 
 export async function terminateProcesses(targets: SystemProcessIdentity[]) {
@@ -251,7 +251,7 @@ export async function getResourceBreakdown(
 }
 
 export async function getComponents() {
-  return getJson<ManagedComponent[]>("/api/components");
+  return decodeManagedComponents(await getJson<unknown>("/api/components"));
 }
 
 export async function verifyComponent(id: string) {
@@ -261,7 +261,7 @@ export async function verifyComponent(id: string) {
 }
 
 export async function getSoftware(refresh = false) {
-  return getJson<SoftwareRecord[]>(refresh ? "/api/software?refresh=true" : "/api/software");
+  return decodeSoftwareRecords(await getJson<unknown>(refresh ? "/api/software?refresh=true" : "/api/software"));
 }
 
 export async function removeManualSoftware(id: string) {

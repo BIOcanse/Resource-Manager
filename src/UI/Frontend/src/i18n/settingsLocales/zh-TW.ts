@@ -38,8 +38,8 @@ export default createSettingsLocale("zh-TW", {
     "latestStable": "最新穩定版本",
     "verified": "已驗證版本",
     "unavailableReasons": {
-      "无法确认当前安装版本，升级选择已关闭。": "無法確認當前安裝版本，升級選擇已關閉。",
-      "只能选择高于当前安装版本的发行版。": "只能選擇高於當前安裝版本的發行版。"
+      "installedVersionUnknown": "無法確認當前安裝版本，升級選擇已關閉。",
+      "notNewer": "只能選擇高於當前安裝版本的發行版。"
     }
   },
   "navigationLabel": "設定分割槽",

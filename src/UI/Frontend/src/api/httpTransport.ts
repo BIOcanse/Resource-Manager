@@ -1,4 +1,5 @@
 import { uiText } from "../text.ts";
+import { controlRequestErrorText } from "../presentation/controlReasonText.ts";
 export type ApiRequestFailureKind =
   | "timeout"
   | "aborted"
@@ -183,8 +184,7 @@ function normalizeTimeout(value: number | undefined) {
 }
 
 function httpFailureMessage(payload: unknown, fallback: string) {
-  void payload;
-  return fallbackMessage(fallback);
+  return controlRequestErrorText(payload) ?? fallbackMessage(fallback);
 }
 
 function isRetryableHttpStatus(status: number) {

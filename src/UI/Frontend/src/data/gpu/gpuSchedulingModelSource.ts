@@ -167,22 +167,22 @@ export const gpuPerformanceScoreSnapshotDecoder =
 
 export const gpuSpecializedTelemetryDecoder =
   defineResponseDecoder<GpuSpecializedTelemetrySnapshot>(
-    "gpu.specialized-telemetry.v2",
+    "gpu.specialized-telemetry.v3",
     (value) => {
       const root = requireRecord(value);
       return Object.freeze({
-        version: requireVersion(root.version, "$.version", 2),
+        version: requireVersion(root.version, "$.version", 3),
         capturedAt: requireTimestamp(root.capturedAt, "$.capturedAt"),
         adapters: requireArray(root.adapters, "$.adapters")
           .map(decodeSpecializedAdapter)
       });
     });
 
-function requireVersion(value: unknown, path: string, expected: number): 2 {
+function requireVersion(value: unknown, path: string, expected: number): 3 {
   if (requireSafeInteger(value, path) !== expected) {
     throw new Error(`Invalid response version '${path}'.`);
   }
-  return 2;
+  return 3;
 }
 
 function decodeGpuPerformanceScoreItem(
@@ -241,7 +241,6 @@ function decodeSpecializedCounter(
   const item = requireRecord(value, path);
   return Object.freeze({
     counterId: requireNonEmptyString(item.counterId, `${path}.counterId`),
-    displayName: requireString(item.displayName, `${path}.displayName`),
     counterClass: requireSafeInteger(item.counterClass, `${path}.counterClass`),
     value: optionalNullableNumber(item.value, `${path}.value`),
     unit: requireString(item.unit, `${path}.unit`),

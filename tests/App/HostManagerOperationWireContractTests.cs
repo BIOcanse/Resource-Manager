@@ -10,6 +10,17 @@ public sealed class HostManagerOperationWireContractTests
         new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public void SubjectAndStagePayloadsContainTypedFactsAndRejectText()
+    {
+        var subject = new HostManagerOperationSubject(TargetId: "component-id");
+        Assert.Equal(subject, ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.DecodeSubject(
+            ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.EncodeSubject(subject)));
+        Assert.Equal(new byte[] { 1 }, ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.EncodeStage(HostManagerOperationStage.Download));
+        Assert.Throws<InvalidDataException>(() => ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.DecodeStage([2]));
+        Assert.Throws<InvalidDataException>(() => ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.DecodeStage("download"u8));
+    }
+
+    [Fact]
     public void PublishedStateUsesOneVersionedEnvelopeAndDecimalUInt64Fields()
     {
         var timestamp = DateTimeOffset.Parse("2026-08-22T12:00:00Z");
@@ -17,7 +28,7 @@ public sealed class HostManagerOperationWireContractTests
             "00000000000000000000000000000001",
             "component.install",
             "component.example",
-            "Install component",
+            new HostManagerOperationSubject(TargetId: "example"),
             HostManagerOperationStates.Succeeded,
             ulong.MaxValue,
             ulong.MaxValue - 1,
@@ -33,8 +44,7 @@ public sealed class HostManagerOperationWireContractTests
                 ulong.MaxValue - 1,
                 ulong.MaxValue,
                 ulong.MaxValue,
-                "complete",
-                "done"),
+                HostManagerOperationStage.Download),
             "installed",
             null);
         var state = new HostManagerOperationsPublishedState(
@@ -70,8 +80,13 @@ public sealed class HostManagerOperationWireContractTests
         Assert.Equal(
             (ulong.MaxValue - 1).ToString(),
             item.GetProperty("stateRevision").GetString());
-        Assert.Equal(JsonValueKind.String, item.GetProperty("result").ValueKind);
+        Assert.False(item.TryGetProperty("title", out _));
+        Assert.False(item.TryGetProperty("result", out _));
+        Assert.False(item.TryGetProperty("error", out _));
+        Assert.Equal("example", item.GetProperty("subject").GetProperty("targetId").GetString());
         var progress = item.GetProperty("progress");
+        Assert.Equal("Download", progress.GetProperty("stage").GetString());
+        Assert.False(progress.TryGetProperty("message", out _));
         Assert.Equal(
             ulong.MaxValue.ToString(),
             progress.GetProperty("sequence").GetString());

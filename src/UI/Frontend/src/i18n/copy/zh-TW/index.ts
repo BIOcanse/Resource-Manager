@@ -1,4 +1,6 @@
+import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
+import { softwareFactsCopy } from "../softwareFacts.ts";
 import { zhBackendMessagesCopy } from "./backendMessages.ts";
 import { zhDetailsCopy } from "./details.ts";
 import { zhDeviceAdaptersCopy } from "./deviceAdapters.ts";
@@ -23,7 +25,9 @@ import { zhTwTargetedReportCopy } from "./targetedReport.ts";
 
 // 中文基底：全应用文案的唯一权威形状，其他语言按同一形状提供翻译。
 export const zhAppCopy = {
+  componentCatalog,
   managementFeedback,
+  softwareFacts: softwareFactsCopy["zh-TW"],
   ...zhShellCopy,
   ...zhSoftwareCopy,
   ...zhMonitorCopy,

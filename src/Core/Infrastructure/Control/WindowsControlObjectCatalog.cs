@@ -34,7 +34,7 @@ public sealed class WindowsControlObjectCatalog(
     private readonly WindowsCpuIdentityReader cpuIdentityReader = new();
 
     /// <summary>没有任何写入器认领这一项时的原因。接进一个就少一条。</summary>
-    private const string WriterNotImplemented = "只读，写入未接入。";
+    private const string WriterNotImplemented = "control-writer-missing";
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
@@ -172,8 +172,8 @@ public sealed class WindowsControlObjectCatalog(
     /// **说的是差哪一档，不是"不支持"。** 这一项在这台机器上是存在的，
     /// 只是用户现在这一档够不着；把它说成不支持，用户就去查硬件了。
     /// </summary>
-    private static string NeedsAccessLevel(string required)
-        => $"需要切换到{ControlAccessLevels.DisplayName(required)}档（设置 → 调节权限）。";
+    private static ControlApplyReason NeedsAccessLevel(string required)
+        => new("control-access-level-required", new(RequiredAccessLevel: required));
 
     /// <summary>
     /// 每块显卡的身份。独显优先用出厂唯一标识；核显没有自己的标识，跟处理器走。
@@ -232,7 +232,7 @@ public sealed class WindowsControlObjectCatalog(
                 attachment == ControlGpuAttachments.Integrated
                     ? IntegratedGpuCapabilities(vendor)
                     : DiscreteGpuCapabilities(vendor, gpu, chassis.Read()),
-                $"GPU{gpu.Index}",
+                null,
                 GpuAttachment: attachment,
                 AdapterIndex: gpu.Index)
             {
@@ -286,26 +286,24 @@ public sealed class WindowsControlObjectCatalog(
     {
         // 厂商决定这块卡要哪条写入路径。列出来是为了让用户看到差别，
         // 而不是笼统地说"不支持超频"。
-        var (componentId, componentName) = vendor switch
+        var componentId = vendor switch
         {
-            ControlVendors.Nvidia => ("nvidia-nvapi-provider", "NVIDIA NVAPI Provider"),
-            ControlVendors.Amd => ("amd-adlx-provider", "AMD ADLX / ADL Provider"),
-            _ => ((string?)null, (string?)null)
+            ControlVendors.Nvidia => "nvidia-nvapi-provider",
+            ControlVendors.Amd => "amd-adlx-provider",
+            _ => (string?)null
         };
 
         ControlCapability Card(
             string id,
-            string label,
             string channel,
             ControlNumberRange? range = null,
             string level = ControlAccessLevels.Normal,
             string valueKind = ControlValueKinds.Number)
-            => Unsupported(id, label, valueKind, componentId, componentName, range, level, channel);
+            => Unsupported(id, valueKind, componentId, range, level, channel);
 
         // 整机固件那条路上的项，缺的组件和显卡驱动不是同一个，所以单列。
         ControlCapability Platform(
             string id,
-            string label,
             ControlNumberRange? range = null,
             string valueKind = ControlValueKinds.Number,
             bool laptopOnly = false)
@@ -316,13 +314,11 @@ public sealed class WindowsControlObjectCatalog(
                  * 的概念；台式机的显卡直接吃 PCIe 和供电线，没有"整机预算"这回事。
                  * 列成"还没接"会让用户一直等一个不存在的东西。
                  */
-                ? Excluded(id, label, "这几项是笔记本整机固件的功率预算，台式机上没有。")
+                ? Excluded(id, "control-portable-budget-required")
                 : Unsupported(
                     id,
-                    label,
                     valueKind,
                     "uniwill-ec-provider",
-                    "整机固件接口",
                     range,
                     ControlAccessLevels.Normal,
                     ControlChannels.OemEmbeddedController);
@@ -330,10 +326,10 @@ public sealed class WindowsControlObjectCatalog(
         List<ControlCapability> items =
         [
             // ── A 组：显卡本体调谐 ─────────────────────────────
-            Card("gpu.core-clock-offset", "核心频率偏移", ControlChannels.Nvapi,
+            Card("gpu.core-clock-offset", ControlChannels.Nvapi,
                 new ControlNumberRange(-500, 500, 5, ControlUnits.Megahertz, 0),
                 ControlAccessLevels.Normal),
-            Card("gpu.memory-clock-offset", "显存频率偏移", ControlChannels.Nvapi,
+            Card("gpu.memory-clock-offset", ControlChannels.Nvapi,
                 new ControlNumberRange(-1000, 2000, 5, ControlUnits.Megahertz, 0),
                 ControlAccessLevels.Normal),
             /*
@@ -341,31 +337,29 @@ public sealed class WindowsControlObjectCatalog(
              * 锁是给频率加一个硬的上界或下界。降频省电、压温度最常用的是锁上界，
              * 它和"负偏移"的效果完全不同 —— 所以两者都要有。
              */
-            Card("gpu.core-clock-minimum", "核心频率下限", ControlChannels.Nvml,
+            Card("gpu.core-clock-minimum", ControlChannels.Nvml,
                 new ControlNumberRange(0, 3000, 15, ControlUnits.Megahertz),
                 ControlAccessLevels.Normal),
-            Card("gpu.core-clock-maximum", "核心频率上限", ControlChannels.Nvml,
+            Card("gpu.core-clock-maximum", ControlChannels.Nvml,
                 new ControlNumberRange(0, 3000, 15, ControlUnits.Megahertz),
                 ControlAccessLevels.Normal),
-            Card("gpu.memory-clock-minimum", "显存频率下限", ControlChannels.Nvml,
+            Card("gpu.memory-clock-minimum", ControlChannels.Nvml,
                 new ControlNumberRange(0, 12000, 50, ControlUnits.Megahertz),
                 ControlAccessLevels.Normal),
-            Card("gpu.memory-clock-maximum", "显存频率上限", ControlChannels.Nvml,
+            Card("gpu.memory-clock-maximum", ControlChannels.Nvml,
                 new ControlNumberRange(0, 12000, 50, ControlUnits.Megahertz),
                 ControlAccessLevels.Normal),
             /*
              * 电压偏移。往下调是降压，往上调是**给核心加压** ——
              * 后者是硬件损伤风险最直接的一项，所以整条放在 root 档。
              */
-            Card("gpu.core-voltage-offset", "核心电压偏移", ControlChannels.Nvapi,
+            Card("gpu.core-voltage-offset", ControlChannels.Nvapi,
                 new ControlNumberRange(-200, 100, 5, ControlUnits.Millivolt, 0),
                 ControlAccessLevels.Root),
             Unsupported(
                 "gpu.power-limit",
-                "功耗上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 /*
                  * **这里不给范围。**
                  *
@@ -387,17 +381,17 @@ public sealed class WindowsControlObjectCatalog(
              * 风扇拉满也压不住时照样撞墙，把墙抬高也不会让风扇多转一转。
              * 放到风扇那边去，用户就再也找不到为什么锁在某个频率上。
              */
-            Card("gpu.temperature-limit", "温度上限", ControlChannels.Nvml,
+            Card("gpu.temperature-limit", ControlChannels.Nvml,
                 new ControlNumberRange(60, 95, 1, ControlUnits.Celsius),
                 ControlAccessLevels.Normal),
-            Card("gpu.slowdown-temperature", "降速温度阈值", ControlChannels.Nvml,
+            Card("gpu.slowdown-temperature", ControlChannels.Nvml,
                 new ControlNumberRange(70, 105, 1, ControlUnits.Celsius),
                 ControlAccessLevels.Normal),
             /*
              * 保护关机阈值。**这一条动的是最后一道保护本身**，
              * 和"把降频点抬高几度"不是一个量级 —— 撞到它本来就是硬件在自救。
              */
-            Card("gpu.shutdown-temperature", "保护关机阈值", ControlChannels.Nvml,
+            Card("gpu.shutdown-temperature", ControlChannels.Nvml,
                 new ControlNumberRange(80, 120, 1, ControlUnits.Celsius),
                 ControlAccessLevels.Root),
 
@@ -407,10 +401,10 @@ public sealed class WindowsControlObjectCatalog(
              * 重启后还在，失败方式也和上面那些完全不同。
              * 所以链路要单独标出来，不能和 NVAPI 的调谐接口混成一条。
              */
-            Card("gpu.power-management-mode", "电源管理模式",
+            Card("gpu.power-management-mode",
                 ControlChannels.NvapiDriverProfile,
                 new ControlNumberRange(0, 2, 1, ControlUnits.None)),
-            Card("gpu.frame-rate-limit", "帧率限制",
+            Card("gpu.frame-rate-limit",
                 ControlChannels.NvapiDriverProfile,
                 // 0 表示不限。
                 new ControlNumberRange(0, 480, 1, ControlUnits.FramesPerSecond, 0)),
@@ -424,15 +418,15 @@ public sealed class WindowsControlObjectCatalog(
              * 走 NVML 的「功耗上限」是**两层东西，必须并存**：
              * 一个是卡自己的上限，一个是整机愿意给它的预算，谁低谁生效。
              */
-            Platform("gpu.ctgp-offset", "cTGP 偏移",
+            Platform("gpu.ctgp-offset",
                 new ControlNumberRange(0, 100, 1, ControlUnits.Watt, 0), laptopOnly: true),
             /*
              * Dynamic Boost 的开关和额度**是两条**：能不能用是固件放不放行，
              * 给多少瓦是放行之后的额度。合成一条就没法表达"能用但给 0 瓦"。
              */
-            Platform("gpu.dynamic-boost-enabled", "Dynamic Boost 开关",
+            Platform("gpu.dynamic-boost-enabled",
                 valueKind: ControlValueKinds.Toggle, laptopOnly: true),
-            Platform("gpu.dynamic-boost-offset", "Dynamic Boost 额度",
+            Platform("gpu.dynamic-boost-offset",
                 new ControlNumberRange(0, 100, 1, ControlUnits.Watt, 0), laptopOnly: true)
         ];
 
@@ -450,8 +444,7 @@ public sealed class WindowsControlObjectCatalog(
         {
             return [Excluded(
                 "gpu.core-clock-offset",
-                "核心频率偏移",
-                "Intel 独显的调节不在本软件的范围内。")];
+                "control-intel-discrete-excluded")];
         }
 
         /*
@@ -463,8 +456,7 @@ public sealed class WindowsControlObjectCatalog(
         {
             return [Excluded(
                 "gpu.core-clock-offset",
-                "核心频率偏移",
-                "笔记本上的 AMD 独显不在本软件的范围内。")];
+                "control-amd-portable-discrete-excluded")];
         }
 
         // ADLX uses absolute max clock/voltage before Navi4 and offsets from Navi4.
@@ -472,21 +464,21 @@ public sealed class WindowsControlObjectCatalog(
         if (vendor == ControlVendors.Amd)
         {
             if (chassisKind != ControlChassisKinds.Fixed)
-                return [Excluded("gpu.power-limit-offset", "功耗上限偏移", "无法确认机箱形态，AMD 独显调节只用于台式机。")];
-            ControlCapability Adlx(string id, string label, string unit, string level = ControlAccessLevels.Normal)
-                => Unsupported(id, label, ControlValueKinds.Number, componentId, componentName,
+                return [Excluded("gpu.power-limit-offset", "control-fixed-chassis-required")];
+            ControlCapability Adlx(string id, string unit, string level = ControlAccessLevels.Normal)
+                => Unsupported(id, ControlValueKinds.Number, componentId,
                     new ControlNumberRange(0, 0, 1, unit), level, ControlChannels.Adlx);
             return [
-                Adlx("gpu.power-limit-offset", "功耗上限偏移", ControlUnits.Percent),
-                Adlx("gpu.core-clock-minimum", "核心最低频率", ControlUnits.Megahertz),
-                Adlx("gpu.core-clock-maximum", "核心最高频率", ControlUnits.Megahertz),
-                Adlx("gpu.memory-clock-maximum", "显存最高频率", ControlUnits.Megahertz),
-                Adlx("gpu.core-voltage", "核心电压", ControlUnits.Millivolt, ControlAccessLevels.Root),
-                Adlx("gpu.core-clock-offset", "核心频率偏移", ControlUnits.Megahertz),
-                Adlx("gpu.core-voltage-offset", "核心电压偏移", ControlUnits.Millivolt, ControlAccessLevels.Root)
+                Adlx("gpu.power-limit-offset", ControlUnits.Percent),
+                Adlx("gpu.core-clock-minimum", ControlUnits.Megahertz),
+                Adlx("gpu.core-clock-maximum", ControlUnits.Megahertz),
+                Adlx("gpu.memory-clock-maximum", ControlUnits.Megahertz),
+                Adlx("gpu.core-voltage", ControlUnits.Millivolt, ControlAccessLevels.Root),
+                Adlx("gpu.core-clock-offset", ControlUnits.Megahertz),
+                Adlx("gpu.core-voltage-offset", ControlUnits.Millivolt, ControlAccessLevels.Root)
             ];
         }
-        return [Excluded("gpu.power-limit", "功耗上限", "此厂商暂无硬件调节通道。")];
+        return [Excluded("gpu.power-limit", "control-vendor-channel-missing")];
     }
 
     /// <summary>
@@ -495,10 +487,9 @@ public sealed class WindowsControlObjectCatalog(
     /// 和"还没接"必须分开：后者用户等着就会有，前者等不来。
     /// 但也不能干脆不列 —— 什么都不显示，用户会以为是我们没认出他的显卡。
     /// </summary>
-    private static ControlCapability Excluded(string id, string label, string reason)
+    private static ControlCapability Excluded(string id, string reason)
         => new(
             id,
-            label,
             ControlValueKinds.Number,
             Supported: false,
             UnavailableReason: reason,
@@ -533,10 +524,8 @@ public sealed class WindowsControlObjectCatalog(
                 // 单位是档不是伏，理由同处理器那一项。
                 Unsupported(
                     "gpu.curve-optimizer",
-                    "Curve Optimizer 偏移",
                     ControlValueKinds.Number,
                     "hardware-bridge",
-                    "硬件写入辅助进程",
                     CanonicalRange("gpu_amd_requested_curve_optimizer_counts"),
                     ControlAccessLevels.Normal)
             ],
@@ -546,10 +535,8 @@ public sealed class WindowsControlObjectCatalog(
                 // 不是绝对频率。控制库随 Intel 显卡驱动一起装，不是单独的组件。
                 Unsupported(
                     "gpu.core-clock-offset",
-                    "核心频率偏移",
                     ControlValueKinds.Number,
                     "intel-graphics-driver",
-                    "Intel 显卡驱动",
                     CanonicalRange("gpu_intel_requested_core_clock_offset_mhz"),
                     ControlAccessLevels.Normal)
             ],
@@ -562,11 +549,11 @@ public sealed class WindowsControlObjectCatalog(
         string cpuIdentity)
     {
         var vendor = VendorOf(snapshot.Cpu.Name);
-        var (componentId, componentName) = vendor switch
+        var componentId = vendor switch
         {
-            ControlVendors.Amd => ("hardware-bridge", "硬件写入辅助进程"),
-            ControlVendors.Intel => ("intel-msr-pawnio-provider", "Intel CPU / PawnIO"),
-            _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
+            ControlVendors.Amd => "hardware-bridge",
+            ControlVendors.Intel => "intel-msr-pawnio-provider",
+            _ => "librehardwaremonitor-provider"
         };
 
         objects.Add(new ControlObject(
@@ -583,8 +570,8 @@ public sealed class WindowsControlObjectCatalog(
              */
             vendor switch
             {
-                ControlVendors.Amd => AmdCpuCapabilities(componentId, componentName),
-                ControlVendors.Intel => IntelCpuCapabilities(componentId, componentName),
+                ControlVendors.Amd => AmdCpuCapabilities(componentId),
+                ControlVendors.Intel => IntelCpuCapabilities(componentId),
                 // 认不出厂商就不列具体项：列谁家的都是错的。
                 _ => []
             }));
@@ -592,8 +579,7 @@ public sealed class WindowsControlObjectCatalog(
 
     /// <summary>AMD 处理器能调的那些。走 SMU，经硬件写入辅助进程。</summary>
     private static IReadOnlyList<ControlCapability> AmdCpuCapabilities(
-        string componentId,
-        string componentName)
+        string componentId)
         =>
         [
             /*
@@ -608,24 +594,18 @@ public sealed class WindowsControlObjectCatalog(
              */
             Unsupported(
                 "cpu.power-limit",
-                "持续功耗上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_stapm_power_limit_watts")),
             Unsupported(
                 "cpu.slow-power-limit",
-                "短时功耗上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_slow_power_limit_watts")),
             Unsupported(
                 "cpu.fast-power-limit",
-                "瞬时功耗上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_fast_power_limit_watts")),
             /*
              * 两条电流墙。功耗墙管散热扛不扛得住，这两条管供电扛不扛得住 ——
@@ -634,17 +614,13 @@ public sealed class WindowsControlObjectCatalog(
              */
             Unsupported(
                 "cpu.tdc-limit",
-                "持续电流上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_tdc_vdd_current_limit_amperes")),
             Unsupported(
                 "cpu.edc-limit",
-                "峰值电流上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_edc_vdd_current_limit_amperes")),
             /*
              * 温度墙会改变固件温控上限。当前 AMD 温度墙写入尚未实现，
@@ -652,10 +628,8 @@ public sealed class WindowsControlObjectCatalog(
              */
             Unsupported(
                 "cpu.temperature-limit",
-                "温度上限",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_temperature_limit_celsius"),
                 ControlAccessLevels.Normal),
             /*
@@ -665,20 +639,16 @@ public sealed class WindowsControlObjectCatalog(
              */
             Unsupported(
                 "cpu.pbo-scalar",
-                "PBO 标量",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_pbo_scalar_multiplier"),
                 ControlAccessLevels.Normal),
             // 单位是**档**不是伏：一档大概几毫伏，具体多少随体质变，
             // 厂商也不给换算，编一个伏特数出来只会骗人。
             Unsupported(
                 "cpu.curve-optimizer",
-                "Curve Optimizer 偏移",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 CanonicalRange("cpu_amd_requested_curve_optimizer_counts"),
                 ControlAccessLevels.Normal)
         ];
@@ -703,20 +673,16 @@ public sealed class WindowsControlObjectCatalog(
     /// </list>
     /// </summary>
     private static IReadOnlyList<ControlCapability> IntelCpuCapabilities(
-        string componentId,
-        string componentName)
+        string componentId)
     {
         ControlCapability Item(
             string id,
-            string label,
             ControlNumberRange? range = null,
             string level = ControlAccessLevels.Normal)
             => Unsupported(
                 id,
-                label,
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 range,
                 level,
                 ControlChannels.IntelMsr);
@@ -729,17 +695,17 @@ public sealed class WindowsControlObjectCatalog(
              * PL1 是长期能跑多少瓦（几十秒的热积分），PL2 是短时冲刺那一段。
              * 它们在同一个寄存器里，但是两个独立的域。
              */
-            Item("cpu.power-limit", "持续功耗上限（PL1）",
+            Item("cpu.power-limit",
                 CanonicalRange("cpu_intel_requested_pl1_power_limit_watts")),
-            Item("cpu.short-power-limit", "短时功耗上限（PL2）",
+            Item("cpu.short-power-limit",
                 CanonicalRange("cpu_intel_requested_pl2_power_limit_watts")),
             /*
              * 时间窗。**它和瓦数是两件事**：同样的 PL2，窗口给 8 秒还是 56 秒，
              * 机器的手感完全不同。合成一项就没法表达了。
              */
-            Item("cpu.power-limit-window", "持续功耗时间窗",
+            Item("cpu.power-limit-window",
                 CanonicalRange("cpu_intel_requested_pl1_time_window_seconds")),
-            Item("cpu.short-power-limit-window", "短时功耗时间窗",
+            Item("cpu.short-power-limit-window",
                 CanonicalRange("cpu_intel_requested_pl2_time_window_seconds")),
             /*
              * MMIO 里的那份功耗墙镜像。
@@ -748,7 +714,7 @@ public sealed class WindowsControlObjectCatalog(
              * 只写 MSR 的话有效功耗仍然被它按住，用户会看到"改了但没效果"。
              * 所以它是独立的一项，不是上面那条的实现细节。
              */
-            Item("cpu.power-limit-mmio", "功耗上限（MMIO 镜像）",
+            Item("cpu.power-limit-mmio",
                 CanonicalRange("cpu_intel_requested_pl1_mmio_power_limit_watts"),
                 ControlAccessLevels.Normal),
             /*
@@ -756,38 +722,36 @@ public sealed class WindowsControlObjectCatalog(
              * 换算成绝对值要知道这颗的结点温度上限，而那个值各型号不同。
              * 和 AMD 那边给绝对温度不一样，这不是不一致，是两家本来就不同。
              */
-            Item("cpu.temperature-offset", "温度墙下调",
+            Item("cpu.temperature-offset",
                 CanonicalRange("cpu_intel_requested_temperature_limit_reduction_celsius"),
                 ControlAccessLevels.Normal),
             /*
              * 电压偏移。Intel 把它分成几个电压域，**各调各的** ——
              * 核心和缓存在多数型号上是绑在一起的，核显和系统代理是另外两路。
              */
-            Item("cpu.core-voltage-offset", "核心电压偏移",
+            Item("cpu.core-voltage-offset",
                 CanonicalRange("cpu_intel_requested_core_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
-            Item("cpu.cache-voltage-offset", "缓存电压偏移",
+            Item("cpu.cache-voltage-offset",
                 CanonicalRange("cpu_intel_requested_cache_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
-            Item("cpu.igpu-voltage-offset", "核显电压偏移",
+            Item("cpu.igpu-voltage-offset",
                 CanonicalRange("cpu_intel_requested_igpu_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
-            Item("cpu.system-agent-voltage-offset", "系统代理电压偏移",
+            Item("cpu.system-agent-voltage-offset",
                 CanonicalRange("cpu_intel_requested_system_agent_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
             /*
              * 睿频倍频上限。调低是限频降温降耗，调高是超频 ——
              * 同一项两个方向，所以放普通档。
              */
-            Item("cpu.turbo-ratio-limit", "睿频倍频上限",
+            Item("cpu.turbo-ratio-limit",
                 new ControlNumberRange(1, 60, 1, ControlUnits.Multiplier),
                 ControlAccessLevels.Normal),
             Unsupported(
                 "cpu.turbo-enabled",
-                "睿频开关",
                 ControlValueKinds.Toggle,
                 componentId,
-                componentName,
                 null,
                 ControlAccessLevels.Normal,
                 ControlChannels.IntelMsr),
@@ -795,13 +759,13 @@ public sealed class WindowsControlObjectCatalog(
              * 能效偏好。这一项动的是**调度策略**，不是硬件上限 ——
              * 和上面那些不是一回事，但它确实是用户会想调的东西。
              */
-            Item("cpu.energy-performance-preference", "能效偏好",
+            Item("cpu.energy-performance-preference",
                 new ControlNumberRange(0, 255, 1, ControlUnits.None)),
             /*
              * 处理器和核显之间怎么分功率。两颗一起吃同一份预算，
              * 这一项决定吃紧的时候先保谁。
              */
-            Item("cpu.igpu-power-balance", "处理器 / 核显功率分配",
+            Item("cpu.igpu-power-balance",
                 new ControlNumberRange(0, 31, 1, ControlUnits.None),
                 ControlAccessLevels.Normal)
         ];
@@ -908,16 +872,14 @@ public sealed class WindowsControlObjectCatalog(
     /// </summary>
     private static IReadOnlyList<ControlCapability> ChassisFanCapabilities(int? curvePointLimit)
     {
-        var (componentId, componentName) = ((string?)null, "风扇控制核心");
+        string? componentId = null;
         return
         [
-            Unsupported("fan.rpm", "转速", ControlValueKinds.Number, componentId, componentName),
+            Unsupported("fan.rpm", ControlValueKinds.Number, componentId),
             Unsupported(
                 "fan.curve",
-                "转速曲线",
                 ControlValueKinds.Curve,
-                componentId,
-                componentName) with { CurvePointLimit = curvePointLimit },
+                componentId) with { CurvePointLimit = curvePointLimit },
             /*
              * 固定转速。
              *
@@ -930,17 +892,13 @@ public sealed class WindowsControlObjectCatalog(
              */
             Unsupported(
                 "fan.duty",
-                "固定转速",
                 ControlValueKinds.Number,
                 componentId,
-                componentName,
                 new ControlNumberRange(0, 100, 1, ControlUnits.Percent)),
             Unsupported(
                 "fan.lock-maximum",
-                "一键强冷",
                 ControlValueKinds.Toggle,
-                componentId,
-                componentName)
+                componentId)
         ];
     }
 
@@ -960,14 +918,12 @@ public sealed class WindowsControlObjectCatalog(
         HardwareMetricSnapshot snapshot,
         bool describeCore = true)
     {
-        var ordinal = 0;
         IReadOnlyList<FanCoreFan> described = describeCore ? fanCore.Describe() : [];
         var coreKnowsGpuFan = false;
         if (described.Count > 0)
         {
             foreach (var fan in described)
             {
-                ordinal++;
                 coreKnowsGpuFan |= string.Equals(
                     fan.Role,
                     ControlFanRoles.Gpu,
@@ -983,11 +939,11 @@ public sealed class WindowsControlObjectCatalog(
                      * 而角色由核心回答（它才知道这条通道上哪个是哪个），
                      * 认不出来的就不挂词条，不编一个。
                      */
-                    $"风扇{ordinal}",
+                    null,
                     new ControlObjectPlatform(ControlOperatingSystems.Windows, ControlVendors.Oem),
                     ChassisFanCapabilities(fan.FirmwareCurve is null ? null : fan.CurvePoints),
                     fan.Detail,
-                    Terms: FanTerms(fan)));
+                    Terms: FanTerms(fan), Ordinal: fan.Index));
             }
         }
         else if (snapshot.Items.TryGetValue("cpu.fanRpm", out var cpuFan)
@@ -996,16 +952,15 @@ public sealed class WindowsControlObjectCatalog(
         {
             var notebook = cpuFan.Detail?.Contains("notebook", StringComparison.OrdinalIgnoreCase)
                 == true;
-            ordinal++;
             objects.Add(new ControlObject(
                 $"{FanControlWriter.ObjectIdPrefix}0",
                 ControlObjectKinds.Fan,
-                $"风扇{ordinal}",
+                null,
                 new ControlObjectPlatform(
                     ControlOperatingSystems.Windows,
                     notebook ? ControlVendors.Oem : ControlVendors.Unknown),
                 ChassisFanCapabilities(curvePointLimit: null),
-                cpuFan.Detail));
+                cpuFan.Detail, Ordinal: 0));
         }
 
         /*
@@ -1031,14 +986,14 @@ public sealed class WindowsControlObjectCatalog(
             if (chassis.Read() == ControlChassisKinds.Fixed && VendorOf(gpu.Name) == ControlVendors.Amd
                 && !GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(gpu.Name))
             {
-                objects.Add(new ControlObject($"fan:gpu{gpu.Index}", ControlObjectKinds.Fan, $"显卡风扇控制器（GPU{gpu.Index}）",
+                objects.Add(new ControlObject($"fan:gpu{gpu.Index}", ControlObjectKinds.Fan, null,
                     new(ControlOperatingSystems.Windows, ControlVendors.Amd),
                     [
-                        Unsupported("fan.minimum-rpm", "最低转速", ControlValueKinds.Number, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
-                        Unsupported("fan.target-rpm", "目标转速", ControlValueKinds.Number, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
-                        Unsupported("fan.zero-rpm", "低负载停转", ControlValueKinds.Toggle, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
-                        Unsupported("fan.curve", "转速曲线", ControlValueKinds.Curve, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx)
-                    ], "同一显卡的风扇由驱动统一调节。", Terms: [ControlFanRoles.Gpu],
+                        Unsupported("fan.minimum-rpm", ControlValueKinds.Number, "amd-adlx-provider", channel: ControlChannels.Adlx),
+                        Unsupported("fan.target-rpm", ControlValueKinds.Number, "amd-adlx-provider", channel: ControlChannels.Adlx),
+                        Unsupported("fan.zero-rpm", ControlValueKinds.Toggle, "amd-adlx-provider", channel: ControlChannels.Adlx),
+                        Unsupported("fan.curve", ControlValueKinds.Curve, "amd-adlx-provider", channel: ControlChannels.Adlx)
+                    ], Terms: [ControlFanRoles.Gpu],
                     GpuAttachment: ControlGpuAttachments.Discrete, AdapterIndex: gpu.Index)
                 {
                     AdapterKey = ResolveAdapterKey(snapshot.GpuInventory, gpu.Index),
@@ -1059,10 +1014,10 @@ public sealed class WindowsControlObjectCatalog(
              * 同一个"显卡风扇"在两种机器上是两条完全不同的路，
              * 缺的组件当然也跟着不一样 —— 所以链路和组件一起在这里定。
              */
-            var (fanChannel, componentId, componentName) =
+            var (fanChannel, componentId) =
                 chassis.Read() == ControlChassisKinds.Portable
                     ? ((string?)ControlChannels.OemEmbeddedController,
-                        "uniwill-ec-provider", "整机固件接口")
+                        "uniwill-ec-provider")
                     : vendor switch
                     {
                         /*
@@ -1072,60 +1027,50 @@ public sealed class WindowsControlObjectCatalog(
                          * 它只给固定占空比，曲线由统一的软件曲线引擎跑。
                          */
                         ControlVendors.Nvidia => (ControlChannels.Nvml,
-                            "nvidia-nvapi-provider", "NVIDIA NVAPI Provider"),
+                            "nvidia-nvapi-provider"),
                         // 台式 A 卡走 ADLX 的风扇调节（原生曲线、目标转速、零转速）。
                         ControlVendors.Amd => (ControlChannels.Adlx,
-                            "amd-adlx-provider", "AMD ADLX / ADL Provider"),
+                            "amd-adlx-provider"),
                         // 不认识的卡就不编链路：说不出走哪条，比说错强。
-                        _ => (null, (string?)null, (string?)null)
+                        _ => (null, (string?)null)
                     };
-            ordinal++;
             objects.Add(new ControlObject(
                 $"fan:gpu{gpu.Index}",
                 ControlObjectKinds.Fan,
-                $"风扇{ordinal}",
+                null,
                 new ControlObjectPlatform(ControlOperatingSystems.Windows, vendor),
                 [
                     Unsupported(
                         "fan.curve",
-                        "转速曲线",
                         ControlValueKinds.Curve,
                         componentId,
-                        componentName,
                         channel: fanChannel),
                     Unsupported(
                         "fan.duty",
-                        "固定转速",
                         ControlValueKinds.Number,
                         componentId,
-                        componentName,
                         new ControlNumberRange(0, 100, 1, ControlUnits.Percent),
                         channel: fanChannel),
                     Unsupported(
                         "fan.lock-maximum",
-                        "一键强冷",
                         ControlValueKinds.Toggle,
                         componentId,
-                        componentName,
                         channel: fanChannel)
                 ],
-                $"GPU{gpu.Index}",
-                Terms: [ControlFanRoles.Gpu]));
+                null,
+                Terms: [ControlFanRoles.Gpu], AdapterIndex: gpu.Index));
         }
     }
 
     private static ControlCapability Unsupported(
         string id,
-        string label,
         string valueKind,
         string? componentId,
-        string? componentName,
         ControlNumberRange? range = null,
         string accessLevel = ControlAccessLevels.Normal,
         string? channel = null)
         => new(
             id,
-            label,
             valueKind,
             Supported: false,
             UnavailableReason: WriterNotImplemented,
@@ -1133,7 +1078,6 @@ public sealed class WindowsControlObjectCatalog(
             // 后者要由真去问过硬件的写入器来说。
             UnavailableKind: ControlUnavailableKinds.NotImplemented,
             RequiredComponentId: componentId,
-            RequiredComponentName: componentName,
             Range: range,
             Channel: channel,
             RequiredAccessLevel: accessLevel);

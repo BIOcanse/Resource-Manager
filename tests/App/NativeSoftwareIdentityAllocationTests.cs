@@ -176,12 +176,10 @@ public sealed class NativeSoftwareIdentityAllocationTests
             id,
             "Game Client",
             SoftwareKinds.Other,
-            "other",
             "installed",
-            ["test"],
+            [],
             [rootPath],
-            string.Empty,
-            new SoftwareOperationCapabilities(false, "None", "Unavailable", string.Empty),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null);
 
     private static string? LegacyCanonicalPath(string value)

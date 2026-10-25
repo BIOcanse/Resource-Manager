@@ -173,7 +173,7 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Unsupported,
-                capability.UnavailableReason ?? WriterMissing, new(WriterMissing));
+                capability.UnavailableReason ?? new(WriterMissing));
         }
         if (!backend.Availability.CanWrite)
         {
@@ -181,7 +181,7 @@ public sealed class ControlWriteLayer(
                 controlObject,
                 setting,
                 ControlApplyStatuses.Unsupported,
-                backend.Availability.Reason ?? CapabilityMissing, new("control-backend-unavailable"));
+                backend.Availability.Reason ?? new("control-backend-unavailable"));
         }
 
         // 四、适配单位。换不了就如实失败，不静默照着数字写下去。
@@ -212,7 +212,7 @@ public sealed class ControlWriteLayer(
         var result = await backend.Writer.WriteAsync(controlObject, capability, adapted, cancellationToken).ConfigureAwait(false);
         if (result.Status != ControlApplyStatuses.Applied && result.Reason is null)
         {
-            logger?.LogWarning("Control writer rejected {Object} / {Capability}: {Detail}", result.ObjectId, result.CapabilityId, result.Message);
+            logger?.LogWarning("Control writer rejected {Object} / {Capability}: {Detail}", result.ObjectId, result.CapabilityId, result.Reason);
             result = result with { Reason = new("control-write-rejected") };
         }
         return result;
@@ -282,11 +282,11 @@ public sealed class ControlWriteLayer(
         ControlObject controlObject,
         ControlSetting setting,
         string status,
-        string reason, ControlApplyReason? presentation = null)
+        ControlApplyReason reason, ControlApplyReason? fact = null)
     {
         logger?.LogWarning("Control rejected {Object} / {Capability}: {Detail}", controlObject.Id, setting.CapabilityId, reason);
         return new(controlObject.Id, setting.CapabilityId, status, reason)
-        { Reason = presentation ?? new(reason.StartsWith("control-", StringComparison.Ordinal) ? reason : "control-write-rejected") };
+        { Reason = fact ?? reason };
     }
 
     private readonly record struct Backend(

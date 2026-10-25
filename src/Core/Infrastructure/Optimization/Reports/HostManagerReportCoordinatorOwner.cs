@@ -13,6 +13,7 @@ using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.SystemHealth;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -449,7 +450,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         {
             var handle = AdapterResourceKey.FromString($"report:software:{software.Id}");
             targetCatalog[handle] = new HostManagerReportTargetDescriptor(handle,
-                software.Id, software.Name, software.Kind, software.DisplayKind, [], []);
+                software.Id, software.Name, software.Kind, SoftwareDisplayKinds.Project(software.Kind), [], []);
         }
     }
 

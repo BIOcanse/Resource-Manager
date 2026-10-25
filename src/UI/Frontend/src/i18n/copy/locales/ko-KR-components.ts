@@ -1,0 +1,58 @@
+import type { AppCopy } from "../index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "설치 안내",
+  "capabilitiesCaption": "기능",
+  "unknownCapability": "알 수 없는 기능",
+  "capabilities": {
+    "power": "전력",
+    "voltage": "전압",
+    "current": "전류",
+    "temperature": "온도",
+    "fan": "팬",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "코어별 측정값",
+    "webRuntime": "웹 화면 런타임",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "시간 범위",
+    "voltageOffset": "전압 오프셋",
+    "hardwareMonitor": "메인보드 및 메모리 센서",
+    "memoryTemperature": "메모리 온도",
+    "cpuFanRpm": "CPU 팬 회전수",
+    "cpuFanPercent": "CPU 팬 비율",
+    "gpuFanRpm": "GPU 팬 회전수",
+    "gpuFanPercent": "GPU 팬 비율",
+    "vendorAdapters": "노트북 제조사 어댑터",
+    "gpuClocks": "GPU 클럭",
+    "gpuMemory": "비디오 메모리",
+    "gpuPower": "GPU 전력",
+    "gpuTemperature": "GPU 온도",
+    "gpuCooler": "GPU 팬 및 냉각기",
+    "gpuVoltage": "GPU 전압",
+    "gpuCurrent": "GPU 전류",
+    "gpuBoardPower": "GPU 보드 전력",
+    "gpuHotspot": "GPU 핫스폿 온도",
+    "gpuIntake": "GPU 흡기 온도",
+    "gpuFan": "GPU 팬"
+  },
+  "installNotes": {
+    "webRuntime": "Microsoft 공식 Evergreen Bootstrapper입니다. 설치 후 시스템의 WebView2 앱이 공유합니다.",
+    "amdSmu": "서명된 PawnIO 드라이버를 명시적으로 설치하고 검증한 뒤 PM table용 RyzenSMU 및 AMDFamily17 모듈을 받습니다. 기본 패키지는 드라이버를 몰래 활성화하지 않습니다.",
+    "intelMsr": "PawnIO를 명시적으로 설치하면 검증 시 IntelMSR을 받습니다. AMD와 시스템 드라이버를 공유하되 모듈은 별도로 관리합니다. 펌웨어 잠금이나 서명 모듈 제한을 우회하지 않습니다.",
+    "sensorDriver": "메인보드와 메모리는 명시적으로 설치한 PawnIO를 공유합니다. 공식 코어에 서명된 LPC, EC, SMBus 모듈이 포함되며 GUI나 네트워크 서비스를 시작하지 않습니다.",
+    "hardwareBridge": "ZenStates-Core를 사용하는 별도 GPL-3.0 도우미입니다. 메인 앱과 함께 필요에 따라 시작하고 종료하며 전력 제한과 Curve Optimizer 전압 쓰기를 처리합니다.",
+    "hardwareMonitor": "제품에 포함된 MPL-2.0 코어로 메인보드와 메모리만 수집합니다. PawnIO가 필요하며 기능은 실제 샘플링 결과에 따릅니다.",
+    "notebookFan": "설치된 OEM 드라이버, 서비스 또는 DLL을 사용하는 기본 제공 읽기 전용 어댑터입니다. 현재 Mechrevo/Tongfang UWACPI를 지원하며 OEM 드라이버를 몰래 설치하거나 배포하지 않습니다.",
+    "driverRuntime": "설치된 그래픽 드라이버의 런타임을 동적으로 불러옵니다. 기본 패키지에 제조사 드라이버 DLL은 포함되지 않으며 기능은 실제 측정값에 따릅니다."
+  },
+  "versionFailures": {
+    "no-release": "사용 가능한 릴리스가 없습니다.",
+    "no-stable-release": "사용 가능한 안정 버전이 없습니다.",
+    "version-unorderable": "업스트림 버전을 확실하게 정렬할 수 없어 선택할 수 없습니다.",
+    "timeout": "GitHub 연결 시간이 초과되었습니다.",
+    "network": "GitHub에 연결할 수 없습니다.",
+    "invalid-data": "GitHub 응답을 해석할 수 없습니다.",
+    "catalog-failure": "릴리스 목록을 읽을 수 없습니다. 다시 시도하세요."
+  }
+};

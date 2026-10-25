@@ -312,8 +312,8 @@ public sealed class GpuStartupProviderPolicyTests
     {
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SoftwareRecord>>([new SoftwareRecord(
-                softwareId, "Software", SoftwareKinds.Game, "game", "registered", [], [], string.Empty,
-                new SoftwareOperationCapabilities(false, "", "", ""), null,
+                softwareId, "Software", SoftwareKinds.Game, "registered", [], [],
+                new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"), null,
                 ExecutablePaths: [executablePath])]);
 
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) =>

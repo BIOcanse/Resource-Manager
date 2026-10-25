@@ -1,0 +1,111 @@
+export const operationsFeedback = {
+  "zh-CN": {
+    stageDownload: "正在下载",
+    processTerminated: "已结束进程。",
+    processDumpCreated: "已创建内存转储文件。",
+    processBackendProtected: "Resource Manager 后端进程受到保护。",
+    processIdentityChanged: "进程实例已变化，未执行操作。",
+    processExited: "进程不存在或已经退出。",
+    processNativeFailure: "Windows 进程操作失败。",
+    processFileFailure: "无法写入进程转储文件。",
+    processTerminateSummary: (done: number, total: number) => `已结束 ${done} / ${total} 个进程。`,
+    processDumpSummary: (done: number, total: number) => `已创建 ${done} / ${total} 个转储文件。`
+  },
+  "zh-TW": {
+    stageDownload: "正在下載",
+    processTerminated: "已結束處理程序。",
+    processDumpCreated: "已建立記憶體傾印檔。",
+    processBackendProtected: "Resource Manager 後端處理程序受到保護。",
+    processIdentityChanged: "處理程序執行個體已變更，未執行操作。",
+    processExited: "處理程序不存在或已結束。",
+    processNativeFailure: "Windows 處理程序操作失敗。",
+    processFileFailure: "無法寫入處理程序傾印檔。",
+    processTerminateSummary: (done: number, total: number) => `已結束 ${done} / ${total} 個處理程序。`,
+    processDumpSummary: (done: number, total: number) => `已建立 ${done} / ${total} 個傾印檔。`
+  },
+  "en-US": {
+    stageDownload: "Downloading",
+    processTerminated: "Process terminated.",
+    processDumpCreated: "Memory dump created.",
+    processBackendProtected: "The Resource Manager backend process is protected.",
+    processIdentityChanged: "The process instance changed; no action was taken.",
+    processExited: "The process does not exist or has exited.",
+    processNativeFailure: "The Windows process operation failed.",
+    processFileFailure: "The process dump file could not be written.",
+    processTerminateSummary: (done: number, total: number) => `Terminated ${done} / ${total} processes.`,
+    processDumpSummary: (done: number, total: number) => `Created ${done} / ${total} dump files.`
+  },
+  "de-DE": {
+    stageDownload: "Wird heruntergeladen",
+    processTerminated: "Prozess beendet.",
+    processDumpCreated: "Speicherabbild erstellt.",
+    processBackendProtected: "Der Backend-Prozess von Resource Manager ist geschützt.",
+    processIdentityChanged: "Die Prozessinstanz hat sich geändert; die Aktion wurde nicht ausgeführt.",
+    processExited: "Der Prozess existiert nicht oder wurde bereits beendet.",
+    processNativeFailure: "Der Windows-Prozessvorgang ist fehlgeschlagen.",
+    processFileFailure: "Das Prozessabbild konnte nicht geschrieben werden.",
+    processTerminateSummary: (done: number, total: number) => `${done} / ${total} Prozesse beendet.`,
+    processDumpSummary: (done: number, total: number) => `${done} / ${total} Speicherabbilder erstellt.`
+  },
+  "es-ES": {
+    stageDownload: "Descargando",
+    processTerminated: "Proceso finalizado.",
+    processDumpCreated: "Volcado de memoria creado.",
+    processBackendProtected: "El proceso del servicio de Resource Manager está protegido.",
+    processIdentityChanged: "La instancia del proceso cambió; no se realizó ninguna acción.",
+    processExited: "El proceso no existe o ya finalizó.",
+    processNativeFailure: "La operación del proceso de Windows falló.",
+    processFileFailure: "No se pudo escribir el archivo de volcado del proceso.",
+    processTerminateSummary: (done: number, total: number) => `Se finalizaron ${done} / ${total} procesos.`,
+    processDumpSummary: (done: number, total: number) => `Se crearon ${done} / ${total} archivos de volcado.`
+  },
+  "fr-FR": {
+    stageDownload: "Téléchargement en cours",
+    processTerminated: "Processus arrêté.",
+    processDumpCreated: "Image mémoire créée.",
+    processBackendProtected: "Le processus du service Resource Manager est protégé.",
+    processIdentityChanged: "L’instance du processus a changé ; aucune action n’a été effectuée.",
+    processExited: "Le processus n’existe pas ou est déjà arrêté.",
+    processNativeFailure: "L’opération sur le processus Windows a échoué.",
+    processFileFailure: "Impossible d’écrire le fichier d’image mémoire du processus.",
+    processTerminateSummary: (done: number, total: number) => `${done} / ${total} processus arrêtés.`,
+    processDumpSummary: (done: number, total: number) => `${done} / ${total} fichiers d’image mémoire créés.`
+  },
+  "ja-JP": {
+    stageDownload: "ダウンロード中",
+    processTerminated: "プロセスを終了しました。",
+    processDumpCreated: "メモリダンプを作成しました。",
+    processBackendProtected: "Resource Manager のバックエンドプロセスは保護されています。",
+    processIdentityChanged: "プロセスのインスタンスが変わったため、操作を実行しませんでした。",
+    processExited: "プロセスが存在しないか、すでに終了しています。",
+    processNativeFailure: "Windows のプロセス操作に失敗しました。",
+    processFileFailure: "プロセスのダンプファイルを書き込めませんでした。",
+    processTerminateSummary: (done: number, total: number) => `${total} 個中 ${done} 個のプロセスを終了しました。`,
+    processDumpSummary: (done: number, total: number) => `${total} 個中 ${done} 個のダンプファイルを作成しました。`
+  },
+  "ko-KR": {
+    stageDownload: "다운로드 중",
+    processTerminated: "프로세스를 종료했습니다.",
+    processDumpCreated: "메모리 덤프를 만들었습니다.",
+    processBackendProtected: "Resource Manager 백엔드 프로세스는 보호됩니다.",
+    processIdentityChanged: "프로세스 인스턴스가 변경되어 작업을 수행하지 않았습니다.",
+    processExited: "프로세스가 없거나 이미 종료되었습니다.",
+    processNativeFailure: "Windows 프로세스 작업에 실패했습니다.",
+    processFileFailure: "프로세스 덤프 파일을 쓸 수 없습니다.",
+    processTerminateSummary: (done: number, total: number) => `${total}개 중 ${done}개의 프로세스를 종료했습니다.`,
+    processDumpSummary: (done: number, total: number) => `${total}개 중 ${done}개의 덤프 파일을 만들었습니다.`
+  },
+  "ru-RU": {
+    stageDownload: "Загрузка",
+    processTerminated: "Процесс завершён.",
+    processDumpCreated: "Дамп памяти создан.",
+    processBackendProtected: "Процесс службы Resource Manager защищён.",
+    processIdentityChanged: "Экземпляр процесса изменился; действие не выполнено.",
+    processExited: "Процесс не существует или уже завершён.",
+    processNativeFailure: "Ошибка операции с процессом Windows.",
+    processFileFailure: "Не удалось записать файл дампа процесса.",
+    processTerminateSummary: (done: number, total: number) => `Завершено процессов: ${done} / ${total}.`,
+    processDumpSummary: (done: number, total: number) => `Создано файлов дампа: ${done} / ${total}.`
+  },
+};
+

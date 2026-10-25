@@ -18,7 +18,8 @@ public sealed partial class SoftwareRegistryView
             records.Add(replacedRecords.Length == 1
                 ? replacedRecords[0] with
                 {
-                    Kind = classified.Kind, DisplayKind = classified.DisplayKind,
+                    Kind = classified.Kind,
+                    SourceFacts = replacedRecords[0].SourceFacts.Append(new SoftwareSourceFact(SoftwareSourceKinds.Manual)).ToArray(),
                     HasExplicitKind = true, SourceSoftwareId = manualRecord.SourceSoftwareId, CategorySource = null
                 }
                 : classified with { Id = manualRecord.SourceSoftwareId ?? manualRecord.Id });

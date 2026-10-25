@@ -22,6 +22,7 @@ import {
 } from "../features/management/managementNavigation";
 import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../features/management/managementSnapshotCache";
 import { uiText } from "../text.ts";
+import { softwareRecordName, softwareUninstallDescription } from "../presentation/softwareFacts.ts";
 import {
   cachedObservation,
   failedObservation,
@@ -32,7 +33,7 @@ import {
   type ObservationState
 } from "../observation/observationState";
 import { renderBackendMessage } from "../presentation/backendMessage.ts";
-import { userFacingErrorMessage, userFacingMessage } from "../presentation/userFacingText";
+import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
   compareUInt64Decimal,
   formatUInt64Bytes
@@ -503,9 +504,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
         ? { ...current, versions: versionOptions.options ?? [], loading: false,
             catalogStatus: versionOptions.catalogStatus, complete: versionOptions.complete }
         : current);
-    } catch (error) {
+    } catch {
       // 版本列表拿不到时不把对话框关掉：用户仍然可以读条款并按已验证版本继续。
-      const reason = userFacingErrorMessage(error, uiText.componentAcquisition.versionLookupFailed);
       setAcquisitionRequest((current) => current && current.component.definition?.id === id
         ? {
           ...current,
@@ -513,8 +513,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
           catalogStatus: "error",
           complete: false,
           versions: [
-            { choice: "verified", available: true, version: null, assetName: null, unavailableReason: null },
-            { choice: "latest", available: false, version: null, assetName: null, unavailableReason: reason }
+            { choice: "verified", available: true, version: null, assetName: null, unavailableReasonCode: null },
+            { choice: "latest", available: false, version: null, assetName: null, unavailableReasonCode: "catalog-failure" }
           ]
         }
         : current);
@@ -641,9 +641,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
 
     const operations = softwareRecord.operations ?? {};
     if (!operations.canUninstall) {
-      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: operations.uninstallMessageCode
-          ? renderBackendMessage(operations.uninstallMessageCode)
-          : userFacingMessage(operations.uninstallMessage, uiText.stores.cannotUninstall) });
+      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: softwareUninstallDescription(softwareRecord) });
       return;
     }
 
@@ -651,7 +649,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       ? uiText.stores.uninstallerWarning
       : uiText.stores.deleteDirectoryWarning;
     if (!await options.confirmDialog({
-      title: softwareRecord.name,
+      title: softwareRecordName(softwareRecord),
       message: actionText,
       tone: "warning"
     })) {
@@ -698,7 +696,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "success",
         title: uiText.feedback.success,
-        message: renderBackendMessage(operation.resultMessage, userFacingMessage(operationResultText(operation), uiText.stores.operationCompleted))
+        message: renderBackendMessage(operation.resultMessage, uiText.stores.operationCompleted)
       });
       return;
     }
@@ -707,7 +705,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: renderBackendMessage(operation.errorMessage, userFacingMessage(operation.error, uiText.stores.operationUncertain))
+        message: renderBackendMessage(operation.errorMessage, uiText.stores.operationUncertain)
       });
       return;
     }
@@ -716,7 +714,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "error",
         title: uiText.feedback.error,
-        message: renderBackendMessage(operation.errorMessage, userFacingMessage(operation.error, uiText.stores.operationIncomplete))
+        message: renderBackendMessage(operation.errorMessage, uiText.stores.operationIncomplete)
       });
     }
   }
@@ -762,7 +760,7 @@ function isManualSoftwareKind(kind: ManagementKind): kind is ManualSoftwareKind 
 }
 
 function labelForOperation(operation: OperationSnapshot) {
-  const stage = operation.progress?.stage ?? "";
+  const stage = operation.progress?.stage === "Download" ? uiText.managementFeedback.stageDownload : "";
   if (operation.state === "queued" || operation.state === "startPending") {
     return uiText.stores.waiting;
   }
@@ -800,10 +798,6 @@ function labelForOperation(operation: OperationSnapshot) {
   }
 
   return stage || uiText.stores.progressWorking;
-}
-
-function operationResultText(operation: OperationSnapshot) {
-  return typeof operation.result === "string" ? operation.result : null;
 }
 
 function operationObservation(

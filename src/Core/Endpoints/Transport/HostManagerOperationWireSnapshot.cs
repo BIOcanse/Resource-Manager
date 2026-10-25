@@ -13,14 +13,13 @@ internal sealed record HostManagerOperationsStateWireSnapshot(
     bool Ready,
     bool PersistenceFaulted,
     string? FaultStage,
-    string? FaultMessage,
     IReadOnlyList<HostManagerOperationWireSnapshot> Operations);
 
 internal sealed record HostManagerOperationWireSnapshot(
     string Id,
     string Kind,
     string? DomainKey,
-    string? Title,
+    HostManagerOperationSubject? Subject,
     string State,
     string ConfigurationGeneration,
     string StateRevision,
@@ -31,8 +30,6 @@ internal sealed record HostManagerOperationWireSnapshot(
     DateTimeOffset? CompletedAt,
     bool CancelRequested,
     HostManagerOperationProgressWireSnapshot? Progress,
-    string? Result,
-    string? Error,
     string? ResultCode,
     BackendMessage? ResultMessage,
     BackendMessage? ErrorMessage);
@@ -43,12 +40,11 @@ internal sealed record HostManagerOperationProgressWireSnapshot(
     string? BytesDone,
     string? BytesTotal,
     string? SpeedBytesPerSecond,
-    string? Stage,
-    string? Message);
+    HostManagerOperationStage? Stage);
 
 internal static class HostManagerOperationWireProjection
 {
-    internal const string Schema = "host-manager.operations.state.v1";
+    internal const string Schema = "host-manager.operations.state.v2";
 
     internal static HostManagerOperationsStateWireSnapshot Project(
         HostManagerOperationsPublishedState state)
@@ -60,7 +56,6 @@ internal static class HostManagerOperationWireProjection
             state.Health.Ready,
             state.Health.PersistenceFaulted,
             state.Health.FaultStage,
-            state.Health.FaultMessage,
             state.Operations.Select(Project).ToArray());
 
     internal static HostManagerOperationWireSnapshot Project(
@@ -72,7 +67,7 @@ internal static class HostManagerOperationWireProjection
             operation.Id,
             operation.Kind,
             operation.DomainKey,
-            operation.Title,
+            operation.Subject,
             operation.State,
             Decimal(operation.ConfigurationGeneration),
             Decimal(operation.StateRevision),
@@ -83,8 +78,6 @@ internal static class HostManagerOperationWireProjection
             operation.CompletedAt,
             operation.CancelRequested,
             operation.Progress is null ? null : Project(operation.Progress),
-            result is null ? operation.Result : null,
-            error is null ? operation.Error : error.Diagnostic,
             result?.ResultCode,
             result?.Message,
             error?.Message);
@@ -98,8 +91,7 @@ internal static class HostManagerOperationWireProjection
             NullableDecimal(progress.BytesDone),
             NullableDecimal(progress.BytesTotal),
             NullableDecimal(progress.SpeedBytesPerSecond),
-            progress.Stage,
-            progress.Message);
+            progress.Stage);
 
     private static string? NullableDecimal(ulong? value)
         => value.HasValue ? Decimal(value.Value) : null;

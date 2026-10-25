@@ -14,7 +14,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class IntelIntegratedGpuIdentityTests
 {
-    private static readonly ControlCapability Capability = new("gpu.core-clock-offset", "offset", ControlValueKinds.Number, true,
+    private static readonly ControlCapability Capability = new("gpu.core-clock-offset", ControlValueKinds.Number, true,
         Range: new(-200, 200, 1, ControlUnits.Megahertz));
     private static ControlObject Target(ulong? key = 0x800000001) => new("gpu:test", ControlObjectKinds.Gpu, "Intel iGPU",
         new(ControlOperatingSystems.Windows, ControlVendors.Intel), [], AdapterIndex: 0,
@@ -59,7 +59,7 @@ public sealed class IntelIntegratedGpuIdentityTests
         var hardware = new Hardware([Dgpu, Igpu]);
         var writer = Writer(hardware);
         Assert.False(writer.Probe(Target(key), Capability).CanWrite);
-        Assert.Equal(IntegratedGpuControlWriter.IntelTargetMissing, (await writer.ReadAsync(Target(key), Capability, default))!.UnreadableReason);
+        Assert.Equal(IntegratedGpuControlWriter.IntelTargetMissing, (await writer.ReadAsync(Target(key), Capability, default))!.UnreadableReason?.Code);
         Assert.Equal(ControlApplyStatuses.Failed, (await writer.WriteAsync(Target(key), Capability, new(Capability.Id, Number: 45), default)).Status);
         Assert.Empty(hardware.Calls);
     }

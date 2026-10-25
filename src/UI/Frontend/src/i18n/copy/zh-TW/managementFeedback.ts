@@ -1,4 +1,6 @@
+import { operationsFeedback } from "../operationsFeedback.ts";
 export const managementFeedback = {
+  ...operationsFeedback["zh-TW"],
   "resultCode": "結果代碼",
   "removeManual": "移除手動登記",
   "confirmManual": "僅移除此手動登記及分類，不會解除安裝或刪除軟體檔案。繼續？",

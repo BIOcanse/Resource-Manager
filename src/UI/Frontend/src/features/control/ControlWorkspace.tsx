@@ -1,3 +1,4 @@
+import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
@@ -29,7 +30,7 @@ import {
   initialSettingFor
 } from "./ControlCapabilityEditor";
 import { ControlFirstRunNotice } from "./ControlFirstRunNotice";
-import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason } from "./controlPresentation.ts";
+import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason, controlObjectName } from "./controlPresentation.ts";
 import {
   controlItemStatusOf,
   canRetryControlObject,
@@ -462,7 +463,7 @@ function siblingFansTakenOverWith(
       other.id !== object.id
       && other.kind === "fan"
       && other.detail === object.detail)
-    .map((other) => controlDisplayText(other.displayName));
+    .map((other) => controlObjectName(other));
 }
 
 function ControlObjectCard(props: {
@@ -567,7 +568,7 @@ function ControlObjectCard(props: {
      */
     const own = firmwareOwned() ? uiText.control.ownership.firmwareNote : null;
     const capabilityReason = capability.supported || !capability.unavailableReason
-      ? null : controlDisplayText(capability.unavailableReason);
+      ? null : controlReasonText(capability.unavailableReason);
     if (own && capabilityReason) {
       return `${own} ${capabilityReason}`;
     }
@@ -611,7 +612,7 @@ function ControlObjectCard(props: {
       classList={{ "control-object-inactive": !props.object.isControllable }}
     >
       <header>
-        <strong>{controlDisplayText(props.object.displayName)}</strong>
+        <strong>{controlObjectName(props.object)}</strong>
         <span class="control-object-platform">
           {/* 每个对象自带自己的情况，不是全局的：一台机器上 A 卡和 N 卡各是一种。 */}
           {props.object.platform.operatingSystem}
@@ -654,7 +655,7 @@ function ControlObjectCard(props: {
                     </Show>
                   </dt>
                   <dd title={entry.capability.unavailableReason
-                    ? controlDisplayText(entry.capability.unavailableReason) : undefined}>
+                    ? controlReasonText(entry.capability.unavailableReason) : undefined}>
                     {actualText(entry.value)}
                   </dd>
                 </div>
@@ -1032,7 +1033,7 @@ function ControlInstancesPanel(props: {
         <For each={props.catalog?.instances ?? []}>
           {(view) => (
             <li classList={{ "control-instance-absent": !view.isPresent }}>
-              <span class="control-capability-label">{controlDisplayText(view.instance.displayName)}</span>
+              <span class="control-capability-label">{controlObjectName(view.instance)}</span>
               <span class="control-object-platform">
                 {view.isPresent
                   ? uiText.control.instances.present

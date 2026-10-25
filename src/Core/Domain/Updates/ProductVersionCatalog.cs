@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ResourceManager.App.Domain.Updates;
 
 public sealed record ProductVersionOption(
@@ -10,7 +12,14 @@ public sealed record ProductVersionOption(
     string DownloadUrl,
     string ChecksumUrl,
     bool Selectable,
-    string? UnavailableReason);
+    string Eligibility);
+
+public static class ProductVersionEligibility
+{
+    public const string Eligible = "eligible";
+    public const string InstalledVersionUnknown = "installedVersionUnknown";
+    public const string NotNewer = "notNewer";
+}
 
 public sealed record ProductVersionCatalog(
     string ItemId,
@@ -20,4 +29,7 @@ public sealed record ProductVersionCatalog(
     bool Complete,
     DateTimeOffset CheckedAt,
     IReadOnlyList<ProductVersionOption> Options,
-    string? Error);
+    [property: JsonIgnore] string? Error)
+{
+    public string? ErrorCode => Error is null ? null : "update.catalogUnavailable";
+}

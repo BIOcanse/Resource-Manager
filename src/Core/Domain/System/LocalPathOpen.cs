@@ -7,5 +7,4 @@ public sealed record LocalPathOpenRequest(
 public sealed record LocalPathOpenResult(
     string Path,
     string OpenedPath,
-    string Mode,
-    string Message);
+    string Mode);

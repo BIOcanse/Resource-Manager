@@ -13,10 +13,10 @@ export default async function controlCardJourney(page, baseUrl) {
   const state = () => ({ desired: { objects }, lastApply: { outcomes: [], appliedAt: new Date().toISOString() } });
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B"].map(id => ({
-      id, kind: "fan", displayName: `Fan ${id}`, isControllable: true,
+      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
       platform: { operatingSystem: "windows", vendor: "test" },
       terms: ["curve-firmware", "curve-software"],
-      capabilities: [{ id: "fan.curve", label: "Curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
+      capabilities: [{ id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }))
   } }));
   await page.route("**/api/control/objects/*/curve", route => {

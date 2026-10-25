@@ -12,7 +12,7 @@ pub const WorkspaceCapacity = extern struct {
     growth: growth.Log,
 };
 
-pub const abi_version: u32 = 0x0001_0000;
+pub const abi_version: u32 = 0x0002_0000;
 pub const no_slot: u32 = std.math.maxInt(u32);
 
 pub const Handle128 = extern struct {
@@ -70,14 +70,14 @@ pub const ConfigFlags = struct {
 
 pub const SubmitValid = struct {
     pub const domain: u64 = 1 << 0;
-    pub const title: u64 = 1 << 1;
+    pub const subject: u64 = 1 << 1;
     pub const request: u64 = 1 << 2;
-    pub const known: u64 = domain | title | request;
+    pub const known: u64 = domain | subject | request;
 };
 
 pub const OperationFlags = struct {
     pub const domain_valid: u64 = 1 << 0;
-    pub const title_valid: u64 = 1 << 1;
+    pub const subject_valid: u64 = 1 << 1;
     pub const request_valid: u64 = 1 << 2;
     pub const result_valid: u64 = 1 << 3;
     pub const error_valid: u64 = 1 << 4;
@@ -85,7 +85,7 @@ pub const OperationFlags = struct {
     pub const cancel_requested: u64 = 1 << 6;
     pub const terminal: u64 = 1 << 7;
     pub const imported_recovery: u64 = 1 << 8;
-    pub const known: u64 = domain_valid | title_valid | request_valid |
+    pub const known: u64 = domain_valid | subject_valid | request_valid |
         result_valid | error_valid | progress_valid | cancel_requested |
         terminal | imported_recovery;
 };
@@ -118,10 +118,10 @@ pub const ProgressValid = struct {
     pub const bytes_total: u64 = 1 << 2;
     pub const speed_bytes_per_second: u64 = 1 << 3;
     pub const stage: u64 = 1 << 4;
-    pub const message: u64 = 1 << 5;
+    pub const detail_fact: u64 = 1 << 5;
     pub const checkpoint: u64 = 1 << 6;
     pub const known: u64 = percent_milli | bytes_done | bytes_total |
-        speed_bytes_per_second | stage | message | checkpoint;
+        speed_bytes_per_second | stage | detail_fact | checkpoint;
 };
 
 pub const SnapshotFlags = struct {
@@ -182,7 +182,7 @@ pub const SubmitInput = extern struct {
     operation_id: Handle128,
     domain_id: Handle128,
     kind_handle: Handle128,
-    title_handle: Handle128,
+    subject_handle: Handle128,
     request_handle: Handle128,
     priority: i64,
     maximum_attempts: u32,
@@ -325,8 +325,8 @@ pub const ProgressInput = extern struct {
     bytes_done: u64,
     bytes_total: u64,
     speed_bytes_per_second: u64,
-    stage_handle: Handle128,
-    message_handle: Handle128,
+    stage_fact_handle: Handle128,
+    detail_fact_handle: Handle128,
     checkpoint_handle: Handle128,
     valid_mask: u64,
     flags: u64,
@@ -368,7 +368,7 @@ pub const OperationOutput = extern struct {
     operation_id: Handle128,
     domain_id: Handle128,
     kind_handle: Handle128,
-    title_handle: Handle128,
+    subject_handle: Handle128,
     request_handle: Handle128,
     result_handle: Handle128,
     error_handle: Handle128,
@@ -398,8 +398,8 @@ pub const OperationOutput = extern struct {
     bytes_done: u64,
     bytes_total: u64,
     speed_bytes_per_second: u64,
-    stage_handle: Handle128,
-    message_handle: Handle128,
+    stage_fact_handle: Handle128,
+    detail_fact_handle: Handle128,
     checkpoint_handle: Handle128,
     flags: u64,
     attempt_configuration_generation: u64,
@@ -509,7 +509,7 @@ pub fn validSubmit(input: *const SubmitInput, config: *const Config) bool {
         (input.valid_mask & ~SubmitValid.known) == 0 and
         input.flags == 0 and allZero(&input.reserved) and
         handleMatchesValidity(input.domain_id, input.valid_mask, SubmitValid.domain) and
-        handleMatchesValidity(input.title_handle, input.valid_mask, SubmitValid.title) and
+        handleMatchesValidity(input.subject_handle, input.valid_mask, SubmitValid.subject) and
         handleMatchesValidity(input.request_handle, input.valid_mask, SubmitValid.request);
 }
 
@@ -567,8 +567,8 @@ pub fn validProgress(input: *const ProgressInput, config: *const Config) bool {
         input.reserved_u32 != 0 or
         (input.valid_mask & ~ProgressValid.known) != 0 or
         input.flags != 0 or !allZero(&input.reserved) or
-        !handleMatchesValidity(input.stage_handle, input.valid_mask, ProgressValid.stage) or
-        !handleMatchesValidity(input.message_handle, input.valid_mask, ProgressValid.message) or
+        !handleMatchesValidity(input.stage_fact_handle, input.valid_mask, ProgressValid.stage) or
+        !handleMatchesValidity(input.detail_fact_handle, input.valid_mask, ProgressValid.detail_fact) or
         !handleMatchesValidity(input.checkpoint_handle, input.valid_mask, ProgressValid.checkpoint))
     {
         return false;

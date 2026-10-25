@@ -15,7 +15,7 @@ public sealed partial class FanCurveReceiptTests
         var client = helper.Client;
         Assert.Equal(2, client.Describe().Count);
         var writer = new FanControlWriter(client);
-        var capability = new ControlCapability("fan.curve", "Curve", ControlValueKinds.Curve, true);
+        var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 40), new(95, 100)],
             CurveExecution: ControlFanCurveExecutions.Software);
         await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
@@ -82,7 +82,7 @@ public sealed partial class FanCurveReceiptTests
         => RunRedetectionAsync(1);
 
     [Fact]
-    public Task CompiledCoreRepeatedFailedRedetectionUpdatesItsReasonBeforeLaterRecovery()
+    public Task CompiledCoreRepeatedFailedRedetectionKeepsMachineReasonAndUpdatesDiagnosticsBeforeRecovery()
         => RunRedetectionAsync(2);
 
     private static async Task RunRedetectionAsync(int deferredOpens)
@@ -92,7 +92,8 @@ public sealed partial class FanCurveReceiptTests
         var client = helper.Client;
         Assert.Empty(client.Describe());
         var initialReason = client.UnavailableReason;
-        Assert.NotNull(initialReason);
+        Assert.Equal("fan-channel-missing", initialReason);
+        Assert.Contains(helper.Log.Messages, message => message.Contains("Deferred fake discovery 1", StringComparison.Ordinal));
         Assert.False(client.NeedsTemperatures());
         var processId = helper.SessionId;
         var unchanged = await client.SendAsync("describe", null, deadline.Token);
@@ -103,8 +104,8 @@ public sealed partial class FanCurveReceiptTests
         {
             client.ResetDetection();
             Assert.Empty(client.Describe());
-            Assert.NotNull(client.UnavailableReason);
-            Assert.NotEqual(initialReason, client.UnavailableReason);
+            Assert.Equal("fan-channel-missing", client.UnavailableReason);
+            Assert.Contains(helper.Log.Messages, message => message.Contains("Deferred fake discovery 2", StringComparison.Ordinal));
             Assert.False(client.NeedsTemperatures());
             Assert.Equal(processId, helper.SessionId);
         }
@@ -147,7 +148,7 @@ public sealed partial class FanCurveReceiptTests
         }, deadline.Token);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35), new(120, 100)],
             CurveExecution: ControlFanCurveExecutions.Software);
-        var capability = new ControlCapability("fan.curve", "Curve", ControlValueKinds.Curve, true);
+        var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var writer = new FanControlWriter(client);
         var outcome = await writer.WriteAsync(Target, capability, setting, deadline.Token);
         Assert.Equal(ControlApplyStatuses.Applied, outcome.Status);
@@ -205,13 +206,14 @@ public sealed partial class FanCurveReceiptTests
     {
         private readonly ProbeFanBackend backend;
         internal FanControlCoreClient Client { get; }
+        internal FanBoundaryLogger<FanControlCoreClient> Log { get; } = new();
         internal bool IsDisposed => backend.Disposed;
         internal int SessionId { get; } = Random.Shared.Next();
         internal CoreFixture(int deferredOpens = 0, bool restoreFault = false)
         {
             backend = new ProbeFanBackend(deferredOpens, restoreFault);
             Client = new FanControlCoreClient(new EnvironmentInfo(@"C:\FanCoreConsumerFixture"),
-                (_, _) => new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend)));
+                (_, _) => new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend)), Log);
         }
         public async ValueTask DisposeAsync()
         {

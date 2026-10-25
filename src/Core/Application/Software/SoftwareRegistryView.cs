@@ -115,14 +115,12 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         var revisionContent = revisionRecords
             .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .Select(static group => MergeRecords(group.ToArray()))
-            .OrderBy(static record => KindSort(record.Kind))
-            .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var result = records
             .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .Select(static group => MergeRecords(group.ToArray()))
-            .OrderBy(static record => KindSort(record.Kind))
-            .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         inventoryRevisionOwner?.ObserveSoftwareContent(windowsSid, revisionContent);
         return result;

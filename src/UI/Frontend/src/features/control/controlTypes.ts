@@ -64,11 +64,10 @@ export const controlUnavailableKinds: readonly ControlUnavailableKind[] = [
 
 export interface ControlCapability {
   id: string;
-  label: string;
   valueKind: "toggle" | "number" | "curve";
   /** 现在能不能用。不能用时一定带着原因。 */
   supported: boolean;
-  unavailableReason: string | null;
+  unavailableReason: ControlApplyReason | null;
   /**
    * 用不了属于哪一类。能用时为 null。
    *
@@ -77,7 +76,6 @@ export interface ControlCapability {
    */
   unavailableKind: ControlUnavailableKind | null;
   requiredComponentId: string | null;
-  requiredComponentName: string | null;
   range: ControlNumberRange | null;
   /**
    * 这一项实际走哪条链路（nvapi / nvml / oem-ec / amd-smu / fan-core …）。
@@ -105,7 +103,9 @@ export interface ControlCapability {
 export interface ControlObject {
   id: string;
   kind: string;
-  displayName: string;
+  reportedName: string | null;
+  ordinal?: number | null;
+  adapterIndex?: number | null;
   platform: ControlObjectPlatform;
   capabilities: readonly ControlCapability[];
   detail: string | null;
@@ -175,7 +175,7 @@ export interface ControlDesiredState {
 export interface ControlApplyReason {
   code: string;
   arguments?: { requiredAccessLevel?: ControlAccessLevel | null; minimum?: number | null;
-    maximum?: number | null; unit?: string | null } | null;
+    maximum?: number | null; unit?: string | null; requested?: number | null; observed?: number | null } | null;
 }
 
 export interface ControlApplyOutcome {
@@ -183,7 +183,7 @@ export interface ControlApplyOutcome {
   capabilityId: string;
   status: "applied" | "unsupported" | "failed";
   reason?: ControlApplyReason | null;
-  message: string | null;
+  nativeStatus?: number | null;
 }
 
 export interface ControlApplyReport {
@@ -205,7 +205,9 @@ export interface ControlStateView {
 export interface ControlInstance {
   id: string;
   kind: string;
-  displayName: string;
+  reportedName: string | null;
+  ordinal?: number | null;
+  adapterIndex?: number | null;
   platform: ControlObjectPlatform;
   gpuAttachment: string | null;
   /** 这个身份能不能唯一认出这台设备。不能的话如实标出来，不假装。 */
@@ -260,7 +262,7 @@ export interface ControlActualValue {
   toggle?: boolean | null;
   curve?: readonly ControlCurvePoint[] | null;
   unit?: string | null;
-  unreadableReason?: string | null;
+  unreadableReason?: ControlApplyReason | null;
 }
 
 /**

@@ -307,7 +307,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         await InvokeOwnerTask(fixture.Owner, "ApplyActionFeedbackAsync", ticket,
             NativeOperationActionFeedbackOutcome.StartRetryableFailure,
             HostManagerOperationEffectReceiptOutcome.EffectNotObserved,
-            "ignored", CancellationToken.None);
+            "ignored", CancellationToken.None, null);
         await ((IHostManagerOperationProgressSink)fixture.Owner).ReportAsync(
             ticket, new HostManagerOperationProgressUpdate(), CancellationToken.None);
         await InvokeOwnerTask(fixture.Owner, "LatchWorkerFaultAsync",

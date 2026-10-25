@@ -89,14 +89,14 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             var catalogEntries = bundledCatalog.Entries.ToDictionary(entry => $"catalog:{entry.Id}", StringComparer.Ordinal);
             var currentRecords = softwareRecords.Select(record =>
                 !record.HasExplicitKind && catalogEntries.TryGetValue(record.Id, out var entry)
-                    ? record with { Name = entry.DisplayName, Kind = entry.Kind, DisplayKind = SoftwareDisplayKinds.Project(entry.Kind) }
+                    ? record with { Name = entry.DisplayName, Kind = entry.Kind }
                     : record).ToArray();
             var software = currentRecords
                 .Select(static record => new RuntimeSoftwareAttribution(
                     record.Id,
                     record.Name,
                     record.Kind,
-                    record.DisplayKind,
+                    SoftwareDisplayKinds.Project(record.Kind),
                     record.RootPaths
                         .Select(CanonicalPath)
                         .Where(static value => value is not null)

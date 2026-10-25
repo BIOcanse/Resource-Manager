@@ -1,5 +1,6 @@
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Control;
@@ -8,6 +9,32 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ControlRevocationRetryTests
 {
+    [Theory]
+    [InlineData("{\"instances\":[{\"id\":\"disconnected\",\"displayName\":\"saved name\"}]}")]
+    [InlineData("{\"formatVersion\":1,\"instances\":[]}")]
+    public async Task UnconvertibleInstanceFormatPreservesItsFileAndReturnsEmptyOnRepeatedReads(string original)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-control-format-" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(root, "UserData", "Control");
+        var path = Path.Combine(directory, "instances.json");
+        Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(path, original);
+        var registry = new JsonControlInstanceRegistry(new Environment(root), new Catalog { Present = false },
+            new ControlPlane(new Store(), new Layer()));
+        try
+        {
+            Assert.Empty((await registry.ReadAsync(default)).Instances);
+            Assert.Empty((await registry.ReadAsync(default)).Instances);
+            Assert.Equal(original, await File.ReadAllTextAsync(path));
+        }
+        finally
+        {
+            File.Delete(path);
+            foreach (var item in new[] { directory, Path.Combine(root, "UserData"), root })
+                if (Directory.Exists(item)) Directory.Delete(item);
+        }
+    }
+
     [Fact]
     public async Task ForgetDisconnectedInstanceRevokesReplayAndReceiptsButKeepsOtherReleases()
     {
@@ -20,6 +47,13 @@ public sealed class ControlRevocationRetryTests
         try
         {
             await registry.ReadAsync(default);
+            using (var saved = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(root, "UserData", "Control", "instances.json"))))
+            {
+                Assert.Equal(2, saved.RootElement.GetProperty("formatVersion").GetInt32());
+                var instance = Assert.Single(saved.RootElement.GetProperty("instances").EnumerateArray());
+                Assert.False(instance.TryGetProperty("displayName", out _));
+                Assert.Equal("Fan A", instance.GetProperty("reportedName").GetString());
+            }
             await plane.SetObjectSettingsAsync("a", [new("good", Toggle: true)], default);
             await plane.SetObjectSettingsAsync("b", [new("good", Toggle: true)], default);
             store.Value = store.Value with { PendingReleases = [new("c", [new("release", Toggle: true)])] };

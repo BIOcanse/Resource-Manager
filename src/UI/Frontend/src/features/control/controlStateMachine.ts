@@ -1,3 +1,4 @@
+import { controlOutcomeReason } from "./controlPresentation.ts";
 import type { ControlSetting, ControlApplyOutcome, ControlStateView } from "./controlTypes.ts";
 
 /**
@@ -80,7 +81,7 @@ export function controlItemStatusOf(
   }
   if (!savedSetting) {
     const failedRelease = outcomes.find((entry) => entry.capabilityId === capabilityId && entry.status === "failed");
-    if (failedRelease) return { capabilityId, status: "failed", message: failedRelease.message };
+    if (failedRelease) return { capabilityId, status: "failed", message: controlOutcomeReason(failedRelease) };
     return { capabilityId, status: "unset", message: null };
   }
 
@@ -95,7 +96,7 @@ export function controlItemStatusOf(
   return {
     capabilityId,
     status: outcome.status === "unsupported" ? "unsupported" : "failed",
-    message: outcome.message
+    message: controlOutcomeReason(outcome)
   };
 }
 

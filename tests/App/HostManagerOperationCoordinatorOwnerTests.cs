@@ -499,7 +499,9 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             CompiledHostManagerPlan plan,
             bool ownsRoot,
             bool start = true,
-            Func<ulong, IComputeScratch>? createScratch = null)
+            Func<ulong, IComputeScratch>? createScratch = null,
+            Microsoft.Extensions.Logging.ILogger<HostManagerOperationCoordinatorOwner>? operationLogger = null,
+            TimeProvider? operationClock = null)
         {
             var deployment = new HostManagerDeploymentState();
             var provider = new RuntimePlanProvider(deployment);
@@ -524,9 +526,9 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             var runtime = new HostManagerOperationCoordinatorRuntime(provider, deployment);
             var router = new HostManagerOperationEffectRouter(executors);
             var environment = new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP"));
-            var logger = NullLogger<HostManagerOperationCoordinatorOwner>.Instance;
+            var logger = operationLogger ?? NullLogger<HostManagerOperationCoordinatorOwner>.Instance;
             var owner = new HostManagerOperationCoordinatorOwner(provider, runtime, router,
-                environment, logger, createScratch ?? OperationScratchFixture.Create);
+                environment, logger, createScratch ?? OperationScratchFixture.Create, operationClock);
             if (start)
             {
                 await owner.StartAsync(CancellationToken.None);
@@ -660,6 +662,11 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
 
         internal int ExecuteCount => Volatile.Read(ref executeCount);
 
+        internal HostManagerOperationEffectReceipt? LastReadbackEvidence { get; private set; }
+
+        internal Func<HostManagerOperationActionTicket, HostManagerOperationEffectReceipt, CancellationToken,
+            ValueTask<HostManagerOperationEffectCompletion>>? OnReadback { get; set; }
+
         public async ValueTask<HostManagerOperationEffectCompletion> ExecuteStartAsync(
             HostManagerOperationActionTicket ticket,
             IHostManagerOperationProgressSink progress,
@@ -680,7 +687,9 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             CancellationToken cancellationToken)
         {
             _ = ticket;
+            LastReadbackEvidence = receipt;
             cancellationToken.ThrowIfCancellationRequested();
+            if (OnReadback is not null) return OnReadback(ticket, receipt, cancellationToken);
             return ValueTask.FromResult(
                 receipt.State == HostManagerOperationEffectReceiptState.Prepared
                     ? new HostManagerOperationEffectCompletion(

@@ -52,6 +52,9 @@ public sealed class GpuPlacementCapabilityProjectionTests
         var target = Assert.Single(result.ExactTargets);
         Assert.Equal("gpu1", target.TargetGpu);
         Assert.False(target.Available);
+        Assert.Null(target.AdapterName);
+        Assert.Equal("inventory-unavailable", target.ReasonCode);
+        Assert.Equal("inventory-unavailable", result.ReasonCode);
     }
 
     [Fact]
@@ -97,23 +100,11 @@ public sealed class GpuPlacementCapabilityProjectionTests
         Assert.Equal(vulkanStartup ? "Vulkan" : expectedApi, available.Startup.GraphicsApi);
         Assert.Equal(expectedApi, available.Runtime.GraphicsApi);
         Assert.Equal("x64", available.Runtime.Architecture);
-        Assert.Contains("无注入运行期换卡路径", available.Runtime.Reason, StringComparison.Ordinal);
-        if (expectedApi.Contains("D3D12", StringComparison.Ordinal))
-        {
-            var reasons = vulkanStartup ? Array.Empty<string>() : new[] { available.Startup.Reason };
-            foreach (var reason in reasons)
-            {
-                Assert.Contains("D3D12CreateDevice", reason, StringComparison.Ordinal);
-                Assert.Contains("ID3D12DeviceFactory::CreateDevice", reason, StringComparison.Ordinal);
-                Assert.Contains("D3D12GetInterface", reason, StringComparison.Ordinal);
-                Assert.Contains("不保证预先持有的工厂", reason, StringComparison.Ordinal);
-            }
-        }
-        else
-        {
-            Assert.DoesNotContain("D3D12", available.Runtime.Reason, StringComparison.Ordinal);
-            Assert.DoesNotContain("DeviceFactory", available.Startup.Reason, StringComparison.Ordinal);
-        }
+        Assert.Equal("runtime-route-unverified", available.Runtime.ReasonCode);
+        Assert.Equal(vulkanStartup ? "startup-vulkan-instance-only" : "startup-d3d-creation-only", available.Startup.ReasonCode);
+        Assert.Empty(available.Startup.MissingFiles);
+        Assert.Equal("startup-provider-missing", missing.Startup.ReasonCode);
+        Assert.NotEmpty(missing.Startup.MissingFiles);
     }
 
     [Theory]
@@ -131,7 +122,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
             ? GpuPlacementCapabilityStates.Supported : GpuPlacementCapabilityStates.Unsupported, result.Startup.State);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Runtime.State);
         Assert.Equal(expectedApi, result.Runtime.GraphicsApi);
-        Assert.Contains("无注入运行期换卡路径", result.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Equal("runtime-route-unverified", result.Runtime.ReasonCode);
         Assert.True(GpuGraphicsApiRoutes.IsIdentified(api));
     }
 
@@ -188,7 +179,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Runtime.State);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Startup.State);
         Assert.Equal(WindowsExternalGpuPlacementRuntime.ProviderId, available.Runtime.ProviderId);
-        Assert.Contains("无注入运行期换卡路径", available.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Equal("runtime-route-unverified", available.Runtime.ReasonCode);
         File.Delete(files.Runtime);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported,
             reader.Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.OpenGL).Runtime.State);
@@ -209,7 +200,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
             .Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.Vulkan).Runtime;
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, capability.State);
         Assert.Equal(WindowsExternalGpuPlacementRuntime.QtVulkanProviderId, capability.ProviderId);
-        Assert.Contains("无注入运行期换卡路径", capability.Reason, StringComparison.Ordinal);
+        Assert.Equal("runtime-route-unverified", capability.ReasonCode);
     }
 
     [Theory]
@@ -239,7 +230,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
         Assert.Equal(GpuPlacementCapabilityStates.Supported, available.Startup.State);
         Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, available.Startup.ProviderId);
         Assert.Equal("Vulkan", available.Startup.GraphicsApi);
-        Assert.Contains("普通权限", available.Startup.Reason, StringComparison.Ordinal);
+        Assert.Equal("startup-vulkan-instance-only", available.Startup.ReasonCode);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Runtime.State);
         Assert.Equal("Vulkan", available.Runtime.GraphicsApi);
         Assert.Equal(1, reads);

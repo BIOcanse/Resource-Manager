@@ -19,6 +19,7 @@ import {
 import { userFacingDateTime } from "../../presentation/userFacingText.ts";
 import {
   operationTitleForKind,
+  operationTitle,
   type TaskCenterItem,
   type TaskCenterSnapshot,
   type TaskCenterProjection
@@ -250,14 +251,8 @@ function TaskCenterList(props: {
                     <Show when={item().resultCode}>
                       <div><dt>{uiText.managementFeedback.resultCode}</dt><dd>{item().resultCode}</dd></div>
                     </Show>
-                    <Show when={item().progressMessage}>
-                      <div><dt>{uiText.taskCenter.progressLabel(taskTitle(item()))}</dt><dd>{item().progressMessage}</dd></div>
-                    </Show>
-                    <Show when={item().result}>
-                      <div><dt>{uiText.taskCenter.taskCompleted}</dt><dd>{item().result}</dd></div>
-                    </Show>
-                    <Show when={item().error}>
-                      <div><dt>{uiText.taskCenter.taskFailed}</dt><dd>{item().error}</dd></div>
+                    <Show when={item().progressStage === "Download"}>
+                      <div><dt>{uiText.taskCenter.progressLabel(taskTitle(item()))}</dt><dd>{uiText.managementFeedback.stageDownload}</dd></div>
                     </Show>
                     <div><dt>{uiText.taskCenter.identity}</dt><dd>{item().ownerId}</dd></div>
                   </dl>
@@ -316,7 +311,7 @@ function taskKindLabel(item: TaskCenterItem): string {
 
 function taskTitle(item: TaskCenterItem): string {
   return item.source === "operation"
-    ? operationTitleForKind(item.kind)
+    ? operationTitle({ kind: item.kind, subject: item.subject ?? null })
     : item.title;
 }
 

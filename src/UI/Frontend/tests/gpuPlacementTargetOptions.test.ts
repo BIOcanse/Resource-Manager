@@ -5,17 +5,17 @@ import {
 } from "../src/components/gpuPlacementTargetOptions.ts";
 
 const inventory = [
-  { targetGpu: "gpu0", displayName: "GPU 0 · Integrated", available: true },
-  { targetGpu: "gpu2", displayName: "GPU2（不可用）", available: false, reason: "设备已移除" }
+  { targetGpu: "gpu0", adapterName: "Integrated", available: true },
+  { targetGpu: "gpu2", adapterName: null, available: false, reasonCode: "target-missing" }
 ] as const;
 const inventoryOptions = startupTargetGpuOptionsForSoftwarePolicy(
   true,
   "gpu2",
   inventory);
-assert.deepEqual(inventoryOptions.find(([value]) => value === "gpu0"), ["gpu0", "GPU 0 · Integrated", false]);
+assert.deepEqual(inventoryOptions.find(([value]) => value === "gpu0"), ["gpu0", "GPU0 · Integrated", false]);
 assert.deepEqual(
   inventoryOptions.find(([value]) => value === "gpu2"),
-  ["gpu2", "GPU2（不可用） · 设备已移除", true]);
+  ["gpu2", "GPU2 · 已保存 GPU 当前不在完整设备清单中。", true]);
 assert.equal(inventoryOptions.some(([value]) => value === "gpu1" || value === "gpu3"), false);
 
 const startupOptions = startupTargetGpuOptionsForSoftwarePolicy(true, "system_default_gpu");

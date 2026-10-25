@@ -160,7 +160,7 @@ public sealed class ControlReleaseTests
     {
         public ControlObjectCatalog ReadObjects() => new([
             new("a", "fan", "Fan", new("windows", "oem"), [
-                new("owned", "Owned", kind, true), new("other", "Other", kind, true)])], DateTimeOffset.UtcNow);
+                new("owned", kind, true), new("other", kind, true)])], DateTimeOffset.UtcNow);
     }
     private sealed class Writer : IControlWriter
     {

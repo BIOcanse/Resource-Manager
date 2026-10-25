@@ -8,12 +8,12 @@ internal enum HostManagerOperationPayloadRole : uint
 {
     Domain = 1,
     Kind = 2,
-    Title = 3,
+    Subject = 3,
     Request = 4,
     Result = 5,
     Error = 6,
     ProgressStage = 7,
-    ProgressMessage = 8,
+    ProgressDetailFact = 8,
     Checkpoint = 9,
     EffectExpectedBefore = 10,
     EffectExpectedAfter = 11,
@@ -183,12 +183,12 @@ internal sealed class HostManagerOperationPayloadCatalog
         {
             AddIfNonzero(roots, record.DomainId);
             AddIfNonzero(roots, record.KindHandle);
-            AddIfNonzero(roots, record.TitleHandle);
+            AddIfNonzero(roots, record.SubjectHandle);
             AddIfNonzero(roots, record.RequestHandle);
             AddIfNonzero(roots, record.ResultHandle);
             AddIfNonzero(roots, record.ErrorHandle);
-            AddIfNonzero(roots, record.StageHandle);
-            AddIfNonzero(roots, record.MessageHandle);
+            AddIfNonzero(roots, record.StageFactHandle);
+            AddIfNonzero(roots, record.DetailFactHandle);
             AddIfNonzero(roots, record.CheckpointHandle);
         }
         return roots;
@@ -227,7 +227,7 @@ internal sealed class HostManagerOperationPayloadCatalog
             HostManagerOperationPayloadRole.Domain =>
                 operationId.IsZero && attemptToken.IsZero,
             HostManagerOperationPayloadRole.Kind
-                or HostManagerOperationPayloadRole.Title
+                or HostManagerOperationPayloadRole.Subject
                 or HostManagerOperationPayloadRole.Request =>
                 !operationId.IsZero && attemptToken.IsZero,
             _ => !operationId.IsZero && !attemptToken.IsZero

@@ -7,16 +7,40 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
-public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : IManualSoftwareRegistry
+public sealed partial class JsonManualSoftwareRegistry(
+    IHostEnvironment environment,
+    ILogger<JsonManualSoftwareRegistry>? logger = null) : IManualSoftwareRegistry
 {
+    public const int FormatVersion = 2;
+    private sealed record RegistryDocument(int FormatVersion, IReadOnlyList<ManualSoftwareRecord?> Records);
+
+    // One-time reader for files written by the pre-v2 manual registry. Delete this DTO,
+    // its generated root and migration branch when no supported upgrade source writes
+    // unversioned manual-software.json files. Backup retirement is a separate user-data decision.
+    private sealed record LegacyManualSoftwareRecord(
+        string Id, string Name, string Kind, string DisplayKind, string State,
+        IReadOnlyList<string> Sources, IReadOnlyList<string> RootPaths, string Message,
+        string? SourceSoftwareId, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        TypeInfoResolver = new JsonManualSoftwareRegistryJsonContext(),
+        UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
+        RespectRequiredConstructorParameters = true
     };
+
+    [System.Text.Json.Serialization.JsonSourceGenerationOptions(GenerationMode = System.Text.Json.Serialization.JsonSourceGenerationMode.Metadata)]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(RegistryDocument))]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(LegacyManualSoftwareRecord[]))]
+    private partial class JsonManualSoftwareRegistryJsonContext : System.Text.Json.Serialization.JsonSerializerContext;
 
     private readonly SemaphoreSlim gate = new(1, 1);
     private IReadOnlyList<ManualSoftwareRecord>? cached;
     private OptionalFileVersion? cachedVersion;
+    private bool unreadableSource;
+    private bool metadataUnavailable;
+    private readonly ILogger<JsonManualSoftwareRegistry> registryLogger = logger
+        ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<JsonManualSoftwareRegistry>.Instance;
     private readonly string storagePath = Path.Combine(
         PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
         "Config",
@@ -54,13 +78,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
                 normalized.SourceSoftwareId ?? existing?.Id ?? id,
                 normalized.Name,
                 normalized.Kind,
-                DisplayKind(normalized.Kind),
-                "manual",
-                string.IsNullOrWhiteSpace(normalized.SourceSoftwareId)
-                    ? ["手动补录"]
-                    : ["手动分类", "来自软件列表"],
                 normalized.RootPaths,
-                BuildMessage(normalized.Kind),
                 normalized.SourceSoftwareId,
                 existingCreatedAt,
                 now);
@@ -88,7 +106,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
         {
             var records = (await LoadCoreAsync(cancellationToken)).ToList();
             var removed = records.RemoveAll(record => record.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) > 0;
-            if (removed)
+            if (removed || unreadableSource)
             {
                 await SaveCoreAsync(records, cancellationToken);
             }
@@ -103,19 +121,66 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
     private async Task<IReadOnlyList<ManualSoftwareRecord>> LoadCoreAsync(CancellationToken cancellationToken)
     {
-        var version = OptionalFileVersion.Read(storagePath);
+        // Retry metadata even while its last failure is cached, so repairs are visible.
+        if (!TryReadStorageVersion(out var version)) return cached!;
+        if (metadataUnavailable)
+        {
+            metadataUnavailable = false;
+            cached = null;
+        }
         if (cached is not null && version == cachedVersion) return cached;
         if (version is null)
         {
             cachedVersion = null;
+            unreadableSource = false;
             return cached = Array.Empty<ManualSoftwareRecord>();
         }
-        var value = await ReadCoreAsync(cancellationToken);
-        cachedVersion = version;
-        return cached = value;
+        unreadableSource = false;
+        try
+        {
+            var value = await ReadCoreAsync(version.Value, cancellationToken);
+            if (!TryReadStorageVersion(out var currentVersion)) return cached!;
+            cachedVersion = currentVersion;
+            return cached = value;
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            // Reads publish an empty registry while preserving the unreadable file. Only
+            // an explicit mutation may reset it, and that write must keep a byte-exact backup.
+            unreadableSource = true;
+            cachedVersion = version;
+            registryLogger.LogWarning(error,
+                "Manual software registry {RegistryPath} could not be read or migrated. Its source file is unchanged; an empty manual registry is in use. An explicit mutation will back up the original before resetting it.",
+                storagePath);
+            return cached = Array.Empty<ManualSoftwareRecord>();
+        }
     }
 
-    private async Task<IReadOnlyList<ManualSoftwareRecord>> ReadCoreAsync(CancellationToken cancellationToken)
+    private bool TryReadStorageVersion(out OptionalFileVersion? version)
+    {
+        try
+        {
+            version = OptionalFileVersion.Read(storagePath);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            if (!metadataUnavailable)
+                registryLogger.LogWarning(error,
+                    "Manual software registry metadata {RegistryPath} could not be read. Its source file is unchanged; an empty manual registry is in use until metadata access recovers.",
+                    storagePath);
+            metadataUnavailable = true;
+            unreadableSource = true;
+            cachedVersion = null;
+            cached = Array.Empty<ManualSoftwareRecord>();
+            version = null;
+            return false;
+        }
+    }
+
+    private async Task<IReadOnlyList<ManualSoftwareRecord>> ReadCoreAsync(
+        OptionalFileVersion version,
+        CancellationToken cancellationToken)
     {
         FileStream stream;
         try
@@ -133,32 +198,36 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
         await using (stream)
         {
-            List<ManualSoftwareRecord?>? records;
-            try
+            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            if (json.RootElement.ValueKind != JsonValueKind.Array)
             {
-                records = await JsonSerializer.DeserializeAsync<List<ManualSoftwareRecord?>>(
-                    stream,
-                    JsonOptions,
-                    cancellationToken);
-            }
-            catch (JsonException error)
-            {
-                throw new InvalidDataException("The manual software registry is not valid JSON; its contents were left unchanged.", error);
+                var document = json.RootElement.Deserialize<RegistryDocument>(JsonOptions);
+                if (document is null || document.FormatVersion != FormatVersion || document.Records is null)
+                    throw new InvalidDataException("Unsupported manual software registry document.");
+                return ValidateStoredRecords(document.Records.Select(static record => record!));
             }
 
-            if (records is null || records.Any(static record => record is null))
-                throw new InvalidDataException("The manual software registry contains an invalid record; its contents were left unchanged.");
-
-            return NormalizeRecords(records.Select(static record => record! with
-            {
-                Kind = SoftwareKinds.ReadStored(record!.Kind)
-            }));
+            var legacy = json.RootElement.Deserialize<LegacyManualSoftwareRecord?[]>(JsonOptions)
+                ?? throw new InvalidDataException("The legacy manual software registry must contain an array.");
+            var migrated = ValidateStoredRecords(legacy.Select(static record => record is null
+                ? throw new InvalidDataException("The legacy manual software registry contains a null record.")
+                : new ManualSoftwareRecord(record.Id, record.Name, SoftwareKinds.ReadStored(record.Kind),
+                    record.RootPaths, record.SourceSoftwareId, record.CreatedAt, record.UpdatedAt)));
+            // File.OpenRead denies replacement while held; release it before the owning
+            // atomic writer creates the adjacent original-format backup and replaces it.
+            await stream.DisposeAsync();
+            if (!TryReadStorageVersion(out var currentVersion)) return cached!;
+            if (currentVersion != version)
+                throw new IOException("The manual software registry changed while its migration was being prepared.");
+            await SaveCoreAsync(migrated, cancellationToken, migrateLegacy: true);
+            return migrated;
         }
     }
 
     private async Task SaveCoreAsync(
         IReadOnlyList<ManualSoftwareRecord> records,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool migrateLegacy = false)
     {
         var directory = Path.GetDirectoryName(storagePath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -177,13 +246,22 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
                 Options = FileOptions.WriteThrough
             }))
             {
-                await JsonSerializer.SerializeAsync(stream, NormalizeRecords(records), JsonOptions, cancellationToken);
+                await JsonSerializer.SerializeAsync(stream, new RegistryDocument(FormatVersion, ValidateStoredRecords(records)), JsonOptions, cancellationToken);
                 await stream.FlushAsync(cancellationToken);
                 stream.Flush(flushToDisk: true);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            var backupPath = (migrateLegacy || unreadableSource) && File.Exists(storagePath)
+                ? CreateOldFormatBackup()
+                : null;
             File.Move(temporaryPath, storagePath, overwrite: true);
             cached = null;
+            if (migrateLegacy)
+                registryLogger.LogInformation("Migrated manual software registry {RegistryPath} to facts-only format {FormatVersion}; original retained at {BackupPath}.", storagePath, FormatVersion, backupPath);
+            else if (unreadableSource)
+                registryLogger.LogWarning("Explicit mutation reset the unreadable manual software registry {RegistryPath}; original retained at {BackupPath}.", storagePath, backupPath);
+            unreadableSource = false;
         }
         finally
         {
@@ -191,7 +269,22 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
         }
     }
 
-    private static IReadOnlyList<ManualSoftwareRecord> NormalizeRecords(IEnumerable<ManualSoftwareRecord> records)
+    private string CreateOldFormatBackup()
+    {
+        var backupPath = storagePath + ".oldformatbackup";
+        try
+        {
+            File.Copy(storagePath, backupPath, overwrite: false);
+        }
+        catch (IOException) when (File.Exists(backupPath))
+        {
+            backupPath = storagePath + ".oldformatbackup." + Guid.NewGuid().ToString("N");
+            File.Copy(storagePath, backupPath, overwrite: false);
+        }
+        return backupPath;
+    }
+
+    private static IReadOnlyList<ManualSoftwareRecord> ValidateStoredRecords(IEnumerable<ManualSoftwareRecord> records)
     {
         var materialized = records.ToArray();
         if (materialized.Any(static record => record is null
@@ -200,33 +293,22 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             throw new InvalidDataException("The manual software registry contains a record without an ID or name; its contents were left unchanged.");
         if (materialized.Any(static record => !IsAllowedKind(record.Kind)))
             throw new InvalidDataException("The manual software registry contains an unsupported kind; its contents were left unchanged.");
-
-        return materialized
-            .Select(static record => record with
-            {
-                Id = string.IsNullOrWhiteSpace(record.SourceSoftwareId) ? record.Id : record.SourceSoftwareId,
-                DisplayKind = DisplayKind(record.Kind),
-                RootPaths = NormalizeRootPaths(record.RootPaths),
-                Sources = record.Sources is { Count: > 0 } ? record.Sources : ["手动分类"]
-            })
-            .GroupBy(static record => record.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group.OrderByDescending(static record => record.UpdatedAt).First())
-            .OrderBy(static record => KindSort(record.Kind))
-            .ThenBy(static record => record.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        if (materialized.Any(static record => record.RootPaths is null || record.RootPaths.Any(static root => root is null)))
+            throw new InvalidDataException("The manual software registry contains invalid root paths; its contents were left unchanged.");
+        return materialized;
     }
 
     private static ManualSoftwareRequest NormalizeRequest(ManualSoftwareRequest? request)
     {
         if (request is null)
         {
-            throw new InvalidOperationException("手动软件分类请求不能为空。");
+            throw new InvalidOperationException("A manual software classification request is required.");
         }
 
         var kind = request.Kind;
         if (!IsAllowedKind(kind))
         {
-            throw new InvalidOperationException($"手动软件分类只支持{SoftwareDisplayKinds.Adapted}、{SoftwareDisplayKinds.Game}、{SoftwareDisplayKinds.HighPerformance}和{SoftwareDisplayKinds.General}。");
+            throw new InvalidOperationException("Unsupported manual software kind.");
         }
 
         var roots = NormalizeRootPaths(request.RootPaths);
@@ -234,13 +316,13 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             ?? (kind == SoftwareKinds.Adapted ? InferNameFromRootPath(roots.FirstOrDefault()) : null);
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new InvalidOperationException("软件名称不能为空。");
+            throw new InvalidOperationException("A software name is required.");
         }
 
         if (roots.Count == 0 && (kind == SoftwareKinds.Adapted
             || kind == SoftwareKinds.Other && string.IsNullOrWhiteSpace(request.SourceSoftwareId)))
         {
-            throw new InvalidOperationException($"手动补录{SoftwareDisplayKinds.Adapted}或{SoftwareDisplayKinds.General}至少需要一个根目录。");
+            throw new InvalidOperationException("At least one root path is required for this manual software registration.");
         }
 
         return new ManualSoftwareRequest(name, kind, roots, CleanText(request.SourceSoftwareId));
@@ -308,39 +390,6 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
     private static bool IsAllowedKind(string kind)
     {
         return kind is SoftwareKinds.Adapted or SoftwareKinds.Game or SoftwareKinds.HighPerformance or SoftwareKinds.Other;
-    }
-
-    private static string DisplayKind(string kind)
-    {
-        return kind switch
-        {
-            SoftwareKinds.Adapted => SoftwareDisplayKinds.Adapted,
-            SoftwareKinds.Game => SoftwareDisplayKinds.Game,
-            SoftwareKinds.HighPerformance => SoftwareDisplayKinds.HighPerformance,
-            _ => SoftwareDisplayKinds.General
-        };
-    }
-
-    private static string BuildMessage(string kind)
-    {
-        return kind switch
-        {
-            SoftwareKinds.Adapted => "用户手动补录为适配软件；按根目录识别运行进程，并尝试读取其适配控制端点。",
-            SoftwareKinds.Game => "用户手动分类为游戏；游戏模式可优先使用更强的后台让路策略。",
-            SoftwareKinds.HighPerformance => "用户手动分类为高性能软件；需要资源倾斜，但不默认使用游戏同等级策略。",
-            _ => "用户手动补录的软件；刷新 Windows 软件列表不会删除。"
-        };
-    }
-
-    private static int KindSort(string kind)
-    {
-        return kind switch
-        {
-            SoftwareKinds.Adapted => 0,
-            SoftwareKinds.Game => 1,
-            SoftwareKinds.HighPerformance => 2,
-            _ => 3
-        };
     }
 
     private static string ShortHash(string value)

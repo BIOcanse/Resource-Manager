@@ -192,8 +192,8 @@ public sealed class GpuPresentGraphicsApiTests
         using var files = new Files();
         var source = new Presents();
         var processSource = new Processes(Snapshot(Process(files)));
-        var record = new SoftwareRecord("software", "Software", "game", "game", "installed", [], [], "",
-            new(false, "", "", ""), null);
+        var record = new SoftwareRecord("software", "Software", "game", "installed", [], [],
+            new(false, "None", "missing_uninstall_entry"), null);
         using var owner = new GpuPlacementProcessHistoryObserver(processSource, new SoftwareRegistry([record]),
             Plans(), new JsonGpuPlacementProcessHistoryStore(files), source,
             NullLogger<GpuPlacementProcessHistoryObserver>.Instance);

@@ -52,12 +52,6 @@ public static class BackendMessageCodes
         /// <summary>该依赖当前没有可清理的受管安装内容。参数：无。</summary>
         public const byte ManagedRootEmpty = 2;
 
-        /// <summary>分类标签：组件依赖。参数：无。</summary>
-        public const byte CategoryTag = 3;
-
-        /// <summary>操作名：卸载。参数：无。</summary>
-        public const byte UninstallAction = 4;
-
         /// <summary>已安装在受管 Dependencies 根目录。参数：无。</summary>
         public const byte InstalledInManagedRoot = 5;
 
@@ -121,42 +115,6 @@ public static class BackendMessageCodes
 
     public static class Software
     {
-        /// <summary>Windows 卸载注册表里有卸载入口。参数：无。</summary>
-        public const byte HasUninstallEntry = 1;
-
-        /// <summary>缺少卸载入口。参数：无。</summary>
-        public const byte MissingUninstallEntry = 2;
-
-        /// <summary>操作名：卸载。参数：无。</summary>
-        public const byte UninstallAction = 3;
-
-        /// <summary>操作名：不可卸载。参数：无。</summary>
-        public const byte CannotUninstallAction = 4;
-
-        /// <summary>启动 Windows 注册表提供的官方卸载器。参数：无。</summary>
-        public const byte WindowsUninstallerDescription = 5;
-
-        /// <summary>缺少卸载入口，只能跳转或手动处理，不删除未知软件根目录。参数：无。</summary>
-        public const byte NoUninstallUnknownRoot = 6;
-
-        /// <summary>手动分类/补录项不直接代表卸载器。参数：无。</summary>
-        public const byte ManualClassificationNoUninstall = 7;
-
-        /// <summary>受控软件需要独立的卸载策略，当前没有可用的卸载入口。参数：无。</summary>
-        public const byte ControlledNoUninstall = 8;
-
-        /// <summary>资源管理器自身请使用 UninstallResourceManager.exe 卸载。参数：无。</summary>
-        public const byte SelfNoUninstall = 9;
-
-        /// <summary>适配软件需要先在注册/manifest 里声明卸载策略。参数：无。</summary>
-        public const byte AdaptedNoUninstall = 10;
-
-        /// <summary>L0 受控注册没有卸载策略。参数：无。</summary>
-        public const byte LegacyControlledNoUninstall = 11;
-
-        /// <summary>便携软件没有卸载器，删除原文件后刷新会移除记录。参数：无。</summary>
-        public const byte PortableNoUninstall = 12;
-
         /// <summary>已移除受管安装根目录；系统与驱动运行库保留。参数：无。</summary>
         public const byte ManagedRootRemoved = 13;
 

@@ -40,8 +40,7 @@ public sealed class WindowsExplorerPathOpener(IInteractiveUserSessionBroker sess
         return new LocalPathOpenResult(
             normalizedPath,
             openedPath,
-            selectFile ? "Select" : "Open",
-            selectFile ? "已在资源管理器中定位路径。" : "已在资源管理器中打开目录。");
+            selectFile ? "Select" : "Open");
     }
 
     private static string NormalizePath(string path)

@@ -977,8 +977,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
     private sealed class RegisteredSoftware(bool include = true) : ISoftwareRegistryView
     {
         public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<SoftwareRecord>>(include ? [new SoftwareRecord("software:editor", "Editor", SoftwareKinds.Other,
-                SoftwareKinds.Other, "Installed", [], [], "", new SoftwareOperationCapabilities(false, "", "", ""), null)] : []);
+            => Task.FromResult<IReadOnlyList<SoftwareRecord>>(include ? [new SoftwareRecord("software:editor", "Editor", SoftwareKinds.Other, "Installed", [], [], new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"), null)] : []);
         public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) => GetSoftwareAsync(cancellationToken);
     }
 

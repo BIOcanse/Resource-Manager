@@ -5,6 +5,7 @@
   },
   "include": [
     "./languageSwitching.test.ts",
+    "./componentPresentation.test.ts",
     "./softwareIssuePresentation.test.ts",
     "./localizationCoverage.ts",
     "./localizationCoverageValidator.test.ts",

@@ -1,4 +1,6 @@
+import { operationsFeedback } from "../operationsFeedback.ts";
 export const managementFeedback = {
+  ...operationsFeedback["zh-CN"],
   "resultCode": "结果代码",
   "removeManual": "移除手动登记",
   "confirmManual": "仅移除此手动登记及分类，不会卸载或删除软件文件。继续？",

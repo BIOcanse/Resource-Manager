@@ -103,8 +103,7 @@ internal static class HostManagerTestPlanFactory
         for (var coreIndex = 0; coreIndex < siblingsPerCore.Length; coreIndex++)
         {
             var logicalIds = Enumerable.Range(logical.Count, siblingsPerCore[coreIndex]).ToArray();
-            physical.Add(new CpuPhysicalCoreModel($"core:{coreIndex}", coreIndex, $"Core {coreIndex}",
-                "ccd:0", 0, 1, null, logicalIds, []));
+            physical.Add(new CpuPhysicalCoreModel($"core:{coreIndex}", coreIndex, "ccd:0", 0, 1, null, logicalIds, []));
             logical.AddRange(logicalIds.Select(id => new CpuLogicalProcessorModel(id, 0, id,
                 $"core:{coreIndex}", "ccd:0", 1, null, true)));
         }
@@ -116,7 +115,7 @@ internal static class HostManagerTestPlanFactory
             "fixture", "fixture", CpuTopologyAffinityTargetKinds.LogicalProcessorMask,
             CpuTopologyVisualLayoutKinds.Grid, "fixture", physical.Count, logical.Count,
             1, siblingsPerCore.Any(count => count > 1),
-            [new CpuCcdModel("ccd:0", 0, "CCD 0", null,
+            [new CpuCcdModel("ccd:0", 0, null,
                 physical.Select(core => core.Index).ToArray(), logical.Select(core => core.Id).ToArray(), "fixture")],
             physical, logical, []);
     }

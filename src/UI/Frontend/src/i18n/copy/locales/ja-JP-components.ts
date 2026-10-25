@@ -1,0 +1,58 @@
+import type { AppCopy } from "../index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "インストールに関する注意",
+  "capabilitiesCaption": "機能",
+  "unknownCapability": "不明な機能",
+  "capabilities": {
+    "power": "消費電力",
+    "voltage": "電圧",
+    "current": "電流",
+    "temperature": "温度",
+    "fan": "ファン",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "コア別測定値",
+    "webRuntime": "Web 画面ランタイム",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "時間枠",
+    "voltageOffset": "電圧オフセット",
+    "hardwareMonitor": "マザーボードとメモリのセンサー",
+    "memoryTemperature": "メモリ温度",
+    "cpuFanRpm": "CPU ファン回転数",
+    "cpuFanPercent": "CPU ファンの割合",
+    "gpuFanRpm": "GPU ファン回転数",
+    "gpuFanPercent": "GPU ファンの割合",
+    "vendorAdapters": "ノートPCメーカー用アダプター",
+    "gpuClocks": "GPU クロック",
+    "gpuMemory": "ビデオメモリ",
+    "gpuPower": "GPU 消費電力",
+    "gpuTemperature": "GPU 温度",
+    "gpuCooler": "GPU ファンとクーラー",
+    "gpuVoltage": "GPU 電圧",
+    "gpuCurrent": "GPU 電流",
+    "gpuBoardPower": "GPU ボード電力",
+    "gpuHotspot": "GPU ホットスポット温度",
+    "gpuIntake": "GPU 吸気温度",
+    "gpuFan": "GPU ファン"
+  },
+  "installNotes": {
+    "webRuntime": "Microsoft 公式 Evergreen Bootstrapper。インストール後はマシン全体の WebView2 アプリで共有します。",
+    "amdSmu": "署名済み PawnIO ドライバーを明示的にインストールして検証し、PM table 用の RyzenSMU と AMDFamily17 モジュールを取得します。基本パッケージはドライバーを無断で有効化しません。",
+    "intelMsr": "PawnIO を明示的にインストールすると、検証時に IntelMSR を取得します。AMD とシステムドライバーを共有し、モジュールは個別管理します。ファームウェアのロックや署名モジュールの制限を回避しません。",
+    "sensorDriver": "マザーボードとメモリは、明示的にインストールした PawnIO を共有します。公式コアには署名済み LPC、EC、SMBus モジュールが含まれ、GUI やネットワークサービスを起動しません。",
+    "hardwareBridge": "ZenStates-Core を使用する独立した GPL-3.0 ヘルパーです。メインアプリに合わせ必要時に起動・終了し、電力制限と Curve Optimizer の電圧書き込みを行います。",
+    "hardwareMonitor": "製品同梱の MPL-2.0 コアで、対象はマザーボードとメモリのみです。PawnIO が必要で、機能は実際の測定結果に従います。",
+    "notebookFan": "同梱の読み取り専用アダプターで、既存の OEM ドライバー、サービス、DLL を使用します。現在 Mechrevo/Tongfang UWACPI に対応。OEM ドライバーを無断で導入・配布しません。",
+    "driverRuntime": "インストール済みグラフィックスドライバーのランタイムを動的に読み込みます。基本パッケージにメーカーのドライバー DLL は含まれず、機能は実測値に従います。"
+  },
+  "versionFailures": {
+    "no-release": "利用可能なリリースがありません。",
+    "no-stable-release": "利用可能な安定版がありません。",
+    "version-unorderable": "上流のバージョンを確実に並べ替えられないため選択できません。",
+    "timeout": "GitHub への接続がタイムアウトしました。",
+    "network": "GitHub に接続できません。",
+    "invalid-data": "GitHub の応答を解析できません。",
+    "catalog-failure": "リリース一覧を取得できません。再試行してください。"
+  }
+};

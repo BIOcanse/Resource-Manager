@@ -16,15 +16,18 @@ public sealed class FanControlReadingTests
         Assert.Equal(expected, Assert.Single(FanControlCoreClient.ParseFans(document.RootElement, "fixture")).SupportsFirmwareCurveReset);
     }
 
-    [Fact]
-    public void DescriptionPreservesFirmwarePrerequisiteAndTakeoverScope()
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("custom mode required", "fan-firmware-prerequisite")]
+    public void DescriptionPreservesFirmwarePrerequisiteAndTakeoverScope(string? prerequisite, string? expectedCode)
     {
-        using var description = JsonDocument.Parse("""
-            [{"index":0,"name":"CPU","writable":true,"role":"cpu","firmwareCurve":"table",
-              "firmwareCurveRequires":"custom mode required","softwareTakeoverCoversAllFans":true}]
-            """);
+        using var description = JsonSerializer.SerializeToDocument(new[] { new {
+            index = 0, name = "CPU", writable = true, role = "cpu", firmwareCurve = "table",
+            firmwareCurveRequires = prerequisite, softwareTakeoverCoversAllFans = true
+        } });
         var fan = Assert.Single(FanControlCoreClient.ParseFans(description.RootElement, "fixture"));
-        Assert.Equal("custom mode required", fan.FirmwareCurveRequires);
+        Assert.Equal(expectedCode, fan.FirmwareCurveRequires);
+        Assert.Equal(ControlFanRoles.Cpu, fan.Role);
         Assert.True(fan.SoftwareTakeoverCoversAllFans);
         Assert.False(fan.SupportsSoftwareCurve);
     }
@@ -41,7 +44,7 @@ public sealed class FanControlReadingTests
     public void ManualDutyDoesNotMeanMaximumCooling(string json, bool? expected)
     {
         using var document = JsonDocument.Parse(json);
-        var actual = FanControlWriter.ProjectReading(Target, new("fan.lock-maximum", "Boost", "toggle", true), document.RootElement);
+        var actual = FanControlWriter.ProjectReading(Target, new("fan.lock-maximum", "toggle", true), document.RootElement);
         Assert.Equal(expected, actual.Toggle);
     }
 
@@ -52,7 +55,7 @@ public sealed class FanControlReadingTests
     public void RpmPreservesMissingAndZero(string json, double? expected)
     {
         using var document = JsonDocument.Parse(json);
-        var actual = FanControlWriter.ProjectReading(Target, new("fan.rpm", "RPM", "number", false), document.RootElement);
+        var actual = FanControlWriter.ProjectReading(Target, new("fan.rpm", "number", false), document.RootElement);
         Assert.Equal(expected, actual.Number);
         Assert.Equal("RPM", actual.Unit);
     }

@@ -19,6 +19,44 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonMetadataContractTests
 {
+    [Fact]
+    public void OrdinaryOperationAndProcessWireExcludeInternalDiagnosticText()
+    {
+        const string diagnostic = "internal-operation-exception-details";
+        const string fault = "internal-coordinator-fault-details";
+        var time = DateTimeOffset.UnixEpoch;
+        var operation = new ResourceManager.App.Domain.Operations.HostManagerOperationSnapshot(
+            "00000000000000000000000000000001", "component.install", "component:example",
+            new ResourceManager.App.Domain.Operations.HostManagerOperationSubject(TargetId: "example"),
+            "failed", 1, 1, 1, 1, time, time, time, false, null, null,
+            ResourceManager.App.Infrastructure.Operations.HostManagerOperationFeedback.Failure(new IOException(diagnostic)));
+        var state = new ResourceManager.App.Domain.Operations.HostManagerOperationsPublishedState(time, 1, 1,
+            new(false, true, "progress-publication", fault, 1, 1), [operation]);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var wire = JsonSerializer.SerializeToElement(HostManagerOperationWireProjection.Project(state), options);
+        Assert.False(wire.TryGetProperty("faultMessage", out _));
+        Assert.True(wire.GetProperty("persistenceFaulted").GetBoolean());
+        Assert.Equal("progress-publication", wire.GetProperty("faultStage").GetString());
+        var item = Assert.Single(wire.GetProperty("operations").EnumerateArray());
+        foreach (var field in new[] { "title", "result", "error", "diagnostic" })
+            Assert.False(item.TryGetProperty(field, out _));
+        Assert.Equal(5, item.GetProperty("errorMessage").GetProperty("code").GetInt32());
+        Assert.DoesNotContain(diagnostic, wire.GetRawText());
+        Assert.DoesNotContain(fault, wire.GetRawText());
+
+        var process = new ResourceManager.App.Domain.LocalSystem.SystemProcessOperationResult(
+            ResourceManager.App.Domain.LocalSystem.SystemProcessAction.Terminate,
+            [new(42, "example", "Failed", ResourceManager.App.Domain.LocalSystem.SystemProcessOutcome.NativeFailure,
+                ProcessStartKey: "123", NativeErrorCode: 87)]);
+        var processWire = JsonSerializer.SerializeToElement(process, options);
+        Assert.False(processWire.TryGetProperty("message", out _));
+        var processItem = Assert.Single(processWire.GetProperty("items").EnumerateArray());
+        Assert.False(processItem.TryGetProperty("message", out _));
+        Assert.False(processItem.TryGetProperty("diagnostic", out _));
+        Assert.Equal(87, processItem.GetProperty("nativeErrorCode").GetInt32());
+    }
+
     private static readonly Assembly App = typeof(HostManagerPlanCompiler).Assembly;
     private static readonly Assembly ReadWrite = typeof(WindowsMetricConfiguration).Assembly;
 
@@ -28,12 +66,15 @@ public sealed class JsonMetadataContractTests
         {
             (App, "ResourceManager.App.Infrastructure.Settings.JsonAppSettingsStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Settings.JsonDashboardSettingsStore", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Software.JsonManualSoftwareRegistry", "JsonOptions"),
+            (App, "ResourceManager.App.Infrastructure.Control.JsonControlInstanceRegistry", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.JsonOptimizationProtectionStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.GpuPlacement.JsonGpuPlacementProcessHistoryStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerMemoryCleanupAttemptJournal", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerProcessEffectValidationScopeAuthority", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.HostManagerRollbackStateEnvelopeCodec", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfSchedulingControl", "SchedulingPayloadJson"),
+            (App, "ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry.GpuTelemetryWorkerProtocol", "SerializerOptions"),
             (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.JsonDeviceTopologySnapshotStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySemanticComparer", "JsonOptions"),
             (App, "ResourceManager.App.Application.Settings.AppSettingsMigrator", "WebJsonOptions"),
@@ -122,6 +163,11 @@ public sealed class JsonMetadataContractTests
             options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         if (owner is "plan-identity" or "MetricCatalogJsonContext") options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         if (owner == "software-profile") options.PropertyNameCaseInsensitive = true;
+        if (owner.EndsWith("JsonManualSoftwareRegistry", StringComparison.Ordinal))
+        {
+            options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+            options.RespectRequiredConstructorParameters = true;
+        }
         if (owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal))
         {
             options.MaxDepth = 8;
@@ -133,6 +179,8 @@ public sealed class JsonMetadataContractTests
             || owner.EndsWith("JsonDashboardSettingsStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonOptimizationProtectionStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonGpuPlacementProcessHistoryStore", StringComparison.Ordinal)
+            || owner.EndsWith("JsonManualSoftwareRegistry", StringComparison.Ordinal)
+            || owner.EndsWith("JsonControlInstanceRegistry", StringComparison.Ordinal)
             || owner.EndsWith("HostManagerMemoryCleanupAttemptJournal", StringComparison.Ordinal)
             || owner.EndsWith("HostManagerProcessEffectValidationScopeAuthority", StringComparison.Ordinal)) options.WriteIndented = true;
         if (owner == "http-subscription")

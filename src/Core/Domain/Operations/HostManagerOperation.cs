@@ -21,7 +21,7 @@ public sealed record HostManagerOperationSnapshot(
     string Id,
     string Kind,
     string? DomainKey,
-    string? Title,
+    HostManagerOperationSubject? Subject,
     string State,
     ulong ConfigurationGeneration,
     ulong StateRevision,

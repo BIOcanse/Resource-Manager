@@ -89,7 +89,6 @@ public sealed class CpuExclusiveBindingProjectionTests
             .Select(index => new CpuPhysicalCoreModel(
                 $"core:{index}",
                 index,
-                $"Core {index}",
                 index < 2 ? "ccd:0" : "ccd:1",
                 0,
                 100,
@@ -133,8 +132,8 @@ public sealed class CpuExclusiveBindingProjectionTests
             2,
             false,
             [
-                new CpuCcdModel("ccd:0", 0, "CCD 0", null, [0, 1], [0, 1], "test"),
-                new CpuCcdModel("ccd:1", 1, "CCD 1", null, [2, 3], [2, 3], "test")
+                new CpuCcdModel("ccd:0", 0, null, [0, 1], [0, 1], "test"),
+                new CpuCcdModel("ccd:1", 1, null, [2, 3], [2, 3], "test")
             ],
             cores,
             logical,

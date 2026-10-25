@@ -14,7 +14,7 @@ pub fn assert() void {
     assertType(protocol.SubmitInput, 224, &.{
         0,   4,   8,   16,  24,  40,  56,  72, 88, 104, 112, 116, 120, 128, 136,
         144, 152, 160, 168, 176, 184, 192,
-    }, 0xcc0e_f89b_e013_1dae, "SubmitInput");
+    }, 0xc3b0_a1ec_8dd8_4f24, "SubmitInput");
     assertType(protocol.SubmitOutput, 72, &.{ 0, 4, 8, 24, 32, 40, 44, 48 }, 0x00f0_7618_7358_d27d, "SubmitOutput");
     assertType(protocol.CancelInput, 96, &.{ 0, 4, 8, 16, 24, 40, 48, 56, 64 }, 0xe4da_ffb8_66f5_53bd, "CancelInput");
     assertType(protocol.CancelOutput, 64, &.{ 0, 4, 8, 24, 32, 40 }, 0x1f07_23a8_b536_bfe8, "CancelOutput");
@@ -35,7 +35,7 @@ pub fn assert() void {
     assertType(protocol.ProgressInput, 192, &.{
         0,   4,   8,   16, 32, 48, 56, 64, 72, 76, 80, 88, 96, 104, 120, 136,
         152, 160, 168,
-    }, 0x685c_824b_171a_8a2b, "ProgressInput");
+    }, 0x1738_7005_3cbb_a677, "ProgressInput");
     assertType(protocol.SnapshotOutput, 120, &.{
         0, 4, 8, 16, 24, 32, 40, 48, 56, 60, 64, 68, 72, 76, 80, 88,
     }, 0x7955_8aec_d431_e323, "SnapshotOutput");
@@ -44,7 +44,7 @@ pub fn assert() void {
         0,   4,   8,   24,  40,  56,  72,  88,  104, 120, 136, 144, 152, 160, 168,
         176, 184, 192, 200, 208, 216, 224, 228, 232, 236, 240, 248, 256, 264, 272,
         280, 284, 288, 296, 304, 312, 328, 344, 360, 368, 376, 384,
-    }, 0xa390_8d1e_d0e7_f80c, "OperationOutput");
+    }, 0xa327_aa41_d2c4_e1ac, "OperationOutput");
     assertType(protocol.PersistenceInput, 64, &.{ 0, 4, 8, 16, 24, 32 }, 0xf392_24d0_0a28_e516, "PersistenceInput");
     assertType(protocol.PersistenceImportInput, 96, &.{
         0, 4, 8, 16, 24, 32, 40, 56, 64,
@@ -87,7 +87,7 @@ pub fn expect() !void {
     try expectType(protocol.SubmitInput, 224, &.{
         0,   4,   8,   16,  24,  40,  56,  72, 88, 104, 112, 116, 120, 128, 136,
         144, 152, 160, 168, 176, 184, 192,
-    }, 0xcc0e_f89b_e013_1dae);
+    }, 0xc3b0_a1ec_8dd8_4f24);
     try expectType(protocol.SubmitOutput, 72, &.{ 0, 4, 8, 24, 32, 40, 44, 48 }, 0x00f0_7618_7358_d27d);
     try expectType(protocol.CancelInput, 96, &.{ 0, 4, 8, 16, 24, 40, 48, 56, 64 }, 0xe4da_ffb8_66f5_53bd);
     try expectType(protocol.CancelOutput, 64, &.{ 0, 4, 8, 24, 32, 40 }, 0x1f07_23a8_b536_bfe8);
@@ -108,7 +108,7 @@ pub fn expect() !void {
     try expectType(protocol.ProgressInput, 192, &.{
         0,   4,   8,   16, 32, 48, 56, 64, 72, 76, 80, 88, 96, 104, 120, 136,
         152, 160, 168,
-    }, 0x685c_824b_171a_8a2b);
+    }, 0x1738_7005_3cbb_a677);
     try expectType(protocol.SnapshotOutput, 120, &.{
         0, 4, 8, 16, 24, 32, 40, 48, 56, 60, 64, 68, 72, 76, 80, 88,
     }, 0x7955_8aec_d431_e323);
@@ -117,7 +117,7 @@ pub fn expect() !void {
         0,   4,   8,   24,  40,  56,  72,  88,  104, 120, 136, 144, 152, 160, 168,
         176, 184, 192, 200, 208, 216, 224, 228, 232, 236, 240, 248, 256, 264, 272,
         280, 284, 288, 296, 304, 312, 328, 344, 360, 368, 376, 384,
-    }, 0xa390_8d1e_d0e7_f80c);
+    }, 0xa327_aa41_d2c4_e1ac);
     try expectType(protocol.PersistenceInput, 64, &.{ 0, 4, 8, 16, 24, 32 }, 0xf392_24d0_0a28_e516);
     try expectType(protocol.PersistenceImportInput, 96, &.{
         0, 4, 8, 16, 24, 32, 40, 56, 64,
@@ -148,7 +148,7 @@ pub fn expect() !void {
 }
 
 pub fn assertValues() void {
-    assertValue(protocol.abi_version, 0x0001_0000, "abi_version");
+    assertValue(protocol.abi_version, 0x0002_0000, "abi_version");
     assertValue(protocol.no_slot, 0xffff_ffff, "no_slot");
 
     assertValue(@intFromEnum(protocol.OperationState.queued), 1, "OperationState.queued");
@@ -185,11 +185,11 @@ pub fn assertValues() void {
 
     assertValue(protocol.ConfigFlags.known, 0, "ConfigFlags.known");
     assertValue(protocol.SubmitValid.domain, 1, "SubmitValid.domain");
-    assertValue(protocol.SubmitValid.title, 2, "SubmitValid.title");
+    assertValue(protocol.SubmitValid.subject, 2, "SubmitValid.subject");
     assertValue(protocol.SubmitValid.request, 4, "SubmitValid.request");
     assertValue(protocol.SubmitValid.known, 7, "SubmitValid.known");
     assertValue(protocol.OperationFlags.domain_valid, 1, "OperationFlags.domain_valid");
-    assertValue(protocol.OperationFlags.title_valid, 2, "OperationFlags.title_valid");
+    assertValue(protocol.OperationFlags.subject_valid, 2, "OperationFlags.subject_valid");
     assertValue(protocol.OperationFlags.request_valid, 4, "OperationFlags.request_valid");
     assertValue(protocol.OperationFlags.result_valid, 8, "OperationFlags.result_valid");
     assertValue(protocol.OperationFlags.error_valid, 16, "OperationFlags.error_valid");
@@ -217,7 +217,7 @@ pub fn assertValues() void {
     assertValue(protocol.ProgressValid.bytes_total, 4, "ProgressValid.bytes_total");
     assertValue(protocol.ProgressValid.speed_bytes_per_second, 8, "ProgressValid.speed_bytes_per_second");
     assertValue(protocol.ProgressValid.stage, 16, "ProgressValid.stage");
-    assertValue(protocol.ProgressValid.message, 32, "ProgressValid.message");
+    assertValue(protocol.ProgressValid.detail_fact, 32, "ProgressValid.detail_fact");
     assertValue(protocol.ProgressValid.checkpoint, 64, "ProgressValid.checkpoint");
     assertValue(protocol.ProgressValid.known, 0x7f, "ProgressValid.known");
     assertValue(protocol.SnapshotFlags.next_wake_valid, 1, "SnapshotFlags.next_wake_valid");
@@ -226,7 +226,7 @@ pub fn assertValues() void {
 }
 
 pub fn expectValues() !void {
-    try std.testing.expectEqual(@as(u32, 0x0001_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x0002_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(u32, 0xffff_ffff), protocol.no_slot);
     try expectEnum(protocol.OperationState, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
     try expectEnum(protocol.ActionKind, &.{ 1, 2, 3 });
@@ -234,10 +234,10 @@ pub fn expectValues() !void {
     try expectEnum(protocol.CompletionOutcome, &.{ 1, 2, 3, 4, 5 });
 
     try std.testing.expectEqual(@as(u64, 0), protocol.ConfigFlags.known);
-    try expectU64(&.{ 1, 2, 4, 7 }, &.{ protocol.SubmitValid.domain, protocol.SubmitValid.title, protocol.SubmitValid.request, protocol.SubmitValid.known });
+    try expectU64(&.{ 1, 2, 4, 7 }, &.{ protocol.SubmitValid.domain, protocol.SubmitValid.subject, protocol.SubmitValid.request, protocol.SubmitValid.known });
     try expectU64(&.{ 1, 2, 4, 8, 16, 32, 64, 128, 256, 0x1ff }, &.{
         protocol.OperationFlags.domain_valid,
-        protocol.OperationFlags.title_valid,
+        protocol.OperationFlags.subject_valid,
         protocol.OperationFlags.request_valid,
         protocol.OperationFlags.result_valid,
         protocol.OperationFlags.error_valid,
@@ -262,7 +262,7 @@ pub fn expectValues() !void {
         protocol.ProgressValid.bytes_total,
         protocol.ProgressValid.speed_bytes_per_second,
         protocol.ProgressValid.stage,
-        protocol.ProgressValid.message,
+        protocol.ProgressValid.detail_fact,
         protocol.ProgressValid.checkpoint,
         protocol.ProgressValid.known,
     });

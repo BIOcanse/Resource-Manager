@@ -148,7 +148,7 @@ public sealed class ControlActualStateReaderTests
             Interlocked.Increment(ref Reads);
             return new([new ControlObject("device", ControlObjectKinds.Gpu, "GPU",
                 new ControlObjectPlatform(ControlOperatingSystems.Windows, ControlVendors.Nvidia),
-                [new ControlCapability("power", "Power", ControlValueKinds.Number, Supported: true)])],
+                [new ControlCapability("power", ControlValueKinds.Number, Supported: true)])],
                 DateTimeOffset.UnixEpoch);
         }
     }

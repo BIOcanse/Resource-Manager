@@ -47,8 +47,6 @@ public sealed partial class ComponentManager : IComponentManager
         var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
         var statuses = ComponentCatalog.Definitions
             .Select(definition => BuildStatus(definition, dependencyStatuses, snapshot))
-            .OrderBy(static item => item.Definition.Category, StringComparer.Ordinal)
-            .ThenBy(static item => item.Definition.Name, StringComparer.Ordinal)
             .ToArray();
         inventoryRevisionOwner?.ObserveComponents(windowsSid, statuses);
         return statuses;

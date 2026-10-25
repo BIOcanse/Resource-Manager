@@ -9,6 +9,7 @@ import {
 } from "../../../ui/primitives/Dialog.tsx";
 import { normalizeSoftwareKind, textOrEmpty } from "../../../utils";
 import { isUnclassifiedSoftware } from "../../../presentation/softwareClassification.ts";
+import { softwareRecordName } from "../../../presentation/softwareFacts.ts";
 import { StandardSelect } from "../../../components/StandardSelect";
 
 interface ManualSoftwareModalProps {
@@ -156,7 +157,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
                         searchPlaceholder={uiText.manualSoftwareModal.searchSoftware}
                         options={candidates().map((item) => ({
                           value: item.id,
-                          label: `${item.name} · ${candidateKindLabel(item)}`
+                          label: `${softwareRecordName(item)} · ${candidateKindLabel(item)}`
                         }))}
                         onChange={setSelectedSoftwareId}
                       />
@@ -230,5 +231,5 @@ function candidateMeta(item: SoftwareRecord) {
 function candidateKindLabel(item: SoftwareRecord) {
   return isUnclassifiedSoftware(item)
     ? uiText.softwareKind.Unclassified
-    : softwareDisplayKindLabel(item.kind, item.displayKind);
+    : softwareDisplayKindLabel(item.kind);
 }

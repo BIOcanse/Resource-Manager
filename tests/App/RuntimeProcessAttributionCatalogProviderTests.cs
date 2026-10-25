@@ -942,12 +942,10 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             id,
             name,
             SoftwareKinds.Other,
-            "other",
             "manual",
-            ["test"],
+            [],
             [rootPath],
-            "",
-            new SoftwareOperationCapabilities(false, "None", "不可卸载", ""),
+            new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
             null);
     }
 

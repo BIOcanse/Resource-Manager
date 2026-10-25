@@ -36,7 +36,7 @@ public sealed class SoftwareRuntimeReminderTests
             item => item.Id == runtime.Id).Issues!).Kind);
         foreach (var category in new[] { SoftwareKinds.Other, SoftwareKinds.Game, SoftwareKinds.HighPerformance })
         {
-            var manual = new ManualSoftwareRecord("manual:app", "Chosen application name", category, category, "manual", [], [], "",
+            var manual = new ManualSoftwareRecord("manual:app", "Chosen application name", category, [],
                 runtime.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
             view = SoftwareRegistryViewTests.CreateRuntimeReminderView([manual]);
             var classified = await view.GetSoftwareAsync(null, default, [runtime]);
@@ -82,8 +82,8 @@ public sealed class SoftwareRuntimeReminderTests
         Assert.Single(await view.RefreshSoftwareAsync(null, default, [runtime with { Id = installed.Id }]),
             item => item.Id != RuntimeAttributionIds.ResourceManagerSelf);
 
-        var manual = new ManualSoftwareRecord("manual:launcher", "App", SoftwareKinds.Other, "other", "manual", [],
-            installed.RootPaths, "", installed.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var manual = new ManualSoftwareRecord("manual:launcher", "App", SoftwareKinds.Other,
+            installed.RootPaths, installed.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         view = SoftwareRegistryViewTests.CreateRuntimeReminderView([manual], [installed]);
         records = await view.GetSoftwareAsync(null, default, [runtime]);
         Assert.Equal(2, records.Count(item => item.Id != RuntimeAttributionIds.ResourceManagerSelf));
@@ -104,7 +104,7 @@ public sealed class SoftwareRuntimeReminderTests
         var installed = new InstalledSoftwareEntry(runtime.Id, "App", null, null, null, [], null, @"HKLM\App");
         view = SoftwareRegistryViewTests.CreateRuntimeReminderView(installed: [installed]);
         Assert.Equal(source, Assert.Single(await view.RefreshSoftwareAsync(null, default, [runtime]), item => item.Id == runtime.Id).CategorySource);
-        var manual = new ManualSoftwareRecord("manual:app", "App", SoftwareKinds.Other, "other", "manual", [], [], "",
+        var manual = new ManualSoftwareRecord("manual:app", "App", SoftwareKinds.Other, [],
             runtime.Id, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         view = SoftwareRegistryViewTests.CreateRuntimeReminderView([manual], [installed]);
         var classified = Assert.Single(await view.GetSoftwareAsync(null, default, [runtime]), item => item.Id == runtime.Id);

@@ -287,9 +287,10 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             ClockInstanceId = clockInstanceId,
             Flags = 0
         };
-        RequireOk(
-            session.ImportPersistence(in input, in importedHeader, image.Records),
-            "import persistence");
+        var status = session.ImportPersistence(in input, in importedHeader, image.Records);
+        if (status is NativeOperationCoordinatorStatus.InvalidArgument or NativeOperationCoordinatorStatus.AbiMismatch or NativeOperationCoordinatorStatus.StaleFrame)
+            throw new InvalidDataException($"The stored operation native image was rejected with raw status {(int)status}.");
+        RequireOk(status, "import persistence");
         nextSubmitEpoch = image.Header.LastSubmitEpoch;
         nextRequestEpoch = image.Header.LastRequestEpoch;
         nextFeedbackEpoch = image.Header.LastFeedbackEpoch;

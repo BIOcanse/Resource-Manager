@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Operations;
 
@@ -40,38 +40,32 @@ public static class ComponentProviderStates
 
 public sealed record ComponentDefinition(
     string Id,
-    string Name,
     string Vendor,
-    string Category,
-    string Purpose,
     string SourcePageUrl,
     string? ExternalTermsUrl,
     string ManagementRole,
     bool IsBundled,
     bool RequiresExternalTermsAcknowledgement,
     bool RequiresElevation,
-    IReadOnlyList<ComponentCapability> Capabilities,
-    string InstallNote);
+    IReadOnlyList<ComponentCapability> Capabilities);
 
 public sealed record ComponentCapability(
     string Id,
-    string Label,
     string ProviderId,
     string ProviderKind);
 
 public sealed record ComponentProviderStatus(
     string ProviderId,
-    string Name,
     string Vendor,
     string ProviderKind,
     string State,
-    string Message,
+    BackendMessage Message,
+    string? RuntimePath,
     IReadOnlyList<string> Capabilities);
 
 public sealed record ComponentStatus(
     ComponentDefinition Definition,
     string State,
-    string StateLabel,
     string InstallRoot,
     string InstallerDirectory,
     string? InstallerPath,
@@ -83,7 +77,7 @@ public sealed record ComponentStatus(
     bool CanVerify,
     IReadOnlyList<ComponentProviderStatus> Providers,
     BackendMessage Message,
-    /// <summary>安装器来源形态，界面据此如实标注按钮并决定要不要问版本。</summary>
+    /// <summary>目录声明的安装器来源形态。</summary>
     string InstallerSourceKind = DependencyInstallerSourceKinds.Manual);
 
 /// <summary>组件获取动作请求。<c>VersionChoice</c> 为 null 时按已验证版本处理。</summary>

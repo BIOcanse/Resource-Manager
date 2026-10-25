@@ -16,7 +16,7 @@ public sealed record ControlInstance(
     string Id,
     string Kind,
     /// <summary>登记时看到的名字。设备不在场时界面就显示这个。</summary>
-    string DisplayName,
+    string? ReportedName,
     ControlObjectPlatform Platform,
     /// <summary>显卡的接法；非显卡为 null。</summary>
     string? GpuAttachment,
@@ -33,7 +33,9 @@ public sealed record ControlInstance(
     /// 登记时生成的默认配置：各项能力的默认值。
     /// 「恢复默认」就是把它当期望状态施加下去。
     /// </summary>
-    IReadOnlyList<ControlSetting> DefaultSettings);
+    IReadOnlyList<ControlSetting> DefaultSettings,
+    int? Ordinal = null,
+    int? AdapterIndex = null);
 
 /// <summary>登记表加上"现在谁在场"。</summary>
 public sealed record ControlInstanceView(
@@ -49,5 +51,6 @@ public sealed record ControlInstanceCatalog(
 public sealed record ControlInstanceRegistryFile(
     IReadOnlyList<ControlInstance> Instances)
 {
+    public int FormatVersion { get; init; } = 2;
     public static ControlInstanceRegistryFile Empty { get; } = new([]);
 }

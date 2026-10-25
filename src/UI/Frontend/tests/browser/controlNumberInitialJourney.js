@@ -6,10 +6,10 @@ export default async function controlNumberInitialJourney(page, baseUrl) {
   const writes = [];
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B", "Fixed"].map(id => ({
-      id, kind: "fan", displayName: `Fan ${id}`, isControllable: id !== "Fixed",
+      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: id !== "Fixed",
       platform: { operatingSystem: "windows", vendor: "test" },
-      capabilities: [{ id: "fan.duty", label: "Duty", valueKind: "number", supported: id !== "Fixed",
-        unavailableReason: id === "Fixed" ? "Fixed range" : null,
+      capabilities: [{ id: "fan.duty", valueKind: "number", supported: id !== "Fixed",
+        unavailableReason: id === "Fixed" ? { code: "control-range-fixed" } : null,
         unavailableKind: id === "Fixed" ? "platform" : null,
         requiredAccessLevel: "normal", range: { minimum: 0, maximum: id === "Fixed" ? 0 : 100,
           step: 1, unit: "%", defaultValue: null } }]

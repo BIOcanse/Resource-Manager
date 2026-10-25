@@ -10,11 +10,15 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
 {
     private readonly AmdDesktopGpuControlResource resource;
+    private readonly ILogger<AmdDesktopGpuControlWriter>? logger;
     internal AmdDesktopGpuControlResource Resource => resource;
-    public AmdDesktopGpuControlWriter(IHostEnvironment environment) : this(new AdlxTuningHardware(),
-        Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "amd-gpu-baselines.json")) { }
-    internal AmdDesktopGpuControlWriter(IAdlxTuningHardware hardware, string baselinePath)
-        => resource = new(hardware, new(baselinePath));
+    public AmdDesktopGpuControlWriter(IHostEnvironment environment, ILogger<AmdDesktopGpuControlWriter>? logger = null) : this(new AdlxTuningHardware(),
+        Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "amd-gpu-baselines.json"), logger) { }
+    internal AmdDesktopGpuControlWriter(IAdlxTuningHardware hardware, string baselinePath, ILogger<AmdDesktopGpuControlWriter>? logger = null)
+    {
+        resource = new(hardware, new(baselinePath));
+        this.logger = logger;
+    }
     internal static int? Field(string id) => AmdDesktopGpuControlFormatter.Field(id) is { } field ? (int)field : null;
     private static AmdDesktopGpuControlTarget Target(ControlObject target)
         => new(target.AdapterIndex,
@@ -30,8 +34,9 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
         if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field) return ControlWriteAvailability.NotMine;
         var value = resource.Probe(Target(target), field);
         if (!value.IsAdmitted) return ControlWriteAvailability.NotMine;
+        if (value.Error is { } detail) logger?.LogDebug("ADLX control probe rejected {Object} / {Capability}: {Detail}", target.Id, capability.Id, detail);
         return value.CanWrite ? ControlWriteAvailability.Yes(new(value.Range!.Minimum, value.Range.Maximum, value.Range.Step, value.Range.Unit))
-            : ControlWriteAvailability.No(value.Error!, kind: value.FailureKind switch
+            : ControlWriteAvailability.No("adlx." + value.FailureKind.ToString(), kind: value.FailureKind switch
             {
                 AmdDesktopGpuControlFailureKind.Component => ControlUnavailableKinds.Component,
                 AmdDesktopGpuControlFailureKind.NotImplemented => ControlUnavailableKinds.NotImplemented,
@@ -42,21 +47,15 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (AmdDesktopGpuControlFormatter.Field(capability.Id) is not { } field)
-            return new(target.Id, capability.Id, ControlApplyStatuses.Unsupported, "此路由仅支持固定式 AMD 独显。");
+            return new(target.Id, capability.Id, ControlApplyStatuses.Unsupported, "adlx.RouteRejected");
         var value = await resource.WriteAsync(Target(target), field, new(setting.Number, setting.Toggle), cancellationToken);
+        if (value.Error is { } detail) logger?.LogWarning("ADLX control write failed {Object} / {Capability}: {Detail}", target.Id, capability.Id, detail);
         return new(target.Id, capability.Id, value.Status switch
         {
             AmdDesktopGpuControlStatus.Applied => ControlApplyStatuses.Applied,
             AmdDesktopGpuControlStatus.Unsupported => ControlApplyStatuses.Unsupported,
             _ => ControlApplyStatuses.Failed
-        }, value.Message switch
-        {
-            AmdDesktopGpuControlMessage.Applied => "已写入并回读。",
-            AmdDesktopGpuControlMessage.RouteRejected => "此路由仅支持固定式 AMD 独显。",
-            AmdDesktopGpuControlMessage.InvalidRangeOrStep => "数值不符合 ADLX 当前范围和步长。",
-            AmdDesktopGpuControlMessage.ReadbackMismatch => "显卡身份或调节值回读不一致。",
-            _ => value.Error
-        })
+        }, "adlx." + value.Message.ToString())
         {
             Evidence = value.Status == AmdDesktopGpuControlStatus.Applied
                 ? new(FieldWriteEvidence.ExactIntegerAndPnpReadback) : null
@@ -81,6 +80,3 @@ public sealed class AmdDesktopGpuControlWriter : IControlWriter, IDisposable
     }
     public void Dispose() => resource.Dispose();
 }
-
-
-

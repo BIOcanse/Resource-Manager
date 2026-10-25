@@ -24,7 +24,7 @@ public sealed class FanControlWriter(
     internal const string CurveCapabilityId = "fan.curve";
     internal const string DutyCapabilityId = "fan.duty";
     internal const string RpmCapabilityId = "fan.rpm";
-    internal const string RestoreProtocolRequired = "风扇组件不支持原表恢复，请先更新组件。";
+    internal const string RestoreProtocolRequired = "fan-restore-protocol-required";
 
     /// <summary>
     /// 机身风扇的对象编号前缀，后面跟的是**核心报的那个风扇序号**。
@@ -34,9 +34,9 @@ public sealed class FanControlWriter(
     /// </summary>
     internal const string ObjectIdPrefix = "fan:oem";
 
-    private const string CoreSilent = "风扇控制核心没应答。";
-    private const string NoChannel = "没有可用的风扇控制通道。";
-    private const string NoDutyControl = "这台机器的风扇只有全速和自动两档。";
+    private const string CoreSilent = "fan-core-silent";
+    private const string NoChannel = "fan-channel-missing";
+    private const string NoDutyControl = "fan-duty-unsupported";
 
     /// <summary>机身风扇走风扇控制核心；具体哪条底层通道由核心自己报（见对象的词条）。</summary>
     public string? ChannelOf(ControlObject target, string capabilityId)
@@ -92,11 +92,11 @@ public sealed class FanControlWriter(
         }
         if (capability.Id == RpmCapabilityId)
         {
-            return ControlWriteAvailability.No("转速为监测值。", canRead: true);
+            return ControlWriteAvailability.No("fan-rpm-read-only", canRead: true);
         }
         if (!fan.Writable)
         {
-            return ControlWriteAvailability.No("固件没有声明支持风扇控制，只读。", canRead: true);
+            return ControlWriteAvailability.No("fan-firmware-read-only", canRead: true);
         }
         if (fan.FirmwareCurve is not null && !fan.SupportsFirmwareCurveReset)
             return ControlWriteAvailability.No(RestoreProtocolRequired,
@@ -114,7 +114,7 @@ public sealed class FanControlWriter(
             if (fan.FirmwareCurve is null && !fan.SupportsSoftwareCurve)
             {
                 return ControlWriteAvailability.No(
-                    "这条通道只能切自动和全速，给不了曲线。",
+                    "fan-curve-unsupported",
                     kind: ControlUnavailableKinds.Platform);
             }
             /*
@@ -131,7 +131,7 @@ public sealed class FanControlWriter(
             if (fan.FirmwareCurveRequires is { } requirement && !fan.SupportsSoftwareCurve)
             {
                 return ControlWriteAvailability.No(
-                    requirement,
+                    "fan-firmware-prerequisite",
                     kind: ControlUnavailableKinds.Prerequisite,
                     canRead: true);
             }
@@ -239,7 +239,7 @@ public sealed class FanControlWriter(
                 "风扇{Action}失败：{Error}",
                 wantsMaximum ? "全速" : "交还固件",
                 Text(response, "error") ?? "没有应答");
-            return Failed(target, capability, Text(response, "error") ?? CoreSilent);
+            return Failed(target, capability, CoreSilent);
         }
 
         // 回读核对：非自动归属也可能是定速或软件曲线，不能独自确认全速。
@@ -248,11 +248,11 @@ public sealed class FanControlWriter(
             || automatic.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || automatic.GetBoolean() == wantsMaximum)
         {
-            return Failed(target, capability, "下发了，但风扇的控制归属没有跟着变。");
+            return Failed(target, capability, "fan-ownership-unverified");
         }
         if (wantsMaximum && ProjectReading(target, capability, fan).Toggle != true)
         {
-            return Failed(target, capability, "写下去了，但回读的值没有变。");
+            return Failed(target, capability, "control-readback-mismatch");
         }
 
         return new ControlApplyOutcome(
@@ -276,7 +276,7 @@ public sealed class FanControlWriter(
     {
         if (setting.Curve is not { Count: > 0 } curve)
         {
-            return Failed(target, capability, "这条设定里没有曲线。");
+            return Failed(target, capability, "fan-curve-required");
         }
 
         var fanIndex = description.Index;
@@ -296,12 +296,12 @@ public sealed class FanControlWriter(
                     : samples.ContainsKey("cpu");
                 if (!hasRequiredTemperature
                     || !await core.PushTemperaturesAsync(samples, cancellationToken, skipIfBusy: false).ConfigureAwait(false))
-                    return Failed(target, capability, "还没有收到这个风扇要看的温度，软件曲线跑不起来。");
+                    return Failed(target, capability, "fan-temperature-missing");
             }
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 logger?.LogWarning(error, "软件风扇曲线启动前读取温度失败。");
-                return Failed(target, capability, "还没有收到这个风扇要看的温度，软件曲线跑不起来。");
+                return Failed(target, capability, "fan-temperature-missing");
             }
         }
 
@@ -327,13 +327,13 @@ public sealed class FanControlWriter(
         {
             var reason = Text(response, "error") ?? CoreSilent;
             logger?.LogWarning("写风扇曲线失败：{Error}", reason);
-            return Failed(target, capability, reason);
+            return Failed(target, capability, "fan-core-rejected");
         }
 
         var readBack = FanControlCoreClient.ParseCurveReceipt(result);
         if (readBack is null)
         {
-            return Failed(target, capability, "写下去了，但回读的值没有变。");
+            return Failed(target, capability, "control-readback-mismatch");
         }
 
         return new ControlApplyOutcome(
@@ -396,7 +396,7 @@ public sealed class FanControlWriter(
                 : new ControlActualValue(
                     target.Id,
                     capability.Id,
-                    UnreadableReason: "这条通道没有报出占空比。");
+                    UnreadableReason: "fan-duty-unreadable");
         }
 
         // Manual ownership alone is not full speed: fixed duty and software curves also own it.
@@ -425,7 +425,7 @@ public sealed class FanControlWriter(
     {
         if (setting.Number is not { } percent || !double.IsFinite(percent))
         {
-            return Failed(target, capability, "定速要一个百分比，收到的不是。");
+            return Failed(target, capability, "control-number-required");
         }
 
         var response = await core.SendAsync(
@@ -439,7 +439,7 @@ public sealed class FanControlWriter(
                 fanIndex,
                 percent,
                 Text(response, "error") ?? "没有应答");
-            return Failed(target, capability, Text(response, "error") ?? CoreSilent);
+            return Failed(target, capability, CoreSilent);
         }
 
         return new ControlApplyOutcome(
@@ -528,6 +528,6 @@ public sealed class FanControlWriter(
     private static ControlApplyOutcome Failed(
         ControlObject target,
         ControlCapability capability,
-        string reason)
+        ControlApplyReason reason)
         => new(target.Id, capability.Id, ControlApplyStatuses.Failed, reason);
 }

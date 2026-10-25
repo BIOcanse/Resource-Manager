@@ -10,7 +10,7 @@ public sealed class IntelCpuControlWriterTests : IDisposable
     private string Baseline => Path.Combine(folder, "baseline.json");
     private static ControlObject Cpu(string vendor = ControlVendors.Intel) => new("cpu:test", ControlObjectKinds.Cpu,
         "Test CPU", new(ControlOperatingSystems.Windows, vendor), []);
-    private static ControlCapability Cap(string id) => new(id, id, ControlValueKinds.Number, false,
+    private static ControlCapability Cap(string id) => new(id, ControlValueKinds.Number, false,
         Range: id.Contains("voltage") ? new(-250, 100, 1, "mV") : new(1, 300, 1, id.EndsWith("window") ? "s" : "W"));
     [Fact]
     public void ProbeDoesNotWriteSettingsOrCreateBaselineAndWrongVendorDoesNotOpen()
@@ -97,7 +97,9 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         Assert.False(writer.Probe(Cpu(), Cap("cpu.core-voltage-offset")).CanWrite);
         Assert.Equal(0, io.SettingWrites);
         using var missing = new IntelCpuControlWriter(() => throw new FileNotFoundException("module missing"), Baseline);
-        Assert.Contains("missing", missing.Probe(Cpu(), Cap("cpu.power-limit")).Reason);
+        var unavailable = missing.Probe(Cpu(), Cap("cpu.power-limit"));
+        Assert.Equal("control-helper-missing", unavailable.Reason?.Code);
+        Assert.Equal(ControlUnavailableKinds.Component, unavailable.UnavailableKind);
     }
     [Theory]
     [InlineData("cpu.power-limit-mmio")]
@@ -133,7 +135,7 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         public void Dispose() { }
     }
     [Fact]
-    public async Task DisplayNameChangeDoesNotLoseAnExistingRestoreBaseline()
+    public async Task ReportedNameChangeDoesNotLoseAnExistingRestoreBaseline()
     {
         var io = new Hardware();
         var original = io.Limits;
@@ -141,7 +143,7 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         using (var writer = new IntelCpuControlWriter(() => io, Baseline))
             Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(Cpu(), capability, new(capability.Id, Number: 45), default)).Status);
         using var restarted = new IntelCpuControlWriter(() => io, Baseline);
-        Assert.True(await restarted.RestoreAsync(Cpu() with { DisplayName = "Localized CPU name" }, capability, new HashSet<string>(), default));
+        Assert.True(await restarted.RestoreAsync(Cpu() with { ReportedName = "Renamed CPU" }, capability, new HashSet<string>(), default));
         Assert.Equal(original, io.Limits);
     }
 
@@ -164,7 +166,7 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         io.Limits = IntelRaplEncoding.SetPower(io.Limits, io.Units, false, 45);
         var before = io.Limits;
         using var writer = new IntelCpuControlWriter(() => io, Baseline);
-        Assert.Equal(!conflict, await writer.RestoreAsync(Cpu() with { DisplayName = "Third name" }, capability, new HashSet<string>(), default));
+        Assert.Equal(!conflict, await writer.RestoreAsync(Cpu() with { ReportedName = "Third name" }, capability, new HashSet<string>(), default));
         Assert.Equal(conflict ? before : original, io.Limits);
         if (conflict) { Assert.Equal(stored, File.ReadAllText(Baseline)); Assert.Equal(0, io.SettingWrites); }
         else Assert.Empty(System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, ulong>>(File.ReadAllText(Baseline))!);

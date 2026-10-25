@@ -2,6 +2,7 @@ import type {
   BackendMessage,
   OperationProgress,
   OperationSnapshot,
+  OperationSubject,
   OperationState
 } from "../../types.ts";
 import {
@@ -22,7 +23,7 @@ import {
   isCanonicalUInt64Decimal
 } from "./uint64Decimal.ts";
 
-export const operationsStateSchema = "host-manager.operations.state.v1" as const;
+export const operationsStateSchema = "host-manager.operations.state.v2" as const;
 
 export interface HostManagerOperationsState {
   readonly schema: typeof operationsStateSchema;
@@ -32,7 +33,6 @@ export interface HostManagerOperationsState {
   readonly ready: boolean;
   readonly persistenceFaulted: boolean;
   readonly faultStage: string | null;
-  readonly faultMessage: string | null;
   readonly operations: readonly OperationSnapshot[];
 }
 
@@ -57,7 +57,7 @@ const terminalStates = new Set<OperationState>([
 ]);
 
 export const operationSnapshotDecoder = defineResponseDecoder<OperationSnapshot>(
-  "host-manager.operation.v1",
+  "host-manager.operation.v2",
   (value) => decodeOperationSnapshot(value, "$"));
 
 export const operationsStateDecoder = defineResponseDecoder<HostManagerOperationsState>(
@@ -105,10 +105,6 @@ export const operationsStateDecoder = defineResponseDecoder<HostManagerOperation
         record.persistenceFaulted,
         "$.persistenceFaulted"),
       faultStage: requireNullable(record.faultStage, "$.faultStage", requireString),
-      faultMessage: requireNullable(
-        record.faultMessage,
-        "$.faultMessage",
-        requireString),
       operations: Object.freeze(operations)
     });
   });
@@ -159,7 +155,7 @@ function decodeOperationSnapshot(value: unknown, path: string): OperationSnapsho
     id,
     kind: requireNonEmptyString(record.kind, `${path}.kind`),
     domainKey: requireNullable(record.domainKey, `${path}.domainKey`, requireString),
-    title: requireNullable(record.title, `${path}.title`, requireString),
+    subject: requireNullable(record.subject, `${path}.subject`, decodeSubject),
     state,
     configurationGeneration: requireUInt64Decimal(
       record.configurationGeneration,
@@ -179,8 +175,6 @@ function decodeOperationSnapshot(value: unknown, path: string): OperationSnapsho
       record.progress,
       `${path}.progress`,
       decodeProgress),
-    result: requireNullable(record.result, `${path}.result`, requireString),
-    error: requireNullable(record.error, `${path}.error`, requireString),
     resultCode: record.resultCode === undefined ? null : requireNullable(record.resultCode, `${path}.resultCode`, requireString),
     resultMessage: record.resultMessage === undefined ? null : requireNullable(record.resultMessage, `${path}.resultMessage`, decodeMessage),
     errorMessage: record.errorMessage === undefined ? null : requireNullable(record.errorMessage, `${path}.errorMessage`, decodeMessage)
@@ -221,8 +215,17 @@ function decodeProgress(value: unknown, path: string): OperationProgress {
       record.speedBytesPerSecond,
       `${path}.speedBytesPerSecond`,
       requireUInt64Decimal),
-    stage: requireNullable(record.stage, `${path}.stage`, requireString),
-    message: requireNullable(record.message, `${path}.message`, requireString)
+    stage: requireNullable(record.stage, `${path}.stage`, (value, path) => requireOneOf(value, path, ["Download"] as const))
+  });
+}
+
+function decodeSubject(value: unknown, path: string): OperationSubject {
+  const record = requireRecord(value, path);
+  return Object.freeze({
+    targetId: requireNullable(record.targetId, `${path}.targetId`, requireNonEmptyString),
+    scope: requireNullable(record.scope, `${path}.scope`, requireNonEmptyString),
+    mode: requireNullable(record.mode, `${path}.mode`, requireNonEmptyString),
+    targetPath: requireNullable(record.targetPath, `${path}.targetPath`, requireNonEmptyString)
   });
 }
 

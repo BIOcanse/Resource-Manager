@@ -1,0 +1,58 @@
+import type { AppCopy } from "../index.ts";
+export const componentCatalog: AppCopy["componentCatalog"] = {
+  "installationCaption": "Notas de instalación",
+  "capabilitiesCaption": "Funciones",
+  "unknownCapability": "Función desconocida",
+  "capabilities": {
+    "power": "Potencia",
+    "voltage": "Voltaje",
+    "current": "Corriente",
+    "temperature": "Temperatura",
+    "fan": "Ventiladores",
+    "smuPmTable": "SMU PM table",
+    "stapm": "STAPM",
+    "perCore": "Lecturas por núcleo",
+    "webRuntime": "Entorno de interfaz web",
+    "pl1": "PL1",
+    "pl2": "PL2",
+    "timeWindow": "Ventana de tiempo",
+    "voltageOffset": "Desplazamiento de voltaje",
+    "hardwareMonitor": "Sensores de placa base y memoria",
+    "memoryTemperature": "Temperatura de memoria",
+    "cpuFanRpm": "Velocidad del ventilador CPU",
+    "cpuFanPercent": "Porcentaje del ventilador CPU",
+    "gpuFanRpm": "Velocidad del ventilador GPU",
+    "gpuFanPercent": "Porcentaje del ventilador GPU",
+    "vendorAdapters": "Adaptadores de fabricantes de portátiles",
+    "gpuClocks": "Frecuencias GPU",
+    "gpuMemory": "Memoria de vídeo",
+    "gpuPower": "Potencia GPU",
+    "gpuTemperature": "Temperatura GPU",
+    "gpuCooler": "Ventiladores y refrigeradores GPU",
+    "gpuVoltage": "Voltaje GPU",
+    "gpuCurrent": "Corriente GPU",
+    "gpuBoardPower": "Potencia total de la placa GPU",
+    "gpuHotspot": "Temperatura del punto caliente GPU",
+    "gpuIntake": "Temperatura de entrada GPU",
+    "gpuFan": "Ventiladores GPU"
+  },
+  "installNotes": {
+    "webRuntime": "Evergreen Bootstrapper oficial de Microsoft, compartido por las aplicaciones WebView2 del equipo.",
+    "amdSmu": "Instale y verifique explícitamente el controlador PawnIO firmado y obtenga los módulos RyzenSMU y AMDFamily17 para las tablas PM. El paquete base nunca activa el controlador de forma silenciosa.",
+    "intelMsr": "Instale explícitamente PawnIO; la verificación obtiene IntelMSR. AMD comparte el controlador del sistema, pero los módulos se gestionan por separado. No se eluden bloqueos del firmware ni límites de módulos firmados.",
+    "sensorDriver": "Los sensores de placa base y memoria comparten el controlador PawnIO instalado explícitamente. El núcleo oficial incluye módulos LPC, EC y SMBus firmados, sin iniciar una interfaz gráfica ni servicios de red.",
+    "hardwareBridge": "Asistente independiente GPL-3.0 que usa ZenStates-Core. Se inicia y detiene según se necesita con la aplicación principal y gestiona límites de potencia y escrituras de voltaje Curve Optimizer.",
+    "hardwareMonitor": "Núcleo MPL-2.0 incluido en el producto, solo para placa base y memoria. Requiere PawnIO; las funciones dependen del muestreo real.",
+    "notebookFan": "Adaptador integrado de solo lectura para controladores, servicios o DLL OEM ya instalados. Actualmente admite Mechrevo/Tongfang UWACPI. Nunca instala ni distribuye controladores OEM de forma silenciosa.",
+    "driverRuntime": "Carga dinámicamente el entorno del controlador gráfico instalado. El paquete base no distribuye DLL de controladores del fabricante; las funciones dependen de las lecturas reales."
+  },
+  "versionFailures": {
+    "no-release": "No hay versiones publicadas disponibles.",
+    "no-stable-release": "No hay versiones estables disponibles.",
+    "version-unorderable": "La versión del proveedor no se puede ordenar de forma fiable y no se puede seleccionar.",
+    "timeout": "Se agotó el tiempo de conexión con GitHub.",
+    "network": "No se puede conectar con GitHub.",
+    "invalid-data": "No se pueden interpretar los datos devueltos por GitHub.",
+    "catalog-failure": "No se puede leer el catálogo de versiones. Inténtelo de nuevo."
+  }
+};

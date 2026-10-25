@@ -61,8 +61,8 @@ public sealed class NativeHotkeyRequestConsumerTests
                 bound = request;
                 normalized = WindowsSystemProcessActionService.NormalizeProcessTargets(request.Targets);
                 // No termination implementation is registered or called.
-                return Microsoft.AspNetCore.Http.Results.Ok(new SystemProcessOperationResult("backend prose must not escape",
-                    [new(target.ProcessId, "owned-probe", "Succeeded", "record prose must not escape", ProcessStartKey: target.ProcessStartKey)]));
+                return Microsoft.AspNetCore.Http.Results.Ok(new SystemProcessOperationResult(SystemProcessAction.Terminate,
+                    [new(target.ProcessId, "owned-probe", "Succeeded", SystemProcessOutcome.Terminated, ProcessStartKey: target.ProcessStartKey)]));
             });
             app.Use(async (context, next) =>
             {

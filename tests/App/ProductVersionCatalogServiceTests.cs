@@ -3,6 +3,9 @@ using System.Text;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Infrastructure.Updates;
+using ResourceManager.App.Domain.Updates;
+using ResourceManager.App.Endpoints;
+using System.Text.Json;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -39,8 +42,42 @@ public sealed class ProductVersionCatalogServiceTests
             Assert.True(result.Options[0].Selectable);
             Assert.False(result.Options[1].Selectable);
             Assert.False(result.Options[2].Selectable);
+            Assert.Equal(ProductVersionEligibility.Eligible, result.Options[0].Eligibility);
+            Assert.Equal(ProductVersionEligibility.NotNewer, result.Options[1].Eligibility);
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(result, options));
+            var oldVersion = json.RootElement.GetProperty("options")[1];
+            Assert.Equal("notNewer", oldVersion.GetProperty("eligibility").GetString());
+            Assert.False(oldVersion.TryGetProperty("unavailableReason", out _));
+            Assert.False(json.RootElement.TryGetProperty("error", out _));
         }
         finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task UnknownInstalledVersionProducesEligibilityFactsAndCatalogFailureHidesExceptionText()
+    {
+        var name = "ResourceManager-0.3.0-win-x64.zip";
+        var root = "https://github.com/BIOcanse/Resource-Manager/releases/download/0.3.0/";
+        var catalog = new ProductVersionCatalogService(
+            _ => Task.FromResult(new GitHubReleaseListing(
+                [new("0.3.0", false, null, [new(name, root + name), new(name + ".sha256", root + name + ".sha256")])], true)),
+            () => null, () => DateTimeOffset.UnixEpoch);
+        var result = await catalog.ReadAsync(CancellationToken.None);
+        Assert.False(Assert.Single(result.Options).Selectable);
+        Assert.Equal(ProductVersionEligibility.InstalledVersionUnknown, result.Options[0].Eligibility);
+
+        var failedCatalog = new ProductVersionCatalogService(
+            _ => throw new InvalidOperationException("private exception detail"),
+            () => null, () => DateTimeOffset.UnixEpoch);
+        var failed = await failedCatalog.ReadAsync(CancellationToken.None);
+        Assert.Equal("private exception detail", failed.Error);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(failed, options));
+        Assert.Equal("update.catalogUnavailable", json.RootElement.GetProperty("errorCode").GetString());
+        Assert.False(json.RootElement.TryGetProperty("error", out _));
     }
 
     private static string Release(string version, bool prerelease)

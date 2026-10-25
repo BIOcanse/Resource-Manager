@@ -125,7 +125,10 @@ public sealed partial class FanControlCoreClient(
          * 是完全不同的两件事，笼统说一句"没有可用的风扇控制通道"，
          * 前者只能去换机器，后者其实重启一下就好了。
          */
-        unavailableReason = Flag(result, "available") ? null : Text(result, "reason");
+        if (Text(result, "reason") is { } unavailableDetail) ReportDiagnostic(unavailableDetail);
+        unavailableReason = Flag(result, "available") ? null : "fan-channel-missing";
+        foreach (var fan in fans.EnumerateArray())
+            if (Text(fan, "firmwareCurveRequires") is { } prerequisite) ReportDiagnostic(prerequisite);
 
         if (result.TryGetProperty("diagnostics", out var diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
             foreach (var detail in diagnostics.EnumerateArray()) if (detail.GetString() is { } text) ReportDiagnostic(text);
@@ -143,13 +146,9 @@ public sealed partial class FanControlCoreClient(
             {
                 continue;
             }
-            var label = fan.TryGetProperty("name", out var fanName)
-                && fanName.ValueKind == JsonValueKind.String
-                    ? fanName.GetString()
-                    : null;
             list.Add(new FanCoreFan(
                 index.GetInt32(),
-                string.IsNullOrWhiteSpace(label) ? $"风扇 {index.GetInt32()}" : label!,
+                null,
                 backend,
                 Flag(fan, "writable"),
                 Flag(fan, "supportsDuty"),
@@ -160,7 +159,7 @@ public sealed partial class FanControlCoreClient(
                 Integer(fan, "curvePoints"),
                 Integer(fan, "minimumOnPercent") ?? 0,
                 Flag(fan, "requiresPeriodicReassert"),
-                FirmwareCurveRequires: Text(fan, "firmwareCurveRequires"),
+                FirmwareCurveRequires: Text(fan, "firmwareCurveRequires") is null ? null : "fan-firmware-prerequisite",
                 SupportsFirmwareCurveReset: Flag(fan, "supportsFirmwareCurveReset")));
         }
         return list;
@@ -380,7 +379,7 @@ public sealed partial class FanControlCoreClient(
         catch (TimeoutException error)
         {
             logger?.LogWarning(error, "Fan Control Core request timed out ({Operation}); the session remains owned until completion.", operation);
-            unavailableReason = "Fan Control Core request timed out; the current hardware operation still owns the session.";
+            unavailableReason = "fan-core-timeout";
             return null;
         }
     }
@@ -426,7 +425,7 @@ public sealed partial class FanControlCoreClient(
         catch (Exception error)
         {
             logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
-            unavailableReason = error.Message;
+            unavailableReason = "fan-core-failed";
             ClearSoftwareCurves();
             return null;
         }
@@ -439,7 +438,7 @@ public sealed partial class FanControlCoreClient(
         catch (Exception error)
         {
             logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
-            unavailableReason = error.Message;
+            unavailableReason = "fan-core-failed";
             ClearSoftwareCurves();
             return null;
         }
@@ -514,7 +513,7 @@ internal interface IFanControlCoreSession : IDisposable
 /// </summary>
 public sealed record FanCoreFan(
     int Index,
-    string Name,
+    string? Name,
     /// <summary>哪条通道报的，例如 uniwill-wmi。界面上作为补充说明显示。</summary>
     string? Detail,
     /// <summary>能不能写。只读的风扇照样列出来，用户要看得见它存在。</summary>

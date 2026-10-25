@@ -507,7 +507,6 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             var ccd = new CpuCcdModel(
                 "ccd:etl",
                 0,
-                "ETL processors",
                 null,
                 logicalIds,
                 logicalIds,
@@ -515,7 +514,6 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             var cores = logicalIds.Select(index => new CpuPhysicalCoreModel(
                     $"core:{index}",
                     index,
-                    $"Core {index}",
                     ccd.Id,
                     0,
                     1,
