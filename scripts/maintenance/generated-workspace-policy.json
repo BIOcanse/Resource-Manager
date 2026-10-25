@@ -12,6 +12,7 @@
     {
       "id": "rm-local",
       "path": "{RepositoryRoot}\\.local",
+      "maxBytes": 17179869184,
       "excludedNames": [
         "development-runtime",
         "tools",
