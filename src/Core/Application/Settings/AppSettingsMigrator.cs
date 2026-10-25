@@ -90,8 +90,10 @@ public static class AppSettingsMigrator
                 Endpoint: ReadString(root, "aiModelService", "endpoint", defaults.AiModelService.Endpoint),
                 AutoStartEnabled: ReadBoolean(root, "aiModelService", "autoStartEnabled", defaults.AiModelService.AutoStartEnabled)),
             new AppUpdateSettings(
-                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled),
-                ReadInt32(root, "update", "checkIntervalHours", defaults.Update.CheckIntervalHours)),
+                ReadString(root, "update", "mode",
+                    ReadBoolean(root, "update", "autoUpdateEnabled", true) ? AppUpdateModes.Automatic : AppUpdateModes.Off),
+                ReadBoolean(root, "update", "periodicCheckEnabled", ReadBoolean(root, "update", "autoUpdateEnabled", false)),
+                ReadInt32(root, "update", "checkIntervalHours", 24)),
             new AppHardwareControlSettings(
                 ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
             ReadReports(root));
@@ -140,11 +142,15 @@ public static class AppSettingsMigrator
             || root.TryGetProperty("selfOptimization", out _)
             || !root.TryGetProperty("update", out var update)
             || update.ValueKind != JsonValueKind.Object
-            || !update.TryGetProperty("autoUpdateEnabled", out var autoUpdateEnabled)
-            || !IsBoolean(autoUpdateEnabled)
+            || update.TryGetProperty("autoUpdateEnabled", out _)
+            || !update.TryGetProperty("periodicCheckEnabled", out var periodicCheck)
+            || !IsBoolean(periodicCheck)
             || !update.TryGetProperty("checkIntervalHours", out var checkInterval)
             || checkInterval.ValueKind != JsonValueKind.Number
-            || !checkInterval.TryGetInt32(out var checkHours) || checkHours is < 1 or > 168
+            || !checkInterval.TryGetInt32(out var checkHours) || checkHours is < 24 or > 168
+            || !update.TryGetProperty("mode", out var updateMode)
+            || updateMode.ValueKind != JsonValueKind.String
+            || !AppUpdateModes.IsSupported(updateMode.GetString())
             || !root.TryGetProperty("performance", out var performance)
             || performance.ValueKind != JsonValueKind.Object)
         {

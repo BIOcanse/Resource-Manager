@@ -32,7 +32,7 @@ public sealed class ReportRuleSettingsTests
         await using var fixture = await SettingsFixture.StartAsync();
         Action<CompiledRuntimePlan> failure = _ => throw new InvalidOperationException("delivery-test");
         fixture.Plans.Published += failure;
-        using var changed = await fixture.PatchAsync("{\"update\":{\"checkIntervalHours\":12}}");
+        using var changed = await fixture.PatchAsync("{\"update\":{\"checkIntervalHours\":48}}");
         Assert.Equal(HttpStatusCode.Accepted, changed.StatusCode);
         var response = (await changed.Content.ReadFromJsonAsync<JsonObject>())!;
         var read = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/app"))!;
@@ -45,7 +45,7 @@ public sealed class ReportRuleSettingsTests
         read = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/app"))!;
         Assert.Equal("committedAndApplied", read["runtimeApplicationDisposition"]!.GetValue<string>());
         Assert.Equal(0, read["runtimeDeliveryFailureCount"]!.GetValue<int>());
-        Assert.Equal(12, read["settings"]!["update"]!["checkIntervalHours"]!.GetValue<int>());
+        Assert.Equal(48, read["settings"]!["update"]!["checkIntervalHours"]!.GetValue<int>());
     }
 
     private static readonly string[] RuleNames =

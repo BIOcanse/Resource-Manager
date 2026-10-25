@@ -4,7 +4,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.32";
+    public const string CurrentVersion = "1.0.33";
     public const int RealtimeActionBudgetCount = 32;
     public const int MinRealtimeActionBudgetCount = 1;
     public const int MaxRealtimeActionBudgetCount = 8192;
@@ -58,7 +58,7 @@ public static class AppSettingsDefaults
                 Provider: "lm-studio",
                 Endpoint: "http://127.0.0.1:1234",
                 AutoStartEnabled: false),
-            new AppUpdateSettings(AutoUpdateEnabled: false),
+            new AppUpdateSettings(),
             new AppHardwareControlSettings(),
             new AppReportSettings([]));
     }

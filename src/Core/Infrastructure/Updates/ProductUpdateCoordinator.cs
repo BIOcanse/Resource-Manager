@@ -3,6 +3,9 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Security.Principal;
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
+using System.Text.Json;
 using Microsoft.Win32;
 using Microsoft.Data.Sqlite;
 using ResourceManager.App.Domain.Updates;
@@ -18,6 +21,10 @@ public sealed record ProductUpdateState(
     public IReadOnlyDictionary<string, string>? ErrorParameters { get; init; }
     public DateTimeOffset? LastCheckedAt { get; init; }
     public string? CheckResult { get; init; }
+    public string? AvailableVersion { get; init; }
+    public DateTimeOffset? NextCheckAt { get; init; }
+    public double OnlineTimeSinceLastCheckSeconds { get; init; }
+    public string AutomaticCheckStatus { get; init; } = "disabled";
     public string? FailedVersion { get; init; }
     public string? CheckedInstalledVersion { get; init; }
     public IReadOnlyList<string> IncompatibleVersions { get; init; } = [];
@@ -42,7 +49,74 @@ public sealed class ProductUpdateCoordinator
     private readonly ILogger<ProductUpdateCoordinator> logger;
     private ProductUpdateState state;
 
-    internal event Action? StageChanged;
+    internal event Action? Changed;
+    private ProductVersionOption[] knownTargets = [];
+    private bool preparationPending;
+    private TimeSpan onlineTime;
+    private DateTimeOffset? onlineSince;
+    private bool trackingCheck;
+    private (string Mode, bool Periodic, int Hours, bool Online, bool Startup)? schedule;
+
+    // Called at settings/connectivity boundaries, not by a sampling timer.
+    internal void ConfigureSchedule(string mode, bool periodicEnabled, int hours, bool online, bool startup)
+    {
+        hours = Math.Clamp(hours, 24, 168);
+        lock (gate)
+        {
+            var configuration = (mode, periodicEnabled, hours, online, startup);
+            if (schedule == configuration) return;
+            var now = clock.GetUtcNow().ToUniversalTime();
+            onlineTime = OnlineTime(now);
+            onlineSince = online ? now : null;
+            schedule = configuration;
+        }
+        Save(current => ProjectSchedule(current));
+    }
+
+    private TimeSpan OnlineTime(DateTimeOffset now)
+        => trackingCheck ? onlineTime + (onlineSince is { } since && now > since ? now - since : TimeSpan.Zero) : TimeSpan.Zero;
+
+    private ProductUpdateState ProjectSchedule(ProductUpdateState current)
+    {
+        var now = clock.GetUtcNow().ToUniversalTime();
+        var elapsed = OnlineTime(now);
+        var remaining = TimeSpan.FromHours(schedule?.Hours ?? 24) - elapsed;
+        return current with
+        {
+            OnlineTimeSinceLastCheckSeconds = elapsed.TotalSeconds,
+            NextCheckAt = schedule is { Mode: not "off", Periodic: true } && trackingCheck && onlineSince is not null
+                ? now + (remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero) : null,
+            AutomaticCheckStatus = schedule is not { } value || value.Mode == "off" ? "disabled"
+                : !value.Online && (value.Startup || value.Periodic) ? "waitingForInternet"
+                : value.Startup ? "checking" : value.Periodic ? "scheduled" : "idle"
+        };
+    }
+
+    internal bool HasPendingAutomaticPreparation
+    {
+        get { lock (gate) return preparationPending && !Busy(state); }
+    }
+
+    public async IAsyncEnumerable<ProductUpdateState> SubscribeAsync(
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite
+        });
+        void Wake() => signal.Writer.TryWrite(true);
+        Changed += Wake;
+        try
+        {
+            yield return Status;
+            while (await signal.Reader.WaitToReadAsync(token))
+            {
+                signal.Reader.TryRead(out _);
+                yield return Status;
+            }
+        }
+        finally { Changed -= Wake; }
+    }
 
     public ProductUpdateCoordinator(ProductVersionCatalogService catalog, IHttpClientFactory httpClientFactory,
         IHostEnvironment environment, TimeProvider clock, ILogger<ProductUpdateCoordinator> logger)
@@ -78,12 +152,14 @@ public sealed class ProductUpdateCoordinator
         restored = store.ProjectOutcome(restored);
         if (restored.Stage is "checking" or "downloading" or "verifying")
             restored = Failure(restored, "update.preparationFailed");
-        return restored;
+        return restored with { UpdatedAt = restored.UpdatedAt.ToUniversalTime(),
+            LastCheckedAt = restored.LastCheckedAt?.ToUniversalTime(), NextCheckAt = null,
+            OnlineTimeSinceLastCheckSeconds = 0, AutomaticCheckStatus = "disabled" };
     }
 
     public ProductUpdateState Status
     {
-        get { lock (gate) return store.ProjectOutcome(state); }
+        get { lock (gate) return ProjectSchedule(store.ProjectOutcome(state)); }
     }
 
     private void Save(ProductUpdateState value)
@@ -91,15 +167,24 @@ public sealed class ProductUpdateCoordinator
 
     private void Save(Func<ProductUpdateState, ProductUpdateState> update)
     {
-        bool stageChanged;
         lock (gate)
         {
             var value = update(state);
+            if (value.LastCheckedAt != state.LastCheckedAt)
+            {
+                trackingCheck = true;
+                onlineTime = TimeSpan.Zero;
+                if (onlineSince is not null) onlineSince = clock.GetUtcNow().ToUniversalTime();
+            }
+            value = ProjectSchedule(value) with { UpdatedAt = value.UpdatedAt.ToUniversalTime(),
+                LastCheckedAt = value.LastCheckedAt?.ToUniversalTime() };
+            // Compare the durable representation, including collection contents.
+            if (JsonSerializer.Serialize(state) == JsonSerializer.Serialize(value)) return;
+            value = value with { UpdatedAt = clock.GetUtcNow().ToUniversalTime() };
             store.Write(value);
-            stageChanged = state.Stage != value.Stage;
             state = value;
         }
-        if (stageChanged) StageChanged?.Invoke();
+        Changed?.Invoke();
     }
 
     private static bool Busy(ProductUpdateState value)
@@ -107,11 +192,30 @@ public sealed class ProductUpdateCoordinator
 
     public async Task<ProductVersionCatalog> CheckCatalogAsync(CancellationToken token)
     {
-        var listing = await readCatalog(token);
+        ProductVersionCatalog listing;
+        try { listing = await readCatalog(token); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch
+        {
+            Save(current => current with { LastCheckedAt = clock.GetUtcNow().ToUniversalTime(), CheckResult = "failed" });
+            throw;
+        }
+        token.ThrowIfCancellationRequested();
+        var success = listing.Status == "loaded" && listing.Complete;
+        var targets = success ? AutomaticTargets(listing).ToArray() : null;
+        if (targets is not null)
+        {
+            lock (gate)
+            {
+                knownTargets = targets;
+                preparationPending = targets.Length > 0;
+            }
+        }
         Save(current => store.ProjectOutcome(current) with
         {
-            LastCheckedAt = clock.GetUtcNow(),
-            CheckResult = listing.Status == "loaded" && listing.Complete ? "checked" : "failed"
+            LastCheckedAt = clock.GetUtcNow().ToUniversalTime(),
+            CheckResult = success ? "checked" : "failed",
+            AvailableVersion = success ? targets!.FirstOrDefault()?.Version : current.AvailableVersion
         });
         return listing;
     }
@@ -124,7 +228,7 @@ public sealed class ProductUpdateCoordinator
         try
         {
             if (Busy(Status)) throw new ProductUpdateFailure("update.busy");
-            Save(Status with { Stage = "checking", TargetVersion = choice[8..], Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow() });
+            Save(Status with { Stage = "checking", TargetVersion = choice[8..], Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
         }
         catch { operation.Release(); throw; }
         _ = Task.Run(async () =>
@@ -159,7 +263,7 @@ public sealed class ProductUpdateCoordinator
     private async Task<PreparedProductUpdate> PrepareOptionAsync(ProductVersionOption option, CancellationToken token)
     {
         Save(Status with { Stage = "downloading", TargetVersion = option.Version, Workspace = null,
-            Error = null, ErrorCode = null, ErrorParameters = null, UpdatedAt = clock.GetUtcNow() });
+            Error = null, ErrorCode = null, ErrorParameters = null, UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
         var prepared = await prepare(option, token);
         token.ThrowIfCancellationRequested();
         return prepared;
@@ -168,31 +272,69 @@ public sealed class ProductUpdateCoordinator
     private void RecordPrepared(PreparedProductUpdate prepared)
     {
         Save(Status with { Stage = "pendingApply", TargetVersion = prepared.Version, Workspace = prepared.Workspace,
-            Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow() });
+            Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
     }
 
-    public async Task CheckAutomaticAsync(CancellationToken token)
+    public async Task<bool> CheckAutomaticAsync(CancellationToken token, bool prepareUpdate = true)
     {
-        if (!await operation.WaitAsync(0, token)) return;
+        if (!await operation.WaitAsync(0, token)) return false;
+        var previousResult = Status.CheckResult;
         try
         {
-            if (Busy(Status)) return;
-            var checkedAt = clock.GetUtcNow();
-            Save(Status with { LastCheckedAt = checkedAt, CheckResult = "checking" });
+            if (Status.Stage is "checking" or "downloading" or "verifying" or "waitingForExit") return false;
+            Save(Status with { CheckResult = "checking" });
             var listing = await readCatalog(token);
             token.ThrowIfCancellationRequested();
             if (listing.Status != "loaded" || !listing.Complete)
             {
-                Save(Status with { CheckResult = "failed", Error = "update.catalogUnavailable", ErrorCode = "update.catalogUnavailable", UpdatedAt = clock.GetUtcNow() });
-                return;
+                lock (gate) preparationPending = false;
+                Save(Status with { LastCheckedAt = clock.GetUtcNow().ToUniversalTime(), CheckResult = "failed", Error = "update.catalogUnavailable", ErrorCode = "update.catalogUnavailable", UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
+                return true;
             }
             var targets = AutomaticTargets(listing).ToArray();
+            lock (gate)
+            {
+                knownTargets = targets;
+                preparationPending = targets.Length > 0;
+            }
             var installed = VersionIdentity(listing.InstalledVersion);
             var incompatible = Status.CheckedInstalledVersion == installed
                 ? Status.IncompatibleVersions.Where(version => targets.Any(target => VersionIdentity(target.Version) == version)).ToHashSet(StringComparer.Ordinal)
                 : new HashSet<string>(StringComparer.Ordinal);
-            Save(Status with { CheckResult = targets.Length == 0 ? "noUpdate" : "available",
+            Save(Status with { LastCheckedAt = clock.GetUtcNow().ToUniversalTime(), CheckResult = targets.Length == 0 ? "noUpdate" : "available",
+                AvailableVersion = targets.FirstOrDefault()?.Version,
                 CheckedInstalledVersion = installed, IncompatibleVersions = incompatible.ToArray() });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            Save(current => current with { CheckResult = previousResult });
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Automatic update check failed.");
+            lock (gate) preparationPending = false;
+            Save(Status with { LastCheckedAt = clock.GetUtcNow().ToUniversalTime(), CheckResult = "failed", Error = "update.catalogUnavailable", ErrorCode = "update.catalogUnavailable" });
+            return true;
+        }
+        finally { operation.Release(); }
+        if (prepareUpdate) await PrepareAutomaticAsync(token);
+        return true;
+    }
+
+    internal async Task PrepareAutomaticAsync(CancellationToken token)
+    {
+        if (!await operation.WaitAsync(0, token)) return;
+        try
+        {
+            ProductVersionOption[] targets;
+            lock (gate)
+            {
+                if (!preparationPending || Busy(state)) return;
+                targets = knownTargets;
+                preparationPending = false;
+            }
+            var incompatible = Status.IncompatibleVersions.ToHashSet(StringComparer.Ordinal);
             foreach (var target in targets)
             {
                 var identity = VersionIdentity(target.Version)!;
@@ -206,15 +348,16 @@ public sealed class ProductUpdateCoordinator
                     logger.LogInformation(exception, "Update {Version} is incompatible with this installation.", target.Version);
                     incompatible.Add(identity);
                     Save(Status with { Stage = "error", Error = "update.targetUnavailable", ErrorCode = "update.targetUnavailable",
-                        IncompatibleVersions = incompatible.ToArray(), UpdatedAt = clock.GetUtcNow() });
+                        IncompatibleVersions = incompatible.ToArray(), UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
                 }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
+            lock (gate) preparationPending = true;
             logger.LogInformation("Automatic preparation cancelled; retained workspace {Workspace}.", Status.Workspace);
-            Save(Status with { Stage = "idle", TargetVersion = null, CheckResult = null,
-                Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow() });
+            Save(Status with { Stage = "idle", TargetVersion = null,
+                Error = null, ErrorCode = null, UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
             throw;
         }
         catch (Exception exception) { RecordFailure(exception); }
@@ -248,7 +391,7 @@ public sealed class ProductUpdateCoordinator
             // The manager acquires the generic package maintenance lease before
             // stopping this service; a scheduler probe cannot transfer ownership.
             // Persist before launching: a manager can stop this process immediately.
-            Save(current with { Stage = "waitingForExit", UpdatedAt = clock.GetUtcNow() });
+            Save(current with { Stage = "waitingForExit", UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
             try { await launch(prepared, token); }
             catch (Exception exception) { RecordFailure(exception, "update.applyFailed"); }
             return Status;
@@ -259,7 +402,7 @@ public sealed class ProductUpdateCoordinator
     private ProductUpdateState Failure(ProductUpdateState current, string code)
         => current with { Stage = "error", Error = code, ErrorCode = code,
             ErrorParameters = current.TargetVersion is null ? null : new Dictionary<string, string> { ["targetVersion"] = current.TargetVersion },
-            FailedVersion = current.TargetVersion, UpdatedAt = clock.GetUtcNow() };
+            FailedVersion = current.TargetVersion, UpdatedAt = clock.GetUtcNow().ToUniversalTime() };
 
     private void RecordFailure(Exception exception, string fallback = "update.preparationFailed")
     {
@@ -284,7 +427,7 @@ public sealed class ProductUpdateCoordinator
         var archivePath = Path.Combine(workspace, option.AssetName);
         var expected = await ReadChecksumAsync(client, option, token);
         await DownloadAndVerifyAsync(client, option.DownloadUrl, archivePath, expected, token);
-        Save(Status with { Stage = "verifying", UpdatedAt = clock.GetUtcNow() });
+        Save(Status with { Stage = "verifying", UpdatedAt = clock.GetUtcNow().ToUniversalTime() });
         var packageRoot = Path.Combine(workspace, "package");
         ExtractChecked(archivePath, packageRoot);
         var package = ReleasePackageLayout.Verify(packageRoot);

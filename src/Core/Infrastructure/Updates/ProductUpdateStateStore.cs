@@ -11,10 +11,11 @@ public sealed class ProductUpdateStateStore(string installRoot)
     private string StatePath => Path.Combine(root, "Config", "product-update-state.json");
 
     public ProductUpdateState? Read()
-        => File.Exists(StatePath) ? ReadJson<ProductUpdateState>(StatePath) : null;
+        => File.Exists(StatePath) && ReadJson<ProductUpdateState>(StatePath) is { } state ? Utc(state) : null;
 
     public void Write(ProductUpdateState state)
     {
+        state = Utc(state);
         var directory = Path.GetDirectoryName(StatePath)!;
         Directory.CreateDirectory(directory);
         ReleasePackageLayout.RejectReparse(directory);
@@ -31,6 +32,12 @@ public sealed class ProductUpdateStateStore(string installRoot)
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
+
+    private static ProductUpdateState Utc(ProductUpdateState state) => state with
+    {
+        UpdatedAt = state.UpdatedAt.ToUniversalTime(), LastCheckedAt = state.LastCheckedAt?.ToUniversalTime(),
+        NextCheckAt = state.NextCheckAt?.ToUniversalTime()
+    };
 
     public ProductUpdateState ProjectOutcome(ProductUpdateState state)
     {
@@ -142,5 +149,5 @@ public sealed class ProductUpdateStateStore(string installRoot)
     private static string? Text(JsonElement data, string name)
         => Get(data, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
     private static DateTimeOffset Date(JsonElement data, string name)
-        => DateTimeOffset.TryParse(Text(data, name), out var value) ? value : DateTimeOffset.MinValue;
+        => DateTimeOffset.TryParse(Text(data, name), out var value) ? value.ToUniversalTime() : DateTimeOffset.MinValue;
 }

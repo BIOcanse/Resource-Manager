@@ -10,7 +10,7 @@ using ResourceManager.Shared.Packages;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class AutomaticProductUpdateTests
+public sealed partial class AutomaticProductUpdateTests
 {
     [Fact]
     public async Task GenericPackageLeasesPermitPreparationAndDeferApplicationUntilBothClientsExit()
@@ -59,14 +59,14 @@ public sealed class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task ChecksOnStartAndAtSixHourIntervalAndAfterReenabling()
+    public async Task ChecksOnStartAndAtMinimumDayIntervalAndAfterReenabling()
     {
         using var fixture = new Fixture();
         fixture.Listing = Catalog("0.2.4");
         using var service = fixture.Service(fixture.Coordinator());
         await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1, fixture.Checks);
-        fixture.Clock.Advance(TimeSpan.FromHours(6) - TimeSpan.FromSeconds(1));
+        fixture.Clock.Advance(TimeSpan.FromHours(24) - TimeSpan.FromSeconds(1));
         await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1, fixture.Checks);
         fixture.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -281,9 +281,9 @@ public sealed class AutomaticProductUpdateTests
             Assert.Equal(0, fixture.Checks);
             fixture.Enabled = true;
             fixture.PublishSettings();
-            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(6));
+            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(24));
             Assert.Equal(1, fixture.Checks);
-            Assert.Equal(2, fixture.SettingsReads);
+            Assert.True(fixture.SettingsReads >= 2); // State changes also wake the owner.
             Assert.Equal(0, fixture.PackageUsage.Checks);
         }
         finally { await service.StopAsync(CancellationToken.None); }
@@ -332,7 +332,7 @@ public sealed class AutomaticProductUpdateTests
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(6));
+            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(24));
             var before = fixture.Clock.GetUtcNow();
             var readsBeforeSubmit = fixture.SettingsReads;
             fixture.Listing = Catalog("0.2.4", Option("0.3.0", "stable"));
@@ -411,19 +411,19 @@ public sealed class AutomaticProductUpdateTests
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(6));
+            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(24));
             fixture.Clock.Advance(TimeSpan.FromHours(1));
-            fixture.CheckIntervalHours = 2;
+            fixture.CheckIntervalHours = 48;
             fixture.PublishSettings();
-            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(1));
+            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(47));
             Assert.Equal(1, fixture.Checks);
-            Assert.Equal(2, fixture.SettingsReads);
-            fixture.Clock.Advance(TimeSpan.FromMinutes(59));
+            Assert.True(fixture.SettingsReads >= 2);
+            fixture.Clock.Advance(TimeSpan.FromHours(47) - TimeSpan.FromMinutes(1));
             Assert.Equal(1, fixture.Checks);
             fixture.Clock.Advance(TimeSpan.FromMinutes(1));
-            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(2));
+            await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(48));
             Assert.Equal(2, fixture.Checks);
-            Assert.Equal(2, fixture.SettingsReads);
+            Assert.True(fixture.SettingsReads >= 2);
             Assert.Equal(0, fixture.PackageUsage.Checks);
         }
         finally { await service.StopAsync(CancellationToken.None); }
@@ -625,8 +625,11 @@ public sealed class AutomaticProductUpdateTests
         public ProductUpdateStateStore Store { get; }
         public MutableClock Clock { get; } = new();
         public PackageUsage PackageUsage { get; } = new();
-        public bool Enabled { get; set; } = true;
-        public int CheckIntervalHours { get; set; } = 6;
+        public string Mode { get; set; } = AppUpdateModes.Automatic;
+        public bool Enabled { get => Mode != AppUpdateModes.Off; set => Mode = value ? AppUpdateModes.Automatic : AppUpdateModes.Off; }
+        public bool PeriodicCheckEnabled { get; set; } = true;
+        public int CheckIntervalHours { get; set; } = 24;
+        public Connectivity Connectivity { get; } = new();
         private int settingsReads;
         private readonly SemaphoreSlim settingsRead = new(0);
         public int SettingsReads => Volatile.Read(ref settingsReads);
@@ -677,13 +680,13 @@ public sealed class AutomaticProductUpdateTests
         public AutomaticProductUpdateService Service(ProductUpdateCoordinator coordinator)
             => new(_ =>
                 {
-                    var settings = new AppUpdateSettings(Enabled, CheckIntervalHours);
+                    var settings = new AppUpdateSettings(Mode, PeriodicCheckEnabled, CheckIntervalHours);
                     Interlocked.Increment(ref settingsReads);
                     SettingsReadObserved?.Invoke();
                     settingsRead.Release();
                     return Task.FromResult(settings);
                 }, coordinator, PackageUsage, Plans, Clock,
-                NullLogger<AutomaticProductUpdateService>.Instance);
+                NullLogger<AutomaticProductUpdateService>.Instance, Connectivity);
 
         public void Dispose()
         {

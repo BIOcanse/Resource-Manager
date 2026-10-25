@@ -18,8 +18,9 @@ public static class AppSettingsNormalizer
             NormalizeDebug(settings.Debug),
             NormalizePublicService(settings.PublicService),
             NormalizeAiModelService(settings.AiModelService),
-            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false,
-                Math.Clamp(settings.Update?.CheckIntervalHours ?? 6, 1, 168)),
+            new AppUpdateSettings(AppUpdateModes.Normalize(settings.Update?.Mode),
+                settings.Update?.PeriodicCheckEnabled ?? false,
+                Math.Clamp(settings.Update?.CheckIntervalHours ?? 24, 24, 168)),
             new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400)),
             // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []));

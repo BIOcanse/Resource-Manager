@@ -52,7 +52,20 @@ public sealed record AppReportRuleOverride(
     double? ZeroActivityThreshold = null,
     IReadOnlyList<string>? ExecutableNames = null);
 
-public sealed record AppUpdateSettings(bool AutoUpdateEnabled, int CheckIntervalHours = 6);
+public static class AppUpdateModes
+{
+    public const string Off = "off";
+    public const string Notify = "notify";
+    public const string Automatic = "automatic";
+
+    public static bool IsSupported(string? mode) => mode is Off or Notify or Automatic;
+    public static string Normalize(string? mode) => IsSupported(mode) ? mode! : Automatic;
+}
+
+public sealed record AppUpdateSettings(
+    string Mode = AppUpdateModes.Automatic,
+    bool PeriodicCheckEnabled = false,
+    int CheckIntervalHours = 24);
 
 public sealed record AppPerformanceSettings(
     string OptimizationMode,

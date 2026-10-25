@@ -35,7 +35,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         using var written = JsonDocument.Parse(await File.ReadAllTextAsync(path));
         Assert.Equal(AppSettingsDefaults.CurrentVersion, written.RootElement.GetProperty("version").GetString());
         Assert.False(written.RootElement.GetProperty("performance").TryGetProperty("gpuPerformanceUseCases", out _));
-        Assert.Equal(6, written.RootElement.GetProperty("update").GetProperty("checkIntervalHours").GetInt32());
+        Assert.Equal(24, written.RootElement.GetProperty("update").GetProperty("checkIntervalHours").GetInt32());
         Assert.False(written.RootElement.TryGetProperty("appearance", out _));
     }
 

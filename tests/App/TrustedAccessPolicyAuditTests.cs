@@ -62,6 +62,22 @@ public sealed class TrustedAccessPolicyAuditTests
     }
 
     [Fact]
+    public void ProductUpdateStatusSubscriptionRequiresTheSameScopesAsStatusRead()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = "GET";
+        context.Request.Path = "/api/updates/product/status";
+        var read = TrustedAccessHttpPolicy.GetRequirement(context.Request);
+        Assert.Equal(TrustedAccessHttpAuthorizationMode.Protected, read.Mode);
+        Assert.Equal([AccessKeyScopes.Read], read.RequiredScopes);
+        Assert.True(TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(
+            "/api/updates/product/status/subscribe", out var subscriptionScopes));
+        Assert.Equal(read.RequiredScopes, subscriptionScopes);
+        Assert.Equal(read.AllowKeylessLocalWindowsCaller,
+            TrustedAccessHttpPolicy.AllowsKeylessSubscription("/api/updates/product/status/subscribe"));
+    }
+
+    [Fact]
     public void EverySelectorFromTheActualSubscriptionFactoryHasAnExplicitScopeRule()
     {
         var selectors = ResourceManagerEndpointRouteBuilderExtensions.SubscriptionSelectors.ToArray();

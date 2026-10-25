@@ -57,6 +57,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (hostEnvironment.IsWindowsService && startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
             services.AddSingleton<IProductPackageUsage, ProductPackageUsage>();
+            services.AddSingleton<IInternetConnectivity, WindowsInternetConnectivity>();
             services.AddBusinessBlockHostedService<AutomaticProductUpdateService>();
         }
 

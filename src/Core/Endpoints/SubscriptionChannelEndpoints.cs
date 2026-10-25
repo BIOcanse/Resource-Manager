@@ -22,6 +22,7 @@ using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.Shared.Runtime.TrustedAccess;
+using ResourceManager.App.Infrastructure.Updates;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -383,6 +384,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     services.GetRequiredService<IHostManagerSmartCoordinator>().GetStatusAsync,
                     interval)),
             // 操作队列不按间隔采样：它是推来的，来一条发一条。
+            ["/api/updates/product/status/subscribe"] = new((subscription, services, _) =>
+                subscription.Compile(async (writer, token) =>
+                {
+                    await foreach (var status in services.GetRequiredService<ProductUpdateCoordinator>().SubscribeAsync(token))
+                        await writer.WriteAsync(subscription.Id, status, token);
+                })),
             ["/api/operations/subscribe"] = new((subscription, services, _) =>
                 CompileOperationSubscription(
                     subscription,

@@ -104,17 +104,17 @@ public sealed class AppSettingsMigratorTests
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
         Assert.Equal(AppSettingsDefaults.CurrentVersion, migrated.Version);
-        Assert.Equal(6, migrated.Update!.CheckIntervalHours);
+        Assert.Equal(24, migrated.Update!.CheckIntervalHours);
         using var written = JsonDocument.Parse(JsonSerializer.Serialize(migrated, JsonSerializerOptions.Web));
         Assert.False(written.RootElement.GetProperty("performance").TryGetProperty("gpuPerformanceUseCases", out _));
         Assert.False(AppSettingsMigrator.RequiresRewrite(written.RootElement));
     }
 
     [Theory]
-    [InlineData("0", 1)]
+    [InlineData("0", 24)]
     [InlineData("169", 168)]
     [InlineData("24", 24)]
-    [InlineData("\"24\"", 6)]
+    [InlineData("\"24\"", 24)]
     public void CheckIntervalIsNormalizedAndCanBePatched(string input, int expected)
     {
         using var patch = JsonDocument.Parse("{\"update\":{\"checkIntervalHours\":" + input + "}}");
@@ -135,11 +135,14 @@ public sealed class AppSettingsMigratorTests
     {
         var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
         root["update"]!["autoUpdateEnabled"] = true;
+        root["update"]!.AsObject().Remove("mode");
+        root["update"]!.AsObject().Remove("periodicCheckEnabled");
         using var document = JsonDocument.Parse(root.ToJsonString());
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        Assert.True(settings.Update!.AutoUpdateEnabled);
+        Assert.Equal(AppUpdateModes.Automatic, settings.Update!.Mode);
+        Assert.True(settings.Update.PeriodicCheckEnabled);
     }
 
     [Theory]
@@ -156,7 +159,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.30", true)]
     [InlineData("1.0.31", true)]
     [InlineData("1.0.32", true)]
-    [InlineData("1.0.33", false)]
+    [InlineData("1.0.33", true)]
+    [InlineData("1.0.34", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -489,7 +493,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.32",
+          "version": "1.0.33",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
@@ -517,7 +521,7 @@ public sealed class AppSettingsMigratorTests
             "endpoint": "http://127.0.0.1:1234",
             "autoStartEnabled": true
           },
-          "update": { "autoUpdateEnabled": false, "checkIntervalHours": 6 },
+          "update": { "mode": "automatic", "periodicCheckEnabled": false, "checkIntervalHours": 24 },
           "control": { "enabled": true, "reassertionIntervalSeconds": 120 },
           "reports": { "ruleOverrides": [] },
           "debug": {

@@ -396,6 +396,7 @@ internal static class TrustedAccessHttpPolicy
             "/api/optimization/smart/status/subscribe" => [AccessKeyScopes.Read],
             "/api/operations/subscribe" => [AccessKeyScopes.Session],
             "/api/management/inventory-revisions/subscribe" => [AccessKeyScopes.Read],
+            "/api/updates/product/status/subscribe" => [AccessKeyScopes.Read],
             "/api/access-requests/subscribe" => [AccessKeyScopes.KeysManage],
             _ => null
         };
