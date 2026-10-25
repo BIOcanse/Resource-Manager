@@ -25,6 +25,14 @@ public sealed record ProcessMetricFieldDefinition(
 {
     public string Resource => "process";
     public string Vendor => "all";
+    public bool SupportsResourceFacts => ResourceFactTotalMetricId is not null;
+    [JsonIgnore]
+    public string? ResourceFactTotalMetricId => Code switch
+    {
+        ProcessMetricFieldCode.WorkingSet or ProcessMetricFieldCode.PrivateWorkingSet => "memory.usage",
+        ProcessMetricFieldCode.PrivateCommit => "virtualMemory.usage",
+        _ => null
+    };
     public ProcessMetricReading? Reading => Code switch
     {
         ProcessMetricFieldCode.WorkingSet => new("memory", "working_set_including_shared"),

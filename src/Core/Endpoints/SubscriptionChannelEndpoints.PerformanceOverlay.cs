@@ -6,6 +6,7 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -20,7 +21,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var softwareId = softwareIds[0]!;
         var ids = subscription.Query.TryGetValue("ids", out var requested)
             ? requested.Select(static id => id ?? string.Empty).ToArray() : [];
-        if (ids.Length is 0 or > 64 || ids.Any(static id => string.IsNullOrWhiteSpace(id)
+        var useFields = subscription.Query.ContainsKey("fields") || subscription.Query.ContainsKey("device");
+        var device = useFields ? ParseMetricFieldDevice(subscription.Query) : null;
+        var fields = ParseMetricFieldNames(subscription.Query).Select(MetricFieldRegistry.NormalizePublicName)
+            .ToHashSet(StringComparer.Ordinal);
+        var catalog = useFields ? services.GetRequiredService<HardwareMetricCatalogState>() : null;
+        if (useFields) _ = MetricDeviceFields.CreateRequest(catalog!.Current, device, fields);
+        if (ids.Length > 64 || ids.Length == 0 && !useFields || ids.Any(static id => string.IsNullOrWhiteSpace(id)
                 || id.Length > 128 || id != id.Trim())
             || ids.Distinct(StringComparer.OrdinalIgnoreCase).Count() != ids.Length)
             throw new ArgumentException("An overlay subscription requires explicit unique metric IDs.");
@@ -62,6 +69,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     if (processLease is not null && processes is not null)
                         processes = processes with { Processes = processSource.ReadLatest(new(processMask, inventory))?.Processes ?? [] };
                     var metricRequest = MetricSampleRequest.ForIds(hasTargets ? systemIds : []);
+                    if (hasTargets && useFields && catalog!.Current is { } currentCatalog)
+                        metricRequest = MetricSampleRequest.Merge([metricRequest,
+                            MetricDeviceFields.SelectBound(currentCatalog, device, fields)]);
                     // Device inventory is a dependency of per-device process resource facts.
                     if (hasTargets && (needsGpu || needsVram)) metricRequest = metricRequest.WithCatalog();
                     if (metricKey != metricRequest.CacheKey)
@@ -94,8 +104,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     if (hasTargets && needsFrames && frameLease is null) frameLease = frameSource.AcquireSubscription();
                     else if (!hasTargets || !needsFrames) { frameLease?.Dispose(); frameLease = null; }
                     var frames = frameLease is null ? null : frameSource.Read(TimeSpan.FromSeconds(1));
-                    await writer.WriteAsync(subscription.Id, PerformanceOverlayProjection.Create(
-                        [softwareId], ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow), cancellationToken);
+                    var snapshot = PerformanceOverlayProjection.Create(
+                        [softwareId], ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow);
+                    if (hasTargets && useFields && hardware is not null)
+                        snapshot = snapshot with { Fields = ReadMetricFields(hardware, device, fields, services) };
+                    await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
                 } while (await timer.WaitForNextTickAsync(cancellationToken));
             }
             finally

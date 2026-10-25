@@ -41,7 +41,8 @@ public sealed class ResourceBreakdownWireSnapshot
     internal static ResourceBreakdownWireSnapshot Create(
         ResourceBreakdownSnapshot source,
         IReadOnlyList<string> visibleMetricIds,
-        IReadOnlySet<string>? processDetailSoftwareIds = null)
+        IReadOnlySet<string>? processDetailSoftwareIds = null,
+        SchedulingProcessFactSnapshot? foundations = null)
     {
         var visibleIds = visibleMetricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var currentDatasets = source.Datasets
@@ -60,7 +61,8 @@ public sealed class ResourceBreakdownWireSnapshot
         // 实测就这么炸过：核显那条不可用，GPU 调度页整页无限加载。
         var bars = visibleIds.Count == 0
             ? []
-            : source.Bars.Where(bar => visibleIds.Contains(bar.MetricId)
+            : source.Bars.Concat(ProjectProcessMemoryBars(source, visibleMetricIds, foundations))
+                .Where(bar => visibleIds.Contains(bar.MetricId)
                 && currentDatasets.ContainsKey(
                     SamplingDatasetIds.ForProcessMetric(bar.MetricId))
                 && bar.TotalValue is not null
@@ -99,6 +101,29 @@ public sealed class ResourceBreakdownWireSnapshot
             processDetailSoftwareIds
                 ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             processFields);
+    }
+
+    private static IEnumerable<ResourceBreakdownBar> ProjectProcessMemoryBars(
+        ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations)
+    {
+        var fields = ids.Where(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null).ToArray();
+        if (fields.Length == 0) return [];
+        var facts = ResourceFactsSnapshot.Create(source, fields, foundations);
+        var owners = facts.Software.ToDictionary(static owner => owner.SoftwareId, StringComparer.Ordinal);
+        return facts.Metrics.Select(metric => new ResourceBreakdownBar(metric.MetricId, metric.Unit, "capacity",
+            metric.TotalValue, metric.CapacityValue, metric.TotalSystemPercent, metric.Software.Select(owner =>
+            {
+                var identity = owners[owner.SoftwareId];
+                return new ResourceSoftwareSegment(owner.SoftwareId, identity.Name, identity.Kind, identity.AttributionKind,
+                    owner.Value, owner.SystemPercent, owner.ProcessCount, owner.Processes.Select(row =>
+                    {
+                        var process = facts.Processes[row.ProcessIndex];
+                        return new ResourceProcessSegment(process.ProcessId, process.Name, process.ExecutablePath,
+                            row.Value, row.SystemPercent, row.SoftwarePercent, process.UserName, process.Architecture,
+                            process.AttributionKind, row.BaseScore)
+                        { ProcessStartKey = process.ProcessStartKey is { } key ? long.Parse(key, CultureInfo.InvariantCulture) : null };
+                    }).ToArray(), owner.BaseScore);
+            }).ToArray()) { ProcessFieldName = metric.ProcessFieldName });
     }
 }
 
@@ -160,6 +185,11 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             writer.WriteString("metricId", bar.MetricId);
             writer.WriteString("unit", bar.Unit);
             writer.WriteString("scaleMode", bar.ScaleMode);
+            var totalMetricId = ProcessMemoryFactFields.TotalMetricId(bar.MetricId);
+            if (totalMetricId is not null) writer.WriteString("totalMetricId", totalMetricId);
+            var processFieldName = bar.ProcessFieldName
+                ?? (totalMetricId is not null ? bar.MetricId : null);
+            if (processFieldName is not null) writer.WriteString("processFieldName", processFieldName);
             WriteNullableNumber(writer, "totalValue", bar.TotalValue);
             WriteNullableNumber(writer, "capacityValue", bar.CapacityValue);
             WriteNullableNumber(writer, "totalSystemPercent", bar.TotalSystemPercent);

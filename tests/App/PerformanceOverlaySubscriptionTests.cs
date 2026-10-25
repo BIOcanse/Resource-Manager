@@ -14,6 +14,7 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Endpoints;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -26,19 +27,40 @@ public sealed class PerformanceOverlaySubscriptionTests
     [InlineData("target.gpu")]
     [InlineData("target.vram")]
     [InlineData("cpu.usage")]
+    [InlineData("field.current")]
+    [InlineData("field.unavailable")]
+    [InlineData("field.rebound")]
     public async Task OverlayProducerLeasesFollowOnlyExplicitRequestedFacts(string metricId)
     {
         var processSource = new ProcessSource();
         var frameSource = new FrameSource();
         var resourceSource = new ResourceSource();
         var metricSource = new MetricSource();
+        var useFields = metricId.StartsWith("field.", StringComparison.Ordinal);
+        var field = MetricFieldRegistry.Definitions.Single(item => item.Code == MetricFieldCode.MemoryAvailable);
+        var binding = new MetricDeviceFieldBinding("memory-device", field, "raw/memory", "windows.memory");
+        HardwareMetricSnapshot FieldSnapshot(string address) => metricSource.Current with
+        {
+            FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [address] = binding with { RequestAddress = address } },
+            Items = new Dictionary<string, MetricReadingValue>
+            { [address] = new(address, null, "B") { IntegerValue = new MetricInteger(9007199254740993) } },
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
+            { [address] = new(address, metricId == "field.unavailable" ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current,
+                1, DateTimeOffset.UtcNow.UtcTicks, 1, 1, 1, 1) }
+        };
+        if (useFields) metricSource.Current = FieldSnapshot(binding.RequestAddress);
+        var catalog = new HardwareMetricCatalogState();
+        catalog.PublishCatalogProbe(metricSource.Current);
         var builder = WebApplication.CreateBuilder();
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read", "processes.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.ConfigureHttpJsonOptions(options =>
+            ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
         builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(processSource);
         builder.Services.AddSingleton<IFrameTimingObservationSource>(frameSource);
         builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resourceSource);
         builder.Services.AddSingleton<IMetricSnapshotObservationSource>(metricSource);
+        builder.Services.AddSingleton(catalog);
         await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
             .GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
@@ -58,7 +80,8 @@ public sealed class PerformanceOverlaySubscriptionTests
                 version = 1,
                 subscriptions = new[]
                 {
-                    new { id = "overlay", path = "/api/performance-overlay/subscribe?intervalMs=100&softwareId=game&ids=" + Uri.EscapeDataString(metricId) }
+                    new { id = "overlay", path = "/api/performance-overlay/subscribe?intervalMs=100&softwareId=game&" + (useFields
+                        ? "fields=" + field.Name + "&device=" + binding.DeviceIdentity : "ids=" + Uri.EscapeDataString(metricId)) }
                 }
             })
         };
@@ -79,7 +102,31 @@ public sealed class PerformanceOverlaySubscriptionTests
         var needsGpu = metricId is "target.gpu" or "target.vram";
         var needsResource = needsGpu || metricId == "target.memory";
         Assert.Equal(needsResource ? 1 : 0, resourceSource.ActiveCount);
-        Assert.Equal(needsGpu || metricId == "cpu.usage" ? 1 : 0, metricSource.ActiveCount);
+        Assert.Equal(needsGpu || metricId == "cpu.usage" || useFields ? 1 : 0, metricSource.ActiveCount);
+        if (useFields)
+        {
+            Assert.Equal([binding.RequestAddress], metricSource.LastRequest!.Ids);
+            using var rawFrame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+            var raw = Assert.Single(Assert.Single(rawFrame.RootElement.GetProperty("value").GetProperty("fields").EnumerateArray())
+                .GetProperty("fields").EnumerateArray());
+            Assert.Equal(field.Name, raw.GetProperty("name").GetString());
+            Assert.Equal((int)(metricId == "field.unavailable" ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current),
+                raw.GetProperty("status").GetInt32());
+            if (metricId == "field.unavailable") Assert.Equal(JsonValueKind.Null, raw.GetProperty("integerValue").ValueKind);
+            else Assert.Equal("9007199254740993", raw.GetProperty("integerValue").GetString());
+            if (metricId == "field.rebound")
+            {
+                metricSource.Current = FieldSnapshot("raw/rebound");
+                catalog.PublishCatalogProbe(metricSource.Current);
+                while (!metricSource.LastRequest!.Ids.Contains("raw/rebound"))
+                    await ReadTargetsAsync(reader, timeout.Token);
+                Assert.Equal(["raw/rebound"], metricSource.LastRequest.Ids);
+                Assert.Equal(1, metricSource.ActiveCount);
+            }
+            Assert.Equal(0, resourceSource.ActiveCount);
+            Assert.Equal(0, processSource.ActiveCount);
+            Assert.Equal(0, frameSource.ActiveCount);
+        }
         if (needsResource)
             Assert.Equal(new[] { metricId == "target.memory" ? "memory.usage" : metricId == "target.gpu" ? "gpu.0.usage" : "gpu.0.vram" }, resourceSource.LastRequest!.MetricIds);
         if (needsGpu)
@@ -93,7 +140,8 @@ public sealed class PerformanceOverlaySubscriptionTests
         processSource.Current = Snapshot(Process(10, 100), Process(20, 200, "other-game"));
         var target = Assert.Single(await ReadTargetsAsync(reader, timeout.Token));
         Assert.Equal("game", target.GetProperty("softwareId").GetString());
-        Assert.Equal(metricId, Assert.Single(target.GetProperty("metrics").EnumerateArray()).GetProperty("metricId").GetString());
+        if (useFields) Assert.Empty(target.GetProperty("metrics").EnumerateArray());
+        else Assert.Equal(metricId, Assert.Single(target.GetProperty("metrics").EnumerateArray()).GetProperty("metricId").GetString());
 
         processSource.Current = Snapshot(Process(10, 100));
         await ReadUntilTargetCountAsync(reader, 1, timeout.Token);
@@ -213,7 +261,7 @@ public sealed class PerformanceOverlaySubscriptionTests
         public int ActiveCount => Volatile.Read(ref activeCount);
         public int ReadCount => Volatile.Read(ref readCount);
         public MetricSampleRequest? LastRequest { get; private set; }
-        public HardwareMetricSnapshot Current { get; } = CreateHardwareSnapshot();
+        public HardwareMetricSnapshot Current { get; set; } = CreateHardwareSnapshot();
         public IDisposable AcquireSubscription(string subscriptionId, MetricSampleRequest request, TimeSpan refreshInterval)
         {
             LastRequest = request;

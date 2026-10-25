@@ -19,7 +19,10 @@ public sealed record PerformanceOverlayTarget(
     IReadOnlyList<PerformanceOverlayFrameStream> FrameStreams);
 
 public sealed record PerformanceOverlaySnapshot(
-    int Version, DateTimeOffset CapturedAt, IReadOnlyList<PerformanceOverlayTarget> Targets);
+    int Version, DateTimeOffset CapturedAt, IReadOnlyList<PerformanceOverlayTarget> Targets)
+{
+    public IReadOnlyList<DeviceMetricFieldSnapshot> Fields { get; init; } = [];
+}
 
 public static class PerformanceOverlayProjection
 {

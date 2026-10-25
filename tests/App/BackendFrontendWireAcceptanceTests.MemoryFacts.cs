@@ -27,5 +27,11 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         var result = await DecodeAsync("facts", facts);
         Assert.Equal(long.MaxValue.ToString(), result.GetProperty("factsProcessStartKey").GetString());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, result.GetProperty("factsProcessSharedValue").ValueKind);
+        var bars = ResourceBreakdownWireSnapshot.Create(snapshot, [field],
+            new HashSet<string>(["example"]), ResourceFactsPublicationTests.Foundations());
+        Assert.Single(bars.Bars);
+        var decodedBar = await DecodeAsync("monitor", new ResourceMonitorWireSnapshot(
+            ResourceMonitorWireSnapshot.CurrentVersion, bars.CapturedAt, bars));
+        Assert.Equal(long.MaxValue.ToString(), decodedBar.GetProperty("breakdownProcessStartKey").GetString());
     }
 }

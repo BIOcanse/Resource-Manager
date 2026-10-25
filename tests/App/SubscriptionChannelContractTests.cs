@@ -219,6 +219,60 @@ public sealed class SubscriptionChannelContractTests
 public sealed class ResourceMonitorDetailsSubscriptionTests
 {
     [Theory]
+    [InlineData("process_all_working_set_actual", "memory.usage", false)]
+    [InlineData("process_all_private_working_set_actual", "memory.usage", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", false)]
+    [InlineData("process_all_private_commit_actual", "virtualMemory.usage", true)]
+    public async Task ResourceBarsProjectOnlyTheChosenFieldThroughExistingFactDemand(string field, string totalId, bool missingTotal)
+    {
+        var snapshot = Resource_Manager_APP.Tests.ResourceFactsPublicationTests.Snapshot();
+        var total = totalId == "memory.usage" ? 80d : 120d;
+        snapshot = snapshot with
+        {
+            ProcessMemoryFacts = [new(field, totalId, missingTotal ? null : total, 200, 7, [new(42, long.MaxValue, 7)])
+            {
+                Residuals = [new("resource-residual:" + totalId, "", "windows_system", "system-residual", total - 7,
+                    (total - 7) / 2, 0, [new(-1, "", null, total - 7, (total - 7) / 2, 100, AttributionKind: "system-residual")])]
+            }],
+            Datasets = [.. snapshot.Datasets, CurrentDataset(field, snapshot.CapturedAt)]
+        };
+        var source = new ResourceMonitorSource(snapshot)
+        { Foundations = Resource_Manager_APP.Tests.ResourceFactsPublicationTests.Foundations() };
+        await using var app = await StartAsync(source);
+        using var client = Client(app);
+        var query = "?scope=bars&measures=" + field + "&processDetails=example";
+        using var direct = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot" + query));
+        var bars = direct.RootElement.GetProperty("breakdown").GetProperty("bars");
+        if (missingTotal) Assert.Empty(bars.EnumerateArray());
+        else
+        {
+            var bar = Assert.Single(bars.EnumerateArray());
+            Assert.Equal(field, bar.GetProperty("metricId").GetString());
+            Assert.Equal(field, bar.GetProperty("processFieldName").GetString());
+            Assert.Equal(totalId, bar.GetProperty("totalMetricId").GetString());
+            Assert.Equal(total, bar.GetProperty("totalValue").GetDouble());
+            var rows = bar.GetProperty("software");
+            Assert.Equal(7, rows[0][1].GetDouble());
+            Assert.Equal(total - 7, rows[1][1].GetDouble());
+            Assert.Equal(7, rows[0][5][0][3].GetDouble());
+        }
+        Assert.Equal([field], Assert.Single(source.SnapshotRequests).ProcessMemoryFactIds);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var response = await client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        { Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
+            new { id = "chosen-bar", path = "/api/resource-monitor/subscribe" + query } } }) },
+            HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        response.EnsureSuccessStatusCode();
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+        using var frame = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
+        Assert.Equal(direct.RootElement.GetRawText(), frame.RootElement.GetProperty("value").GetRawText());
+        Assert.Equal([field], Assert.Single(source.PushRequests).Request.ProcessMemoryFactIds);
+        await timeout.CancelAsync();
+        response.Dispose();
+        await app.StopAsync();
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("?items=&intervalMs=1000")]
     [InlineData("?items=,%20,&intervalMs=1000")]

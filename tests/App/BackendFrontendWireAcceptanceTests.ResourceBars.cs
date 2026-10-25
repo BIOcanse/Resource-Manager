@@ -128,7 +128,7 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         }
     }
 
-    private static ResourceBreakdownSnapshot BuildSamplerBars(string[] metricIds, bool available)
+    internal static ResourceBreakdownSnapshot BuildSamplerBars(string[] metricIds, bool available)
     {
         var scores = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
         var process = new WindowsResourceBreakdownSampler.ProcessResourceSample(

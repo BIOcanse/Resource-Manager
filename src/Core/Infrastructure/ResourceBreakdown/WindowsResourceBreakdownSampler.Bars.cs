@@ -58,7 +58,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     metricId,
                     "B",
                     scaleMode,
-                    NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus));
+                    NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus))
+                    with { ProcessFieldName = "process_all_private_working_set_actual" };
             }
 
             return CreateBar(
@@ -74,7 +75,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 processAttribution,
                 baseScorePlan,
                 residualBreakdownProvider,
-                isBytes: true);
+                isBytes: true) with { ProcessFieldName = "process_all_private_working_set_actual" };
         }
 
         if (metricId.Equals("virtualMemory.usage", StringComparison.OrdinalIgnoreCase))
@@ -86,7 +87,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     metricId,
                     "B",
                     scaleMode,
-                    NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus));
+                    NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus))
+                    with { ProcessFieldName = "process_all_private_commit_actual" };
             }
 
             return CreateBar(
@@ -102,7 +104,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 processAttribution,
                 baseScorePlan,
                 residualBreakdownProvider,
-                isBytes: true);
+                isBytes: true) with { ProcessFieldName = "process_all_private_commit_actual" };
         }
 
         if (metricId.Equals(ResourceBreakdownMetricIds.DiskIo, StringComparison.OrdinalIgnoreCase))

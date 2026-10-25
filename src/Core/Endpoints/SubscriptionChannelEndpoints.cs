@@ -531,10 +531,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }
 
+        var measures = ParseResourceBarMeasures(subscription.Query);
+        metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var sampleRequest = new ResourceBreakdownSampleRequest(
             metricIds,
             scaleModes,
-            ProcessSampleDetailLevel.ResourceTableBasic);
+            ProcessSampleDetailLevel.ResourceTableBasic)
+        { ProcessMemoryFactIds = measures };
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             await foreach (var sampledBreakdown in source.SubscribeAsync(
@@ -546,7 +549,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                     sampledBreakdown,
                     metricIds,
-                    processDetailSoftwareIds);
+                    processDetailSoftwareIds,
+                    ReadResourceFoundations(sampleRequest, services));
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(

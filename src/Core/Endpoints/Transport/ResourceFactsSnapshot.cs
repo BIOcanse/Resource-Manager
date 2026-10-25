@@ -48,7 +48,7 @@ internal sealed record ResourceFactsSnapshot(
                 process.SystemPercent, process.SoftwarePercent, process.BaseScore, process.SharedValue)).ToArray());
         var metrics = bars.Select(bar => new ResourceMetricFacts(bar.MetricId, bar.Unit,
             bar.TotalValue, bar.CapacityValue, bar.TotalSystemPercent, bar.SharedValue,
-            bar.Software.Select(ProjectSoftware).ToArray())).ToList();
+            bar.Software.Select(ProjectSoftware).ToArray()) { ProcessFieldName = bar.ProcessFieldName }).ToList();
         var attributions = new List<ResourceProcessAttribution>();
         var edges = new HashSet<(int, string)>();
         void Attribute(int index, string owner, double score)
@@ -116,7 +116,8 @@ internal sealed record ResourceFactsSnapshot(
             }
             metrics.Add(new(fact.MetricId, "B", fact.TotalValue, fact.CapacityValue,
                 fact.TotalValue is { } total && fact.CapacityValue is > 0 ? total * 100 / fact.CapacityValue.Value : null,
-                null, values) { TotalMetricId = fact.TotalMetricId, ProcessSumValue = fact.ProcessSumValue });
+                null, values) { TotalMetricId = fact.TotalMetricId, ProcessSumValue = fact.ProcessSumValue,
+                    ProcessFieldName = fact.MetricId });
         }
         var capturedAt = metrics.Select(metric => current[SamplingDatasetIds.ForProcessMetric(metric.MetricId)].CapturedAt)
             .DefaultIfEmpty(null).Max();
@@ -133,6 +134,7 @@ internal sealed record ResourceMetricFacts(string MetricId, string Unit, double?
 {
     public string? TotalMetricId { get; init; }
     public double? ProcessSumValue { get; init; }
+    public string? ProcessFieldName { get; init; }
 }
 internal sealed record ResourceSoftwareIdentity(string SoftwareId, string Name, string Kind, string AttributionKind);
 internal sealed record ResourceProcessIdentity(int ProcessId, string? ProcessStartKey, string Name,

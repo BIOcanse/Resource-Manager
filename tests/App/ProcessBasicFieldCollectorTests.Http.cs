@@ -27,6 +27,12 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Contains("private_working_set", quantities);
         Assert.Contains("private_commit", quantities);
         Assert.Contains("peak_private_commit", quantities);
+        var factFields = catalog.RootElement.EnumerateArray()
+            .Where(field => field.GetProperty("supportsResourceFacts").GetBoolean())
+            .Select(field => field.GetProperty("name").GetString()).Order().ToArray();
+        Assert.Equal(new[] { "process_all_private_commit_actual", "process_all_private_working_set_actual", "process_all_working_set_actual" }, factFields);
+        Assert.False(Assert.Single(catalog.RootElement.EnumerateArray(), field => field.GetProperty("name").GetString()
+            == "process_all_peak_private_commit_actual").GetProperty("supportsResourceFacts").GetBoolean());
         string[] names = [Names[1], Names[5], NetworkNames[0]];
         var snapshotUrl = "/api/resource-breakdown/snapshot?ids=" + string.Join(',', names);
         var subscribeUrl = "/api/resource-monitor/subscribe?scope=bars&intervalMs=1000&ids=" + string.Join(',', names);

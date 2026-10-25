@@ -79,16 +79,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     processDetailSoftwareIds));
             }
 
-            var sampledBreakdown = await breakdownSampler.GetSnapshotAsync(
-                new ResourceBreakdownSampleRequest(
-                    metricIds,
-                    scaleModes,
-                    ProcessSampleDetailLevel.ResourceTableBasic),
-                cancellationToken);
+            var measures = ParseResourceBarMeasures(request.Query);
+            metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var sampleRequest = new ResourceBreakdownSampleRequest(
+                metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
+            { ProcessMemoryFactIds = measures };
+            var sampledBreakdown = await breakdownSampler.GetSnapshotAsync(sampleRequest, cancellationToken);
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
-                processDetailSoftwareIds);
+                processDetailSoftwareIds,
+                ReadResourceFoundations(sampleRequest, request.HttpContext.RequestServices));
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
                 breakdownWire.CapturedAt,
@@ -167,6 +168,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 or ResourceBreakdownMetricIds.NetworkTraffic or ResourceBreakdownMetricIds.NetworkReceive
                 or ResourceBreakdownMetricIds.NetworkSend or ResourceBreakdownMetricIds.NetworkRawTraffic
                 or ResourceBreakdownMetricIds.NetworkRawReceive or ResourceBreakdownMetricIds.NetworkRawSend;
+
+    private static string[] ProcessMemoryFields(IReadOnlyList<string> ids)
+        => ids.Where(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null).ToArray();
+
+    private static string[] ParseResourceBarMeasures(IQueryCollection query)
+        => ProcessMemoryFields(ParseResourceMetricIdsFromQuery(query, "measures", null));
 
     private static ResourceMonitorScope ParseResourceMonitorScope(HttpRequest request)
         => ParseResourceMonitorScope(request.Query);

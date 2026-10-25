@@ -4,12 +4,7 @@ namespace ResourceManager.App.Domain.ResourceBreakdown;
 
 public static class ProcessMemoryFactFields
 {
-    public static string? TotalMetricId(string field) => ProcessMetricFieldRegistry.Find(field)?.Code switch
-    {
-        ProcessMetricFieldCode.WorkingSet or ProcessMetricFieldCode.PrivateWorkingSet => "memory.usage",
-        ProcessMetricFieldCode.PrivateCommit => "virtualMemory.usage",
-        _ => null
-    };
+    public static string? TotalMetricId(string field) => ProcessMetricFieldRegistry.Find(field)?.ResourceFactTotalMetricId;
 }
 
 public sealed record ProcessMemoryFact(string MetricId, string TotalMetricId, double? TotalValue,

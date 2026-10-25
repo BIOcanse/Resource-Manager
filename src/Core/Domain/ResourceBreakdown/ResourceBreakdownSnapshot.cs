@@ -192,6 +192,7 @@ public sealed record ResourceBreakdownBar(
     SamplingObservationStatus AttributionStatus = SamplingObservationStatus.Current)
 {
     public double? SharedValue { get; init; }
+    public string? ProcessFieldName { get; init; }
 }
 
 public sealed record ResourceSoftwareSegment(

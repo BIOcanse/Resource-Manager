@@ -9,6 +9,18 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ResourceFactsPublicationTests
 {
+    [Theory]
+    [InlineData("memory.usage", "process_all_private_working_set_actual")]
+    [InlineData("virtualMemory.usage", "process_all_private_commit_actual")]
+    public void AutomaticMemoryFactsNameTheirActualProcessField(string metricId, string field)
+    {
+        var snapshot = BackendFrontendWireAcceptanceTests.BuildSamplerBars([metricId], available: true);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(ResourceFactsSnapshot.Create(snapshot, [metricId]), options));
+        Assert.Equal(field, Assert.Single(json.RootElement.GetProperty("metrics").EnumerateArray()).GetProperty("processFieldName").GetString());
+    }
+
     [Fact]
     public void IdentityAndAttributionFactsNeedNoHiddenNumericMetricAndExcludeExitedInstances()
     {
