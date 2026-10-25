@@ -294,7 +294,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void StopOrPauseClearsPublishedWindowAndRejectsAnAlreadyCollectedWindow(bool pause)
+    public void StopOrPausePreservesPublishedWindowAndRejectsAnAlreadyCollectedWindow(bool pause)
     {
         var broker = new Broker(); using var capture = Capture(broker);
         capture.EnsureStarted();
@@ -311,23 +311,24 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         buffer.ObserveContextSwitch(Stopwatch.Frequency, At, 1, 0, 0, 0, null, 0);
         Assert.True(capture.Collect());
         Assert.NotNull(capture.Read());
+        var published = capture.Read();
         var revision = capture.Revision;
         var committed = false;
         var permit = new BeforeCommitPermit(() =>
         {
             if (pause) capture.SetCaptureEnabled(false); else capture.Stop();
-            Assert.Null(capture.Read());
-            Assert.True(capture.Revision > revision);
+            Assert.Same(published, capture.Read());
+            Assert.Equal(revision, capture.Revision);
         });
         Assert.False(capture.Collect(permit, (_, _) => committed = true));
         Assert.False(committed);
-        Assert.Null(capture.Read());
+        Assert.Same(published, capture.Read());
         Assert.False(capture.HasSessionLease);
         Assert.Equal(1, broker.Releases);
         if (pause) capture.SetCaptureEnabled(true);
         capture.EnsureStarted();
         Assert.Equal(2, broker.Acquires);
-        Assert.Null(capture.Read());
+        Assert.Same(published, capture.Read());
         Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
         Assert.Null(capture.Read());
     }

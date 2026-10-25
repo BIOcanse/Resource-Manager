@@ -26,7 +26,7 @@ test "reconfigure applies changed content at the same generation and accepts rol
     try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
 }
 
-test "ABI layout is frozen for version 11" {
+test "ABI layout is frozen for version 11.1" {
     try std.testing.expectEqual(@as(usize, 424), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.AdapterPolicyConfig));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
@@ -52,7 +52,7 @@ test "ABI layout is frozen for version 11" {
     try std.testing.expectEqual(@as(usize, 68), @offsetOf(protocol.Config, "event_boost_rounds"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Snapshot, "reason_mask"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.Snapshot, "event_boost_rounds_remaining"));
-    try std.testing.expectEqual(@as(usize, 108), @offsetOf(protocol.Snapshot, "reserved0"));
+    try std.testing.expectEqual(@as(usize, 108), @offsetOf(protocol.Snapshot, "early_wake_after_ms"));
     try std.testing.expectEqual(@as(usize, 112), @offsetOf(protocol.Snapshot, "reserved"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.SnapshotRow, "cpu_score"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.SnapshotRow, "cpu_occupancy_percent"));
@@ -63,7 +63,7 @@ test "ABI layout is frozen for version 11" {
     try std.testing.expectEqual(@as(u64, 0x27f12d8b9e11d1c8), corpus.layoutFingerprint(protocol.InputRow));
     try std.testing.expectEqual(@as(u64, 0x531d6c7ff4bcf206), corpus.layoutFingerprint(protocol.Action));
     try std.testing.expectEqual(@as(u64, 0x7722db7daad0835b), corpus.layoutFingerprint(protocol.Feedback));
-    try std.testing.expectEqual(@as(u64, 0x4af84b6efab74145), corpus.layoutFingerprint(protocol.Snapshot));
+    try std.testing.expectEqual(@as(u64, 0xe47b5b314eba98ff), corpus.layoutFingerprint(protocol.Snapshot));
     try std.testing.expectEqual(@as(u64, 0xba634188acc130a6), corpus.layoutFingerprint(protocol.SnapshotRow));
 }
 
@@ -182,7 +182,7 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x000b_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000b_0001), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
     try std.testing.expectEqual(@as(u64, 0x0f), protocol.FeatureFlags.known);
@@ -2766,4 +2766,29 @@ test "missing current CPU score never applies an already confirmed nonnormal des
 
 test {
     _ = @import("scratch_tests.zig");
+}
+
+test "publication cadence keeps an independent early deadline even beyond the normal cadence" {
+    var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    config.normal_interval_ms = 30_000;
+    config.event_interval_ms = 5_000;
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    const planner = @import("planner.zig");
+    planner.resolveNextWake(session, 1_000);
+    try std.testing.expectEqual(@as(u32, 30_000), session.wake_after_ms);
+    try std.testing.expectEqual(std.math.maxInt(u32), session.early_wake_after_ms);
+    session.reservations[0].occupied = true;
+    session.reservations[0].deadline_ms = 61_000;
+    planner.resolveNextWake(session, 1_000);
+    try std.testing.expectEqual(@as(u32, 30_000), session.wake_after_ms);
+    try std.testing.expectEqual(@as(u32, 60_000), session.early_wake_after_ms);
+    session.event_boost_rounds_remaining = 10;
+    planner.resolveNextWake(session, 1_000);
+    try std.testing.expectEqual(@as(u32, 5_000), session.wake_after_ms);
+    try std.testing.expectEqual(@as(u32, 60_000), session.early_wake_after_ms);
+    session.reservations[0].deadline_ms = 3_000;
+    planner.resolveNextWake(session, 1_000);
+    try std.testing.expectEqual(@as(u32, 2_000), session.wake_after_ms);
+    try std.testing.expectEqual(@as(u32, 2_000), session.early_wake_after_ms);
 }

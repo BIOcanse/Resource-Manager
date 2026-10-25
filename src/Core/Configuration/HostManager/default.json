@@ -9,7 +9,7 @@
     "resource_scheduler_abi_version": 12,
     "adapter_private_resource_ledger_abi_version": 3,
     "adapter_instance_lease_abi_version": 196608,
-    "smart_coordinator_abi_version": 720896,
+    "smart_coordinator_abi_version": 720897,
     "memory_cleanup_abi_version": 65540,
     "placement_coordinator_abi_version": 131072,
     "applied_ownership_abi_version": 131072,

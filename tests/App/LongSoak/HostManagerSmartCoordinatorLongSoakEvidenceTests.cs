@@ -58,6 +58,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var profile = ResolveLongSoakProfile(plan.Profile);
         var permits = CreateLongSoakCyclePermits(plan);
         var source = new LongSoakBoundedSnapshotSource(profile, permits);
+        var residencyOutput = new HostedResidencyOutput(source.ReadCpuCoreResidency, TimeProvider.System);
         try
         {
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -66,7 +67,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 smartCoordinatorMaximumProcesses: LongSoakMaximumProcesses,
                 metricSamplerOverride: source,
                 processFactsOverride: source,
-                cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+                cpuCoreReader: residencyOutput,
                 normalIntervalMilliseconds: profile.NormalIntervalMilliseconds,
                 eventIntervalMilliseconds: profile.NormalIntervalMilliseconds,
                 failFastEffects: true);
@@ -74,11 +75,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.DebugLogWriter.DisableRecordRetention();
             var shutdownProbe = new HostedScoreOnlyShutdownProbe();
             fixture.Coordinator.TransitionProbe = shutdownProbe;
-            var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(
-                fixture.Coordinator,
-                "schedulingWakeDeadline")
-                ?? throw new InvalidDataException(
-                    "The production long-soak wake deadline is unavailable.");
             var runtimeIdentity = CreateLongSoakRuntimeIdentity();
             using var shardWriter = new LongSoakSampleShardWriter(
                 evidenceRoot,
@@ -104,7 +100,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var outerLoopTrace = profile.IsFormal
                 ? null
                 : new LongSoakOuterLoopTrace(profile.MaximumCycleCount);
-            fixture.Coordinator.OuterLoopProbe = outerLoopTrace;
+            var completedRounds = new LongSoakRoundCompletionProbe(outerLoopTrace);
+            fixture.Coordinator.OuterLoopProbe = completedRounds;
 
             var startedClock = CaptureLongSoakClock();
             source.Arm(startedClock, runtimeIdentity.OpportunityLedgerId);
@@ -122,7 +119,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var hostStopped = false;
             LongSoakClockReading completedClock = default;
             TimeSpan stopElapsed = TimeSpan.Zero;
-            ulong deadlineVersionBeforeStop = 0;
+            ulong completedRoundsBeforeStop = 0;
             try
             {
                 host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
@@ -164,7 +161,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         && HasLongSoakQuiescentStopWindow(
                             profile,
                             source,
-                            deadline))
+                            completedRounds,
+                            residencyOutput))
                     {
                         break;
                     }
@@ -191,7 +189,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     throw new InvalidDataException(
                         "The long-soak native workspace identity or capacity changed.");
                 }
-                deadlineVersionBeforeStop = deadline.Snapshot.Version;
+                completedRoundsBeforeStop = checked((ulong)completedRounds.CompletedCount);
                 var stopStarted = Stopwatch.GetTimestamp();
                 using (var stopCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 {
@@ -219,10 +217,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 var samples = observer.AssertCompleteAndCapture(opportunities.Length);
                 if (samples.Length != shardWriter.RecordCount
                     || samples.Length != opportunities.Length
-                    || deadlineVersionBeforeStop != checked((ulong)samples.Length))
+                    || completedRoundsBeforeStop != checked((ulong)samples.Length))
                 {
                     throw new InvalidDataException(
-                        "The long-soak opportunity, profiler, shard, or deadline ledger is incomplete.");
+                        "The long-soak opportunity, profiler, shard, or completed-round ledger is incomplete.");
                 }
 
                 var clockAssessment = AssessLongSoakClock(
@@ -311,7 +309,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     fixture.Coordinator.LifecycleState,
                     shutdownProbe.Points,
                     stopElapsed,
-                    deadlineVersionBeforeStop,
+                    completedRoundsBeforeStop,
                     source,
                     observer,
                     capacityBefore,
@@ -463,7 +461,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public void LongSoakStopAdmissionRequiresVersionBoundedQuiescentLead()
+    public void LongSoakStopAdmissionRequiresCompletedRoundAndPublicationLead()
     {
         const int completedCount = 15;
         const long now = 1_000;
@@ -471,37 +469,37 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(IsLongSoakQuiescentStopWindow(
             250,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(15, HasDeadline: false, 2_000),
+            new LongSoakPublicationSchedule(15, HasNextPublication: false, 2_000),
             now,
             frequency));
         Assert.False(IsLongSoakQuiescentStopWindow(
             250,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(14, HasDeadline: true, 2_000),
+            new LongSoakPublicationSchedule(14, HasNextPublication: true, 2_000),
             now,
             frequency));
         Assert.False(IsLongSoakQuiescentStopWindow(
             250,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(15, HasDeadline: true, 1_061),
+            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_061),
             now,
             frequency));
         Assert.True(IsLongSoakQuiescentStopWindow(
             250,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(15, HasDeadline: true, 1_062),
+            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_062),
             now,
             frequency));
         Assert.False(IsLongSoakQuiescentStopWindow(
             60_000,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(15, HasDeadline: true, 1_999),
+            new LongSoakPublicationSchedule(15, HasNextPublication: true, 1_999),
             now,
             frequency));
         Assert.True(IsLongSoakQuiescentStopWindow(
             60_000,
             completedCount,
-            new HostManagerWakeDeadlineSnapshot(15, HasDeadline: true, 2_000),
+            new LongSoakPublicationSchedule(15, HasNextPublication: true, 2_000),
             now,
             frequency));
     }
@@ -942,46 +940,42 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             : "none";
     }
 
-    private static bool HasLongSoakQuiescentStopWindow(
-        LongSoakProfileDefinition profile,
-        LongSoakBoundedSnapshotSource source,
-        HostManagerVersionedWakeDeadline deadline)
+    private readonly record struct LongSoakPublicationSchedule(
+        int CompletedRounds, bool HasNextPublication, long NextPublicationAt);
+
+    private sealed class LongSoakRoundCompletionProbe(LongSoakOuterLoopTrace? trace)
+        : IHostManagerSmartCoordinatorOuterLoopProbe
     {
-        var completedCount = source.CompletedCount;
-        var snapshot = deadline.Snapshot;
-        var now = deadline.GetTimestamp();
-        return IsLongSoakQuiescentStopWindow(
-            profile.NormalIntervalMilliseconds,
-            completedCount,
-            snapshot,
-            now,
-            deadline.TimestampFrequency);
+        private int completed;
+        internal int CompletedCount => Volatile.Read(ref completed);
+        public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
+        {
+            trace?.Observe(in value);
+            if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateReleased)
+                Interlocked.Increment(ref completed);
+        }
+    }
+
+    private static bool HasLongSoakQuiescentStopWindow(
+        LongSoakProfileDefinition profile, LongSoakBoundedSnapshotSource source,
+        LongSoakRoundCompletionProbe completed, HostedResidencyOutput output)
+    {
+        var next = output.NextPublicationAt;
+        return IsLongSoakQuiescentStopWindow(profile.NormalIntervalMilliseconds, source.CompletedCount,
+            new(completed.CompletedCount, next != 0, next), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
     }
 
     private static bool IsLongSoakQuiescentStopWindow(
-        int normalIntervalMilliseconds,
-        int completedCount,
-        HostManagerWakeDeadlineSnapshot snapshot,
-        long now,
-        long timestampFrequency)
+        int normalIntervalMilliseconds, int completedCount, LongSoakPublicationSchedule snapshot,
+        long now, long timestampFrequency)
     {
-        if (!snapshot.HasDeadline
-            || snapshot.Version != checked((ulong)completedCount)
-            || snapshot.DeadlineTimestamp <= now)
-        {
-            return false;
-        }
-
-        var minimumLeadMilliseconds = Math.Clamp(
-            normalIntervalMilliseconds / 4,
-            25,
-            1_000);
+        if (!snapshot.HasNextPublication || snapshot.CompletedRounds != completedCount
+            || snapshot.NextPublicationAt <= now) return false;
+        var minimumLeadMilliseconds = Math.Clamp(normalIntervalMilliseconds / 4, 25, 1_000);
         var minimumLeadTicks = checked((long)(
-            ((Int128)minimumLeadMilliseconds * timestampFrequency + 999)
-            / 1_000));
-        return snapshot.DeadlineTimestamp - now >= minimumLeadTicks;
+            ((Int128)minimumLeadMilliseconds * timestampFrequency + 999) / 1_000));
+        return snapshot.NextPublicationAt - now >= minimumLeadTicks;
     }
-
     private static IReadOnlyDictionary<string, object?> ReadDictionary(
         IReadOnlyDictionary<string, object?> owner,
         string name)
@@ -1119,7 +1113,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         HostManagerSmartCoordinatorLifecycleState lifecycleAfter,
         IReadOnlyList<HostManagerSmartCoordinatorShutdownPoint> shutdownPoints,
         TimeSpan stopElapsed,
-        ulong deadlineVersionBeforeStop,
+        ulong completedRoundsBeforeStop,
         LongSoakBoundedSnapshotSource source,
         LongSoakCompactSampleObserver observer,
         NativeSmartCoordinatorCapacity capacity,
@@ -1140,8 +1134,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             "loop-receipt.json",
             new
             {
-                schemaVersion = 1,
-                contract = LongSoakLoopReceiptContract,
+                schemaVersion = 2,
+                contract = "publication-driven-long-soak-loop-receipt-v2",
                 evidenceRunId = plan.EvidenceRunId,
                 profile = plan.Profile,
                 durationQualified = profile.IsFormal,
@@ -1186,7 +1180,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     profilerMaterialized = observer.MaterializedRecordCount,
                     writerAdmitted = observer.WriterAdmissionCount,
                     shardCommitted = observer.CommittedSampleCount,
-                    deadlineVersionBeforeStop,
+                    completedRoundsBeforeStop,
                     explicitlyFailed = 0,
                     missed = 0,
                     catchUp = false
@@ -1792,6 +1786,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished
                     && value.PublishedDeadline.HasValue)
                 .Select(static value => value.PublishedDeadline!.Value)
+                .Where(static value => value.HasDeadline)
                 .ToDictionary(static value => value.Version);
             var attempts = captured.GroupBy(static value => value.AttemptId)
                 .Select(group =>
@@ -1819,7 +1814,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         group.Key,
                         dispatchSequence = values.Max(static value => value.DispatchSequence),
                         consumedWake = consumed,
-                        consumedPublicationMatches,
+                        consumedTimerPublicationMatches = consumedPublicationMatches,
                         wakeOverrunMilliseconds,
                         waitMilliseconds = Duration(values,
                             HostManagerSmartCoordinatorOuterLoopPhase.WaitEntered,
@@ -1846,7 +1841,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 }).ToArray();
             var json = JsonSerializer.Serialize(new
             {
-                schema = "rm/long-soak-outer-loop-diagnostic/v1",
+                schema = "rm/long-soak-outer-loop-diagnostic/v2",
+                roundTrigger = "residency-publication",
                 diagnosticOnly = true,
                 profile = "contract-smoke",
                 hostClosedBeforeExport = true,

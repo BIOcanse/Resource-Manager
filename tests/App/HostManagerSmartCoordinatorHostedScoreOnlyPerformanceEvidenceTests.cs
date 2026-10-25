@@ -49,13 +49,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var plan = LoadHostedScoreOnlyEpochPlan(evidenceRoot, epochPlanPath);
         var permits = CreateHostedScoreOnlyPermits(plan);
         var source = new HostedScoreOnlyEpochSource();
+        var residencyOutput = new HostedResidencyOutput(source, TimeProvider.System, controlled: true);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             performanceLogEnabled: true,
             smartCoordinatorMaximumProcesses: HostedScoreOnlyMaximumProcessCount,
             metricSamplerOverride: source,
             processFactsOverride: source,
-            cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+            cpuCoreReader: residencyOutput,
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
             failFastEffects: true);
@@ -65,6 +66,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             "schedulingWakeDeadline")
             ?? throw new InvalidDataException(
                 "The production hosted-loop wake deadline is unavailable.");
+        var traceProbe = new OuterLoopTraceProbe();
+        fixture.Coordinator.OuterLoopProbe = traceProbe;
         var shutdownProbe = new HostedScoreOnlyShutdownProbe();
         fixture.Coordinator.TransitionProbe = shutdownProbe;
         fixture.DebugLogWriter.PrepareRecordCapacity(
@@ -131,9 +134,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(
                 HostManagerSmartCoordinatorLifecycleState.Running,
                 fixture.Coordinator.LifecycleState);
-            await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                deadline,
-                expectedVersion: 1,
+            await residencyOutput.WaitForSubscriptionAsync();
+            residencyOutput.Publish();
+            await WaitForHostedScoreOnlyCycleAsync(
+                traceProbe,
+                expectedCycle: 1,
                 TimeSpan.FromSeconds(5));
 
             for (var sequence = 2; sequence <= HostedScoreOnlyWarmupCycleCount; sequence += 2)
@@ -141,8 +146,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                    deadline,
+                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
+                residencyOutput.Publish();
+                await WaitForHostedScoreOnlyCycleAsync(
+                    traceProbe,
                     checked((ulong)(sequence + 1)),
                     TimeSpan.FromSeconds(5));
             }
@@ -151,7 +158,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(HostedScoreOnlyWarmupCycleCount, fixture.DebugLogWriter.Records.Count);
             Assert.Equal(
                 checked((ulong)HostedScoreOnlyWarmupCycleCount),
-                deadline.Snapshot.Version);
+                checked((ulong)traceProbe.CompletedCount));
             fixture.DebugLogWriter.Records.Clear();
             if (evidenceWriter is not null)
             {
@@ -167,8 +174,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                    deadline,
+                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
+                residencyOutput.Publish();
+                await WaitForHostedScoreOnlyCycleAsync(
+                    traceProbe,
                     checked((ulong)(sequence + 1)),
                     TimeSpan.FromSeconds(5));
             }
@@ -188,7 +197,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var completedPermits = source.CompletedPermits;
             Assert.Equal(
                 checked((ulong)HostedScoreOnlyLastMeasuredSequence),
-                deadline.Snapshot.Version);
+                checked((ulong)traceProbe.CompletedCount));
             Assert.Same(workspaceBefore, fixture.Workspace);
             Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
             Assert.Equal(0U, fixture.Workspace.Snapshot.ProcessCount);
@@ -322,34 +331,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             })
             .Build();
 
-    private static async Task WaitForHostedScoreOnlyDeadlineVersionAsync(
-        HostManagerVersionedWakeDeadline deadline,
-        ulong expectedVersion,
-        TimeSpan timeout)
+    private static async Task WaitForHostedScoreOnlyCycleAsync(
+        OuterLoopTraceProbe trace, ulong expectedCycle, TimeSpan timeout)
     {
         using var cancellation = new CancellationTokenSource(timeout);
-        try
-        {
-            while (true)
-            {
-                var snapshot = deadline.Snapshot;
-                if (snapshot.Version >= expectedVersion)
-                {
-                    Assert.Equal(expectedVersion, snapshot.Version);
-                    Assert.True(snapshot.HasDeadline);
-                    Assert.True(snapshot.DeadlineTimestamp > 0);
-                    return;
-                }
-                await Task.Delay(1, cancellation.Token);
-            }
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"The hosted score-only deadline did not publish version {expectedVersion}.");
-        }
+        while (trace.CompletedCount < checked((int)expectedCycle))
+            await Task.Delay(1, cancellation.Token);
+        Assert.Equal(checked((int)expectedCycle), trace.CompletedCount);
     }
-
     private static HostedScoreOnlyEpochPlan LoadHostedScoreOnlyEpochPlan(
         string? evidenceRoot,
         string? epochPlanPath)
@@ -1012,8 +1001,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Path.Combine(root, "hosted-loop-receipt.json"),
             new
             {
-                schemaVersion = 1,
-                contract = "non-adapted-hosted-score-only-performance-loop-receipt-v1",
+                schemaVersion = 2,
+                contract = "publication-driven-hosted-score-only-performance-loop-receipt-v2",
                 evidenceRunId = plan.EvidenceRunId,
                 scope = "production coordinator hosted loop in a dedicated S0 test host with scripted read providers and fail-fast deny-all effects",
                 measurementBoundary = HostedScoreOnlyMeasurementBoundary,
@@ -1062,9 +1051,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     warmupLast = HostedScoreOnlyWarmupCycleCount,
                     measuredFirst = HostedScoreOnlyFirstMeasuredSequence,
                     measuredLast = HostedScoreOnlyLastMeasuredSequence,
-                    deadlineVersionBeforeStart = 0,
-                    deadlineVersionAfterWarmup = HostedScoreOnlyWarmupCycleCount,
-                    deadlineVersionAfterMeasurement = HostedScoreOnlyLastMeasuredSequence,
+                    roundTrigger = "residency-publication",
+                    completedWrappersAfterWarmup = HostedScoreOnlyWarmupCycleCount,
+                    completedWrappersAfterMeasurement = HostedScoreOnlyLastMeasuredSequence,
                     producerInstanceId,
                     qpcFrequency
                 },
@@ -1165,6 +1154,51 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private static string ComputeHostedScoreOnlyIdentitySha256(object value)
         => Convert.ToHexString(SHA256.HashData(
             JsonSerializer.SerializeToUtf8Bytes(value, ScoreOnlyPerformanceJsonOptions)));
+
+    private sealed class HostedResidencyOutput(Func<CpuCoreResidencySnapshot?> read, TimeProvider clock, bool controlled = false)
+        : ResourceManager.App.Application.CpuTopology.ICpuCoreResidencyReader
+    {
+        private long nextPublicationAt;
+        private readonly ResourceManager.ReadWrite.Publications.CurrentValuePublicationSignal publications = new();
+        private readonly TaskCompletionSource subscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal long NextPublicationAt => Interlocked.Read(ref nextPublicationAt);
+        internal HostedResidencyOutput(HostedScoreOnlyEpochSource source, TimeProvider clock, bool controlled = false)
+            : this(source.ReadCpuCoreResidency, clock, controlled) { }
+        internal Task WaitForSubscriptionAsync() => subscribed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        internal void Publish()
+        {
+            if (!controlled) throw new InvalidOperationException("Only the controlled corpus output is explicitly published.");
+            publications.Publish();
+        }
+        public CpuCoreResidencySnapshot? Read() => read();
+        public IDisposable AcquireSubscription(string id, TimeSpan interval) => new Demand();
+        public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(string id, TimeSpan interval,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            using var demand = AcquireSubscription(id, interval);
+            using var publication = controlled ? publications.Subscribe() : null;
+            subscribed.TrySetResult();
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (publication is not null)
+                    {
+                        await publication.WaitAsync(cancellationToken);
+                        yield return Read();
+                        continue;
+                    }
+                    Interlocked.Exchange(ref nextPublicationAt, clock.GetTimestamp()
+                        + checked((long)(((Int128)interval.Ticks * clock.TimestampFrequency
+                            + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond)));
+                    yield return Read();
+                    await Task.Delay(interval, clock, cancellationToken);
+                }
+            }
+            finally { Interlocked.Exchange(ref nextPublicationAt, 0); }
+        }
+        private sealed class Demand : IDisposable { public void Dispose() { } }
+    }
 
     private sealed class HostedScoreOnlyEpochSource
         : IMetricSampler,

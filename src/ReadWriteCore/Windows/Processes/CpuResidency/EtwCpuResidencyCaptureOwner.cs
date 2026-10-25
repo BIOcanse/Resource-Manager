@@ -211,7 +211,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             session.Buffer,
             () => IsCurrentSession(session, expectedBindingEpoch),
             ReadEventCreation,
-            index => ResolveEventLogicalProcessorId(index, processorIds));
+            index => ResolveEventLogicalProcessorId(index, processorIds), session.Window.Observe);
 
         lock (subscriptionGate)
         {
@@ -223,7 +223,6 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             var previous = Volatile.Read(ref activeSession);
             if (previous is not null) retiredBuffers.Add(previous.Buffer);
             Volatile.Write(ref activeSession, null);
-            SetCachedSnapshot(null);
             ClearRetiredBuffersCore();
             Volatile.Write(ref activeSession, session);
             state = "Warming";
@@ -282,8 +281,8 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         {
             if (!IsCurrentSessionCore(session) || session.EventsLost == broker.EventsLost) return;
             session.Buffer.ResetAfterEventLoss();
+            session.Window.Invalidate();
             Volatile.Write(ref session.EventsLost, broker.EventsLost);
-            SetCachedSnapshot(null);
             state = "Warming";
             message = WarmingMessage(session);
         }
@@ -318,7 +317,8 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         CpuResidencyAggregationBuffer buffer,
         Func<bool> shouldObserve,
         Func<int, DateTimeOffset, long?> readProcessStartKey,
-        Func<int, int?>? resolveProcessorId = null)
+        Func<int, int?>? resolveProcessorId = null,
+        Action<int, long>? boundaryObserved = null)
     {
         ArgumentNullException.ThrowIfNull(kernel);
         ArgumentNullException.ThrowIfNull(buffer);
@@ -388,6 +388,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                     data.NewProcessID,
                     data.NewProcessName,
                     data.NewThreadID);
+                boundaryObserved?.Invoke(logicalProcessorId, data.TimeStampQPC);
             }
         };
 
@@ -1025,9 +1026,8 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         var subscription = kernelSubscription;
         kernelSubscription = null;
         var session = Volatile.Read(ref activeSession);
-        if (session is not null) retiredBuffers.Add(session.Buffer);
+        if (session is not null) { session.Window.Invalidate(); retiredBuffers.Add(session.Buffer); }
         Volatile.Write(ref activeSession, null);
-        SetCachedSnapshot(null);
         return (subscription, session);
     }
 
@@ -1162,8 +1162,29 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         public long BindingEpoch { get; } = bindingEpoch;
         public CpuResidencyCaptureConfiguration Plan { get; } = plan;
         public CpuResidencyAggregationBuffer Buffer { get; } = buffer;
+        public CpuResidencyWindowCompletion Window { get; } = new(plan.PhysicalCoreByLogicalProcessor.Keys,
+            checked(Stopwatch.Frequency * (long)plan.ObservationWindowMilliseconds / 1000));
         public int EventsLost;
         public Task? InventorySeedTask;
+    }
+
+    public async Task<bool> WaitForCompleteWindowAsync(TimeSpan boundaryBudget, TimeSpan deliveryGrace,
+        CancellationToken cancellationToken)
+    {
+        var session = Volatile.Read(ref activeSession);
+        if (session is null || !IsRunning) return false;
+        try
+        {
+            if (!await session.Window.Boundaries.WaitAsync(boundaryBudget, cancellationToken)) return false;
+            return await session.Window.Complete.WaitAsync(session.Plan.ObservationWindow + deliveryGrace, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            session.Window.Invalidate();
+            logger.LogWarning(new TimeoutException("CPU residency capture did not observe a complete boundary window."),
+                "CPU residency capture produced no complete window within its observation and delivery budget.");
+            return false;
+        }
     }
 
     private static bool TryPublish(IMetricPublicationPermit? permit, Action commit)

@@ -61,7 +61,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             smartCoordinatorMaximumProcesses: Scale256HostedProcessCount,
             metricSamplerOverride: source,
             processFactsOverride: source,
-            cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+            cpuCoreReader: new HostedResidencyOutput(source, schedulingClock),
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
             timeProvider: schedulingClock,
@@ -138,9 +138,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 await host.StartAsync(cancellation.Token);
             }
             hostStartReturnedAtQpcTicks = Stopwatch.GetTimestamp();
-            await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                deadline,
-                expectedVersion: 1,
+            await WaitForHostedScoreOnlyCycleAsync(
+                traceProbe,
+                expectedCycle: 1,
                 TimeSpan.FromSeconds(5));
 
             for (var sequence = 2;
@@ -151,13 +151,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 EnqueueScale256ClockPermit(source, clockTrace, permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
                 await AdvanceScale256ScheduledCycleAsync(
-                    schedulingClock, deadline, checked((ulong)(sequence + 1)));
+                    schedulingClock, traceProbe, checked((ulong)(sequence + 1)));
             }
 
             Assert.Equal(Scale256HostedTotalCycleCount, source.CompletedCount);
             Assert.Equal(
                 checked((ulong)Scale256HostedTotalCycleCount),
-                deadline.Snapshot.Version);
+                checked((ulong)traceProbe.CompletedCount));
             Assert.Same(workspaceBefore, fixture.Workspace);
             Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
             Assert.Equal(
@@ -315,6 +315,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var permits = CreateScale256HostedPermits(CreateDefaultScale256HostedCyclePlan("system-clock-causality"));
         var source = new HostedScoreOnlyEpochSource();
         var trace = new Scale256ClockTrace(source, "system");
+        var traceProbe = new OuterLoopTraceProbe();
+        trace.ForwardTo = traceProbe;
         await using var fixture = await CreateScale256ClockFixtureAsync(source, trace, TimeProvider.System);
         var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline")!;
         using var bootstrapRelease = new ManualResetEventSlim();
@@ -347,18 +349,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             EnqueueScale256ClockPermit(source, trace, permits[0]);
             await host.StartAsync(CancellationToken.None);
             await bootstrapReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(1UL, deadline.Snapshot.Version);
+            Assert.Equal(1UL, checked((ulong)traceProbe.CompletedCount));
             EnqueueScale256ClockPermit(source, trace, permits[1]);
             EnqueueScale256ClockPermit(source, trace, permits[2]);
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            Assert.Equal(2UL, deadline.Snapshot.Version);
+            Assert.Equal(2UL, checked((ulong)traceProbe.CompletedCount));
             bootstrapRelease.Set();
             await trace.WaitForPublicationAsync(3);
             trace.Record("driver-pause-start", deadline.Snapshot);
             await Task.Delay(Scale256ClockCausalityWallPause);
             var fallback = await fallbackReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
             trace.Record("driver-pause-end", fallback);
-            Assert.Equal(4UL, fallback.Version);
+            Assert.Equal(1UL, fallback.Version);
             Assert.True(fallback.HasDeadline);
             Assert.Equal(3, source.CompletedCount);
             Assert.Equal(3UL, fixture.Workspace.Snapshot.CycleSequence);
@@ -388,6 +390,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var source = new HostedScoreOnlyEpochSource();
         var clock = new Scale256OneShotTimeProvider();
         var trace = new Scale256ClockTrace(source, "controlled");
+        var traceProbe = new OuterLoopTraceProbe();
+        trace.ForwardTo = traceProbe;
         await using var fixture = await CreateScale256ClockFixtureAsync(source, trace, clock);
         var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline")!;
         fixture.Coordinator.OuterLoopProbe = trace;
@@ -396,25 +400,25 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             EnqueueScale256ClockPermit(source, trace, permits[0]);
             await host.StartAsync(CancellationToken.None);
-            await WaitForHostedScoreOnlyDeadlineVersionAsync(deadline, 1, TimeSpan.FromSeconds(5));
+            await WaitForHostedScoreOnlyCycleAsync(traceProbe, 1, TimeSpan.FromSeconds(5));
             EnqueueScale256ClockPermit(source, trace, permits[1]);
             EnqueueScale256ClockPermit(source, trace, permits[2]);
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            await AdvanceScale256ScheduledCycleAsync(clock, deadline, 3);
+            await AdvanceScale256ScheduledCycleAsync(clock, traceProbe, 3);
             var before = deadline.Snapshot;
             trace.Record("driver-pause-start", before);
             await Task.Delay(Scale256ClockCausalityWallPause);
             trace.Record("driver-pause-end", deadline.Snapshot);
             Assert.Equal(before, deadline.Snapshot);
-            Assert.Equal(3UL, before.Version);
+            Assert.False(before.HasDeadline);
             Assert.Equal(3, source.CompletedCount);
             Assert.False(trace.HasUnplannedCycleError);
             EnqueueScale256ClockPermit(source, trace, permits[3]);
             EnqueueScale256ClockPermit(source, trace, permits[4]);
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            Assert.Equal(4UL, deadline.Snapshot.Version);
-            await AdvanceScale256ScheduledCycleAsync(clock, deadline, 5);
-            Assert.Equal(5UL, deadline.Snapshot.Version);
+            Assert.Equal(4UL, checked((ulong)traceProbe.CompletedCount));
+            await AdvanceScale256ScheduledCycleAsync(clock, traceProbe, 5);
+            Assert.Equal(5UL, checked((ulong)traceProbe.CompletedCount));
             Assert.Equal(5, source.CompletedCount);
             Assert.Equal(5UL, fixture.Workspace.Snapshot.CycleSequence);
             trace.AssertCompletedCycles(5);
@@ -443,7 +447,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             performanceLogEnabled: true, smartCoordinatorMaximumProcesses: Scale256HostedProcessCount,
             metricSamplerOverride: source, processFactsOverride: source,
-            cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+            cpuCoreReader: new HostedResidencyOutput(source, clock),
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
             timeProvider: clock, coordinatorLogger: trace, failFastEffects: true);
@@ -459,15 +463,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     private static async Task AdvanceScale256ScheduledCycleAsync(Scale256OneShotTimeProvider clock,
-        HostManagerVersionedWakeDeadline deadline, ulong expectedVersion)
+        OuterLoopTraceProbe trace, ulong expectedCycle)
     {
-        var published = deadline.Snapshot;
-        Assert.Equal(expectedVersion - 1, published.Version);
-        Assert.True(published.HasDeadline);
-        if (published.DeadlineTimestamp > clock.GetTimestamp())
-            await clock.WaitForTimerAsync(published.DeadlineTimestamp);
-        clock.AdvanceTo(published.DeadlineTimestamp);
-        await WaitForHostedScoreOnlyDeadlineVersionAsync(deadline, expectedVersion, TimeSpan.FromSeconds(5));
+        Assert.Equal(expectedCycle - 1, checked((ulong)trace.CompletedCount));
+        var target = clock.GetTimestamp() + checked(Stopwatch.Frequency * HostedScoreOnlyEventIntervalMilliseconds / 1000);
+        await clock.WaitForTimerAsync(target);
+        clock.AdvanceTo(target);
+        await WaitForHostedScoreOnlyCycleAsync(trace, expectedCycle, TimeSpan.FromSeconds(5));
     }
 
     private static void WriteScale256ClockCausalityTrace(Scale256ClockTrace trace, string caseName)
@@ -615,7 +617,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished
                     && value.PublishedDeadline is { } published)
                 {
-                    publications.Add(published.Version);
+                    publications.Add(checked((ulong)completed));
                     var previous = changed;
                     changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     previous.TrySetResult();
@@ -658,7 +660,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 published = outer.Where(value => value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished).ToArray();
             }
             Assert.Equal(Enumerable.Range(1, count).Select(value => (ulong?)value), native.Select(value => value.NativeCycleSequence));
-            Assert.Equal(Enumerable.Range(1, count).Select(value => (ulong)value), published.Select(value => value.PublishedDeadline!.Value.Version));
+            Assert.Equal(count, published.Length);
+            Assert.All(published, value => Assert.False(value.PublishedDeadline!.Value.HasDeadline));
             Assert.Equal(Enumerable.Range(1, count).Select(value => value == 1
                 ? HostManagerSmartCoordinatorOuterLoopTrigger.ScheduledBootstrap
                 : value % 2 == 0 ? HostManagerSmartCoordinatorOuterLoopTrigger.Manual
@@ -933,8 +936,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Path.Combine(root, "scale256-receipt.json"),
             new
             {
-                schemaVersion = 1,
-                contract = "non-adapted-scale-256-hosted-outer-loop-receipt-v1",
+                schemaVersion = 2,
+                contract = "publication-driven-scale-256-hosted-outer-loop-receipt-v2",
                 evidenceRunId = plan.EvidenceRunId,
                 measurementContract = Scale256HostedMeasurementContract,
                 timingScope = Scale256HostedMeasurementBoundary,

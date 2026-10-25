@@ -392,6 +392,7 @@ pub const Session = struct {
     event_boost_rounds_remaining: u32,
     next_wake_at_ms: i64,
     wake_after_ms: u32,
+    early_wake_after_ms: u32,
     last_reason_mask: u64,
     invalid_fact_count: u32,
     staged_invalid_fact_count: u32 = 0,
@@ -500,6 +501,7 @@ pub const Session = struct {
             .event_boost_rounds_remaining = 0,
             .next_wake_at_ms = 0,
             .wake_after_ms = config.normal_interval_ms,
+            .early_wake_after_ms = std.math.maxInt(u32),
             .last_reason_mask = 0,
             .invalid_fact_count = 0,
             .inflight_count = 0,
@@ -686,6 +688,7 @@ pub const Session = struct {
         self.event_boost_rounds_remaining = 0;
         self.next_wake_at_ms = 0;
         self.wake_after_ms = self.config.normal_interval_ms;
+        self.early_wake_after_ms = std.math.maxInt(u32);
         self.last_reason_mask = 0;
         self.invalid_fact_count = 0;
         self.inflight_count = 0;

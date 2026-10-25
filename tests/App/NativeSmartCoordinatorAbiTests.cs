@@ -99,7 +99,7 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.WakeAfterMilliseconds), 64);
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.ReasonMask), 96);
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.EventBoostRoundsRemaining), 104);
-        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.Reserved0), 108);
+        AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.EarlyWakeAfterMilliseconds), 108);
         AssertOffset<NativeSmartCoordinatorSnapshot>(nameof(NativeSmartCoordinatorSnapshot.Reserved), 112);
 
         AssertOffset<NativeSmartCoordinatorSnapshotRow>(nameof(NativeSmartCoordinatorSnapshotRow.BaseScore), 88);

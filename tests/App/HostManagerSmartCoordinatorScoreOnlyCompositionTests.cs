@@ -1889,7 +1889,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task BackgroundSchedulerUsesPersistentPointTwoHertzSnapshotsWithoutDirectCapture()
+    public async Task BackgroundSchedulerRequestsItsNativeCadenceWithoutDirectCapture()
     {
         var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -1911,10 +1911,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
 
             var hardware = Assert.Single(fixture.MetricSampler.SubscriptionHistory);
-            Assert.Equal(("host-manager-smart-coordinator:cpu-cores", TimeSpan.FromSeconds(5)),
+            Assert.Equal(("host-manager-smart-coordinator:cpu-cores", TimeSpan.FromSeconds(60)),
                 Assert.Single(cpuReader.Subscriptions));
             Assert.Equal("host-manager-smart-coordinator", hardware.SubscriptionId);
-            Assert.Equal(TimeSpan.FromSeconds(5), hardware.RefreshInterval);
+            Assert.Equal(TimeSpan.FromSeconds(60), hardware.RefreshInterval);
             Assert.False(hardware.Request.IsAll);
             Assert.True(hardware.Request.IncludesAllGpuCoreMetrics);
             Assert.True(hardware.Request.Includes("cpu.usage"));
@@ -1928,7 +1928,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 fixture.ProcessFacts.SubscriptionHistory,
                 static subscription => subscription.SubscriptionId ==
                     "host-manager-smart-coordinator:compute");
-            Assert.Equal(TimeSpan.FromSeconds(5), computeProcesses.RefreshInterval);
+            Assert.Equal(TimeSpan.FromSeconds(60), computeProcesses.RefreshInterval);
             Assert.Equal(
                 SchedulingProcessMetricMask.CpuUsage
                     | SchedulingProcessMetricMask.GpuUsage
@@ -2351,7 +2351,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task BackgroundSchedulerUsesTheCompiledFreedomPointForEverySubscription()
+    public async Task BackgroundSchedulerUsesNativeCadenceInsteadOfTheBackendSamplingFreedomPoint()
     {
         var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -2372,12 +2372,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             while (fixture.MetricSampler.ReadLatestCalls == 0 || fixture.ProcessFacts.ReadLatestCalls == 0)
                 await Task.Delay(10, timeout.Token);
 
-            Assert.Equal(TimeSpan.FromMilliseconds(2500),
+            Assert.Equal(TimeSpan.FromSeconds(60),
                 Assert.Single(fixture.MetricSampler.SubscriptionHistory).RefreshInterval);
-            Assert.Equal(TimeSpan.FromMilliseconds(2500), Assert.Single(cpuReader.Subscriptions).Interval);
+            Assert.Equal(TimeSpan.FromSeconds(60), Assert.Single(cpuReader.Subscriptions).Interval);
             Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
             Assert.All(fixture.ProcessFacts.SubscriptionHistory,
-                subscription => Assert.Equal(TimeSpan.FromMilliseconds(2500), subscription.RefreshInterval));
+                subscription => Assert.Equal(TimeSpan.FromSeconds(60), subscription.RefreshInterval));
             Assert.Equal(0, fixture.MetricSampler.CaptureCalls);
             Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);
         }
@@ -6465,12 +6465,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "RunNativeCycleCoreAsync");
             var task = method.Invoke(
                 Coordinator,
-                [trigger, true, null, CancellationToken.None]) as Task<TimeSpan>
+                [trigger, true, null, CancellationToken.None]) as Task
                 ?? throw new InvalidOperationException(
                     "The realtime Host Manager cycle did not return its expected task.");
             try
             {
-                return await task;
+                await task;
+                var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+                return (TimeSpan)result.GetType().GetProperty("Delay")!.GetValue(result)!;
             }
             catch (InvalidDataException exception)
             {
@@ -6656,7 +6658,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class RecordingMetricSampler :
         IMetricSampler,
-        IMetricSnapshotObservationSource
+        IMetricSnapshotObservationSource,
+        IMetricSnapshotPushSource
     {
         private readonly LastSuccessfulHardwareMetricSnapshot historyOwner = new();
         private HardwareMetricSnapshot _snapshot = null!;
@@ -6678,6 +6681,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal List<MetricSampleRequest> CaptureRequests { get; } = [];
         internal List<MetricObservationSubscription> SubscriptionHistory { get; } = [];
         internal HardwareMetricSnapshot Snapshot => _snapshot;
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string id, MetricSampleRequest request,
+            TimeSpan interval, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            using var demand = AcquireSubscription(id, request, interval);
+            await foreach (var value in CpuCoreResidencyTestValues.PeriodicOutput(() => _snapshot, interval, cancellationToken)) yield return value;
+        }
         internal void SetSnapshot(HardwareMetricSnapshot value)
         {
             historyOwner.Publish(value, MetricSampleRequest.ForIds(value.Datasets.Keys));
@@ -6847,7 +6856,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class RecordingProcessFactSource(SchedulingProcessFactSnapshot snapshot)
         : ISchedulingProcessFactSource,
-          ISchedulingProcessFactObservationSource
+          ISchedulingProcessFactObservationSource,
+          IResourceBreakdownPushSource
     {
         private int activeSubscriptionCount;
 
@@ -6861,6 +6871,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             SchedulingProcessFactRequest,
             SchedulingProcessFactSnapshot?>? ReadLatestHandler { get; set; }
         internal SchedulingProcessFactSnapshot Snapshot => snapshot;
+        public async IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(string id, ResourceBreakdownSampleRequest request,
+            TimeSpan interval, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            using var demand = AcquireSubscription(id, request.SchedulingMetricMask, interval);
+            await foreach (var value in CpuCoreResidencyTestValues.PeriodicOutput<ResourceBreakdownSnapshot>(() => null!, interval, cancellationToken)) yield return value;
+        }
         internal void SetSnapshot(SchedulingProcessFactSnapshot value) => snapshot = value;
 
         internal void PublishNextHostedCpuObservation()
@@ -7513,7 +7529,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             string subscriptionId,
             TimeSpan interval,
             CancellationToken cancellationToken)
-            => throw new NotSupportedException("This score-only fixture has no frontend subscriptions.");
+            => CpuCoreResidencyTestValues.PeriodicOutput<CpuCoreResidencySnapshot?>(() => null, interval, cancellationToken);
     }
 
     private sealed class NoopDisposable : IDisposable

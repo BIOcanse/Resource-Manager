@@ -9,9 +9,12 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private sealed record HostManagerNativeCycleSegmentResult(
-        TimeSpan Delay, HostManagerCycleEffectAdmission? CompletedAdmission = null);
+        TimeSpan Delay, HostManagerCycleEffectAdmission? CompletedAdmission = null)
+    {
+        public TimeSpan? PublicationDrivenDelay { get; init; } = Delay;
+    }
 
-    private async Task<TimeSpan> RunNativeCycleCoreAsync(
+    private async Task<HostManagerNativeCycleSegmentResult> RunNativeCycleCoreAsync(
         string trigger, bool realtimeCycle, HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
         CancellationToken cancellationToken)
     {
@@ -26,7 +29,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             CompleteMemoryDirectiveDiagnostics();
         }
-        if (completed.CompletedAdmission is not { } admission) return completed.Delay;
+        if (completed.CompletedAdmission is not { } admission) return completed;
 
         foreach (var planned in firstUse)
         {
@@ -110,7 +113,7 @@ public sealed partial class HostManagerSmartCoordinator
                 // route together with current pressure, policy and process observations.
             }
         }
-        return completed.Delay;
+        return completed;
     }
 
     private HostManagerAutomaticPlacementProcess RefreshFirstUseProcess(HostManagerAutomaticPlacementProcess process)

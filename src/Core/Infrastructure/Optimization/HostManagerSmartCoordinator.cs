@@ -306,16 +306,16 @@ public sealed partial class HostManagerSmartCoordinator(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var samplingInterval = runtimePlanProvider.Current.HostManager.RequirePublished().SchedulerSamplingInterval;
-        IDisposable? cpuCoreSubscription = null;
-        IDisposable? hardwareSubscription = null;
-        IDisposable? processComputeSubscription = null;
-        string? subscribedHardwareRequestKey = null;
-        var subscribedProcessMetricMask = SchedulingProcessMetricMask.None;
+        smartSubscriptions = new(cpuCoreResidencyReader, schedulingProcessFactSource, metricSnapshotSource, timeProvider);
         schedulerRunning = true;
         try
         {
             await Task.Yield();
+            await gate.WaitAsync(stoppingToken);
+            try { await SynchronizeSmartSubscriptionsAsync(stoppingToken); }
+            finally { gate.Release(); }
+            if (smartSubscriptions.HasOutput)
+                await smartSubscriptions.WaitAsync(schedulingWakeDeadline, stoppingToken);
             var outerLoopContext = BeginOuterLoopAttempt(
                 HostManagerSmartCoordinatorOuterLoopTrigger.ScheduledBootstrap);
             while (!stoppingToken.IsCancellationRequested)
@@ -332,69 +332,7 @@ public sealed partial class HostManagerSmartCoordinator(
                 {
                     var mode = runtimePlanProvider.Current.OptimizationMode;
                     schedulerRunning = true;
-                    var publicResourcesAvailable = HasAvailablePublicResourceLifecycle();
-                    var cpuRequired = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled;
-                    if (!cpuRequired)
-                    {
-                        cpuCoreSubscription?.Dispose();
-                        cpuCoreSubscription = null;
-                    }
-                    else
-                    {
-                        cpuCoreSubscription ??= cpuCoreResidencyReader.AcquireSubscription(
-                            "host-manager-smart-coordinator:cpu-cores", samplingInterval);
-                    }
-
-                    var processMask = SchedulingProcessMetricMask.RuntimeState;
-                    if (cpuRequired)
-                    {
-                        processMask |= SchedulingProcessMetricMask.CpuUsage;
-                    }
-                    if (mode.AutomaticMemoryCleanupEnabled)
-                    {
-                        processMask |= SchedulingProcessMetricMask.MemoryUsage;
-                    }
-                    if (mode.GpuSchedulingEnabled)
-                    {
-                        processMask |= SchedulingProcessMetricMask.GpuUsage
-                            | SchedulingProcessMetricMask.GpuDedicatedMemory;
-                    }
-                    var processRequired = mode.SchedulingEnabled
-                        || runtimePlanProvider.Current.HostManager.RequirePublished().SmartCoordinator
-                            .HotPublish.RealtimeActionBudget.Mode == AppRealtimeActionBudgetModes.Percent;
-                    if (processComputeSubscription is not null
-                        && (!processRequired || subscribedProcessMetricMask != processMask))
-                    {
-                        processComputeSubscription?.Dispose();
-                        processComputeSubscription = null;
-                    }
-                    if (processRequired && processComputeSubscription is null)
-                    {
-                        processComputeSubscription = schedulingProcessFactSource.AcquireSubscription(
-                            "host-manager-smart-coordinator:compute",
-                            processMask,
-                            samplingInterval);
-                        subscribedProcessMetricMask = processMask;
-                    }
-                    var hardwareRequired = mode.SchedulingEnabled || publicResourcesAvailable;
-                    var hardwareRequest = mode.SchedulingEnabled
-                        ? CreateSmartSchedulingMetricRequest(mode, publicResourcesAvailable)
-                        : CreatePublicResourceMetricRequest();
-                    if (hardwareSubscription is not null
-                        && (!hardwareRequired
-                            || subscribedHardwareRequestKey != hardwareRequest.CacheKey))
-                    {
-                        hardwareSubscription.Dispose();
-                        hardwareSubscription = null;
-                    }
-                    if (hardwareRequired && hardwareSubscription is null)
-                    {
-                        hardwareSubscription = metricSnapshotSource.AcquireSubscription(
-                            "host-manager-smart-coordinator",
-                            hardwareRequest,
-                            samplingInterval);
-                        subscribedHardwareRequestKey = hardwareRequest.CacheKey;
-                    }
+                    await SynchronizeSmartSubscriptionsAsync(stoppingToken);
                     ObserveOuterLoop(
                         outerLoopContext,
                         HostManagerSmartCoordinatorOuterLoopPhase.DispatchStarted);
@@ -416,7 +354,8 @@ public sealed partial class HostManagerSmartCoordinator(
                 {
                     schedulerRunning = false;
                     logger.LogError(error, "调度周期失败；保留已有事务记录，下一周期重新核对恢复状态。");
-                    schedulingWakeDeadline.PublishScheduled(samplingInterval);
+                    schedulingWakeDeadline.PublishScheduled(
+                        runtimePlanProvider.Current.HostManager.RequirePublished().SchedulerSamplingInterval);
                 }
                 finally
                 {
@@ -432,7 +371,7 @@ public sealed partial class HostManagerSmartCoordinator(
                 var waitEnteredAtQpcTicks = Stopwatch.GetTimestamp();
                 var waitEnteredAtProviderTimestamp =
                     schedulingWakeDeadline.GetTimestamp();
-                var consumedWake = await schedulingWakeDeadline.WaitAsync(stoppingToken);
+                var consumedWake = await smartSubscriptions.WaitAsync(schedulingWakeDeadline, stoppingToken);
                 outerLoopContext = BeginOuterLoopAttempt(
                     HostManagerSmartCoordinatorOuterLoopTrigger.Scheduled);
                 if (outerLoopContext is null)
@@ -459,9 +398,8 @@ public sealed partial class HostManagerSmartCoordinator(
         finally
         {
             schedulerRunning = false;
-            processComputeSubscription?.Dispose();
-            hardwareSubscription?.Dispose();
-            cpuCoreSubscription?.Dispose();
+            await smartSubscriptions.DisposeAsync();
+            smartSubscriptions = null;
         }
     }
 

@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x000b_0000;
+    public const uint Version = 0x000b_0001;
     public const int RuntimeStateCount = 7;
     public const int AdapterGradeCount = 4;
 }
@@ -536,7 +536,7 @@ internal unsafe struct NativeSmartCoordinatorSnapshot
     public uint SnapshotRowCount;
     public NativeSmartCoordinatorReason ReasonMask;
     public uint EventBoostRoundsRemaining;
-    public uint Reserved0;
+    public uint EarlyWakeAfterMilliseconds;
     public fixed ulong Reserved[2];
 }
 

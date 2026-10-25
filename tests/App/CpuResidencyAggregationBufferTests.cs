@@ -4,6 +4,41 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class CpuResidencyAggregationBufferTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(10)]
+    public void CaptureOpenedAtWindowStartCannotPublishTheSameCompleteWindow(int firstSwitchDelayMilliseconds)
+    {
+        var continuous = CreateBuffer(windowMilliseconds: 5000);
+        var windowed = CreateBuffer(windowMilliseconds: 5000);
+        StartProcess(continuous, 0, 100, 1000, "Busy", 10);
+        StartProcess(windowed, 0, 100, 1000, "Busy", 10);
+        Switch(continuous, 0, 0, 0, 0, 100, 10);
+        const int windowStart = 25000;
+        Switch(continuous, windowStart - 10, 0, 100, 10, 100, 10);
+        var firstBoundary = windowStart + firstSwitchDelayMilliseconds;
+        Switch(continuous, firstBoundary, 0, 100, 10, 100, 10);
+        Switch(windowed, firstBoundary, 0, 100, 10, 100, 10);
+        Switch(continuous, 30000, 0, 100, 10, 100, 10);
+        Switch(windowed, 30000, 0, 100, 10, 100, 10);
+
+        var expected = continuous.Snapshot([0]);
+        var actual = windowed.Snapshot([0]);
+        Assert.True(expected.IsComplete);
+        Assert.Equal(5000, Assert.Single(expected.Records).ExecutionTimeQpc);
+        Assert.False(actual.IsComplete);
+        Assert.Empty(actual.Records);
+
+        // The first observed switch establishes continuity, rather than closing
+        // the interval that was already running when capture opened.
+        Switch(windowed, firstBoundary + 5000, 0, 100, 10, 0, 0);
+        var later = windowed.Snapshot([0]);
+        Assert.True(later.IsComplete);
+        Assert.NotEmpty(later.Records);
+        Assert.Equal(firstBoundary, later.WindowStartQpc);
+    }
+
     [Fact]
     public void UnattributedThreadDoesNotDiscardKnownProcessExecutionWindow()
     {

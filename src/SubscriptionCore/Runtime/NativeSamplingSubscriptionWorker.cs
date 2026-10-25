@@ -22,11 +22,13 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     private readonly Action<SubscriptionWorkerFailure> reportFailure;
     private readonly TimeSpan failureRetryDelay;
     private readonly TimeProvider clock;
+    private readonly Func<TimeSpan, CancellationToken, Task>? waitForNextPlan;
     private int running;
 
     public NativeSamplingSubscriptionWorker(NativeItemSamplingSubscriptionTracker<TRequest, TContext> subscriptions,
         SemaphoreSlim demandSignal, Action<IReadOnlyList<string>> synchronizeDemand,
-        Action<SubscriptionWorkerFailure> reportFailure, TimeSpan failureRetryDelay, TimeProvider? clock = null)
+        Action<SubscriptionWorkerFailure> reportFailure, TimeSpan failureRetryDelay, TimeProvider? clock = null,
+        Func<TimeSpan, CancellationToken, Task>? waitForNextPlan = null)
     {
         this.subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
         this.demandSignal = demandSignal ?? throw new ArgumentNullException(nameof(demandSignal));
@@ -35,6 +37,7 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
         if (failureRetryDelay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(failureRetryDelay));
         this.failureRetryDelay = failureRetryDelay;
         this.clock = clock ?? TimeProvider.System;
+        this.waitForNextPlan = waitForNextPlan;
     }
 
     public void NotifyDemandChanged() => SignalDemand(demandSignal);
@@ -74,6 +77,9 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            // This plan observes all demand already signalled. Only changes after
+            // this point should interrupt preparation of that plan's window.
+            demandSignal.Wait(0);
             NativeItemSamplingSubscriptionPlan<TRequest, TContext> plan;
             try { plan = subscriptions.CreatePlan(clock.GetUtcNow()); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
@@ -254,6 +260,11 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     private async Task WaitForDemandOrDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
         if (delay <= TimeSpan.Zero) return;
+        if (waitForNextPlan is not null)
+        {
+            await waitForNextPlan(delay, cancellationToken);
+            return;
+        }
         await WaitForDelaySegmentAsync(LimitTimerDelay(delay), true, cancellationToken);
     }
 

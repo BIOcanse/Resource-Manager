@@ -30,12 +30,12 @@ test "smart full shape byte calculations distinguish runtime maxima from build s
     // build_specialize capacity limits only constrain allowed configurations.
     const build_ceiling = state.BankDemand{ .processes = 32768, .softwares = 32768, .gpus = 262144, .reservations = 131072, .atomic_groups = 32768 };
     const runtime_maxima = state.BankDemand{ .processes = 4096, .softwares = 2048, .gpus = 32768, .reservations = 8192, .atomic_groups = 4096 };
-    try std.testing.expectEqual(@as(u64, 71_828_584), try shapeBytes(build_ceiling));
-    try std.testing.expectEqual(@as(u64, 6_014_056), try shapeBytes(runtime_maxima));
+    try std.testing.expectEqual(@as(u64, 71_828_592), try shapeBytes(build_ceiling));
+    try std.testing.expectEqual(@as(u64, 6_014_064), try shapeBytes(runtime_maxima));
     // Alternate 300-process/300-software/300-GPU retained content shape:
     // each identity bank doubles to 512; no feedback actions/groups are present.
     const with_gpu = state.BankDemand{ .processes = 512, .softwares = 512, .gpus = 512, .reservations = 1, .atomic_groups = 1 };
-    try std.testing.expectEqual(@as(u64, 284_080), try shapeBytes(with_gpu));
+    try std.testing.expectEqual(@as(u64, 284_088), try shapeBytes(with_gpu));
 }
 
 fn seedBanks(session: *state.Session) void {

@@ -190,7 +190,7 @@ pub fn fillSnapshot(
         .snapshot_row_count = process_count + software_count,
         .reason_mask = session.last_reason_mask,
         .event_boost_rounds_remaining = session.event_boost_rounds_remaining,
-        .reserved0 = 0,
+        .early_wake_after_ms = session.early_wake_after_ms,
         .reserved = [_]u64{0} ** 2,
     };
 }
@@ -1293,10 +1293,11 @@ fn assignIdsAndReserve(session: *state.Session, input: *const protocol.CycleInpu
 }
 
 pub fn resolveNextWake(session: *state.Session, now_ms: i64) void {
-    var delay = if (session.event_boost_rounds_remaining > 0)
+    const cadence = if (session.event_boost_rounds_remaining > 0)
         session.config.event_interval_ms
     else
         session.config.normal_interval_ms;
+    var delay: u32 = std.math.maxInt(u32);
     for (session.reservations) |reservation| {
         if (!reservation.occupied) continue;
         const remaining = nonNegativeDelay(now_ms, reservation.deadline_ms);
@@ -1319,6 +1320,8 @@ pub fn resolveNextWake(session: *state.Session, now_ms: i64) void {
         if (software.cpu_transition.retry_not_before_ms > now_ms) delay = @min(delay, nonNegativeDelay(now_ms, software.cpu_transition.retry_not_before_ms));
         if (software.gpu_transition.retry_not_before_ms > now_ms) delay = @min(delay, nonNegativeDelay(now_ms, software.gpu_transition.retry_not_before_ms));
     }
+    session.early_wake_after_ms = delay;
+    delay = @min(cadence, delay);
     session.wake_after_ms = delay;
     session.next_wake_at_ms = saturatingAdd(now_ms, delay);
 }

@@ -24,13 +24,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var plan = LoadHostedScoreOnlyEpochPlan(evidenceRoot, epochPlanPath);
         var permits = CreateHostedScoreOnlyPermits(plan);
         var source = new HostedScoreOnlyEpochSource();
+        var residencyOutput = new HostedResidencyOutput(source, TimeProvider.System, controlled: true);
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             performanceLogEnabled: true,
             smartCoordinatorMaximumProcesses: HostedScoreOnlyMaximumProcessCount,
             metricSamplerOverride: source,
             processFactsOverride: source,
-            cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+            cpuCoreReader: residencyOutput,
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
             failFastEffects: true);
@@ -98,9 +99,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(
                 HostManagerSmartCoordinatorLifecycleState.Running,
                 fixture.Coordinator.LifecycleState);
-            await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                deadline,
-                expectedVersion: 1,
+            await residencyOutput.WaitForSubscriptionAsync();
+            residencyOutput.Publish();
+            await WaitForHostedScoreOnlyCycleAsync(
+                traceProbe,
+                expectedCycle: 1,
                 TimeSpan.FromSeconds(5));
 
             for (var sequence = 2;
@@ -110,8 +113,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                    deadline,
+                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
+                residencyOutput.Publish();
+                await WaitForHostedScoreOnlyCycleAsync(
+                    traceProbe,
                     checked((ulong)(sequence + 1)),
                     TimeSpan.FromSeconds(5));
             }
@@ -119,7 +124,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(HostedScoreOnlyLastMeasuredSequence, source.CompletedCount);
             Assert.Equal(
                 checked((ulong)HostedScoreOnlyLastMeasuredSequence),
-                deadline.Snapshot.Version);
+                checked((ulong)traceProbe.CompletedCount));
             Assert.Same(workspaceBefore, fixture.Workspace);
             Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
             Assert.Equal(0U, fixture.Workspace.Snapshot.ProcessCount);
@@ -331,8 +336,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Path.Combine(root, "outer-loop-receipt.json"),
             new
             {
-                schemaVersion = 1,
-                contract = "non-adapted-outer-loop-score-only-trace-receipt-v1",
+                schemaVersion = 2,
+                contract = "publication-driven-outer-loop-score-only-trace-receipt-v2",
                 evidenceRunId = plan.EvidenceRunId,
                 measurementContract =
                     "non-adapted-hosted-outer-loop-score-only-performance-v1",
@@ -477,6 +482,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         private readonly object sync = new();
         private readonly List<HostManagerSmartCoordinatorOuterLoopEvent> events = [];
 
+        internal int CompletedCount
+        {
+            get { lock (sync) return events.Count(value => value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateReleased); }
+        }
+
         public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
         {
             lock (sync)
@@ -516,17 +526,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
             var producerIds = new HashSet<string>(StringComparer.Ordinal);
             var runIds = new HashSet<string>(StringComparer.Ordinal);
-            var publishedDeadlines = groups
-                .SelectMany(static trace => trace.Events)
-                .Where(static value =>
-                    value.Phase ==
-                    HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished)
-                .Select(static value => value.PublishedDeadline
-                    ?? throw new InvalidDataException(
-                        "An outer-loop publication is missing its exact deadline identity."))
-                .ToDictionary(static value => value.Version);
-            var consumedDeadlineVersions = new HashSet<ulong>();
-            ulong previousConsumedDeadlineVersion = 0;
             for (var index = 0; index < groups.Length; index++)
             {
                 var sequence = index + 1;
@@ -633,8 +632,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     value.Phase ==
                     HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished);
                 Assert.NotNull(published.PublishedDeadline);
-                Assert.Equal((ulong)sequence, published.PublishedDeadline.Value.Version);
-                Assert.True(published.PublishedDeadline.Value.HasDeadline);
+                Assert.False(published.PublishedDeadline.Value.HasDeadline);
                 Assert.Equal(
                     Stopwatch.Frequency,
                     published.ProviderTimestampFrequency);
@@ -644,18 +642,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.WakeReturned);
                     Assert.NotNull(wake.ConsumedWake);
                     var consumedWake = wake.ConsumedWake.Value;
-                    Assert.InRange(consumedWake.Version, 1UL, checked((ulong)sequence - 1));
-                    Assert.True(consumedWake.Version > previousConsumedDeadlineVersion);
-                    Assert.True(consumedDeadlineVersions.Add(consumedWake.Version));
-                    Assert.True(publishedDeadlines.TryGetValue(
-                        consumedWake.Version,
-                        out var publishedWake));
-                    Assert.Equal(publishedWake, consumedWake);
-                    previousConsumedDeadlineVersion = consumedWake.Version;
+                    Assert.False(consumedWake.HasDeadline);
                     Assert.NotNull(wake.ProviderTimestamp);
-                    Assert.True(
-                        wake.ProviderTimestamp.Value >=
-                        consumedWake.DeadlineTimestamp);
                 }
                 else
                 {
@@ -664,10 +652,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             Assert.Single(producerIds);
             Assert.Equal(HostedScoreOnlyLastMeasuredSequence, runIds.Count);
-            Assert.Equal(
-                groups.Count(static trace =>
-                    trace.Trigger == HostManagerSmartCoordinatorOuterLoopTrigger.Scheduled),
-                consumedDeadlineVersions.Count);
             return groups;
         }
     }

@@ -2,7 +2,7 @@ const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x000b_0000;
+pub const abi_version: u32 = 0x000b_0001;
 
 /// Actual canonical storage, separate from configured Capacity ceilings.
 pub const WorkspaceCapacity = extern struct {
@@ -492,7 +492,7 @@ pub const Snapshot = extern struct {
     snapshot_row_count: u32,
     reason_mask: u64,
     event_boost_rounds_remaining: u32,
-    reserved0: u32,
+    early_wake_after_ms: u32,
     reserved: [2]u64,
 };
 

@@ -45,12 +45,18 @@ public sealed partial class HostManagerSmartCoordinator
     {
         try
         {
-            var delay = await RunNativeCycleCoreAsync(
+            var previousWake = schedulingWakeDeadline.Snapshot;
+            var result = await RunNativeCycleCoreAsync(
                 trigger,
                 realtimeCycle: false,
                 outerLoopContext,
                 cancellationToken);
-            var published = schedulingWakeDeadline.PublishForeground(delay);
+            await SynchronizeSmartSubscriptionsAsync(cancellationToken);
+            smartSubscriptions?.RoundCompleted();
+            var delay = smartSubscriptions?.HasOutput == true ? result.PublicationDrivenDelay : result.Delay;
+            var published = delay is { } timerDelay
+                ? schedulingWakeDeadline.PublishForeground(timerDelay)
+                : ClearOrdinaryWake(previousWake);
             ObserveOuterLoop(
                 outerLoopContext,
                 HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished,
@@ -86,12 +92,17 @@ public sealed partial class HostManagerSmartCoordinator
     {
         try
         {
-            var delay = await RunNativeCycleCoreAsync(
+            var previousWake = schedulingWakeDeadline.Snapshot;
+            var result = await RunNativeCycleCoreAsync(
                 "scheduled",
                 realtimeCycle: true,
                 outerLoopContext,
                 cancellationToken);
-            var published = schedulingWakeDeadline.PublishScheduled(delay);
+            await SynchronizeSmartSubscriptionsAsync(cancellationToken);
+            smartSubscriptions?.RoundCompleted();
+            var delay = smartSubscriptions?.HasOutput == true ? result.PublicationDrivenDelay : result.Delay;
+            var published = delay is { } timerDelay ? schedulingWakeDeadline.PublishScheduled(timerDelay)
+                : ClearOrdinaryWake(previousWake);
             ObserveOuterLoop(
                 outerLoopContext,
                 HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished,
@@ -120,6 +131,12 @@ public sealed partial class HostManagerSmartCoordinator
                 outcome: "failed");
             throw;
         }
+    }
+
+    private HostManagerWakeDeadlineSnapshot ClearOrdinaryWake(HostManagerWakeDeadlineSnapshot previous)
+    {
+        schedulingWakeDeadline.ClearScheduled(previous.Version);
+        return schedulingWakeDeadline.Snapshot;
     }
 
     private async Task<HostManagerNativeCycleSegmentResult> RunNativeCycleSegmentAsync(
@@ -558,7 +575,13 @@ public sealed partial class HostManagerSmartCoordinator
             || HasPendingGpuOwnerWork();
         return new(TimeSpan.FromMilliseconds(placementDeferred
             ? desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds
-            : workspace.Snapshot.WakeAfterMilliseconds), effectAdmission);
+            : workspace.Snapshot.WakeAfterMilliseconds), effectAdmission)
+        {
+            PublicationDrivenDelay = placementDeferred
+                ? TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds)
+                : workspace.Snapshot.EarlyWakeAfterMilliseconds == uint.MaxValue
+                    ? null : TimeSpan.FromMilliseconds(workspace.Snapshot.EarlyWakeAfterMilliseconds)
+        };
     }
 
     private async Task RunSelfLocalResourceManagerTickAsync(
@@ -1021,7 +1044,6 @@ public sealed partial class HostManagerSmartCoordinator
             || scoreOnlyFlag != expectedScoreOnly
             || (requireNoActions && snapshot.ActionCount != 0)
             || (!requireNoActions && snapshot.ActionCount > maximumPlanActions)
-            || snapshot.Reserved0 != 0
             || snapshot.Reserved[0] != 0
             || snapshot.Reserved[1] != 0)
         {

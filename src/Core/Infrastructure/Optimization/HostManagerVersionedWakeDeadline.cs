@@ -42,12 +42,15 @@ internal sealed class HostManagerVersionedWakeDeadline
     internal long GetTimestamp() => timeProvider.GetTimestamp();
 
     internal HostManagerWakeDeadlineSnapshot PublishScheduled(TimeSpan delay)
+        => PublishScheduled((TimeSpan?)delay);
+
+    internal HostManagerWakeDeadlineSnapshot PublishScheduled(TimeSpan? delay)
     {
-        var candidate = CreateDeadline(delay);
+        var candidate = delay is { } value ? CreateDeadline(value) : 0;
         lock (sync)
         {
             version = NextVersion(version);
-            hasDeadline = true;
+            hasDeadline = delay is not null;
             deadlineTimestamp = candidate;
             return CaptureSnapshot();
         }

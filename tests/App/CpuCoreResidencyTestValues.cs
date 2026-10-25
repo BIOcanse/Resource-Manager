@@ -7,6 +7,13 @@ namespace Resource_Manager_APP.Tests;
 
 internal static class CpuCoreResidencyTestValues
 {
+    internal static async IAsyncEnumerable<T> PeriodicOutput<T>(Func<T> read, TimeSpan interval,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        yield return read();
+        using var timer = new PeriodicTimer(interval);
+        while (await timer.WaitForNextTickAsync(cancellationToken)) yield return read();
+    }
     // These legacy scenarios explicitly have one physical core. This is not a multi-core inference.
     internal static CpuCoreResidencySnapshot? OneCore(SchedulingProcessFactSnapshot source)
     {
@@ -46,8 +53,12 @@ internal sealed class RecordingCpuCoreResidencyReader(Func<CpuCoreResidencySnaps
         return new Subscription(this);
     }
 
-    public IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(string subscriptionId, TimeSpan interval, CancellationToken cancellationToken)
-        => throw new NotSupportedException("The coordinator only reads the current value and owns a persistent subscription.");
+    public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(string subscriptionId, TimeSpan interval,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var demand = AcquireSubscription(subscriptionId, interval);
+        await foreach (var value in CpuCoreResidencyTestValues.PeriodicOutput(read, interval, cancellationToken)) yield return value;
+    }
 
     private sealed class Subscription(RecordingCpuCoreResidencyReader owner) : IDisposable
     {
