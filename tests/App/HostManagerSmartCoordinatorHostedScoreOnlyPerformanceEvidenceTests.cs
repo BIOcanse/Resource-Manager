@@ -40,6 +40,52 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         "cycle-profiler-after-plan-effect-admission-validation-scope-and-producer-sequence-capture-before-diagnostic-materialization-and-jsonl-transport";
 
     [Fact]
+    public async Task ControlledHostedPublicationWaitsForMonotonicIntervalWhenTimerFiresEarly()
+    {
+        var clock = new EarlyHostedPublicationTimer();
+        long publishedAt = 0;
+        var output = new HostedResidencyOutput(() =>
+        {
+            publishedAt = clock.GetTimestamp();
+            return null;
+        }, clock, controlled: true);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await using var subscription = output.SubscribeAsync(
+            "early-timer-regression", TimeSpan.FromMilliseconds(25), cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+        var publication = subscription.MoveNextAsync().AsTask();
+
+        await output.PublishAfterAsync(TimeSpan.FromMilliseconds(25), cancellation.Token);
+
+        Assert.True(await publication.WaitAsync(cancellation.Token));
+        Assert.Equal(TimeSpan.FromMilliseconds(25).Ticks, publishedAt);
+        Assert.Equal(2, clock.TimerCount);
+    }
+
+    private sealed class EarlyHostedPublicationTimer : TimeProvider
+    {
+        private long timestamp;
+        internal int TimerCount { get; private set; }
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => timestamp;
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Assert.Equal(Timeout.InfiniteTimeSpan, period);
+            // Model the observed early timer, then let the remaining wait elapse.
+            timestamp += (TimerCount++ == 0 ? dueTime - TimeSpan.FromMilliseconds(1) : dueTime).Ticks;
+            callback(state);
+            return new CompletedTimer();
+        }
+
+        private sealed class CompletedTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
+    [Fact]
     public async Task HostedScoreOnlyLoopExercisesDynamicShapesWithoutEffects()
     {
         var evidenceRoot = Environment.GetEnvironmentVariable(
@@ -146,8 +192,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
-                residencyOutput.Publish();
+                await residencyOutput.PublishAfterAsync(
+                    TimeSpan.FromMilliseconds(HostedScoreOnlyEventIntervalMilliseconds));
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
                     checked((ulong)(sequence + 1)));
@@ -173,8 +219,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
-                residencyOutput.Publish();
+                await residencyOutput.PublishAfterAsync(
+                    TimeSpan.FromMilliseconds(HostedScoreOnlyEventIntervalMilliseconds));
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
                     checked((ulong)(sequence + 1)));
@@ -1170,6 +1216,20 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             if (!controlled) throw new InvalidOperationException("Only the controlled corpus output is explicitly published.");
             publications.Publish();
+        }
+        internal async Task PublishAfterAsync(TimeSpan minimumDelay, CancellationToken cancellationToken = default)
+        {
+            var started = clock.GetTimestamp();
+            var remaining = minimumDelay;
+            while (remaining > TimeSpan.Zero)
+            {
+                // A timer can fire before the monotonic cadence boundary. This is
+                // the corpus's only publication, so it must not be discarded as early.
+                await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(remaining.TotalMilliseconds)),
+                    clock, cancellationToken);
+                remaining = minimumDelay - clock.GetElapsedTime(started);
+            }
+            Publish();
         }
         public CpuCoreResidencySnapshot? Read() => read();
         public IDisposable AcquireSubscription(string id, TimeSpan interval) => new Demand();

@@ -112,8 +112,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 source.Enqueue(permits[sequence - 1]);
                 source.Enqueue(permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await Task.Delay(HostedScoreOnlyEventIntervalMilliseconds);
-                residencyOutput.Publish();
+                await residencyOutput.PublishAfterAsync(
+                    TimeSpan.FromMilliseconds(HostedScoreOnlyEventIntervalMilliseconds));
                 await WaitForHostedScoreOnlyCycleAsync(
                     traceProbe,
                     checked((ulong)(sequence + 1)));
