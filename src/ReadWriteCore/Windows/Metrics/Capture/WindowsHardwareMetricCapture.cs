@@ -9,15 +9,14 @@ using ResourceManager.ReadWrite.Windows.Metrics.Writes;
 using ResourceManager.ReadWrite.Windows.Pdh;
 namespace ResourceManager.ReadWrite.Windows.Metrics.Capture;
 
-internal sealed record WindowsMetricProjectionCopy(string VirtualMemoryDetail, Func<string, string>? LegacyLabel = null);
 /// <summary>The original shared capture gate and complete selected-source algorithm. No worker/current duplicate.
 /// The host borrows SampleGate; the default owner acquires the same gate before invoking this capture.</summary>
 internal sealed partial class WindowsHardwareMetricCapture
 {
     private static readonly IReadOnlyDictionary<string, MetricDeviceFieldBinding> EmptyFieldBindings =
         ImmutableDictionary<string, MetricDeviceFieldBinding>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
-    private static readonly IReadOnlyDictionary<string, MetricValue> EmptyMetricItems =
-        ImmutableDictionary<string, MetricValue>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, MetricReadingValue> EmptyMetricItems =
+        ImmutableDictionary<string, MetricReadingValue>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, HardwareMetricDatasetObservation> EmptyDatasetObservations =
         ImmutableDictionary<string, HardwareMetricDatasetObservation>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
 
@@ -47,7 +46,7 @@ internal sealed partial class WindowsHardwareMetricCapture
     internal async Task<HardwareMetricSnapshot?> CaptureUnderGateAsync(MetricSampleRequest request,
         NativeMetricSnapshotWorkspace workspace, ulong workspaceIdentity,
         NativeMetricSnapshotCatalogTopologySnapshot? topology, Func<Action, bool> tryPublish,
-        WindowsMetricProjectionCopy copy, CancellationToken cancellationToken,
+        CancellationToken cancellationToken,
         Action<NativeMetricSnapshotWorkspace>? checkpoint = null, Action<HardwareMetricSnapshot>? onCommitted = null,
         Func<HardwareMetricSnapshot, MetricSampleRequest, CancellationToken, Action<string>?,
             ValueTask<HardwareMetricSnapshot>>? enrichBeforeCommit = null,
@@ -140,8 +139,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             else
             {
                 preEnrichmentFrame = workspace.ReadCommitted();
-                prepared = NativeMetricSnapshotCommittedProjection.Create(preEnrichmentFrame, resources.CpuName,
-                    resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel);
+                prepared = NativeMetricSnapshotCommittedProjection.Create(frame: preEnrichmentFrame, workspaceIdentity: workspaceIdentity);
             }
             if (request.IncludesCatalog) prepared = AddCatalogObservations(prepared, topology, commandAt);
             prepared = await enrichBeforeCommit(prepared, request, cancellationToken,
@@ -173,8 +171,8 @@ internal sealed partial class WindowsHardwareMetricCapture
                         : workspace.ReadCommitted();
                 readingSources.Observe(committed, workspaceIdentity, committedCompletions);
                 var sourceSelection = readingSources.Select(committed, workspaceIdentity);
-                var snapshot = NativeMetricSnapshotCommittedProjection.Create(committed, resources.CpuName,
-                    resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel, sourceSelection);
+                var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: committed,
+                    workspaceIdentity: workspaceIdentity, sourceSelection: sourceSelection);
                 if (request.IncludesCatalog) snapshot = AddCatalogObservations(snapshot, topology, commandAt);
                 if (prepared is not null) snapshot = WindowsMetricControlFields.ApplyPreparedFields(snapshot, prepared);
                 snapshot = ProjectGpuEngineFields(snapshot, request, fieldCatalog, pdhGpuEngineUsage);
@@ -368,20 +366,15 @@ internal sealed partial class WindowsHardwareMetricCapture
                 };
                 if (hasCurrent)
                 {
-                    items[binding.RequestAddress] = new MetricValue(
-                        binding.RequestAddress,
-                        binding.Field.Name,
-                        "gpu_engine",
-                        $"{value:F1}%",
-                        value,
-                        binding.Field.Unit,
-                        value,
-                        null)
+                    items[binding.RequestAddress] = new MetricReadingValue(Id: binding.RequestAddress, NumericValue: value, Unit: binding.Field.Unit, Percent: value)
                     {
+                        FieldCode = binding.Field.Code,
                         FieldName = binding.Field.Name,
                         DeviceIdentity = binding.DeviceIdentity,
                         ValueKind = binding.Field.ValueKind,
-                        SourceId = binding.SourceId
+                        SourceId = binding.SourceId,
+                        Status = status,
+                        ObservedAt = pdhRead!.ObservedAt
                     };
                 }
                 else

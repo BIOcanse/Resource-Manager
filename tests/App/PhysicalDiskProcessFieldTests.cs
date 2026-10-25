@@ -106,7 +106,7 @@ public sealed class PhysicalDiskProcessFieldTests
         Assert.All(catalog.Fields, field => Assert.False(field.Write.Supported));
         var field = catalog.Fields.Single(field => field.Field.DeviceIdentity.EndsWith("|etw-disk:17:0", StringComparison.Ordinal)
             && field.Definition.Name == Read).Field;
-        Assert.Equal("9007199254740993", hostedOwner.Backend.ReadCached(field).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), hostedOwner.Backend.ReadCached(field).Value!.Integer);
         Assert.Equal(2000UL, hostedOwner.Backend.ReadCached(field).SampleDurationMilliseconds);
         using var borrow = hostedOwner.BorrowSubscriptionCapture();
         var binding = Assert.Single(borrow.Bind([field]));
@@ -115,7 +115,7 @@ public sealed class PhysicalDiskProcessFieldTests
         Assert.Null(hostedOwner.Backend.ReadCached(field).Value);
         Assert.Equal(4, hostedOwner.Backend.Catalog.Fields.Length);
         var merged = ProcessMetricFieldSnapshot.Merge([Inventory(), snapshot]);
-        Assert.Equal("17", merged.FindProcess(41, "100", one)!.Values.Single(value => value.Field == Write).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("17"), merged.FindProcess(41, "100", one)!.Values.Single(value => value.Field == Write).IntegerValue);
         Assert.Empty(merged.FindProcess(41, "100")!.Values);
         Assert.Equal(zero, snapshot.Select(new HashSet<string> { Read }).Processes[0].PhysicalDisk);
     }

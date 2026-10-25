@@ -21,7 +21,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var reads = new List<ushort>();
         var capacityReads = new List<ushort>();
         var memory = new WindowsMemoryMonitoringZone(node => { reads.Add(node); return 9_007_199_254_740_993UL; },

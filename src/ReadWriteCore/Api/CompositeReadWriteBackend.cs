@@ -37,6 +37,9 @@ public sealed class CompositeReadWriteBackend : IReadWriteBackend
     }
 
     public ImmutableArray<BackendFieldSelection> Select(ImmutableArray<FieldReference> fields)
+        => SelectCore(fields, allowMissing: false);
+
+    private ImmutableArray<BackendFieldSelection> SelectCore(ImmutableArray<FieldReference> fields, bool allowMissing)
     {
         lock (gate)
         {
@@ -45,6 +48,7 @@ public sealed class CompositeReadWriteBackend : IReadWriteBackend
             for (var position = 0; position < fields.Length; position++)
             {
                 var field = fields[position];
+                if (allowMissing && catalog.Find(field) is null) continue;
                 _ = catalog.Require(field);
                 var owner = routes[field];
                 if (!selected.TryGetValue(owner, out var group)) selected.Add(owner, group = []);
@@ -70,6 +74,23 @@ public sealed class CompositeReadWriteBackend : IReadWriteBackend
         {
             cancellationToken.ThrowIfCancellationRequested();
             var part = await group.Backend.CollectAsync(group.Fields, cancellationToken);
+            if (part.Length != group.Fields.Length) throw new InvalidOperationException("Field owner omitted selected readings.");
+            for (var index = 0; index < part.Length; index++)
+            {
+                if (part[index].Field != group.Fields[index]) throw new InvalidOperationException("Field owner changed selected identities.");
+                values[group.Positions[index]] = part[index];
+            }
+        }
+        return [.. values];
+    }
+
+    public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields)
+    {
+        var values = fields.Select(static field => new FieldReading(field, FieldObservationStatus.Unavailable,
+            null, null, string.Empty)).ToArray();
+        foreach (var group in SelectCore(fields, allowMissing: true))
+        {
+            var part = group.Backend.ReadCachedBatch(group.Fields);
             if (part.Length != group.Fields.Length) throw new InvalidOperationException("Field owner omitted selected readings.");
             for (var index = 0; index < part.Length; index++)
             {

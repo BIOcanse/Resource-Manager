@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -18,7 +19,7 @@ internal static class CompositeFieldsConsumer
             { [first.Reads] = first.Subscriptions, [second.Reads] = second.Subscriptions });
         FieldReference one = new("recorded-cpu", count.Name), two = new("recorded-cpu", smt.Name);
         Require(composite.Catalog.Devices.Length == 1 && composite.Catalog.Fields.Length == 2, "merge metadata for one exact device");
-        Require(composite.ReadCached(one).Value?.Integer == "2" && composite.ReadCached(two).Value?.Boolean == false,
+        Require(composite.ReadCached(one).Value?.Integer == MetricInteger.Parse("2") && composite.ReadCached(two).Value?.Boolean == false,
             "cache reads retain exact integer and false");
         Require(first.Captures == 0 && second.Captures == 0, "catalog and cached reads do not collect");
         using (subscriptions.Acquire("same-id", [two, one], TimeSpan.FromSeconds(1)))
@@ -34,7 +35,7 @@ internal static class CompositeFieldsConsumer
             Require(first.Captures == 1 && second.Captures == 1, "one batch capture per selected owner");
             Require(collected.Select(reading => reading.Field).SequenceEqual(new[] { two, one, two }), "direct batch preserves requested order and duplicates");
             Require(await next && stream.Current.Select(reading => reading.Field).SequenceEqual(new[] { two, one, two }), "mixed publication preserves selected order");
-            Require(stream.Current[0].Value?.Boolean == false && stream.Current[1].Value?.Integer == "2", "mixed values read original publications");
+            Require(stream.Current[0].Value?.Boolean == false && stream.Current[1].Value?.Integer == MetricInteger.Parse("2"), "mixed values read original publications");
             // End the stream while the other owner's wait is pending. Disposal must settle it and release both demands.
         }
         Require(first.Leases == 0 && second.Leases == 0, "paused mixed stream releases every pending owner");

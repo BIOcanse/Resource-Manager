@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using System.Text.Json;
 using ResourceManager.ReadWrite;
@@ -38,7 +39,7 @@ internal static class NvidiaDrsInformationConsumer
             "ordinary topology catalog excludes explicit DRS query fields");
         Require(core.ReadCached(scope.Fields[0]).Value!.Structure!.Value.GetRawText()
             == owner.ReadState().InformationFields.FindField(scope.Fields[0])!.Value!.Value.GetRawText(), "original owner Current");
-        Require((await core.WriteAsync(scope.Fields[0], new(Integer: "1"))).Status == "unsupported", "readonly only");
+        Require((await core.WriteAsync(scope.Fields[0], new(Integer: MetricInteger.Parse("1")))).Status == "unsupported", "readonly only");
         using (var borrow = access.BorrowSubscriptionCapture()) { borrow.SynchronizeDemand(scope.Fields); }
         fail = true; _ = await core.CollectAsync([scope.Fields[0]]);
         Require(core.ReadCached(scope.Fields[0]).Status == FieldObservationStatus.Unavailable

@@ -32,6 +32,14 @@ public sealed class ReadWriteCore(IReadWriteBackend backend, IReadWriteDependenc
         return backend.CollectAsync(fields, cancellationToken);
     }
 
+    public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields)
+    {
+        if (fields.IsDefaultOrEmpty) throw new ArgumentException("Select at least one field.", nameof(fields));
+        var catalog = Catalog;
+        foreach (var field in fields) _ = catalog.Require(field);
+        return backend.ReadCachedBatch(fields);
+    }
+
     public ValueTask<FieldWriteResult> WriteAsync(FieldReference field, FieldValue value, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(value);

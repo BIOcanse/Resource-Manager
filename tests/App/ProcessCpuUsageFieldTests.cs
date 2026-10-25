@@ -59,7 +59,7 @@ public sealed class ProcessCpuUsageFieldTests
         Assert.NotNull(interval.WindowMilliseconds); Assert.Null(query.WindowMilliseconds);
         Assert.Equal("windows.process.query", Assert.Single(query.Sources).SourceId);
         Assert.Equal(interval.CapturedAt, query.CapturedAt); Assert.Equal(9.75, Basic.Value(second, Basic.Names[0]).NumericValue);
-        Assert.Equal("9007199254740993", Basic.Value(second, Basic.Names[1]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Basic.Value(second, Basic.Names[1]).IntegerValue);
         Assert.Equal(2, api.Opens); Assert.Equal(2, api.MemoryCalls); Assert.Equal(0, api.IoCalls + api.HandleCalls);
     }
 

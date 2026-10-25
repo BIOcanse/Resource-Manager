@@ -104,11 +104,11 @@ public sealed class ReadWriteCoreIntegrationTests
     {
         using var fixture = new Fixture(NetworkCounterInformationCollectorTests.CommittedSnapshot());
         var exactBinding = Assert.Single(fixture.Source.Current.FieldBindings.Values, binding => binding.Field.Code == MetricFieldCode.NetworkRxErrors
-            && fixture.Source.Current.Items[binding.RequestAddress].IntegerValue == ulong.MaxValue.ToString(CultureInfo.InvariantCulture));
+            && fixture.Source.Current.Items[binding.RequestAddress].IntegerValue == new MetricInteger(ulong.MaxValue));
         var field = Assert.Single(fixture.Core.Catalog.Fields,
             entry => entry.Field.DeviceIdentity == exactBinding.DeviceIdentity && entry.Definition.Name == exactBinding.Field.Name).Field;
         var reading = Assert.Single(await fixture.Core.CollectAsync([field]));
-        Assert.Equal(ulong.MaxValue.ToString(CultureInfo.InvariantCulture), reading.Value!.Integer);
+        Assert.Equal(MetricInteger.FromUnsigned128(ulong.MaxValue), reading.Value!.Integer);
         Assert.Null(reading.Value.Number);
         Assert.Equal(FieldObservationStatus.Current, reading.Status);
         Assert.Equal([exactBinding.RequestAddress],
@@ -136,7 +136,7 @@ public sealed class ReadWriteCoreIntegrationTests
         using var fixture = new Fixture(snapshot);
         var reference = Assert.Single(fixture.Core.Catalog.Fields).Field;
         var value = Assert.Single(await fixture.Core.CollectAsync([reference])).Value!;
-        if (kind == "wide") { Assert.Equal(UInt128.MaxValue.ToString(CultureInfo.InvariantCulture), value.Integer); Assert.Null(value.Number); }
+        if (kind == "wide") { Assert.Equal(MetricInteger.FromUnsigned128(UInt128.MaxValue), value.Integer); Assert.Null(value.Number); }
         else if (kind == "flag") { Assert.False(value.Boolean); Assert.Null(value.Number); }
         else if (kind == "bytes") { Assert.True(value.Bytes.HasValue); Assert.Empty(value.Bytes.Value); }
         else Assert.Equal(0, value.Number);
@@ -174,7 +174,7 @@ public sealed class ReadWriteCoreIntegrationTests
             Items = memory.Items.Concat(oldGpu.Items).ToDictionary(),
             Datasets = memory.Datasets.Concat(oldGpu.Datasets).ToDictionary()
         };
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         Assert.True(cache.Publish(oldSnapshot, MetricSampleRequest.ForIds(oldSnapshot.FieldBindings.Keys)).IsSuccessful);
         var newGpu = Bind(definition, "gpu-B", "nvidia.nvml", 125, adapterKey: 0xB2);
         var newSnapshot = newGpu with
@@ -219,7 +219,7 @@ public sealed class ReadWriteCoreIntegrationTests
         Assert.Equal(110, write.Setting.Number);
         Assert.Equal(0xA1UL, write.Target.AdapterKey);
         Assert.Equal("failed", (await fixture.Core.WriteAsync(reference, new(Number: double.NaN))).Status);
-        Assert.Equal("failed", (await fixture.Core.WriteAsync(reference, new(Integer: "110"))).Status);
+        Assert.Equal("failed", (await fixture.Core.WriteAsync(reference, new(Integer: MetricInteger.Parse("110")))).Status);
         Assert.Single(fixture.Writer.Written);
     }
 
@@ -293,10 +293,10 @@ public sealed class ReadWriteCoreIntegrationTests
         var basis = MetricDeviceFieldTests.CreateSnapshot(SamplingObservationStatus.Current);
         var address = $"{device}/{field.Name}";
         var value = Assert.Single(basis.Items).Value with { Id = address, NumericValue = number, SourceId = source,
-            IntegerValue = integer, BooleanValue = boolean, BytesValue = bytes };
+            IntegerValue = integer is null ? null : MetricInteger.Parse(integer), BooleanValue = boolean, BytesValue = bytes };
         return basis with
         {
-            Items = new Dictionary<string, MetricValue> { [address] = value },
+            Items = new Dictionary<string, MetricReadingValue> { [address] = value },
             FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
             { [address] = new(device, field, address, source) { AdapterKey = adapterKey } },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>

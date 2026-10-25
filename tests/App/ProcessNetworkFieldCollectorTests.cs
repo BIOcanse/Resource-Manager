@@ -38,7 +38,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         var row = Assert.Single(fields.Processes);
         Assert.Equal(Environment.ProcessId, row.ProcessId);
         Assert.Equal(Birth, row.CreationWindowsFileTime100Ns);
-        Assert.Equal(ulong.MaxValue.ToString(CultureInfo.InvariantCulture), row.Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(ulong.MaxValue), row.Values[0].IntegerValue);
         Assert.Null(row.Values[0].NumericValue);
         Assert.Equal(3.5, row.Values[3].NumericValue);
         Assert.Equal(NetworkAttributionReadMode.ObservedTraffic, Assert.Single(network.Modes));
@@ -74,7 +74,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         var network = new NetworkReader(_ => current);
         using var fixture = new Fixture(network);
         var first = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Equal("11", first.ProcessFields!.Processes[0].Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("11"), first.ProcessFields!.Processes[0].Values[0].IntegerValue);
         current = invalid;
 
         var failed = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
@@ -82,7 +82,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         Assert.All(Assert.Single(failed.ProcessFields!.Processes).Values, value => { Assert.Null(value.IntegerValue); Assert.Null(value.NumericValue); });
         current = good;
         var recovered = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Equal("11", recovered.ProcessFields!.Processes[0].Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("11"), recovered.ProcessFields!.Processes[0].Values[0].IntegerValue);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         var inventoryEmpty = false;
         using var fixture = new Fixture(network, () => inventoryEmpty ? [] : [Process.GetCurrentProcess()]);
         var first = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Equal("0", first.ProcessFields!.Processes[0].Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("0"), first.ProcessFields!.Processes[0].Values[0].IntegerValue);
         Assert.Equal(0, first.ProcessFields.Processes[0].Values[2].NumericValue);
         inventoryEmpty = true;
         var empty = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
@@ -128,7 +128,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         var selected = state.ReadOrCreate(now, Request(Names[0]));
         Assert.Single(selected.ProcessFields!.Fields);
         Assert.Single(selected.ProcessFields.Processes[0].Values);
-        Assert.Equal("9007199254740993", selected.ProcessFields.Processes[0].Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), selected.ProcessFields.Processes[0].Values[0].IntegerValue);
         state.MarkFailed(Request(), now, new InvalidOperationException("private source failure"));
         var failed = state.ReadOrCreate(now, Request());
         Assert.Null(failed.ProcessFields!.CapturedAt);

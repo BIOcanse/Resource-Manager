@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.TestFixtures;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Windows.Devices.Models;
@@ -23,7 +24,7 @@ internal static partial class EdidModeConsumer
         var capability = core.Query(field);
         Require(capability.Read.Supported && !capability.Write.Supported
             && capability.Definition.ValueKind == "structured" && capability.Definition.Unit == "coordinate"
-            && capability.Definition.Meaning == "display.windows_registry_edid_base_chromaticity_declared_xy",
+           ,
             "installed read/write package exposes canonical chromaticity capability");
         foreach (var digital in new[] { false, true })
         for (var type = 0; type < 4; type++)

@@ -2,7 +2,10 @@ import type { MetricSnapshot } from "../../types.ts";
 
 export function metricSnapshotObservedAt(
   snapshot: MetricSnapshot,
-  _metricId?: string
+  metricId?: string
 ): string | null {
-  return snapshot.capturedAt;
+  if (!metricId) return snapshot.capturedAt;
+  const metric = snapshot.items[metricId];
+  return metric?.status === undefined ? snapshot.capturedAt
+    : metric.status === 1 ? metric.observedAt ?? null : null;
 }

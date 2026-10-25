@@ -183,9 +183,9 @@ public sealed class WindowsOpenGlCapabilityInformationTests
         var fields = catalog.Fields.OrderBy(static field => field.Field.FieldName, StringComparer.Ordinal).ToArray();
         Assert.Equal(13, fields.Length);
         Assert.Equal(WindowsOpenGlCapabilityFields.Limits, Assert.Single(reader.Requests));
-        Assert.Equal("16384", access.Backend.ReadCached(fields.Single(field =>
+        Assert.Equal(MetricInteger.Parse("16384"), access.Backend.ReadCached(fields.Single(field =>
             field.Field.FieldName == "gpu_all_opengl_max_texture_size").Field).Value?.Integer);
-        Assert.Equal("4294967296", access.Backend.ReadCached(fields.Single(field =>
+        Assert.Equal(MetricInteger.Parse("4294967296"), access.Backend.ReadCached(fields.Single(field =>
             field.Field.FieldName == "gpu_all_opengl_max_shader_storage_block_size").Field).Value?.Integer);
 
         var textureSize = fields.Single(field => field.Field.FieldName == "gpu_all_opengl_max_texture_size").Field;

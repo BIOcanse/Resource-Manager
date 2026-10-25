@@ -10,9 +10,9 @@ public sealed partial class NativeMetricSnapshotAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x000B_0000U, NativeMetricSnapshotAbi.Version);
+        Assert.Equal(0x000D_0000U, NativeMetricSnapshotAbi.Version);
         Assert.Equal(0x0005_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
-        Assert.Equal(0xBABB9B97E9199C19UL, NativeMetricSnapshotAbi.LayoutFingerprint);
+        Assert.Equal(0x074957DC9F9DF65BUL, NativeMetricSnapshotAbi.LayoutFingerprint);
         Assert.Equal(
             NativeMetricSnapshotAbi.WireContractFingerprint,
             ComputeWireContractFingerprint());
@@ -47,6 +47,13 @@ public sealed partial class NativeMetricSnapshotAbiTests
         AssertSize<NativeMetricSnapshotSourcePersistenceOutput>(184);
         AssertSize<NativeMetricSnapshotPersistenceInput>(64);
         AssertSize<NativeMetricSnapshotPersistenceHeader>(144);
+        AssertSize<NativeMetricCurrentValue>(40);
+        AssertSize<NativeMetricCurrentKey>(16);
+        AssertOffset<NativeMetricCurrentKey>(nameof(NativeMetricCurrentKey.CellHandle), 8);
+        AssertSize<NativeMetricCurrentCommitInput>(24);
+        AssertSize<NativeMetricCurrentReadOutput>(16);
+        AssertOffset<NativeMetricCurrentValue>(nameof(NativeMetricCurrentValue.ValueKind), 32);
+        AssertOffset<NativeMetricCurrentCommitInput>(nameof(NativeMetricCurrentCommitInput.ByteCapacity), 12);
         AssertOffset<NativeMetricSnapshotSourcePolicyInput>(nameof(NativeMetricSnapshotSourcePolicyInput.AlignmentReserved), 28);
         AssertOffset<NativeMetricSnapshotMetricDefinitionInput>(nameof(NativeMetricSnapshotMetricDefinitionInput.AlignmentReserved), 68);
         AssertOffset<NativeMetricSnapshotSnapshotHeader>(nameof(NativeMetricSnapshotSnapshotHeader.AlignmentReserved), 124);
@@ -312,7 +319,11 @@ public sealed partial class NativeMetricSnapshotAbiTests
             typeof(NativeMetricSnapshotRuleStateOutput),
             typeof(NativeMetricSnapshotSourcePersistenceOutput),
             typeof(NativeMetricSnapshotPersistenceInput),
-            typeof(NativeMetricSnapshotPersistenceHeader)
+            typeof(NativeMetricSnapshotPersistenceHeader),
+            typeof(NativeMetricCurrentValue),
+            typeof(NativeMetricCurrentCommitInput),
+            typeof(NativeMetricCurrentReadOutput),
+            typeof(NativeMetricCurrentKey)
         ];
         ulong hash = 0xCBF2_9CE4_8422_2325;
         hash = Mix(hash, (ulong)types.Length);

@@ -145,7 +145,8 @@ public sealed partial class MetricCatalogueSubscriptionTests
             harness.MemoryZone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
             var captured = await harness.Sampler.CaptureSnapshotAsync(
                 MetricSampleRequest.ForIds([harness.RequestAddress]), CancellationToken.None);
-            Assert.Equal(2468UL, captured.Memory.AvailableBytes!.Value);
+            Assert.Equal(2468d, captured.Items[harness.RequestAddress].NumericValue);
+            Assert.Equal(2468d, harness.Core.ReadCached(harness.Field).Value!.Number);
             Assert.Equal(2, harness.MemoryReads);
         }
         finally
@@ -221,7 +222,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     }
 
     private static MemoryMetrics Memory(ulong available)
-        => new(4096 - available, 4096, (4096 - available) * 100d / 4096, true, "recorded-memory")
+        => new(UsedBytes: 4096 - available, TotalBytes: 4096, UsagePercent: (4096 - available) * 100d / 4096, IsUsageAvailable: true)
         {
             AvailableBytes = available,
             ObservationStatus = SamplingObservationStatus.Current
@@ -281,8 +282,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
                 null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
                 registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
             using (var lease = fixture.Owner.Acquire())
-                fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                    lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+                fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
             var controls = new NoControls();
             Backend = new HostReadWriteBackend(Sampler, Sampler, fixture.Catalog, controls,
                 new ControlWriteLayer(controls, [], new NormalAccess()));

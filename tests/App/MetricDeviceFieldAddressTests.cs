@@ -223,8 +223,7 @@ public sealed class MetricDeviceFieldAddressTests
         Assert.True(new[] { multiGpuPnp, secondMultiGpuPnp }.SequenceEqual(multiGpuAddress.PnpInstanceIds!));
         Assert.Equal("00000000000000A2", multiGpuAddress.AdapterLuid);
 
-        var committed = NativeMetricSnapshotCommittedProjection.Create(
-            workspace.ReadCommitted(), "fixture", "fixture", 1);
+        var committed = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         var valuesToRead = new[]
         {
             Assert.Single(committed.FieldBindings.Values, binding => binding.DeviceIdentity == cpu.ExactIdentityKey
@@ -248,7 +247,7 @@ public sealed class MetricDeviceFieldAddressTests
         var npuRead = Assert.Single(read, row => row.DeviceIdentity == npu.ExactIdentityKey);
         var memoryValue = Assert.Single(npuRead.Fields, value => value.Name == "npu_all_dedicated_memory_committed");
         Assert.Equal("unsigned64", memoryValue.ValueKind);
-        Assert.Equal("9007199254740993", memoryValue.IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), memoryValue.IntegerValue);
         Assert.Null(memoryValue.NumericValue);
         Assert.Contains(npuRead.Fields, value => value.Name == "npu_all_engine_busy_percent");
         Assert.Equal("Fixture GPU", gpuRead.Device.DisplayName);
@@ -487,7 +486,7 @@ public sealed class MetricDeviceFieldAddressTests
         IReadOnlyList<MetricDeviceFieldBinding> bindings)
     {
         var now = DateTimeOffset.UtcNow;
-        var items = new Dictionary<string, MetricValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, MetricReadingValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(snapshot.Datasets,
             StringComparer.OrdinalIgnoreCase);
         foreach (var binding in bindings)
@@ -498,11 +497,9 @@ public sealed class MetricDeviceFieldAddressTests
             double? numeric = binding.Field.Code == MetricFieldCode.IntelEffectiveFrequencyMhz ? 1375.5
                 : binding.Field.ValueKind == "float64" ? 37.5
                 : null;
-            items[binding.RequestAddress] = new MetricValue(binding.RequestAddress,
-                binding.Field.Name, binding.Field.Resource.ToString(), "fixture", numeric,
-                binding.Field.Unit, null, null)
+            items[binding.RequestAddress] = new MetricReadingValue(Id: binding.RequestAddress, NumericValue: numeric, Unit: binding.Field.Unit, Percent: null)
             {
-                IntegerValue = integer,
+                IntegerValue = integer is null ? null : MetricInteger.Parse(integer),
                 ValueKind = binding.Field.ValueKind,
                 SourceId = binding.SourceId
             };
@@ -532,10 +529,10 @@ public sealed class MetricDeviceFieldAddressTests
         return new HardwareMetricSnapshot(now,
             new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0,
                 "fixture", new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null, null, null, null)),
-            new(0, 0, 0, false, "fixture"),
-            new(0, 0, 0, "fixture", false), [],
+            new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false),
+            new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false), [],
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
-            new Dictionary<string, MetricValue>(StringComparer.Ordinal))
+            new Dictionary<string, MetricReadingValue>(StringComparer.Ordinal))
         {
             FieldBindings = bindings.ToDictionary(static binding => binding.RequestAddress,
                 StringComparer.Ordinal),

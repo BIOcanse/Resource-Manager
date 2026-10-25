@@ -304,7 +304,7 @@ public sealed class MetricReadingSourceSelectionTests
         }
         var frame = workspace.ReadCommitted();
         var selected = tracker.Select(frame, 1);
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1, "", null, selected);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1, sourceSelection: selected);
         Assert.True(snapshot.Cpu.IsUsageAvailable);
         Assert.Equal(80d, snapshot.Cpu.UsagePercent);
         Assert.True(snapshot.FieldBindings[binding.MetricId].Field.Reading!.IsPreferredSource);
@@ -329,7 +329,7 @@ public sealed class MetricReadingSourceSelectionTests
         Assert.True(selected.Fields[1].IsPreferredSource);
         Assert.Equal("available", selected.Fields[1].SourceAvailability);
         Assert.Equal(1UL, selected.LegacyHandles["cpu.usage"]);
-        var projected = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1, "", null, selected);
+        var projected = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1, sourceSelection: selected);
         Assert.True(projected.FieldBindings[binding.MetricId].Field.Reading!.IsPreferredSource);
         tracker.Observe(frame with { Metrics = [] }, 1,
             [Complete(10) with { Status = NativeMetricSnapshotSourceStatus.Unavailable }]);
@@ -383,6 +383,6 @@ public sealed class MetricReadingSourceSelectionTests
         { SupportedMetricHandles = available.ToImmutableArray() };
 
     private static HardwareMetricSnapshot Snapshot(IReadOnlyDictionary<string, MetricDeviceFieldBinding> fields)
-        => new(DateTimeOffset.UtcNow, null!, null!, null!, [], new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
-            new Dictionary<string, MetricValue>()) { WorkspaceIdentity = 1, ConfigurationGeneration = 1, CatalogGeneration = 1, FieldBindings = fields };
+        => new(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
+            new Dictionary<string, MetricReadingValue>()) { WorkspaceIdentity = 1, ConfigurationGeneration = 1, CatalogGeneration = 1, FieldBindings = fields };
 }

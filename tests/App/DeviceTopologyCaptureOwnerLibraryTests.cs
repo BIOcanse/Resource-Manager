@@ -204,7 +204,7 @@ public sealed class DeviceTopologyCaptureOwnerLibraryTests
         Assert.Null((await backend.CollectAsync([field], default)).Single().Value);
         Assert.Equal(known.Devices.Select(d => d.DeviceIdentity), owner.ReadState().AcpiInformationFields.Devices.Select(d => d.DeviceIdentity));
         Assert.Null(owner.ReadState().AcpiInformationFields.ObservedAt);
-        Assert.Equal("7", (await backend.CollectAsync([field], default)).Single().Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("7"), (await backend.CollectAsync([field], default)).Single().Value!.Integer);
         await owner.CaptureAcpiInformationAsync(default);
         Assert.Empty(owner.ReadState().AcpiInformationFields.Devices);
     }

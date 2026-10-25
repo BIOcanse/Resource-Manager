@@ -12,6 +12,14 @@ if (args.Contains("--amd-control-recorded-only", StringComparer.Ordinal))
     await AmdCpuIntegratedGpuControlOwnerConsumer.RunAsync();
     return;
 }
+if (args.Contains("--raw-metric-facts-recorded-only", StringComparer.Ordinal))
+{
+    RawMetricFactConsumer.Run();
+    InformationProcessConsumer.Run();
+    await MetricWorkspaceOwnerConsumer.RunWindowsAsync();
+    return;
+}
+RawMetricFactConsumer.Run();
 if (args.Contains("--current-backend-recorded-only", StringComparer.Ordinal))
 {
     await AmdHardwareTopologyConsumer.RunRecordedAsync();
@@ -114,12 +122,12 @@ var backend = new Backend();
 var core = new ReadWriteCore(backend, new DependencyActions(client, []));
 var field = core.Catalog.Fields.Single().Field;
 Require(core.Query(field).Read.Supported, "public capability");
-Require(core.ReadCached(field).Value?.Integer == "18446744073709551615", "exact cached integer");
+Require(core.ReadCached(field).Value?.Integer == MetricInteger.Parse("18446744073709551615"), "exact cached integer");
 Require(backend.Collections == 0, "cache has no collection side effect");
 var readings = await core.CollectAsync([field]);
-Require(readings.Single().Value?.Integer == "18446744073709551615", "direct collection");
+Require(readings.Single().Value?.Integer == MetricInteger.Parse("18446744073709551615"), "direct collection");
 Require(backend.Collections == 1, "one explicit backend collection");
-Require((await core.WriteAsync(field, new(Integer: "0"))).Status == "unsupported", "read-only field");
+Require((await core.WriteAsync(field, new(Integer: MetricInteger.Parse("0")))).Status == "unsupported", "read-only field");
 Require(backend.Writes == 0, "read-only field did not invoke writer");
 Require(core.Catalog.GetFields("unknown").IsEmpty, "explicit device binding");
 InformationProcessConsumer.Run();
@@ -279,12 +287,12 @@ sealed class Backend : IReadWriteBackend
         var definition = MetricFieldRegistry.Definitions.Single(item => item.Code == MetricFieldCode.NetworkRxErrors);
         reference = new("network-interface", definition.Name);
         Catalog = new([new("network-interface", "network", null)], [new(reference,
-            new(definition.Name, definition.Unit, definition.ValueKind, definition.Meaning),
+            new(definition.Name, definition.Unit, definition.ValueKind),
             new(true, null, []), OperationSupport.Unsupported("read-only"), "explicit-source")]);
     }
     public ValueTask<ReadWriteCatalog> DiscoverAsync(CancellationToken token) => ValueTask.FromResult(Catalog);
     public FieldReading ReadCached(FieldReference field) => new(field, FieldObservationStatus.Current,
-        new(Integer: "18446744073709551615"), DateTimeOffset.UnixEpoch, "explicit-source");
+        new(Integer: MetricInteger.Parse("18446744073709551615")), DateTimeOffset.UnixEpoch, "explicit-source");
     public ValueTask<ImmutableArray<FieldReading>> CollectAsync(ImmutableArray<FieldReference> fields, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Collections++;

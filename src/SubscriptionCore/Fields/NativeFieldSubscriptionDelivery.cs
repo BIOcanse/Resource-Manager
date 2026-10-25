@@ -69,12 +69,22 @@ public sealed class NativeFieldSubscriptionDelivery
 
         lock (gate)
         {
+            var current = new List<Registration>();
             foreach (var trigger in triggers)
             {
                 if (freshOnly.HasValue && trigger.IsFresh != freshOnly.Value) continue;
                 if (!registrations.TryGetValue(trigger.SourceKey, out var registration)) continue;
                 registration.Complete(trigger.ItemId, trigger.Sequence, trigger.IsFresh,
-                    readings, queried);
+                    readings, queried, current);
+            }
+            foreach (var group in current.GroupBy(static registration => registration.Backend,
+                (IEqualityComparer<IReadWriteBackend>)ReferenceEqualityComparer.Instance))
+            {
+                var expected = group.SelectMany(static registration => registration.Expected).Distinct().ToImmutableArray();
+                var part = CompositeFieldSubscriptionBackend.ReadCurrent(group.Key, expected);
+                var byCapability = expected.Select((capability, index) => (capability, part[index]))
+                    .ToDictionary(static entry => entry.capability, static entry => entry.Item2);
+                foreach (var registration in group) registration.PublishCurrent(byCapability);
             }
         }
     }
@@ -115,10 +125,13 @@ public sealed class NativeFieldSubscriptionDelivery
                 return new FieldCollectionResult(ImmutableArray<FieldReading>.Empty,
                     Committed: false, QueriedFields: queriedFields.ToImmutableArray());
 
-            var readings = ImmutableArray.CreateBuilder<FieldReading>(selected.Count);
-            foreach (var (backend, capability) in selected)
-                readings.Add(CompositeFieldSubscriptionBackend.ReadCurrent(backend, capability));
-            return new FieldCollectionResult(readings.MoveToImmutable(), Committed: true,
+            var readings = new Dictionary<FieldReference, FieldReading>();
+            foreach (var group in selected.GroupBy(static entry => entry.Backend,
+                (IEqualityComparer<IReadWriteBackend>)ReferenceEqualityComparer.Instance))
+                foreach (var reading in CompositeFieldSubscriptionBackend.ReadCurrent(group.Key,
+                    [.. group.Select(static entry => entry.Capability)]))
+                    readings.Add(reading.Field, reading);
+            return new FieldCollectionResult([.. selected.Select(entry => readings[entry.Capability.Field])], Committed: true,
                 QueriedFields: queriedFields.ToImmutableArray());
         }
     }
@@ -229,7 +242,8 @@ public sealed class NativeFieldSubscriptionDelivery
         }
 
         internal void Complete(string item, ulong sequence, bool fresh,
-            Dictionary<FieldReference, FieldReading>? readings, HashSet<FieldReference>? queried)
+            Dictionary<FieldReference, FieldReading>? readings, HashSet<FieldReference>? queried,
+            List<Registration> current)
         {
             if (Volatile.Read(ref active) == 0) return;
             if (!rounds.TryGetValue(sequence, out var round))
@@ -259,14 +273,19 @@ public sealed class NativeFieldSubscriptionDelivery
             }
 
             if (!round.Coalesced && collectionItems.Any(collectionItem => !round.Items.Contains(collectionItem))) return;
-            var delivered = fresh
-                ? round.Readings.Select((reading, index) => reading
-                    ?? new FieldReading(Expected[index].Field, FieldObservationStatus.Unavailable,
-                        null, null, Expected[index].ReadSource)).ToImmutableArray()
-                : Expected.Select(field => CompositeFieldSubscriptionBackend.ReadCurrent(Backend, field)).ToImmutableArray();
             rounds.Remove(sequence);
-            values.Writer.TryWrite(delivered);
+            if (fresh)
+            {
+                var delivered = round.Readings.Select((reading, index) => reading
+                    ?? new FieldReading(Expected[index].Field, FieldObservationStatus.Unavailable,
+                        null, null, Expected[index].ReadSource)).ToImmutableArray();
+                values.Writer.TryWrite(delivered);
+            }
+            else current.Add(this);
         }
+
+        internal void PublishCurrent(IReadOnlyDictionary<FieldCapability, FieldReading> readings)
+            => values.Writer.TryWrite([.. Expected.Select(field => readings[field])]);
 
         internal void Retire()
         {

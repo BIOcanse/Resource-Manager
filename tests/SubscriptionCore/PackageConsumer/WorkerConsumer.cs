@@ -212,7 +212,7 @@ internal static class WorkerConsumer
         internal bool FailReads { get; set; }
         public ReadWriteCatalog Catalog { get; } = new([new("cpu-device", "cpu", null), new("memory-device", "memory", null)],
             new[] { Field("one"), Field("two") }.Select(field => new FieldCapability(field,
-                new(field.FieldName, field.DeviceIdentity == "cpu-device" ? "%" : "bytes", "float64", null),
+                new(field.FieldName, field.DeviceIdentity == "cpu-device" ? "%" : "bytes", "float64"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded-provider")));
         public FieldReading ReadCached(FieldReference field) => Volatile.Read(ref current).GetValueOrDefault(field)
             ?? new(field, FieldObservationStatus.Warming, null, null, "recorded-provider");

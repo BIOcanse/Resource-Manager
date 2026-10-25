@@ -64,8 +64,6 @@ public readonly record struct NativeMetricSnapshotRuleCatalogBinding(
     ulong MaximumValueBits)
 {
     public MetricFieldDefinition? Field { get; init; }
-    internal string? FieldDetail { get; init; }
-    internal string? FieldGroup { get; init; }
     public MetricFieldCode FieldCode => Field?.Code ?? MetricFieldCode.Unknown;
     public string DeviceIdentity { get; init; } = string.Empty;
     public int DisplayIndex { get; init; } = -1;
@@ -92,6 +90,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     ulong NativeRowFingerprint,
     string CatalogIdentitySha256)
 {
+    public string? CpuModelName { get; init; }
     public ImmutableDictionary<ulong, NativeMetricSnapshotRuleCatalogBinding> MetricBindings { get; init; } =
         ImmutableDictionary<ulong, NativeMetricSnapshotRuleCatalogBinding>.Empty;
     public ImmutableDictionary<string, ulong> LegacyMetricHandles { get; init; } =
@@ -334,8 +333,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             .ToImmutableArray();
         // Metadata belongs to this catalog, while addresses belong to each device.
         var metadata = new Dictionary<(string Template, string Source, uint ValueKind), FieldMetadata>();
-        var sourceLabels = plan.SourcePolicies.ToDictionary(static source => source.SourceId,
-            static source => source.SourceId, StringComparer.Ordinal);
         FieldMetadata Metadata(NativeMetricSnapshotRuleTemplate template)
         {
             var key = (template.MetricIdTemplate, template.SourceId, template.ValueKind);
@@ -352,10 +349,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 _ => throw new InvalidOperationException("Unknown metric value kind.")
             };
             if (field is not null && field.ValueKind != valueKind) field = field with { ValueKind = valueKind };
-            var source = sourceLabels[template.SourceId];
-            var result = new FieldMetadata(field, source,
-                field?.Meaning is { } meaning ? source + "; " + meaning : source,
-                field?.Resource.ToString() ?? string.Empty);
+            var result = new FieldMetadata(field, template.SourceId);
             metadata.Add(key, result);
             return result;
         }
@@ -465,8 +459,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                      rule.Template.MaximumValueBits)
                 {
                     Field = rule.Field,
-                    FieldDetail = rule.Metadata.Detail,
-                    FieldGroup = rule.Metadata.Group,
                     DeviceIdentity = rule.DeviceIdentity,
                     DisplayIndex = rule.DisplayIndex,
                     LegacyMetricId = rule.LegacyMetricId,
@@ -944,7 +936,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     private const ulong MemoryScopeHandle = 0x1000_0000_0000_0003UL;
     private const ulong VirtualMemoryScopeHandle = 0x1000_0000_0000_0004UL;
 
-    private sealed record FieldMetadata(MetricFieldDefinition? Field, string SourceId, string Detail, string Group);
+    private sealed record FieldMetadata(MetricFieldDefinition? Field, string SourceId);
 
     private sealed record ExpandedRule(
         string MetricId,

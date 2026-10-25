@@ -35,7 +35,7 @@ public sealed class MetricFieldCatalogRebindingTests
         {
             CatalogGeneration = empty.CatalogGeneration + 1,
             FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [returnedBinding.RequestAddress] = returnedBinding },
-            Items = new Dictionary<string, MetricValue> { [returnedBinding.RequestAddress] = original.Items[binding.RequestAddress] },
+            Items = new Dictionary<string, MetricReadingValue> { [returnedBinding.RequestAddress] = original.Items[binding.RequestAddress] },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
             {
                 [returnedBinding.RequestAddress] = original.Datasets[binding.RequestAddress] with { DatasetId = returnedBinding.RequestAddress }
@@ -43,7 +43,12 @@ public sealed class MetricFieldCatalogRebindingTests
         };
         var catalog = new DashboardMonitoringCatalogState();
         catalog.PublishCatalogProbe(initiallyEmpty ? empty : first);
-        var source = new Source(catalog);
+        var source = new Source(catalog, initiallyEmpty ? empty : first);
+        void Publish(HardwareMetricSnapshot snapshot)
+        {
+            source.Current = snapshot;
+            catalog.PublishCatalogProbe(snapshot);
+        }
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(catalog);
@@ -71,16 +76,17 @@ public sealed class MetricFieldCatalogRebindingTests
             if (!initiallyEmpty)
             {
                 Assert.Equal("150", initial[0].GetProperty("fields")[0].GetProperty("integerValue").GetString());
-                catalog.PublishCatalogProbe(empty);
+                Publish(empty);
                 Assert.Equal(0, (await ReadValue(reader, timeout.Token)).GetArrayLength());
             }
-            catalog.PublishCatalogProbe(returned);
+            Publish(returned);
             var next = await ReadValue(reader, timeout.Token);
             Assert.Equal(binding.DeviceIdentity, next[0].GetProperty("deviceIdentity").GetString());
             var field = next[0].GetProperty("fields")[0];
             Assert.Equal(binding.Field.Name, field.GetProperty("name").GetString());
             Assert.NotNull(original.Items[binding.RequestAddress].IntegerValue);
-            Assert.Equal(original.Items[binding.RequestAddress].IntegerValue, field.GetProperty("integerValue").GetString());
+            Assert.Equal(original.Items[binding.RequestAddress].IntegerValue,
+                MetricInteger.Parse(field.GetProperty("integerValue").GetString()!));
             Assert.Contains(returnedBinding.RequestAddress, source.Requests.Last().Ids);
             Assert.DoesNotContain(binding.RequestAddress, source.Requests.Last().Ids);
         }
@@ -99,8 +105,9 @@ public sealed class MetricFieldCatalogRebindingTests
     }
 
     // The managed sampler boundary only publishes a value if that concrete address was acquired.
-    private sealed class Source(DashboardMonitoringCatalogState catalog) : IMetricSnapshotPushSource
+    private sealed class Source(DashboardMonitoringCatalogState catalog, HardwareMetricSnapshot initial) : IMetricSnapshotPushSource
     {
+        public HardwareMetricSnapshot Current { get; set; } = initial;
         public List<MetricSampleRequest> Requests { get; } = [];
         public int Active;
         public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string id, MetricSampleRequest request,
@@ -115,7 +122,7 @@ public sealed class MetricFieldCatalogRebindingTests
             {
                 do
                 {
-                    var snapshot = catalog.Current!;
+                    var snapshot = Current;
                     yield return snapshot with
                     {
                         Items = snapshot.Items.Where(pair => request.Ids.Contains(pair.Key)).ToDictionary(),

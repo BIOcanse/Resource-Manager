@@ -49,7 +49,6 @@ internal sealed class NpuEngineRecordedResources
     }
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation([], []) },
         OpenNpuEngineDirectory = Open, ReadNpuEngines = Read,
@@ -118,6 +117,11 @@ internal static class NpuEngineConsumer
         Require(fields.Length == 4 && fields.Select(field => field.DeviceIdentity).Distinct().Count() == 2 && recording.Reads == 0,
             "exact independent engines each expose raw and ratio, discovery does not sample");
         Require(core.Catalog.Devices.Count(device => device.Resource == "npu_engine") == 2, "typed engine devices are separate from parent NPU resources");
+        var probe = await owner.CaptureAsync(MetricSampleRequest.CatalogProbe, timeout.Token);
+        Require(probe.FieldBindings.Count > 0 && probe.Items.Values.All(value => value.NumericValue is null
+            && value.IntegerValue is null && value.BooleanValue is null && value.BytesValue is null)
+            && owner.ReadCachedSnapshot() is null && recording.Reads == 0,
+            "catalog probes return structural facts without sampled values or a second current");
         foreach (var field in fields)
         {
             var capability = core.Query(field);
@@ -128,13 +132,13 @@ internal static class NpuEngineConsumer
                 && capability.Definition.Unit == (field.FieldName == NpuEngineRecordedResources.Raw ? "µs" : "%"), "precise units and value kinds");
         }
         var first = await core.CollectAsync(fields, timeout.Token);
-        Require(first.Where(row => row.Field.FieldName == NpuEngineRecordedResources.Raw).All(row => row.Value?.Integer == "9007199254740993"), "raw full unsigned precision");
+        Require(first.Where(row => row.Field.FieldName == NpuEngineRecordedResources.Raw).All(row => row.Value?.Integer == MetricInteger.Parse("9007199254740993")), "raw full unsigned precision");
         Ratio(first, null);
         Ratio(await core.CollectAsync(fields, timeout.Token), 125);
         Require(recording.Reads == 2 && recording.LastRequested.Count == 2 && recording.LastMaximum == 256, "one source read supplies both quantities per engine");
         var before = owner.ReadCachedSnapshot(); var reads = recording.Reads;
         foreach (var field in fields) _ = core.ReadCached(field);
-        Require(ReferenceEquals(before, owner.ReadCachedSnapshot()) && recording.Reads == reads, "cache uses original current without sampling");
+        Require(MetricSnapshotFactAssertions.SameCurrent(before, owner.ReadCachedSnapshot()) && recording.Reads == reads, "cache uses original current without sampling");
         var busy = BusyFields(core.Catalog);
         Require(busy.Length == 1, "one device busy field is expanded for the exact parent NPU");
         var busyCapability = core.Query(busy[0]);
@@ -146,9 +150,24 @@ internal static class NpuEngineConsumer
         var busyCurrent = await core.CollectAsync(busy, timeout.Token);
         Require(busyCurrent.Single().Value?.Number == 125 && recording.Reads == 3 && recording.LastRequested.Count == 2,
             "device busy is the maximum over all bound engine ratios");
+        var rawCurrent = owner.ReadCachedSnapshot()!;
+        var busyBinding = rawCurrent.FieldBindings.Values.Single(binding => binding.DeviceIdentity == busy[0].DeviceIdentity
+            && binding.Field.Name == busy[0].FieldName);
+        var busyFact = rawCurrent.Items[busyBinding.RequestAddress];
+        var busyObservation = rawCurrent.Datasets[busyBinding.RequestAddress];
+        Require(busyFact.FieldCode == MetricFieldCode.NpuDeviceEngineBusyPercent
+            && busyFact.ObservedAt?.UtcTicks == busyObservation.ObservedAtUtcTicks
+            && busyFact.SampleDurationMilliseconds == 1000
+            && busyCurrent.Single().ObservedAt == busyFact.ObservedAt
+            && before!.Items.Where(pair => pair.Value.FieldCode == MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent)
+                .All(pair => rawCurrent.Items[pair.Key] == pair.Value),
+            "device maximum carries exact observation metadata while dependency engine slots remain unchanged");
+        var returnedCurrent = await owner.CaptureAsync(MetricSampleRequest.ForIds([busyBinding.RequestAddress]), timeout.Token);
+        Require(MetricSnapshotFactAssertions.SameCurrent(returnedCurrent, owner.ReadCachedSnapshot()),
+            "explicit capture returns the final native public slots rather than collected dependency values");
         before = owner.ReadCachedSnapshot(); reads = recording.Reads;
         _ = core.ReadCached(busy[0]);
-        Require(ReferenceEquals(before, owner.ReadCachedSnapshot()) && recording.Reads == reads,
+        Require(MetricSnapshotFactAssertions.SameCurrent(before, owner.ReadCachedSnapshot()) && recording.Reads == reads,
             "device busy cache read uses current without creating another engine sample");
         Require(fields.SequenceEqual(Fields(await core.DiscoverAsync(timeout.Token))) && recording.Opens == 1, "repeated probe retains the real live directory");
         if (observe is not null) await observe(core, owner, recording, fields, timeout.Token);
@@ -163,13 +182,13 @@ internal static class NpuEngineConsumer
             try { await core.CollectAsync(fields, canceled.Token); throw new InvalidDataException("Cancellation published."); }
             catch (OperationCanceledException) { }
             finally { recording.AfterRead = null; }
-            Require(ReferenceEquals(before, owner.ReadCachedSnapshot()), "cancellation cannot publish or replace original current");
+            Require(MetricSnapshotFactAssertions.SameCurrent(before, owner.ReadCachedSnapshot()), "cancellation cannot publish or replace original current");
         }
         using (var borrow = owner.BorrowSubscriptionCapture())
         {
             borrow.Bind(fields); borrow.SynchronizeDemand(fields); before = owner.ReadCachedSnapshot()!;
             Require(!(await borrow.CollectAsync(fields, new RejectedPermit(before.WorkspaceIdentity, before.ConfigurationGeneration), timeout.Token)).Committed
-                && ReferenceEquals(before, owner.ReadCachedSnapshot()), "rejected original permit cannot advance current/baseline");
+                && MetricSnapshotFactAssertions.SameCurrent(before, owner.ReadCachedSnapshot()), "rejected original permit cannot advance current/baseline");
         }
         recording.Opened[0].Current = false;
         var replacement = Fields(await core.DiscoverAsync(timeout.Token));
@@ -178,6 +197,8 @@ internal static class NpuEngineConsumer
         Ratio(await core.CollectAsync(replacement, timeout.Token), 125);
         Require(recording.Opened[0].Disposed && recording.UnselectedReads == 0, "old directory drains without querying unrelated producers");
         owner.Dispose(); Require(recording.Opened.All(directory => directory.Disposed), "last original holder releases all directory leases");
+        try { await core.CollectAsync(replacement, timeout.Token); throw new InvalidDataException("Disposed owner accepted collection."); }
+        catch (ObjectDisposedException) { }
         Console.WriteLine("[NPU-ENGINE-PACKAGE-RECORDED] raw-U64/QPC-Native-ratio125/device-busy-max; warmup/failure/reopen; same-current; live-directory-reuse; cancellation/retirement; no-live-hardware.");
     }
     internal static ImmutableArray<FieldReference> Fields(ReadWriteCatalog catalog)

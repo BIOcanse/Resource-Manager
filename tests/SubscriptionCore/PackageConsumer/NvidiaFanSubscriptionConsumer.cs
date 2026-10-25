@@ -51,7 +51,7 @@ internal static class NvidiaFanSubscriptionConsumer
         var current = owner.ReadCachedSnapshot();
         var reads = fixture.Reads;
         foreach (var field in fields) _ = core.ReadCached(field);
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads && fixture.UnselectedReads == 0
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads && fixture.UnselectedReads == 0
             && fixture.CatalogEngineProbeCount == 1,
             "passive original current never captures additional or unrelated sources");
         Console.WriteLine("[NVIDIA-FAN-SUBSCRIPTION-PACKAGE-RECORDED] native-composition; two-selectors; percent=135/0; rpm-optional; same-current; failure-clears; stop-drains; direct-owner-usable; no-live-capture.");
@@ -119,7 +119,6 @@ internal sealed class RecordedNvidiaFanResources
 
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded CPU", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources
         {
             ControlReadCpuIdentity = static () => null,

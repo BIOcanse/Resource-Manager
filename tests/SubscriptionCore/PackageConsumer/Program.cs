@@ -2,6 +2,13 @@ using System.Runtime.CompilerServices;
 using ResourceManager.Subscription.Native;
 
 // Consume only the NuGet package and its actual native asset, without the host.
+if (args.Contains("--raw-metric-facts-recorded-only", StringComparer.Ordinal))
+{
+    await NativeFieldDeliveryConsumer.RunAsync();
+    await FieldFacadeConsumer.RunAsync();
+    await CompositeFieldsConsumer.RunAsync();
+    return;
+}
 if (args.Contains("--current-backend-recorded-only", StringComparer.Ordinal))
 {
     await AmdHardwareTopologyConsumer.RunRecordedAsync();

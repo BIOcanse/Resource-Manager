@@ -1,10 +1,11 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Frozen;
 using System.Text.Json.Serialization;
 using ResourceManager.ReadWrite.Windows.Processes;
 
 namespace ResourceManager.ReadWrite.ProcessFields;
 
-public sealed record ProcessMetricFieldValue(string Field, string? IntegerValue, double? NumericValue)
+public sealed record ProcessMetricFieldValue(string Field, MetricInteger? IntegerValue, double? NumericValue)
 {
     public string? StringValue { get; init; }
 }

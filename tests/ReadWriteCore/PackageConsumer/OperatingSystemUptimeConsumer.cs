@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
 using ResourceManager.ReadWrite.Windows.SystemInformation;
@@ -26,10 +27,10 @@ internal static class OperatingSystemUptimeConsumer
             Console.WriteLine($"Actual OS uptime unavailable: status={observed.Status}; no zero/current claim.");
             return;
         }
-        if (!ulong.TryParse(observed.Value?.Integer, out var seconds) || observed.Value!.Number is not null
+        if (observed.Value?.Integer is not { Negative: false, HighBits: 0 } || observed.Value!.Number is not null
             || !observed.ObservedAt.HasValue || core.ReadCached(field.Field) != observed)
             throw new InvalidDataException("Actual uptime does not share lossless same current.");
-        Console.WriteLine($"Actual OS uptime: integer={seconds}; unit=s; status={observed.Status}; source={observed.SourceId}; same-current=yes; scope=machine; exact-boot/session not claimed.");
+        Console.WriteLine($"Actual OS uptime: integer={observed.Value!.Integer!.Value.LowBits}; unit=s; status={observed.Status}; source={observed.SourceId}; same-current=yes; scope=machine; exact-boot/session not claimed.");
     }
 }
 

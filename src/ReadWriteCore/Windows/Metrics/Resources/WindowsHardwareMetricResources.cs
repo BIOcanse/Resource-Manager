@@ -28,8 +28,6 @@ public sealed partial class WindowsHardwareMetricResources : IDisposable
     public WindowsMetricControlResources? Controls { get; init; }
     private readonly List<IDisposable> owned = [];
     internal void Own(IDisposable resource) => owned.Add(resource);
-    public required string CpuName { get; init; }
-    public required string MemoryDescription { get; init; }
     public required Func<NativeMetricSnapshotCpuCounterObservation> ReadCpuCounters { get; init; }
     public required Func<MemoryMetrics> ReadMemory { get; init; }
     public required Func<VirtualMemoryMetrics> ReadVirtualMemory { get; init; }

@@ -47,7 +47,11 @@ internal static class IntelFanConsumer
             && readings.Single(reading => reading.Field.DeviceIdentity == fixture.Fans[1].ExactIdentityKey).Value?.Number == 1450, "zero and positive RPM");
         var current = owner.ReadCachedSnapshot();
         foreach (var reading in readings) Require(core.ReadCached(reading.Field) == reading, "same current");
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == 1 && fixture.UnselectedReads == 0, "passive cache and selected source only");
+        var nextRead = owner.ReadCachedSnapshot();
+        Require(current is not null && nextRead is not null
+            && current.CommittedGeneration == nextRead.CommittedGeneration
+            && current.CapturedAt == nextRead.CapturedAt
+            && fixture.Reads == 1 && fixture.UnselectedReads == 0, "passive native current read and selected source only");
         var selected = fields.Single(field => field.DeviceIdentity == fixture.Fans[1].ExactIdentityKey);
         await core.CollectAsync([selected], timeout.Token);
         Require(fixture.LastTargets is [var fan] && ReferenceEquals(fan, fixture.Fans[1]) && fixture.LastMaximum == 16, "typed target and operation template budget");
@@ -56,7 +60,7 @@ internal static class IntelFanConsumer
             borrow.Bind([selected]); borrow.SynchronizeDemand([selected]);
             var before = owner.ReadCachedSnapshot()!;
             Require(!(await borrow.CollectAsync([selected], new RetiredPermit(before.WorkspaceIdentity, before.ConfigurationGeneration), timeout.Token)).Committed
-                && ReferenceEquals(before, owner.ReadCachedSnapshot()), "retired permit cannot publish");
+                && SameCurrent(before, owner.ReadCachedSnapshot()), "retired permit cannot publish");
         }
         var beforeCancellation = owner.ReadCachedSnapshot();
         using (var cancellation = new CancellationTokenSource())
@@ -66,7 +70,7 @@ internal static class IntelFanConsumer
             catch (OperationCanceledException) { }
             finally { fixture.OnRead = null; }
         }
-        Require(ReferenceEquals(beforeCancellation, owner.ReadCachedSnapshot()), "in-flight cancellation preserves current");
+        Require(SameCurrent(beforeCancellation, owner.ReadCachedSnapshot()), "in-flight cancellation preserves current");
         fixture.Fail = true;
         var failed = await core.CollectAsync(fields, timeout.Token);
         Require(failed.All(reading => reading is { Status: FieldObservationStatus.Unavailable, Value: null, ObservedAt: null })
@@ -85,6 +89,12 @@ internal static class IntelFanConsumer
     internal static ImmutableArray<FieldReference> Fields(ReadWriteCatalog catalog)
         => catalog.Fields.Where(field => field.Field.FieldName == RecordedIntelFanResources.Name)
             .Select(field => field.Field).OrderBy(field => field.DeviceIdentity, StringComparer.Ordinal).ToImmutableArray();
+    private static bool SameCurrent(HardwareMetricSnapshot? before, HardwareMetricSnapshot? after)
+        => before is not null && after is not null
+            && before.WorkspaceIdentity == after.WorkspaceIdentity
+            && before.CommittedGeneration == after.CommittedGeneration
+            && before.CapturedAt == after.CapturedAt
+            && before.Items.OrderBy(static item => item.Key).SequenceEqual(after.Items.OrderBy(static item => item.Key));
     private static void Require(bool condition, string message)
     { if (!condition) throw new InvalidDataException("Intel fan recorded consumer: " + message); }
     private sealed class RetiredPermit(ulong workspace, ulong generation) : IMetricPublicationPermit
@@ -112,7 +122,6 @@ internal sealed class RecordedIntelFanResources
         => Frozen && source == NativeMetricSnapshotSources.IntelGcl ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded CPU", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation(null, null) },
         ReadCpuCounters = () => throw Unexpected(), ReadMemory = () => throw Unexpected(), ReadVirtualMemory = () => throw Unexpected(),

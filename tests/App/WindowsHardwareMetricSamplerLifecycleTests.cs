@@ -16,7 +16,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     {
         using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No NUMA demand"),
-            () => new MemoryMetrics(512, 1024, 50, true, "recorded-memory")
+            () => new MemoryMetrics(UsedBytes: 512, TotalBytes: 1024, UsagePercent: 50, IsUsageAvailable: true)
             {
                 AvailableBytes = 512,
                 ObservationStatus = SamplingObservationStatus.Current
@@ -44,7 +44,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             Assert.Equal(fixture.Owner.CurrentWorkspaceIdentity, updated.WorkspaceIdentity);
             var diskAddress = updated.FieldBindings.Values.First(binding => binding.DeviceIdentity == "new-disk").RequestAddress;
             Assert.Contains(diskAddress, fixture.Catalog.SelectSubscribable(MetricSampleRequest.ForIds([diskAddress])).Ids);
-            Assert.Equal(SamplingObservationStatus.Current, updated.Datasets[SamplingDatasetIds.StorageInventory].Status);
+            Assert.Equal(SamplingObservationStatus.Current,
+                sampler.ReadLatest(MetricSampleRequest.All)!.Datasets[SamplingDatasetIds.StorageInventory].Status);
             var topologyReads = fixture.TopologyReads;
             var catalogChanges = Volatile.Read(ref changes);
             Assert.True(await stream.MoveNextAsync());
@@ -58,7 +59,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     [Fact]
     public async Task LatePlanCallbackCannotReplaceCurrentHistoryRequirements()
     {
-        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
+        var subscriptions = fixture.Slots;
         var provider = subscriptions.Provider;
         var current = provider.Current;
         var older = current with
@@ -87,7 +89,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
                 Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
             }
         };
-        using var sampler = CreateSampler(subscriptions, new DashboardMonitoringCatalogState());
+        using var sampler = CreateSampler(subscriptions, new DashboardMonitoringCatalogState(), fixture.Owner);
         var delayed = Task.Run(() => provider.Publish(older));
         try
         {
@@ -146,9 +148,9 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         var catalog = new DashboardMonitoringCatalogState();
-        var gpuItem = new MetricValue("gpu.0.usage", "GPU", "gpu", "0%", 0, "%", null, null);
+        var gpuItem = new MetricReadingValue(Id: "gpu.0.usage", NumericValue: 0, Unit: "%", Percent: null);
         catalog.PublishCatalogProbe(CreateCatalogSnapshot() with
-        { Items = new Dictionary<string, MetricValue> { [gpuItem.Id] = gpuItem } });
+        { Items = new Dictionary<string, MetricReadingValue> { [gpuItem.Id] = gpuItem } });
         using var sampler = CreateSampler(subscriptions, catalog);
         var inventory = MetricSampleRequest.ForIds([SamplingDatasetIds.SystemGpuInventory]);
         Assert.Equal(inventory.CacheKey, catalog.SelectSubscribable(inventory).CacheKey);
@@ -194,10 +196,10 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             {
                 [canonical] = new("recorded-memory", definition, canonical, "windows.memory") { RequestAliases = [legacy] }
             },
-            Items = new Dictionary<string, MetricValue>
+            Items = new Dictionary<string, MetricReadingValue>
             {
-                [canonical] = new(canonical, canonical, "recorded", "", 512, "B", null, null),
-                [legacy] = new(legacy, legacy, "recorded", "", 512, "B", null, null)
+                [canonical] = new(Id: canonical, NumericValue: 512, Unit: "B", Percent: null),
+                [legacy] = new(Id: legacy, NumericValue: 512, Unit: "B", Percent: null)
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
             {
@@ -207,10 +209,11 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         };
         foreach (var (published, subscribed) in new[] { (legacy, canonical), (canonical, legacy) })
         {
-            using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+            using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
+            var subscriptions = fixture.Slots;
             var catalog = new DashboardMonitoringCatalogState();
             catalog.PublishCatalogProbe(frame);
-            using var sampler = CreateSampler(subscriptions, catalog);
+            using var sampler = CreateSampler(subscriptions, catalog, fixture.Owner);
             var owner = Assert.IsType<LastSuccessfulHardwareMetricSnapshot>(typeof(WindowsHardwareMetricSampler)
                 .GetField("publishedSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -353,8 +356,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(0, 0, 0, false, "test"),
-            new VirtualMemoryMetrics(0, 0, 0, "test", false),
+            new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -365,6 +368,6 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricReadingValue>());
     }
 }

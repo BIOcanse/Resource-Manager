@@ -32,7 +32,7 @@ internal static class OperatingSystemUptimeSubscriptionConsumer
         FieldObservationConsumerAssertions.RequireOriginalOwnerObservation(reading, backend.ReadCached(field));
         if (reading.Status == FieldObservationStatus.Current)
         {
-            if (!ulong.TryParse(reading.Value?.Integer, out _) || reading.Value!.Number is not null)
+            if (reading.Value?.Integer is not { Negative: false, HighBits: 0 } || reading.Value!.Number is not null)
                 throw new InvalidDataException("Actual uptime is not unsigned64 seconds.");
         }
         else if (reading.Value is not null) throw new InvalidDataException("Unavailable uptime has a synthetic value.");

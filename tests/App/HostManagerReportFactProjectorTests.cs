@@ -232,7 +232,7 @@ public sealed class HostManagerReportFactProjectorTests
     public void RealComposedCpuSnapshotUsesCurrentDatasetsDespiteUnavailableLegacyProvider()
     {
         var now = DateTimeOffset.UtcNow;
-        var publisher = new ResourceManager.App.Infrastructure.Monitoring.LastSuccessfulHardwareMetricSnapshot();
+        using var publisher = new ResourceManager.App.Infrastructure.Monitoring.LastSuccessfulHardwareMetricSnapshot();
         var request = MetricSampleRequest.ForIds(["cpu.usage", "cpu.temperature", "cpu.frequencyPercent"]);
         var result = publisher.Publish(CreateHardware(now, CpuMetricObservationStatus.Complete, 7), request);
         Assert.Equal(3, result.CommittedDatasetCount);
@@ -319,8 +319,8 @@ public sealed class HostManagerReportFactProjectorTests
                     CoreVoltageVolts: 1,
                     PackageCurrentAmps: 70,
                     TemperatureCelsius: 96)),
-            new MemoryMetrics(1, 2, 50, true, "DDR5"),
-            new VirtualMemoryMetrics(0, 0, 0, string.Empty, false),
+            new MemoryMetrics(UsedBytes: 1, TotalBytes: 2, UsagePercent: 50, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -331,7 +331,7 @@ public sealed class HostManagerReportFactProjectorTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>())
+            new Dictionary<string, MetricReadingValue>())
         {
             Datasets = new[] { MetricDatasetIds.SystemCpuUsage, MetricDatasetIds.ForSystemMetric("cpu.temperature"), MetricDatasetIds.ForSystemMetric("cpu.frequencyPercent") }
                 .ToDictionary(id => id, id => new HardwareMetricDatasetObservation(id, SamplingObservationStatus.Current, sourceGeneration, capturedAt.UtcTicks, 1, 1, 1, sourceGeneration))

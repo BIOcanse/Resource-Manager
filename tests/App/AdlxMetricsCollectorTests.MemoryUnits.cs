@@ -69,12 +69,12 @@ public sealed partial class AdlxMetricsCollectorTests
             workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateAdlxCompletion(plan, source,
                 new(source.SourceHandle, 1, (ulong)phase + 1), at, phase == 3 ? [] :
                 [AmdAdlxBridgeReader.ToGpuMetrics(row, request, Inventory())!, AmdAdlxBridgeReader.ToGpuMetrics(other, request, Inventory())!]), at);
-            var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
             foreach (var binding in bindings)
             {
                 var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, binding.DeviceIdentity, new HashSet<string> { RawMemoryName })).Fields);
                 var expected = phase == 3 || binding.DisplayIndex == 9 && phase is 1 or 2 ? null : binding.DisplayIndex == 9 ? "0" : "2147483647";
-                Assert.Equal(expected, field.IntegerValue); Assert.Null(field.NumericValue);
+                Assert.Equal(expected is null ? null : MetricInteger.Parse(expected), field.IntegerValue); Assert.Null(field.NumericValue);
                 Assert.Equal("MB", field.Unit); Assert.Equal("unsigned64", field.ValueKind);
                 Assert.Equal(expected is null ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, field.Status);
             }
@@ -92,7 +92,7 @@ public sealed partial class AdlxMetricsCollectorTests
                 RecordedGpuIdentities(Inventory()), NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new Environment(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None); var dashboard = new DashboardMonitoringCatalogState();
-        using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+        using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.Field.Code == MetricFieldCode.AdlxDedicatedMemoryMb && binding.DeviceIdentity == RecordedGpuIdentities(Inventory()).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var row = Row(10, PnpA, 64); row.VramUsedMb = 321;
         var native = new Bridge { Metadata = [Row(10, PnpA), Row(20, PnpB)], Values = [row] };
@@ -115,12 +115,12 @@ public sealed partial class AdlxMetricsCollectorTests
             await using (var stream = sampler.SubscribeAsync("adlx-mb", request, TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
                 // Require a successful sample before checking the selected native request.
-                do { Assert.True(await stream.MoveNextAsync()); } while (ReadRawMemory(stream.Current, device).IntegerValue != "321");
+                do { Assert.True(await stream.MoveNextAsync()); } while (ReadRawMemory(stream.Current, device).IntegerValue != MetricInteger.Parse("321"));
                 Assert.Equal(64, Assert.Single(native.Selections).RequestedFlags);
                 var failed = row; failed.AvailableFlags = 0; Volatile.Write(ref native.Values, [failed]);
                 do { Assert.True(await stream.MoveNextAsync()); } while (ReadRawMemory(stream.Current, device).IntegerValue is not null);
                 row.VramUsedMb = 0; Volatile.Write(ref native.Values, [row]);
-                do { Assert.True(await stream.MoveNextAsync()); } while (ReadRawMemory(stream.Current, device).IntegerValue != "0");
+                do { Assert.True(await stream.MoveNextAsync()); } while (ReadRawMemory(stream.Current, device).IntegerValue != MetricInteger.Parse("0"));
                 using var pushCancel = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
                 using var push = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
                     { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "adlx-mb-wire", path = "/api/metrics/subscribe" + query } } }) };
@@ -140,7 +140,7 @@ public sealed partial class AdlxMetricsCollectorTests
             using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token));
             CheckRawMemoryWire(cached.RootElement[0].GetProperty("fields")[0]);
             await Task.Delay(150, timeout.Token); Assert.Equal(reads, Volatile.Read(ref native.SelectedReads));
-            Assert.Equal("0", ReadRawMemory(await sampler.GetSnapshotAsync(request, timeout.Token), device).IntegerValue);
+            Assert.Equal(MetricInteger.Parse("0"), ReadRawMemory(await sampler.GetSnapshotAsync(request, timeout.Token), device).IntegerValue);
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }
     }

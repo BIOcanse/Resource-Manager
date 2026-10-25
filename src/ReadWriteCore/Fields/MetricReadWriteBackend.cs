@@ -11,18 +11,19 @@ public sealed record MetricFieldSelection(MetricDeviceFieldBinding Binding, Metr
 /// <summary>Original canonical numeric catalog and exact field projection over an explicit owner.
 /// It retains catalog metadata only; reads and capture share the supplied owner's current values.
 /// Discover is explicit, including the supplied catalog publication and write-support refresh.</summary>
-public sealed class MetricReadWriteBackend(Func<HardwareMetricSnapshot?> catalogSnapshot,
+public sealed class MetricReadWriteBackend(Func<HardwareMetricCatalog?> catalogSnapshot,
     Func<MetricSampleRequest, HardwareMetricSnapshot?> readCurrent,
     Func<MetricSampleRequest, CancellationToken, ValueTask<HardwareMetricSnapshot>> capture,
     Action<HardwareMetricSnapshot> publishCatalog,
-    Func<HardwareMetricSnapshot, MetricDeviceFieldBinding, OperationSupport> readSupport,
+    Func<HardwareMetricCatalog, MetricDeviceFieldBinding, OperationSupport> readSupport,
     Func<MetricDeviceFieldBinding, OperationSupport> writeSupport,
     Func<FieldReference, MetricDeviceFieldBinding, FieldValue, CancellationToken, ValueTask<FieldWriteResult>> write,
-    Func<MetricDeviceFieldBinding, FieldWriteContract?>? writeContract = null)
+    Func<MetricDeviceFieldBinding, FieldWriteContract?>? writeContract = null,
+    Func<ImmutableArray<string>, IReadOnlyDictionary<string, MetricReadingValue>>? readItems = null)
     : IReadWriteBackend
 {
     private readonly object catalogGate = new();
-    private HardwareMetricSnapshot? boundSnapshot;
+    private HardwareMetricCatalog? boundSnapshot;
     private MetricCatalog current = new(new([], []), FrozenDictionary<FieldReference, MetricFieldSelection>.Empty);
 
     public ReadWriteCatalog Catalog => CaptureCatalog().Public;
@@ -41,8 +42,28 @@ public sealed class MetricReadWriteBackend(Func<HardwareMetricSnapshot?> catalog
 
     public FieldReading ReadCached(FieldReference field)
     {
-        var binding = Require(CaptureCatalog(), field);
-        return Project(field, binding, readCurrent(binding.CachedRequest));
+        _ = Require(CaptureCatalog(), field);
+        return ReadCachedBatch([field])[0];
+    }
+
+    public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields)
+    {
+        var catalog = CaptureCatalog();
+        var bindings = fields.Select(field => catalog.Bindings.GetValueOrDefault(NormalizeField(field))).ToArray();
+        var selected = bindings.OfType<MetricFieldSelection>().ToArray();
+        if (selected.Length == 0)
+            return [.. fields.Select(static field => new FieldReading(field, FieldObservationStatus.Unavailable, null, null, string.Empty))];
+        if (readItems is not null)
+        {
+            var items = readItems([.. selected.Select(static selection => selection.Binding.RequestAddress).Distinct(StringComparer.Ordinal)]);
+            return [.. fields.Select((field, index) => bindings[index] is { } binding
+                ? Project(field, binding, items.GetValueOrDefault(binding.Binding.RequestAddress))
+                : new(field, FieldObservationStatus.Unavailable, null, null, string.Empty))];
+        }
+        var request = MetricSampleRequest.ForIds(selected.Select(static selection => selection.Binding.EffectiveSampleRequestAddress));
+        var snapshot = readCurrent(request);
+        return [.. fields.Select((field, index) => bindings[index] is { } binding ? Project(field, binding, snapshot)
+            : new(field, FieldObservationStatus.Unavailable, null, null, string.Empty))];
     }
 
     public async ValueTask<ImmutableArray<FieldReading>> CollectAsync(ImmutableArray<FieldReference> fields,
@@ -95,7 +116,7 @@ public sealed class MetricReadWriteBackend(Func<HardwareMetricSnapshot?> catalog
                         var reference = new FieldReference(binding.DeviceIdentity, name);
                         bindings.Add(reference, bound);
                         capabilities.Add(new(reference, new(name, binding.Field.Unit,
-                            binding.Field.ValueKind, binding.Field.Meaning), read, writable, binding.SourceId)
+                            binding.Field.ValueKind), read, writable, binding.SourceId)
                         { WriteContract = contract });
                     }
                 }
@@ -156,6 +177,23 @@ public sealed class MetricReadWriteBackend(Func<HardwareMetricSnapshot?> catalog
                 value.BytesValue is { } bytes ? [.. bytes] : null) : null,
             current && observation!.ObservedAtUtcTicks > 0 ? new DateTimeOffset(observation.ObservedAtUtcTicks, TimeSpan.Zero) : null,
             value?.SourceId ?? binding.Binding.SourceId, current ? value?.SampleDurationMilliseconds : null);
+    }
+
+    private static FieldReading Project(FieldReference field, MetricFieldSelection selection, MetricReadingValue? item)
+    {
+        var binding = selection.Binding;
+        if (item is not null && (item.DeviceIdentity != field.DeviceIdentity
+            || item.FieldName != MetricFieldRegistry.NormalizePublicName(field.FieldName)
+            || item.Unit != binding.Field.Unit || item.ValueKind != binding.Field.ValueKind
+            || item.SourceId != binding.SourceId))
+            return new(field, FieldObservationStatus.Unavailable, null, null, binding.SourceId);
+        var status = item?.Status ?? SamplingObservationStatus.Warming;
+        var current = status == SamplingObservationStatus.Current;
+        return new(field, MapStatus(status), current && item is not null
+            ? new(binding.Field.ValueKind == "float64" ? item.NumericValue : null, item.IntegerValue, item.BooleanValue,
+                item.BytesValue is { } bytes ? [.. bytes] : null) : null,
+            current ? item?.ObservedAt : null, item?.SourceId ?? binding.SourceId,
+            current ? item?.SampleDurationMilliseconds : null);
     }
 
     private static FieldObservationStatus MapStatus(SamplingObservationStatus status) => status switch

@@ -27,13 +27,13 @@ public sealed class MetricCatalogMetadataSharingTests
             Assert.Equal(2, pair.Length);
             Assert.NotEqual(pair[0].DeviceIdentity, pair[1].DeviceIdentity);
             Assert.Same(pair[0].Field, pair[1].Field);
-            Assert.Same(pair[0].Field!.Meaning, pair[1].Field!.Meaning);
+            Assert.Equal(pair[0].Field!.Code, pair[1].Field!.Code);
             Assert.Same(pair[0].Field!.Unit, pair[1].Field!.Unit);
             Assert.Same(pair[0].SourceId, pair[1].SourceId);
-            Assert.Same(pair[0].FieldDetail, pair[1].FieldDetail);
-            Assert.Same(pair[0].FieldGroup, pair[1].FieldGroup);
+            Assert.Equal(pair[0].Field!.ValueKind, pair[1].Field!.ValueKind);
+            Assert.Equal(pair[0].Field!.Resource, pair[1].Field!.Resource);
         }
-        Assert.Contains(groups, static group => group.First().Field!.Meaning is not null);
+        Assert.Contains(groups, static group => group.First().Field!.Name.Length > 0);
 
         var frame = new NativeMetricSnapshotCommittedFrame(
             new() { CapturedAtMilliseconds = 1_700_000_000_000, ConfigurationGeneration = 1,
@@ -46,29 +46,28 @@ public sealed class MetricCatalogMetadataSharingTests
                     ? unchecked((ulong)BitConverter.DoubleToInt64Bits(42)) : 42,
                 ObservedAtMilliseconds = 1_700_000_000_000
             }).ToImmutableArray(), [], [], catalog);
-        var first = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1);
-        var second = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1);
+        var first = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1);
+        var second = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1);
         foreach (var group in groups)
         {
             var pair = group.OrderBy(static binding => binding.DisplayIndex).ToArray();
             var firstValue = first.Items[pair[0].MetricId];
             var siblingValue = first.Items[pair[1].MetricId];
-            Assert.Same(firstValue.Detail, siblingValue.Detail);
-            Assert.Same(firstValue.Detail, second.Items[pair[0].MetricId].Detail);
-            Assert.Same(firstValue.Group, siblingValue.Group);
+            Assert.Same(firstValue.FieldName, siblingValue.FieldName);
+            Assert.Same(firstValue.FieldName, second.Items[pair[0].MetricId].FieldName);
+            Assert.Equal(firstValue.ValueKind, siblingValue.ValueKind);
             Assert.Same(firstValue.SourceId, siblingValue.SourceId);
             Assert.Same(first.FieldBindings[pair[0].MetricId].Field,
                 first.FieldBindings[pair[1].MetricId].Field);
             Assert.Same(pair[0].Field, second.FieldBindings[pair[0].MetricId].Field);
         }
 
-        // A frame without prebuilt presentation strings follows the previous
-        // per-publication construction path. Serialized public results must match.
+        // A catalog with equivalent independently constructed field declarations follows the same
+        // factual projection path. Serialized public results must match.
         var uncached = catalog with { MetricBindings = catalog.MetricBindings.ToImmutableDictionary(
             static pair => pair.Key, static pair => pair.Value with
-            { Field = pair.Value.Field is { } field ? field with { } : null,
-                FieldDetail = null, FieldGroup = null }) };
-        var expected = NativeMetricSnapshotCommittedProjection.Create(frame with { Catalog = uncached }, "CPU", "RAM", 1);
+            { Field = pair.Value.Field is { } field ? field with { } : null }) };
+        var expected = NativeMetricSnapshotCommittedProjection.Create(frame: frame with { Catalog = uncached }, workspaceIdentity: 1);
         Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(expected.Items), JsonSerializer.SerializeToUtf8Bytes(first.Items));
         Assert.Equal(JsonSerializer.SerializeToUtf8Bytes(MetricDeviceFields.Catalog(expected)),
             JsonSerializer.SerializeToUtf8Bytes(MetricDeviceFields.Catalog(first)));

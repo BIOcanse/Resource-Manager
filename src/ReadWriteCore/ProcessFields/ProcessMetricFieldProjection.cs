@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Globalization;
 using ResourceManager.ReadWrite.Windows.Processes;
 
@@ -43,7 +44,7 @@ public static class ProcessMetricFieldProjection
             ProcessMetricFieldCode.ThreadCount => value.ThreadCount,
             _ => null
         };
-        return new(field.Name, count?.ToString(CultureInfo.InvariantCulture), null);
+        return new(field.Name, count is { } integer ? MetricInteger.FromUnsigned128(integer) : null, null);
     }
 
     private static string? CreationUtc(long? fileTime)

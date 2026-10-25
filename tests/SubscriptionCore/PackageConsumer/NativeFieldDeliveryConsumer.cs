@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using ResourceManager.ReadWrite;
 using ResourceManager.Subscription;
@@ -38,7 +39,7 @@ internal static class NativeFieldDeliveryConsumer
         Require(await firstRound, "all item triggers complete the round");
         Require(stream.Current.Select(static reading => reading.Field).SequenceEqual(fields)
             && stream.Current[0].Status == FieldObservationStatus.Current
-            && stream.Current[0].Value?.Integer == "101"
+            && stream.Current[0].Value?.Integer == MetricInteger.Parse("101")
             && stream.Current[1].Status == FieldObservationStatus.Unsupported
             && stream.Current[1].Value is null,
             "fresh result preserves queried source data while passive current-only data is unsupported");
@@ -104,7 +105,7 @@ internal static class NativeFieldDeliveryConsumer
             ReadCachedFields.Add(field);
             var value = field == alpha ? "101" : field == beta ? "202"
                 : throw new ArgumentException("Unexpected recorded field.", nameof(field));
-            return new(field, FieldObservationStatus.Current, new(Integer: value),
+            return new(field, FieldObservationStatus.Current, new(Integer: MetricInteger.Parse(value)),
                 DateTimeOffset.Parse("2026-10-09T12:00:00Z"), "recorded-source");
         }
 
@@ -121,7 +122,7 @@ internal static class NativeFieldDeliveryConsumer
             => ValueTask.FromResult(new FieldWriteResult(field, "unsupported", "read-only"));
 
         private static FieldCapability Capability(FieldReference field, string name)
-            => new(field, new(name, "count", "unsigned64", "recorded typed field"),
+            => new(field, new(name, "count", "unsigned64"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded-source");
     }
 }

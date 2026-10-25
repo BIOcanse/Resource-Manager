@@ -600,6 +600,8 @@ function buildGpuPositions(
     const vramPercent = items[`gpu.${index}.vramPercent`];
     const graphicsClock = items[`gpu.${index}.graphicsClock`];
     const memoryClock = items[`gpu.${index}.memoryClock`];
+    const graphicsClockDisplay = metricDisplayValue(graphicsClock, "");
+    const memoryClockDisplay = metricDisplayValue(memoryClock, "");
     const label = `GPU${index}`;
     const id = `gpu:${index}`;
     const scoreItem = scoreById.get(id);
@@ -634,8 +636,8 @@ function buildGpuPositions(
       vramPercent: usedVramPercent,
       vramDisplay: metricDisplayValue(vram, "")
         || (dedicatedMemory ? null : uiText.gpuScheduling.sharedMemory),
-      graphicsClockDisplay: graphicsClock?.displayValue ? uiText.gpuScheduling.clock(graphicsClock.displayValue) : null,
-      memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : null,
+      graphicsClockDisplay: graphicsClockDisplay ? uiText.gpuScheduling.clock(graphicsClockDisplay) : null,
+      memoryClockDisplay: memoryClockDisplay ? uiText.gpuScheduling.memoryClock(memoryClockDisplay) : null,
       scoreSource: scoreItem?.source ?? "unknown",
       matchedPreset: scoreItem?.matchedPreset,
       full: fullClassification.full,

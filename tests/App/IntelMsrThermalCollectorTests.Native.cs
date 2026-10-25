@@ -39,7 +39,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             var source = Assert.Single(plan.Sources);
             var completion = WindowsHardwareMetricSampler.CreateIntelMsrCompletion(plan, source, new(source.SourceHandle, 1, sequence), at, values);
             workspace.CompleteSource(plan, completion, at);
-            return NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         }
     }
 

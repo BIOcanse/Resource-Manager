@@ -65,7 +65,6 @@ internal sealed class NpuEngineRecordedResources
     }
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation([], []) },
         OpenNpuEngineDirectory = Open, ReadNpuEngines = Read,

@@ -12,7 +12,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HardwareHistoryAdvancesOnlyAtTheCompletedItemPublication()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.ConfigureHistory(CompiledDataHistoryPlan.Compile([
             new(SamplingDatasetIds.SystemCpuUsage, 5), new(SamplingDatasetIds.SystemMemoryUsage, 2)]));
         var first = HistoryHardwareSnapshot(1, 50);
@@ -37,7 +37,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HardwareHistoryKeepsNullCompletionAndCurrentValueInOneSnapshot()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.ConfigureHistory(CompiledDataHistoryPlan.Compile([new(SamplingDatasetIds.SystemCpuUsage, 4)]));
         var request = MetricSampleRequest.ForIds([SamplingDatasetIds.SystemCpuUsage]);
         owner.Publish(HistoryHardwareSnapshot(1, 50), request);
@@ -52,7 +52,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HistoryCapacityChangesPreserveCurrentSlotsAndUnrelatedItems()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.Publish(HistoryHardwareSnapshot(1, 10), MetricSampleRequest.All);
         owner.ConfigureHistory(CompiledDataHistoryPlan.Compile([
             new(SamplingDatasetIds.SystemCpuUsage, 3), new(SamplingDatasetIds.SystemMemoryUsage, 2)]));
@@ -76,7 +76,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HostedHistoryRejectsRetiredTicketsAndIgnoresUnsettledPhysicalFields()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.ConfigureHistory(CompiledDataHistoryPlan.Compile([
             new(SamplingDatasetIds.SystemCpuUsage, 3), new(SamplingDatasetIds.SystemMemoryUsage, 3)]));
         var run = owner.OpenHostedRun();
@@ -97,7 +97,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void UnrequestedDatasetsDoNotCreateDerivedHistory()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.ConfigureHistory(CompiledDataHistoryPlan.Compile([
             new(SamplingDatasetIds.SystemCpuUsage, 5), new(SamplingDatasetIds.SystemMemoryUsage, 5)]));
         var run = owner.OpenHostedRun();

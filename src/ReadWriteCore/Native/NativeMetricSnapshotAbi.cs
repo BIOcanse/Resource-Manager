@@ -4,7 +4,7 @@ namespace ResourceManager.ReadWrite.Native;
 
 public static class NativeMetricSnapshotAbi
 {
-    public const uint Version = 0x000B_0000;
+    public const uint Version = 0x000D_0000;
     public const uint CatalogContractVersion = 0x0006_0000;
     public const uint ValueContractVersion = 0x0004_0000;
     public const uint ObservationContractVersion = 0x0009_0000;
@@ -12,8 +12,8 @@ public static class NativeMetricSnapshotAbi
     public const uint PersistenceContractVersion = 0x0005_0000;
     public const uint CpuCounterContractVersion = 0x0001_0000;
     public const int MaximumValueBytes = 512;
-    public const ulong LayoutFingerprint = 0xBABB9B97E9199C19;
-    public const ulong WireContractFingerprint = 0x32C6CC703F588753;
+    public const ulong LayoutFingerprint = 0x074957DC9F9DF65B;
+    public const ulong WireContractFingerprint = 0x7ED7859E0141C29D;
 }
 
 public enum NativeMetricSnapshotStatus : int

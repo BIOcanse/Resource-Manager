@@ -338,6 +338,7 @@ public sealed class JsonMetadataContractTests
         {
             Assert.True(++count <= 20000, "Fixture exceeded its node bound.");
             var type = Nullable.GetUnderlyingType(work.Type) ?? work.Type;
+            if (type == typeof(MetricInteger)) { work.Set(JsonValue.Create("9007199254740993")); continue; }
             if (type == typeof(string) || type == typeof(object)) { work.Set(JsonValue.Create("中文<&>\\\"\nBIOcanse")); continue; }
             if (type.FullName == "FreedomPoint.PointPath") { work.Set(JsonSerializer.SerializeToNode(new FreedomPoint.PointPath(FreedomPoint.PointPath.MainProgramPackage, 1, 0, FreedomPoint.PointFamily.Build, FreedomPoint.PointKind.Simple, 0), legacy)); continue; }
             if (type == typeof(JsonElement) || typeof(JsonNode).IsAssignableFrom(type)) { work.Set(JsonNode.Parse("{\"kind\":\"中文<&>\",\"n\":1}")); continue; }

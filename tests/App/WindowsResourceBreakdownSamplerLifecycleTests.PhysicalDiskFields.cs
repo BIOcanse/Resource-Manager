@@ -44,7 +44,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         {
             var read = backend.Catalog.Fields.Single(field => field.Field.DeviceIdentity.EndsWith("|etw-disk:37:0", StringComparison.Ordinal)
                 && field.Definition.Name == "process_all_physical_disk_read_bytes_attributed");
-            Assert.Equal("9007199254740993", backend.ReadCached(read.Field).Value!.Integer);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), backend.ReadCached(read.Field).Value!.Integer);
             await sampler.StartAsync(CancellationToken.None);
             disk.ReadBytes = "31";
             using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -52,7 +52,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 new(FieldSubscriptionSamplingMode.FreshOnTrigger), cancellation.Token).GetAsyncEnumerator(cancellation.Token);
             var next = stream.MoveNextAsync().AsTask();
             Assert.True(await next);
-            Assert.Equal("31", Assert.Single(stream.Current).Value!.Integer);
+            Assert.Equal(MetricInteger.Parse("31"), Assert.Single(stream.Current).Value!.Integer);
             Assert.Equal(Assert.Single(stream.Current), backend.ReadCached(read.Field));
             Assert.Equal(2, disk.Reads); // one explicit capture, then one fresh trigger through the original worker
             Assert.Equal(0, hardware.CaptureCount);

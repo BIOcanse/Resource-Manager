@@ -223,15 +223,15 @@ public sealed partial class FanCurveReceiptTests
             Captures++;
             Assert.Equal(["cpu.temperature"], request.Ids);
             var now = DateTimeOffset.UtcNow;
-            var items = new Dictionary<string, MetricValue>();
+            var items = new Dictionary<string, MetricReadingValue>();
             var datasets = new Dictionary<string, HardwareMetricDatasetObservation>();
             if (sampleAgeSeconds is { } offset)
             {
-                items["cpu.temperature"] = new("cpu.temperature", "CPU", "temperature", "", 60d, "°C", null, null);
+                items["cpu.temperature"] = new(Id: "cpu.temperature", NumericValue: 60d, Unit: "°C", Percent: null);
                 datasets["cpu.temperature"] = new("cpu.temperature", SamplingObservationStatus.Current, 1,
                     now.AddSeconds(offset).UtcTicks, 1, 1, 1, 1);
             }
-            return Task.FromResult(new HardwareMetricSnapshot(now, null!, null!, null!, [], null!, items) { Datasets = datasets });
+            return Task.FromResult(new HardwareMetricSnapshot(now, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, items) { Datasets = datasets });
         }
     }
 }

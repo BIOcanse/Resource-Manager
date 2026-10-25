@@ -77,12 +77,12 @@ public sealed class NvidiaPerformanceStateCollectorTests
             var completion = WindowsHardwareMetricSampler.CreateNvmlCompletion(plan,source,new(source.SourceHandle,1,(ulong)phase+1),at,
                 [Gpu(9,phase == 1 ? null : 0), Gpu(3,15)]);
             workspace.CompleteSource(plan,completion,at);
-            var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(),"CPU","RAM",1);
+            var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
             foreach (var binding in selected)
             {
                 var value = Field(snapshot, binding.DeviceIdentity);
                 var expected = binding.DisplayIndex == 3 ? "15" : phase == 1 ? null : "0";
-                Assert.Equal(expected,value.IntegerValue);
+                Assert.Equal(expected is null ? null : MetricInteger.Parse(expected), value.IntegerValue);
                 Assert.Null(value.NumericValue); Assert.Null(value.BooleanValue); Assert.Null(value.BytesValue);
                 Assert.Equal("enum",value.Unit); Assert.Equal("unsigned64",value.ValueKind);
                 Assert.Equal(expected is null ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current,value.Status);
@@ -110,7 +110,7 @@ public sealed class NvidiaPerformanceStateCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.Field.Code == MetricFieldCode.NvmlPerformanceState
             && binding.RequestAddress.Contains(Name)
             && binding.DeviceIdentity == RecordedGpuIdentities(inventory).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
@@ -137,15 +137,15 @@ public sealed class NvidiaPerformanceStateCollectorTests
         {
             await using (var stream = sampler.SubscribeAsync("pstate-consumer",request,TimeSpan.FromMilliseconds(100),timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
-                Assert.True(await stream.MoveNextAsync()); Assert.Equal("0",Field(stream.Current,device).IntegerValue);
-                Assert.Equal("0",Field(sampler.ReadLatest(request)!,device).IntegerValue);
+                Assert.True(await stream.MoveNextAsync()); Assert.Equal(MetricInteger.Parse("0"), Field(stream.Current,device).IntegerValue);
+                Assert.Equal(MetricInteger.Parse("0"), Field(sampler.ReadLatest(request)!,device).IntegerValue);
             }
             await Task.Delay(150,timeout.Token); var stoppedReads = Volatile.Read(ref reads);
             Assert.True(stoppedReads > 0);
-            Assert.Equal("0",Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
+            Assert.Equal(MetricInteger.Parse("0"), Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
             await Task.Delay(150,timeout.Token); Assert.Equal(stoppedReads,Volatile.Read(ref reads));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.Equal("0",Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
+            Assert.Equal(MetricInteger.Parse("0"), Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
             Assert.Equal(stoppedReads,Volatile.Read(ref reads));
         }
         finally { await sampler.StopAsync(CancellationToken.None); }

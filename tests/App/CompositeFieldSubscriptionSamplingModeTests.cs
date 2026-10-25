@@ -60,7 +60,7 @@ public sealed class CompositeFieldSubscriptionSamplingModeTests
         internal Source(string identity)
         {
             Field = new(identity, "recorded");
-            Catalog = new([new(identity, "recorded", null)], [new(Field, new("recorded", "text", "string", null),
+            Catalog = new([new(identity, "recorded", null)], [new(Field, new("recorded", "text", "string"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded")]);
         }
         internal readonly FieldReference Field;

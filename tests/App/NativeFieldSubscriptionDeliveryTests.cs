@@ -12,6 +12,72 @@ public sealed class NativeFieldSubscriptionDeliveryTests
     private static readonly FieldReference Passive = new("delivery-recorded", "passive");
     private const string SourceKey = "delivery-source";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HundredSelectedFieldsReadOneBatchPerBackendAcrossDeliveryRegistrations(bool fresh)
+    {
+        var fields = Enumerable.Range(0, 100).Select(index => new FieldReference("delivery-recorded", $"field-{index}"))
+            .ToImmutableArray();
+        var backend = new RecordedBackend(fields);
+        var delivery = new NativeFieldSubscriptionDelivery();
+        var bindings = fields.Select(field => new FieldCollectionBinding(field, ["batch-item"], ["batch-publication"],
+            FieldCollectionSourceKind.SourceQuery)).ToImmutableArray();
+        using var registration = delivery.Register(SourceKey, backend, fields, bindings);
+        using var overlapping = delivery.Register("overlapping", backend, fields[..50], bindings[..50]);
+        backend.Publish([.. fields.Select(field => Current(field, field.FieldName))]);
+        var triggers = Triggers(1, fresh, ("batch-item", SourceKey), ("batch-item", "overlapping"));
+
+        var result = fresh ? delivery.CaptureCompleted(triggers,
+            new HashSet<string>(["batch-publication"], StringComparer.Ordinal), committed: true) : null;
+        delivery.Deliver(triggers, result);
+
+        var values = await ReadSingleAsync(registration);
+        Assert.Equal(fields, values.Select(static value => value.Field));
+        Assert.All(values, value => Assert.Equal(value.Field.FieldName, value.Value?.Text));
+        Assert.Equal(50, (await ReadSingleAsync(overlapping)).Length);
+        Assert.Equal(1, backend.BatchReadCount);
+        Assert.Equal(100, backend.BatchFieldCount);
+        Assert.Equal(0, backend.ReadCount);
+    }
+
+    [Fact]
+    public async Task IncompleteCurrentRoundDoesNotReadBeforeAllBoundItemsComplete()
+    {
+        var backend = new RecordedBackend();
+        var delivery = new NativeFieldSubscriptionDelivery();
+        using var registration = delivery.Register(SourceKey, backend, [QueryA, QueryB], [Bindings()[0], Bindings()[1]]);
+        backend.Publish(Current(QueryA, "current-a"), Current(QueryB, "current-b"));
+
+        delivery.Deliver(Triggers(1, false, ("item-a", SourceKey)), null);
+        Assert.Equal(0, backend.BatchReadCount);
+        Assert.Equal(0, backend.ReadCount);
+        delivery.Deliver(Triggers(1, false, ("item-b", SourceKey)), null);
+
+        Assert.Equal(2, (await ReadSingleAsync(registration)).Length);
+        Assert.Equal(1, backend.BatchReadCount);
+        Assert.Equal(2, backend.BatchFieldCount);
+    }
+
+    [Fact]
+    public async Task BatchCurrentDeliveryKeepsValidFieldsWhenOneBindingRetires()
+    {
+        var backend = new RecordedBackend();
+        var delivery = new NativeFieldSubscriptionDelivery();
+        using var registration = delivery.Register(SourceKey, backend, [QueryA, QueryB], [Bindings()[0], Bindings()[1]]);
+        backend.Publish(Current(QueryA, "old-a"), Current(QueryB, "current-b"));
+        backend.RemoveBinding(QueryA);
+        delivery.Deliver(Triggers(1, false, ("coalesced", SourceKey)), null);
+
+        var values = await ReadSingleAsync(registration);
+        Assert.Equal(FieldObservationStatus.Unavailable, values[0].Status);
+        Assert.Null(values[0].Value);
+        Assert.Equal("current-b", values[1].Value?.Text);
+        Assert.Equal(1, backend.BatchReadCount);
+        Assert.Equal(1, backend.BatchFieldCount);
+        Assert.Equal(0, backend.ReadCount);
+    }
+
     [Fact]
     public async Task FreshRoundWaitsForEveryBoundItemAndUsesOnlyQueriedPublicationKeys()
     {
@@ -232,12 +298,21 @@ public sealed class NativeFieldSubscriptionDeliveryTests
         private readonly Dictionary<FieldReference, FieldReading> current = [];
         private int reads;
 
-        public ReadWriteCatalog Catalog { get; } = new(
-            [new("delivery-recorded", "recorded", null)],
-            new[] { QueryA, QueryB, Passive }.Select(field => new FieldCapability(field,
-                new(field.FieldName, "text", "string", null), new(true, null, []),
+        public RecordedBackend(ImmutableArray<FieldReference> fields = default)
+        {
+            if (fields.IsDefault) fields = [QueryA, QueryB, Passive];
+            Catalog = new([new("delivery-recorded", "recorded", null)],
+                fields.Select(field => new FieldCapability(field,
+                new(field.FieldName, "text", "string"), new(true, null, []),
                 OperationSupport.Unsupported("recorded read only"), "recorded-source")));
+        }
+
+        public ReadWriteCatalog Catalog { get; private set; }
         internal int ReadCount => Volatile.Read(ref reads);
+        internal int BatchReadCount { get; private set; }
+        internal int BatchFieldCount { get; private set; }
+        internal void RemoveBinding(FieldReference field)
+            => Catalog = new(Catalog.Devices, Catalog.Fields.Where(capability => capability.Field != field));
 
         internal void Publish(params FieldReading[] readings)
         {
@@ -253,6 +328,15 @@ public sealed class NativeFieldSubscriptionDeliveryTests
             lock (gate)
                 return current.TryGetValue(field, out var reading) ? reading
                     : new(field, FieldObservationStatus.Unavailable, null, null, "recorded-source");
+        }
+
+        public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields)
+        {
+            BatchReadCount++;
+            BatchFieldCount += fields.Length;
+            lock (gate)
+                return [.. fields.Select(field => current.TryGetValue(field, out var reading) ? reading
+                    : new(field, FieldObservationStatus.Unavailable, null, null, "recorded-source"))];
         }
 
         public ValueTask<ReadWriteCatalog> DiscoverAsync(CancellationToken cancellationToken)

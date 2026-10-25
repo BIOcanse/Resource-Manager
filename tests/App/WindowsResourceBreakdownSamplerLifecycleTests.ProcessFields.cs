@@ -29,7 +29,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(1, hardware.CaptureCount);
         Assert.Equal(1000, Assert.Single(snapshot.Bars).TotalValue);
         var row = Assert.Single(snapshot.ProcessFields!.Processes);
-        Assert.Equal(completeWindow ? "3" : null, row.Values[0].IntegerValue);
+        Assert.Equal(completeWindow ? MetricInteger.Parse("3") : (MetricInteger?)null, row.Values[0].IntegerValue);
         Assert.Equal(completeWindow ? 1.5 : (double?)null, row.Values[2].NumericValue);
         Assert.Equal(2, snapshot.Datasets.Count);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Ready,

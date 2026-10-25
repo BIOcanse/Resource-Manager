@@ -8,13 +8,15 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 public sealed class DashboardMonitoringCatalogState
 {
     private readonly object gate = new();
-    private HardwareMetricSnapshot? current;
+    private HardwareMetricCatalog? current;
     private CatalogIdentity? identity;
     private string revision = Guid.NewGuid().ToString("N");
 
     public event Action? Changed;
 
-    public HardwareMetricSnapshot? Current => Volatile.Read(ref current);
+    public HardwareMetricSnapshot? Current => Volatile.Read(ref current)?.CreateSnapshot();
+
+    public HardwareMetricCatalog? Catalog => Volatile.Read(ref current);
 
     public string Revision => Volatile.Read(ref revision);
 
@@ -62,7 +64,7 @@ public sealed class DashboardMonitoringCatalogState
         Action? changed = null;
         lock (gate)
         {
-            Volatile.Write(ref current, snapshot);
+            Volatile.Write(ref current, HardwareMetricCatalog.FromSnapshot(snapshot));
             if (nextIdentity.Equals(identity))
             {
                 return;
@@ -85,7 +87,7 @@ public sealed class DashboardMonitoringCatalogState
             var next = MetricReadingCatalog.Update(current, snapshot);
             if (ReferenceEquals(next, current)) return false;
             Volatile.Write(ref current, next);
-            identity = CatalogIdentity.Create(next);
+            identity = CatalogIdentity.Create(next.CreateSnapshot());
             Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
             changed = Changed;
         }

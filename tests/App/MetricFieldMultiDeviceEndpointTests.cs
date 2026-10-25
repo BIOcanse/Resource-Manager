@@ -59,9 +59,8 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         {
             FieldBindings = descriptors.ToDictionary(row => row.Id, row => new MetricDeviceFieldBinding(
                 row.Id, MetricFieldRegistry.FindByName(row.Field)!, row.Id, "fixture") { Device = row.Device }),
-            Items = descriptors.ToDictionary(row => row.Id, row => new MetricValue(
-                row.Id, row.Field, "fixture", "", row.Number, MetricFieldRegistry.FindByName(row.Field)!.Unit, null, null)
-                { IntegerValue = row.Integer, SourceId = "fixture" }),
+            Items = descriptors.ToDictionary(row => row.Id, row => new MetricReadingValue(Id: row.Id, NumericValue: row.Number, Unit: MetricFieldRegistry.FindByName(row.Field)!.Unit, Percent: null)
+                { IntegerValue = row.Integer is null ? null : MetricInteger.Parse(row.Integer), SourceId = "fixture" }),
             Datasets = descriptors.ToDictionary(row => row.Id, row => new HardwareMetricDatasetObservation(
                 row.Id, SamplingObservationStatus.Current, 1, now.UtcTicks, 1, 1, 1, 1))
         };
@@ -79,7 +78,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
                 var definition = MetricFieldRegistry.FindByName(field.GetProperty("name").GetString()!)!;
                 Assert.Equal(definition.Unit, field.GetProperty("unit").GetString());
                 Assert.Equal(definition.ValueKind, field.GetProperty("valueKind").GetString());
-                Assert.Equal(definition.Meaning, field.GetProperty("meaning").GetString());
+                Assert.False(field.TryGetProperty("meaning", out _));
             }
         output.WriteLine("METRIC_FIELDS_CATALOG_WIRE " + catalogText);
 
@@ -352,7 +351,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
     {
         var now = DateTimeOffset.UtcNow;
         var bindings = new Dictionary<string, MetricDeviceFieldBinding>();
-        var items = new Dictionary<string, MetricValue>();
+        var items = new Dictionary<string, MetricReadingValue>();
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>();
         for (var index = 0; index < 70; index++)
         {
@@ -364,7 +363,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
             { Device = new("memory", null, null, 0) };
         return new(now, new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0, "fixture",
             new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null, null, null, null)),
-            new(0, 0, 0, false, "fixture"), new(0, 0, 0, "fixture", false), [],
+            new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false), new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false), [],
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []), items)
         {
             FieldBindings = bindings, Datasets = datasets,
@@ -378,8 +377,8 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
             var address = $"{device}/{name}";
             bindings[address] = new(device, field, address, "fixture")
                 { Device = new("cpu_logical_processor", MetricDeviceAddress.LogicalProcessor((ushort)(index / 64), (byte)(index % 64)), null, index) };
-            items[address] = new(address, name, "fixture", "", name == Frequency ? 3200 + index : null, field.Unit, null, null)
-                { SourceId = "fixture", IntegerValue = name == Counter ? "18446744073709551615" : null };
+            items[address] = new(Id: address, NumericValue: name == Frequency ? 3200 + index : null, Unit: field.Unit, Percent: null)
+                { SourceId = "fixture", IntegerValue = name == Counter ? MetricInteger.Parse("18446744073709551615") : null };
             datasets[address] = new(address, SamplingObservationStatus.Current, 1, now.UtcTicks, 1, 1, 1, 1);
         }
     }

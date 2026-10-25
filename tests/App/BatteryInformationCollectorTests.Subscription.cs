@@ -26,7 +26,7 @@ public sealed partial class BatteryInformationCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var opened = new List<string>();
         var battery = new WindowsBatteryMonitoringZone(new WindowsBatteryReader(enumerate: null, open: path =>
             { opened.Add(path); return new DeviceQuery { Relative = path == "path-1" }; }));

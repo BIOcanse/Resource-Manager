@@ -36,7 +36,7 @@ public sealed class OperatingSystemUptimeOwnerTests
         Assert.Equal("s", definition.Unit);
         var current = InformationFieldProjection.Read("machine", new(definition,
             JsonSerializer.SerializeToElement(ulong.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture))), DateTimeOffset.UtcNow);
-        Assert.Equal("18446744073709551615", current.Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), current.Value!.Integer);
         Assert.Null(current.Value.Number);
         var invalid = InformationFieldProjection.Read("machine", new(definition,
             JsonSerializer.SerializeToElement("18446744073709551616")), DateTimeOffset.UtcNow);
@@ -56,7 +56,7 @@ public sealed class OperatingSystemUptimeOwnerTests
         var catalog = await backend.DiscoverAsync(default);
         var capability = Assert.Single(catalog.Fields.Where(static field => field.Definition.Name == "os_all_uptime_actual"));
         Assert.Equal(WindowsOperatingSystemInformationOwner.MachineIdentity, capability.Field.DeviceIdentity);
-        Assert.Equal("0", backend.ReadCached(capability.Field).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), backend.ReadCached(capability.Field).Value!.Integer);
         _ = backend.Catalog.Require(capability.Field); _ = backend.ReadCached(capability.Field);
         Assert.Equal(1, reads);
         ticks = -1;
@@ -92,9 +92,9 @@ public sealed class OperatingSystemUptimeOwnerTests
         ticks = 11000;
         _ = await backend.CollectAsync([field], default);
         await next;
-        Assert.Equal("11", backend.ReadCached(field).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), backend.ReadCached(field).Value!.Integer);
         borrow.Dispose();
-        Assert.Equal("11", (await backend.CollectAsync([field], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), (await backend.CollectAsync([field], default))[0].Value!.Integer);
     }
 
     [Fact]
@@ -111,11 +111,11 @@ public sealed class OperatingSystemUptimeOwnerTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("uptime", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync());
-        Assert.Equal("7", stream.Current[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("7"), stream.Current[0].Value!.Integer);
         FieldReadingAssert.CurrentOrNewer(stream.Current[0], backend.ReadCached(field));
         await composition.StopAsync();
         Assert.False(await stream.MoveNextAsync());
-        Assert.Equal("7", (await backend.CollectAsync([field], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("7"), (await backend.CollectAsync([field], default))[0].Value!.Integer);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class OperatingSystemUptimeOwnerTests
                     var fastCurrent = fields.Reads.ReadCached(field);
                     Assert.Equal(FieldObservationStatus.Current, fastCurrent.Status);
                     Assert.NotNull(fastCurrent.ObservedAt);
-                    Assert.True(long.TryParse(fastCurrent.Value?.Integer, out var fastValue));
+                    var fastValue = Assert.IsType<MetricInteger>(fastCurrent.Value?.Integer).ToSigned64();
                     Assert.True(fastValue >= 2);
 
                     Assert.True(await slowPending.WaitAsync(timeout.Token));

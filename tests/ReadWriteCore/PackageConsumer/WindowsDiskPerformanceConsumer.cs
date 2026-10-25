@@ -47,16 +47,14 @@ internal static class WindowsDiskPerformanceConsumer
         DateTimeOffset? recordedObservedAt = null;
         var resources = new WindowsHardwareMetricResources
         {
-            CpuName = "Recorded CPU",
-            MemoryDescription = "Recorded memory",
             Controls = new WindowsMetricControlResources
             {
                 ControlReadCpuIdentity = static () => null,
                 ControlReadCpuTopology = static () => new(null, null)
             },
             ReadCpuCounters = static () => default,
-            ReadMemory = static () => new(0, 0, 0, false, "recorded"),
-            ReadVirtualMemory = static () => new(0, 0, 0, "recorded", false),
+            ReadMemory = static () => new(0, 0, 0, false),
+            ReadVirtualMemory = static () => new(0, 0, 0, false),
             ReadNumaAvailable = static (_, _) => new Dictionary<string, ulong>(),
             ReadNumaIdentities = static () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
             ReadGpuInventory = static () => new(SamplingObservationStatus.Current, 1,
@@ -133,7 +131,7 @@ internal static class WindowsDiskPerformanceConsumer
         }
 
         var current = owner.ReadCachedSnapshot();
-        Require(current is not null && ReferenceEquals(current, owner.ReadCachedSnapshot()) && reads == 1,
+        Require(current is not null && MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && reads == 1,
             "Direct source collection and cached reads retain the same original owner current without a second producer call.");
 
         Console.WriteLine("[PHYSICAL-DISK-PACKAGE] seven exact-identity fields, end-sample timestamps and original current cache.\n[PHYSICAL-DISK-DEPENDENCIES] seven built-in reads need no install dependency; writes remain unsupported.");

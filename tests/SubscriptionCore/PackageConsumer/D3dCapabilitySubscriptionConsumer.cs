@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
@@ -115,16 +116,16 @@ internal static class D3dCapabilitySubscriptionConsumer
                 await publication.WaitAsync(demandTimeout.Token);
                 Require(reader.ReadCount > beforeDemand, "last explicit demand caused a recorded capture");
                 Require(backend.ReadCached(feature).Status == FieldObservationStatus.Current
-                    && backend.ReadCached(feature).Value?.Integer == "45056",
+                    && backend.ReadCached(feature).Value?.Integer == MetricInteger.Parse("45056"),
                     "successful D3D11 feature-level value is current in the same owner");
                 Require(backend.ReadCached(format).Status == FieldObservationStatus.Current
-                    && backend.ReadCached(format).Value?.Integer == "281474976710689",
+                    && backend.ReadCached(format).Value?.Integer == MetricInteger.Parse("281474976710689"),
                     "successful D3D11 format flags preserve the exact packed 64-bit value");
                 Require(backend.ReadCached(profile).Status == FieldObservationStatus.Current
                     && backend.ReadCached(profile).Value?.Text == RecordedProvider.ProfileGuid.ToString("D"),
                     "successful decoder profile is current in the same owner");
                 Require(backend.ReadCached(outputFormat).Status == FieldObservationStatus.Current
-                    && backend.ReadCached(outputFormat).Value?.Integer == "103",
+                    && backend.ReadCached(outputFormat).Value?.Integer == MetricInteger.Parse("103"),
                     "successful decoder output format is current in the same owner");
                 var configCurrent = backend.ReadCached(decoderConfiguration);
                 Require(configCurrent.Status == FieldObservationStatus.Current
@@ -168,7 +169,7 @@ internal static class D3dCapabilitySubscriptionConsumer
             WindowsD3dApiVersion.Direct3D12, [adapter]);
         var access = owner.CreateD3dCapabilityInformation(scope, reader);
         var field = (await access.Backend.DiscoverAsync(default)).Fields.Single().Field;
-        Require(field.FieldName == "gpu_all_d3d12_raytracing_tier" && access.Backend.ReadCached(field).Value?.Integer == "0",
+        Require(field.FieldName == "gpu_all_d3d12_raytracing_tier" && access.Backend.ReadCached(field).Value?.Integer == MetricInteger.Parse("0"),
             "raytracing successful-zero discovered through the actual package API");
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
@@ -187,7 +188,7 @@ internal static class D3dCapabilitySubscriptionConsumer
                 Require(await stream.MoveNextAsync().AsTask().WaitAsync(timeout.Token), "raytracing subscription produced a reading");
                 var observed = stream.Current.Single();
                 Require(tier is { } value
-                    ? observed.Status == FieldObservationStatus.Current && observed.Value?.Integer == value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    ? observed.Status == FieldObservationStatus.Current && observed.Value?.Integer == MetricInteger.FromUnsigned128((UInt128)value)
                     : observed.Status == FieldObservationStatus.Unavailable && observed.Value is null && observed.ObservedAt is null,
                     "raytracing role-2 preserves zero, unavailable, raw UInt32 and restored tier");
                 FieldObservationConsumerAssertions.RequireOriginalOwnerObservation(observed, access.Backend.ReadCached(field));

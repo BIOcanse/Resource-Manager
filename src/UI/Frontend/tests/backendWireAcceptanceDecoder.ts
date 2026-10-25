@@ -51,7 +51,8 @@ process.stdout.write(JSON.stringify({
     : Object.hasOwn(rawTable, "providerStates"),
   metricVersion: metric?.version ?? null,
   metricCapturedAt: metric?.capturedAt ?? null,
-  metricDisplayValue: metric?.items["cpu.usage"]?.displayValue ?? null,
+  hasMetricDisplayText: metric === null ? false : ["label", "group", "displayValue", "detail"]
+    .some(key => Object.hasOwn((rawPayload.items as Record<string, object>)["cpu.usage"] ?? {}, key)),
   metricNumericValue: metric?.items["cpu.usage"]?.numericValue ?? null,
   hasMetricSamplingMetadata: metric === null
     ? false

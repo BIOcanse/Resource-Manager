@@ -37,7 +37,7 @@ public sealed class PlatformDeclarationOwnerTests
         var catalog = await backend.DiscoverAsync(default); Assert.Equal(1, reads);
         var licensing = catalog.Fields.Where(field => field.Field.FieldName == "os_all_activation_state_reported").ToArray();
         Assert.Equal(3, licensing.Length);
-        Assert.Equal(new[] { "0", "1", "6" }, licensing.Select(field => backend.ReadCached(field.Field).Value!.Integer).OrderBy(static value => value).ToArray());
+        Assert.Equal(new MetricInteger?[] { new(0), new(1), new(6) }, licensing.Select(field => backend.ReadCached(field.Field).Value!.Integer).OrderBy(static value => value!.Value.LowBits).ToArray());
         Assert.All(licensing, field => { Assert.Equal("enum32", field.Definition.Unit); Assert.Null(backend.ReadCached(field.Field).Value!.Boolean); });
         var environment = catalog.Fields.Where(field => field.Field.FieldName == "environment_all_variable_configured").ToArray();
         Assert.Equal(2, environment.Length); Assert.NotEqual(environment[0].Field.DeviceIdentity, environment[1].Field.DeviceIdentity);

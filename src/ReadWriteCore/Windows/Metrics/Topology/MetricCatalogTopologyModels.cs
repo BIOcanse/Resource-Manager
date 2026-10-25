@@ -43,6 +43,7 @@ public sealed record NativeMetricSnapshotCatalogTopologySnapshot(
     public NativeMetricSnapshotCatalogTopologyStatus NetworkInterfaceStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
     public IReadOnlyList<NetworkInterfaceCatalogIdentity> NetworkInterfaces { get; init; } = [];
     public MetricVendor CpuVendor { get; init; } = MetricVendor.All;
+    public string? CpuModelName { get; init; }
     public NativeMetricSnapshotCatalogTopologyStatus BatteryStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
     public IReadOnlyList<BatteryCatalogIdentity> Batteries { get; init; } = [];
     public NativeMetricSnapshotCatalogTopologyStatus NumaStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;

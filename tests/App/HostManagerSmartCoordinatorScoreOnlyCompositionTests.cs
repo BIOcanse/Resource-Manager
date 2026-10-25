@@ -6588,6 +6588,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ownedProcessFactsOverride?.Dispose();
             memoryCleanupJournal.Dispose();
             MemoryCleanupPlanner.Dispose();
+            MetricSampler.Dispose();
             Directory.Delete(Root, recursive: true);
         }
     }
@@ -6659,9 +6660,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private sealed class RecordingMetricSampler :
         IMetricSampler,
         IMetricSnapshotObservationSource,
-        IMetricSnapshotPushSource
+        IMetricSnapshotPushSource,
+        IDisposable
     {
         private readonly LastSuccessfulHardwareMetricSnapshot historyOwner = new();
+        public void Dispose() => historyOwner.Dispose();
         private HardwareMetricSnapshot _snapshot = null!;
         private int activeSubscriptionCount;
 
@@ -6810,9 +6813,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
     }
 
-    private sealed class HostedHardwareObservationCache
+    private sealed class HostedHardwareObservationCache : IDisposable
     {
         private readonly LastSuccessfulHardwareMetricSnapshot owner = new();
+        public void Dispose() => owner.Dispose();
         private bool configured;
 
         internal void Configure(CompiledDataHistoryPlan history)
@@ -7685,21 +7689,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(
-                checked((ulong)memoryUsagePercent),
-                100,
-                memoryUsagePercent,
-                memoryUsageAvailable,
-                "test")
+            new MemoryMetrics(UsedBytes: checked((ulong)memoryUsagePercent), TotalBytes: 100, UsagePercent: memoryUsagePercent, IsUsageAvailable: memoryUsageAvailable)
             {
                 ObservationStatus = memoryStatus
             },
-            new VirtualMemoryMetrics(
-                checked((ulong)virtualMemoryUsagePercent),
-                100,
-                virtualMemoryUsagePercent,
-                "test",
-                virtualMemoryUsageAvailable)
+            new VirtualMemoryMetrics(UsedBytes: checked((ulong)virtualMemoryUsagePercent), TotalBytes: 100, UsagePercent: virtualMemoryUsagePercent, IsSelectable: virtualMemoryUsageAvailable)
             {
                 ObservationStatus = virtualMemoryStatus
             },
@@ -7715,7 +7709,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>())
+            new Dictionary<string, MetricReadingValue>())
         {
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(
                 StringComparer.OrdinalIgnoreCase)

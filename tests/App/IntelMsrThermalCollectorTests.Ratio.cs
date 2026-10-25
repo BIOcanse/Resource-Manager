@@ -193,7 +193,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             Workspace.CompleteSource(plan, completion, at);
             return MetricDeviceFields.Read(Snapshot(), device.ExactIdentityKey).Single().Fields.Single(item => item.Name == "cpu_intel_aperf_mperf_interval_ratio").NumericValue;
         }
-        private HardwareMetricSnapshot Snapshot() => NativeMetricSnapshotCommittedProjection.Create(Workspace.ReadCommitted(), "CPU", "RAM", 1);
+        private HardwareMetricSnapshot Snapshot() => NativeMetricSnapshotCommittedProjection.Create(frame: Workspace.ReadCommitted(), workspaceIdentity: 1);
         internal DeviceMetricFieldValue ReadField() => MetricDeviceFields.Read(Snapshot(), target.ExactIdentityKey).Single().Fields.Single(item => item.Name == "cpu_intel_aperf_mperf_interval_ratio");
         public void Dispose() => Workspace.Dispose();
     }

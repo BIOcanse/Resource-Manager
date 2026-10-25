@@ -10,12 +10,9 @@ namespace ResourceManager.ReadWrite.Windows.Metrics.Resources;
 
 public sealed partial class WindowsMemoryMetricResource
 {
-    private readonly string? hardwareDescription = SmbiosMemoryReader.ReadDescription();
 
     public WindowsMemoryMetricResource() { }
 
-    internal string HardwareDescription =>
-        hardwareDescription ?? "Physical RAM";
 
     public MemoryMetrics ReadMetrics()
     {
@@ -24,7 +21,7 @@ public sealed partial class WindowsMemoryMetricResource
         var status = WindowsSystemCounters.ReadPhysicalMemory();
         if (!status.IsAvailable)
         {
-            return new MemoryMetrics(0, 0, 0, false, hardwareDescription ?? "Physical RAM")
+            return new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false)
             {
                 ObservationStatus = SamplingObservationStatus.Unavailable
             };
@@ -32,12 +29,7 @@ public sealed partial class WindowsMemoryMetricResource
 
         var used = status.TotalBytes - status.AvailableBytes;
         var percent = status.TotalBytes > 0 ? used * 100d / status.TotalBytes : 0;
-        return new MemoryMetrics(
-            used,
-            status.TotalBytes,
-            MonitoringMetricSanitizer.ClampPercent(percent),
-            true,
-            hardwareDescription ?? "Physical RAM")
+        return new MemoryMetrics(UsedBytes: used, TotalBytes: status.TotalBytes, UsagePercent: MonitoringMetricSanitizer.ClampPercent(percent), IsUsageAvailable: true)
         {
             AvailableBytes = status.AvailableBytes,
             ObservationStatus = SamplingObservationStatus.Current
@@ -46,7 +38,7 @@ public sealed partial class WindowsMemoryMetricResource
 
     public MemoryMetrics CreateNotRequestedMetrics()
     {
-        return new MemoryMetrics(0, 0, 0, false, hardwareDescription ?? "Physical RAM")
+        return new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false)
         {
             ObservationStatus = SamplingObservationStatus.NotRequested
         };
@@ -56,53 +48,32 @@ public sealed partial class WindowsMemoryMetricResource
 
 public sealed class WindowsVirtualMemoryMetricResource
 {
-    private readonly Func<WindowsPagefileConfiguration, string> describePagefile;
-    private readonly Func<string, bool, string> describeCommit;
-    private static readonly TimeSpan PagefileSettingsCacheDuration = TimeSpan.FromSeconds(5);
-    private readonly object pagefileSettingsGate = new();
-    private PagefileSettings? cachedPagefileSettings;
-    private DateTimeOffset cachedPagefileSettingsAt;
-
-    public WindowsVirtualMemoryMetricResource(Func<WindowsPagefileConfiguration, string>? describePagefile = null,
-        Func<string, bool, string>? describeCommit = null)
-    {
-        this.describePagefile = describePagefile ?? (static facts => facts.Kind.ToString());
-        this.describeCommit = describeCommit ?? (static (detail, available) => detail + (available ? " / Windows commit" : " / unavailable"));
-    }
-
     public VirtualMemoryMetrics ReadMetrics()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Commit memory collection requires Windows.");
-        var settings = GetPagefileSettings();
         if (!WindowsMetricNative.GetPerformanceInfo(
                 out var performance,
                 (uint)Marshal.SizeOf<PerformanceInformation>()))
         {
-            return CreateUnavailableMetrics(settings.Detail, describeCommit);
+            return CreateUnavailableMetrics();
         }
 
-        return CreateCommitMetrics(performance, settings.Detail, describeCommit);
+        return CreateCommitMetrics(performance);
     }
 
     public static VirtualMemoryMetrics CreateCommitMetrics(
-        PerformanceInformation performance,
-        string pagefileDetail, Func<string, bool, string>? describe = null)
+        PerformanceInformation performance)
     {
         if (performance.PageSize == 0 || performance.CommitLimit == 0
             || performance.CommitTotal > performance.CommitLimit
             || (ulong)performance.CommitLimit > ulong.MaxValue / (ulong)performance.PageSize)
         {
-            return CreateUnavailableMetrics(pagefileDetail, describe);
+            return CreateUnavailableMetrics();
         }
 
         var usedBytes = (ulong)performance.CommitTotal * (ulong)performance.PageSize;
         var limitBytes = (ulong)performance.CommitLimit * (ulong)performance.PageSize;
-        return new VirtualMemoryMetrics(
-            usedBytes,
-            limitBytes,
-            usedBytes * 100d / limitBytes,
-            describe?.Invoke(pagefileDetail, true) ?? pagefileDetail,
-            IsSelectable: true)
+        return new VirtualMemoryMetrics(UsedBytes: usedBytes, TotalBytes: limitBytes, UsagePercent: usedBytes * 100d / limitBytes, IsSelectable: true)
         {
             CommitPeakBytes = PagesToBytes(performance.CommitPeak, performance.PageSize),
             SystemCacheBytes = PagesToBytes(performance.SystemCache, performance.PageSize),
@@ -120,55 +91,28 @@ public sealed class WindowsVirtualMemoryMetricResource
             ? (ulong)pages * (ulong)pageSize
             : null;
 
-    private static VirtualMemoryMetrics CreateUnavailableMetrics(string detail, Func<string, bool, string>? describe = null)
-        => new(0, 0, 0, describe?.Invoke(detail, false) ?? detail, IsSelectable: false)
+    private static VirtualMemoryMetrics CreateUnavailableMetrics()
+        => new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false)
         {
             ObservationStatus = SamplingObservationStatus.Unavailable
         };
 
     public static VirtualMemoryMetrics CreateNotRequestedMetrics()
     {
-        return new VirtualMemoryMetrics(
-            0,
-            0,
-            0,
-            "Windows Commit / Not requested",
-            IsSelectable: false)
+        return new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false)
         {
             ObservationStatus = SamplingObservationStatus.NotRequested
         };
     }
 
-    private PagefileSettings GetPagefileSettings()
-    {
-        var now = DateTimeOffset.UtcNow;
-        lock (pagefileSettingsGate)
-        {
-            if (cachedPagefileSettings is { } settings
-                && now - cachedPagefileSettingsAt < PagefileSettingsCacheDuration)
-            {
-                return settings;
-            }
-        }
-
-        var refreshed = ReadPagefileSettings();
-        lock (pagefileSettingsGate)
-        {
-            cachedPagefileSettings = refreshed;
-            cachedPagefileSettingsAt = now;
-        }
-
-        return refreshed;
-    }
-
-    private PagefileSettings ReadPagefileSettings()
+    public static WindowsPagefileConfiguration ReadPagefileConfiguration()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Pagefile settings require Windows.");
         using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management");
         var lines = ReadPagefileRegistryLines(key);
         if (lines.Length == 0)
         {
-            return new(describePagefile(new(WindowsPagefileConfigurationKind.Missing, [])));
+            return new(WindowsPagefileConfigurationKind.Missing, []);
         }
 
         var entries = lines
@@ -178,20 +122,20 @@ public sealed class WindowsVirtualMemoryMetricResource
             .ToArray();
         if (entries.Length == 0)
         {
-            return new(describePagefile(new(WindowsPagefileConfigurationKind.Invalid, [])));
+            return new(WindowsPagefileConfigurationKind.Invalid, []);
         }
 
         if (entries.Any(static entry => entry.InitialMb <= 0 || entry.MaximumMb <= 0))
         {
-            return new(describePagefile(new(WindowsPagefileConfigurationKind.SystemManaged, entries)));
+            return new(WindowsPagefileConfigurationKind.SystemManaged, entries);
         }
 
         if (entries.Any(static entry => entry.InitialMb != entry.MaximumMb))
         {
-            return new(describePagefile(new(WindowsPagefileConfigurationKind.Dynamic, entries)));
+            return new(WindowsPagefileConfigurationKind.Dynamic, entries);
         }
 
-        return new(describePagefile(new(WindowsPagefileConfigurationKind.Fixed, entries)));
+        return new(WindowsPagefileConfigurationKind.Fixed, entries);
     }
 
     [SupportedOSPlatform("windows")]
@@ -224,7 +168,6 @@ public sealed class WindowsVirtualMemoryMetricResource
         return new WindowsPagefileEntry(path, initialMb, maximumMb);
     }
 
-    private readonly record struct PagefileSettings(string Detail);
 
 }
 public enum WindowsPagefileConfigurationKind { Missing, Invalid, SystemManaged, Dynamic, Fixed }

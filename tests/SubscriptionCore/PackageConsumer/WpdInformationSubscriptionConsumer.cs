@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
@@ -50,7 +51,7 @@ internal static class WpdInformationSubscriptionConsumer
                 "explicit role-2 subscription published a selected storage reading");
             var reading = AssertSingle(stream.Current);
             Require(reading.Status == ResourceManager.ReadWrite.FieldObservationStatus.Current
-                && reading.Value?.Integer == "9007199254740993" && reading.ObservedAt.HasValue,
+                && reading.Value?.Integer == MetricInteger.Parse("9007199254740993") && reading.ObservedAt.HasValue,
                 "role-2 returns the exact full UInt64 capacity value");
             FieldObservationConsumerAssertions.RequireOriginalOwnerObservation(reading, access.Backend.ReadCached(capacity));
             Require(access.Backend.ReadCached(deviceId).Value?.Text == "device-B-declared-ID",

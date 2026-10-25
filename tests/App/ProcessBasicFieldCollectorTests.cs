@@ -33,11 +33,11 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Equal(34, ProcessMetricFieldRegistry.Definitions.Count); Assert.Equal(10, sample.ProcessFields!.Fields.Count);
         Assert.Equal(0, api.ImageCalls + api.SidCalls + api.ParentCalls);
         Assert.Equal(9.75, Value(sample, Names[0]).NumericValue); Assert.Null(Value(sample, Names[0]).IntegerValue);
-        Assert.Equal("9007199254740993", Value(sample, Names[1]).IntegerValue); Assert.Equal("3", Value(sample, Names[2]).IntegerValue);
-        Assert.Equal("9007199254740997", Value(sample, Names[3]).IntegerValue); Assert.Equal("18446744073709551615", Value(sample, Names[4]).IntegerValue);
-        Assert.Equal("9007199254740993", Value(sample, Names[5]).IntegerValue); Assert.Equal("0", Value(sample, Names[6]).IntegerValue);
-        Assert.Equal("18446744073709551615", Value(sample, Names[7]).IntegerValue); Assert.Equal("55340232221128654845", Value(sample, Names[8]).IntegerValue);
-        Assert.Equal("0", Value(sample, Names[9]).IntegerValue); Assert.Empty(sample.Bars);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(sample, Names[1]).IntegerValue); Assert.Equal(MetricInteger.Parse("3"), Value(sample, Names[2]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740997"), Value(sample, Names[3]).IntegerValue); Assert.Equal(MetricInteger.Parse("18446744073709551615"), Value(sample, Names[4]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(sample, Names[5]).IntegerValue); Assert.Equal(MetricInteger.Parse("0"), Value(sample, Names[6]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), Value(sample, Names[7]).IntegerValue); Assert.Equal(MetricInteger.Parse("55340232221128654845"), Value(sample, Names[8]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("0"), Value(sample, Names[9]).IntegerValue); Assert.Empty(sample.Bars);
         Assert.Equal(1, api.Opens); Assert.Equal(2, api.TimeCalls); Assert.Equal(1, api.MemoryCalls); Assert.Equal(1, api.IoCalls); Assert.Equal(1, api.HandleCalls); Assert.Equal(1, api.Closes);
         var source = Assert.Single(sample.ProcessFields.Sources); Assert.Equal("windows.process.query", source.SourceId); Assert.Null(source.WindowMilliseconds);
         Assert.Equal(sample.ProcessFields.CapturedAt, source.CapturedAt); Assert.Equal(Birth.ToString(), Assert.Single(sample.ProcessFields.Processes).CreationWindowsFileTime100Ns);
@@ -80,9 +80,9 @@ public sealed partial class ProcessBasicFieldCollectorTests
         var api = new Api { Fault = fault }; using var fixture = Fixture(api);
         var sample = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
         Assert.Null(Value(sample, Names[failed]).IntegerValue); Assert.Equal(9.75, Value(sample, Names[0]).NumericValue);
-        if (failed != 1) Assert.Equal("3", Value(sample, Names[2]).IntegerValue);
-        if (failed != 5) Assert.Equal("55340232221128654845", Value(sample, Names[8]).IntegerValue);
-        if (failed != 9) Assert.Equal("0", Value(sample, Names[9]).IntegerValue);
+        if (failed != 1) Assert.Equal(MetricInteger.Parse("3"), Value(sample, Names[2]).IntegerValue);
+        if (failed != 5) Assert.Equal(MetricInteger.Parse("55340232221128654845"), Value(sample, Names[8]).IntegerValue);
+        if (failed != 9) Assert.Equal(MetricInteger.Parse("0"), Value(sample, Names[9]).IntegerValue);
         Assert.Equal(1, api.Closes);
     }
 
@@ -91,11 +91,11 @@ public sealed partial class ProcessBasicFieldCollectorTests
     {
         var api = new Api { MemoryValue = new(0, 0, 0, 0), IoValue = new(0, 0, 0, 0, 0, 0), Kernel = 0, User = 0 };
         using var fixture = Fixture(api); var zero = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Equal(0, Value(zero, Names[0]).NumericValue); Assert.All(zero.ProcessFields!.Processes[0].Values.Skip(1), value => Assert.Equal("0", value.IntegerValue));
+        Assert.Equal(0, Value(zero, Names[0]).NumericValue); Assert.All(zero.ProcessFields!.Processes[0].Values.Skip(1), value => Assert.Equal(MetricInteger.Parse("0"), value.IntegerValue));
         api.MemoryValue = new(7, 50, 70, null); var unsupported = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Null(Value(unsupported, Names[2]).IntegerValue); Assert.Equal("7", Value(unsupported, Names[1]).IntegerValue); Assert.Equal("50", Value(unsupported, Names[3]).IntegerValue);
+        Assert.Null(Value(unsupported, Names[2]).IntegerValue); Assert.Equal(MetricInteger.Parse("7"), Value(unsupported, Names[1]).IntegerValue); Assert.Equal(MetricInteger.Parse("50"), Value(unsupported, Names[3]).IntegerValue);
         api.MemoryValue = new(7, 50, 70, 8); var inconsistent = await fixture.Sampler.CaptureSnapshotAsync(Request(), CancellationToken.None);
-        Assert.Null(Value(inconsistent, Names[2]).IntegerValue); Assert.Equal("70", Value(inconsistent, Names[4]).IntegerValue);
+        Assert.Null(Value(inconsistent, Names[2]).IntegerValue); Assert.Equal(MetricInteger.Parse("70"), Value(inconsistent, Names[4]).IntegerValue);
         var reader = new WindowsProcessBasicMetricReader(api); var count = api.Opens;
         Assert.Equal(ProcessBasicMetricObservation.Unavailable, reader.Read(Environment.ProcessId, (long)Birth, ProcessMetricReadMask.None));
         Assert.Equal(ProcessBasicMetricObservation.Unavailable, reader.Read(-1, (long)Birth, ProcessMetricReadMask.Memory));

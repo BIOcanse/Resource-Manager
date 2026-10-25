@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Globalization;
 using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -69,7 +70,7 @@ internal static class WindowsProcessFieldProjection
         var count = field.Code is ProcessMetricFieldCode.NetworkReceiveBytes or ProcessMetricFieldCode.NetworkReceiveRate
             ? receive : send;
         return field.Code is ProcessMetricFieldCode.NetworkReceiveBytes or ProcessMetricFieldCode.NetworkSendBytes
-            ? new(field.Name, count?.ToString(CultureInfo.InvariantCulture), null)
+            ? new(field.Name, count is { } integer ? new MetricInteger(integer) : null, null)
             : new(field.Name, null, count is { } observed ? observed / 2d : null);
     }
 }

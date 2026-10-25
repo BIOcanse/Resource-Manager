@@ -66,8 +66,7 @@ public sealed class NpuMemoryAppliedPlanSwitchTests
             using (var lease = owner.Acquire())
             {
                 Assert.Equal(expected, lease.Workspace.ReadCatalog().NpuMemoryEffectiveMaximumInstanceCount);
-                dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                    lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+                dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
             }
             var request = MetricDeviceFields.CreateRequest(dashboard.Current!, identity, ["npu_all_dedicated_memory_committed"]);
             var beforeReads = bounds.Count;
@@ -77,7 +76,7 @@ public sealed class NpuMemoryAppliedPlanSwitchTests
             while (await stream.MoveNextAsync())
             {
                 var value = Assert.Single(stream.Current.Items.Values, item => item.FieldName == "npu_all_dedicated_memory_committed");
-                if (bounds.Count <= beforeReads || value.IntegerValue != expected.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                if (bounds.Count <= beforeReads || value.IntegerValue != MetricInteger.FromUnsigned128(expected))
                     continue;
                 Assert.Equal(expected, bounds.Last());
                 return;

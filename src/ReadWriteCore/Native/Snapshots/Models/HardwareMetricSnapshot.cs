@@ -10,7 +10,7 @@ public sealed record HardwareMetricSnapshot(
     VirtualMemoryMetrics VirtualMemory,
     IReadOnlyList<GpuMetrics> Gpus,
     SchedulingGpuInventorySnapshot GpuInventory,
-    IReadOnlyDictionary<string, MetricValue> Items)
+    IReadOnlyDictionary<string, MetricReadingValue> Items)
 {
     public IReadOnlyDictionary<string, MetricDeviceFieldBinding> FieldBindings { get; init; } =
         new Dictionary<string, MetricDeviceFieldBinding>();
@@ -107,8 +107,7 @@ public sealed record MemoryMetrics(
     ulong UsedBytes,
     ulong TotalBytes,
     double UsagePercent,
-    bool IsUsageAvailable,
-    string HardwareDescription)
+    bool IsUsageAvailable)
 {
     public ulong? AvailableBytes { get; init; }
     internal SamplingObservationStatus ObservationStatus { get; init; } =
@@ -119,7 +118,6 @@ public sealed record VirtualMemoryMetrics(
     ulong UsedBytes,
     ulong TotalBytes,
     double UsagePercent,
-    string Detail,
     bool IsSelectable)
 {
     public ulong? CommitPeakBytes { get; init; }

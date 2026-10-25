@@ -59,7 +59,8 @@ pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader, 
     if (scratch_status != .ok) return scratch_status;
     const region = scratch.Range.init(scratch_bytes.ptr, layout.byte_count) orelse return .invalid_argument;
     const input = scratch.Range.init(header, @sizeOf(protocol.CompletionHeader)) orelse return .invalid_argument;
-    if (scratch.Range.overlaps(region, input)) return .invalid_argument;
+    const current_region = scratch.Range.slice(u8, session.current_region) orelse return .invalid_argument;
+    if (scratch.Range.overlaps(region, input) or scratch.Range.overlaps(region, current_region)) return .invalid_argument;
     session.requested_rule_indices = layout.column(u32, scratch_bytes, layout.requested, layout.requested_count);
     session.requested_rule_flags = layout.column(bool, scratch_bytes, layout.requested_flags, layout.rule_count);
     session.observation_slot_by_rule = layout.column(u32, scratch_bytes, layout.observation_slots, layout.rule_count);

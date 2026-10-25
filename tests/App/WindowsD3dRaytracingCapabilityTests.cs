@@ -95,8 +95,8 @@ public sealed class WindowsD3dRaytracingCapabilityTests
             && x.Field.FieldName == DeviceInformationFieldRegistry.GpuAllD3d12RaytracingTier.Name).Field;
         var second = catalog.Fields.Single(x => x.Field.DeviceIdentity.Contains($"luid:{Second.Luid:X16}")
             && x.Field.FieldName == DeviceInformationFieldRegistry.GpuAllD3d12RaytracingTier.Name).Field;
-        Assert.Equal("0", access.Backend.ReadCached(first).Value?.Integer);
-        Assert.Equal("4294967295", access.Backend.ReadCached(second).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(first).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), access.Backend.ReadCached(second).Value?.Integer);
         var levels = catalog.Fields.Where(x => x.Field.FieldName == DeviceInformationFieldRegistry.GpuAllD3dFeatureLevel.Name)
             .Select(x => x.Field).ToArray();
         var preserved = levels.Select(access.Backend.ReadCached).ToArray();
@@ -108,7 +108,7 @@ public sealed class WindowsD3dRaytracingCapabilityTests
         reader.SecondTier = null;
         _ = await access.Backend.CollectAsync([first, second], default);
         Assert.Equal(WindowsD3dCapabilityFields.RaytracingTier, reader.LastFields);
-        Assert.Equal("10", access.Backend.ReadCached(first).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("10"), access.Backend.ReadCached(first).Value?.Integer);
         Assert.Equal(FieldObservationStatus.Unavailable, access.Backend.ReadCached(second).Status);
         Assert.Null(access.Backend.ReadCached(second).Value);
         Assert.Null(access.Backend.ReadCached(second).ObservedAt);
@@ -121,7 +121,7 @@ public sealed class WindowsD3dRaytracingCapabilityTests
         reader.WrongIdentity = false;
         reader.SecondTier = 12;
         _ = await access.Backend.CollectAsync([first, second], default);
-        Assert.Equal("12", access.Backend.ReadCached(second).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("12"), access.Backend.ReadCached(second).Value?.Integer);
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public sealed class WindowsD3dRaytracingCapabilityTests
         Assert.Same(before, owner.ReadState());
         var accepted = await borrow.CollectAsync([field], new Permit(true), default);
         Assert.True(accepted.Committed);
-        Assert.Equal("11", access.Backend.ReadCached(field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), access.Backend.ReadCached(field).Value?.Integer);
         Assert.Equal(access.Backend.ReadCached(field), Assert.Single(accepted.Readings));
         reader.FirstTier = null;
         _ = await borrow.CollectAsync([field], new Permit(true), default);

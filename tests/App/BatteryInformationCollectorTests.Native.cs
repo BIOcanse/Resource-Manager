@@ -26,7 +26,7 @@ public sealed partial class BatteryInformationCollectorTests
             Status(5, battery.DisplayIndex == 0 ? 25000U : 10000U), 3600, AllFields)).ToArray();
         workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateBatteryCompletion(plan, source,
             new(source.SourceHandle, 1, 1), now, values), now);
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "fixture", "fixture", 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         var first = Assert.Single(MetricDeviceFields.Read(snapshot, batteries[0].ExactIdentityKey)).Fields;
         var second = Assert.Single(MetricDeviceFields.Read(snapshot, batteries[1].ExactIdentityKey)).Fields;
         Assert.All(first.Concat(second), field => Assert.Equal(SamplingObservationStatus.Current, field.Status));
@@ -34,9 +34,9 @@ public sealed partial class BatteryInformationCollectorTests
         Assert.Equal(20, second.Single(f => f.Name == "battery_all_charge_percent_derived").NumericValue);
         Assert.Equal("mWh", first.Single(f => f.Name == "battery_all_remaining_capacity_actual_mwh").Unit);
         Assert.Equal("relative-unit", second.Single(f => f.Name == "battery_all_remaining_capacity_actual_relative_units").Unit);
-        Assert.Equal("5", first.Single(f => f.Name == "battery_all_charge_state_actual").IntegerValue);
+        Assert.Equal(MetricInteger.Parse("5"), first.Single(f => f.Name == "battery_all_charge_state_actual").IntegerValue);
         Assert.Null(first.Single(f => f.Name == "battery_all_charge_state_actual").NumericValue);
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         var request = MetricSampleRequest.ForIds(bindings.Select(static b => b.MetricId));
         cache.Publish(snapshot, request);
         cache.RecordFailure(request, now.AddSeconds(1), "fixture-failure");

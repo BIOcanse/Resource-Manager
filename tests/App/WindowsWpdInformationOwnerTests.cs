@@ -65,8 +65,8 @@ public sealed class WindowsWpdInformationOwnerTests
         Assert.Equal(87d, access.Backend.ReadCached(batteryA).Value?.Number);
         Assert.Equal("same declared WPD root ID", access.Backend.ReadCached(deviceIdA).Value?.Text);
         Assert.Equal("firmware-A", access.Backend.ReadCached(firmwareA).Value?.Text);
-        Assert.Equal("18446744073709551615", access.Backend.ReadCached(capacityA).Value?.Integer);
-        Assert.Equal("9223372036854775809", access.Backend.ReadCached(capacityB).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), access.Backend.ReadCached(capacityA).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("9223372036854775809"), access.Backend.ReadCached(capacityB).Value?.Integer);
 
         var original = owner.ReadState();
         reader.Set((_, request, _) => SelectedRead(request, batteryA: 91));
@@ -84,7 +84,7 @@ public sealed class WindowsWpdInformationOwnerTests
         Assert.NotSame(original, owner.ReadState());
         Assert.Equal("same declared WPD root ID", access.Backend.ReadCached(deviceIdA).Value?.Text);
         Assert.Equal("firmware-A", access.Backend.ReadCached(firmwareA).Value?.Text);
-        Assert.Equal("18446744073709551615", access.Backend.ReadCached(capacityA).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), access.Backend.ReadCached(capacityA).Value?.Integer);
         Assert.Equal(62d, access.Backend.ReadCached(Field(catalog, ConnectionB,
             "mobile_all_battery_percent_reported")).Value?.Number);
         Assert.Equal(collected, access.Backend.ReadCached(batteryA));

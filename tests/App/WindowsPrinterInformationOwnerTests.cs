@@ -62,7 +62,7 @@ public sealed class WindowsPrinterInformationOwnerTests
         var ownerBackend = owner.CreateBackend();
         Assert.Equal("18446744073709551615", access.Backend.ReadCached(version).Value!.Text);
         Assert.Equal("USB001:,FILE:", access.Backend.ReadCached(port).Value!.Text);
-        Assert.Equal(((uint)flags).ToString(CultureInfo.InvariantCulture), access.Backend.ReadCached(state).Value!.Integer);
+        Assert.Equal(MetricInteger.FromUnsigned128(((uint)flags)), access.Backend.ReadCached(state).Value!.Integer);
         Assert.Equal(access.Backend.ReadCached(port), ownerBackend.ReadCached(port));
         Assert.Equal(1, reader.ReadCount);
 
@@ -74,7 +74,7 @@ public sealed class WindowsPrinterInformationOwnerTests
         }));
         var selected = Assert.Single(await access.Backend.CollectAsync([state], default));
         Assert.Equal(FieldObservationStatus.Current, selected.Status);
-        Assert.Equal("0", selected.Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), selected.Value!.Integer);
         Assert.NotNull(selected.ObservedAt);
         Assert.Equal("USB001:,FILE:", ownerBackend.ReadCached(port).Value!.Text);
         Assert.Equal("USB001:,FILE:", access.Backend.ReadCached(port).Value!.Text);

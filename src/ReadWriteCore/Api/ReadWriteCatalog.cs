@@ -34,6 +34,7 @@ public sealed class ReadWriteCatalog
 
     public FieldCapability Require(FieldReference field) => byField.TryGetValue(field, out var binding)
         ? binding : throw new ArgumentException("Unknown device field.", nameof(field));
+    public FieldCapability? Find(FieldReference field) => byField.GetValueOrDefault(field);
     public ImmutableArray<FieldCapability> GetFields(string deviceIdentity) => byDevice.GetValueOrDefault(deviceIdentity, []);
 
     private static void Validate(OperationSupport operation)

@@ -22,7 +22,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     {
         using var state = new StatusWorkspace(Path.Combine(Path.GetTempPath(), $"boolean-http-{Guid.NewGuid():N}.bin"));
         state.Publish(flag);
-        return NativeMetricSnapshotCommittedProjection.Create(state.Workspace.ReadCommitted(), "CPU", "RAM", 1);
+        return NativeMetricSnapshotCommittedProjection.Create(frame: state.Workspace.ReadCommitted(), workspaceIdentity: 1);
     }
 
     [Theory]
@@ -178,7 +178,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         }
         internal DateTimeOffset NextTime() => start.AddSeconds(++sequence);
         internal DeviceMetricFieldValue Read() => Assert.Single(Assert.Single(MetricDeviceFields.Read(
-            NativeMetricSnapshotCommittedProjection.Create(Workspace.ReadCommitted(), "CPU", "RAM", 1), target.ExactIdentityKey)).Fields,
+            NativeMetricSnapshotCommittedProjection.Create(frame: Workspace.ReadCommitted(), workspaceIdentity: 1), target.ExactIdentityKey)).Fields,
             static field => field.Name == "cpu_intel_core_thermal_throttling_active");
         internal DeviceMetricFieldValue Publish(bool? value, string? corruption = null)
         {

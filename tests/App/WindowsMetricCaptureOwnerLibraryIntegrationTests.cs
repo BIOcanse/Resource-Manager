@@ -35,7 +35,7 @@ public sealed class WindowsMetricCaptureOwnerLibraryIntegrationTests
         owner.Dispose();
         Assert.Equal(1, released.Releases);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => owner.CaptureAsync(MetricSampleRequest.CatalogProbe).AsTask());
-        Assert.Null(owner.ReadCachedSnapshot());
+        Assert.Throws<ObjectDisposedException>(() => owner.ReadCachedSnapshot());
 
         async Task LateAdmittedCapture()
         {
@@ -53,12 +53,12 @@ public sealed class WindowsMetricCaptureOwnerLibraryIntegrationTests
     public void OriginalCommitProjectionPreservesExactBytesAndRejectsInvalidPages()
     {
         var valid = WindowsVirtualMemoryMetricResource.CreateCommitMetrics(new()
-            { PageSize = 4096, CommitTotal = 7, CommitLimit = 19, CommitPeak = 9 }, "raw");
+            { PageSize = 4096, CommitTotal = 7, CommitLimit = 19, CommitPeak = 9 });
         Assert.Equal(7UL * 4096, valid.UsedBytes);
         Assert.Equal(19UL * 4096, valid.TotalBytes);
         Assert.Equal(SamplingObservationStatus.Current, valid.ObservationStatus);
         var invalid = WindowsVirtualMemoryMetricResource.CreateCommitMetrics(new()
-            { PageSize = 4096, CommitTotal = 20, CommitLimit = 19 }, "raw");
+            { PageSize = 4096, CommitTotal = 20, CommitLimit = 19 });
         Assert.False(invalid.IsSelectable);
         Assert.Equal(SamplingObservationStatus.Unavailable, invalid.ObservationStatus);
     }
@@ -67,7 +67,6 @@ public sealed class WindowsMetricCaptureOwnerLibraryIntegrationTests
     { public int Releases; public void Dispose() => Releases++; }
     private static WindowsHardwareMetricResources UnusedResources() => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = () => throw new InvalidOperationException(),
         ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, _) => throw new InvalidOperationException(),
         ReadNumaIdentities = () => throw new InvalidOperationException(), ReadGpuInventory = () => throw new InvalidOperationException(),

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.App.Application.DeviceTopology;
@@ -59,7 +60,7 @@ internal static class SecurityProductConsumer
             is { Status: FieldObservationStatus.Unavailable, Value: null, ObservedAt: null }, "whole capture failure clears Current");
         source.FailWholeCapture = false;
         Verify((await core.CollectAsync([Antivirus])).Single());
-        Require((await core.WriteAsync(Antivirus, new(Integer: "1"))).Status == "unsupported", "registration information cannot write policy");
+        Require((await core.WriteAsync(Antivirus, new(Integer: MetricInteger.Parse("1")))).Status == "unsupported", "registration information cannot write policy");
         Console.WriteLine("[SECURITY-PRODUCT-RW-PACKAGE] nine extensions; exact zero/false/uint32/string; legacy nulls; passive Current; category/whole failure; cancellation/recovery; recorded only");
     }
 

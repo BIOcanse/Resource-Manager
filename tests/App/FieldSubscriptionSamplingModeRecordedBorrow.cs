@@ -39,7 +39,7 @@ internal sealed class FieldSubscriptionSamplingModeRecordedBorrow : IReadWriteCo
     {
         var fields = new[] { Passive, QueryA, QueryB };
         Catalog = new([new("sampling-mode-recorded", "recorded", null)], fields.Select(field =>
-            new FieldCapability(field, new(field.FieldName, "text", "string", null),
+            new FieldCapability(field, new(field.FieldName, "text", "string"),
                 new(true, null, []), OperationSupport.Unsupported("recorded read only"), "recorded")));
         foreach (var field in fields) SetCurrent(field, "initial-current");
     }

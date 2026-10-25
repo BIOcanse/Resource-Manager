@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.ProcessFields;
 using ResourceManager.ReadWrite.Windows.Processes;
@@ -18,8 +19,8 @@ internal static class PhysicalDiskProcessFieldConsumer
         var window = new PhysicalDiskProcessIoWindow(DateTimeOffset.UnixEpoch, 2000,
             [new(disk0, 41, "100", "9007199254740993", "0"), new(disk2, 41, "100", "0", "23")]) { Disks = [disk0, disk2] };
         var exact = WindowsPhysicalDiskProcessFields.Project([read, write], inventory, window);
-        if (exact.FindProcess(41, "100", disk0)?.Values.Single(value => value.Field == read).IntegerValue != "9007199254740993"
-            || exact.FindProcess(41, "100", disk2)?.Values.Single(value => value.Field == write).IntegerValue != "23")
+        if (exact.FindProcess(41, "100", disk0)?.Values.Single(value => value.Field == read).IntegerValue != MetricInteger.Parse("9007199254740993")
+            || exact.FindProcess(41, "100", disk2)?.Values.Single(value => value.Field == write).IntegerValue != MetricInteger.Parse("23"))
             throw new InvalidDataException("Disk scope or exact count collapsed.");
         var warming = WindowsPhysicalDiskProcessFields.Project([read, write], inventory, window with { Complete = false });
         if (warming.CapturedAt is not null || warming.Processes.Any(row => row.Values.Any(value => value.IntegerValue is not null)))

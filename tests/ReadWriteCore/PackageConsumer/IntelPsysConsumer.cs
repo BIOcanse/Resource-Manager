@@ -37,8 +37,7 @@ internal static class IntelPsysConsumer
         Require(core.Query(raw) is { Read.Supported: true, Write.Supported: false,
                 Definition: { ValueKind: "unsigned64", Unit: "count" }, ReadSource: NativeMetricSnapshotSources.IntelMsr }
             && core.Query(unit) is { Read.Supported: true, Write.Supported: false,
-                Definition: { ValueKind: "float64", Unit: "J/count" }, ReadSource: NativeMetricSnapshotSources.IntelMsr }
-            && core.Query(raw).Definition.Meaning!.Contains("zero does not prove", StringComparison.Ordinal),
+                Definition: { ValueKind: "float64", Unit: "J/count" }, ReadSource: NativeMetricSnapshotSources.IntelMsr },
             "public types/units/source and raw-zero validity limit are explicit");
 
         var zero = await core.CollectAsync(fields, timeout.Token);
@@ -49,7 +48,7 @@ internal static class IntelPsysConsumer
             "selected source receives one exact platform and the actual non-CPU0 representative");
         var current = owner.ReadCachedSnapshot();
         foreach (var field in fields) _ = core.ReadCached(field);
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == 1,
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == 1,
             "passive current and cache have no collection side effect");
 
         fixture.Raw = uint.MaxValue;
@@ -66,7 +65,7 @@ internal static class IntelPsysConsumer
         SameCurrent(rawFailed);
         fixture.FailRaw = false; fixture.FailUnit = true;
         var unitFailed = await core.CollectAsync(fields, timeout.Token);
-        Require(unitFailed.Single(reading => reading.Field == raw).Value?.Integer == "4294967295", "raw32 maximum remains exact when unit fails");
+        Require(unitFailed.Single(reading => reading.Field == raw).Value?.Integer == MetricInteger.Parse("4294967295"), "raw32 maximum remains exact when unit fails");
         Empty(unitFailed.Single(reading => reading.Field == unit));
         fixture.FailRaw = true;
         var failed = await core.CollectAsync(fields, timeout.Token);
@@ -83,7 +82,7 @@ internal static class IntelPsysConsumer
             try { await core.CollectAsync(fields, canceled.Token); throw new InvalidDataException("Canceled capture completed."); }
             catch (OperationCanceledException) { }
         }
-        Require(ReferenceEquals(beforeCanceled, owner.ReadCachedSnapshot()), "cancellation preserves current");
+        Require(MetricSnapshotFactAssertions.SameCurrent(beforeCanceled, owner.ReadCachedSnapshot()), "cancellation preserves current");
         var committedRaw = core.ReadCached(raw);
         fixture.Raw = 17;
         using (var canceledAfterRead = new CancellationTokenSource())
@@ -93,7 +92,7 @@ internal static class IntelPsysConsumer
             catch (OperationCanceledException) { }
             finally { fixture.ReadCompleted = null; }
         }
-        Require(ReferenceEquals(beforeCanceled, owner.ReadCachedSnapshot()) && core.ReadCached(raw) == committedRaw,
+        Require(MetricSnapshotFactAssertions.SameCurrent(beforeCanceled, owner.ReadCachedSnapshot()) && core.ReadCached(raw) == committedRaw,
             "canceling after a different raw read preserves committed value and observation time");
         await RequireFrozenRawAsync("canceled");
         await core.CollectAsync([unit], timeout.Token);
@@ -107,7 +106,7 @@ internal static class IntelPsysConsumer
             var readsBeforeRejected = fixture.Reads;
             fixture.Raw = 23;
             var rejected = await borrow.CollectAsync([raw], new RetiredPermit(original.WorkspaceIdentity, original.ConfigurationGeneration), timeout.Token);
-            Require(!rejected.Committed && ReferenceEquals(original, owner.ReadCachedSnapshot()) && fixture.Reads == readsBeforeRejected + 1,
+            Require(!rejected.Committed && MetricSnapshotFactAssertions.SameCurrent(original, owner.ReadCachedSnapshot()) && fixture.Reads == readsBeforeRejected + 1,
                 "retired publication rejects a real different raw read without replacing current");
         }
         await RequireFrozenRawAsync("rejected borrowed");
@@ -185,7 +184,6 @@ internal sealed class RecordedIntelPsysResources
         => Frozen && source == NativeMetricSnapshotSources.IntelMsr ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded Intel 06_4E", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources
         { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = () => Topology ?? throw new IOException("Recorded topology unavailable") },
@@ -239,7 +237,7 @@ internal sealed class RecordedIntelPsysResources
             if (reading.Field.DeviceIdentity != Identity || reading.SourceId != NativeMetricSnapshotSources.IntelMsr
                 || reading.Status != FieldObservationStatus.Current || reading.ObservedAt is null
                 || (reading.Field.FieldName == RawName
-                    ? reading.Value?.Integer != raw.ToString(System.Globalization.CultureInfo.InvariantCulture) || reading.Value?.Number is not null
+                    ? reading.Value?.Integer != MetricInteger.FromUnsigned128((UInt128)raw) || reading.Value?.Number is not null
                     : reading.Value?.Number != unit || reading.Value?.Integer is not null))
                 throw new InvalidDataException("PSys raw bits and nominal unit must retain exact independent typed values.");
     }

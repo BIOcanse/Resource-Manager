@@ -39,7 +39,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var access = new Access { FeedbackFlags = 1, ThermalFlags = 0 }; var hardware = new Hardware(access);
         hardware.RaplRegisters[0xE7] = 0; hardware.RaplRegisters[0xE8] = 0;
         hardware.AfterRead = () => {
@@ -119,7 +119,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var access = new Access { FeedbackFlags = 1, Signature = target.Signature }; var hardware = new Hardware(access);
         if (family >= 5) { access.Leaf1Edx = 1 << 22; access.ThermalFlags = 209; }
         if (family == 5) hardware.CoreStatus |= 1;

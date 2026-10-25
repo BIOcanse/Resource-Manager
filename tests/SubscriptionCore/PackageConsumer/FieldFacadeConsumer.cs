@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using ResourceManager.ReadWrite;
@@ -17,7 +18,7 @@ internal static class FieldFacadeConsumer
         var fields = core.Catalog.Fields.Select(static item => item.Field).ToImmutableArray();
         Require(core.ReadCached(fields[0]).Value is null && hardware.Calls.Count == 0, "metadata/cache do not collect");
         var direct = await core.CollectAsync(fields);
-        Require(direct[0].Value!.Integer == "18446744073709551615" && direct[1].Value!.Number == 0,
+        Require(direct[0].Value!.Integer == MetricInteger.Parse("18446744073709551615") && direct[1].Value!.Number == 0,
             "exact integer and valid zero through direct API");
         Require(!adapter.Tracker.CreatePlan(adapter.Now).IsActive, "direct collection has no demand");
         var slow = subscriptions.Acquire("same-label", fields, TimeSpan.FromSeconds(1));
@@ -58,9 +59,9 @@ internal static class FieldFacadeConsumer
     {
         public ReadWriteCatalog Catalog { get; } = new([new("recorded-A", "memory", null), new("recorded-B", "memory", null)],
         [
-            new(new("recorded-A", "memory_all_physical_available_bytes"), new("memory_all_physical_available_bytes", "bytes", "unsigned64", null),
+            new(new("recorded-A", "memory_all_physical_available_bytes"), new("memory_all_physical_available_bytes", "bytes", "unsigned64"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded-memory"),
-            new(new("recorded-B", "memory_all_physical_available_bytes"), new("memory_all_physical_available_bytes", "bytes", "float64", null),
+            new(new("recorded-B", "memory_all_physical_available_bytes"), new("memory_all_physical_available_bytes", "bytes", "float64"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded-memory")
         ]);
         internal List<ImmutableArray<FieldReference>> Calls { get; } = [];
@@ -73,7 +74,7 @@ internal static class FieldFacadeConsumer
             cancellationToken.ThrowIfCancellationRequested();
             Calls.Add(fields);
             current = [.. fields.Select(field => new FieldReading(field, FieldObservationStatus.Current,
-                field.DeviceIdentity == "recorded-A" ? new(Integer: "18446744073709551615") : new(Number: 0),
+                field.DeviceIdentity == "recorded-A" ? new(Integer: MetricInteger.Parse("18446744073709551615")) : new(Number: 0),
                 DateTimeOffset.UnixEpoch, "recorded-memory"))];
             return ValueTask.FromResult(current);
         }

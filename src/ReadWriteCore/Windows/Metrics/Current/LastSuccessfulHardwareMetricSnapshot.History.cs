@@ -21,6 +21,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         ArgumentNullException.ThrowIfNull(plan);
         lock (sync)
         {
+            var state = ReadState();
             var requested = plan.Requirements.ToDictionary(
                 static requirement => requirement.DataItem,
                 static requirement => requirement.RetainedRounds,
@@ -47,10 +48,6 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                     }
                 }
                 historyView = historyView.SetItem(item, existing.Read());
-            }
-            if (state.Snapshot is { } current)
-            {
-                Volatile.Write(ref state, state with { Snapshot = current with { History = historyView } });
             }
         }
     }
@@ -84,7 +81,12 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             sample = default;
             return false;
         }
-        double? numericValue = publication.PayloadSnapshot?.Items.GetValueOrDefault(item)?.NumericValue;
+        var value = publication.PayloadSnapshot?.Items.GetValueOrDefault(item);
+        double? numericValue = value?.NumericValue;
+        if (numericValue is null && value?.IntegerValue is { } integer)
+            numericValue = integer.Negative
+                ? (double)unchecked((long)integer.LowBits)
+                : (double)(((UInt128)integer.HighBits << 64) | integer.LowBits);
         if (item.Equals(MetricDatasetIds.SystemCpuUsage, StringComparison.OrdinalIgnoreCase))
         {
             numericValue = publication.PayloadSnapshot?.Cpu is { IsUsageAvailable: true } cpu

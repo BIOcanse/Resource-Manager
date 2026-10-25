@@ -182,7 +182,7 @@ public sealed partial class ControlHelperPayloadTests
             => Task.FromResult(new HardwareMetricSnapshot(DateTimeOffset.UtcNow,
                 new CpuMetrics("CPU", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0, "",
                     new CpuSensorMetrics(new("", "", null), null, null, null, null)),
-                new(0, 0, 0, false, ""), new(0, 0, 0, "", false), [], null!, new Dictionary<string, MetricValue>()));
+                new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false), new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false), [], null!, new Dictionary<string, MetricReadingValue>()));
     }
     private sealed class UnexpectedPayload : IDependencyPayloadAcquisition
     {

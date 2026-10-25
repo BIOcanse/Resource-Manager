@@ -60,14 +60,14 @@ public sealed class OperatingSystemSessionOwnerTests
         var sessions = backend.Catalog.Fields.Where(field => field.Field.FieldName == "os_all_session_id_actual").ToArray();
         Assert.Equal(2, sessions.Length); Assert.Equal(1, reads);
         Assert.All(sessions, field => { Assert.Equal("unsigned64", field.Definition.ValueKind); Assert.Equal("session-id", field.Definition.Unit); });
-        Assert.Contains(sessions, field => backend.ReadCached(field.Field).Value!.Integer == "0");
-        var prior = sessions.Single(field => backend.ReadCached(field.Field).Value!.Integer == "42").Field;
+        Assert.Contains(sessions, field => backend.ReadCached(field.Field).Value!.Integer == MetricInteger.Parse("0"));
+        var prior = sessions.Single(field => backend.ReadCached(field.Field).Value!.Integer == MetricInteger.Parse("42")).Field;
         using var borrow = owner.BorrowSubscriptionCapture(); _ = borrow.Bind([prior]);
         replaced = true;
         var result = await borrow.CollectAsync([prior], new Permit());
         Assert.True(result.Committed); Assert.Equal(FieldObservationStatus.Unavailable, result.Readings.Single().Status);
         var replacement = backend.Catalog.Fields.Single(field => field.Field.FieldName == "os_all_session_id_actual"
-            && backend.ReadCached(field.Field).Value!.Integer == "42").Field;
+            && backend.ReadCached(field.Field).Value!.Integer == MetricInteger.Parse("42")).Field;
         Assert.NotEqual(prior.DeviceIdentity, replacement.DeviceIdentity); Assert.Null(owner.ReadInformation().FindField(prior));
         Assert.NotSame(original, owner.ReadInformation());
     }

@@ -110,7 +110,7 @@ internal static class GpuEngineInformationConsumer
 
         var current = owner.ReadCachedSnapshot();
         Require(current is not null && core.ReadCached(selected.Field) == read
-            && ReferenceEquals(current, owner.ReadCachedSnapshot()) && nativeSource.ReadCount == 2,
+            && MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && nativeSource.ReadCount == 2,
             "Public cached reads return the original owner current without starting another PDH query.");
         Require(current!.Items.Keys.All(static key => !key.EndsWith(".engineBusy", StringComparison.OrdinalIgnoreCase))
             && current.Datasets.Keys.All(static key => !key.EndsWith(".engineBusy", StringComparison.OrdinalIgnoreCase))
@@ -182,7 +182,7 @@ internal static class GpuEngineInformationConsumer
             && nativeSource.ReadCount == 3,
             "An accepting permit commits one exact queried engine reading through the original owner borrow.");
         var borrowedCurrent = owner.ReadCachedSnapshot();
-        Require(borrowedCurrent is not null && ReferenceEquals(borrowedCurrent, owner.ReadCachedSnapshot())
+        Require(borrowedCurrent is not null && MetricSnapshotFactAssertions.SameCurrent(borrowedCurrent, owner.ReadCachedSnapshot())
             && borrow.Backend.ReadCached(selected.Field) == borrowedReading
             && core.ReadCached(selected.Field) == borrowedReading && nativeSource.ReadCount == 3,
             "Borrowed and direct APIs read the same committed current without another PDH query.");
@@ -209,8 +209,6 @@ internal static class GpuEngineInformationConsumer
         PdhGpuEngineUsageReader pdhReader, Action inventoryRead)
         => new()
         {
-            CpuName = "Recorded CPU",
-            MemoryDescription = "Recorded memory",
             Controls = new WindowsMetricControlResources
             {
                 ControlReadCpuIdentity = static () => null,

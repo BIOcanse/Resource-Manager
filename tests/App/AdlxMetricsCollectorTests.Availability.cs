@@ -87,7 +87,7 @@ public sealed partial class AdlxMetricsCollectorTests
                 new(source.SourceHandle, 1, (ulong)phase + 1), at, phase == 5 ? [] :
                 [AmdAdlxBridgeReader.ToGpuMetrics(row, AvailabilityRequest(), Inventory())!,
                  AmdAdlxBridgeReader.ToGpuMetrics(AvailabilityRow(20, PnpB), AvailabilityRequest(), Inventory())!]), at);
-            var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
             foreach (var binding in bindings)
             {
                 var template = MetricFieldRegistry.Definitions.First(field => field.Code == binding.FieldCode).RequestTemplate;

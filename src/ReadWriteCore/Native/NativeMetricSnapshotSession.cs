@@ -418,6 +418,9 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             {
                 NativeMethods.Destroy(current);
             }
+            currentStorage?.Dispose();
+            currentStorage = null;
+            CloseRetiredCurrentStorage();
             // Native Destroy has ended every reference before we unpin/end use.
             // Failed endUse/retirement is retained and Dispose may retry it.
             EndScratch(false);

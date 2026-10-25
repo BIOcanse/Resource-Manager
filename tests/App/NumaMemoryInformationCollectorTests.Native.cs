@@ -22,7 +22,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         var requested = bindings.Select(static binding => binding.MetricHandle).ToArray();
         var modes = catalog.Sources.Select(static source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
             NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
-        var global = new MemoryMetrics(10, 20, 50, true, "fixture") { AvailableBytes = 10 };
+        var global = new MemoryMetrics(UsedBytes: 10, TotalBytes: 20, UsagePercent: 50, IsUsageAvailable: true) { AvailableBytes = 10 };
         var first = Publish(1, global, new Dictionary<string, ulong> { ["windows-numa-node|0"] = exact, ["windows-numa-node|9"] = ulong.MaxValue },
             new Dictionary<string, ulong> { ["windows-numa-node|0"] = 0, ["windows-numa-node|9"] = uint.MaxValue });
         AssertNode(first, "windows-numa-node|0", "9007199254740993");
@@ -48,7 +48,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         AssertCapacityNode(recovered, "windows-numa-node|0", uint.MaxValue.ToString());
         AssertCapacityNode(recovered, "windows-numa-node|9", null);
         Assert.True(recovered.Memory.IsUsageAvailable);
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         var request = MetricSampleRequest.ForIds(bindings.Where(static binding => binding.FieldCode is MetricFieldCode.NumaNodeAvailableBytes or MetricFieldCode.NumaNodeCapacityMiB)
             .Select(static binding => binding.MetricId));
         cache.Publish(recovered, request);
@@ -69,7 +69,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
                 plan, source, new(source.SourceHandle, 1, sequence), at, memory, values, capacityMiBValues);
             Assert.Equal(NativeMetricSnapshotSourceStatus.Complete, completion.Status);
             workspace.CompleteSource(plan, completion, at);
-            return NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         }
     }
 
@@ -78,7 +78,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, device)).Fields, static field => field.Name == FieldName);
         Assert.Equal(FieldName, field.Name); Assert.Equal("B", field.Unit); Assert.Equal("unsigned64", field.ValueKind);
         Assert.Equal(integer is null ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, field.Status);
-        Assert.Null(field.NumericValue); Assert.Equal(integer, field.IntegerValue);
+        Assert.Null(field.NumericValue); Assert.Equal(integer is null ? null : MetricInteger.Parse(integer), field.IntegerValue);
     }
 
     private static void AssertCapacityNode(HardwareMetricSnapshot snapshot, string device, string? integer)
@@ -86,6 +86,6 @@ public sealed partial class NumaMemoryInformationCollectorTests
         var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, device)).Fields, static field => field.Name == CapacityFieldName);
         Assert.Equal(CapacityFieldName, field.Name); Assert.Equal("MiB", field.Unit); Assert.Equal("unsigned64", field.ValueKind);
         Assert.Equal(integer is null ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, field.Status);
-        Assert.Null(field.NumericValue); Assert.Equal(integer, field.IntegerValue);
+        Assert.Null(field.NumericValue); Assert.Equal(integer is null ? null : MetricInteger.Parse(integer), field.IntegerValue);
     }
 }

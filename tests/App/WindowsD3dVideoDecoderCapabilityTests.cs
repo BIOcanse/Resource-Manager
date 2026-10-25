@@ -57,7 +57,7 @@ public sealed class WindowsD3dVideoDecoderCapabilityTests
                 $"luid:{adapterAndProfile.Item1.Luid:X16}|pci:{adapterAndProfile.Item1.PciVendorId:X4}:{adapterAndProfile.Item1.PciDeviceId:X4}|profile:{adapterAndProfile.Item2:D}|dxgi-format:103",
                 StringComparison.Ordinal)).Field;
             Assert.Equal(FieldObservationStatus.Current, access.Backend.ReadCached(supported).Status);
-            Assert.Equal("103", access.Backend.ReadCached(supported).Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("103"), access.Backend.ReadCached(supported).Value?.Integer);
             Assert.Contains(catalog.Devices, device => device.Identity == supported.DeviceIdentity
                 && device.Resource == "gpu_adapter_decoder_format");
             Assert.DoesNotContain(outputFields, field => field.Field.DeviceIdentity.Contains(
@@ -84,7 +84,7 @@ public sealed class WindowsD3dVideoDecoderCapabilityTests
         var profile = catalog.Fields.Single(static field => field.Field.FieldName == "gpu_all_video_decoder_profile_guid").Field;
         var outputFormat = catalog.Fields.Single(static field => field.Field.FieldName == "gpu_all_video_decoder_output_format").Field;
         Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(profile).Status);
-        Assert.Equal("103", backend.ReadCached(outputFormat).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("103"), backend.ReadCached(outputFormat).Value?.Integer);
 
         reader.ResultFactory = (_, _) => new([new(FirstAdapter, WindowsD3dApiVersion.Direct3D11, null, [], false, [])]);
         var failedProfile = Assert.Single(await backend.CollectAsync([profile], default));
@@ -217,7 +217,7 @@ public sealed class WindowsD3dVideoDecoderCapabilityTests
         Assert.Equal("object", DeviceInformationFieldRegistry.GpuAllVideoDecoderConfiguration.ValueKind);
         Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(configurationField).Status);
         Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(featureField).Status);
-        Assert.Equal("45056", backend.ReadCached(featureField).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("45056"), backend.ReadCached(featureField).Value?.Integer);
         using (var zero = JsonDocument.Parse(backend.ReadCached(configurationField).Value!.Structure!.Value.GetRawText()))
         {
             Assert.Equal(0U, zero.RootElement.GetProperty("configurationCount").GetUInt32());
@@ -235,7 +235,7 @@ public sealed class WindowsD3dVideoDecoderCapabilityTests
         Assert.NotNull(unavailableFact);
         Assert.Null(unavailableFact.Value);
         Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(featureField).Status);
-        Assert.Equal("45056", backend.ReadCached(featureField).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("45056"), backend.ReadCached(featureField).Value?.Integer);
         Assert.Equal(WindowsD3dCapabilityFields.DecoderConfigurations, reader.Requests.Last());
 
         reader.ResultFactory = (_, _) => new([new(FirstAdapter, WindowsD3dApiVersion.Direct3D11,
@@ -247,7 +247,7 @@ public sealed class WindowsD3dVideoDecoderCapabilityTests
         Assert.NotNull(overBoundFact);
         Assert.Null(overBoundFact.Value);
         Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(featureField).Status);
-        Assert.Equal("45056", backend.ReadCached(featureField).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("45056"), backend.ReadCached(featureField).Value?.Integer);
 
         var raw = new WindowsD3dVideoDecoderConfig(
             new("11111111-2222-3333-4444-555555555555"),

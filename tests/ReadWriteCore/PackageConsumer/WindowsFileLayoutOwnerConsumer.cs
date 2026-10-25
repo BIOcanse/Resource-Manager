@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Windows.Files.Layout;
 
 internal static class WindowsFileLayoutOwnerConsumer
@@ -17,7 +18,7 @@ internal static class WindowsFileLayoutOwnerConsumer
         if (capability.Field.FieldName != "file_all_extent_count_actual"
             || capability.ReadSource != "windows.fsctl.file-layout"
             || reading.Status != ResourceManager.ReadWrite.FieldObservationStatus.Current
-            || reading.Value?.Integer != "0" || reader.Reads != 1)
+            || reading.Value?.Integer != MetricInteger.Parse("0") || reader.Reads != 1)
             throw new InvalidDataException("The ReadWriteCore package consumer did not observe the recorded zero-extent result.");
         Console.WriteLine("ReadWriteCore package consumer: one explicit recorded file-extent capture; zero is current; no live filesystem call.");
     }

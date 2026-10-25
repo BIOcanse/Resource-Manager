@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
@@ -55,7 +56,7 @@ internal static class FrameFieldSubscriptionConsumer
                 "multiple demands borrow one original source lease");
             Require(backend.ReadCached(Query.Field(FrameFieldRegistry.DisplayIntervalMs)).Value?.Number is > 0,
                 "the package consumer reads a measured display interval from the owner's current");
-            Require(backend.ReadCached(Query.Field(FrameFieldRegistry.DroppedCount)).Value?.Integer == "0",
+            Require(backend.ReadCached(Query.Field(FrameFieldRegistry.DroppedCount)).Value?.Integer == MetricInteger.Parse("0"),
                 "a complete recorded display window preserves valid zero drops");
 
             var fastBaseline = source.ReadCount;

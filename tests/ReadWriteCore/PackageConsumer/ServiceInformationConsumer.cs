@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
@@ -49,7 +50,7 @@ internal static class ServiceInformationConsumer
         if (present is not null)
         {
             var pid = readings.Single(static reading => reading.Field.FieldName == "service_all_process_pid_actual");
-            Require(pid.Value?.Integer == present.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Require(pid.Value?.Integer == MetricInteger.FromUnsigned128((UInt128)present.ProcessId),
                 "PID is current SCM report, including zero, never PID+birth instance identity.");
         }
         Console.WriteLine("SCM information consumer completed: actual Win32 enum and selected read-only config; driver scope explicit-only; no service control or writes.");

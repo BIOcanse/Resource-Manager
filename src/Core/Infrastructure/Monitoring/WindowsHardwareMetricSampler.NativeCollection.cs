@@ -65,8 +65,6 @@ public sealed partial class WindowsHardwareMetricSampler
     private WindowsHardwareMetricResources CreateBorrowedResources(WindowsMetricControlResources? borrowedControls) => new()
     {
         Controls = borrowedControls ?? new WindowsMetricControlResources(),
-        CpuName = cpuZone?.CpuName ?? "CPU",
-        MemoryDescription = memoryZone?.HardwareDescription ?? "Physical RAM",
         // Production supplies these zones; metadata-only fixtures may omit them without invoking a read.
         ReadCpuCounters = () => { var value = cpuZone!.ReadCounters(); return new(value.IsAvailable, value.IdleTicks,
             value.KernelTicks, value.UserTicks, value.MonotonicTicks, value.MonotonicTicksPerSecond, value.ObservedAt); },

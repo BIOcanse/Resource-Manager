@@ -45,7 +45,7 @@ public sealed class NvidiaFanHostIntegrationTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var fan = new NvidiaNvmlFanIdentity(NvidiaFanFixture.ParentA, 1);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, fan.ExactIdentityKey, [NvidiaFanFixture.Percent]);
         var zone = new NvidiaNvmlMonitoringZone((_, _, _) => throw new InvalidOperationException("No GPU telemetry was selected."),

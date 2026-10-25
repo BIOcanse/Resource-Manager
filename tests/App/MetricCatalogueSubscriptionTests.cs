@@ -166,6 +166,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Empty(first.Items);
             var firstWorkspace = fixture.Owner.CurrentWorkspaceIdentity;
             fixture.Topology = Topology([new(7, "disk-first", 2) { SupportsNvmeHealth = true }]);
+            fixture.Owner.RequestTopologyRefresh();
             HardwareMetricSnapshot second;
             do
             {
@@ -221,13 +222,13 @@ public sealed partial class MetricCatalogueSubscriptionTests
     public void ChangedCatalogueInvalidatesOldValuesAndDropsRemovedRequestAddresses()
     {
         var old = StorageMetricSnapshotTestData.CommittedSnapshot();
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         cache.Publish(old, MetricSampleRequest.All);
         var replaced = old with
         {
             WorkspaceIdentity = old.WorkspaceIdentity + 1,
             CapturedAt = old.CapturedAt.AddSeconds(1),
-            Items = new Dictionary<string, MetricValue>(),
+            Items = new Dictionary<string, MetricReadingValue>(),
             FieldBindings = old.FieldBindings.ToDictionary(static pair => pair.Key,
                 static pair => pair.Value with { DeviceIdentity = "replacement-disk" }),
             Datasets = old.Datasets.Where(pair => pair.Key != "disk.7.readErrorsTotal")
@@ -264,7 +265,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     {
         var snapshot = StorageMetricSnapshotTestData.CommittedSnapshot();
         var state = new DashboardMonitoringCatalogState();
-        state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricValue>() });
+        state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricReadingValue>() });
         var selected = state.SelectSubscribable(MetricSampleRequest.ForIds(["disk.7.wearPercent"]));
         Assert.Equal(["disk.7.wearPercent"], selected.Ids);
         var field = snapshot.FieldBindings.Values.Single(binding => binding.Field.Name == "storage_all_wear_reported");
@@ -310,8 +311,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
                 Assert.Null(item.BytesValue);
                 Assert.Null(item.BooleanValue);
                 Assert.Null(item.SampleDurationMilliseconds);
-                Assert.True(string.IsNullOrEmpty(item.DisplayValue)
-                    || item.DisplayValue == "N/A");
+                Assert.NotEmpty(item.Id);
             });
         }
         else

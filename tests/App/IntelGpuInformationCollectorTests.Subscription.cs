@@ -52,7 +52,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         await owner.StartAsync(CancellationToken.None);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => binding.Field.Vendor == MetricVendor.Intel && IntelGclReader.IsRawTelemetryField(binding.Field.Code)).ToArray();
         Assert.Equal(36, bound.Length); Assert.All(bound, binding => Assert.Equal("intel.igcl", binding.SourceId));
         var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
@@ -83,8 +83,8 @@ public sealed partial class IntelGpuInformationCollectorTests
                 var current = ReadIntelFields(stream.Current, device);
                 Assert.All(current.Values, field => Assert.Equal(SamplingObservationStatus.Current, field.Status));
                 Assert.False(current["gpu_intel_power_limited"].BooleanValue); Assert.True(current["gpu_intel_temperature_limited"].BooleanValue);
-                Assert.Equal("9007199254740993", current["gpu_intel_memory_read_counter_bytes"].IntegerValue);
-                Assert.Equal("18446744073709551615", current["gpu_intel_memory_write_counter_bytes"].IntegerValue);
+                Assert.Equal(MetricInteger.Parse("9007199254740993"), current["gpu_intel_memory_read_counter_bytes"].IntegerValue);
+                Assert.Equal(MetricInteger.Parse("18446744073709551615"), current["gpu_intel_memory_write_counter_bytes"].IntegerValue);
                 Assert.Equal(-1, current["gpu_intel_core_temperature_celsius"].NumericValue);
                 lock (sdk.TelemetryDevices) Assert.All(sdk.TelemetryDevices, handle => Assert.Equal(new IntPtr(1), handle));
                 Volatile.Write(ref sdk.Mode, 1);

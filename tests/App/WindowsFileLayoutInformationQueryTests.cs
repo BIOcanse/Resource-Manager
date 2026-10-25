@@ -28,7 +28,7 @@ public sealed class WindowsFileLayoutInformationQueryTests
         Assert.Equal("windows.fsctl.file-layout", capability.ReadSource);
         Assert.Equal(identity, field.DeviceIdentity);
         Assert.Equal("file", Assert.Single(query.ReadInformation().Devices).ObjectType);
-        Assert.Equal("3", query.Backend.ReadCached(field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("3"), query.Backend.ReadCached(field).Value?.Integer);
         Assert.Equal(1, reader.Reads);
 
         using var borrow = query.BorrowSubscriptionCapture();
@@ -40,7 +40,7 @@ public sealed class WindowsFileLayoutInformationQueryTests
 
         reader.Value = new(WindowsFileLayoutTargetKind.File, identity, 5, null);
         var direct = Assert.Single(await query.Backend.CollectAsync([field], CancellationToken.None));
-        Assert.Equal("5", direct.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("5"), direct.Value?.Integer);
         Assert.Equal(direct, query.Backend.ReadCached(field));
         Assert.Equal(2, reader.Reads);
     }
@@ -254,7 +254,7 @@ public sealed class WindowsFileLayoutInformationQueryTests
         var field = Assert.Single((await query.Backend.DiscoverAsync(CancellationToken.None)).Fields).Field;
         var reading = query.Backend.ReadCached(field);
         Assert.Equal(FieldObservationStatus.Current, reading.Status);
-        Assert.Equal("0", reading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), reading.Value?.Integer);
 
         query.Dispose();
         Assert.Empty(query.ReadInformation().Devices);

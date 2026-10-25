@@ -27,9 +27,9 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.CreateDefault(), UnusedResources(_ => { }), new());
         var definition = MetricFieldRegistry.FindByName(canonical)!;
         var binding = new MetricDeviceFieldBinding("recorded-oem-fan", definition, "recorded-fan/address", NativeMetricSnapshotSources.NotebookOemFan);
-        var catalog = new HardwareMetricSnapshot(default, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        var catalog = new HardwareMetricSnapshot(default, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>())
         { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [binding.RequestAddress] = binding } };
-        typeof(WindowsHardwareMetricOwner).GetField("catalogSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(owner, catalog);
+        typeof(WindowsHardwareMetricOwner).GetField("catalogSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(owner, HardwareMetricCatalog.FromSnapshot(catalog));
         ImmutableArray<FieldReference> fields = [new(binding.DeviceIdentity, alias), new(binding.DeviceIdentity, canonical), new(binding.DeviceIdentity, alias)];
         using var borrow = owner.BorrowSubscriptionCapture();
         var bound = borrow.Bind(fields);
@@ -164,9 +164,9 @@ public sealed class DefaultReadWriteCollectionBorrowTests
             UnusedResources(_ => notebookStops++), new());
         var field = MetricFieldRegistry.FindByName("cpu_all_cooling_fan_speed_rpm")!;
         var binding = new MetricDeviceFieldBinding("recorded-cpu", field, "cpu.fanRpm", NativeMetricSnapshotSources.NotebookOemFan);
-        var catalog = new HardwareMetricSnapshot(default, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        var catalog = new HardwareMetricSnapshot(default, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>())
             { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [binding.RequestAddress] = binding } };
-        typeof(WindowsHardwareMetricOwner).GetField("catalogSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(owner, catalog);
+        typeof(WindowsHardwareMetricOwner).GetField("catalogSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(owner, HardwareMetricCatalog.FromSnapshot(catalog));
         ImmutableArray<FieldReference> fields = [new(binding.DeviceIdentity, field.Name)];
         using var first = owner.BorrowSubscriptionCapture(); using var second = owner.BorrowSubscriptionCapture();
         Assert.Equal(new[] { "cpu.fanRpm" }, first.Bind(fields).Single().CollectionItemIds);
@@ -219,10 +219,10 @@ public sealed class DefaultReadWriteCollectionBorrowTests
             UnusedResources(_ => stops++), new());
         var field = MetricFieldRegistry.FindByName("cpu_all_cooling_fan_speed_rpm")!;
         var binding = new MetricDeviceFieldBinding("retired-cpu", field, "cpu.fanRpm", NativeMetricSnapshotSources.NotebookOemFan);
-        var catalog = new HardwareMetricSnapshot(default, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        var catalog = new HardwareMetricSnapshot(default, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>())
             { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [binding.RequestAddress] = binding } };
         var catalogField = typeof(WindowsHardwareMetricOwner).GetField("catalogSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        catalogField.SetValue(owner, catalog);
+        catalogField.SetValue(owner, HardwareMetricCatalog.FromSnapshot(catalog));
         ImmutableArray<FieldReference> fields = [new(binding.DeviceIdentity, field.Name)];
         using var first = owner.BorrowSubscriptionCapture(); using var second = owner.BorrowSubscriptionCapture();
         var original = first.Bind(fields); second.Bind(fields);
@@ -239,7 +239,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     {
         var failing = false;
         using var owner = MemoryOwner(() => failing ? throw new InvalidOperationException("recorded memory failure")
-            : new MemoryMetrics(512, 1024, 50, true, "recorded"));
+            : new MemoryMetrics(UsedBytes: 512, TotalBytes: 1024, UsagePercent: 50, IsUsageAvailable: true));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var publication = owner.Publications.Subscribe(["memory.usage"]);
         var captured = await owner.CaptureAsync(MetricSampleRequest.ForIds(["memory.usage"]), timeout.Token);
@@ -259,7 +259,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         Assert.Equal(new[] { field }, failedSource.QueriedFields);
         Assert.Null(failedSource.Readings.Single().Value);
         Assert.Null(borrow.Backend.ReadCached(field).Value);
-        Assert.Same(owner.ReadCachedSnapshot(), owner.ReadCachedSnapshot());
+        Assert.Equivalent(owner.ReadCachedSnapshot(), owner.ReadCachedSnapshot(), strict: true);
     }
 
     [Fact]
@@ -270,7 +270,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         using var owner = MemoryOwner(() =>
         {
             memoryReads++;
-            return new(512, 1024, 50, true, "recorded");
+            return new(UsedBytes: 512, TotalBytes: 1024, UsagePercent: 50, IsUsageAvailable: true);
         }, source => source == NativeMetricSnapshotSources.WindowsMemory && frozen
             ? NativeMetricSnapshotZoneMode.Freeze
             : NativeMetricSnapshotZoneMode.Normal);
@@ -295,7 +295,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     public async Task HardwareRejectedOrCanceledOriginalCapturePreservesManagedCurrent()
     {
         CancellationTokenSource? cancelDuringRead = null;
-        using var owner = MemoryOwner(() => { cancelDuringRead?.Cancel(); return new(512, 1024, 50, true, "recorded"); });
+        using var owner = MemoryOwner(() => { cancelDuringRead?.Cancel(); return new(UsedBytes: 512, TotalBytes: 1024, UsagePercent: 50, IsUsageAvailable: true); });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await owner.CaptureAsync(MetricSampleRequest.ForIds(["memory.usage"]), timeout.Token);
         PublishRecordedCatalog(owner);
@@ -304,11 +304,11 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         var before = owner.ReadCachedSnapshot(); var rejected = new Permit(); rejected.Revoke();
         var result = await borrow.CollectAsync([field], rejected, timeout.Token);
         Assert.False(result.Committed); Assert.Equal(new[] { field }, result.QueriedFields);
-        Assert.Empty(result.Readings); Assert.Same(before, owner.ReadCachedSnapshot());
+        Assert.Empty(result.Readings); Assert.Equivalent(before, owner.ReadCachedSnapshot(), strict: true);
         await Task.Delay(150, timeout.Token);
         using var canceled = new CancellationTokenSource(TimeSpan.FromSeconds(5)); cancelDuringRead = canceled;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([field], new Permit(), canceled.Token).AsTask());
-        Assert.Same(before, owner.ReadCachedSnapshot());
+        Assert.Equivalent(before, owner.ReadCachedSnapshot(), strict: true);
     }
 
     // Existing friend-level raw boundary recording: the original native workspace/capture/current remain real.
@@ -354,7 +354,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         (uint)NativeMetricSnapshotScopeKind.Memory, (uint)NativeMetricSnapshotValueKind.Float64,
         1, (uint)(flags | NativeMetricSnapshotMetricFlags.Nonnegative),
         0, BitConverter.DoubleToUInt64Bits(double.MaxValue), 0, 0, 1, 22);
-    private static void PublishRecordedCatalog(WindowsHardwareMetricOwner owner) => SetOwnerField(owner, "catalogSnapshot", owner.ReadCachedSnapshot());
+    private static void PublishRecordedCatalog(WindowsHardwareMetricOwner owner) => SetOwnerField(owner, "catalogSnapshot", HardwareMetricCatalog.FromSnapshot(owner.ReadCachedSnapshot()!));
     private static void SetOwnerField(WindowsHardwareMetricOwner owner, string name, object? value)
         => typeof(WindowsHardwareMetricOwner).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(owner, value);
 
@@ -395,7 +395,6 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     }
     private static WindowsHardwareMetricResources UnusedResources(Action<bool> notebook, Func<MemoryMetrics>? memory = null) => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = memory ?? (() => throw new InvalidOperationException()),
         ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, selected) => selected.Count == 0 ? new Dictionary<string, ulong>() : throw new InvalidOperationException(),
         ReadNumaIdentities = () => throw new InvalidOperationException(), ReadGpuInventory = () => throw new InvalidOperationException(),

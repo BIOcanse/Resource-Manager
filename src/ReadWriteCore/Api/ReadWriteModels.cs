@@ -1,11 +1,12 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using ResourceManager.App.Domain.Metrics;
 
 namespace ResourceManager.ReadWrite;
 
 public readonly record struct FieldReference(string DeviceIdentity, string FieldName);
 public sealed record DeviceDescriptor(string Identity, string Resource, string? Vendor);
-public sealed record FieldDescriptor(string Name, string Unit, string ValueKind, string? Meaning);
+public sealed record FieldDescriptor(string Name, string Unit, string ValueKind);
 public sealed record OperationSupport(bool Supported, string? Reason, ImmutableArray<string> Dependencies)
 {
     public static OperationSupport Unsupported(string reason) => new(false, reason, []);
@@ -39,9 +40,9 @@ public sealed record FieldWriteReceipt(FieldWriteEvidence Kind, FieldValue? Obse
 
 public enum FieldObservationStatus { Current, Invalid, Unavailable, NotRequested, Unsupported, Partial, Warming }
 
-/// <summary>Exact integer text is never converted through double; null payloads
+/// <summary>Exact integers are never converted through double; null payloads
 /// remain different from zero, false and a successfully read empty byte sequence.</summary>
-public sealed record FieldValue(double? Number = null, string? Integer = null, bool? Boolean = null,
+public sealed record FieldValue(double? Number = null, MetricInteger? Integer = null, bool? Boolean = null,
     ImmutableArray<byte>? Bytes = null, string? Text = null, JsonElement? Structure = null)
 {
     internal bool Matches(string kind)
@@ -53,16 +54,11 @@ public sealed record FieldValue(double? Number = null, string? Integer = null, b
         return kind switch
         {
             "float64" => Number is { } number && double.IsFinite(number),
-            "signed64" => long.TryParse(Integer, System.Globalization.NumberStyles.AllowLeadingSign,
-                System.Globalization.CultureInfo.InvariantCulture, out _),
-            "signed32" => int.TryParse(Integer, System.Globalization.NumberStyles.AllowLeadingSign,
-                System.Globalization.CultureInfo.InvariantCulture, out _),
-            "unsigned32" => uint.TryParse(Integer, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out _),
-            "unsigned64" => ulong.TryParse(Integer, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out _),
-            "unsigned128" => UInt128.TryParse(Integer, System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out _),
+            "signed64" => Integer is { } signed64 && signed64.FitsSigned64,
+            "signed32" => Integer is { } signed32 && signed32.FitsSigned32,
+            "unsigned32" => Integer is { Negative: false, HighBits: 0, LowBits: <= uint.MaxValue },
+            "unsigned64" => Integer is { Negative: false, HighBits: 0 },
+            "unsigned128" => Integer is { Negative: false },
             "boolean" => Boolean.HasValue,
             "bytes" => Bytes is { IsDefault: false },
             "string" => Text is not null,

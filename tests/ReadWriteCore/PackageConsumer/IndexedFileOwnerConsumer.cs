@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -41,7 +42,7 @@ internal static class IndexedFileOwnerConsumer
             var fields = catalog.Fields.Select(f => f.Field).ToImmutableArray();
             var values = await backend.CollectAsync(fields, timeout.Token);
             Require(values.All(v => v.Status == FieldObservationStatus.Current), "actual same database selected capture");
-            Require(values.Single(v => v.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer == "9007199254740993", "exact indexed size");
+            Require(values.Single(v => v.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer == MetricInteger.Parse("9007199254740993"), "exact indexed size");
             Require(values.Single(v => v.Field.FieldName == "file_all_indexed_path_actual").Value!.Text == Path.Combine(root, "alpha.txt"), "indexed path");
             Require(values.Single(v => v.Field.FieldName == "file_all_indexed_modified_time_actual").Value!.Text == new DateTimeOffset(638600000000000001L, TimeSpan.Zero).ToString("O", CultureInfo.InvariantCulture), "indexed UTC 100ns timestamp");
             using var betaQuery = owner.CreateInformationQuery("beta", 10);

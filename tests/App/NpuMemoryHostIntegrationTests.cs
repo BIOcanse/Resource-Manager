@@ -56,8 +56,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         await owner.StartAsync(timeout.Token);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var zone = new WindowsNpuMemoryMonitoringZone(recording.Read);
         var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, null!, null!, null!, null!, null!,
@@ -100,7 +99,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             {
                 Assert.True(await stream.MoveNextAsync());
                 var delivered = NpuMemoryCaptureIntegrationTests.Npu(stream.Current, name);
-                Assert.Equal(resident.ToString(System.Globalization.CultureInfo.InvariantCulture), delivered.IntegerValue);
+                Assert.Equal(MetricInteger.FromUnsigned128(resident), delivered.IntegerValue);
                 Assert.Null(delivered.NumericValue);
                 Assert.Equal(SamplingObservationStatus.Current, delivered.Status);
                 Assert.Equal("windows.npu-memory", delivered.SourceId);
@@ -109,7 +108,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             Assert.True(recording.Reads > 0);
             var count = recording.Reads;
             var current = sampler.ReadLatest(request);
-            Assert.Equal(resident.ToString(System.Globalization.CultureInfo.InvariantCulture), core.ReadCached(reference).Value!.Integer);
+            Assert.Equal(MetricInteger.FromUnsigned128(resident), core.ReadCached(reference).Value!.Integer);
             Assert.Null(core.ReadCached(reference).Value!.Number);
             Assert.Equal(current!.CommittedGeneration, sampler.ReadLatest(request)!.CommittedGeneration);
             Assert.Equal(NpuMemoryCaptureIntegrationTests.Npu(current, name),

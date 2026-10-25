@@ -155,10 +155,10 @@ public sealed class StorageInformationCollectorTests
         Assert.All(existingHealthFields.Where(value => value.Name != "storage_all_nvme_temperature_sensor_1_celsius"
             && !Enumerable.Range(2, 6).Any(i => value.Name == $"storage_all_nvme_temperature_sensor_{i}_celsius")),
             value => Assert.Equal(SamplingObservationStatus.Current, value.Status));
-        Assert.Equal(LargeCount.ToString(), values.Single(v => v.Name == "storage_all_read_errors_total_reported").IntegerValue);
-        Assert.Equal("255", values.Single(v => v.Name == "storage_all_nvme_percentage_used_reported").IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(LargeCount), values.Single(v => v.Name == "storage_all_read_errors_total_reported").IntegerValue);
+        Assert.Equal(MetricInteger.Parse("255"), values.Single(v => v.Name == "storage_all_nvme_percentage_used_reported").IntegerValue);
         Assert.Null(values.Single(v => v.Name == "storage_all_nvme_critical_warning_reported").NumericValue);
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         var request = MetricDeviceFields.CreateRequest(healthy, Identity, values.Select(v => v.Name));
         cache.Publish(healthy, request);
         cache.RecordFailure(request, healthy.CapturedAt.AddSeconds(1), "fixture-unavailable");
@@ -175,7 +175,7 @@ public sealed class StorageInformationCollectorTests
             Assert.Equal(SamplingObservationStatus.Unavailable, value.Status);
             Assert.Null(value.NumericValue);
         });
-        Assert.Equal("255", recovered.Single(v => v.Name == "storage_all_nvme_percentage_used_reported").IntegerValue);
+        Assert.Equal(MetricInteger.Parse("255"), recovered.Single(v => v.Name == "storage_all_nvme_percentage_used_reported").IntegerValue);
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public sealed class StorageInformationCollectorTests
         sensors = sensors with { Disks = [sensors.Disks[0] with { IdentityKey = "replacement" }] };
         var completion = WindowsHardwareMetricSampler.CreateStorageCompletion(plan, source, new(source.SourceHandle, 1, 1), now, sensors);
         workspace.CompleteSource(plan, completion, now);
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "fixture", "fixture", 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         var value = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, Identity, new HashSet<string> { "storage_all_wear_reported" })).Fields);
         Assert.Equal(SamplingObservationStatus.Unavailable, value.Status);
         Assert.Null(value.IntegerValue);

@@ -222,7 +222,7 @@ public sealed class FrameDisplayCompletionTests
             backend.ReadCached(query.Field(FrameFieldRegistry.DisplayedFps)).Value?.Number);
         var droppedCount = backend.ReadCached(query.Field(FrameFieldRegistry.DroppedCount));
         Assert.Equal(FieldObservationStatus.Current, droppedCount.Status);
-        Assert.Equal("0", droppedCount.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), droppedCount.Value?.Integer);
         Assert.Equal<double?>(displayStatistics.P95FrameTimeMs,
             backend.ReadCached(query.Field(FrameFieldRegistry.DisplayIntervalP95Ms)).Value?.Number);
         Assert.Equal<double?>(displayStatistics.P99FrameTimeMs,

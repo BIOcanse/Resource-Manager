@@ -37,6 +37,7 @@ import controlSlowRequestJourney from "./controlSlowRequestJourney.js";
 import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
 import metricFieldsJourney from "./metricFieldsJourney.js";
 import metricFieldCardsJourney from "./metricFieldCardsJourney.js";
+import metricPickerGpuNamesJourney from "./metricPickerGpuNamesJourney.js";
 import gpuUnknownRuntimeJourney from "./gpuUnknownRuntimeJourney.js";
 import gpuCommittedThresholdsJourney from "./gpuCommittedThresholdsJourney.js";
 import smartDetailsPlacementFactsJourney from "./smartDetailsPlacementFactsJourney.js";
@@ -88,6 +89,7 @@ const allJourneys = [
   ["control-toggle-choice", controlToggleChoiceJourney],
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
+  ["metric-picker-gpu-names", metricPickerGpuNamesJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
   ["gpu-committed-thresholds", gpuCommittedThresholdsJourney],
   ["smart-details-placement-facts", smartDetailsPlacementFactsJourney],

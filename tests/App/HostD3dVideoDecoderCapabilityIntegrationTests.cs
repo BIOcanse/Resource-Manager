@@ -68,7 +68,7 @@ public sealed class HostD3dVideoDecoderCapabilityIntegrationTests
         Assert.True(collected.Committed);
         Assert.Contains(formatField, collected.QueriedFields);
         Assert.Equal(FieldObservationStatus.Current, borrowed.Status);
-        Assert.Equal("103", collected.Readings.Single(reading => reading.Field == formatField).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("103"), collected.Readings.Single(reading => reading.Field == formatField).Value?.Integer);
         Assert.Equal(borrowed, access.Backend.ReadCached(configurationField));
         Assert.NotNull(provider.ReadState().InformationFields.FindField(configurationField)?.Value);
         Assert.Equal(2, reader.ReadCount);

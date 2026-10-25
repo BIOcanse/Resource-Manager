@@ -47,7 +47,7 @@ internal static class WindowsStorageConsumer
         var frame = WindowsInformationFieldProjection.Storage([new(identity, StorageIdentifyProtocol.NvmeController, null, nvme)], DateTimeOffset.UtcNow);
         var capacity = frame.FindField(new(identity, "storage_all_nvme_controller_accessible_total_nvm_capacity_reported_bytes"))!;
         Require(InformationFieldProjection.Read(identity, capacity, frame.ObservedAt).Value?.Integer
-            == UInt128.MaxValue.ToString(CultureInfo.InvariantCulture), "canonical independent Identify field has exact type/value");
+            == MetricInteger.FromUnsigned128(UInt128.MaxValue), "canonical independent Identify field has exact type/value");
         var failed = WindowsStorageIdentifyReader.ReadFields(identity, -1, StorageIdentifyProtocol.NvmeController, "recorded", null, null);
         Require(failed.ObservedAt is null && failed.Devices.Single().Fields.All(field => field.Value is null),
             "unavailable Identify cannot expose stale declarations");

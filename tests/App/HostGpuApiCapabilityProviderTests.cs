@@ -43,8 +43,8 @@ public sealed class HostGpuApiCapabilityProviderTests
         Assert.Equal("1.3.280", access.Backend.ReadCached(version).Value?.Text);
         Assert.Equal("VK_KHR_swapchain", access.Backend.ReadCached(extension).Value?.Text);
         Assert.Equal(true, access.Backend.ReadCached(feature).Value?.Boolean);
-        Assert.Equal("2048", access.Backend.ReadCached(cube).Value?.Integer);
-        Assert.Equal("0", access.Backend.ReadCached(arrayLayers).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), access.Backend.ReadCached(cube).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(arrayLayers).Value?.Integer);
         Assert.Equal("pixels", catalog.Fields.Single(item =>
             item.Field.FieldName == "gpu_all_vulkan_max_image_dimension_cube").Definition.Unit);
         Assert.Equal("layers", catalog.Fields.Single(item =>
@@ -61,7 +61,7 @@ public sealed class HostGpuApiCapabilityProviderTests
         Assert.Equal(true, Assert.Single(result.Readings).Value?.Boolean);
         var borrowedLayers = await borrow.CollectAsync([arrayLayers], new Permit(), default);
         Assert.True(borrowedLayers.Committed);
-        Assert.Equal("0", Assert.Single(borrowedLayers.Readings).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(borrowedLayers.Readings).Value?.Integer);
         Assert.Equal(borrowedLayers.Readings[0], access.Backend.ReadCached(arrayLayers));
     }
 
@@ -108,7 +108,7 @@ public sealed class HostGpuApiCapabilityProviderTests
         Assert.Equal(0, reader.Calls);
         var field = Assert.Single((await access.Backend.DiscoverAsync(default)).Fields).Field;
         Assert.Contains($"d3d12|luid:{Adapter.Luid:X16}|pci:{Adapter.PciVendorId:X4}:{Adapter.PciDeviceId:X4}", field.DeviceIdentity);
-        Assert.Equal("0", access.Backend.ReadCached(field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(field).Value?.Integer);
         var calls = reader.Calls;
         // This is the actual snapshot returned by /api/device-topology/fields, serialized with Web defaults.
         var wire = System.Text.Json.JsonSerializer.SerializeToElement(provider.ReadState().InformationFields,
@@ -125,7 +125,7 @@ public sealed class HostGpuApiCapabilityProviderTests
         reader.Tier = uint.MaxValue;
         var captured = await borrow.CollectAsync([field], new Permit(), default);
         Assert.True(captured.Committed);
-        Assert.Equal("4294967295", Assert.Single(captured.Readings).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), Assert.Single(captured.Readings).Value?.Integer);
         Assert.Equal(captured.Readings[0], access.Backend.ReadCached(field));
         Assert.Equal("4294967295", provider.ReadState().InformationFields.FindField(field)?.Value?.GetString());
         reader.Tier = null;

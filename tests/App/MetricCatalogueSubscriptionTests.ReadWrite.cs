@@ -25,7 +25,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         {
             reads++;
             cancelDuringRead?.Cancel();
-            return new(1024 - value, 1024, 0, available, "recorded-memory")
+            return new(1024 - value, 1024, 0, available)
             { AvailableBytes = value, ObservationStatus = available ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable };
         });
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
@@ -34,7 +34,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
             registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
-            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
         var controls = new NoControls();
         var backend = new HostReadWriteBackend(sampler, sampler, fixture.Catalog, controls,
@@ -88,8 +88,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         using var fixture = new Fixture(Topology([]));
         using var sampler = Sampler(fixture.Slots, fixture.Catalog, fixture.Owner);
         using (var lease = fixture.Owner.Acquire())
-            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
         var controls = new NoControls();
         var backend = new HostReadWriteBackend(sampler, sampler, fixture.Catalog, controls,
@@ -145,7 +144,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         {
             Interlocked.Increment(ref reads);
             var current = Volatile.Read(ref available);
-            return new(1024, 1024, 0, current, "recorded-memory")
+            return new(1024, 1024, 0, current)
             { AvailableBytes = 0, ObservationStatus = current ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable };
         });
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
@@ -154,8 +153,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, fixture.Owner, fixture.Catalog,
             registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
-            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
         var controls = new NoControls();
         var backend = new HostReadWriteBackend(sampler, sampler, fixture.Catalog, controls,

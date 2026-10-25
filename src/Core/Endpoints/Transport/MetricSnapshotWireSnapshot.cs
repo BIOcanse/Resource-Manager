@@ -10,7 +10,7 @@ public sealed record MetricSnapshotWireSnapshot(
     IReadOnlyDictionary<string, MetricValue> Items,
     string CatalogRevision = "0")
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
 
     public static MetricSnapshotWireSnapshot From(
         HardwareMetricSnapshot snapshot,
@@ -21,14 +21,14 @@ public sealed record MetricSnapshotWireSnapshot(
         ArgumentNullException.ThrowIfNull(request);
 
         var definitions = MetricCatalog.FromSnapshot(snapshot)
-            .Where(static definition => definition.Selectable)
             .ToDictionary(
                 static definition => definition.Id,
                 StringComparer.OrdinalIgnoreCase);
         var requestedMetricIds = ResolveRequestedMetricIds(
             snapshot,
             request,
-            definitions.Keys);
+            definitions.Values.Where(static definition => definition.Selectable)
+                .Select(static definition => definition.Id));
         var items = requestedMetricIds.ToDictionary(
             static metricId => metricId,
             metricId => CurrentValueOrPlaceholder(
@@ -99,31 +99,37 @@ public sealed record MetricSnapshotWireSnapshot(
             && observation.Status == SamplingObservationStatus.Current
             && snapshot.Items.TryGetValue(metricId, out var current))
         {
-            return current;
+            return MetricValue.From(current) with
+            {
+                Status = observation.Status,
+                ObservedAt = current.ObservedAt ?? (observation.ObservedAtUtcTicks > 0
+                    ? new DateTimeOffset(observation.ObservedAtUtcTicks, TimeSpan.Zero) : null)
+            };
         }
 
         if (snapshot.Items.TryGetValue(metricId, out var known))
         {
-            return known with
+            return MetricValue.From(known) with
             {
-                DisplayValue = "-",
                 NumericValue = null,
                 IntegerValue = null,
                 BytesValue = null,
                 SampleDurationMilliseconds = null,
-                Percent = null
+                Percent = null,
+                BooleanValue = null,
+                Total = null,
+                Status = observation?.Status ?? SamplingObservationStatus.NotRequested,
+                ObservedAt = null
             };
         }
 
-        return new MetricValue(
-            metricId,
-            definition?.Label ?? metricId,
-            definition?.Group ?? string.Empty,
-            "-",
-            null,
-            definition?.Unit ?? string.Empty,
-            null,
-            definition?.Detail);
+        return new MetricValue(Id: metricId, NumericValue: null, Unit: definition?.Unit ?? string.Empty, Percent: null)
+        {
+            FieldCode = definition?.FieldCode ?? default,
+            FieldName = definition?.FieldName, DeviceIdentity = definition?.DeviceIdentity,
+            ValueKind = definition?.ValueKind, SourceId = definition?.SourceId,
+            Status = observation?.Status ?? SamplingObservationStatus.NotRequested
+        };
     }
 
     private static bool IsGpuCoreMetric(string metricId)

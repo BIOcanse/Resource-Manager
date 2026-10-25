@@ -139,7 +139,7 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
         await Task.Delay(2100, timeout.Token);
         var complete = await owner.CollectAsync(names, timeout.Token);
         Assert.Equal(2000, complete.WindowMilliseconds);
-        Assert.All(complete.Processes.Single().Values, value => Assert.True(value.IntegerValue == "0" || value.NumericValue == 0));
+        Assert.All(complete.Processes.Single().Values, value => Assert.True(value.IntegerValue == new MetricInteger(0) || value.NumericValue == 0));
         Assert.Equal(1, broker.Acquires); owner.Dispose(); Assert.Equal(1, broker.Releases);
     }
 

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.ReadWrite.Native;
 using ResourceManager.ReadWrite.Windows.Metrics.Topology;
@@ -25,6 +26,8 @@ public sealed class HostManagerMetricSnapshotOwner :
     private readonly TaskCompletionSource ready =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Func<ulong, uint, INativeMetricSnapshotScratch> createScratch;
+    private readonly Func<string>? readComponentRevision;
+    private string? capturedComponentRevision;
     // Actual holders remain owned until their final close succeeds, including
     // failures arriving later from already-retired external leases.
     private readonly ConcurrentDictionary<WorkspaceHolder, byte> workspaces = new();
@@ -40,13 +43,15 @@ public sealed class HostManagerMetricSnapshotOwner :
         HostManagerMetricSnapshotCatalogTopologySource topologySource,
         IHostEnvironment environment,
         ILogger<HostManagerMetricSnapshotOwner> logger,
-        ResourceManagerLedgerOwner ledgerOwner)
+        ResourceManagerLedgerOwner ledgerOwner,
+        IManagementInventoryRevisionOwner inventoryRevisionOwner)
         : this(planProvider, deployment, topologySource, environment, logger,
             (bytes, alignment) => MetricSnapshotScratch.Create(
                 (ledgerOwner ?? throw new ArgumentNullException(nameof(ledgerOwner))).CreateScratch,
-                bytes, alignment))
+                bytes, alignment), () => inventoryRevisionOwner.Current.ComponentRevision)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
+        ArgumentNullException.ThrowIfNull(inventoryRevisionOwner);
     }
 
     internal HostManagerMetricSnapshotOwner(
@@ -55,9 +60,11 @@ public sealed class HostManagerMetricSnapshotOwner :
         HostManagerMetricSnapshotCatalogTopologySource topologySource,
         IHostEnvironment environment,
         ILogger<HostManagerMetricSnapshotOwner> logger,
-        Func<ulong, uint, INativeMetricSnapshotScratch> createScratch)
+        Func<ulong, uint, INativeMetricSnapshotScratch> createScratch,
+        Func<string>? readComponentRevision = null)
     {
         this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
+        this.readComponentRevision = readComponentRevision;
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.topologySource = topologySource;
@@ -147,6 +154,16 @@ public sealed class HostManagerMetricSnapshotOwner :
     internal void RequestTopologyRefresh()
         => topologyRefresh.Request();
 
+    // Published current outlives any collector workspace and uses the same
+    // ledger-backed storage contract. No collector lease owns its lifetime.
+    internal NativeMetricSnapshotSession CreateCurrentSession()
+    {
+        ThrowIfDisposed();
+        var configuration = NativeMetricSnapshotHostConfiguration.CreateConfiguration(
+            planProvider.Current.HostManager.RequirePublished().MetricSnapshot);
+        return NativeMetricSnapshotSession.CreateCurrent(in configuration, createScratch);
+    }
+
     internal ulong CurrentWorkspaceIdentity
     {
         get
@@ -166,13 +183,15 @@ public sealed class HostManagerMetricSnapshotOwner :
 
     internal NativeMetricSnapshotCatalogTopologySnapshot? RefreshTopologyIfRequested()
     {
-        if (!topologyRefresh.HasPending)
-        {
-            return null;
-        }
-
         lock (reconfigurationGate)
         {
+            var componentRevision = readComponentRevision?.Invoke();
+            if (!string.Equals(capturedComponentRevision, componentRevision, StringComparison.Ordinal))
+            {
+                capturedComponentRevision = componentRevision;
+                topologyRefresh.Request();
+            }
+            if (!topologyRefresh.HasPending) return null;
             RetryWorkspaceCloses();
             var requestedTicket = topologyRefresh.CaptureRequested();
             if (!topologyRefresh.IsPending(requestedTicket))
@@ -386,6 +405,7 @@ public sealed class HostManagerMetricSnapshotOwner :
             }
 
             var requestedTicket = topologyRefresh.CaptureRequested();
+            var componentRevision = readComponentRevision?.Invoke();
             var token = initial
                 ? deployment.BeginInitialCreate(hostPlan)
                 : canApplyHot
@@ -422,6 +442,7 @@ public sealed class HostManagerMetricSnapshotOwner :
                 previous?.StopPublication();
                 current = next;
                 appliedPlan = desired;
+                capturedComponentRevision = componentRevision;
                 if (requestedTicket != 0)
                 {
                     topologyRefresh.Confirm(requestedTicket);
@@ -581,7 +602,8 @@ public sealed class HostManagerMetricSnapshotOwner :
         NativeMetricSnapshotCatalogTopologySnapshot topology,
         NativeMetricSnapshotCatalogHandleMap handleMap)
         => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, topology.GpuAdapters,
-            topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor, topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities);
+            topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor, topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities)
+            with { CpuModelName = topology.CpuModelName };
 
     private string ResolvePersistencePath(string relativePath)
     {

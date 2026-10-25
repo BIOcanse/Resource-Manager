@@ -250,11 +250,7 @@ public sealed class SchedulingObservationContractTests
             ImmutableArray<NativeMetricSnapshotRuleStateOutput>.Empty,
             catalog);
 
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(
-            frame,
-            "CPU",
-            "Memory",
-            workspaceIdentity: 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1);
 
         Assert.Equal(
             [
@@ -318,11 +314,7 @@ public sealed class SchedulingObservationContractTests
             ImmutableArray<NativeMetricSnapshotRuleStateOutput>.Empty,
             catalog);
 
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(
-            frame,
-            "CPU",
-            "Memory",
-            workspaceIdentity: 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: frame, workspaceIdentity: 1);
 
         Assert.True(snapshot.Memory.IsUsageAvailable);
         Assert.Equal(25, snapshot.Memory.UsagePercent);
@@ -330,10 +322,10 @@ public sealed class SchedulingObservationContractTests
             SamplingObservationStatus.Current,
             snapshot.Memory.ObservationStatus);
         var item = snapshot.Items["memory.usage"];
-        Assert.Equal(25, item.Percent);
+        Assert.Null(item.Percent);
         // 容量类指标发的是原始字节：不拼显示串，也不写死单位标签。
         // 换算与标签由前端按用户选择的进制统一给出（见 src/UI/Frontend 的 byteUnitsContract）。
-        Assert.Equal(string.Empty, item.DisplayValue);
+        Assert.Equal("memory.usage", item.Id);
         Assert.Equal(MetricUnits.Bytes, item.Unit);
         Assert.Equal(8d * 1024 * 1024 * 1024, item.NumericValue);
         Assert.Equal(32d * 1024 * 1024 * 1024, item.Total);

@@ -68,7 +68,7 @@ public sealed partial class DeviceInformationEndpointTests
                 Assert.Equal(expected, wireField.GetProperty("value").GetString());
                 Assert.Equal(expected, current.Value?.GetString());
                 Assert.Equal(FieldObservationStatus.Current, reading.Status);
-                Assert.Equal(expected, reading.Value?.Integer);
+                Assert.Equal(MetricInteger.Parse(expected), reading.Value?.Integer);
                 Assert.NotNull(current.ObservedAt);
                 Assert.Equal(current.ObservedAt, wireField.GetProperty("observedAt").GetDateTimeOffset());
                 Assert.Equal(current.ObservedAt, reading.ObservedAt);

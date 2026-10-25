@@ -95,8 +95,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
                 (NativeMetricSnapshotObservationStatus)Assert.Single(completion.Observations).Status);
             workspace.CompleteSource(plan, completion, capturedAt);
         }
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(
-            workspace.ReadCommitted(), "test", "test", 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         Assert.Equal(4200, snapshot.Items["cpu.fanRpm"].NumericValue);
         Assert.Equal(SamplingObservationStatus.Current,
             snapshot.Datasets["cpu.fanRpm"].Status);

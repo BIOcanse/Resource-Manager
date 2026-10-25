@@ -11,21 +11,18 @@ import {
 
 const catalog = metricCatalogDecoder.decode([{
   id: "cpu.usage",
-  label: "CPU",
-  group: "CPU",
-  unit: "%",
-  preferredSlot: "main"
+  unit: "%"
 }]);
 assert.equal(catalog[0].id, "cpu.usage");
 assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.usage" }]));
 
 const snapshot = metricSnapshotDecoder.decode({
-  version: 4,
+  version: 5,
   capturedAt: "2026-08-22T12:00:00.000Z",
   catalogRevision: "catalog-a",
   items: {
     "cpu.usage": {
-      displayValue: "25%",
+      id: "cpu.usage", unit: "%", status: 1,
       numericValue: 25,
       percent: 25
     }
@@ -38,23 +35,23 @@ assert.throws(() => metricSnapshotDecoder.decode({ items: [] }));
 assert.throws(() => metricSnapshotDecoder.decode({ ...snapshot, catalogRevision: undefined }), /catalogRevision/);
 assert.throws(() => metricSnapshotDecoder.decode({ ...snapshot, catalogRevision: "" }), /catalogRevision/);
 const emptySnapshot = metricSnapshotDecoder.decode({
-  version: 4,
+  version: 5,
   capturedAt: null,
   catalogRevision: "catalog-a",
   items: {
     "cpu.usage": {
-      displayValue: "-",
+      id: "cpu.usage", unit: "%", status: 3,
       numericValue: null,
       percent: null
     }
   }
 });
-assert.equal(emptySnapshot.items["cpu.usage"].displayValue, "-");
+assert.equal(emptySnapshot.items["cpu.usage"].status, 3);
 assert.equal(emptySnapshot.items["cpu.usage"].numericValue, null);
 assert.throws(() => metricSnapshotDecoder.decode({
   ...snapshot,
-  items: { "cpu.usage": { numericValue: 25 } }
-}), /displayValue/);
+  items: { "cpu.usage": { id: "cpu.usage", unit: "%", status: 1 } }
+}), /numericValue/);
 
 const settingsPayload = {
   settings: {

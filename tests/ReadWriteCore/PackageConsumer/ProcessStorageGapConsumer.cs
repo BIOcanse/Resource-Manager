@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Globalization;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -47,7 +48,7 @@ internal static class ProcessStorageGapConsumer
             && item.Field.DeviceIdentity.StartsWith($"windows-process|{Environment.ProcessId}:", StringComparison.Ordinal)).Field;
         var captured = await process.Backend.CollectAsync([own], timeout.Token);
         var threads = captured.Single();
-        Require(threads.Field == own && threads.Value?.Integer is { } text && uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var count) && count > 0,
+        Require(threads.Field == own && threads.Value?.Integer is { Negative: false, HighBits: 0, LowBits: > 0 and <= uint.MaxValue },
             "actual current process identity-verified thread count");
         Require(threads == process.Backend.ReadCached(own), "actual thread current shares original canonical slot");
         var storage = new WindowsStorageOwner(TimeSpan.FromSeconds(15), TimeProvider.System, _ => BackendMessage.Create(0, 0));

@@ -47,7 +47,7 @@ public sealed class HostMftInformationFieldsTests
             devices, cpu.Reader, new HostProcessFieldBackend(process.Sampler), store);
         var field = host.Reads.Catalog.Fields.Single(item => item.Field.FieldName == "directory_all_logical_size_aggregated").Field;
         var first = (await host.Reads.CollectAsync([field], default)).Single();
-        Assert.Equal("9", first.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("9"), first.Value?.Integer);
         Assert.Equal(first, host.Reads.ReadCached(field));
         Assert.Same(originalSummary, store.CurrentSummary);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -65,7 +65,7 @@ public sealed class HostMftInformationFieldsTests
             Assert.True(await initial.WaitAsync(TimeSpan.FromSeconds(10)));
             var firstPeriodic = Assert.Single(stream.Current);
             Assert.Equal(first, firstPeriodic);
-            Assert.Equal("9", firstPeriodic.Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("9"), firstPeriodic.Value?.Integer);
             Assert.Equal(FieldObservationStatus.Current, firstPeriodic.Status);
             Assert.NotNull(firstPeriodic.ObservedAt);
             Assert.Equal(time, firstPeriodic.ObservedAt.Value);
@@ -75,7 +75,7 @@ public sealed class HostMftInformationFieldsTests
             store.Replace(replacement);
             Assert.True(await replacementRound.WaitAsync(TimeSpan.FromSeconds(10)));
             var updated = Assert.Single(stream.Current);
-            Assert.Equal("11", updated.Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("11"), updated.Value?.Integer);
             Assert.Equal(FieldObservationStatus.Current, updated.Status);
             Assert.NotNull(updated.ObservedAt);
             Assert.Equal(replacement.Summary.CompletedAt, updated.ObservedAt.Value);

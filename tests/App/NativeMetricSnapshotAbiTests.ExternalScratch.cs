@@ -215,9 +215,11 @@ public sealed partial class NativeMetricSnapshotAbiTests
         internal bool FailAcquire;
         internal bool FailReturn;
         internal bool FailRetire;
+        internal bool FailComplete;
         internal Action? BeforeUnpin;
         internal readonly InvalidOperationException ReturnFailure = new("recorded metric endUse failure");
         internal readonly InvalidOperationException RetireFailure = new("recorded metric retirement failure");
+        internal readonly InvalidOperationException CompleteFailure = new("recorded metric completion failure");
         public ulong Length => checked((ulong)bytes.Length);
 
         internal static INativeMetricSnapshotScratch Ordinary(ulong bytes, uint alignment)
@@ -259,7 +261,11 @@ public sealed partial class NativeMetricSnapshotAbiTests
             private bool disposed;
             internal override ulong Length => owner.Length;
             internal override MemoryHandle Pin() => owner.region.Pin();
-            internal override void Complete() => owner.Events.Add("complete");
+            internal override void Complete()
+            {
+                if (owner.FailComplete) throw owner.CompleteFailure;
+                owner.Events.Add("complete");
+            }
             public override void Dispose()
             {
                 if (disposed) return;

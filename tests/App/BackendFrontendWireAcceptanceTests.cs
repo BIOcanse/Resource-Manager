@@ -26,7 +26,7 @@ public sealed class BackendFrontendWireAcceptanceTests
     }
 
     [Fact]
-    public async Task MetricV4SerializerFeedsProductionDecoderWithEmptyValue()
+    public async Task MetricV5SerializerFeedsProductionDecoderWithRawEmptyValue()
     {
         var attemptedAt = CapturedAt.AddSeconds(5);
         var snapshot = new HardwareMetricSnapshot(
@@ -51,8 +51,8 @@ public sealed class BackendFrontendWireAcceptanceTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(8, 32, 25, true, "fixture"),
-            new VirtualMemoryMetrics(0, 0, 0, "fixture", false),
+            new MemoryMetrics(UsedBytes: 8, TotalBytes: 32, UsagePercent: 25, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -63,17 +63,9 @@ public sealed class BackendFrontendWireAcceptanceTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase)
+            new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase)
             {
-                ["cpu.usage"] = new(
-                    "cpu.usage",
-                    "CPU",
-                    "CPU",
-                    "25%",
-                    25,
-                    "%",
-                    25,
-                    null)
+                ["cpu.usage"] = new(Id: "cpu.usage", NumericValue: 25, Unit: "%", Percent: 25)
             })
         {
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(
@@ -106,9 +98,9 @@ public sealed class BackendFrontendWireAcceptanceTests
 
         var result = await DecodeAsync("metric", wire);
 
-        Assert.Equal(4, result.GetProperty("metricVersion").GetInt32());
+        Assert.Equal(MetricSnapshotWireSnapshot.CurrentVersion, result.GetProperty("metricVersion").GetInt32());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("metricCapturedAt").ValueKind);
-        Assert.Equal("-", result.GetProperty("metricDisplayValue").GetString());
+        Assert.False(result.GetProperty("hasMetricDisplayText").GetBoolean());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("metricNumericValue").ValueKind);
         Assert.False(result.GetProperty("hasMetricSamplingMetadata").GetBoolean());
     }

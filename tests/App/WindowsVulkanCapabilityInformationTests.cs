@@ -120,9 +120,9 @@ public sealed class WindowsVulkanCapabilityInformationTests
             Assert.Contains($"pci:{FirstAdapter.PciVendorId:X4}:{FirstAdapter.PciDeviceId:X4}",
                 capability.Field.DeviceIdentity, StringComparison.Ordinal);
         }
-        Assert.Equal("16384", access.Backend.ReadCached(dimension1D.Field).Value?.Integer);
-        Assert.Equal("8192", access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
-        Assert.Equal("2048", access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("16384"), access.Backend.ReadCached(dimension1D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("8192"), access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
 
         var callsBeforeCache = reader.Requests.Count;
         _ = access.Backend.ReadCached(dimension2D.Field);
@@ -130,24 +130,24 @@ public sealed class WindowsVulkanCapabilityInformationTests
 
         var selected1D = Assert.Single(await access.Backend.CollectAsync([dimension1D.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Current, selected1D.Status);
-        Assert.Equal("16384", selected1D.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("16384"), selected1D.Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageDimension1D, reader.Requests.Last());
-        Assert.Equal("8192", access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
-        Assert.Equal("2048", access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("8192"), access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
 
         reader.MaxImageDimension2D = uint.MaxValue;
         var unsigned32Boundary = Assert.Single(await access.Backend.CollectAsync([dimension2D.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Current, unsigned32Boundary.Status);
-        Assert.Equal("4294967295", unsigned32Boundary.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), unsigned32Boundary.Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageDimension2D, reader.Requests.Last());
 
         reader.MaxImageDimension2D = 8193;
         var refreshed = Assert.Single(await access.Backend.CollectAsync([dimension2D.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Current, refreshed.Status);
-        Assert.Equal("8193", refreshed.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("8193"), refreshed.Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageDimension2D, reader.Requests.Last());
-        Assert.Equal("16384", access.Backend.ReadCached(dimension1D.Field).Value?.Integer);
-        Assert.Equal("2048", access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("16384"), access.Backend.ReadCached(dimension1D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
 
         using var borrow = access.BorrowSubscriptionCapture();
         var binding = Assert.Single(borrow.Bind([dimension3D.Field]));
@@ -155,7 +155,7 @@ public sealed class WindowsVulkanCapabilityInformationTests
         var borrowed = await borrow.CollectAsync([dimension3D.Field], new Permit(), CancellationToken.None);
         Assert.True(borrowed.Committed);
         Assert.Equal(FieldObservationStatus.Current, Assert.Single(borrowed.Readings).Status);
-        Assert.Equal("2048", borrowed.Readings[0].Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), borrowed.Readings[0].Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageDimension3D, reader.Requests.Last());
         Assert.Equal(borrowed.Readings[0], access.Backend.ReadCached(dimension3D.Field));
 
@@ -164,8 +164,8 @@ public sealed class WindowsVulkanCapabilityInformationTests
         Assert.Equal(FieldObservationStatus.Unavailable, unavailable.Status);
         Assert.Null(unavailable.Value);
         Assert.Null(unavailable.ObservedAt);
-        Assert.Equal("8193", access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
-        Assert.Equal("2048", access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("8193"), access.Backend.ReadCached(dimension2D.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2048"), access.Backend.ReadCached(dimension3D.Field).Value?.Integer);
 
         reader.Mode = RecordedMode.Current;
         using var canceled = new CancellationTokenSource();
@@ -212,8 +212,8 @@ public sealed class WindowsVulkanCapabilityInformationTests
             Assert.Contains($"pci:{FirstAdapter.PciVendorId:X4}:{FirstAdapter.PciDeviceId:X4}",
                 capability.Field.DeviceIdentity, StringComparison.Ordinal);
         }
-        Assert.Equal("4294967295", access.Backend.ReadCached(cube.Field).Value?.Integer);
-        Assert.Equal("0", access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), access.Backend.ReadCached(cube.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
         Assert.DoesNotContain(catalog.Fields, field => field.Field.FieldName is
             "gpu_all_vulkan_max_image_dimension_1d" or "gpu_all_vulkan_max_image_dimension_2d"
                 or "gpu_all_vulkan_max_image_dimension_3d");
@@ -224,9 +224,9 @@ public sealed class WindowsVulkanCapabilityInformationTests
 
         var selectedCube = Assert.Single(await access.Backend.CollectAsync([cube.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Current, selectedCube.Status);
-        Assert.Equal("4294967295", selectedCube.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), selectedCube.Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageDimensionCube, reader.Requests.Last());
-        Assert.Equal("0", access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
 
         using var borrow = access.BorrowSubscriptionCapture();
         var binding = Assert.Single(borrow.Bind([arrayLayers.Field]));
@@ -234,7 +234,7 @@ public sealed class WindowsVulkanCapabilityInformationTests
         var borrowed = await borrow.CollectAsync([arrayLayers.Field], new Permit(), CancellationToken.None);
         Assert.True(borrowed.Committed);
         Assert.Equal(FieldObservationStatus.Current, Assert.Single(borrowed.Readings).Status);
-        Assert.Equal("0", borrowed.Readings[0].Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), borrowed.Readings[0].Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.MaxImageArrayLayers, reader.Requests.Last());
         Assert.Equal(borrowed.Readings[0], access.Backend.ReadCached(arrayLayers.Field));
 
@@ -242,7 +242,7 @@ public sealed class WindowsVulkanCapabilityInformationTests
         var unavailableCube = Assert.Single(await access.Backend.CollectAsync([cube.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Unavailable, unavailableCube.Status);
         Assert.Null(unavailableCube.Value);
-        Assert.Equal("0", access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(arrayLayers.Field).Value?.Integer);
     }
 
     [Fact]
@@ -285,15 +285,15 @@ public sealed class WindowsVulkanCapabilityInformationTests
 
         Assert.Equal("signed32", firstOffset.Definition.ValueKind);
         Assert.Equal("texels", firstOffset.Definition.Unit);
-        Assert.Equal("-17", access.Backend.ReadCached(firstOffset.Field).Value?.Integer);
-        Assert.Equal("-18", access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-17"), access.Backend.ReadCached(firstOffset.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-18"), access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
         Assert.Equal("unsigned64", bufferGranularityEntry.Definition.ValueKind);
-        Assert.Equal(ulong.MaxValue - 1, ulong.Parse(access.Backend.ReadCached(bufferGranularityEntry.Field).Value!.Integer!));
+        Assert.Equal(ulong.MaxValue - 1, access.Backend.ReadCached(bufferGranularityEntry.Field).Value!.Integer!.Value.LowBits);
         Assert.Equal("unsigned128", memoryMapAlignmentEntry.Definition.ValueKind);
-        Assert.Equal(ulong.MaxValue.ToString(), access.Backend.ReadCached(memoryMapAlignmentEntry.Field).Value?.Integer);
-        Assert.Equal("0", access.Backend.ReadCached(texelMaximum).Value?.Integer);
+        Assert.Equal(MetricInteger.FromUnsigned128(ulong.MaxValue), access.Backend.ReadCached(memoryMapAlignmentEntry.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(texelMaximum).Value?.Integer);
         Assert.Equal(true, access.Backend.ReadCached(timestampSupport).Value?.Boolean);
-        Assert.Equal("2147483653", access.Backend.ReadCached(sampleCountsEntry.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2147483653"), access.Backend.ReadCached(sampleCountsEntry.Field).Value?.Integer);
         var workGroupValue = access.Backend.ReadCached(workGroupCountEntry.Field).Value?.Structure;
         Assert.True(workGroupValue.HasValue);
         Assert.Equal(new uint[] { 4, 5, 6 }, workGroupValue.Value.EnumerateArray()
@@ -303,9 +303,9 @@ public sealed class WindowsVulkanCapabilityInformationTests
         reader.MinTexelOffset = -29;
         var updated = Assert.Single(await access.Backend.CollectAsync([firstOffset.Field], CancellationToken.None));
         Assert.Equal(FieldObservationStatus.Current, updated.Status);
-        Assert.Equal("-29", updated.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-29"), updated.Value?.Integer);
         Assert.Equal(WindowsVulkanCapabilityFields.CoreLimits, reader.Requests.Last());
-        Assert.Equal("-18", access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-18"), access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
         Assert.Equal(unselectedBefore, access.Backend.ReadCached(bufferGranularityEntry.Field));
 
         reader.Mode = RecordedMode.LimitsUnavailable;
@@ -315,7 +315,7 @@ public sealed class WindowsVulkanCapabilityInformationTests
         Assert.Equal(202, access.Backend.Catalog.Fields.Length);
         Assert.True(access.Backend.Catalog.Fields.Single(field => field.Field == firstOffset.Field).Read.Supported);
         Assert.Equal(FieldObservationStatus.Unavailable, access.Backend.ReadCached(firstOffset.Field).Status);
-        Assert.Equal("-18", access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-18"), access.Backend.ReadCached(secondOffset.Field).Value?.Integer);
         Assert.Equal(unselectedBefore, access.Backend.ReadCached(bufferGranularityEntry.Field));
 
         reader.Mode = RecordedMode.Current;
@@ -324,7 +324,7 @@ public sealed class WindowsVulkanCapabilityInformationTests
         var borrowed = await borrow.CollectAsync([firstOffset.Field], new Permit(), CancellationToken.None);
         Assert.True(borrowed.Committed);
         Assert.Equal(FieldObservationStatus.Current, Assert.Single(borrowed.Readings).Status);
-        Assert.Equal("-31", borrowed.Readings[0].Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("-31"), borrowed.Readings[0].Value?.Integer);
         Assert.Equal(borrowed.Readings[0], access.Backend.ReadCached(firstOffset.Field));
     }
 

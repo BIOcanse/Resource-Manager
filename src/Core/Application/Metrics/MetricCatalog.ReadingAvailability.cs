@@ -19,7 +19,6 @@ public static partial class MetricCatalog
                     ? definition with
                     {
                         RequiredComponentId = null,
-                        RequiredComponentName = null,
                         DisabledReason = BackendMessage.Create(
                             BackendMessageDomains.Metric,
                             BackendMessageCodes.Metric.NoValidReading)
@@ -36,7 +35,7 @@ public static partial class MetricCatalog
             .Where(static binding => binding.Field.Reading?.SourceAvailability == "available")
             .Select(static binding => binding.SourceId)
             .ToHashSet(StringComparer.Ordinal);
-        var aliases = fields.SelectMany(static binding => binding.RequestAliases
+        var aliases = fields.SelectMany(static binding => binding.RequestAliases.Prepend(binding.RequestAddress)
                 .Select(alias => (Alias: alias, Binding: binding)))
             .ToLookup(static entry => entry.Alias, static entry => entry.Binding, StringComparer.OrdinalIgnoreCase);
 
@@ -58,7 +57,6 @@ public static partial class MetricCatalog
             {
                 Selectable = selectable,
                 RequiredComponentId = null,
-                RequiredComponentName = null,
                 DisabledReason = selectable ? null : BackendMessage.Create(
                     BackendMessageDomains.Metric,
                     unsupported ? BackendMessageCodes.Metric.NotExposed : BackendMessageCodes.Metric.NoValidReading)

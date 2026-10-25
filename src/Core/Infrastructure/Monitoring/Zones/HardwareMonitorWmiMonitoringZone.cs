@@ -1,4 +1,3 @@
-using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Windows.Platform;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
@@ -27,40 +26,7 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
             enableMechrevo: false, generation);
 
     internal HardwareMonitorSensorSnapshot ReadSensors()
-        => CanRead ? FormatSnapshot(coreReader.Read(TimeSpan.FromSeconds(2))) : HardwareMonitorSensorsFrozen();
-
-    internal static HardwareMonitorSensorSnapshot FormatSnapshot(HardwareMonitorSensorSnapshot raw)
-    {
-        var state = raw.ProviderState;
-        var message = state.Message ?? (state.State == HardwareSensorProviderStates.Active
-            ? "已读取内存温度、主板传感或风扇。"
-            : "未发现内存温度、主板传感或风扇。");
-        return raw with
-        {
-            ProviderState = state with { Message = message },
-            MotherboardTemperature = FormatReading(raw.MotherboardTemperature, "主板温度"),
-            VrmTemperature = FormatReading(raw.VrmTemperature, "供电温度"),
-            ChipsetTemperature = FormatReading(raw.ChipsetTemperature, "芯片组温度"),
-            MotherboardVoltage = FormatReading(raw.MotherboardVoltage, "主板电压"),
-            SystemFans = raw.SystemFans.Select(fan => fan with
-            {
-                Name = MetricDisplayDetailFormatter.FanDetail(fan.Name, fan.Index),
-                Detail = MetricDisplayDetailFormatter.SensorDetail(fan.Detail, "硬件传感器")
-            }).ToArray(),
-            GpuSensors = raw.GpuSensors.Select(sensor => sensor with
-            {
-                Name = string.IsNullOrEmpty(sensor.Name) ? $"GPU sensor {sensor.Index}" : sensor.Name,
-                Detail = MetricDisplayDetailFormatter.SensorDetail(sensor.Detail, $"GPU sensor {sensor.Index}")
-            }).ToArray()
-        };
-    }
-
-    private static PlatformSensorReading? FormatReading(PlatformSensorReading? raw, string fallback)
-        => raw is null ? null : raw with
-        {
-            Name = MetricDisplayDetailFormatter.SensorDetail(raw.Name, fallback),
-            Detail = MetricDisplayDetailFormatter.SensorDetail(raw.Detail, "硬件传感器")
-        };
+        => CanRead ? coreReader.Read(TimeSpan.FromSeconds(2)) : HardwareMonitorSensorsFrozen();
 
     private static HardwareMonitorSensorSnapshot HardwareMonitorSensorsFrozen()
         => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", HardwareSensorProviderStates.Frozen,

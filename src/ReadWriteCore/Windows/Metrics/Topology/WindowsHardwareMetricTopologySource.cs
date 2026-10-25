@@ -152,6 +152,7 @@ public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTop
                     Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, nextFanIndex - 1)
                 });
         var batteries = resources.ReadBatteryIdentities();
+        var cpuIdentity = CpuIdentityInformationReader.Read();
         var topology = new NativeMetricSnapshotCatalogTopologySnapshot(
             generation,
             gpu.FailureCode is null ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
@@ -168,7 +169,8 @@ public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTop
                 : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
             BatteryStatus = batteries.Status,
             Batteries = batteries.Identities,
-            CpuVendor = CpuIdentityInformationReader.Read()?.Vendor switch
+            CpuModelName = cpuIdentity?.Brand,
+            CpuVendor = cpuIdentity?.Vendor switch
             {
                 "GenuineIntel" => MetricVendor.Intel,
                 "AuthenticAMD" => MetricVendor.Amd,

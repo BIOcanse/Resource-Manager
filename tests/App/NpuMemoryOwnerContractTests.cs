@@ -77,8 +77,8 @@ public sealed class NpuMemoryOwnerContractTests
         var request = MetricSampleRequest.ForIds(bindings.Select(row => row.MetricId)).WithCatalog();
         var first = await owner.CaptureAsync(request, timeout.Token);
         var cached = Assert.IsType<HardwareMetricSnapshot>(owner.ReadCachedSnapshot());
-        Assert.All(bindings, binding => Assert.Equal("9007199254740993", cached.Items[binding.MetricId].IntegerValue));
-        Assert.All(bindings, binding => Assert.Equal("9007199254740993", first.Items[binding.MetricId].IntegerValue));
+        Assert.All(bindings, binding => Assert.Equal(MetricInteger.Parse("9007199254740993"), cached.Items[binding.MetricId].IntegerValue));
+        Assert.All(bindings, binding => Assert.Equal(MetricInteger.Parse("9007199254740993"), first.Items[binding.MetricId].IntegerValue));
         Assert.Equal(new[] { (uint)capacity }, directoryBounds);
         Assert.Equal(new[] { (uint)capacity }, queryBounds);
         rows = Rows(capacity + 1);
@@ -86,8 +86,8 @@ public sealed class NpuMemoryOwnerContractTests
         Assert.All(bindings, binding =>
         {
             Assert.Contains(binding.MetricId, unavailable.FieldBindings.Keys);
-            Assert.Null(unavailable.Items[binding.MetricId].IntegerValue);
-            Assert.Null(unavailable.Items[binding.MetricId].NumericValue);
+            Assert.DoesNotContain(binding.MetricId, unavailable.Items.Keys);
+            Assert.Equal(SamplingObservationStatus.Unavailable, unavailable.Datasets[binding.MetricId].Status);
         });
         Assert.Single(queryBounds);
         Assert.Equal(new[] { (uint)capacity, (uint)capacity }, directoryBounds);
@@ -139,7 +139,6 @@ public sealed class NpuMemoryOwnerContractTests
     private static WindowsHardwareMetricResources RecordedResources(Func<uint, NpuMemoryTopologyRead> directory,
         Func<IReadOnlyList<NpuMemoryCatalogIdentity>, IReadOnlyDictionary<string, NpuMemoryFields>, uint, CancellationToken, IReadOnlyList<NpuMemoryRead>> read) => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null, ControlReadCpuTopology = static () => throw new InvalidOperationException("No CPU controls in this fixture.") },
         ReadNpuMemoryIdentities = directory, ReadNpuMemory = read,
         ReadGpuInventory = static () => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UnixEpoch.AddSeconds(1).UtcTicks, 0, 0, 0, 1, []),

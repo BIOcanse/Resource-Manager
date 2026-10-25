@@ -1,6 +1,36 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x000B_0000;
+pub const abi_version: u32 = 0x000D_0000;
+
+pub const CurrentKey = extern struct {
+    dataset_handle: u64,
+    cell_handle: u64,
+};
+
+pub const CurrentValue = extern struct {
+    dataset_handle: u64,
+    cell_handle: u64,
+    value_bits: u64,
+    value_high_bits: u64,
+    value_kind: u32,
+    flags: u32,
+};
+
+pub const CurrentCommitInput = extern struct {
+    abi_version: u32,
+    struct_size: u32,
+    cell_capacity: u32,
+    byte_capacity: u32,
+    flags: u32,
+    reserved: u32,
+};
+
+pub const CurrentReadOutput = extern struct {
+    struct_size: u32,
+    cell_count: u32,
+    byte_count: u32,
+    reserved: u32,
+};
 
 pub const catalog_contract_version: u32 = 0x0006_0000;
 pub const value_contract_version: u32 = 0x0004_0000;
@@ -8,7 +38,7 @@ pub const observation_contract_version: u32 = 0x0009_0000;
 pub const inventory_contract_version: u32 = 0x0002_0000;
 pub const persistence_contract_version: u32 = 0x0005_0000;
 pub const cpu_counter_contract_version: u32 = 0x0001_0000;
-pub const wire_contract_fingerprint: u64 = 0x32c6cc703f588753;
+pub const wire_contract_fingerprint: u64 = 0x7ed7859e0141c29d;
 
 pub const Phase = enum(u32) {
     empty = 1,

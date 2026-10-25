@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.TestFixtures;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Windows.Devices.Models;
@@ -22,7 +23,7 @@ internal static partial class EdidModeConsumer
         var capability = core.Query(field);
         Require(capability.Read.Supported && capability.Read.Dependencies.IsEmpty && !capability.Write.Supported
             && capability.Definition.ValueKind == "structured" && capability.Definition.Unit == "mode"
-            && capability.Definition.Meaning == "display.windows_registry_edid_mode_capability_declared", "declared structured read-only capability");
+           , "declared structured read-only capability");
         var reads = source.Reads; Verify(core.ReadCached(field)); Require(reads == source.Reads, "cache never captures");
         Require(core.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null,
             "inactive current resolution is unknown while static EDID remains available");

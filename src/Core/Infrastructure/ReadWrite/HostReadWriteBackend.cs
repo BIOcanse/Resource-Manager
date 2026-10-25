@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Globalization;
 using ResourceManager.ReadWrite.Windows.Metrics.Writes;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.Metrics;
@@ -27,7 +26,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
         controlSampler = sampler as WindowsHardwareMetricSampler;
         this.controlCatalog = controlCatalog;
         this.writeLayer = writeLayer;
-        backend = new(() => catalogState.Current, request => observations.ReadLatest(request),
+        backend = new(() => catalogState.Catalog, request => observations.ReadLatest(request),
             (request, token) => new(sampler.CaptureSnapshotAsync(request, token)),
             snapshot =>
             {
@@ -39,8 +38,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                 if (WindowsMetricControlBindings.TryFind(binding) is not null)
                     return controlSampler?.ReadControlSupport(binding)
                         ?? OperationSupport.Unsupported("host-control-owner-not-connected");
-                var supported = snapshot.Datasets.GetValueOrDefault(binding.RequestAddress)?.Status
-                    != SamplingObservationStatus.Unsupported;
+                var supported = binding.Field.Reading?.SourceAvailability != "unsupported";
                 return new(supported, supported ? null : "field-read-unsupported",
                     MetricReadWriteBackend.DependenciesOf(binding.SourceId));
             },
@@ -60,7 +58,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                 return write is null ? OperationSupport.Unsupported("field-write-not-bound")
                     : new(write.Supported, write.Supported ? null : write.UnavailableReason?.Code ?? "field-write-unavailable",
                         [NativeMetricSnapshotSourceCatalog.NvidiaNvml]);
-            }, WriteFieldAsync, binding => controlSampler?.ControlContract(binding));
+            }, WriteFieldAsync, binding => controlSampler?.ControlContract(binding), ids => observations.ReadItems(ids));
     }
     public ReadWriteCatalog Catalog => backend.Catalog;
     public async ValueTask<ReadWriteCatalog> DiscoverAsync(CancellationToken token)
@@ -69,6 +67,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
         return Catalog;
     }
     public FieldReading ReadCached(FieldReference field) => backend.ReadCached(field);
+    public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields) => backend.ReadCachedBatch(fields);
     public ValueTask<ImmutableArray<FieldReading>> CollectAsync(ImmutableArray<FieldReference> fields, CancellationToken token)
         => backend.CollectAsync(fields, token);
     internal MetricFieldSelection[] ResolveBindings(ImmutableArray<FieldReference> fields) => backend.Select(fields);
@@ -92,10 +91,9 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                 double? number = value.Number;
                 if (binding.Field.ValueKind == "signed64")
                 {
-                    if (!long.TryParse(value.Integer, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer)
-                        || integer < int.MinValue || integer > int.MaxValue)
+                    if (value.Integer is not { FitsSigned32: true } integer)
                         return new(field, ControlApplyStatuses.Failed, "field-write-invalid-integer");
-                    number = integer;
+                    number = integer.ToSigned64();
                 }
                 var report = await writeLayer.WriteAsync(new([new(controlTarget.Id,
                     [new(contract.RawCapability, Number: number, Toggle: value.Boolean, Unit: contract.RawUnit)])]), cancellationToken);

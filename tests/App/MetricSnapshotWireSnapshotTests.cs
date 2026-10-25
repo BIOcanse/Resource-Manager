@@ -22,9 +22,13 @@ public sealed class MetricSnapshotWireSnapshotTests
         Assert.Equal(MetricSnapshotWireSnapshot.CurrentVersion, wire.Version);
         Assert.Equal(observedAt, wire.CapturedAt);
         var value = Assert.Single(wire.Items).Value;
-        Assert.Equal("25%", value.DisplayValue);
+        Assert.Equal("%", value.Unit);
         Assert.Equal(25, value.NumericValue);
-        Assert.DoesNotContain("status", json, StringComparison.OrdinalIgnoreCase);
+        using var payload = JsonDocument.Parse(json);
+        Assert.Equal((int)SamplingObservationStatus.Current,
+            payload.RootElement.GetProperty("items").GetProperty("cpu.usage").GetProperty("status").GetInt32());
+        Assert.DoesNotContain("displayValue", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("label", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("datasets", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("hasValue", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("failure", json, StringComparison.OrdinalIgnoreCase);
@@ -41,7 +45,7 @@ public sealed class MetricSnapshotWireSnapshotTests
             CreateSnapshot(DateTimeOffset.Parse("2026-08-23T16:00:00Z"), status),
             MetricSampleRequest.ForIds(["cpu.usage"]), revision);
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(wire, WebJson));
-        Assert.Equal(4, json.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(MetricSnapshotWireSnapshot.CurrentVersion, json.RootElement.GetProperty("version").GetInt32());
         Assert.Equal(revision, json.RootElement.GetProperty("catalogRevision").GetString());
         Assert.Equal(status == SamplingObservationStatus.Current ? 25d : (double?)null,
             wire.Items["cpu.usage"].NumericValue);
@@ -64,7 +68,7 @@ public sealed class MetricSnapshotWireSnapshotTests
         Assert.Null(wire.CapturedAt);
         var value = Assert.Single(wire.Items).Value;
         Assert.Equal("cpu.usage", value.Id);
-        Assert.Equal("-", value.DisplayValue);
+        Assert.Equal("%", value.Unit);
         Assert.Null(value.NumericValue);
         Assert.Null(value.Percent);
     }
@@ -97,7 +101,7 @@ public sealed class MetricSnapshotWireSnapshotTests
     }
 
     [Fact]
-    public void SuccessfulEmptyCollectionStillReturnsDisplayablePlaceholder()
+    public void SuccessfulEmptyCollectionReturnsTypedEmptyValue()
     {
         var observedAt = DateTimeOffset.Parse("2026-08-23T16:00:00Z");
         var wire = MetricSnapshotWireSnapshot.From(
@@ -109,7 +113,7 @@ public sealed class MetricSnapshotWireSnapshotTests
 
         Assert.Equal(observedAt, wire.CapturedAt);
         var value = Assert.Single(wire.Items).Value;
-        Assert.Equal("-", value.DisplayValue);
+        Assert.Equal("%", value.Unit);
         Assert.Null(value.NumericValue);
     }
 
@@ -124,12 +128,11 @@ public sealed class MetricSnapshotWireSnapshotTests
     {
         observedAt ??= capturedAt;
         attemptedAt ??= capturedAt;
-        var items = new Dictionary<string, MetricValue>(
+        var items = new Dictionary<string, MetricReadingValue>(
             StringComparer.OrdinalIgnoreCase);
         if (includeCpuPayload)
         {
-            items["cpu.usage"] = new(
-                "cpu.usage", "CPU", "CPU", "25%", 25, "%", 25, null);
+            items["cpu.usage"] = new(Id: "cpu.usage", NumericValue: 25, Unit: "%", Percent: 25);
         }
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(
             StringComparer.OrdinalIgnoreCase)
@@ -152,8 +155,7 @@ public sealed class MetricSnapshotWireSnapshotTests
         };
         if (includeMemory)
         {
-            items["memory.usage"] = new(
-                "memory.usage", "Memory", "Memory", "8 GB", 8, "GB", 25, null);
+            items["memory.usage"] = new(Id: "memory.usage", NumericValue: 8, Unit: "GB", Percent: 25);
             datasets[SamplingDatasetIds.SystemMemoryUsage] = new(
                 SamplingDatasetIds.SystemMemoryUsage,
                 SamplingObservationStatus.Current,
@@ -186,8 +188,8 @@ public sealed class MetricSnapshotWireSnapshotTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(8, 32, 25, true, "fixture"),
-            new VirtualMemoryMetrics(0, 0, 0, "fixture", false),
+            new MemoryMetrics(UsedBytes: 8, TotalBytes: 32, UsagePercent: 25, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,

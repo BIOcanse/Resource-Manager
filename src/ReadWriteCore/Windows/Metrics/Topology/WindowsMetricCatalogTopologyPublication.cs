@@ -8,7 +8,8 @@ public static class WindowsMetricCatalogTopologyPublication
         NativeMetricSnapshotCatalogTopologySnapshot topology, NativeMetricSnapshotCatalogHandleMap handleMap)
         => NativeMetricSnapshotCatalogProjection.Create(configuration, topology.GpuAdapters,
             topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor,
-            topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities);
+            topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities)
+            with { CpuModelName = topology.CpuModelName };
     public static NativeMetricSnapshotCatalogTopologySnapshot RetainUnavailableOptionalIdentities(
         NativeMetricSnapshotCatalogTopologySnapshot topology,
         NativeMetricSnapshotCatalogProjection prior)
@@ -74,6 +75,7 @@ public static class WindowsMetricCatalogTopologyPublication
     public static bool CanRetainCatalog(NativeMetricSnapshotCatalogProjection prior,
         NativeMetricSnapshotCatalogProjection desired)
         => ReferenceEquals(prior.NpuEngineDirectory, desired.NpuEngineDirectory)
+            && prior.CpuModelName == desired.CpuModelName
             && prior.CatalogIdentitySha256 == desired.CatalogIdentitySha256
             // Capture sources compare these facts too. Retaining stale capability
             // or battery-unit metadata would make the same refresh unsatisfiable.

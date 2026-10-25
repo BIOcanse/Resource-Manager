@@ -24,7 +24,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         using var fixture = new NativeFixture(recording);
         var request = fixture.Request(MetricFieldCode.NpuSharedMemoryResident, MetricFieldCode.MemoryUsed);
         var first = Assert.IsType<HardwareMetricSnapshot>(await fixture.Capture(request));
-        Assert.Equal("0", Npu(first, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("0"), Npu(first, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
         var before = fixture.Workspace.ReadCommitted();
         var callbacks = fixture.Published;
         var admissions = fixture.PermitInvocations;
@@ -46,7 +46,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         recording.Invalidated = false;
         fixture.RefreshCatalog();
         var recovered = Assert.IsType<HardwareMetricSnapshot>(await fixture.Capture(request));
-        Assert.Equal("18446744073709551615", Npu(recovered, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), Npu(recovered, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
         Assert.Equal(128UL, recovered.Memory.UsedBytes);
         Assert.True(recovered.CommittedGeneration > first.CommittedGeneration);
         Assert.Equal(callbacks + 2, fixture.Published);
@@ -66,7 +66,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         Assert.Equal(SamplingObservationStatus.Unavailable, dedicated.Status);
         Assert.Null(dedicated.IntegerValue);
         var actual = Npu(snapshot, NpuMemoryIntegrationRecording.SharedResident);
-        Assert.Equal(shared.ToString(System.Globalization.CultureInfo.InvariantCulture), actual.IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(shared), actual.IntegerValue);
         Assert.Null(actual.NumericValue);
         Assert.Equal(SamplingObservationStatus.Current, actual.Status);
         Assert.Equal(64UL, snapshot.Memory.UsedBytes);
@@ -98,7 +98,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         Assert.Equal(generation, fixture.Workspace.ReadCommitted().Header.CommittedGeneration);
         recording.SharedResidentBytes = 31;
         var recovered = Assert.IsType<HardwareMetricSnapshot>(await fixture.Capture(request));
-        Assert.Equal("31", Npu(recovered, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("31"), Npu(recovered, NpuMemoryIntegrationRecording.SharedResident).IntegerValue);
         Assert.Equal(2, fixture.Published);
     }
 
@@ -112,7 +112,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
         var field = (await backend.DiscoverAsync(default)).Fields.Single(row =>
             row.Field.DeviceIdentity == NpuMemoryIntegrationRecording.Identity &&
             row.Field.FieldName == NpuMemoryIntegrationRecording.SharedResident).Field;
-        Assert.Equal("0", Assert.Single(await backend.CollectAsync([field], default)).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(await backend.CollectAsync([field], default)).Value!.Integer);
         var current = owner.ReadCachedSnapshot();
         using var borrow = owner.BorrowSubscriptionCapture();
         borrow.Bind([field]);
@@ -147,11 +147,11 @@ public sealed class NpuMemoryCaptureIntegrationTests
             if (retirement is not null) await retirement.WaitAsync(timeout.Token);
         }
         Assert.False(refused.Committed);
-        Assert.Same(current, owner.ReadCachedSnapshot());
-        Assert.Equal("0", backend.ReadCached(field).Value!.Integer);
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
+        Assert.Equal(MetricInteger.Parse("0"), backend.ReadCached(field).Value!.Integer);
         recording.AfterRead = null;
         recording.SharedResidentBytes = ulong.MaxValue;
-        Assert.Equal("18446744073709551615", Assert.Single(await backend.CollectAsync([field], default)).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), Assert.Single(await backend.CollectAsync([field], default)).Value!.Integer);
     }
 
     internal static DeviceMetricFieldValue Npu(HardwareMetricSnapshot snapshot, string name)
@@ -201,7 +201,7 @@ public sealed class NpuMemoryCaptureIntegrationTests
             try
             {
                 return await capture.CaptureUnderGateAsync(request, Workspace, 1, Topology,
-                    commit => { PermitInvocations++; if (!allowPublish) return false; commit(); return true; }, new(""), token,
+                    commit => { PermitInvocations++; if (!allowPublish) return false; commit(); return true; }, token,
                     onCommitted: value => { Current = value; Published++; });
             }
             finally { capture.SampleGate.Release(); }
@@ -246,9 +246,8 @@ internal sealed class NpuMemoryIntegrationRecording
 
     internal WindowsHardwareMetricResources Resources() => new()
     {
-        Controls = new() { ControlReadCpuTopology = () => null! }, CpuName = "recorded", MemoryDescription = "recorded",
-        ReadCpuCounters = () => throw new InvalidOperationException("unselected CPU"),
-        ReadMemory = () => { Interlocked.Increment(ref memoryReads); return new(MemoryUsed, 256, MemoryUsed * 100d / 256, true, "recorded"); },
+        Controls = new() { ControlReadCpuTopology = () => null! }, ReadCpuCounters = () => throw new InvalidOperationException("unselected CPU"),
+        ReadMemory = () => { Interlocked.Increment(ref memoryReads); return new(MemoryUsed, 256, MemoryUsed * 100d / 256, true); },
         ReadVirtualMemory = () => throw new InvalidOperationException("unselected virtual memory"),
         ReadNumaAvailable = (nodes, selected) => { Assert.Empty(nodes); Assert.Empty(selected); return new Dictionary<string, ulong>(); },
         ReadNumaIdentities = () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),

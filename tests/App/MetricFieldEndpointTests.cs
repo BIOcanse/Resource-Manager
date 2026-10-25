@@ -366,7 +366,7 @@ public sealed class MetricFieldEndpointTests
             [EnumeratorCancellation] CancellationToken token)
         {
             Request = request;
-            yield return Current with { Items = new Dictionary<string, MetricValue>(), Datasets = Current.Datasets.ToDictionary(
+            yield return Current with { Items = new Dictionary<string, MetricReadingValue>(), Datasets = Current.Datasets.ToDictionary(
                 pair => pair.Key, pair => pair.Value with { Status = SamplingObservationStatus.Unavailable }) };
             await Task.Yield();
             yield return Current;

@@ -243,8 +243,8 @@ public sealed class ExternalGpuPlacementTests
         {
             Assert.Equal(["system.gpu.inventory"], request.Ids);
             Assert.False(request.IncludesAllGpuCoreMetrics);
-            return new(DateTimeOffset.UtcNow, null!, null!, null!, [],
-                new(SamplingObservationStatus.Current, 1, DateTime.UtcNow.Ticks, 0, 0, 0, 1, []), new Dictionary<string, MetricValue>());
+            return new(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [],
+                new(SamplingObservationStatus.Current, 1, DateTime.UtcNow.Ticks, 0, 0, 0, 1, []), new Dictionary<string, MetricReadingValue>());
         }
         public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => new(SamplingObservationStatus.Current,
             1, DateTime.UtcNow.Ticks, 1, 1, 0, 0, request.RequestedMetricMask, process.ValidMetricMask, [process],

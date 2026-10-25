@@ -204,7 +204,7 @@ public sealed class AmdSmuHardwareBindingTests
             => Task.FromResult(new HardwareMetricSnapshot(DateTimeOffset.UnixEpoch,
                 new CpuMetrics("CPU", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0, "",
                     new CpuSensorMetrics(new("", "", null), null, null, null, null)),
-                new(0, 0, 0, false, ""), new(0, 0, 0, "", false), [], null!, new Dictionary<string, MetricValue>()));
+                new(0, 0, 0, false), new(0, 0, 0, false), [], null!, new Dictionary<string, MetricReadingValue>()));
     }
 
     private sealed class EmptyDependencies(bool alreadyInstalled = false) : IOptionalDependencyManager

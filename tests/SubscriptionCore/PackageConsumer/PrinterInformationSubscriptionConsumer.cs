@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
@@ -45,7 +46,7 @@ internal static class PrinterInformationSubscriptionConsumer
                 "explicit role-2 subscription published a selected reading");
             var reading = AssertSingle(stream.Current);
             Require(reading.Status == FieldObservationStatus.Current
-                && reading.Value?.Integer == "1152" && reading.ObservedAt.HasValue,
+                && reading.Value?.Integer == MetricInteger.Parse("1152") && reading.ObservedAt.HasValue,
                 "recorded combined queue-state flags remain a current integer bitmask");
             FieldObservationConsumerAssertions.RequireOriginalOwnerObservation(reading, backend.ReadCached(state));
             Require(reader.Requests.Last() == WindowsPrinterInformationFields.QueueStateActual,

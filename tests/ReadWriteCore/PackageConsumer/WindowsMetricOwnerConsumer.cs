@@ -56,7 +56,7 @@ internal static class WindowsMetricOwnerConsumer
                 "Real current OS memory uses its declared positive whole-byte float64 value and observation time.");
             var cached = core.ReadCached(reading.Field);
             Require(cached == reading, "Cached canonical value exactly equals the collected observation.");
-            Require(ReferenceEquals(current, owner.ReadCachedSnapshot()), "ReadCached does not recapture or replace the original current.");
+            Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()), "ReadCached does not recapture or replace the original current.");
             Console.WriteLine($"Actual Windows metric {reading.Field.FieldName}: number={actual!.Value.ToString("R", CultureInfo.InvariantCulture)}; valueKind=float64; status={reading.Status}; support={core.Query(reading.Field).Read.Supported}; cached=no-recapture.");
         }
         Require(typeof(WindowsHardwareMetricOwner).Assembly == typeof(ReadWriteCore).Assembly, "Default owner is independently packaged.");

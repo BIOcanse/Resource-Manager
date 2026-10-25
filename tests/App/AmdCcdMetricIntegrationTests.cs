@@ -52,7 +52,7 @@ public sealed class AmdCcdMetricIntegrationTests(ITestOutputHelper output)
             AmdCcdIdentities = targets
         };
         var result = await capture.CaptureUnderGateAsync(MetricSampleRequest.ForIds([bindings[1].MetricId]), workspace, 1,
-            topology, action => { action(); return true; }, new("recorded"), default);
+            topology, action => { action(); return true; }, default);
         Assert.NotNull(result);
         Assert.Equal(unavailable || frozen ? 0 : 1, calls);
         var fields = MetricDeviceFields.Read(result!, fields: new HashSet<string> { "cpu_amd_ccd_tdie_temperature_celsius" });
@@ -108,7 +108,7 @@ public sealed class AmdCcdMetricIntegrationTests(ITestOutputHelper output)
     private static WindowsHardwareMetricResources RecordedResources(
         Func<IReadOnlyList<AmdCcdCatalogIdentity>, IReadOnlySet<string>, IReadOnlyDictionary<string, double?>> read) => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded", ReadAmdCcd = read,
+        ReadAmdCcd = read,
         ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = () => throw new InvalidOperationException(),
         ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, _) => throw new InvalidOperationException(),
         ReadNumaIdentities = () => throw new InvalidOperationException(), ReadGpuInventory = () => throw new InvalidOperationException(),

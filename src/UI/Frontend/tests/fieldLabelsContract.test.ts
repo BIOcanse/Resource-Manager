@@ -8,7 +8,7 @@ import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
 /*
  * 规范字段的前端名单与九语文案必须和后端注册表一致。
  *
- * 名单按后端 MetricFieldRegistry.Definitions 的规则重建：先是 new(MetricFieldCode.…) 表里每一行，
+ * 名单按后端 MetricFieldRegistry.Definitions 的规则重建：先是 new(Code: MetricFieldCode.…) 表里每一行，
  * 再按 Definitions 列出的来源顺序（nvidia.nvml、amd.adlx、amd.smu）逐行套用 FindByTemplate 的改名，
  * 同名只留第一次。改名行的厂商覆盖原行厂商，用于"同资源同厂商内显示名不重复"的检查。
  */
@@ -17,12 +17,12 @@ interface RegistryField { name: string; resource: string; vendor: string; valueK
 
 const registrySource = readFileSync(new URL("../../../ReadWriteCore/Fields/MetricFieldRegistry.cs", import.meta.url), "utf8");
 // 参数之间允许换行缩进（长行在 MetricVendor 之后折行）。
-const rowPattern = /new\(MetricFieldCode\.(\w+),\s+"([^"]+)",\s+MetricResource\.(\w+),\s+MetricVendor\.(\w+),\s+"[^"]*",\s+"[^"]*"(?:,\s+"(?:[^"\\]|\\.)*")?\)(?:\s+\{([^}]*)\})?/g;
+const rowPattern = /new\((?:Code:\s*)?MetricFieldCode\.(\w+),\s+(?:Name:\s*)?"([^"]+)",\s+(?:Resource:\s*)?MetricResource\.(\w+),\s+(?:Vendor:\s*)?MetricVendor\.(\w+),\s+(?:Unit:\s*)?"[^"]*",\s+(?:RequestTemplate:\s*)?"[^"]*"\)(?:\s+\{([^}]*)\})?/g;
 const baseRows = [...registrySource.matchAll(rowPattern)].map((match) => ({
   code: match[1],
   field: { name: match[2], resource: match[3], vendor: match[4], valueKind: /ValueKind = "([^"]+)"/.exec(match[5] ?? "")?.[1] ?? "float64" }
 }));
-assert.equal(baseRows.length, registrySource.match(/new\(MetricFieldCode\./g)?.length, "Every registry row must be parsed.");
+assert.equal(baseRows.length, registrySource.match(/new\((?:Code:\s*)?MetricFieldCode\./g)?.length, "Every registry row must be parsed.");
 assert.ok(baseRows.length >= 300, "Registry parse found too few rows.");
 
 const sourceOrder = /new\[\] \{ ((?:"[^"]+"(?:, )?)+) \}\.SelectMany/.exec(registrySource)?.[1].match(/"([^"]+)"/g)?.map((value) => value.slice(1, -1));

@@ -94,7 +94,7 @@ public sealed class CompiledHostManagerMetricSnapshotPlanTests
         Assert.Equal(0x0009_0000U, valid.ObservationContractVersion);
         Assert.False((valid with { CatalogContractVersion = 0x0004_0000U }).IsPublished);
         Assert.False((valid with { ObservationContractVersion = 0x0006_0000U }).IsPublished);
-        var build = new CompiledHostManagerMetricSnapshotBuildPlan(0x000B_0000U, "metric_snapshot", CreateCapacity());
+        var build = new CompiledHostManagerMetricSnapshotBuildPlan(0x000D_0000U, "metric_snapshot", CreateCapacity());
         Assert.True(build.IsPublished);
         Assert.False((build with { AbiVersion = 0x0008_0000U }).IsPublished);
         Assert.False((valid with { ObservationContractVersion = 0x0002_0000U }).IsPublished);

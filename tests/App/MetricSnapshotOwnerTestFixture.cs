@@ -25,7 +25,8 @@ internal static class MetricSnapshotOwnerTestFixture
         private NativeMetricSnapshotCatalogTopologySnapshot topology;
         private int topologyReads;
         public Fixture(NativeMetricSnapshotCatalogTopologySnapshot topology,
-            Func<ulong, uint, ResourceManager.ReadWrite.Native.INativeMetricSnapshotScratch>? createScratch = null)
+            Func<ulong, uint, ResourceManager.ReadWrite.Native.INativeMetricSnapshotScratch>? createScratch = null,
+            Func<string>? readComponentRevision = null)
         {
             this.topology = topology;
             Slots = new HostManagerSamplingSubscriptionTestFixture();
@@ -37,7 +38,8 @@ internal static class MetricSnapshotOwnerTestFixture
             });
             Owner = new HostManagerMetricSnapshotOwner(Slots.Provider,
                 new HostManagerMetricSnapshotRuntime(Slots.Provider, Slots.Deployment), source,
-                new EnvironmentInfo(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, createScratch ?? ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
+                new EnvironmentInfo(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, createScratch ?? ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary,
+                readComponentRevision);
             Owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
         public NativeMetricSnapshotCatalogTopologySnapshot Topology { set => Volatile.Write(ref topology, value); }

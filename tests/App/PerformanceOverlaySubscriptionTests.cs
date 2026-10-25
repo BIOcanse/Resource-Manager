@@ -248,11 +248,11 @@ public sealed class PerformanceOverlaySubscriptionTests
                 new CpuSensorMetrics(
                     new HardwareSensorProviderState("fixture", HardwareSensorProviderStates.Unavailable, null),
                     null, null, null, null)),
-            new MemoryMetrics(0, 0, 0, false, "fixture"),
-            new VirtualMemoryMetrics(0, 0, 0, "fixture", false),
+            new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             gpuInventory,
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricReadingValue>());
     }
 
     private sealed class Lease(Action release) : IDisposable

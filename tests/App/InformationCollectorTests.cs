@@ -109,14 +109,14 @@ public sealed class InformationCollectorTests
         {
             CommitTotal=2, CommitLimit=100, PageSize=4096, CommitPeak=5,
             SystemCache=7, KernelPaged=3, KernelNonpaged=4, ProcessCount=10, ThreadCount=20, HandleCount=30
-        }, "fixture");
+        });
         Assert.Equal(5UL * 4096, value.CommitPeakBytes);
         Assert.Equal(7UL * 4096, value.SystemCacheBytes);
         Assert.Equal(3UL * 4096, value.KernelPagedBytes);
         Assert.Equal(4UL * 4096, value.KernelNonpagedBytes);
         Assert.Equal(10U, value.ProcessCount); Assert.Equal(20U, value.ThreadCount); Assert.Equal(30U, value.HandleCount);
         var invalid = WindowsVirtualMemoryMonitoringZone.CreateCommitMetrics(new PerformanceInformation
-            { CommitLimit=1, PageSize=4096, CommitPeak=nuint.MaxValue }, "fixture");
+            { CommitLimit=1, PageSize=4096, CommitPeak=nuint.MaxValue });
         Assert.Null(invalid.CommitPeakBytes);
     }
 

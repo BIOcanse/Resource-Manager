@@ -69,10 +69,8 @@ public sealed class CanonicalMetricControlBindingTests
         var control = new MetricDeviceFieldBinding("recorded-cpu", declaration.Definition, "managed-control", declaration.SourceId)
             { ControlTarget = new("recorded-cpu") };
         var withoutTarget = control with { RequestAddress = "unbound-control", ControlTarget = null };
-        var nativeValue = new MetricValue(nativeBinding.RequestAddress, nativeBinding.Field.Name, "system", "",
-            null, "count", null, null) { IntegerValue = "42" };
-        var controlValue = new MetricValue(control.RequestAddress, control.Field.Name, "cpu", "",
-            45, "W", null, null);
+        var nativeValue = new MetricReadingValue(Id: nativeBinding.RequestAddress, NumericValue: null, Unit: "count", Percent: null) { IntegerValue = MetricInteger.Parse("42") };
+        var controlValue = new MetricReadingValue(Id: control.RequestAddress, NumericValue: 45, Unit: "W", Percent: null);
         var nativeObservation = new HardwareMetricDatasetObservation(nativeBinding.RequestAddress,
             SamplingObservationStatus.Current, 9, 100, 5, 6, 7, 8);
         var controlObservation = new HardwareMetricDatasetObservation(control.RequestAddress,
@@ -81,15 +79,15 @@ public sealed class CanonicalMetricControlBindingTests
         var native = Fixture.Snapshot() with {
             WorkspaceIdentity = 5, ConfigurationGeneration = 6, CatalogGeneration = 7, CommittedGeneration = 8,
             FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [nativeBinding.RequestAddress] = nativeBinding },
-            Items = new Dictionary<string, MetricValue> { [nativeBinding.RequestAddress] = nativeValue },
+            Items = new Dictionary<string, MetricReadingValue> { [nativeBinding.RequestAddress] = nativeValue },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation> { [nativeBinding.RequestAddress] = nativeObservation }
         };
         var prepared = Fixture.Snapshot() with {
             FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> {
                 [nativeBinding.RequestAddress] = nativeBinding, [control.RequestAddress] = control,
                 [withoutTarget.RequestAddress] = withoutTarget },
-            Items = new Dictionary<string, MetricValue> {
-                [nativeBinding.RequestAddress] = nativeValue with { IntegerValue = "17" },
+            Items = new Dictionary<string, MetricReadingValue> {
+                [nativeBinding.RequestAddress] = nativeValue with { IntegerValue = MetricInteger.Parse("17") },
                 [control.RequestAddress] = controlValue },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation> {
                 [nativeBinding.RequestAddress] = nativeObservation with { ObservedAtUtcTicks = 1 },
@@ -104,7 +102,7 @@ public sealed class CanonicalMetricControlBindingTests
         Assert.Equal(controlObservation with { SourceGeneration = 8, WorkspaceIdentity = 5,
             ConfigurationGeneration = 6, CatalogGeneration = 7, CommittedGeneration = 8 }, merged.Datasets[control.RequestAddress]);
         var unavailable = WindowsMetricControlFields.ApplyPreparedFields(native, prepared with {
-            Items = new Dictionary<string, MetricValue>(),
+            Items = new Dictionary<string, MetricReadingValue>(),
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation> {
                 [control.RequestAddress] = controlObservation with { Status = SamplingObservationStatus.Unavailable,
                     ObservedAtUtcTicks = 0, LastSuccessAtUtcTicks = 0 } }
@@ -136,12 +134,10 @@ public sealed class CanonicalMetricControlBindingTests
         // the exact same original selected-read path executes.
         var staleFieldCatalog = discovered with
         {
-            Items = new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase)
+            Items = new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase)
             {
-                [selected.RequestAddress] = new(selected.RequestAddress, selected.Field.Name,
-                    "cpu", "stale", 999, selected.Field.Unit, null, null) { IntegerValue = "999" },
-                [unselected.RequestAddress] = new(unselected.RequestAddress, unselected.Field.Name,
-                    "cpu", "stale", 888, unselected.Field.Unit, null, null) { IntegerValue = "888" }
+                [selected.RequestAddress] = new(Id: selected.RequestAddress, NumericValue: 999, Unit: selected.Field.Unit, Percent: null) { IntegerValue = MetricInteger.Parse("999") },
+                [unselected.RequestAddress] = new(Id: unselected.RequestAddress, NumericValue: 888, Unit: unselected.Field.Unit, Percent: null) { IntegerValue = MetricInteger.Parse("888") }
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(StringComparer.OrdinalIgnoreCase)
             {
@@ -158,7 +154,12 @@ public sealed class CanonicalMetricControlBindingTests
             newPrepared.FieldBindings.OrderBy(static pair => pair.Key));
         Assert.Contains(selected.RequestAddress, oldPrepared.FieldBindings.Keys);
         Assert.Contains(unselected.RequestAddress, oldPrepared.FieldBindings.Keys);
-        Assert.Equal(oldPrepared.Items[selected.RequestAddress], newPrepared.Items[selected.RequestAddress]);
+        Assert.Equal(oldPrepared.Items[selected.RequestAddress] with { ObservedAt = null },
+            newPrepared.Items[selected.RequestAddress] with { ObservedAt = null });
+        Assert.Equal(oldPrepared.Datasets[selected.RequestAddress].ObservedAtUtcTicks,
+            oldPrepared.Items[selected.RequestAddress].ObservedAt!.Value.UtcTicks);
+        Assert.Equal(newPrepared.Datasets[selected.RequestAddress].ObservedAtUtcTicks,
+            newPrepared.Items[selected.RequestAddress].ObservedAt!.Value.UtcTicks);
         Assert.Equal(oldPrepared.Items.ContainsKey(unselected.RequestAddress),
             newPrepared.Items.ContainsKey(unselected.RequestAddress));
         Assert.False(oldPrepared.Items.ContainsKey(unselected.RequestAddress));
@@ -180,7 +181,8 @@ public sealed class CanonicalMetricControlBindingTests
             newMerged.FieldBindings.OrderBy(static pair => pair.Key));
         Assert.Contains(selected.RequestAddress, newMerged.FieldBindings.Keys);
         Assert.Contains(unselected.RequestAddress, newMerged.FieldBindings.Keys);
-        Assert.Equal(oldMerged.Items[selected.RequestAddress], newMerged.Items[selected.RequestAddress]);
+        Assert.Equal(oldMerged.Items[selected.RequestAddress] with { ObservedAt = null },
+            newMerged.Items[selected.RequestAddress] with { ObservedAt = null });
         Assert.False(oldMerged.Items.ContainsKey(unselected.RequestAddress));
         Assert.False(newMerged.Items.ContainsKey(unselected.RequestAddress));
         Assert.Equal(ComparableObservation(oldMerged.Datasets[selected.RequestAddress]),
@@ -207,7 +209,7 @@ public sealed class CanonicalMetricControlBindingTests
         var catalog = NativeMetricSnapshotCatalogProjection.Create(configuration.CatalogConfiguration,
             [new(adapter.Index, adapter.Name, exact, key, originalInventory.Generation, 2, true)], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
-        var firstNativeFrame = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "recorded", "recorded", 1);
+        var firstNativeFrame = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         Assert.Equal(key, Assert.Single(firstNativeFrame.Gpus).AdapterKey);
         Assert.False(firstNativeFrame.GpuInventory.IsCurrentComplete());
         Assert.Null(WindowsControlObjectCatalog.ResolveAdapterKey(firstNativeFrame.GpuInventory, adapter.Index));
@@ -304,7 +306,7 @@ public sealed class CanonicalMetricControlBindingTests
         var beforeWrite = owner.ReadCachedSnapshot();
         var applied = await core.WriteAsync(field, new(Number: 40));
         Assert.Equal("applied", applied.Status); Assert.Equal(FieldWriteEvidence.MaskedRegisterReadback, applied.Evidence!.Kind);
-        Assert.Same(beforeWrite, owner.ReadCachedSnapshot()); Assert.Equal(45d, core.ReadCached(field).Value!.Number);
+        Assert.Equivalent(beforeWrite, owner.ReadCachedSnapshot(), strict: true); Assert.Equal(45d, core.ReadCached(field).Value!.Number);
         Assert.Equal(40d, (await core.CollectAsync([field])).Single().Value!.Number);
         recording.Intel.IgnoreWrites = true;
         var failedWrite = await core.WriteAsync(field, new(Number: 50));
@@ -323,7 +325,7 @@ public sealed class CanonicalMetricControlBindingTests
         var binding = Binding(producer.Discover(Fixture.Snapshot()), IntelPl1); var reference = Reference(binding);
         var reads = recording.Intel.Reads;
         Assert.True(producer.Query(binding).Supported); Assert.Equal(reads, recording.Intel.Reads);
-        foreach (var value in new[] { new FieldValue(Integer: "40"), new FieldValue(Number: double.NaN), new FieldValue(Number: 201), new FieldValue(Number: 45.5) })
+        foreach (var value in new[] { new FieldValue(Integer: MetricInteger.Parse("40")), new FieldValue(Number: double.NaN), new FieldValue(Number: 201), new FieldValue(Number: 45.5) })
             Assert.Equal("failed", (await producer.WriteAsync(reference, binding, value)).Status);
         Assert.Equal(0, recording.Intel.Writes);
         recording.Identity = recording.Identity with { Stepping = 4 }; recording.Topology = Fixture.SingleTopology(recording.Identity);
@@ -369,14 +371,14 @@ public sealed class CanonicalMetricControlBindingTests
         recording.Bridge.OmitGpuWriteReadback = true;
         var producer = recording.Producer(); var discovered = producer.Discover(Fixture.Snapshot());
         var binding = Binding(discovered, "gpu_amd_requested_curve_optimizer_counts");
-        var result = await producer.WriteAsync(Reference(binding), binding, new(Integer: "-10"));
+        var result = await producer.WriteAsync(Reference(binding), binding, new(Integer: MetricInteger.Parse("-10")));
         Assert.Equal("applied", result.Status); Assert.Equal(FieldWriteEvidence.AcceptedOnly, result.Evidence!.Kind);
         Assert.Null(result.Evidence!.ObservedValue);
         var selected = await producer.ReadSelectedAsync(discovered, MetricSampleRequest.ForIds([binding.RequestAddress]));
-        Assert.Equal("-10", selected.Items[binding.RequestAddress].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("-10"), selected.Items[binding.RequestAddress].IntegerValue);
         recording.Inventory = recording.Inventory with { Adapters = [recording.Inventory.Adapters[0], recording.Inventory.Adapters[0] with { Index = 1 }], ObservedCount = 2 };
         var settings = recording.Bridge.Settings;
-        Assert.Equal("failed", (await producer.WriteAsync(Reference(binding), binding, new(Integer: "-15"))).Status);
+        Assert.Equal("failed", (await producer.WriteAsync(Reference(binding), binding, new(Integer: MetricInteger.Parse("-15")))).Status);
         Assert.Equal(settings, recording.Bridge.Settings);
     }
 
@@ -390,7 +392,7 @@ public sealed class CanonicalMetricControlBindingTests
         var fan = Binding(discovered, "fan_amd_requested_zero_rpm_enabled");
         Assert.True(producer.Query(absolute).Supported); Assert.False(producer.Query(offset).Supported);
         Assert.EndsWith("|fan-tuning-group", fan.DeviceIdentity); Assert.Equal(absolute.AdapterKey, fan.AdapterKey);
-        Assert.Equal("unsupported", (await producer.WriteAsync(Reference(offset), offset, new(Integer: "5"))).Status);
+        Assert.Equal("unsupported", (await producer.WriteAsync(Reference(offset), offset, new(Integer: MetricInteger.Parse("5")))).Status);
         Assert.Equal("failed", (await producer.WriteAsync(Reference(fan), fan, new(Number: 0))).Status);
         Assert.Equal(0, recording.Adlx.Writes);
         var toggled = await producer.WriteAsync(Reference(fan), fan, new(Boolean: false));
@@ -398,7 +400,7 @@ public sealed class CanonicalMetricControlBindingTests
         var collected = await producer.ReadSelectedAsync(discovered, MetricSampleRequest.ForIds([fan.RequestAddress]));
         Assert.False(collected.Items[fan.RequestAddress].BooleanValue); Assert.Null(collected.Items[fan.RequestAddress].NumericValue);
         var absoluteCurrent = await producer.ReadSelectedAsync(discovered, MetricSampleRequest.ForIds([absolute.RequestAddress]));
-        Assert.Equal("2400", absoluteCurrent.Items[absolute.RequestAddress].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("2400"), absoluteCurrent.Items[absolute.RequestAddress].IntegerValue);
         recording.Adlx.Mode = AdlxGfxMode.Offset;
         var readsBeforeModeCheck = recording.Adlx.Reads;
         var changedModeRead = await producer.ReadSelectedAsync(absoluteCurrent, MetricSampleRequest.ForIds([absolute.RequestAddress]));
@@ -409,10 +411,10 @@ public sealed class CanonicalMetricControlBindingTests
         absolute = Binding(discovered, absolute.Field.Name); offset = Binding(discovered, offset.Field.Name);
         Assert.False(producer.Query(absolute).Supported); Assert.True(producer.Query(offset).Supported);
         var settings = recording.Adlx.Writes;
-        Assert.Equal("unsupported", (await producer.WriteAsync(Reference(absolute), absolute, new(Integer: "2000"))).Status);
+        Assert.Equal("unsupported", (await producer.WriteAsync(Reference(absolute), absolute, new(Integer: MetricInteger.Parse("2000")))).Status);
         Assert.Equal(settings, recording.Adlx.Writes);
         recording.Adlx.Pnp = "PCI\\OTHER"; // Inventory still says original PNP: raw expected-PNP check must reject.
-        Assert.NotEqual("applied", (await producer.WriteAsync(Reference(offset), offset, new(Integer: "5"))).Status);
+        Assert.NotEqual("applied", (await producer.WriteAsync(Reference(offset), offset, new(Integer: MetricInteger.Parse("5")))).Status);
         Assert.Equal(settings, recording.Adlx.Writes);
     }
     // Only original lower reader/transport seams are recorded. The producer,
@@ -449,7 +451,7 @@ public sealed class CanonicalMetricControlBindingTests
         };
         internal WindowsMetricControlFields Producer() => new(Controls, () => Inventory);
         internal WindowsHardwareMetricOwner Owner() => new(WindowsMetricConfiguration.CreateDefault(), Readers(), new());
-        internal static HardwareMetricSnapshot Snapshot() => new(DateTimeOffset.UtcNow, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        internal static HardwareMetricSnapshot Snapshot() => new(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>())
             { WorkspaceIdentity = 1, ConfigurationGeneration = 1, CatalogGeneration = 1, CommittedGeneration = 1 };
         internal static CpuOsTopologyInformation SingleTopology(CpuIdentityInformation identity) => new([new("core:0", 0, false, [0])], [])
         {
@@ -469,7 +471,7 @@ public sealed class CanonicalMetricControlBindingTests
         // Copy of the existing callback fixture shape; no second sampler or metric projection.
         private WindowsHardwareMetricResources Readers() => new()
         {
-            CpuName = "recorded", MemoryDescription = "recorded", Controls = Controls,
+            Controls = Controls,
             ReadCpuCounters = () => throw new InvalidOperationException("unselected CPU telemetry"),
             ReadMemory = () => throw new InvalidOperationException("unselected memory telemetry"),
             ReadVirtualMemory = () => throw new InvalidOperationException(),

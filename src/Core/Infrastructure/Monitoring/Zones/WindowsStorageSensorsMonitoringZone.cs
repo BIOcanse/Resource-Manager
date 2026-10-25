@@ -1,6 +1,5 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.DeviceTopology;
-using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Windows.Metrics.Resources;
@@ -29,7 +28,6 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
                 ? BackendMessageCodes.DeviceTopology.SourceMsftDiskAssociations : BackendMessageCodes.DeviceTopology.SourceWin32DiskAssociations),
             query: query is null ? null : (path, command) => { var result = query(path, command); return new SdkQuery(result.Rows, result.Error); },
             readNvme: readNvme, readAta: readAta, readIdentify: readIdentify,
-            diskDetail: MetricDisplayDetailFormatter.DiskDetail,
             message: code => code switch
             {
                 StorageOwnerMessage.NoPhysicalDisks => "未读取到 Windows 物理磁盘列表。",

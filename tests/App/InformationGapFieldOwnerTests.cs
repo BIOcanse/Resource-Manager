@@ -36,7 +36,7 @@ public sealed class InformationGapFieldOwnerTests
         var size = Assert.Single(catalog.Fields, field => field.Field.FieldName == "software_all_reported_size");
         Assert.Equal("B", size.Definition.Unit);
         Assert.Equal("unsigned128", size.Definition.ValueKind);
-        Assert.Equal("4096", backend.ReadCached(size.Field).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("4096"), backend.ReadCached(size.Field).Value!.Integer);
         Assert.Equal(1, reads);
         using var scope = inventory.BorrowSubscriptionCapture();
         _ = scope.Bind([size.Field]);
@@ -131,11 +131,11 @@ public sealed class InformationGapFieldOwnerTests
         var start = Assert.Single(catalog.Fields, item => item.Field.FieldName == "service_all_start_type_configured");
         Assert.Null(backend.ReadCached(start.Field).Value);
         Assert.Equal("Original display", owner.ReadServices()!.Services[0].DisplayName);
-        Assert.Contains("1=stopped", state.Definition.Meaning!, StringComparison.Ordinal);
+        Assert.Equal("unsigned128", state.Definition.ValueKind);
         _ = backend.Catalog.Require(start.Field);
         Assert.Single(configured);
         var values = await backend.CollectAsync([start.Field], default);
-        Assert.Equal("3", values[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("3"), values[0].Value!.Integer);
         Assert.True(configured[^1]);
         failed = true;
         var cleared = await backend.CollectAsync([state.Field], default);
@@ -191,7 +191,7 @@ public sealed class InformationGapFieldOwnerTests
         await using var stream = composition.SubscribeAsync("service-config", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync());
         Assert.True(configured);
-        Assert.Equal("3", stream.Current[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("3"), stream.Current[0].Value!.Integer);
         var delivered = Assert.Single(stream.Current);
         var current = backend.ReadCached(field);
         Assert.NotNull(delivered.ObservedAt);
@@ -199,7 +199,7 @@ public sealed class InformationGapFieldOwnerTests
         Assert.Equal(delivered with { ObservedAt = current.ObservedAt }, current);
         await composition.StopAsync();
         Assert.False(await stream.MoveNextAsync());
-        Assert.Equal("0", (await backend.CollectAsync([new("windows-service|svc", "service_all_process_pid_actual")], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), (await backend.CollectAsync([new("windows-service|svc", "service_all_process_pid_actual")], default))[0].Value!.Integer);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public sealed class InformationGapFieldOwnerTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("size", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync());
-        Assert.Equal("1024", stream.Current[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("1024"), stream.Current[0].Value!.Integer);
         var delivered = Assert.Single(stream.Current);
         var current = backend.ReadCached(field);
         Assert.NotNull(delivered.ObservedAt);
@@ -226,7 +226,7 @@ public sealed class InformationGapFieldOwnerTests
         Assert.Equal(delivered with { ObservedAt = current.ObservedAt }, current);
         await composition.StopAsync();
         Assert.False(await stream.MoveNextAsync());
-        Assert.Equal("1024", (await backend.CollectAsync([field], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("1024"), (await backend.CollectAsync([field], default))[0].Value!.Integer);
     }
 
     private sealed class Permit(bool active = true) : IMetricPublicationPermit

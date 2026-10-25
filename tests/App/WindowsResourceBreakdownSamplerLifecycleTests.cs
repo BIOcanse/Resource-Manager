@@ -36,7 +36,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.True(before.WorkingSetBytes - before.PrivateResidentBytes >= (32L << 20));
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
-        var hardware = CreateMemorySnapshot() with { Memory = new MemoryMetrics(8UL << 30, 16UL << 30, 50, true, "test") };
+        var hardware = CreateMemorySnapshot() with { Memory = new MemoryMetrics(UsedBytes: 8UL << 30, TotalBytes: 16UL << 30, UsagePercent: 50, IsUsageAvailable: true) };
         using var sampler = new WindowsResourceBreakdownSampler(
             new StaticMetricSampler(hardware), catalogProvider,
             new StaticResourceResidualBreakdownProvider(), null!, null!,
@@ -79,12 +79,10 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         const ulong commitLimit = 32UL << 30;
         hardware = hardware with
         {
-            VirtualMemory = new VirtualMemoryMetrics(totalCommit, commitLimit, 50, "system commit", true),
-            Items = new Dictionary<string, MetricValue>(hardware.Items)
+            VirtualMemory = new VirtualMemoryMetrics(UsedBytes: totalCommit, TotalBytes: commitLimit, UsagePercent: 50, IsSelectable: true),
+            Items = new Dictionary<string, MetricReadingValue>(hardware.Items)
             {
-                [ResourceBreakdownMetricIds.VirtualMemoryUsage] = new(
-                    ResourceBreakdownMetricIds.VirtualMemoryUsage, "虚拟内存提交量", "VirtualMemory",
-                    string.Empty, totalCommit, "B", 50, "system commit", commitLimit)
+                [ResourceBreakdownMetricIds.VirtualMemoryUsage] = new(Id: ResourceBreakdownMetricIds.VirtualMemoryUsage, NumericValue: totalCommit, Unit: "B", Percent: 50, Total: commitLimit)
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(hardware.Datasets)
             {
@@ -758,8 +756,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(1, 2, 50, true, "test"),
-            new VirtualMemoryMetrics(0, 0, 0, "test", false),
+            new MemoryMetrics(UsedBytes: 1, TotalBytes: 2, UsagePercent: 50, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [],
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -770,17 +768,9 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>
+            new Dictionary<string, MetricReadingValue>
             {
-                [ResourceBreakdownMetricIds.MemoryUsage] = new(
-                    ResourceBreakdownMetricIds.MemoryUsage,
-                    "Memory",
-                    "Memory",
-                    "50%",
-                    50,
-                    "%",
-                    50,
-                    null)
+                [ResourceBreakdownMetricIds.MemoryUsage] = new(Id: ResourceBreakdownMetricIds.MemoryUsage, NumericValue: 50, Unit: "%", Percent: 50)
             })
         {
             WorkspaceIdentity = 1,

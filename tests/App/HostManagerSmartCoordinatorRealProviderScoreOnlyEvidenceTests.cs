@@ -1522,7 +1522,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         uint SourceIndex,
         ulong ValidMaskValue,
         int MetricKindValue,
-        double MetricValue);
+        double MetricReadingValue);
 
     private sealed record RealProviderNativeCpuScoreEvidence(
         string IdentityLeaf,

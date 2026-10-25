@@ -213,14 +213,14 @@ public sealed partial class IntelMsrThermalCollectorTests
             var at = now.AddSeconds(sequence); var plan = workspace.PlanCollection(handles, modes, false, at); var source = Assert.Single(plan.Sources);
             workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateIntelMsrCompletion(plan, source, new(source.SourceHandle, 1, sequence), at,
                 [new(target.ExactIdentityKey, new Dictionary<MetricFieldCode, double>()) { UnsignedValues = values }]), at);
-            return NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         }
     }
 
     private static void AssertFeedbackCounter(HardwareMetricSnapshot snapshot, string identity, string? integer)
     {
         var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, identity)).Fields, field => field.Name == "cpu_intel_aperf_counter_raw");
-        Assert.Equal("unsigned64", field.ValueKind); Assert.Equal("count", field.Unit); Assert.Null(field.NumericValue); Assert.Equal(integer, field.IntegerValue);
+        Assert.Equal("unsigned64", field.ValueKind); Assert.Equal("count", field.Unit); Assert.Null(field.NumericValue); Assert.Equal(integer is null ? null : MetricInteger.Parse(integer), field.IntegerValue);
         Assert.Equal(integer is null ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, field.Status);
     }
 }

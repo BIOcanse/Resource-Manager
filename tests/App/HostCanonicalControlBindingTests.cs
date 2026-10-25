@@ -128,7 +128,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
                 { RawObjectId = "fan:product-recorded" } };
         using (var lease = fixture.Owner.Acquire())
         {
-            var snapshot = NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity);
+            var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity);
             fixture.Catalog.PublishCatalogProbe(snapshot with
             {
                 FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>(snapshot.FieldBindings)

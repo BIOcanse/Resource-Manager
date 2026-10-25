@@ -329,7 +329,7 @@ internal static class SubscriptionSamplingModeConsumer
         }
 
         private static FieldCapability Capability(FieldReference field) => new(field,
-            new(field.FieldName, "count", "float64", "recorded value"),
+            new(field.FieldName, "count", "float64"),
             new(true, null, []), OperationSupport.Unsupported("read-only"), SourceId);
 
         private static FieldReading Reading(FieldReference field, double value, DateTimeOffset observedAt)

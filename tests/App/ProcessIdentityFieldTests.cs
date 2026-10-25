@@ -43,7 +43,7 @@ public sealed class ProcessIdentityFieldTests
         Assert.Null(sample.ProcessFields!.WindowMilliseconds);
         if (selected == 0) Assert.Equal(DateTime.FromFileTimeUtc((long)Basic.Birth).ToString("O", CultureInfo.InvariantCulture), value.StringValue);
         if (selected == 1) Assert.Equal(api.Image, value.StringValue);
-        if (selected == 2) Assert.Equal("0", value.IntegerValue);
+        if (selected == 2) Assert.Equal(MetricInteger.Parse("0"), value.IntegerValue);
         if (selected == 3) Assert.Equal(api.Sid, value.StringValue);
     }
 
@@ -99,7 +99,7 @@ public sealed class ProcessIdentityFieldTests
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var direct = await backend.CollectAsync(references, timeout.Token);
-            Assert.Equal(api.Image, direct[1].Value?.Text); Assert.Equal("42", direct[2].Value?.Integer); Assert.Equal(api.Sid, direct[3].Value?.Text);
+            Assert.Equal(api.Image, direct[1].Value?.Text); Assert.Equal(MetricInteger.Parse("42"), direct[2].Value?.Integer); Assert.Equal(api.Sid, direct[3].Value?.Text);
             Assert.All(direct, reading => Assert.Null(reading.SampleDurationMilliseconds));
             Assert.Equal(2, api.Opens); // discovery query and explicit direct identity query
             Assert.Equal(direct[1], backend.ReadCached(references[1]));
@@ -114,7 +114,7 @@ public sealed class ProcessIdentityFieldTests
             Assert.True(await stream.MoveNextAsync());
             var fresh = stream.Current;
             Assert.Equal(references.ToArray(), fresh.Select(static reading => reading.Field).ToArray());
-            Assert.Equal(api.Image, fresh[1].Value?.Text); Assert.Equal("42", fresh[2].Value?.Integer); Assert.Equal(api.Sid, fresh[3].Value?.Text);
+            Assert.Equal(api.Image, fresh[1].Value?.Text); Assert.Equal(MetricInteger.Parse("42"), fresh[2].Value?.Integer); Assert.Equal(api.Sid, fresh[3].Value?.Text);
             Assert.All(fresh, reading => Assert.Null(reading.SampleDurationMilliseconds));
             Assert.Equal(3, api.Opens); // one real query for this fresh original-worker trigger
             Assert.All(fresh, reading => Assert.Equal(reading, backend.ReadCached(reading.Field)));

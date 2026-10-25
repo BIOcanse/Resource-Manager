@@ -34,7 +34,7 @@ public sealed class WindowsOperatingSystemSourceQueryEvidenceTests
             WindowsOperatingSystemInformationFields.Features,
             WindowsOperatingSystemInformationFields.Features
         }, reader.Calls);
-        Assert.Equal("0", Assert.Single(borrowed.Readings).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(borrowed.Readings).Value!.Integer);
     }
 
     [Fact]

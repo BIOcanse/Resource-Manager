@@ -55,7 +55,6 @@ public sealed class NvidiaDrsResourceLifetimeTests
     private sealed class Release(Action release) : IDisposable { public void Dispose() => release(); }
     private static WindowsHardwareMetricResources Resources(NvidiaNvapiReader reader) => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded",
         ReadNvapiDrs = reader.ReadDrs, DiscoverNvapiDrs = reader.DiscoverDrs, ReadNvapiAsync = reader.ReadAsync,
         ReadCpuCounters = () => throw Unexpected(), ReadMemory = () => throw Unexpected(), ReadVirtualMemory = () => throw Unexpected(),
         ReadNumaAvailable = (_, _) => throw Unexpected(), ReadNumaIdentities = () => throw Unexpected(),

@@ -189,9 +189,9 @@ function normalizeOverlay(settings, softwareId) {
 }
 const metricCatalog = [
   metric("cpu.usage", "处理器", "CPU", "%"),
-  metric("cpu.frequency", "处理器频率", "CPU", "GHz"),
+  metric("cpu.frequency", "处理器频率", "CPU", "MHz"),
   metric("cpu.frequencyPercent", "处理器频率比例", "CPU", "%"),
-  metric("memory.usage", "内存", "Memory", "GB"),
+  metric("memory.usage", "内存", "Memory", "B"),
   metric("memory.percent", "内存占用", "Memory", "%")
 ];
 const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => {
@@ -665,7 +665,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, scenario.gpuPressureFixture
       ? [...metricCatalog,
         metric("gpu.0.usage", "GPU 占用", "GPU", "%"),
-        metric("gpu.0.vram", "GPU 显存", "GPU", "GB"),
+        metric("gpu.0.vram", "GPU 显存", "GPU", "B"),
         metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")]
       : metricCatalog);
   }
@@ -1337,7 +1337,7 @@ async function serveStatic(response, pathname) {
 }
 
 function metric(id, label, group, unit) {
-  return { id, label, group, unit, preferredSlot: "main", selectable: true };
+  return { id, unit, selectable: true };
 }
 
 function tableColumnSettings(process = false) {
@@ -1352,17 +1352,19 @@ function tableColumnSettings(process = false) {
 
 function metricSnapshot(requestedIds) {
   const allItems = {
-    "cpu.usage": { id: "cpu.usage", displayValue: "12%", numericValue: 12, percent: 12 },
-    "cpu.frequency": { id: "cpu.frequency", displayValue: "4.2 GHz", numericValue: 4.2 },
-    "cpu.frequencyPercent": { id: "cpu.frequencyPercent", displayValue: "88%", numericValue: 88, percent: 88 },
-    "memory.usage": { id: "memory.usage", displayValue: "8.0 GB", numericValue: 8, percent: 25 },
-    "memory.percent": { id: "memory.percent", displayValue: "25%", numericValue: 25, percent: 25 }
+    "cpu.usage": { id: "cpu.usage", unit: "%", status: 1, numericValue: 12, percent: 12 },
+    "cpu.frequency": { id: "cpu.frequency", unit: "MHz", status: 1, numericValue: 4200 },
+    "cpu.frequencyPercent": { id: "cpu.frequencyPercent", unit: "%", status: 1, numericValue: 88, percent: 88 },
+    "memory.usage": { id: "memory.usage", unit: "B", status: 1, numericValue: 8 * 1024 ** 3, percent: 25 },
+    "memory.percent": { id: "memory.percent", unit: "%", status: 1, numericValue: 25, percent: 25 }
   };
   if (scenario.gpuPressureFixture) {
     Object.assign(allItems, {
-      "gpu.0.usage": { id: "gpu.0.usage", displayValue: "96%", numericValue: 96, percent: 96 },
-      "gpu.0.vram": { id: "gpu.0.vram", displayValue: "4 GB", numericValue: 4, percent: 50 },
-      "gpu.0.vramPercent": { id: "gpu.0.vramPercent", displayValue: "50%", numericValue: 50, percent: 50 }
+      "gpu.0.usage": { id: "gpu.0.usage", unit: "%", status: 1, numericValue: 96, percent: 96 },
+      "gpu.0.vram": { id: "gpu.0.vram", unit: "B", status: 1, numericValue: 4 * 1024 ** 3, percent: 50 },
+        "gpu.0.vramPercent": { id: "gpu.0.vramPercent", unit: "%", status: 1, numericValue: 50, percent: 50 },
+        "gpu.0.graphicsClock": { id: "gpu.0.graphicsClock", unit: "MHz", status: 1, numericValue: 1500 },
+        "gpu.0.memoryClock": { id: "gpu.0.memoryClock", unit: "MHz", status: 1, numericValue: 7000 }
     });
   }
   const knownMetricIds = new Map(Object.keys(allItems).map(metricId =>
@@ -1373,9 +1375,9 @@ function metricSnapshot(requestedIds) {
     : Object.keys(allItems);
   const items = Object.fromEntries(selectedIds
     .filter(id => Object.hasOwn(allItems, id))
-    .map(id => [id, allItems[id]]));
+    .map(id => [id, { ...allItems[id], observedAt: metricSlot.observedAt }]));
   return {
-    version: 4,
+    version: 5,
     capturedAt: metricSlot.observedAt,
     catalogRevision: "mock-catalog-1",
     items

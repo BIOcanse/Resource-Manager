@@ -50,7 +50,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var disk = new PhysicalDiskIoScope(9, 0);
         var diskFields = ProcessMetricFieldRegistry.Definitions.Where(field => field.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo).ToArray();
         current.Apply(diskFields.Select(field => field.Name), new(At, 2000, diskFields,
-            [new(100, "1000", diskFields.Select(field => new ProcessMetricFieldValue(field.Name, "7", null)).ToArray()) { PhysicalDisk = disk }]));
+            [new(100, "1000", diskFields.Select(field => new ProcessMetricFieldValue(field.Name, MetricInteger.Parse("7"), null)).ToArray()) { PhysicalDisk = disk }]));
         using var owner = new WindowsProcessFieldOwner(current);
         var catalog = owner.Backend.Catalog;
         Assert.Equal(30, catalog.Fields.Count(field => field.Field.DeviceIdentity == "windows-process|100:1000"));
@@ -60,7 +60,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var snapshot = owner.ReadCachedSnapshot()!;
         Assert.Equal(interval, snapshot.FindProcess(100, "1000", gpu: gpu)!.GpuInterval);
         Assert.NotNull(snapshot.FindProcess(100, "1000", logicalProcessor: Scopes()[0]));
-        Assert.Equal("7", snapshot.FindProcess(100, "1000", disk)!.Values[0].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("7"), snapshot.FindProcess(100, "1000", disk)!.Values[0].IntegerValue);
         using var borrow = owner.BorrowSubscriptionCapture();
         var bindings = borrow.Bind([gpuReference, catalog.Fields.First(field => field.Field.FieldName == Name).Field]);
         Assert.Equal(new[] { ProcessMetricDatasetIds.GpuResidency, ProcessMetricDatasetIds.ObservedCpuResidency },

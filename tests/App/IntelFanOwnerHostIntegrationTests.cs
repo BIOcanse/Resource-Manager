@@ -168,7 +168,7 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
         using (var lease = owner.Acquire())
         {
             fan = lease.Workspace.ReadCatalog().SystemFanIdentities.Last(identity => identity.IgclFan is not null).IgclFan!;
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         }
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, fan.ExactIdentityKey, [RecordedIntelFanResources.Name]);
         var zone = new IntelGclMonitoringZone(fixture.Reader);

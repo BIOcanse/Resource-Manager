@@ -769,7 +769,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
                 0,
                 99,
                 adapters),
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricReadingValue>());
     }
 
     private static SchedulingGpuAdapterObservation CreateAdapter(

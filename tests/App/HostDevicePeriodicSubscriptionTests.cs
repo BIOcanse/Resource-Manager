@@ -220,7 +220,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
         await fixture.Provider.StartAsync(timeout.Token);
         Assert.True(await firstPeriodic.WaitAsync(Deadline));
         var first = Assert.Single(periodic.Current);
-        Assert.Equal("9", first.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("9"), first.Value?.Integer);
         Assert.Equal(FieldObservationStatus.Current, first.Status);
 
         var nextPeriodic = periodic.MoveNextAsync().AsTask();
@@ -228,7 +228,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
         store.Replace(replacement);
         Assert.True(await nextPeriodic.WaitAsync(Deadline));
         var updated = Assert.Single(periodic.Current);
-        Assert.Equal("21", updated.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("21"), updated.Value?.Integer);
         Assert.NotNull(first.ObservedAt);
         Assert.NotNull(updated.ObservedAt);
         Assert.True(first.ObservedAt.Value < updated.ObservedAt.Value);

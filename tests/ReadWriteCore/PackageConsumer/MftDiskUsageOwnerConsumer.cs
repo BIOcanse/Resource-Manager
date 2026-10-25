@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Buffers.Binary;
 using System.Text;
 using ResourceManager.App.Application.DiskUsage;
@@ -67,7 +68,7 @@ internal static class MftDiskUsageOwnerConsumer
         using var details = selectedDetails;
         using var http = new HttpClient(); var core = new ReadWriteCore(details.Backend, new DependencyActions(http, []));
         var field = core.Catalog.Fields.Single(c => c.Field.FieldName == "file_all_logical_size_actual").Field;
-        Check(core.Query(field).Read.Supported && core.ReadCached(field).Value?.Integer == "9" && opens == 1, "canonical query/cache read committed original owner");
+        Check(core.Query(field).Read.Supported && core.ReadCached(field).Value?.Integer == MetricInteger.Parse("9") && opens == 1, "canonical query/cache read committed original owner");
         var expected = new Dictionary<string, string>
         {
             ["directory_all_file_count_aggregated"] = "1", ["directory_all_logical_size_aggregated"] = "9",
@@ -78,7 +79,7 @@ internal static class MftDiskUsageOwnerConsumer
         foreach (var capability in core.Catalog.Fields)
         {
             var reading = core.ReadCached(capability.Field);
-            Check(reading.Status == FieldObservationStatus.Current && reading.Value?.Integer == expected[capability.Field.FieldName],
+            Check(reading.Status == FieldObservationStatus.Current && reading.Value?.Integer == MetricInteger.Parse(expected[capability.Field.FieldName]),
                 "canonical projection preserves exact count/bytes and legal zero");
         }
         Check(opens == 1, "canonical reads never open another volume");

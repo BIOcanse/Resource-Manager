@@ -74,6 +74,10 @@ pub const Session = struct {
     captured_at_milliseconds: u64 = 0,
     semantic_fingerprint: u64 = 0,
     phase: protocol.Phase = .empty,
+    current_region: []u8 = &.{},
+    current_values: []protocol.CurrentValue = &.{},
+    current_bytes: []u8 = &.{},
+    current_bank: u32 = 0,
 
     pub fn create(config: *const protocol.Config) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
@@ -166,6 +170,7 @@ pub const Session = struct {
 
     pub fn residentByteCount(self: *const Session) u64 {
         var total: u64 = @sizeOf(Session);
+        total += self.current_region.len;
         total += bankBytes(&self.active) + bankBytes(&self.staging);
         total += sliceBytes(GpuRecord, self.gpu_active.len) * 2;
         total += sliceBytes(u32, self.gpu_index.len) * 2;

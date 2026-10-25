@@ -30,7 +30,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
             new NetworkEnvironment(Path.Combine(Path.GetTempPath(),$"network-worker-{Guid.NewGuid():N}")),NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
         var dashboard=new DashboardMonitoringCatalogState();
-        using(var lease=owner.Acquire())dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
+        using(var lease=owner.Acquire())dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var registry=new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id=>id==zone.DisplayName?zone:new MonitoringSourceZone(id)).ToArray());
         var memory=new WindowsMemoryMonitoringZone(_=>throw new InvalidOperationException("Network demand cannot read NUMA"),()=>throw new InvalidOperationException("Network demand cannot read global memory"));
         using var sampler=new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),memory,null!,null!,null!,null!,null!,null!,null!,null!,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,registry,slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance,networkZone:zone);
@@ -62,7 +62,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
         void Check(HardwareMetricSnapshot snapshot,double? rate)
         {
             var fields=MetricDeviceFields.Read(snapshot,target.ExactIdentityKey).Single().Fields;
-            Assert.Equal("18446744073709551615",fields.Single(f=>f.Name=="network_all_rx_errors_actual").IntegerValue);
+            Assert.Equal(MetricInteger.Parse("18446744073709551615"), fields.Single(f=>f.Name=="network_all_rx_errors_actual").IntegerValue);
             var speed=fields.Single(f=>f.Name=="network_all_rx_bytes_per_second_actual");Assert.Equal(rate,speed.NumericValue);
             Assert.Equal(rate is null?(ulong?)null:1000UL,speed.SampleDurationMilliseconds);
         }

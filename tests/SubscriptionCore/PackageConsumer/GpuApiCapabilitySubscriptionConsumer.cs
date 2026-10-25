@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
@@ -193,16 +194,16 @@ internal static class GpuApiCapabilitySubscriptionConsumer
                 await publication.WaitAsync(demandTimeout.Token);
                 Require(reader.ReadCount > beforeDemand && reader.Requests.Last() == selected,
                     "the explicit OpenGL limit demand performs a role-2 query for only its selected fields");
-                Require(access.Backend.ReadCached(textureSize).Value?.Integer == "16384"
+                Require(access.Backend.ReadCached(textureSize).Value?.Integer == MetricInteger.Parse("16384")
                     && access.Backend.ReadCached(lodBias).Value?.Number == 16.25d
-                    && access.Backend.ReadCached(storageBlockSize).Value?.Integer == "4294967296",
+                    && access.Backend.ReadCached(storageBlockSize).Value?.Integer == MetricInteger.Parse("4294967296"),
                     "subscription current preserves the exact uint32, floating, and lossless decimal unsigned64 limits");
             }
         }
         await AssertLastDemandStoppedAsync(reader, failures, composition);
         var direct = await access.Backend.CollectAsync([storageBlockSize], CancellationToken.None);
         Require(direct.Single().Status == FieldObservationStatus.Current
-            && direct.Single().Value?.Integer == "4294967296"
+            && direct.Single().Value?.Integer == MetricInteger.Parse("4294967296")
             && access.Backend.ReadCached(storageBlockSize) == direct.Single(),
             "the original OpenGL limit backend remains directly usable after subscription stop");
         Console.WriteLine("[OPENGL-CORE-LIMITS-SUBSCRIPTION-PACKAGE] opt-in exact-context limits, unavailable nulls, role-2 current, selected query, original-owner borrow, cache and direct-after-stop passed; no GL native read.");
@@ -293,11 +294,11 @@ internal static class GpuApiCapabilitySubscriptionConsumer
                 Require(access.Backend.ReadCached(falseFeature).Status == FieldObservationStatus.Current
                     && access.Backend.ReadCached(falseFeature).Value?.Boolean is false,
                     "reported false feature remains a known false value");
-                Require(access.Backend.ReadCached(cube).Value?.Integer == "8192",
+                Require(access.Backend.ReadCached(cube).Value?.Integer == MetricInteger.Parse("8192"),
                     "Vulkan cube limit is delivered from the original owner current");
-                Require(access.Backend.ReadCached(arrayLayers).Value?.Integer == "0",
+                Require(access.Backend.ReadCached(arrayLayers).Value?.Integer == MetricInteger.Parse("0"),
                     "Vulkan array-layer limit preserves a known zero in the original owner current");
-                Require(access.Backend.ReadCached(texelBufferElements).Value?.Integer == "131072",
+                Require(access.Backend.ReadCached(texelBufferElements).Value?.Integer == MetricInteger.Parse("131072"),
                     "Vulkan core limit is delivered from the original owner current");
             }
         }

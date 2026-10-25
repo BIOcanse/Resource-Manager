@@ -378,10 +378,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 interval,
                 cancellationToken))
             {
-                var presentation = MetricCatalog.ApplyPresentation(snapshot);
                 await writer.WriteAsync(
                     subscription.Id,
-                    MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision),
+                    MetricSnapshotWireSnapshot.From(snapshot, snapshotRequest, catalogState.Revision),
                     cancellationToken);
             }
         });

@@ -31,7 +31,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
             null!,
             [],
             inventory,
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricReadingValue>());
 
         var result = GpuPlacementTargetInventoryProjection.Create(snapshot, ["gpu2", "gpu3"]);
 

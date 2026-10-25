@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Software;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Information;
@@ -22,7 +23,7 @@ internal static class SoftwareInformationConsumer
             if (capability.Field.FieldName == "software_all_reported_size")
             {
                 var entry = entries.Single(entry => capability.Field.DeviceIdentity == "windows-uninstall|" + entry.RegistryPath);
-                var expected = entry.ReportedSizeBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                MetricInteger? expected = entry.ReportedSizeBytes is { } size ? MetricInteger.FromUnsigned128(size) : null;
                 if (value.Value?.Integer != expected || value.Status != (expected is null
                     ? FieldObservationStatus.Unavailable : FieldObservationStatus.Current))
                     throw new InvalidDataException("Registry EstimatedSize bytes differ from the same inventory publication.");

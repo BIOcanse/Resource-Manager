@@ -86,7 +86,7 @@ public sealed class MetricDeviceFieldTests
             workspace.CompleteSource(plan, new(source.SourceHandle, 1, 1, now,
                 NativeMetricSnapshotSourceStatus.Complete, observations, null, [], 0, 0), now);
         }
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "fixture", "fixture", 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         Assert.All(snapshot.FieldBindings.Values.Where(binding => binding.Field.Resource == MetricResource.Gpu),
             binding => Assert.Equal(0xA1UL, binding.AdapterKey));
         Assert.Equal(1024UL, snapshot.Memory.AvailableBytes);
@@ -103,13 +103,13 @@ public sealed class MetricDeviceFieldTests
             Assert.Equal(binding.SourceId, value.SourceId);
             if (binding.FieldCode == MetricFieldCode.NvmlClocksEvents)
             {
-                Assert.Equal(mask.ToString(), value.IntegerValue);
+                Assert.Equal(MetricInteger.FromUnsigned128(mask), value.IntegerValue);
                 Assert.Null(value.NumericValue);
                 var json = JsonSerializer.Serialize(value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
                 Assert.Contains($"\"integerValue\":\"{mask}\"", json);
             }
             else if (binding.FieldCode == MetricFieldCode.NvmlFbUsed)
-                Assert.Equal(byteCount.ToString(), value.IntegerValue);
+                Assert.Equal(MetricInteger.FromUnsigned128(byteCount), value.IntegerValue);
             else Assert.Equal(numbers[binding.FieldCode], value.NumericValue);
         }
         // One adapter exposes separate PDH/NVML definitions, not interchangeable observations.
@@ -129,10 +129,10 @@ public sealed class MetricDeviceFieldTests
         var snapshot = CreateSnapshot(SamplingObservationStatus.Current);
         var binding = Assert.Single(snapshot.FieldBindings).Value;
         var state = new DashboardMonitoringCatalogState();
-        state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricValue>() });
+        state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricReadingValue>() });
         var request = MetricDeviceFields.CreateRequest(state.Current, binding.DeviceIdentity, [binding.Field.Name]);
         Assert.Equal(request.Ids, state.SelectSubscribable(request).Ids);
-        var cache = new LastSuccessfulHardwareMetricSnapshot();
+        using var cache = new LastSuccessfulHardwareMetricSnapshot();
         cache.Publish(snapshot, request);
         cache.RecordFailure(request, snapshot.CapturedAt.AddSeconds(1), "fixture-failed");
         var failed = Assert.Single(Assert.Single(MetricDeviceFields.Read(cache.Read()!, binding.DeviceIdentity)).Fields);
@@ -173,7 +173,7 @@ public sealed class MetricDeviceFieldTests
         var smu = Assert.Single(catalog.MetricBindings.Values, binding => binding.Field?.Name == "cpu_amd_smu_temperature_reported_celsius");
         var wmi = Assert.Single(catalog.MetricBindings.Values, binding => binding.Field?.Name == "cpu_all_temperature_reported_celsius");
         Assert.NotEqual(smu.MetricHandle, wmi.MetricHandle);
-        Assert.Contains("not established", smu.Field!.Meaning);
+        Assert.NotEqual(smu.Field!.Name, wmi.Field!.Name);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class MetricDeviceFieldTests
             workspace.CompleteSource(plan, new(source.SourceHandle,1,1,now,
                 NativeMetricSnapshotSourceStatus.Complete,observations,null,[],0,0),now);
         }
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(),"fixture","fixture",1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         var bytes = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot,binding.DeviceIdentity,
             new HashSet<string> { binding.Field!.Name })).Fields);
         Assert.Equal(SamplingObservationStatus.Current, bytes.Status);
@@ -232,9 +232,9 @@ public sealed class MetricDeviceFieldTests
                 [triggerAddress] = new("gpu-adapter|00000000000000A1", definition, triggerAddress,
                     NativeMetricSnapshotSources.PdhGpuEngine) { AdapterKey = 0xA1 }
             },
-            Items = new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase)
+            Items = new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase)
             {
-                [triggerAddress] = new(triggerAddress, definition.Name, "gpu_adapter", "99.0%", 99, "%", 99, null)
+                [triggerAddress] = new(Id: triggerAddress, NumericValue: 99, Unit: "%", Percent: 99)
                     { SourceId = NativeMetricSnapshotSources.PdhGpuEngine }
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(StringComparer.OrdinalIgnoreCase)
@@ -293,7 +293,7 @@ public sealed class MetricDeviceFieldTests
         // an adapter-level value; the trigger never enters the public committed projection.
         var triggerWithoutValue = triggerSnapshot with
         {
-            Items = new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase),
+            Items = new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase),
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(StringComparer.OrdinalIgnoreCase)
             {
                 [triggerAddress] = new(triggerAddress, SamplingObservationStatus.Unavailable, 1, 0,
@@ -314,7 +314,7 @@ public sealed class MetricDeviceFieldTests
         // The cache's request expansion must replace the internal planner seed
         // with the public typed engine dataset as well. Checking only the
         // transient projection would miss a synthetic trigger failure dataset.
-        var current = new LastSuccessfulHardwareMetricSnapshot();
+        using var current = new LastSuccessfulHardwareMetricSnapshot();
         var publication = current.Publish(projected, publicRequest);
         Assert.DoesNotContain(triggerAddress, publication.CommittedDatasetIds);
         Assert.DoesNotContain(triggerAddress, publication.RejectedDatasetIds);
@@ -358,9 +358,9 @@ public sealed class MetricDeviceFieldTests
         var now = DateTimeOffset.UtcNow;
         return new(now, new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0,0,0,0,0,"fixture",
             new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null,null,null,null)),
-            new(0,0,0,false,"fixture"), new(0,0,0,"fixture",false), [],
+            new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false), new(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false), [],
             new(SamplingObservationStatus.NotRequested,0,0,0,0,0,0,[]),
-            new Dictionary<string,MetricValue> { [address] = new(address,"fixture","Memory","",1024,"B",null,null)
+            new Dictionary<string,MetricReadingValue> { [address] = new(Id: address, NumericValue: 1024, Unit: "B", Percent: null)
                 { SourceId = "windows.memory" } })
         {
             FieldBindings = new Dictionary<string,MetricDeviceFieldBinding>

@@ -23,7 +23,7 @@ public sealed class GpuSchedulingAvailabilityReaderTests
                 .Select(index => new GpuMetrics(index, $"GPU {index}", 0, 0, 0, 0, 0, 0, 0, 0, null!))
                 .ToArray(),
             null!,
-            new Dictionary<string, MetricValue>()));
+            new Dictionary<string, MetricReadingValue>()));
 
         var availability = await new GpuSchedulingAvailabilityReader(sampler)
             .EvaluateAsync(CancellationToken.None);

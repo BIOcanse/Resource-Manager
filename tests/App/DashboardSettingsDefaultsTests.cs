@@ -482,12 +482,13 @@ public sealed class DashboardSettingsDefaultsTests
     public void MetricCatalog_GreysUnavailableSensorOptions()
     {
         var items = CreateAvailableMetrics();
-        items["cpu.coreVoltage"] = new MetricValue("cpu.coreVoltage", "CPU 电压", "CPU", "1.0 V", 1.0, "V", null, "AMD SMU / PawnIO");
-        items["cpu.stapmPower"] = new MetricValue("cpu.stapmPower", "CPU STAPM 功耗", "CPU", "N/A", null, "W", null, "AMD SMU / PawnIO");
-        items["cpu.fanRpm"] = new MetricValue("cpu.fanRpm", "CPU 风扇转速", "CPU", "N/A", null, "RPM", null, "Hardware monitor WMI");
-        items["cpu.fanPercent"] = new MetricValue("cpu.fanPercent", "CPU 风扇百分比", "CPU", "N/A", null, "%", null, "Hardware monitor WMI");
-        items["gpu.1.usage"] = new MetricValue("gpu.1.usage", "GPU1 占用率", "GPU1", "0%", 0, "%", 0, "NVIDIA GeForce test");
-        items["gpu.1.current"] = new MetricValue("gpu.1.current", "GPU1 电流", "GPU1", "N/A", null, "A", null, "NVIDIA NVML");
+        items["cpu.coreVoltage"] = new MetricReadingValue(Id: "cpu.coreVoltage", NumericValue: 1.0, Unit: "V", Percent: null);
+        items["cpu.stapmPower"] = new MetricReadingValue(Id: "cpu.stapmPower", NumericValue: null, Unit: "W", Percent: null);
+        items["cpu.fanRpm"] = new MetricReadingValue(Id: "cpu.fanRpm", NumericValue: null, Unit: "RPM", Percent: null);
+        items["cpu.fanPercent"] = new MetricReadingValue(Id: "cpu.fanPercent", NumericValue: null, Unit: "%", Percent: null);
+        items["gpu.1.usage"] = new MetricReadingValue(Id: "gpu.1.usage", NumericValue: 0, Unit: "%", Percent: 0);
+        items["gpu.1.current"] = new MetricReadingValue(Id: "gpu.1.current", NumericValue: null, Unit: "A", Percent: null)
+            { SourceId = "nvidia.nvapi" };
         var snapshot = CreateSnapshot(items);
 
         var catalog = MetricCatalog.FromSnapshot(snapshot);
@@ -507,10 +508,10 @@ public sealed class DashboardSettingsDefaultsTests
     public void MetricCatalog_ExposesMotherboardSensorOptions()
     {
         var items = CreateAvailableMetrics();
-        items["system.motherboardTemperature"] = new MetricValue("system.motherboardTemperature", "主板温度", "Motherboard", "43.0 °C", 43, "°C", null, "System");
-        items["system.vrmTemperature"] = new MetricValue("system.vrmTemperature", "供电温度", "Motherboard", "72.0 °C", 72, "°C", null, "VRM MOS");
-        items["system.chipsetTemperature"] = new MetricValue("system.chipsetTemperature", "芯片组温度", "Motherboard", "N/A", null, "°C", null, "主板");
-        items["system.motherboardVoltage"] = new MetricValue("system.motherboardVoltage", "主板电压", "Motherboard", "N/A", null, "V", null, "主板");
+        items["system.motherboardTemperature"] = new MetricReadingValue(Id: "system.motherboardTemperature", NumericValue: 43, Unit: "°C", Percent: null);
+        items["system.vrmTemperature"] = new MetricReadingValue(Id: "system.vrmTemperature", NumericValue: 72, Unit: "°C", Percent: null);
+        items["system.chipsetTemperature"] = new MetricReadingValue(Id: "system.chipsetTemperature", NumericValue: null, Unit: "°C", Percent: null);
+        items["system.motherboardVoltage"] = new MetricReadingValue(Id: "system.motherboardVoltage", NumericValue: null, Unit: "V", Percent: null);
 
         var catalog = MetricCatalog.FromSnapshot(CreateSnapshot(items));
         var motherboard = catalog.Single(static item => item.Id == "system.motherboardTemperature");
@@ -528,35 +529,19 @@ public sealed class DashboardSettingsDefaultsTests
     }
 
     [Fact]
-    public void MetricCatalog_AppliesCatalogPresentationToRawSnapshotLabels()
+    public void MetricCatalog_DescribesRawSnapshotWithoutChangingValues()
     {
         var items = CreateAvailableMetrics();
-        items["cpu.temperature"] = new MetricValue(
-            "cpu.temperature",
-            "cpu.temperature",
-            "cpu",
-            "72 °C",
-            72,
-            "°C",
-            null,
-            "AMD SMU");
-        items["gpu.0.usage"] = new MetricValue(
-            "gpu.0.usage",
-            "gpu.0.usage",
-            "gpu.0",
-            "8%",
-            8,
-            "%",
-            8,
-            "AMD Radeon");
+        items["cpu.temperature"] = new MetricReadingValue(Id: "cpu.temperature", NumericValue: 72, Unit: "°C", Percent: null);
+        items["gpu.0.usage"] = new MetricReadingValue(Id: "gpu.0.usage", NumericValue: 8, Unit: "%", Percent: 8);
 
-        var presented = MetricCatalog.ApplyPresentation(CreateSnapshot(items));
-
-        Assert.Equal("CPU 温度", presented.Items["cpu.temperature"].Label);
-        Assert.Equal(MetricGroups.Cpu, presented.Items["cpu.temperature"].Group);
-        Assert.Equal("GPU0 占用率", presented.Items["gpu.0.usage"].Label);
-        Assert.Equal(MetricGroups.Gpu(0), presented.Items["gpu.0.usage"].Group);
-        Assert.Equal("8%", presented.Items["gpu.0.usage"].DisplayValue);
+        var snapshot = CreateSnapshot(items);
+        var catalog = MetricCatalog.FromSnapshot(snapshot);
+        Assert.Equal("°C", catalog.Single(item => item.Id == "cpu.temperature").Unit);
+        Assert.True(catalog.Single(item => item.Id == "gpu.0.usage").Selectable);
+        Assert.Same(items, snapshot.Items);
+        Assert.Equal(72, snapshot.Items["cpu.temperature"].NumericValue);
+        Assert.Equal(8, snapshot.Items["gpu.0.usage"].NumericValue);
     }
 
     [Fact]
@@ -577,7 +562,7 @@ public sealed class DashboardSettingsDefaultsTests
         Assert.Equal(vram.ScopeKey, temperature.ScopeKey);
     }
 
-    private static Dictionary<string, MetricValue> CreateAvailableMetrics()
+    private static Dictionary<string, MetricReadingValue> CreateAvailableMetrics()
     {
         var metricIds = new[]
         {
@@ -618,39 +603,23 @@ public sealed class DashboardSettingsDefaultsTests
 
         return metricIds.ToDictionary(
             static id => id,
-            static id => new MetricValue(id, id, "test", "--", null, string.Empty, null, null));
+            static id => new MetricReadingValue(Id: id, NumericValue: null, Unit: string.Empty, Percent: null));
     }
 
-    private static Dictionary<string, MetricValue> CreateSelectableMetrics()
+    private static Dictionary<string, MetricReadingValue> CreateSelectableMetrics()
     {
         return CreateAvailableMetrics().ToDictionary(
             static pair => pair.Key,
-            static pair => new MetricValue(
-                pair.Key,
-                pair.Key,
-                "test",
-                "1",
-                1,
-                string.Empty,
-                null,
-                "test"));
+            static pair => new MetricReadingValue(Id: pair.Key, NumericValue: 1, Unit: string.Empty, Percent: null));
     }
 
-    private static MetricValue EmptyMetric(string id)
+    private static MetricReadingValue EmptyMetric(string id)
     {
-        return new MetricValue(
-            id,
-            id,
-            "test",
-            "-",
-            null,
-            string.Empty,
-            null,
-            "test");
+        return new MetricReadingValue(Id: id, NumericValue: null, Unit: string.Empty, Percent: null);
     }
 
     private static HardwareMetricSnapshot CreateSnapshot(
-        IReadOnlyDictionary<string, MetricValue> items,
+        IReadOnlyDictionary<string, MetricReadingValue> items,
         params GpuMetrics[] gpus)
     {
         return new HardwareMetricSnapshot(
@@ -672,8 +641,8 @@ public sealed class DashboardSettingsDefaultsTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(1, 2, 50, true, "DDR5"),
-            new VirtualMemoryMetrics(0, 0, 0, "fixed", IsSelectable: false),
+            new MemoryMetrics(UsedBytes: 1, TotalBytes: 2, UsagePercent: 50, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             gpus,
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -715,11 +684,11 @@ public sealed class DashboardSettingsDefaultsTests
             IdentityKey: identityKey);
     }
 
-    private static void AddMetrics(Dictionary<string, MetricValue> items, params string[] metricIds)
+    private static void AddMetrics(Dictionary<string, MetricReadingValue> items, params string[] metricIds)
     {
         foreach (var metricId in metricIds)
         {
-            items[metricId] = new MetricValue(metricId, metricId, "test", "--", null, string.Empty, null, null);
+            items[metricId] = new MetricReadingValue(Id: metricId, NumericValue: null, Unit: string.Empty, Percent: null);
         }
     }
 
@@ -811,7 +780,7 @@ public sealed class DashboardSettingsDefaultsTests
     /// 按机型拼一份"这台机器读得到哪些指标"。
     /// 卡片是从这份清单推出来的，所以用例只需要描述硬件，不必描述卡片。
     /// </summary>
-    private static Dictionary<string, MetricValue> ShapeMetrics(
+    private static Dictionary<string, MetricReadingValue> ShapeMetrics(
         bool integratedGpu,
         int discreteGpuCount,
         bool unifiedMemoryGpu = false)
@@ -859,7 +828,7 @@ public sealed class DashboardSettingsDefaultsTests
 
         return ids.Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(
             static id => id,
-            static id => new MetricValue(id, id, "test", "--", null, string.Empty, null, null),
+            static id => new MetricReadingValue(Id: id, NumericValue: null, Unit: string.Empty, Percent: null),
             StringComparer.OrdinalIgnoreCase);
     }
 
@@ -873,7 +842,7 @@ public sealed class DashboardSettingsDefaultsTests
     [Fact]
     public void NewDefaultsUseBuiltinFallbacksAndAppendIoWithoutComponentPlaceholders()
     {
-        var items = new Dictionary<string, MetricValue>();
+        var items = new Dictionary<string, MetricReadingValue>();
         AddMetrics(items, "cpu.usage", "cpu.frequency", "cpu.frequencyPercent", "memory.usage", "memory.percent",
             "virtualMemory.usage", "virtualMemory.percent", "disk.total.activePercent", "disk.total.readBytesPerSec",
             "network.total.receiveBytesPerSec", "network.total.sendBytesPerSec");
@@ -906,7 +875,7 @@ public sealed class DashboardSettingsDefaultsTests
         var bundled = DashboardSettingsDefaults.Create();
         Assert.Equal(new[] { "cpu", "memory", "disk-network" }, bundled.Cards.Select(c => c.Id));
         Assert.DoesNotContain(bundled.Cards.SelectMany(c => c.Small), id => id.EndsWith("temperature"));
-        var snapshot = CreateSnapshot(new Dictionary<string, MetricValue>());
+        var snapshot = CreateSnapshot(new Dictionary<string, MetricReadingValue>());
         Assert.DoesNotContain(MetricCatalog.FromSnapshot(snapshot), d => d.Id.StartsWith("gpu."));
         Assert.DoesNotContain(DashboardSettingsDefaults.Create(snapshot).Cards, c => c.Id.StartsWith("gpu"));
         var current = DashboardSettingsDefaults.Create(snapshot) with
@@ -923,7 +892,7 @@ public sealed class DashboardSettingsDefaultsTests
     [Fact]
     public void FactoryLayoutUpdatesAfterCapabilityDiscoveryButManualSaveRetainsUserChoices()
     {
-        var initial = CreateSnapshot(new Dictionary<string, MetricValue>());
+        var initial = CreateSnapshot(new Dictionary<string, MetricReadingValue>());
         var migrator = new DashboardSettingsMigrator();
         var reset = migrator.MigrateForRead(DashboardSettingsDefaults.Create() with { Version = 15 }, initial);
         Assert.True(reset.UsesFactoryDefaults);

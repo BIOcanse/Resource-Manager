@@ -9,16 +9,11 @@ public static class NativeMetricSnapshotCommittedProjection
 {
     public static HardwareMetricSnapshot Create(
         NativeMetricSnapshotCommittedFrame frame,
-        string cpuName,
-        string memoryHardwareDescription,
-        ulong workspaceIdentity,
-        string virtualMemoryDetail = "",
-        Func<string, string>? legacyLabel = null)
-        => Create(frame, cpuName, memoryHardwareDescription, workspaceIdentity, virtualMemoryDetail, legacyLabel, null);
+        ulong workspaceIdentity)
+        => Create(frame: frame, workspaceIdentity: workspaceIdentity, sourceSelection: null);
 
     internal static HardwareMetricSnapshot Create(
-        NativeMetricSnapshotCommittedFrame frame, string cpuName, string memoryHardwareDescription,
-        ulong workspaceIdentity, string virtualMemoryDetail, Func<string, string>? legacyLabel,
+        NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity,
         MetricReadingSelection? sourceSelection)
     {
         ArgumentNullException.ThrowIfNull(frame);
@@ -46,7 +41,7 @@ public static class NativeMetricSnapshotCommittedProjection
         var cpuFrequencyPercent =
             Get(readings, "cpu.frequencyPercent");
         var cpu = new CpuMetrics(
-             cpuName,
+             frame.Catalog.CpuModelName ?? string.Empty,
              cpuUsage.Value,
              cpuUsage.IsAvailable,
              CpuStatus(frame, cpuUsage.Status),
@@ -59,13 +54,8 @@ public static class NativeMetricSnapshotCommittedProjection
             CreateCpuSensors(frame, readings));
         var memoryUsed = Get(readings, "memory.usage");
         var memoryTotal = Get(readings, "memory.total");
-        var memory = new MemoryMetrics(
-            ToUInt64(memoryUsed.Value),
-            ToUInt64(memoryTotal.Value),
-            RatioPercent(memoryUsed, memoryTotal),
-            memoryUsed.IsAvailable
-                && memoryTotal.IsAvailable,
-            memoryHardwareDescription)
+        var memory = new MemoryMetrics(UsedBytes: ToUInt64(memoryUsed), TotalBytes: ToUInt64(memoryTotal), UsagePercent: RatioPercent(memoryUsed, memoryTotal), IsUsageAvailable: memoryUsed.IsAvailable
+                && memoryTotal.IsAvailable)
         {
             AvailableBytes = UInt64OrNull(readings, "memory.availableBytes"),
             ObservationStatus = ProjectCompositeObservationStatus(
@@ -74,12 +64,7 @@ public static class NativeMetricSnapshotCommittedProjection
         };
         var virtualUsed = Get(readings, "virtualMemory.usage");
         var virtualTotal = Get(readings, "virtualMemory.total");
-        var virtualMemory = new VirtualMemoryMetrics(
-            ToUInt64(virtualUsed.Value),
-            ToUInt64(virtualTotal.Value),
-            RatioPercent(virtualUsed, virtualTotal),
-            virtualMemoryDetail,
-            virtualUsed.IsAvailable && virtualTotal.IsAvailable)
+        var virtualMemory = new VirtualMemoryMetrics(UsedBytes: ToUInt64(virtualUsed), TotalBytes: ToUInt64(virtualTotal), UsagePercent: RatioPercent(virtualUsed, virtualTotal), IsSelectable: virtualUsed.IsAvailable && virtualTotal.IsAvailable)
         {
             CommitPeakBytes = UInt64OrNull(readings, "virtualMemory.commitPeakBytes"),
             SystemCacheBytes = UInt64OrNull(readings, "memory.systemCacheBytes"),
@@ -94,7 +79,7 @@ public static class NativeMetricSnapshotCommittedProjection
         };
         var gpus = CreateGpus(frame, readings);
         var inventory = CreateGpuInventory(frame, readings);
-        var items = CreateItems(frame, readings, memory, virtualMemory, legacyLabel);
+        var items = CreateItems(frame, readings);
         var datasets = CreateDatasetObservations(
             frame,
             readings,
@@ -350,8 +335,8 @@ public static class NativeMetricSnapshotCommittedProjection
                 0,
                 graphicsClockPercent.Value,
                 ToInt(memoryClock.Value),
-                ToUInt64(usedMemory.Value),
-                ToUInt64(totalMemory.Value),
+                ToUInt64(usedMemory),
+                ToUInt64(totalMemory),
                 RatioPercent(usedMemory, totalMemory),
                 new GpuSensorMetrics(
                     ProviderState(frame, binding.ScopeHandle, readings),
@@ -448,8 +433,8 @@ public static class NativeMetricSnapshotCommittedProjection
                 Status(usage.Status),
                 capacityStatus,
                 usage.Value,
-                ToUInt64(used.Value),
-                ToUInt64(total.Value),
+                ToUInt64(used),
+                ToUInt64(total),
                 row.SourceGeneration,
                 DateTimeOffset.FromUnixTimeMilliseconds(
                         checked((long)row.ObservedAtMilliseconds))
@@ -471,14 +456,11 @@ public static class NativeMetricSnapshotCommittedProjection
             adapters);
     }
 
-    private static IReadOnlyDictionary<string, MetricValue> CreateItems(
+    private static IReadOnlyDictionary<string, MetricReadingValue> CreateItems(
         NativeMetricSnapshotCommittedFrame frame,
-        IReadOnlyDictionary<string, Reading> readings,
-        MemoryMetrics memory,
-        VirtualMemoryMetrics virtualMemory,
-        Func<string, string>? legacyLabel)
+        IReadOnlyDictionary<string, Reading> readings)
     {
-        var items = new Dictionary<string, MetricValue>(
+        var items = new Dictionary<string, MetricReadingValue>(
             StringComparer.OrdinalIgnoreCase);
         foreach (var (id, reading) in readings)
         {
@@ -486,81 +468,21 @@ public static class NativeMetricSnapshotCommittedProjection
             if (id != binding.MetricId && binding.FieldCode is MetricFieldCode.MemoryTotal
                 or MetricFieldCode.CommitLimit or MetricFieldCode.GpuMemoryTotal) continue;
             var field = binding.Field;
-            var presentation = Presentation(field?.Unit ?? string.Empty, reading.Value);
             var valueAvailable = reading.IsAvailable;
-            var detail = SourceId(
-                frame,
-                reading.Output.SourceHandle);
-            if (id == binding.MetricId)
+            var capacityId = binding.FieldCode switch
             {
-                // Custom hand-built frames can omit catalog presentation metadata.
-                detail = binding.FieldDetail ?? (field?.Meaning is { } meaning ? detail + "; " + meaning : detail);
-            }
-            if (id != binding.MetricId && binding.FieldCode == MetricFieldCode.MemoryUsed)
+                MetricFieldCode.MemoryUsed => "memory.total",
+                MetricFieldCode.CommitUsed => "virtualMemory.total",
+                MetricFieldCode.GpuMemoryUsed => $"gpu.{binding.DisplayIndex}.vramTotal",
+                _ => string.Empty
+            };
+            items[id] = new MetricReadingValue(Id: id,
+                NumericValue: valueAvailable && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Float64
+                    ? reading.Value : null,
+                Unit: field?.Unit ?? string.Empty,
+                Total: valueAvailable ? ValueOrNull(readings, capacityId) : null)
             {
-                presentation = new PresentationValue(
-                    string.Empty,
-                    memory.UsedBytes,
-                    MetricUnits.Bytes,
-                    memory.UsagePercent,
-                    memory.TotalBytes);
-                valueAvailable = memory.IsUsageAvailable;
-            }
-            else if (id != binding.MetricId && binding.FieldCode == MetricFieldCode.CommitUsed)
-            {
-                presentation = new PresentationValue(
-                    string.Empty,
-                    virtualMemory.UsedBytes,
-                    MetricUnits.Bytes,
-                    virtualMemory.UsagePercent,
-                    virtualMemory.TotalBytes);
-                valueAvailable = virtualMemory.IsSelectable;
-            }
-            else if (id != binding.MetricId && binding.FieldCode == MetricFieldCode.GpuMemoryUsed)
-            {
-                var totalMetricId = string.Empty;
-                foreach (var row in frame.Catalog.MetricBindings.Values)
-                {
-                    if (row.ScopeHandle != binding.ScopeHandle
-                        || row.FieldCode != MetricFieldCode.GpuMemoryTotal) continue;
-                    totalMetricId = row.MetricId;
-                    break;
-                }
-                var total = Get(readings, totalMetricId);
-                presentation = new PresentationValue(
-                    string.Empty,
-                    ToUInt64(reading.Value),
-                    MetricUnits.Bytes,
-                    RatioPercent(reading, total),
-                    ToUInt64(total.Value));
-                valueAvailable = reading.IsAvailable && total.IsAvailable;
-            }
-            if ((id == binding.MetricId && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Unsigned64)
-                || reading.Output.ValueKind is (uint)NativeMetricSnapshotValueKind.Unsigned128 or (uint)NativeMetricSnapshotValueKind.Bytes or (uint)NativeMetricSnapshotValueKind.Boolean)
-                presentation = new PresentationValue(string.Empty, null, presentation.Unit, null);
-            if (!valueAvailable)
-            {
-                presentation = presentation with
-                {
-                    // 容量类指标不带显示字符串，空读数就是 Numeric 为 null，前端自己说「无数据」。
-                    Display = presentation.Unit == MetricUnits.Bytes ? string.Empty : "N/A",
-                    Numeric = null,
-                    Percent = null,
-                    Total = null
-                };
-            }
-            var isBitmask = field?.Unit == "bitmask64";
-            items[id] = new MetricValue(
-                id,
-                id == binding.MetricId ? field?.Name ?? id : legacyLabel?.Invoke(id) ?? id,
-                binding.FieldGroup ?? field?.Resource.ToString() ?? string.Empty,
-                isBitmask ? string.Empty : presentation.Display,
-                isBitmask ? null : presentation.Numeric,
-                presentation.Unit,
-                presentation.Percent,
-                detail,
-                presentation.Total)
-            {
+                FieldCode = binding.FieldCode,
                 FieldName = field?.Name,
                 DeviceIdentity = binding.DeviceIdentity,
                 SourceId = SourceId(frame, reading.Output.SourceHandle),
@@ -569,16 +491,17 @@ public static class NativeMetricSnapshotCommittedProjection
                     ? reading.Output.SampleDurationMilliseconds : null,
                 IntegerValue = valueAvailable ? (NativeMetricSnapshotValueKind)reading.Output.ValueKind switch
                 {
-                    NativeMetricSnapshotValueKind.Signed64 => unchecked((long)reading.Output.ValueBits)
-                        .ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    NativeMetricSnapshotValueKind.Unsigned64 => reading.Output.ValueBits.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    NativeMetricSnapshotValueKind.Unsigned128 => (((UInt128)reading.Output.ValueHighBits << 64) | reading.Output.ValueBits)
-                        .ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    NativeMetricSnapshotValueKind.Signed64 => MetricInteger.FromSigned64(unchecked((long)reading.Output.ValueBits)),
+                    NativeMetricSnapshotValueKind.Unsigned64 => new MetricInteger(reading.Output.ValueBits),
+                    NativeMetricSnapshotValueKind.Unsigned128 => new MetricInteger(reading.Output.ValueBits, reading.Output.ValueHighBits),
                     _ => null
                 } : null,
                 BytesValue = DecodeBytes(reading),
                 BooleanValue = valueAvailable && reading.Output.ValueKind == (uint)NativeMetricSnapshotValueKind.Boolean
-                    ? reading.Output.ValueBits == 1 : null
+                    ? reading.Output.ValueBits == 1 : null,
+                Status = Status(reading.Status),
+                ObservedAt = reading.Output.ObservedAtMilliseconds == 0 ? null
+                    : DateTimeOffset.FromUnixTimeMilliseconds(checked((long)reading.Output.ObservedAtMilliseconds))
             };
         }
         return items;
@@ -616,7 +539,7 @@ public static class NativeMetricSnapshotCommittedProjection
             .FirstOrDefault(static value => value.IsAvailable);
         return reading.Output.SourceHandle == 0
             ? new HardwareSensorProviderState(
-                "Host Manager metric snapshot",
+                string.Empty,
                 HardwareSensorProviderStates.Unavailable,
                 null)
             : new HardwareSensorProviderState(
@@ -634,7 +557,7 @@ public static class NativeMetricSnapshotCommittedProjection
             frame.Catalog.MetricBindings.GetValueOrDefault(pair.Value.Output.MetricHandle).Field?.Resource == resource
             && pair.Value.IsAvailable);
         return new HardwareSensorProviderState(
-            "Host Manager metric snapshot",
+            string.Empty,
             available ? HardwareSensorProviderStates.Active : HardwareSensorProviderStates.Unavailable,
             null);
     }
@@ -653,10 +576,10 @@ public static class NativeMetricSnapshotCommittedProjection
     }
 
     private static ulong? UInt64OrNull(IReadOnlyDictionary<string, Reading> readings, string id)
-        => ValueOrNull(readings, id) is { } value ? ToUInt64(value) : null;
+        => Get(readings, id) is { IsAvailable: true } reading ? ToUInt64(reading) : null;
 
     private static uint? UInt32OrNull(IReadOnlyDictionary<string, Reading> readings, string id)
-        => ValueOrNull(readings, id) is >= 0 and <= uint.MaxValue and var value ? (uint)value : null;
+        => UInt64OrNull(readings, id) is <= uint.MaxValue and var value ? (uint)value : null;
 
     private static unsafe byte[]? DecodeBytes(Reading reading)
     {
@@ -794,32 +717,26 @@ public static class NativeMetricSnapshotCommittedProjection
         NativeMetricSnapshotCommittedFrame frame,
         ulong sourceHandle)
         => frame.Catalog.SourceIds.GetValueOrDefault(sourceHandle)
-            ?? "Host Manager metric snapshot";
+            ?? string.Empty;
 
-    private static PresentationValue Presentation(string unit, double value)
-        => unit switch
-        {
-            "%" => new($"{value:0.#}%", value, unit, value),
-            "MHz" => new($"{value:0} MHz", value, unit, null),
-            "°C" => new($"{value:0.#} °C", value, unit, null),
-            "V" => new($"{value:0.###} V", value, unit, null),
-            "A" => new($"{value:0.#} A", value, unit, null),
-            "W" => new($"{value:0.#} W", value, unit, null),
-            "RPM" => new($"{value:0} RPM", value, unit, null),
-            "B" or "bitmask64" => new(string.Empty, value, unit, null),
-            "B/s" => new($"{value / 1024d / 1024d:0.##} MB/s", value, unit, null),
-            _ => new(value.ToString("0.##"), value, unit, null)
-        };
 
     private static int ToInt(double value)
         => double.IsFinite(value) && value > 0
             ? checked((int)Math.Round(value))
             : 0;
 
-    private static ulong ToUInt64(double value)
-        => double.IsFinite(value) && value > 0
-            ? checked((ulong)Math.Round(value))
-            : 0;
+    private static ulong ToUInt64(Reading reading)
+    {
+        if (!reading.IsAvailable) return 0;
+        return (NativeMetricSnapshotValueKind)reading.Output.ValueKind switch
+        {
+            NativeMetricSnapshotValueKind.Unsigned64 => reading.Output.ValueBits,
+            NativeMetricSnapshotValueKind.Signed64 when reading.Output.ValueBits <= long.MaxValue => reading.Output.ValueBits,
+            NativeMetricSnapshotValueKind.Float64 => double.IsFinite(reading.Value) && reading.Value > 0
+                ? checked((ulong)Math.Round(reading.Value)) : 0,
+            _ => throw new InvalidDataException("The aggregate field requires a declared nonnegative numeric value.")
+        };
+    }
 
     private readonly record struct Reading(
         NativeMetricSnapshotMetricOutput Output,
@@ -832,10 +749,4 @@ public static class NativeMetricSnapshotCommittedProjection
             NativeMetricSnapshotCommittedProjection.IsAvailable(Status);
     }
 
-    private readonly record struct PresentationValue(
-        string Display,
-        double? Numeric,
-        string Unit,
-        double? Percent,
-        double? Total = null);
 }

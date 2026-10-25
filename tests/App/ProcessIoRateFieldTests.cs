@@ -34,8 +34,8 @@ public sealed class ProcessIoRateFieldTests
         Assert.Equal(13, first.ProcessFields!.Fields.Count); Assert.Equal(6, Rates.Length);
         Assert.All(first.ProcessFields.Processes.Single().Values.Where(value => Rates.Contains(value.Field)), static value => Assert.Null(value.NumericValue));
         Assert.Null(first.ProcessFields.Processes.Single().IoInterval);
-        Assert.Equal(large.ToString(CultureInfo.InvariantCulture), Basic.Value(first, "process_all_io_read_operations_actual").IntegerValue);
-        Assert.Equal(((UInt128)large * 3).ToString(CultureInfo.InvariantCulture), Basic.Value(first, "process_all_io_operations_actual").IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(large), Basic.Value(first, "process_all_io_read_operations_actual").IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(((UInt128)large * 3)), Basic.Value(first, "process_all_io_operations_actual").IntegerValue);
         clock.Ticks = 3000; api.IoValue = new(large + 2, large + 4, large + 6, large + 8, large + 10, large);
         var second = await fixture.Sampler.CaptureSnapshotAsync(Basic.Request(IoFields), default);
         double[] expected = [1, 2, 3, 4, 5, 0];

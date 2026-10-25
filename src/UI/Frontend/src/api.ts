@@ -26,7 +26,6 @@ import type {
   GpuSpecializedTelemetrySnapshot,
   LocalOnlineSearchResult,
   ManualSoftwareRequest,
-  MetricDefinition,
   PortableSoftwareRootConfirmationResult,
   ResourceBarSettings,
   AppOptimizationMode,
@@ -43,6 +42,8 @@ import { decodeHostManagerSmartCoordinatorStatus } from
   "./data/optimization/hostManagerSmartStatusSource.ts";
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
 import { reportRuleSettingsDecoder } from "./data/appSettings/reportRuleSettingsDecoder.ts";
+import { metricCatalogDecoder } from "./data/monitor/monitorSourceDecoders.ts";
+import { metricOfferedInPicker } from "./presentation/metricPresentation.ts";
 import { uiText } from "./text.ts";
 import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
 
@@ -78,7 +79,7 @@ export async function getReportRuleSettings(signal?: AbortSignal) {
 }
 
 export async function getMetricCatalog() {
-  return getJson<MetricDefinition[]>("/api/metrics/catalog");
+  return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
 export async function getPerformanceOverlaySettings(softwareId: string) {
@@ -87,7 +88,8 @@ export async function getPerformanceOverlaySettings(softwareId: string) {
 }
 
 export async function getPerformanceOverlayMetricCatalog() {
-  return getJson<MetricDefinition[]>("/api/performance-overlay/metrics/catalog");
+  return metricCatalogDecoder.decode(await getJson<unknown>("/api/performance-overlay/metrics/catalog"))
+    .filter(metricOfferedInPicker);
 }
 
 export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings) {

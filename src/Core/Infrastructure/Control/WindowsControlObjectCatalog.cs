@@ -1,5 +1,6 @@
 using ResourceManager.ReadWrite.Windows.Metrics.Writes;
 using ResourceManager.App.Application.Control;
+using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
@@ -25,7 +26,8 @@ public sealed class WindowsControlObjectCatalog(
     IEnumerable<IControlWriter> writers,
     IControlAccessLevel accessLevel,
     FanControlCoreClient fanCore,
-    WindowsChassisKindReader chassis) : IControlObjectCatalog
+    WindowsChassisKindReader chassis,
+    IMetricSnapshotObservationSource observations) : IControlObjectCatalog
 {
     /// <summary>读显卡出厂唯一标识用的。读不到就退到型号，见 ControlInstanceIdentity。</summary>
     private readonly NvidiaNvmlControlBridge uniqueIdReader = new();
@@ -48,7 +50,9 @@ public sealed class WindowsControlObjectCatalog(
     /// frame. Does not probe writers, capture baselines or publish another current.</summary>
     internal ControlObjectCatalog ReadDeclaredObjects(HardwareMetricSnapshot? snapshot = null, MetricResource? resource = null)
     {
-        snapshot ??= catalogState.Current;
+        // Declared topology is sufficient before the first completed capture;
+        // numeric controls and fan observations always come from native current.
+        snapshot ??= observations.ReadLatest(MetricSampleRequest.All) ?? catalogState.Current;
         var objects = new List<ControlObject>();
         if (snapshot is not null)
         {
@@ -950,8 +954,7 @@ public sealed class WindowsControlObjectCatalog(
             && cpuFan.NumericValue is { } rpm
             && double.IsFinite(rpm))
         {
-            var notebook = cpuFan.Detail?.Contains("notebook", StringComparison.OrdinalIgnoreCase)
-                == true;
+            var notebook = cpuFan.SourceId == "notebook.oem-fan";
             objects.Add(new ControlObject(
                 $"{FanControlWriter.ObjectIdPrefix}0",
                 ControlObjectKinds.Fan,
@@ -960,7 +963,7 @@ public sealed class WindowsControlObjectCatalog(
                     ControlOperatingSystems.Windows,
                     notebook ? ControlVendors.Oem : ControlVendors.Unknown),
                 ChassisFanCapabilities(curvePointLimit: null),
-                cpuFan.Detail, Ordinal: 0));
+                null, Ordinal: 0));
         }
 
         /*

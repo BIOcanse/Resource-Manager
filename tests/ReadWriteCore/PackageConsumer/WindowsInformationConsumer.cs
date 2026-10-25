@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -17,9 +18,9 @@ internal static class WindowsInformationConsumer
         { PathReported = "recorded", CapacityPages = ulong.MaxValue, UsedPages = 0, PageSizeBytes = uint.MaxValue };
         var frame = WindowsInformationFieldProjection.PageFiles([page], observed);
         var capacity = Read(frame, page.DeviceIdentity, DeviceInformationFieldRegistry.MemoryAllPagefileCapacity);
-        Require(capacity.Value?.Integer == ((UInt128)ulong.MaxValue * uint.MaxValue).ToString(CultureInfo.InvariantCulture),
+        Require(capacity.Value?.Integer == MetricInteger.FromUnsigned128((UInt128)ulong.MaxValue * uint.MaxValue),
             "independent pagefile byte conversion retains full width");
-        Require(Read(frame, page.DeviceIdentity, DeviceInformationFieldRegistry.MemoryAllPagefileUsed).Value?.Integer == "0",
+        Require(Read(frame, page.DeviceIdentity, DeviceInformationFieldRegistry.MemoryAllPagefileUsed).Value?.Integer == MetricInteger.Parse("0"),
             "successful zero pagefile occupancy");
         var volume = new DeviceTopologyVolumeSpaceInformation("windows-volume|recorded")
         {
@@ -29,7 +30,7 @@ internal static class WindowsInformationConsumer
         };
         var volumes = WindowsInformationFieldProjection.Volumes([volume], observed);
         Require(Read(volumes, volume.DeviceIdentity, DeviceInformationFieldRegistry.VolumeAllSizeActual).Value?.Integer
-            == UInt128.MaxValue.ToString(CultureInfo.InvariantCulture), "independent volume capacity retains UInt128");
+            == MetricInteger.FromUnsigned128(UInt128.MaxValue), "independent volume capacity retains UInt128");
         Require(Read(volumes, volume.DeviceIdentity, DeviceInformationFieldRegistry.VolumeAllUserAvailableBytesActual).Value is null,
             "unknown caller quota remains empty");
         var extent = Read(volumes, volume.DeviceIdentity, DeviceInformationFieldRegistry.VolumeAllDiskExtentsReported).Value!.Structure!.Value[0];
@@ -42,7 +43,7 @@ internal static class WindowsInformationConsumer
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var restored = JsonSerializer.Deserialize<DeviceInformationSnapshot>(JsonSerializer.Serialize(volumes, options), options)!;
         Require(Read(restored, volume.DeviceIdentity, DeviceInformationFieldRegistry.VolumeAllSizeActual).Value?.Integer
-            == UInt128.MaxValue.ToString(CultureInfo.InvariantCulture), "canonical frame round trip owns exact data");
+            == MetricInteger.FromUnsigned128(UInt128.MaxValue), "canonical frame round trip owns exact data");
 
         using var current = Process.GetCurrentProcess();
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);

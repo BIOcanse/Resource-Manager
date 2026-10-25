@@ -518,6 +518,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             return new RecordingSubscription(static () => { });
         }
 
-        public void Dispose() => Assert.True(owner.CloseHostedRun(run, DateTimeOffset.UtcNow, "fixture-stop"));
+        public void Dispose()
+        {
+            Assert.True(owner.CloseHostedRun(run, DateTimeOffset.UtcNow, "fixture-stop"));
+            owner.Dispose();
+        }
     }
 }

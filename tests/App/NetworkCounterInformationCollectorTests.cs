@@ -31,7 +31,8 @@ public sealed partial class NetworkCounterInformationCollectorTests
         var offsets = data.RootElement.GetProperty("counterOffsets").EnumerateObject().ToArray();
         for (var i = 0; i < offsets.Length; i++)
         {
-            var field = fields.Single(field => field.Meaning!.Contains("MIB_IF_ROW2 " + offsets[i].Name + " cumulative", StringComparison.Ordinal));
+            var field = fields.Single(field => field.ValueKind == "unsigned64"
+                && IpHelperNetworkMonitoringZone.CounterOffset(field.Code) == offsets[i].Value.GetInt32());
             Assert.Equal(offsets[i].Value.GetInt32(), IpHelperNetworkMonitoringZone.CounterOffset(field.Code));
             Assert.Equal(expected[i], read.Counters[field.Code]);
             Assert.Equal("unsigned64", field.ValueKind); Assert.False(field.HasLegacyAddress);
@@ -157,11 +158,11 @@ public sealed partial class NetworkCounterInformationCollectorTests
     public void RawUnsignedCounterPublishesWithoutDoubleNarrowingAndFailureIsNull()
     {
         using var h = new Workspace();
-        Assert.Equal("18446744073709551615", h.PublishUnsigned(ulong.MaxValue).IntegerValue);
-        Assert.Equal("9007199254740993", h.PublishUnsigned(9007199254740993).IntegerValue);
-        Assert.Equal("0", h.PublishUnsigned(0).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("18446744073709551615"), h.PublishUnsigned(ulong.MaxValue).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), h.PublishUnsigned(9007199254740993).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("0"), h.PublishUnsigned(0).IntegerValue);
         Assert.Null(h.PublishUnsigned(null).IntegerValue);
-        Assert.Equal("5", h.PublishUnsigned(5).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("5"), h.PublishUnsigned(5).IntegerValue);
     }
 
     [Fact]
@@ -331,7 +332,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
     {
         using var h = new Workspace();
         h.PublishUnsigned(ulong.MaxValue); h.Publish(new(0,0,1000)); h.Publish(new(200,1000,1000));
-        return NativeMetricSnapshotCommittedProjection.Create(h.Native.ReadCommitted(),"CPU","RAM",1);
+        return NativeMetricSnapshotCommittedProjection.Create(frame: h.Native.ReadCommitted(), workspaceIdentity: 1);
     }
     internal static IReadOnlyDictionary<string,IReadOnlySet<MetricFieldCode>> Request(NetworkInterfaceCatalogIdentity device,params MetricFieldCode[] fields)
         =>new Dictionary<string,IReadOnlySet<MetricFieldCode>> { [device.ExactIdentityKey]=fields.ToHashSet() };
@@ -394,7 +395,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
         }
         internal DeviceMetricFieldValue ReadField()=>ReadField(Identities[0],MetricFieldCode.NetworkRxRate);
         private DeviceMetricFieldValue ReadField(NetworkInterfaceCatalogIdentity device,MetricFieldCode field)
-            =>MetricDeviceFields.Read(NativeMetricSnapshotCommittedProjection.Create(Native.ReadCommitted(),"CPU","RAM",1),device.ExactIdentityKey).Single().Fields.Single(f=>f.Name==MetricFieldRegistry.Definitions.Single(definition=>definition.Code==field).Name);
+            =>MetricDeviceFields.Read(NativeMetricSnapshotCommittedProjection.Create(frame: Native.ReadCommitted(), workspaceIdentity: 1),device.ExactIdentityKey).Single().Fields.Single(f=>f.Name==MetricFieldRegistry.Definitions.Single(definition=>definition.Code==field).Name);
         internal NativeMetricSnapshotMetricOutput ReadNative()=>Native.ReadCommitted().Metrics.Single(m=>m.MetricHandle==Handle);
         public void Dispose()=>Native.Dispose();
     }

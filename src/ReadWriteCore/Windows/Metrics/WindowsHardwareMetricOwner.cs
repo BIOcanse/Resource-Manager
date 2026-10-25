@@ -31,7 +31,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
     private NativeMetricSnapshotCatalogTopologySnapshot? topology;
     private IDisposable? intelFanDirectoryLease;
     private IDisposable? npuEngineDirectoryLease;
-    private HardwareMetricSnapshot? catalogSnapshot;
+    private HardwareMetricCatalog? catalogSnapshot;
     private ulong workspaceIdentity;
     private bool topologyRefreshRequested = true;
     private int disposed;
@@ -85,14 +85,21 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
     public IReadWriteBackend CreateBackend()
     {
         lock (backendGate) return backend ??= new MetricReadWriteBackend(
-            () => Volatile.Read(ref catalogSnapshot), _ => current.Read(), CaptureAsync,
-            snapshot => Volatile.Write(ref catalogSnapshot, snapshot), ReadSupport,
+            ReadCatalog, _ => current.Read(), CaptureAsync,
+            snapshot => Volatile.Write(ref catalogSnapshot, HardwareMetricCatalog.FromSnapshot(snapshot)), ReadSupport,
             binding => controlFields.IsControlBinding(binding) ? controlFields.Query(binding)
                 : nvidiaWriter?.Query(binding) ?? OperationSupport.Unsupported("metric-write-owner-not-bound"),
-            WriteAsync, controlFields.GetContract);
+            WriteAsync, controlFields.GetContract, current.ReadItems);
     }
 
-    private OperationSupport ReadSupport(HardwareMetricSnapshot _, MetricDeviceFieldBinding binding)
+    private HardwareMetricCatalog? ReadCatalog()
+    {
+        var catalog = Volatile.Read(ref catalogSnapshot);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        return catalog;
+    }
+
+    private OperationSupport ReadSupport(HardwareMetricCatalog _, MetricDeviceFieldBinding binding)
     {
         if (controlFields.IsControlBinding(binding)) return controlFields.ReadSupport(binding);
         var dependencies = MetricReadWriteBackend.DependenciesOf(binding.SourceId);
@@ -143,7 +150,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
             var readingCatalogChanged = false;
             var snapshot = await capture.CaptureUnderGateAsync(request, active, workspaceIdentity, topology,
                 commit => CommitCollection(commit, permit, borrow),
-                new(""), cancellationToken, onCommitted: request.IsCatalogProbe ? null : completed =>
+                cancellationToken, onCommitted: request.IsCatalogProbe ? null : completed =>
                 {
                     current.Publish(completed, request);
                     var catalog = Volatile.Read(ref catalogSnapshot);
@@ -155,14 +162,17 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
                 },
                 enrichBeforeCommit: EnrichControlFieldsAsync,
                 sourceQueriesCompleted: sourceQueriesCompleted,
-                fieldCatalog: Volatile.Read(ref catalogSnapshot));
+                fieldCatalog: Volatile.Read(ref catalogSnapshot)?.CreateSnapshot());
             if (request.IsCatalogProbe && snapshot is not null)
                 nvidiaWriter?.Discover(snapshot, modeProvider(NativeMetricSnapshotSources.NvidiaNvml) == NativeMetricSnapshotZoneMode.Freeze);
             if (!request.IsCatalogProbe && snapshot is not null)
+            {
                 Publications.Publish(readingCatalogChanged
                     ? PublicationKeys(request, snapshot).Append(MetricDatasetIds.SystemMetricCatalog)
                     : PublicationKeys(request, snapshot));
-            return snapshot;
+                return current.Read() ?? throw new InvalidOperationException("The accepted metric collection did not publish a current value.");
+            }
+            return snapshot is null ? null : HardwareMetricCatalog.FromSnapshot(snapshot).CreateSnapshot();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception)
@@ -323,6 +333,8 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
         try
         {
             capture.ReleasePlatformSensorDemand();
+            current.Dispose();
+            Volatile.Write(ref catalogSnapshot, null);
             try { workspace?.Dispose(); }
             finally
             {

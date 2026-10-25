@@ -1,4 +1,5 @@
 const std = @import("std");
+const current = @import("current.zig");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const session_module = @import("session.zig");
@@ -264,6 +265,45 @@ pub export fn rm_metric_snapshot_read(
         mutableSlice(protocol.RuleStateOutput, rules, rule_capacity) orelse
             return code(.invalid_argument),
     ));
+}
+
+pub export fn rm_metric_snapshot_commit_current(handle: ?*anyopaque,
+    input: ?*const protocol.CurrentCommitInput, requested: ?[*]const u64, requested_count: u32,
+    retired: ?[*]const u64, retired_count: u32, values: ?[*]const protocol.CurrentValue, value_count: u32,
+    bytes: ?[*]const u8, byte_count: u32, resident: ?[*]u8, resident_bytes: u64) callconv(.c) i32
+{
+    return code(current.commit(getSession(handle) orelse return code(.invalid_argument),
+        input orelse return code(.invalid_argument),
+        constSlice(u64, requested, requested_count) orelse return code(.invalid_argument),
+        constSlice(u64, retired, retired_count) orelse return code(.invalid_argument),
+        constSlice(protocol.CurrentValue, values, value_count) orelse return code(.invalid_argument),
+        constSlice(u8, bytes, byte_count) orelse return code(.invalid_argument),
+        if (resident_bytes > std.math.maxInt(u32)) return code(.invalid_argument) else
+            mutableSlice(u8, resident, @intCast(resident_bytes)) orelse return code(.invalid_argument)));
+}
+
+pub export fn rm_metric_snapshot_read_current(handle: ?*anyopaque, abi_version: u32,
+    output: ?*protocol.CurrentReadOutput, values: ?[*]protocol.CurrentValue, value_capacity: u32,
+    bytes: ?[*]u8, byte_capacity: u32) callconv(.c) i32
+{
+    if (abi_version != protocol.abi_version) return code(.abi_mismatch);
+    return code(current.read(getSession(handle) orelse return code(.invalid_argument),
+        output orelse return code(.invalid_argument),
+        mutableSlice(protocol.CurrentValue, values, value_capacity) orelse return code(.invalid_argument),
+        mutableSlice(u8, bytes, byte_capacity) orelse return code(.invalid_argument)));
+}
+
+pub export fn rm_metric_snapshot_read_current_selected(handle: ?*anyopaque, abi_version: u32,
+    selection: ?[*]const protocol.CurrentKey, selection_count: u32,
+    output: ?*protocol.CurrentReadOutput, values: ?[*]protocol.CurrentValue, value_capacity: u32,
+    bytes: ?[*]u8, byte_capacity: u32) callconv(.c) i32
+{
+    if (abi_version != protocol.abi_version) return code(.abi_mismatch);
+    return code(current.readSelected(getSession(handle) orelse return code(.invalid_argument),
+        constSlice(protocol.CurrentKey, selection, selection_count) orelse return code(.invalid_argument),
+        output orelse return code(.invalid_argument),
+        mutableSlice(protocol.CurrentValue, values, value_capacity) orelse return code(.invalid_argument),
+        mutableSlice(u8, bytes, byte_capacity) orelse return code(.invalid_argument)));
 }
 
 pub export fn rm_metric_snapshot_export_state(

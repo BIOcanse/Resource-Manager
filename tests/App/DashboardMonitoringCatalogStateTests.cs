@@ -38,7 +38,9 @@ public sealed partial class DashboardMonitoringCatalogStateTests
 
         Assert.Equal(firstRevision, state.Revision);
         Assert.Equal(1, changed);
-        Assert.Equal(first.CommittedGeneration + 1, state.Current?.CommittedGeneration);
+        Assert.Equal(first.CatalogGeneration, state.Catalog?.CatalogGeneration);
+        Assert.Equal(0UL, state.Current!.CommittedGeneration);
+        Assert.All(state.Current.Items.Values, value => Assert.Null(value.NumericValue));
 
         state.PublishCatalogProbe(CreateSnapshot(2, "gpu-dedicated", "gpu.0.usage", "gpu.0.vram"));
         Assert.Equal(2, changed);
@@ -158,15 +160,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
     {
         var items = gpuMetricIds.ToDictionary(
             static metricId => metricId,
-            static metricId => new MetricValue(
-                metricId,
-                metricId,
-                "GPU",
-                metricId.EndsWith("vram", StringComparison.Ordinal) ? "B" : "%",
-                1,
-                "1",
-                null,
-                ""));
+            static metricId => new MetricReadingValue(Id: metricId, NumericValue: 1, Unit: "1", Percent: null));
         return new HardwareMetricSnapshot(
             DateTimeOffset.UtcNow,
             new CpuMetrics(
@@ -186,8 +180,8 @@ public sealed partial class DashboardMonitoringCatalogStateTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(0, 0, 0, false, ""),
-            new VirtualMemoryMetrics(0, 0, 0, "", false),
+            new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             [
                 new GpuMetrics(
                     0,

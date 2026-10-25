@@ -23,7 +23,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         if (selected.Length == 0)
             return snapshot;
 
-        var items = new Dictionary<string, MetricValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, MetricReadingValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(snapshot.Datasets,
             StringComparer.OrdinalIgnoreCase);
 
@@ -43,35 +43,34 @@ internal sealed partial class WindowsHardwareMetricCapture
                 complete = TryGetCompleteBusyRatio(snapshot, engines, out maximum, out sourceGeneration);
             if (complete)
             {
-                var capturedAt = snapshot.CapturedAt.UtcTicks;
+                var maximumBinding = engines.First(engine => snapshot.Items[engine.RequestAddress].NumericValue == maximum);
+                var maximumValue = snapshot.Items[maximumBinding.RequestAddress];
+                var maximumObservation = snapshot.Datasets[maximumBinding.RequestAddress];
+                var observedAt = maximumObservation.ObservedAtUtcTicks;
                 var observation = new HardwareMetricDatasetObservation(
                     binding.RequestAddress,
                     SamplingObservationStatus.Current,
                     sourceGeneration,
-                    capturedAt,
+                    observedAt,
                     snapshot.WorkspaceIdentity,
                     snapshot.ConfigurationGeneration,
                     snapshot.CatalogGeneration,
                     snapshot.CommittedGeneration)
                 {
-                    LastAttemptAtUtcTicks = capturedAt,
-                    LastSuccessAtUtcTicks = capturedAt
+                    LastAttemptAtUtcTicks = maximumObservation.LastAttemptAtUtcTicks,
+                    LastSuccessAtUtcTicks = observedAt
                 };
                 datasets[binding.RequestAddress] = observation;
-                items[binding.RequestAddress] = new MetricValue(
-                    binding.RequestAddress,
-                    binding.Field.Name,
-                    "npu",
-                    maximum.ToString("F1", CultureInfo.InvariantCulture) + "%",
-                    maximum,
-                    binding.Field.Unit,
-                    maximum,
-                    null)
+                items[binding.RequestAddress] = new MetricReadingValue(Id: binding.RequestAddress, NumericValue: maximum, Unit: binding.Field.Unit, Percent: maximum)
                 {
+                    FieldCode = binding.Field.Code,
                     FieldName = binding.Field.Name,
                     DeviceIdentity = binding.DeviceIdentity,
                     ValueKind = binding.Field.ValueKind,
-                    SourceId = binding.SourceId
+                    SourceId = binding.SourceId,
+                    Status = SamplingObservationStatus.Current,
+                    ObservedAt = new DateTimeOffset(observedAt, TimeSpan.Zero),
+                    SampleDurationMilliseconds = maximumValue.SampleDurationMilliseconds
                 };
             }
             else

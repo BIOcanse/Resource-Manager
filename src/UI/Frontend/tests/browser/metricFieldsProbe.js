@@ -148,10 +148,15 @@ export async function checkFieldCardDisplay(page, app, language) {
 }
 
 export async function setDashboardSettings(baseUrl, cards) {
+  const tableColumns = [
+    { id: "name", visible: true, width: 260 },
+    { id: "cpu", visible: true, width: 110 },
+    { id: "memory", visible: true, width: 120 }
+  ];
   const response = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dashboardSettings: {
-      version: 16, cards, resourceBars: [], resourceTableColumns: [], resourceTableProcessColumns: []
+      version: 16, cards, resourceBars: [], resourceTableColumns: tableColumns, resourceTableProcessColumns: tableColumns
     } })
   });
   if (!response.ok) throw new Error("Unable to set dashboard settings");

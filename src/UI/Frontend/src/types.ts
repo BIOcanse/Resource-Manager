@@ -91,6 +91,7 @@ export type AppLogicRefreshIntervalKey =
   | "localSystem";
 export type SettingsSection = "performance" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
 
+/** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {
   id: string;
   label: string;
@@ -104,6 +105,11 @@ export interface MetricDefinition {
   disabledReason?: BackendMessage | null;
   scopeKind?: string | null;
   scopeKey?: string | null;
+  fieldCode?: number;
+  fieldName?: string | null;
+  deviceIdentity?: string | null;
+  sourceId?: string | null;
+  valueKind?: string | null;
   /** 设备字段在当前读数来源设置下是否列进选择器、带什么标记；不是设备字段时没有。 */
   readingSource?: ReadingSourceDisplay;
 }
@@ -112,20 +118,30 @@ export interface MetricValue {
   id?: string;
   label?: string;
   group?: string;
-  // 后端已经拼好的一句显示值。容量类指标不再走这里 —— 它们的 unit 是 "B"，
-  // numericValue 是原始字节，换算和单位标签由 presentation/byteUnits.ts 负责。
+  // Frontend-only override for locally composed field cards and missing-device states.
   displayValue?: string;
   numericValue?: number | null;
-  // 原始单位标记。"B" = 原始字节，"bit/s" = 原始比特率，其余是后端已定的显示单位。
+  // Raw unit code. All formatting and conversion are frontend-owned.
   unit?: string;
   // 和 numericValue 同单位的总量，只有存在有意义总量的指标才有（内存、显存）。
   total?: number | null;
   percent?: number | null;
   detail?: string | null;
+  fieldCode?: number;
+  fieldName?: string | null;
+  deviceIdentity?: string | null;
+  sourceId?: string | null;
+  valueKind?: string | null;
+  integerValue?: string | null;
+  bytesValue?: string | null;
+  booleanValue?: boolean | null;
+  status?: number;
+  observedAt?: string | null;
+  sampleDurationMilliseconds?: number | null;
 }
 
 export interface MetricSnapshot {
-  version: 4;
+  version: 5;
   capturedAt: string | null;
   /** 后端目录 owner 给的不透明标记，目录或读取项来源元数据变了才换；只比相等，不解析。 */
   catalogRevision: string;

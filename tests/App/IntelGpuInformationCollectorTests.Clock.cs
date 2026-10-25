@@ -93,7 +93,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No system memory demand"), () => throw new InvalidOperationException("No system memory demand"));
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory, null!, new WindowsGpuAdapterOrderMonitoringZone(Inventory),
             null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,
-            slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelGclZone: zone);
+            slots.Owner, slots.Provider, new DiagnosticSamplerLogger(), intelGclZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, ClockNames);
         Dictionary<string, DeviceMetricFieldValue> Fields(HardwareMetricSnapshot snapshot)
             => Assert.Single(MetricDeviceFields.Read(snapshot, device, ClockNames.ToHashSet())).Fields.ToDictionary(field => field.Name);
@@ -157,8 +157,26 @@ public sealed partial class IntelGpuInformationCollectorTests
     {
         var dashboard = new DashboardMonitoringCatalogState();
         using var lease = owner.Acquire();
-        dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+        dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         return dashboard;
+    }
+
+    private sealed class DiagnosticSamplerLogger : Microsoft.Extensions.Logging.ILogger<WindowsHardwareMetricSampler>
+    {
+        private readonly HashSet<string> messages = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level)
+            => level >= Microsoft.Extensions.Logging.LogLevel.Warning;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level,
+            Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? error,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!IsEnabled(level)) return;
+            var message = formatter(state, error) + (error is null ? "" : Environment.NewLine + error);
+            lock (messages)
+                if (messages.Count < 64 && messages.Add(message))
+                    Console.Error.WriteLine("[IGCL-SAMPLER] " + message);
+        }
     }
 
     private static void CheckClockWire(JsonElement fields)

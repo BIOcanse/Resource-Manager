@@ -89,7 +89,7 @@ public sealed class ProcessFieldReadWriteBackend : IReadWriteBackend
         {
             bindings = next.ToFrozenDictionary();
             catalog = new(devices, next.Values.Select(item => new FieldCapability(item.Field,
-                new(item.Definition.Name, item.Definition.Unit, item.Definition.ValueKind, item.Definition.Meaning),
+                new(item.Definition.Name, item.Definition.Unit, item.Definition.ValueKind),
                 Supported(item.Definition) ? new(true, null, item.Definition.DatasetId == ProcessMetricDatasetIds.GpuResidency ? ["native.core", "windows.pdh.gpu-engine", "native.pdh.engine-window"] : []) : OperationSupport.Unsupported("process-private-working-set-unsupported"),
                 OperationSupport.Unsupported("field-write-not-bound"), item.Definition.SourceId)));
         }

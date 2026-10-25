@@ -106,6 +106,9 @@ comptime {
     _ = metric_snapshot_abi.rm_metric_snapshot_abort_completion;
     _ = metric_snapshot_abi.rm_metric_snapshot_query_header;
     _ = metric_snapshot_abi.rm_metric_snapshot_read;
+    _ = metric_snapshot_abi.rm_metric_snapshot_commit_current;
+    _ = metric_snapshot_abi.rm_metric_snapshot_read_current;
+    _ = metric_snapshot_abi.rm_metric_snapshot_read_current_selected;
     _ = metric_snapshot_abi.rm_metric_snapshot_export_state;
     _ = metric_snapshot_abi.rm_metric_snapshot_import_state;
     _ = software_identity_catalog_abi.rm_software_identity_catalog_abi_version;

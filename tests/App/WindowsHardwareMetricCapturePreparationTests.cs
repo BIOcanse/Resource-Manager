@@ -53,9 +53,9 @@ public sealed class WindowsHardwareMetricCapturePreparationTests
             CatalogGeneration = 9,
             CommittedGeneration = 11,
             FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [binding.RequestAddress] = binding },
-            Items = new Dictionary<string, MetricValue>
+            Items = new Dictionary<string, MetricReadingValue>
             {
-                [binding.RequestAddress] = new(binding.RequestAddress, binding.Field.Name, "cpu", "stale", 200, "W", null, null)
+                [binding.RequestAddress] = new(Id: binding.RequestAddress, NumericValue: 200, Unit: "W", Percent: null)
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
             {
@@ -127,6 +127,6 @@ public sealed class WindowsHardwareMetricCapturePreparationTests
         };
 
     private static HardwareMetricSnapshot Snapshot()
-        => new(DateTimeOffset.UnixEpoch, null!, null!, null!, [], null!,
-            new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase));
+        => new(DateTimeOffset.UnixEpoch, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory,
+            new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase));
 }

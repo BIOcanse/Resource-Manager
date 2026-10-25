@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 
@@ -16,7 +15,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 var scope = DrsScope(request);
                 var access = provider.CreateNvidiaDrsInformation(scope);
-                return Results.Ok(scope.Fields.Select(access.Backend.ReadCached).ToImmutableArray());
+                return Results.Ok(access.Backend.ReadCachedBatch(scope.Fields));
             }
             catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             catch (InvalidOperationException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }

@@ -28,7 +28,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "CPU 占用率",
+                    "CPU 占用率",
                     "%",
                     scaleMode,
                     CpuObservationStatus(hardwareSnapshot.Cpu));
@@ -36,7 +36,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                metric.Label,
+                string.Empty,
                 "%",
                 scaleMode,
                 100,
@@ -57,7 +57,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "物理内存实际占用",
+                    "物理内存实际占用",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus));
@@ -65,7 +65,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                metric.Label,
+                string.Empty,
                 "B",
                 scaleMode,
                 hardwareSnapshot.Memory.TotalBytes,
@@ -87,7 +87,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "虚拟内存提交量",
+                    "虚拟内存提交量",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus));
@@ -95,7 +95,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                metric.Label,
+                string.Empty,
                 "B",
                 scaleMode,
                 hardwareSnapshot.VirtualMemory.TotalBytes,
@@ -227,8 +227,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label
-                        ?? $"GPU{gpuIndex} 占用率",
+                    $"GPU{gpuIndex} 占用率",
                     "%",
                     scaleMode,
                     GpuObservationStatus(
@@ -277,7 +276,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             return CreateBar(
                 metricId,
-                metric.Label,
+                string.Empty,
                 "%",
                 scaleMode,
                 100,
@@ -313,7 +312,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     private static bool TryGetCurrentHardwareMetric(
         HardwareMetricSnapshot snapshot,
         string metricId,
-        out MetricValue metric)
+        out MetricReadingValue metric)
     {
         var datasetId = SamplingDatasetIds.ForSystemMetric(metricId);
         if (snapshot.Datasets.TryGetValue(datasetId, out var observation)

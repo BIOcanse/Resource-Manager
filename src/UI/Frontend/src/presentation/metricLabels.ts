@@ -7,10 +7,12 @@ import {
 } from "./byteUnits.ts";
 import { backendMessageDomains } from "./backendMessage.ts";
 import { userFacingMetricUnavailableReason } from "./userFacingText.ts";
+import { formatFieldValue } from "./fieldValueFormat.ts";
+import { formatLegacyMetricNumber } from "./legacyMetricNumber.ts";
 import type { MetricDefinition, MetricValue, ResourceTableValue } from "../types.ts";
 
 // 后端按稳定指标 id 提供事实，用户看到的名称由当前语言的文案包决定。
-// 不认识的 id 保留后端标签，保证新增指标不会显示空白。
+// 不认识的 id 由前端适配器提供字段名，保证新增指标不会显示空白。
 export function localizedMetricLabel(
   id: string | null | undefined,
   fallbackLabel?: string | null
@@ -136,7 +138,7 @@ function normalizeMetricId(id: string): { pattern: string; index: string | null 
  *
  * 后端对容量类指标只发原始字节（unit 为 "B"），字节速率发原始 B/s（numericValue），
  * 换算和单位标签在这里按当前进制模式给出；
- * 其余指标的显示串仍由后端给定（°C、%、MHz、RPM 这类没有进制歧义）。
+ * 其余原始量也由前端按单位格式化。displayValue 只用于前端组合的设备字段卡片。
  * 所有消费端都走这一个函数，不要各自判断 unit。
  */
 export function metricDisplayValue(
@@ -146,14 +148,42 @@ export function metricDisplayValue(
   if (!metric) {
     return fallback;
   }
+  if (metric.status !== undefined && metric.status !== 1) {
+    return fallback;
+  }
+  const numericValue = metric.integerValue !== null && metric.integerValue !== undefined
+    ? Number(metric.integerValue)
+    : metric.numericValue;
   if (metric.unit === "B/s") {
-    return formatBytesPerSecond(metric.numericValue, undefined, fallback);
+    return formatBytesPerSecond(numericValue, undefined, fallback);
   }
   if (metric.unit !== "B") {
-    return metric.displayValue || fallback;
+    if (metric.status === undefined && metric.displayValue) return metric.displayValue;
+    // Preserve the established alias precision while canonical field cards keep their own format.
+    if (typeof numericValue === "number" && Number.isFinite(numericValue)
+      && /^(?:cpu|gpu|memory|virtualMemory|disk|network|system|fan|target)\./.test(metric.id ?? "")) {
+      const rounded = (digits: 0 | 1 | 2 | 3) => formatLegacyMetricNumber(numericValue, digits);
+      switch (metric.unit) {
+        case "": return rounded(2);
+        case "%": return `${rounded(1)}%`;
+        case "MHz": case "RPM": return `${rounded(0)} ${metric.unit}`;
+        case "°C": case "A": case "W": return `${rounded(1)} ${metric.unit}`;
+        case "V": return `${rounded(3)} V`;
+      }
+    }
+    return formatFieldValue({
+      name: metric.fieldName ?? "",
+      unit: metric.unit ?? "",
+      valueKind: metric.valueKind ?? "",
+      reading: null,
+      numericValue: metric.numericValue ?? null,
+      integerValue: metric.integerValue === null || metric.integerValue === undefined ? null : BigInt(metric.integerValue),
+      booleanValue: metric.booleanValue ?? null,
+      observedAt: metric.observedAt ?? null
+    }, byteQuantityKindForMetric(metric.id)) ?? fallback;
   }
 
-  const used = metric.numericValue;
+  const used = numericValue;
   if (typeof used !== "number" || !Number.isFinite(used)) {
     return fallback;
   }

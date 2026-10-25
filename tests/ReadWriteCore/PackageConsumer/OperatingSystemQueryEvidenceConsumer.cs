@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Windows.SystemInformation;
@@ -27,7 +28,7 @@ internal static class OperatingSystemQueryEvidenceConsumer
         var feature = backend.Catalog.Fields.Single(static capability =>
             capability.Field.FieldName == "os_all_feature_state_actual").Field;
         var initial = backend.ReadCached(feature);
-        Require(initial.Status == FieldObservationStatus.Current && initial.Value?.Integer == "0",
+        Require(initial.Status == FieldObservationStatus.Current && initial.Value?.Integer == MetricInteger.Parse("0"),
             "recorded enum zero is a current value");
 
         using var borrow = owner.BorrowSubscriptionCapture();
@@ -40,8 +41,8 @@ internal static class OperatingSystemQueryEvidenceConsumer
         var after = backend.ReadCached(feature);
         Require(!rejected.Committed && rejected.Readings.Length == 1
             && rejected.Readings[0].Status == FieldObservationStatus.Current
-            && rejected.Readings[0].Value?.Integer == "0"
-            && after.Status == FieldObservationStatus.Current && after.Value?.Integer == "0",
+            && rejected.Readings[0].Value?.Integer == MetricInteger.Parse("0")
+            && after.Status == FieldObservationStatus.Current && after.Value?.Integer == MetricInteger.Parse("0"),
             "rejected publication retains the original current enum zero");
         Require(rejected.QueriedFields.SequenceEqual([feature]) && source.Reads == 2
             && source.LastSelected == WindowsOperatingSystemInformationFields.Features,

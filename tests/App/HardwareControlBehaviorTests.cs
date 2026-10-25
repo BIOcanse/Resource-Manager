@@ -108,8 +108,8 @@ public sealed class HardwareControlBehaviorTests
         catalog.PublishCatalogProbe(new HardwareMetricSnapshot(DateTimeOffset.UtcNow,
             new CpuMetrics("CPU", 25, true, CpuMetricObservationStatus.Complete, 1, 1, 3000, 5000, 60, "fixture",
                 new CpuSensorMetrics(new HardwareSensorProviderState("fixture", HardwareSensorProviderStates.Unavailable, null), null, null, null, null)),
-            new MemoryMetrics(8, 32, 25, true, "fixture"), new VirtualMemoryMetrics(0, 0, 0, "fixture", false),
-            [], null!, new Dictionary<string, MetricValue>()) { CatalogGeneration = 1 });
+            new MemoryMetrics(UsedBytes: 8, TotalBytes: 32, UsagePercent: 25, IsUsageAvailable: true), new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
+            [], null!, new Dictionary<string, MetricReadingValue>()) { CatalogGeneration = 1 });
         await startup;
         await plane.InitializeAsync(default);
         Assert.Equal(new[] { "edited", "saved", "edited" }, writes.Written);

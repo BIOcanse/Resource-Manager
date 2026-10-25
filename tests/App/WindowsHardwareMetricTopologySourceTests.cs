@@ -57,8 +57,7 @@ public sealed class WindowsHardwareMetricTopologySourceTests
         {
             Assert.Equal(storage, snapshot.StorageGeneration);
             Assert.Equal(fan, snapshot.FanGeneration);
-            var frame = WindowsHardwareMetricCapture.AddCatalogObservations(new(DateTimeOffset.UtcNow,
-                null!, null!, null!, [], null!, new Dictionary<string, MetricValue>()), snapshot, DateTimeOffset.UtcNow);
+            var frame = WindowsHardwareMetricCapture.AddCatalogObservations(new(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>()), snapshot, DateTimeOffset.UtcNow);
             Assert.Equal(storage, frame.Datasets["storage.inventory"].SourceGeneration);
             Assert.Equal(fan, frame.Datasets["fan.inventory"].SourceGeneration);
             Assert.Equal(snapshot.Generation, frame.Datasets["system.metric.catalog"].SourceGeneration);

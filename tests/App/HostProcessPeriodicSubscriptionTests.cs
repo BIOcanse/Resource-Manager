@@ -55,7 +55,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
         Assert.Equal(fixture.Field, firstFast.Field);
         Assert.Equal($"windows-process|{fixture.Api.ProcessId}:{fixture.Api.CreationFileTime}",
             firstFast.Field.DeviceIdentity);
-        Assert.Equal("11", firstFast.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), firstFast.Value?.Integer);
         Assert.True(await slowFirst.WaitAsync(TimeSpan.FromSeconds(4)));
         Assert.Equal(fixture.Field, Assert.Single(slow.Current).Field);
 
@@ -66,19 +66,19 @@ public sealed class HostProcessPeriodicSubscriptionTests
             "The slower subscriber must keep its own period while the shared process current continues updating.");
         fixture.Api.PrivateCommit = 29;
         // A delivery may still carry the shared current sampled before the change; the next sample carries 29.
-        string? fastValue;
+        MetricInteger? fastValue;
         do
         {
             Assert.True(await fast.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
             fastValue = Assert.Single(fast.Current).Value?.Integer;
         }
-        while (fastValue != "29" && !timeout.IsCancellationRequested);
-        Assert.Equal("29", fastValue);
+        while (fastValue != MetricInteger.Parse("29") && !timeout.IsCancellationRequested);
+        Assert.Equal(MetricInteger.Parse("29"), fastValue);
 
         Assert.True(await slowSecond.WaitAsync(TimeSpan.FromSeconds(6)));
         var slowReading = Assert.Single(slow.Current);
         Assert.Equal(fixture.Field, slowReading.Field);
-        Assert.Equal("29", slowReading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("29"), slowReading.Value?.Integer);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
         await using var shared = fixture.Backend.SubscribeAsync("shared", [fixture.Field],
             TimeSpan.FromMilliseconds(300), timeout.Token).GetAsyncEnumerator(timeout.Token);
         Assert.True(await shared.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(4)));
-        Assert.Equal("11", Assert.Single(shared.Current).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), Assert.Single(shared.Current).Value?.Integer);
         var readsAtSharedBoundary = fixture.Api.MemoryReads;
 
         await using var fresh = fixture.Backend.SubscribeAsync("fresh", [fixture.Field],
@@ -102,7 +102,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
         Assert.True(await freshFirst.WaitAsync(TimeSpan.FromSeconds(3)));
         var reading = Assert.Single(fresh.Current);
         Assert.Equal(fixture.Field, reading.Field);
-        Assert.Equal("37", reading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("37"), reading.Value?.Integer);
         Assert.True(fixture.Api.MemoryReads > readsAtSharedBoundary,
             "The fresh trigger occurs before the shared 300 ms source's next query and must invoke the original reader.");
     }
@@ -166,7 +166,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
         _ = await directCapture.WaitAsync(TimeSpan.FromSeconds(4));
         var readsBeforeDirectCapture = fixture.Api.MemoryReads;
         var direct = await fixture.Backend.CollectAsync([fixture.Field], CancellationToken.None);
-        Assert.Equal("11", Assert.Single(direct).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("11"), Assert.Single(direct).Value?.Integer);
         Assert.True(fixture.Api.MemoryReads > readsBeforeDirectCapture);
     }
 
@@ -206,7 +206,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
                     item => item.Field.FieldName == PrivateCommitField).Field;
                 Assert.Equal($"windows-process|{fixture.Api.ProcessId}:{fixture.Api.CreationFileTime}",
                     fixture.Field.DeviceIdentity);
-                Assert.Equal("11", fixture.Backend.ReadCached(fixture.Field).Value?.Integer);
+                Assert.Equal(MetricInteger.Parse("11"), fixture.Backend.ReadCached(fixture.Field).Value?.Integer);
                 return fixture;
             }
             catch

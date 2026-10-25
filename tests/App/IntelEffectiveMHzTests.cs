@@ -183,7 +183,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         }
 
         private HardwareMetricSnapshot Snapshot()
-            => NativeMetricSnapshotCommittedProjection.Create(Workspace.ReadCommitted(), "CPU", "RAM", 1);
+            => NativeMetricSnapshotCommittedProjection.Create(frame: Workspace.ReadCommitted(), workspaceIdentity: 1);
 
         internal DeviceMetricFieldValue ReadField()
             => MetricDeviceFields.Read(Snapshot(), target.ExactIdentityKey).Single().Fields.Single(

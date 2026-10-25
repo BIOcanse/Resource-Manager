@@ -30,7 +30,7 @@ export function appendPerformancePoint(
   const displays: Record<string, string> = {};
   for (const item of series) {
     const metric = items[item.id];
-    const rawValue = metric?.numericValue;
+    const rawValue = metric?.status === undefined || metric.status === 1 ? metric?.numericValue : null;
     const value = typeof rawValue === "number" && Number.isFinite(rawValue)
       ? Math.max(0, Math.min(100, rawValue))
       : null;

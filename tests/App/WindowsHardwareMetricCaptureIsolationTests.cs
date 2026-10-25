@@ -24,8 +24,8 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             [], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
         var before = workspace.ReadHeader();
-        var fieldCatalog = new HardwareMetricSnapshot(DateTimeOffset.UtcNow, null!, null!, null!, [], null!,
-            new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase))
+        var fieldCatalog = new HardwareMetricSnapshot(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory,
+            new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase))
         {
             WorkspaceIdentity = 1,
             ConfigurationGeneration = before.ConfigurationGeneration,
@@ -62,7 +62,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
                 await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
                 {
                     _ = await capture.CaptureUnderGateAsync(request, workspace, 1, null,
-                        _ => { publicationCalls++; return false; }, new("recorded"), cancellation.Token,
+                        _ => { publicationCalls++; return false; }, cancellation.Token,
                         enrichBeforeCommit: Enrich, fieldCatalog: fieldCatalog);
                 });
                 Assert.Equal(0, publicationCalls);
@@ -70,7 +70,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             else
             {
                 var rejected = await capture.CaptureUnderGateAsync(request, workspace, 1, null,
-                    _ => { publicationCalls++; return false; }, new("recorded"), default,
+                    _ => { publicationCalls++; return false; }, default,
                     enrichBeforeCommit: Enrich, fieldCatalog: fieldCatalog);
                 Assert.Null(rejected);
                 Assert.Equal(1, publicationCalls);
@@ -92,8 +92,8 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             [], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
         var header = workspace.ReadHeader();
-        var fieldCatalog = new HardwareMetricSnapshot(DateTimeOffset.UtcNow, null!, null!, null!, [], null!,
-            new Dictionary<string, MetricValue>(StringComparer.OrdinalIgnoreCase))
+        var fieldCatalog = new HardwareMetricSnapshot(DateTimeOffset.UtcNow, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory,
+            new Dictionary<string, MetricReadingValue>(StringComparer.OrdinalIgnoreCase))
         {
             WorkspaceIdentity = 1,
             ConfigurationGeneration = header.ConfigurationGeneration,
@@ -108,7 +108,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         var request = MetricSampleRequest.ForIds([]);
         HardwareMetricSnapshot? Capture(HardwareMetricSnapshot? currentCatalog)
             => capture.CaptureUnderGateAsync(request, workspace, 1, null,
-                commit => { commit(); return true; }, new("recorded"), default,
+                commit => { commit(); return true; }, default,
                 enrichBeforeCommit: static (snapshot, _, _, _) => ValueTask.FromResult(snapshot),
                 fieldCatalog: currentCatalog).GetAwaiter().GetResult();
 
@@ -169,7 +169,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         {
             var request = MetricSampleRequest.ForIds(requestGpu ? [cpu.MetricId, gpu.MetricId] : [cpu.MetricId]);
             var snapshot = Assert.IsType<HardwareMetricSnapshot>(await capture.CaptureUnderGateAsync(request, workspace,
-                1, null, commit => { commit(); return true; }, new("recorded"), default));
+                1, null, commit => { commit(); return true; }, default));
             Assert.Equal(15d, snapshot.Items[cpu.MetricId].NumericValue);
             Assert.Equal(SamplingObservationStatus.Current, snapshot.Datasets[cpu.MetricId].Status);
             // The inventory dataset and SMU adapter routing are independently selected reads.
@@ -219,12 +219,12 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             var request = MetricSampleRequest.ForIds([MetricDatasetIds.SystemGpuInventory]);
             var queried = System.Collections.Immutable.ImmutableHashSet<string>.Empty;
             var result = Assert.IsType<HardwareMetricSnapshot>(await capture.CaptureUnderGateAsync(request, workspace, 1,
-                null, commit => { commit(); return true; }, new("recorded"), default,
+                null, commit => { commit(); return true; }, default,
                 sourceQueriesCompleted: addresses => queried = addresses));
             Assert.Equal(1, inventoryReads);
             Assert.Empty(failures); // Unselected numeric callbacks throw and are logged if invoked.
             Assert.Equal([MetricDatasetIds.SystemGpuInventory], queried);
-            var current = new LastSuccessfulHardwareMetricSnapshot();
+            using var current = new LastSuccessfulHardwareMetricSnapshot();
             current.Publish(result, request);
             var inventory = current.Read()!.GpuInventory;
             Assert.True(inventory.IsCurrentComplete(), System.Text.Json.JsonSerializer.Serialize(inventory));
@@ -281,7 +281,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
             if (fail && failure == "provider-cancellation") throw new OperationCanceledException("recorded provider cancellation");
             return new(true, counter * 10, counter * 100, counter * 100, counter * 1000,
                 fail && failure == "completion" ? 0UL : 1000UL, DateTimeOffset.UtcNow);
-        }, () => new(memoryUsed, 256, memoryUsed * 100d / 256, true, "recorded"));
+        }, () => new(UsedBytes: memoryUsed, TotalBytes: 256, UsagePercent: memoryUsed * 100d / 256, IsUsageAvailable: true));
         var failures = new List<(Exception Error, string Source)>();
         var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
             TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), () => { }, (error, source) => failures.Add((error, source)));
@@ -289,7 +289,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         {
             var request = MetricSampleRequest.ForIds(["cpu.usage", "memory.usage"]);
             Task<HardwareMetricSnapshot?> Capture() => capture.CaptureUnderGateAsync(request, workspace, 1,
-                null, commit => { commit(); return true; }, new("recorded"), default);
+                null, commit => { commit(); return true; }, default);
             Assert.NotNull(await Capture()); // CPU baseline.
             var prior = Assert.IsType<HardwareMetricSnapshot>(await Capture());
             Assert.Equal(SamplingObservationStatus.Current, prior.Datasets["cpu.usage"].Status);
@@ -332,7 +332,7 @@ public sealed class WindowsHardwareMetricCaptureIsolationTests
         Func<NativeMetricSnapshotCpuCounterObservation> cpu, Func<MemoryMetrics> memory,
         Func<WindowsGpuAdapterInventoryRead>? gpu = null, Func<AmdSmuCpuSensorReadRequest, CpuSensorMetrics>? smu = null) => new()
     {
-        CpuName = "recorded", MemoryDescription = "recorded", ReadCpuCounters = cpu, ReadMemory = memory,
+        ReadCpuCounters = cpu, ReadMemory = memory,
         ReadVirtualMemory = () => throw new InvalidOperationException("unselected virtual memory"),
         ReadNumaAvailable = (_, _) => new Dictionary<string, ulong>(),
         ReadNumaIdentities = () => throw new InvalidOperationException("unselected NUMA directory"),

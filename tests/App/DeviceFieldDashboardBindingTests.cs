@@ -156,8 +156,8 @@ public sealed class DeviceFieldDashboardBindingTests
                     null,
                     null,
                     null)),
-            new MemoryMetrics(1, 2, 50, true, "test"),
-            new VirtualMemoryMetrics(0, 0, 0, "test", IsSelectable: false),
+            new MemoryMetrics(UsedBytes: 1, TotalBytes: 2, UsagePercent: 50, IsUsageAvailable: true),
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false),
             gpus,
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
@@ -168,7 +168,7 @@ public sealed class DeviceFieldDashboardBindingTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricReadingValue>());
     }
 
     private static GpuMetrics CreateGpu(int index, string identityKey)

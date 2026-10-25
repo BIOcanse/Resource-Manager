@@ -16,7 +16,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     {
         foreach (var requestId in new[] { "memory.usage", BoundUsed })
         {
-            var owner = new LastSuccessfulHardwareMetricSnapshot();
+            using var owner = new LastSuccessfulHardwareMetricSnapshot();
             owner.Publish(BoundFrame(1, 512, 1024), MetricSampleRequest.ForIds([BoundTotal]));
             var backend = BoundBackend(owner);
             foreach (var value in new[] { 512d, 0d })
@@ -48,7 +48,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     {
         foreach (var requestId in new[] { "memory.usage", BoundUsed })
         {
-            var owner = new LastSuccessfulHardwareMetricSnapshot();
+            using var owner = new LastSuccessfulHardwareMetricSnapshot();
             owner.Publish(BoundFrame(1, 100, 1024), MetricSampleRequest.ForIds([BoundTotal]));
             var permit = new MetricSdkTestPermission(1, 1);
             var run = owner.OpenHostedRun();
@@ -69,14 +69,14 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             permit.Revoke();
             Assert.False(owner.TryPublishHosted(ticket, BoundFrame(3, 900, 9999), MetricSampleRequest.All,
                 [requestId], null, out _));
-            Assert.Same(before, owner.Read());
+            Assert.Equivalent(before, owner.Read(), strict: true);
         }
     }
 
     [Fact]
     public void MetricBoundReplacementRetiresOldAliasWithoutPublishingReplacementOrOtherSource()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.Publish(BoundFrame(1, 512, 1024), MetricSampleRequest.All);
         var oldBackend = BoundBackend(owner);
         var oldReference = oldBackend.Catalog.Fields.Single(item => item.Field.FieldName == "memory_all_physical_used_bytes").Field;
@@ -93,7 +93,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     }
 
     private static MetricReadWriteBackend BoundBackend(LastSuccessfulHardwareMetricSnapshot owner)
-        => new(() => owner.Read(), _ => owner.Read(),
+        => new(() => owner.Read() is { } snapshot ? HardwareMetricCatalog.FromSnapshot(snapshot) : null, _ => owner.Read(),
             (_, _) => ValueTask.FromResult(owner.Read()!), _ => { },
             (_, binding) => new(true, null, MetricReadWriteBackend.DependenciesOf(binding.SourceId)),
             _ => OperationSupport.Unsupported("recorded-read-only"),
@@ -116,9 +116,9 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             // Capacity belongs to an independent source slot to catch broad publication.
             [BoundTotal] = new("independent-capacity", totalDefinition, BoundTotal, "recorded.capacity") { RequestAliases = ["memory.total"] }
         };
-        var values = new Dictionary<string, MetricValue>();
+        var values = new Dictionary<string, MetricReadingValue>();
         foreach (var (address, value) in new[] { (BoundUsed, used), ("memory.usage", used), (BoundTotal, total), ("memory.total", total) })
-            values[address] = new(address, address, "recorded", "", value, "B", null, null);
+            values[address] = new(Id: address, NumericValue: value, Unit: "B", Percent: null);
         var datasets = values.Keys.ToDictionary(id => id, id => new HardwareMetricDatasetObservation(id,
             SamplingObservationStatus.Current, round, source.CapturedAt.UtcTicks, 1, 1, 1, round));
         return source with { Items = values, Datasets = datasets, FieldBindings = bindings,

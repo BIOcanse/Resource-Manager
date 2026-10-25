@@ -31,7 +31,7 @@ public sealed class NvidiaNvmlFanIntegrationTests
             Assert.Equal(NativeMetricSnapshotSources.NvidiaNvml, binding.SourceId);
             Assert.Equal(binding.NvmlFan!.ExactIdentityKey, binding.DeviceIdentity);
             Assert.Equal(MetricResource.Fan, binding.Field!.Resource);
-            Assert.Contains("NVML intended", binding.Field.Meaning);
+            Assert.Equal("float64", binding.Field.ValueKind);
         });
         Assert.All(catalog.RuleBindings.Values.Where(static binding => binding.SourceId == NativeMetricSnapshotSources.HardwareMonitorWmi
                 && binding.Field?.Resource == MetricResource.Fan), binding => Assert.Equal("wmi-fan", binding.DeviceIdentity));
@@ -159,15 +159,15 @@ public sealed class NvidiaNvmlFanIntegrationTests
         using var borrow = owner.BorrowSubscriptionCapture(); borrow.Bind([field]);
         await borrow.CollectAsync([field], new NvidiaFanFixture.Permit());
         var current = owner.ReadCachedSnapshot();
-        Assert.Same(current, owner.ReadCachedSnapshot());
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
         var result = await borrow.CollectAsync([field], new NvidiaFanFixture.Permit { Active = false });
-        Assert.False(result.Committed); Assert.Same(current, owner.ReadCachedSnapshot());
+        Assert.False(result.Committed); Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
         using var cancel = new CancellationTokenSource(); fixture.OnRead = cancel.Cancel;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([field], new NvidiaFanFixture.Permit(), cancel.Token).AsTask());
-        Assert.Same(current, owner.ReadCachedSnapshot());
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
         fixture.OnRead = null; borrow.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(() => borrow.CollectAsync([field], new NvidiaFanFixture.Permit()).AsTask());
-        Assert.Same(current, owner.ReadCachedSnapshot());
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
     }
 }
 
@@ -214,7 +214,6 @@ internal sealed class NvidiaFanFixture
     internal WindowsHardwareMetricResources Resources() => new()
     {
         Controls = new() { ControlReadCpuTopology = () => null! },
-        CpuName = "recorded", MemoryDescription = "recorded",
         ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = () => throw new InvalidOperationException(),
         ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, _) => new Dictionary<string, ulong>(),
         ReadNumaIdentities = () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []), ReadGpuInventory = () => Inventory,

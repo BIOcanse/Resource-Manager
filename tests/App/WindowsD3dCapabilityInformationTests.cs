@@ -37,7 +37,7 @@ public sealed class WindowsD3dCapabilityInformationTests
             && field.Field.DeviceIdentity.Contains("luid:000000010000002A", StringComparison.Ordinal)).Field;
         var featureReading = access.Backend.ReadCached(firstFeature);
         Assert.Equal(FieldObservationStatus.Current, featureReading.Status);
-        Assert.Equal("49408", featureReading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49408"), featureReading.Value?.Integer);
         Assert.Contains(catalog.Devices, device => device.Identity == firstFeature.DeviceIdentity
             && device.Resource == "gpu_adapter");
 
@@ -47,11 +47,11 @@ public sealed class WindowsD3dCapabilityInformationTests
         var zeroFormat = firstFormats.Single(field => field.Field.DeviceIdentity.EndsWith("dxgi-format:40", StringComparison.Ordinal)).Field;
         var zeroReading = access.Backend.ReadCached(zeroFormat);
         Assert.Equal(FieldObservationStatus.Current, zeroReading.Status);
-        Assert.Equal("0", zeroReading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), zeroReading.Value?.Integer);
         Assert.Contains(catalog.Devices, device => device.Identity == zeroFormat.DeviceIdentity
             && device.Resource == "gpu_adapter_format");
         var packedFlags = firstFormats.Single(field => field.Field.DeviceIdentity.EndsWith("dxgi-format:28", StringComparison.Ordinal)).Field;
-        Assert.Equal("281474976710689", access.Backend.ReadCached(packedFlags).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("281474976710689"), access.Backend.ReadCached(packedFlags).Value?.Integer);
 
         var countAfterDiscovery = reader.Requests.Count;
         _ = access.Backend.ReadCached(packedFlags);
@@ -60,9 +60,9 @@ public sealed class WindowsD3dCapabilityInformationTests
         reader.FeatureLevels = [WindowsD3dFeatureLevel.Level12_0, WindowsD3dFeatureLevel.Level11_0];
         var selectedFeature = Assert.Single(await access.Backend.CollectAsync([firstFeature], default));
         Assert.Equal(FieldObservationStatus.Current, selectedFeature.Status);
-        Assert.Equal("49152", selectedFeature.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49152"), selectedFeature.Value?.Integer);
         Assert.Equal(WindowsD3dCapabilityFields.FeatureLevel, reader.Requests.Last());
-        Assert.Equal("281474976710689", access.Backend.ReadCached(packedFlags).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("281474976710689"), access.Backend.ReadCached(packedFlags).Value?.Integer);
 
         using var borrow = access.BorrowSubscriptionCapture();
         var binding = Assert.Single(borrow.Bind([packedFlags]));
@@ -72,14 +72,14 @@ public sealed class WindowsD3dCapabilityInformationTests
         var borrowedReading = Assert.Single(borrowed.Readings);
         Assert.True(borrowed.Committed);
         Assert.Equal(FieldObservationStatus.Current, borrowedReading.Status);
-        Assert.Equal("0", borrowedReading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), borrowedReading.Value?.Integer);
         Assert.Equal(WindowsD3dCapabilityFields.FormatSupportFlags, reader.Requests.Last());
         Assert.Equal(borrowedReading, access.Backend.ReadCached(packedFlags));
         Assert.NotNull(owner.ReadState().InformationFields.FindField(packedFlags));
 
         await owner.SampleTopologyAsync(null, CancellationToken.None, requireDemand: false);
-        Assert.Equal("0", access.Backend.ReadCached(packedFlags).Value?.Integer);
-        Assert.Equal("49152", access.Backend.ReadCached(firstFeature).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), access.Backend.ReadCached(packedFlags).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49152"), access.Backend.ReadCached(firstFeature).Value?.Integer);
     }
 
     [Fact]
@@ -99,8 +99,8 @@ public sealed class WindowsD3dCapabilityInformationTests
         var format = catalog.Fields.Single(field => field.Field.FieldName == "gpu_all_d3d_format_support_flags").Field;
         var featureBefore = access.Backend.ReadCached(feature);
         var formatBefore = access.Backend.ReadCached(format);
-        Assert.Equal("49408", featureBefore.Value?.Integer);
-        Assert.Equal("4294967329", formatBefore.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49408"), featureBefore.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967329"), formatBefore.Value?.Integer);
 
         reader.Mode = 2;
         var beforeFailure = owner.ReadState();
@@ -115,7 +115,7 @@ public sealed class WindowsD3dCapabilityInformationTests
         reader.Mode = 0;
         var restoredFeature = Assert.Single(await access.Backend.CollectAsync([feature], default));
         Assert.Equal(FieldObservationStatus.Current, restoredFeature.Status);
-        Assert.Equal("49408", restoredFeature.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49408"), restoredFeature.Value?.Integer);
         Assert.Equal(formatBefore, access.Backend.ReadCached(format));
 
         reader.Mode = 3;
@@ -153,7 +153,7 @@ public sealed class WindowsD3dCapabilityInformationTests
         var rejected = await borrow.CollectAsync([feature], new Permit(accept: false), default);
         Assert.False(rejected.Committed);
         Assert.Same(beforeCancel, owner.ReadState());
-        Assert.Equal("49408", access.Backend.ReadCached(feature).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49408"), access.Backend.ReadCached(feature).Value?.Integer);
 
         var retiring = new Permit();
         reader.AfterRead = retiring.Retire;
@@ -161,7 +161,7 @@ public sealed class WindowsD3dCapabilityInformationTests
         var retired = await borrow.CollectAsync([feature], retiring, default);
         Assert.False(retired.Committed);
         Assert.Same(beforeCancel, owner.ReadState());
-        Assert.Equal("49408", access.Backend.ReadCached(feature).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("49408"), access.Backend.ReadCached(feature).Value?.Integer);
     }
 
     [Fact]

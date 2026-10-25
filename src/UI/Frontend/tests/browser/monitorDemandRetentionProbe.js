@@ -65,14 +65,14 @@ export default async function monitorDemandRetentionProbe(page, baseUrl) {
   }
 }
 
-// Caller pauses the resource-monitor path before navigation to guarantee a first read.
+// Caller pauses the resource-facts path before navigation to guarantee a first read.
 export async function monitorFirstTableValueProbe(page, baseUrl) {
   const table = page.locator('[data-frontend-visibility-surface="monitor.table"]');
   await table.waitFor({ state: "attached" });
   await page.waitForFunction(() => document.querySelector(".metric-main .metric-value")?.textContent?.includes("%"));
   const before = await (await page.request.get(`${baseUrl}/__test/requests`)).json();
-  assert(Object.entries(before["/api/resource-monitor/subscribe"]?.publicationsByQuery ?? {})
-    .every(([query, count]) => !query.includes("scope=table") || count === 0), "No table value may have been published before this first-load probe");
+  assert.equal(before["/api/resource-facts/subscribe"]?.publications ?? 0, 0,
+    "No table facts may have been published before this first-load probe");
   assert.equal(await table.locator("#resourceTableStatus").textContent(), "--");
   assert.equal(await table.locator(".content-state.empty").count(), 0, "Offscreen unread table must not claim sampling completed");
   await page.evaluate(() => {

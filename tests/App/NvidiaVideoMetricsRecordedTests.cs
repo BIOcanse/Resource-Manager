@@ -152,8 +152,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
         {
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         }
 
         var device = dashboard.Current!.FieldBindings.Values.Single(binding =>

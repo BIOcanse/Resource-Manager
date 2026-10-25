@@ -42,7 +42,7 @@ public sealed partial class WindowsBatteryReader
                 continue;
             }
             FieldValue? value = definition.Code == MetricFieldCode.BatteryPowerState
-                ? capture.PowerState is { } state ? new(Integer: state.ToString(CultureInfo.InvariantCulture)) : null
+                ? capture.PowerState is { } state ? new(Integer: new MetricInteger(state)) : null
                 : capture.Values.TryGetValue(definition.Code, out var number) ? new(Number: number) : null;
             values[index] = new(field, value is null ? FieldObservationStatus.Unavailable : FieldObservationStatus.Current,
                 value, value is null ? null : observedAt, "windows.battery");

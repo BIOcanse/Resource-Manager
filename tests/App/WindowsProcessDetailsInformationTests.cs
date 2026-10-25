@@ -209,7 +209,7 @@ public sealed class WindowsProcessDetailsInformationTests
         var signature = Assert.Single(process.Fields);
         var signatureReading = InformationFieldProjection.Read(process.DeviceIdentity, signature, snapshot.ObservedAt);
         Assert.Equal("unsigned128", InformationFieldProjection.Describe(signature.Definition).ValueKind);
-        Assert.Equal("2148204800", signatureReading.Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2148204800"), signatureReading.Value?.Integer);
         Assert.Equal("C:\\Recorded\\sample.dll", InformationFieldProjection.Read(module.DeviceIdentity,
             Assert.Single(module.Fields), snapshot.ObservedAt).Value?.Text);
         var threadReading = InformationFieldProjection.Read(thread.DeviceIdentity, Assert.Single(thread.Fields), snapshot.ObservedAt);

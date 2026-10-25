@@ -77,9 +77,9 @@ public sealed class WindowsOperatingSystemComponentInformationOwnerTests
         var packageReading = backend.ReadCached(package.Field);
         var driverReading = backend.ReadCached(driver.Field);
         Assert.Equal(FieldObservationStatus.Current, zero.Status);
-        Assert.Equal("0", zero.Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), zero.Value!.Integer);
         Assert.Equal(FieldObservationStatus.Current, packageReading.Status);
-        Assert.Equal("2", packageReading.Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("2"), packageReading.Value!.Integer);
         Assert.Equal(FieldObservationStatus.Current, driverReading.Status);
         Assert.Equal("oem42.inf", driverReading.Value!.Text);
         Assert.NotNull(zero.ObservedAt);
@@ -167,7 +167,7 @@ public sealed class WindowsOperatingSystemComponentInformationOwnerTests
         var rejected = await borrow.CollectAsync([field], new Permit(false));
         Assert.False(rejected.Committed);
         Assert.Same(previous, owner.ReadInformation());
-        Assert.Equal("0", backend.ReadCached(field).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), backend.ReadCached(field).Value!.Integer);
     }
 
     private static FieldCapability Capability(InformationReadWriteBackend backend, string identity,

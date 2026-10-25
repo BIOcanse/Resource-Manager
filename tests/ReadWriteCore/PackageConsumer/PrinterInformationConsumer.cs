@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using ResourceManager.ReadWrite.Information;
 using ResourceManager.ReadWrite.Windows.Devices.Models;
@@ -43,7 +44,7 @@ internal static class PrinterInformationConsumer
         var ownerBackend = owner.CreateBackend();
         Require(backend.ReadCached(version).Value?.Text == "18446744073709551615"
             && backend.ReadCached(port).Value?.Text == "USB001:,FILE:"
-            && backend.ReadCached(state).Value?.Integer == "2147484800",
+            && backend.ReadCached(state).Value?.Integer == MetricInteger.Parse("2147484800"),
             "recorded source values preserve unsigned version, multi-port text and combined raw status bits");
         Require(backend.ReadCached(port) == ownerBackend.ReadCached(port),
             "scoped cache is the original topology owner's current");

@@ -18,7 +18,7 @@ public sealed class IndexedFileOwnerLibraryIntegrationTests
         Assert.All(catalog.Fields, field => { Assert.True(field.Read.Supported); Assert.False(field.Write.Supported); });
         var readings = await backend.CollectAsync([.. catalog.Fields.Select(field => field.Field)], default);
         Assert.All(readings, reading => Assert.Equal(FieldObservationStatus.Current, reading.Status));
-        Assert.Equal("9007199254740993", readings.Single(r => r.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), readings.Single(r => r.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer);
         Assert.Equal(Path.Combine(fixture.DirectoryPath, "alpha.txt"), readings.Single(r => r.Field.FieldName == "file_all_indexed_path_actual").Value!.Text);
         Assert.Equal(Fixture.Modified.ToString("O"), readings.Single(r => r.Field.FieldName == "file_all_indexed_modified_time_actual").Value!.Text);
         Assert.Equal(typeof(SqliteIndexedFileOwner).Assembly, typeof(NativeFileQueryLease).Assembly);
@@ -70,7 +70,7 @@ public sealed class IndexedFileOwnerLibraryIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await borrow.CollectAsync(fields, new Permit(), cancel.Token));
         Assert.Same(before, fixture.Query.ReadInformation());
         var result = await borrow.CollectAsync(fields, new Permit());
-        Assert.Equal("0", result.Readings.Single(r => r.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), result.Readings.Single(r => r.Field.FieldName == "file_all_indexed_size_actual").Value!.Integer);
     }
     [Fact] public async Task QueryFailureClearsCurrentAndDoesNotCacheSuccess()
     {
@@ -172,7 +172,7 @@ public sealed class IndexedFileOwnerLibraryIntegrationTests
         await fixture.Sql("UPDATE software_index_entries SET size_bytes=0 WHERE id=1;");
         _ = await backend.CollectAsync([path], default);
         Assert.Equal(before, backend.ReadCached(size));
-        Assert.Equal("0", (await backend.CollectAsync([size], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), (await backend.CollectAsync([size], default))[0].Value!.Integer);
     }
     [Fact] public async Task MultipleBorrowsPreserveUnrequestedRowsAcrossDifferentSelectedBatches()
     {
@@ -216,7 +216,7 @@ public sealed class IndexedFileOwnerLibraryIntegrationTests
         var size = firstFields.Single(f => f.Field.FieldName == "file_all_indexed_size_actual").Field;
         var before = second.Backend.ReadCached(size);
         await fixture.Sql("UPDATE software_index_entries SET size_bytes=0 WHERE id=1;");
-        Assert.Equal("0", (await first.Backend.CollectAsync([size], default))[0].Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), (await first.Backend.CollectAsync([size], default))[0].Value!.Integer);
         Assert.Equal(before, second.Backend.ReadCached(size));
         using var denied = fixture.Owner.CreateInformationQuery("alpha", 10, (_, _) => false);
         Assert.Empty((await denied.Backend.DiscoverAsync(default)).Fields);

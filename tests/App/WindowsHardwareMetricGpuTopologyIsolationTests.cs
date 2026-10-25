@@ -28,7 +28,7 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
         using var resources = recording.Resources();
         var source = recording.Topology();
         using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(source.Capture());
-        var current = new LastSuccessfulHardwareMetricSnapshot();
+        using var current = new LastSuccessfulHardwareMetricSnapshot();
         var capture = new WindowsHardwareMetricCapture(resources, _ => NativeMetricSnapshotZoneMode.Normal,
             TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), fixture.Owner.RequestTopologyRefresh);
         using (var initial = fixture.Owner.Acquire())
@@ -51,7 +51,7 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
                 Assert.Equal(initial.Workspace.ReadCatalog().GpuIdentities.ToArray(), lease.Workspace.ReadCatalog().GpuIdentities.ToArray());
                 var request = Request(lease.Workspace.ReadCatalog());
                 var snapshot = await capture.CaptureUnderGateAsync(request, lease.Workspace, lease.WorkspaceIdentity,
-                    lease.Topology, commit => lease.TryPublish(_ => { commit(); return true; }, out _), new("recorded"), default,
+                    lease.Topology, commit => lease.TryPublish(_ => { commit(); return true; }, out _), default,
                     onCommitted: completed => current.Publish(completed, request));
                 Assert.NotNull(snapshot);
                 AssertPublished(current.Read()!, request, recording.Value, phase == 1);
@@ -171,7 +171,6 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
         internal WindowsHardwareMetricResources Resources() => new()
         {
             Controls = new() { ControlReadCpuTopology = () => null! },
-            CpuName = "recorded", MemoryDescription = "recorded",
             ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = () => throw new InvalidOperationException(),
             ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, _) => new Dictionary<string, ulong>(),
             ReadNumaIdentities = () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []), ReadGpuInventory = Inventory,

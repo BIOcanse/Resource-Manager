@@ -41,7 +41,7 @@ public sealed class IntelPsysCatalogTests
         var counter = Assert.Single(fields, binding => binding.FieldCode == MetricFieldCode.IntelPsysEnergyCounter).Field!;
         Assert.Equal("unsigned64", counter.ValueKind);
         Assert.Equal("count", counter.Unit);
-        Assert.Contains("zero does not prove", counter.Meaning);
+        Assert.Equal("system_intel_psys_energy_counter_raw", counter.Name);
         var unit = Assert.Single(fields, binding => binding.FieldCode == MetricFieldCode.IntelPsysEnergyUnit).Field!;
         Assert.Equal("float64", unit.ValueKind);
         Assert.Equal("J/count", unit.Unit);

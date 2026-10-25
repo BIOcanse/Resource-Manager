@@ -2,10 +2,10 @@ import { monitorFirstTableValueProbe } from "./monitorDemandRetentionProbe.js";
 import assert from "node:assert/strict";
 
 export default async function monitorCurrentValueRetentionJourney(page, baseUrl) {
-  const paths = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe"];
+  const paths = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe", "/api/resource-facts/subscribe"];
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  await patch({ pausedSubscriptionPaths: ["/api/resource-monitor/subscribe"] });
+  await patch({ pausedSubscriptionPaths: ["/api/resource-facts/subscribe"] });
   await page.setViewportSize({ width: 800, height: 500 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const firstTableValue = await monitorFirstTableValueProbe(page, baseUrl);
@@ -17,16 +17,17 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
 
   await patch({ pausedSubscriptionPaths: paths });
   await page.waitForTimeout(100);
-  // Changing the query binds the current source immediately. Old rows cannot stand
-  // in for the new sort or for a different table mode while its response is pending.
+  // Sorting and software/process projection consume the same accepted facts locally.
+  // With publications paused, both must render immediately without clearing rows.
+  const localProjectionBefore = await telemetry();
   await page.locator('.resource-table-sort-button').filter({ hasText: /^CPU$/ }).click();
-  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
-  await patch({ pausedSubscriptionPaths: [] });
-  await waitForValues();
-  await patch({ pausedSubscriptionPaths: paths });
-  await page.waitForTimeout(100);
+  assert.equal(await page.getByRole("columnheader").filter({ hasText: /^CPU/ }).getAttribute("aria-sort"), "descending");
+  assert((await values()).rows.length > 0, "Local sort retains accepted facts");
   await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "进程级", exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
+  await page.locator('.resource-table-row[data-resource-row-id]').filter({ hasText: "example-0.exe" }).waitFor();
+  const localProjectionAfter = await telemetry();
+  assert.equal(localProjectionAfter["/api/resource-facts/subscribe"].publications,
+    localProjectionBefore["/api/resource-facts/subscribe"].publications, "Local projections need no new fact publication");
   await patch({ pausedSubscriptionPaths: [] });
   await waitForValues();
 
@@ -44,8 +45,7 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();
-    return Object.entries(current["/api/resource-monitor/subscribe"]?.inFlightByQuery ?? {})
-      .some(([query, count]) => query.includes("scope=table") && count > 0);
+    return current["/api/resource-facts/subscribe"]?.logicalInFlight > 0;
   });
   const after = await values();
   assert.deepEqual(after.rows, retained.rows, "Reacquisition immediately displays the latest rows");
@@ -56,17 +56,17 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
     assert.equal(resumed[path].publications, paused[path].publications,
       "Current values must not depend on another backend callback");
   }
-  for (const path of ["/api/metrics/snapshot", "/api/resource-monitor/snapshot"]) {
+  for (const path of ["/api/metrics/snapshot", "/api/resource-monitor/snapshot", "/api/resource-facts/snapshot"]) {
     assert.equal(resumed[path]?.started ?? 0, 0, "Frontend must not fill the gap with a direct GET");
   }
   await patch({ pausedSubscriptionPaths: [] });
   await waitForValues();
   await patch({ resourceTableVariant: "empty" });
-  await page.waitForFunction(() => document.querySelectorAll(".resource-table-row[data-resource-row-id]").length === 0);
+  await page.waitForFunction(() => document.querySelectorAll(".resource-table-retained-surface:not([hidden]) .resource-table-row[data-resource-row-id]").length === 0);
   await page.locator(".resource-table-panel .content-state.empty").getByText("当前没有可显示的资源", { exact: true }).waitFor();
   assert.equal(await page.locator("#resourceTableStatus").textContent(), "0", "A received zero-row value has a real zero count");
   assert.deepEqual(errors, []);
-  return { firstTableValue, before, after, releasedValuesRetained: true, incompatibleQueryCleared: true, callbacksResumed: true, actualEmptyValueApplied: true };
+  return { firstTableValue, before, after, releasedValuesRetained: true, localProjectionsRetainFacts: true, callbacksResumed: true, actualEmptyValueApplied: true };
 
   async function waitForValues() {
     await page.waitForFunction(() =>

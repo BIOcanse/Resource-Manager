@@ -49,8 +49,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         await owner.StartAsync(timeout.Token);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
 
         var selectedFan = new NvidiaNvmlFanIdentity(NvidiaFanFixture.ParentA, fanIndex);
         var queriedTargets = new ConcurrentQueue<IReadOnlyList<NvidiaNvmlFanReadTarget>>();
@@ -189,7 +188,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         Assert.All(fans, device => Assert.All(device.GetProperty("fields").EnumerateArray(), field =>
         {
             Assert.Equal((int)MetricResource.Fan, field.GetProperty("resource").GetInt32());
-            Assert.Contains("NVML intended", field.GetProperty("meaning").GetString());
+            Assert.False(field.TryGetProperty("meaning", out _));
         }));
         using var capabilityCatalog = await GetJsonAsync(client, "/api/metrics/fields/capabilities", token);
         var capabilities = capabilityCatalog.RootElement.EnumerateArray().Where(capability =>

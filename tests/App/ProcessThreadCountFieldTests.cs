@@ -23,7 +23,7 @@ public sealed class ProcessThreadCountFieldTests
         Assert.Equal(new[] { 0x101000U }, api.OpenRights); Assert.Equal(1, api.Calls.Snapshots); Assert.Equal(1, api.Calls.Closes);
         Assert.Equal(0, api.Basic.MemoryCalls + api.Basic.IoCalls + api.Basic.HandleCalls + api.Basic.ImageCalls + api.Basic.SidCalls + api.Basic.ParentCalls);
         var field = ProcessMetricFieldRegistry.Find("process_all_thread_count_actual")!;
-        Assert.Equal(count.ToString(System.Globalization.CultureInfo.InvariantCulture), ProcessMetricFieldProjection.CreateBasicValue(field, actual).IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(count), ProcessMetricFieldProjection.CreateBasicValue(field, actual).IntegerValue);
     }
 
     [Fact]
@@ -114,10 +114,10 @@ public sealed class ProcessThreadCountFieldTests
         using var signal = owner.Publications.Subscribe([ProcessMetricDatasetIds.BasicMetrics]);
         api.Calls.Count = 9;
         var reads = await owner.Backend.CollectAsync([field], timeout.Token); await signal.WaitAsync(timeout.Token);
-        Assert.Equal("9", reads.Single().Value?.Integer); Assert.Equal(reads.Single(), owner.Backend.ReadCached(field));
+        Assert.Equal(MetricInteger.Parse("9"), reads.Single().Value?.Integer); Assert.Equal(reads.Single(), owner.Backend.ReadCached(field));
         api.Calls.Count = 0;
         var scoped = await borrow.CollectAsync([field], new Permit(), timeout.Token); await signal.WaitAsync(timeout.Token);
-        Assert.True(scoped.Committed); Assert.Equal("0", scoped.Readings.Single().Value?.Integer);
+        Assert.True(scoped.Committed); Assert.Equal(MetricInteger.Parse("0"), scoped.Readings.Single().Value?.Integer);
         Assert.Null(owner.Current.ReadPart(ProcessMetricDatasetIds.BasicMetrics)!.Sources.Single().WindowMilliseconds);
         var cpuFirst = await owner.CollectAsync(["process_all_cpu_usage_actual"], timeout.Token);
         Assert.Null(cpuFirst.Processes.Single().Values.Single().NumericValue);

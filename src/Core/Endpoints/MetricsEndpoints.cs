@@ -63,8 +63,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ? MetricSampleRequest.ForIds(ids)
                 : runtimePlanProvider.Current.Monitoring.DashboardMetricRequest;
             var snapshot = await sampler.GetSnapshotAsync(snapshotRequest, cancellationToken);
-            var presentation = MetricCatalog.ApplyPresentation(snapshot);
-            return Results.Ok(MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision));
+            return Results.Ok(MetricSnapshotWireSnapshot.From(snapshot, snapshotRequest, catalogState.Revision));
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/gpu-specialized", (

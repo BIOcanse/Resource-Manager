@@ -32,6 +32,10 @@ pub fn fingerprint() u64 {
         protocol.SourcePersistenceOutput,
         protocol.PersistenceInput,
         protocol.PersistenceHeader,
+        protocol.CurrentValue,
+        protocol.CurrentCommitInput,
+        protocol.CurrentReadOutput,
+        protocol.CurrentKey,
     };
     var hash: u64 = fnv_offset;
     hash = mix(hash, types.len);

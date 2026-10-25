@@ -59,7 +59,7 @@ public sealed class DeviceReaderLibraryIntegrationTests
         var captured = reader.ReadFields(identity, names);
         Assert.Equal(names, captured.Readings.Select(static reading => reading.Field.FieldName));
         Assert.All(captured.Readings, reading => Assert.Equal(FieldObservationStatus.Current, reading.Status));
-        Assert.Equal(uint.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture), captured.Readings[0].Value!.Integer);
+        Assert.Equal(MetricInteger.FromUnsigned128(uint.MaxValue), captured.Readings[0].Value!.Integer);
         Assert.Null(captured.Readings[0].Value!.Number);
         Assert.Equal("unsigned64", MetricFieldRegistry.FindByName(names[0])!.ValueKind);
         Assert.Equal(0d, captured.Readings[1].Value!.Number); Assert.Equal(-123d, captured.Readings[2].Value!.Number);

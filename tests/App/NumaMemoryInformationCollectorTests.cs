@@ -106,16 +106,14 @@ public sealed partial class NumaMemoryInformationCollectorTests
         Assert.Equal(MetricVendor.All, field.Vendor);
         Assert.Equal("B", field.Unit);
         Assert.Equal("unsigned64", field.ValueKind);
-        Assert.Contains("standby", field.Meaning);
+        Assert.Equal(FieldName, field.Name);
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         var capacityField = MetricFieldRegistry.FindByName(CapacityFieldName)!;
         Assert.Equal(MetricResource.Memory, capacityField.Resource);
         Assert.Equal(MetricVendor.All, capacityField.Vendor);
         Assert.Equal("MiB", capacityField.Unit);
         Assert.Equal("unsigned64", capacityField.ValueKind);
-        Assert.Contains("NumberOfItems32", capacityField.Meaning);
-        Assert.Contains("binary MiB", capacityField.Meaning);
-        Assert.Contains("installed DIMM capacity", capacityField.Meaning);
+        Assert.Equal(CapacityFieldName, capacityField.Name);
         var capacityRule = Assert.Single(compiled.HotPublish.RuleTemplates.Where(rule => rule.TemplateId == $"{CapacityFieldName}.optional"));
         Assert.Equal("numa.{numa}.capacityMiB", capacityRule.MetricIdTemplate);
         Assert.Equal(9U, capacityRule.ScopeExpansion); Assert.Equal(3U, capacityRule.ScopeKind); Assert.Equal(3U, capacityRule.ValueKind);
@@ -176,7 +174,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
         var removed = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], catalog.HandleMap, numaNodes: successful.NumaNodes);
         Assert.DoesNotContain(removed.MetricBindings.Values, static binding => binding.FieldCode is MetricFieldCode.NumaNodeAvailableBytes or MetricFieldCode.NumaNodeCapacityMiB);
         var failedSnapshot = WindowsHardwareMetricSampler.AddCatalogObservations(new HardwareMetricSnapshot(
-            DateTimeOffset.UtcNow, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>()),
+            DateTimeOffset.UtcNow, null!, null!, null!, [], null!, new Dictionary<string, MetricReadingValue>()),
             topology with { NumaStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable }, DateTimeOffset.UtcNow);
         Assert.Equal(SamplingObservationStatus.Unavailable, failedSnapshot.Datasets[SamplingDatasetIds.NumaInventory].Status);
     }

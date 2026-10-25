@@ -84,7 +84,7 @@ public sealed record CompiledHostManagerMetricSnapshotBuildPlan(
     string NativeModule,
     CompiledHostManagerMetricSnapshotCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x000B_0000U
+    public bool IsPublished => AbiVersion == 0x000D_0000U
         && string.Equals(NativeModule, "metric_snapshot", StringComparison.Ordinal)
         && CapacityLimits.IsPublished;
 

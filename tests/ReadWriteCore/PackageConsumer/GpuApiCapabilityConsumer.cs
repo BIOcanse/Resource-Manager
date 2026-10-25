@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -104,11 +105,11 @@ internal static class GpuApiCapabilityConsumer
         AssertReadOnlyCapability(textureCapability, "OpenGL uint32 limit");
         AssertReadOnlyCapability(lodBiasCapability, "OpenGL floating limit");
         AssertReadOnlyCapability(storageBlockCapability, "OpenGL unsigned64 limit");
-        Require(glLimitCore.ReadCached(glTextureLimit).Value?.Integer == "16384"
+        Require(glLimitCore.ReadCached(glTextureLimit).Value?.Integer == MetricInteger.Parse("16384")
             && glLimitCore.ReadCached(glLodBias).Value?.Number == 16.25d
-            && glLimitCore.ReadCached(glStorageBlockSize).Value?.Integer == "4294967296",
+            && glLimitCore.ReadCached(glStorageBlockSize).Value?.Integer == MetricInteger.Parse("4294967296"),
             "the original owner publishes exact unsigned32, floating, and lossless decimal unsigned64 values");
-        Require((await glLimitCore.WriteAsync(glTextureLimit, new(Integer: "32768"))).Status == "unsupported",
+        Require((await glLimitCore.WriteAsync(glTextureLimit, new(Integer: MetricInteger.Parse("32768")))).Status == "unsupported",
             "the public API rejects writes to OpenGL implementation limits");
         var glLimitRequestsBeforeCache = glLimitReader.Requests.Count;
         _ = glLimitCore.ReadCached(glTextureLimit);
@@ -123,7 +124,7 @@ internal static class GpuApiCapabilityConsumer
             "selected OpenGL float collection requests only its exact context limit");
         var selectedStorageBlock = (await glLimitCore.CollectAsync([glStorageBlockSize], CancellationToken.None)).Single();
         Require(selectedStorageBlock.Status == FieldObservationStatus.Current
-            && selectedStorageBlock.Value?.Integer == "4294967296"
+            && selectedStorageBlock.Value?.Integer == MetricInteger.Parse("4294967296")
             && glLimitReader.Requests.Last() == WindowsOpenGlCapabilityFields.MaxShaderStorageBlockSize,
             "selected OpenGL unsigned64 collection preserves its exact decimal value and field bit");
         using (var borrow = glLimitAccess.BorrowSubscriptionCapture())
@@ -134,7 +135,7 @@ internal static class GpuApiCapabilityConsumer
                 "OpenGL limits bind to the existing topology query item");
             var borrowed = await borrow.CollectAsync([glTextureLimit], new Permit(), CancellationToken.None);
             Require(borrowed.Committed && borrowed.Readings.Single().Status == FieldObservationStatus.Current
-                && borrowed.Readings.Single().Value?.Integer == "16384"
+                && borrowed.Readings.Single().Value?.Integer == MetricInteger.Parse("16384")
                 && glLimitReader.Requests.Last() == WindowsOpenGlCapabilityFields.MaxTextureSize,
                 "the original owner borrow returns one selected OpenGL uint32 limit");
         }
@@ -206,12 +207,12 @@ internal static class GpuApiCapabilityConsumer
         Require(texelBufferLimit.Definition.ValueKind == "unsigned32" && texelBufferLimit.Definition.Unit == "texels",
             "Vulkan texel-buffer capacity retains unsigned32 texel units at the public API");
         AssertReadOnlyCapability(texelBufferLimit, "Vulkan texel-buffer limit");
-        Require(vkCore.ReadCached(vkMaxImageDimension1D).Value?.Integer == "12288"
-            && vkCore.ReadCached(vkMaxImageDimension2D).Value?.Integer == "16384"
-            && vkCore.ReadCached(vkMaxImageDimension3D).Value?.Integer == "4096"
-            && vkCore.ReadCached(vkMaxImageDimensionCube).Value?.Integer == "8192"
-            && vkCore.ReadCached(vkMaxImageArrayLayers).Value?.Integer == "0"
-            && vkCore.ReadCached(vkMaxTexelBufferElements).Value?.Integer == "131072",
+        Require(vkCore.ReadCached(vkMaxImageDimension1D).Value?.Integer == MetricInteger.Parse("12288")
+            && vkCore.ReadCached(vkMaxImageDimension2D).Value?.Integer == MetricInteger.Parse("16384")
+            && vkCore.ReadCached(vkMaxImageDimension3D).Value?.Integer == MetricInteger.Parse("4096")
+            && vkCore.ReadCached(vkMaxImageDimensionCube).Value?.Integer == MetricInteger.Parse("8192")
+            && vkCore.ReadCached(vkMaxImageArrayLayers).Value?.Integer == MetricInteger.Parse("0")
+            && vkCore.ReadCached(vkMaxTexelBufferElements).Value?.Integer == MetricInteger.Parse("131072"),
             "the Vulkan image and core-limit groups are publicly discoverable as exact integer values, including a known zero");
         Require((await vkCore.WriteAsync(vkVersion, new(Text: "1.4.0"))).Status == "unsupported",
             "the public API rejects writes to Vulkan capability fields");
@@ -236,7 +237,7 @@ internal static class GpuApiCapabilityConsumer
             "cached Vulkan core-limit reads do not resample the physical device");
         var selectedCoreLimit = (await vkCore.CollectAsync([vkMaxTexelBufferElements], CancellationToken.None)).Single();
         Require(selectedCoreLimit.Status == FieldObservationStatus.Current
-            && selectedCoreLimit.Value?.Integer == "131072",
+            && selectedCoreLimit.Value?.Integer == MetricInteger.Parse("131072"),
             "a selected Vulkan core limit returns its exact current value");
         Require(vkReader.Requests.Last() == WindowsVulkanCapabilityFields.CoreLimits,
             "selected Vulkan core-limit collection invokes the one properties2 core-limits query group");
@@ -248,29 +249,29 @@ internal static class GpuApiCapabilityConsumer
         vkReader.MaxImageDimension2D = 16385;
         var selectedLimit = (await vkCore.CollectAsync([vkMaxImageDimension2D], CancellationToken.None)).Single();
         Require(selectedLimit.Status == FieldObservationStatus.Current
-            && selectedLimit.Value?.Integer == "16385",
+            && selectedLimit.Value?.Integer == MetricInteger.Parse("16385"),
             "a selected Vulkan 2D limit returns a lossless current unsigned32 value");
         Require(vkReader.Requests.Last() == WindowsVulkanCapabilityFields.MaxImageDimension2D,
             "a selected Vulkan 2D limit requests only its exact limit bit");
-        Require(vkCore.ReadCached(vkMaxImageDimension1D).Value?.Integer == "12288"
-            && vkCore.ReadCached(vkMaxImageDimension3D).Value?.Integer == "4096"
-            && vkCore.ReadCached(vkMaxImageDimensionCube).Value?.Integer == "8192"
-            && vkCore.ReadCached(vkMaxImageArrayLayers).Value?.Integer == "0",
+        Require(vkCore.ReadCached(vkMaxImageDimension1D).Value?.Integer == MetricInteger.Parse("12288")
+            && vkCore.ReadCached(vkMaxImageDimension3D).Value?.Integer == MetricInteger.Parse("4096")
+            && vkCore.ReadCached(vkMaxImageDimensionCube).Value?.Integer == MetricInteger.Parse("8192")
+            && vkCore.ReadCached(vkMaxImageArrayLayers).Value?.Integer == MetricInteger.Parse("0"),
             "a selected Vulkan limit leaves sibling limits unchanged");
 
         using var vkBorrow = vk.BorrowSubscriptionCapture();
         var borrowedLimit = await vkBorrow.CollectAsync([vkMaxImageDimension3D], new Permit(), CancellationToken.None);
-        Require(borrowedLimit.Committed && borrowedLimit.Readings.Single().Value?.Integer == "4096",
+        Require(borrowedLimit.Committed && borrowedLimit.Readings.Single().Value?.Integer == MetricInteger.Parse("4096"),
             "the package subscription borrow delivers the selected Vulkan 3D limit from the original owner");
         Require(vkReader.Requests.Last() == WindowsVulkanCapabilityFields.MaxImageDimension3D,
             "a borrowed Vulkan 3D limit requests only its exact limit bit");
         var borrowedArrayLayers = await vkBorrow.CollectAsync([vkMaxImageArrayLayers], new Permit(), CancellationToken.None);
-        Require(borrowedArrayLayers.Committed && borrowedArrayLayers.Readings.Single().Value?.Integer == "0",
+        Require(borrowedArrayLayers.Committed && borrowedArrayLayers.Readings.Single().Value?.Integer == MetricInteger.Parse("0"),
             "the package subscription borrow preserves a known zero array-layer limit from the original owner");
         Require(vkReader.Requests.Last() == WindowsVulkanCapabilityFields.MaxImageArrayLayers,
             "a borrowed Vulkan array-layer limit requests only its exact limit bit");
         var borrowedCoreLimit = await vkBorrow.CollectAsync([vkMaxTexelBufferElements], new Permit(), CancellationToken.None);
-        Require(borrowedCoreLimit.Committed && borrowedCoreLimit.Readings.Single().Value?.Integer == "131072",
+        Require(borrowedCoreLimit.Committed && borrowedCoreLimit.Readings.Single().Value?.Integer == MetricInteger.Parse("131072"),
             "the package subscription borrow delivers a Vulkan core limit from the original owner");
         Require(vkReader.Requests.Last() == WindowsVulkanCapabilityFields.CoreLimits,
             "a borrowed Vulkan core-limit query uses the original one-call properties2 group");

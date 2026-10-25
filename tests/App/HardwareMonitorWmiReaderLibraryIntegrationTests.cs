@@ -140,14 +140,13 @@ public sealed class HardwareMonitorWmiReaderLibraryIntegrationTests
         Assert.Equal("Provider / Board", raw.MotherboardTemperature.Detail);
         Assert.Null(raw.ProviderState.Message);
         Assert.Equal(1400, raw.CpuFanSpeedRpm);
-        var formatted = HardwareMonitorWmiMonitoringZone.FormatSnapshot(raw);
-        Assert.Equal(MetricDisplayDetailFormatter.SensorDetail("Provider / Board", "主板温度"), formatted.MotherboardTemperature!.Name);
-        Assert.Equal(MetricDisplayDetailFormatter.SensorDetail("Provider / Board", "硬件传感器"), formatted.MotherboardTemperature.Detail);
-        Assert.Equal(MetricDisplayDetailFormatter.FanDetail("", 0), Assert.Single(formatted.SystemFans).Name);
-        Assert.Equal(MetricDisplayDetailFormatter.SensorDetail("", "硬件传感器"), Assert.Single(formatted.SystemFans).Detail);
+        var fan = Assert.Single(raw.SystemFans);
+        Assert.Equal("", fan.Name);
+        Assert.Equal(1400, fan.SpeedRpm);
+        Assert.Equal("", fan.Detail);
         var rawGpu = Assert.Single(raw.GpuSensors);
-        Assert.Equal(rawGpu.Name, Assert.Single(formatted.GpuSensors).Name);
-        Assert.Equal(MetricDisplayDetailFormatter.SensorDetail(rawGpu.Name, "GPU sensor 0"), Assert.Single(formatted.GpuSensors).Detail);
-        Assert.Equal("已读取内存温度、主板传感或风扇。", formatted.ProviderState.Message);
+        Assert.Contains("GPU Core", rawGpu.Name, StringComparison.Ordinal);
+        Assert.Equal(rawGpu.Name, rawGpu.Detail);
+        Assert.Null(raw.ProviderState.Message);
     }
 }

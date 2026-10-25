@@ -52,7 +52,7 @@ internal static class NpuMemoryConsumer
         }
         var current = owner.ReadCachedSnapshot(); var reads = fixture.Reads; var directories = fixture.DirectoryReads;
         foreach (var field in fields) _ = core.ReadCached(field);
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads && fixture.DirectoryReads == directories,
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads && fixture.DirectoryReads == directories,
             "passive cache reads borrow the original current without querying or enumerating");
         var selected = fields.Single(field => field.DeviceIdentity == fixture.Devices[1].ExactIdentityKey
             && field.FieldName == RecordedNpuMemoryResources.SharedResident);
@@ -91,7 +91,7 @@ internal static class NpuMemoryConsumer
             committed = owner.ReadCachedSnapshot()!;
             fixture.Value = 23; reads = fixture.Reads;
             var rejected = await borrow.CollectAsync([selected], new Permit(committed.WorkspaceIdentity, committed.ConfigurationGeneration, false), timeout.Token);
-            Require(!rejected.Committed && fixture.Reads == reads + 1 && ReferenceEquals(committed, owner.ReadCachedSnapshot()),
+            Require(!rejected.Committed && fixture.Reads == reads + 1 && MetricSnapshotFactAssertions.SameCurrent(committed, owner.ReadCachedSnapshot()),
                 "retired publication rejects a real different value without replacing current");
         }
         await RequireFrozenAsync();
@@ -102,7 +102,7 @@ internal static class NpuMemoryConsumer
             try { await core.CollectAsync([selected], canceled.Token); throw new InvalidDataException("Pre-canceled capture succeeded."); }
             catch (OperationCanceledException) { }
         }
-        Require(fixture.Reads == reads && ReferenceEquals(current, owner.ReadCachedSnapshot()), "pre-cancellation is passive");
+        Require(fixture.Reads == reads && MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()), "pre-cancellation is passive");
         using (var canceled = new CancellationTokenSource())
         {
             fixture.Value = 17; fixture.AfterRead = canceled.Cancel;
@@ -110,7 +110,7 @@ internal static class NpuMemoryConsumer
             catch (OperationCanceledException) { }
             finally { fixture.AfterRead = null; }
         }
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()), "cancellation after producer read rejects publication");
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()), "cancellation after producer read rejects publication");
         await RequireFrozenAsync();
         fixture.Value = ulong.MaxValue;
         RecordedNpuMemoryResources.RequireValues(await core.CollectAsync(fields, timeout.Token), ulong.MaxValue);
@@ -167,7 +167,6 @@ internal sealed class RecordedNpuMemoryResources
         => Frozen && source == NativeMetricSnapshotSources.WindowsNpuMemory ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded CPU", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation([], []) },
         ReadCpuCounters = () => throw Unexpected(), ReadMemory = () => throw Unexpected(), ReadVirtualMemory = () => throw Unexpected(),
@@ -213,7 +212,7 @@ internal sealed class RecordedNpuMemoryResources
     {
         NpuMemoryConsumer.Require(!rows.IsEmpty && rows.All(row => row.Status == FieldObservationStatus.Current && row.ObservedAt is not null
             && row.SourceId == NativeMetricSnapshotSources.WindowsNpuMemory && row.Value is { Number: null }
-            && row.Value.Integer == value.ToString(CultureInfo.InvariantCulture)), "exact unsigned byte values and original source/timestamp survive projection");
+            && row.Value.Integer == MetricInteger.FromUnsigned128((UInt128)value)), "exact unsigned byte values and original source/timestamp survive projection");
     }
 }
 
@@ -259,7 +258,7 @@ internal static class NpuMemorySubscriptionConsumer
         else RecordedNpuMemoryResources.RequireValues(delivered, fixture.Value);
         var current = owner.ReadCachedSnapshot(); var reads = fixture.Reads;
         foreach (var field in fields) _ = core.ReadCached(field);
-        NpuMemoryConsumer.Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads,
+        NpuMemoryConsumer.Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads,
             "post-Stop passive cache retains same original current without capture");
         var direct = await core.CollectAsync(fields, token);
         NpuMemoryConsumer.Require(fixture.Reads == reads + 1 && fixture.UnselectedReads == 0 && fixture.EngineReads == 0,

@@ -46,15 +46,11 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void MetricCacheRemainsReadableUntilTheNextSuccessfulPublication()
     {
-        var first = new HardwareMetricSnapshot(
-            DateTimeOffset.UnixEpoch,
-            null!,
-            null!,
-            null!,
-            [],
-            null!,
-            new Dictionary<string, MetricValue>())
+        var first = HistoryHardwareSnapshot(1, 0) with
         {
+            CapturedAt = DateTimeOffset.UnixEpoch,
+            Items = new Dictionary<string, MetricReadingValue>(),
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(),
             WorkspaceIdentity = 41,
             ConfigurationGeneration = 42,
             CatalogGeneration = 43,
@@ -66,19 +62,19 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             WorkspaceIdentity = 45,
             CommittedGeneration = 1
         };
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
 
         state.Publish(first);
-        Assert.Same(first, state.Read());
+        Assert.Equivalent(first, state.Read(), strict: true);
 
         state.Publish(next);
-        Assert.Same(next, state.Read());
+        Assert.Equivalent(next, state.Read(), strict: true);
     }
 
     [Fact]
     public void HostedCpuPublicationDoesNotExposeUnrequestedMemoryFromTheSameFrame()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var frame = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 37,
@@ -105,7 +101,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HostedCpuPublicationCannotOverwriteRetainedHostedMemory()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var memory = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 1,
@@ -144,7 +140,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void FailedAttemptAtomicallyReplacesCurrentSlotWithEmptyValue()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 0,
@@ -179,7 +175,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void ColdFailedAttemptPublishesUnavailableDatasetMetadata()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var attemptedAt = DateTimeOffset.UnixEpoch.AddSeconds(9);
 
         state.RecordFailure(
@@ -200,7 +196,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void RequestedMetricMissingFromAttemptReplacesOnlyThatSlotWithEmptyValue()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 23,
@@ -236,7 +232,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void SubscriptionDeadlineDoesNotExpireTheCurrentValue()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 37,
@@ -272,7 +268,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HardwareOwnerReplacementDoesNotInvalidateOtherCurrentSlots()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var first = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 10,
@@ -316,7 +312,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void CurrentOwnerCompletionNeedsNoPublicationRevisionCas()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var runId = state.OpenHostedRun();
         var schedule = HardwareSchedule(DateTimeOffset.UtcNow);
         var workspaceOwner = new SamplingOwnerToken(1, 1);
@@ -364,7 +360,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void RevokedHardwareOwnerRejectsLateCommitWithoutChangingCurrentValue()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var runId = state.OpenHostedRun();
         var schedule = HardwareSchedule(DateTimeOffset.UtcNow);
         var workspaceOwner = new SamplingOwnerToken(1, 1);
@@ -412,7 +408,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void ClosedHardwareRunRejectsPreparedPayloadWithoutChangingCurrentValue()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var runId = state.OpenHostedRun();
         var schedule = HardwareSchedule(DateTimeOffset.UtcNow);
         var workspaceOwner = new SamplingOwnerToken(1, 1);
@@ -460,7 +456,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void RetainedCandidateIsAnEmptyCompletionForItsExactSlot()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 25,
@@ -507,7 +503,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void MixedPublicationSettlesEachExactMetricIndependently()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var frame = CreateDatasetHardwareSnapshot(
             generation: 7,
             cpuUsage: 42,
@@ -557,7 +553,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HostedGpuUsagePublicationDoesNotOverwriteHostedVram()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var capacity = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 0,
@@ -592,7 +588,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void NewGpuTopologyDoesNotClearIndependentGpuMetricSlotsBeforeTheyPublish()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var original = CreateDatasetHardwareSnapshot(
             generation: 1,
             cpuUsage: 0,
@@ -678,7 +674,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void HostedPhysicalCapturePublishesOnlyTheNativeDueDataset()
     {
-        var state = new LastSuccessfulHardwareMetricSnapshot();
+        using var state = new LastSuccessfulHardwareMetricSnapshot();
         var runId = state.OpenHostedRun();
         var capturedAt = DateTimeOffset.Parse("2026-08-29T12:00:00Z");
         var schedule = HardwareSchedule(capturedAt);
@@ -1409,63 +1405,21 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             null,
             null,
             null);
-        var memory = new MemoryMetrics(
-            memoryUsedBytes,
-            100_000,
-            memoryUsedBytes / 1_000d,
-            true,
-            "test memory")
+        var memory = new MemoryMetrics(UsedBytes: memoryUsedBytes, TotalBytes: 100_000, UsagePercent: memoryUsedBytes / 1_000d, IsUsageAvailable: true)
         {
             ObservationStatus = SamplingObservationStatus.Current
         };
-        var pageFile = new VirtualMemoryMetrics(
-            0,
-            100_000,
-            0,
-            "test page file",
-            true)
+        var pageFile = new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 100_000, UsagePercent: 0, IsSelectable: true)
         {
             ObservationStatus = SamplingObservationStatus.NotRequested
         };
-        var items = new Dictionary<string, MetricValue>(
+        var items = new Dictionary<string, MetricReadingValue>(
             StringComparer.OrdinalIgnoreCase)
         {
-            ["cpu.usage"] = new(
-                "cpu.usage",
-                "CPU",
-                "CPU",
-                $"{cpuUsage}%",
-                cpuUsage,
-                "%",
-                cpuUsage,
-                "test"),
-            ["memory.usage"] = new(
-                "memory.usage",
-                "Memory",
-                "Memory",
-                memoryUsedBytes.ToString(),
-                memoryUsedBytes,
-                "B",
-                memory.UsagePercent,
-                "test"),
-            ["gpu.0.usage"] = new(
-                "gpu.0.usage",
-                "GPU",
-                "GPU",
-                $"{gpuUsage}%",
-                gpuUsage,
-                "%",
-                gpuUsage,
-                "test"),
-            ["gpu.0.vram"] = new(
-                "gpu.0.vram",
-                "VRAM",
-                "GPU",
-                gpuMemoryUsedBytes.ToString(),
-                gpuMemoryUsedBytes,
-                "B",
-                gpu.MemoryUsagePercent,
-                "test")
+            ["cpu.usage"] = new(Id: "cpu.usage", NumericValue: cpuUsage, Unit: "%", Percent: cpuUsage),
+            ["memory.usage"] = new(Id: "memory.usage", NumericValue: memoryUsedBytes, Unit: "B", Percent: memory.UsagePercent),
+            ["gpu.0.usage"] = new(Id: "gpu.0.usage", NumericValue: gpuUsage, Unit: "%", Percent: gpuUsage),
+            ["gpu.0.vram"] = new(Id: "gpu.0.vram", NumericValue: gpuMemoryUsedBytes, Unit: "B", Percent: gpu.MemoryUsagePercent)
         };
         return new HardwareMetricSnapshot(
             capturedAt,

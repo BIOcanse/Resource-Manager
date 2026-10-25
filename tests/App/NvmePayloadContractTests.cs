@@ -46,7 +46,7 @@ public sealed class NvmePayloadContractTests
         var current = fixture.Commit(UInt128.MaxValue, Log(), 1);
         var fields = Assert.Single(MetricDeviceFields.Read(current, Device, new HashSet<string> { Counter, Raw })).Fields;
         var counter = fields.Single(f => f.Name == Counter);
-        Assert.Equal(UInt128.MaxValue.ToString(), counter.IntegerValue);
+        Assert.Equal(MetricInteger.FromUnsigned128(UInt128.MaxValue), counter.IntegerValue);
         Assert.Equal("unsigned128", counter.ValueKind);
         Assert.Null(counter.NumericValue);
         var raw = fields.Single(f => f.Name == Raw);
@@ -67,7 +67,7 @@ public sealed class NvmePayloadContractTests
         var empty = fixture.Workspace.ReadCommitted().Metrics.Single(m => m.MetricHandle == fixture.RawHandle);
         Assert.Equal(0U, empty.ByteCount);
         Assert.Equal(0UL, empty.ValueHighBits);
-        Assert.Equal("0", Assert.Single(MetricDeviceFields.Read(fixture.Commit(0, Log(), 3), Device,
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(MetricDeviceFields.Read(fixture.Commit(0, Log(), 3), Device,
             new HashSet<string> { Counter })).Fields.Single().IntegerValue);
     }
 
@@ -180,7 +180,7 @@ public sealed class NvmePayloadContractTests
         {
             LastPlan = Plan(sequence);
             Workspace.CompleteSource(LastPlan, Completion(LastPlan, value, raw, sequence), Time(sequence));
-            return NativeMetricSnapshotCommittedProjection.Create(Workspace.ReadCommitted(), "fixture", "fixture", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: Workspace.ReadCommitted(), workspaceIdentity: 1);
         }
         public void Dispose()
         {

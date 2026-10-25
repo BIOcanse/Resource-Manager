@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using System.Collections.Concurrent;
 using System.Text;
@@ -47,14 +48,14 @@ internal static class WpdInformationConsumer
             "public field descriptors retain the four canonical units");
         Require(backend.ReadCached(deviceIdA).Value?.Text == "same-declared-ID"
             && backend.ReadCached(firmwareA).Value?.Text == "firmware-A"
-            && backend.ReadCached(capacityA).Value?.Integer == "18446744073709551615"
-            && backend.ReadCached(capacityB).Value?.Integer == "9007199254740993",
+            && backend.ReadCached(capacityA).Value?.Integer == MetricInteger.Parse("18446744073709551615")
+            && backend.ReadCached(capacityB).Value?.Integer == MetricInteger.Parse("9007199254740993"),
             "recorded WPD strings and full unsigned capacity precision are public values");
 
         var before = owner.ReadState();
         var selected = AssertSingle(await backend.CollectAsync([capacityB], CancellationToken.None));
         Require(selected.Status == FieldObservationStatus.Current
-            && selected.Value?.Integer == "9007199254740993",
+            && selected.Value?.Integer == MetricInteger.Parse("9007199254740993"),
             "selected storage capture preserves the exact UInt64");
         var request = reader.Requests.Last();
         var target = request.Targets.Single();
@@ -68,7 +69,7 @@ internal static class WpdInformationConsumer
             && backend.ReadCached(capacityB) == selected
             && backend.ReadCached(batteryA).Value?.Number == 44d
             && backend.ReadCached(deviceIdA).Value?.Text == "same-declared-ID"
-            && backend.ReadCached(capacityA).Value?.Integer == "18446744073709551615",
+            && backend.ReadCached(capacityA).Value?.Integer == MetricInteger.Parse("18446744073709551615"),
             "selected result shares the original current and preserves every unselected device/object");
         Console.WriteLine("[WPD-INFORMATION-PACKAGE] recorded WPD exact identities, canonical fields, selected storage capture and UInt64 precision; no device read.");
     }

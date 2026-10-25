@@ -18,21 +18,21 @@ public sealed partial class AcpiInformationSubscriptionTests
             fixture.Provider.CaptureAcpiInformationAsync, static _ => new(true, null, []));
         await backend.DiscoverAsync(default);
         var field = backend.Catalog.Fields.Single(item => item.Field.FieldName == "firmware_all_acpi_table_revision").Field;
-        Assert.Equal("6", backend.ReadCached(field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), backend.ReadCached(field).Value?.Integer);
         Assert.Equal(1, fixture.Acpi.ReadCount);
         var subscriptions = new InformationFieldSubscriptionBackend(backend,
             (id, interval) => fixture.Provider.AcquireInformationSubscription(id, interval, acpi: true), fixture.Provider.SubscribeAcpiAsync);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = subscriptions.SubscribeAsync("public", [field], TimeSpan.FromSeconds(1), cancellation.Token).GetAsyncEnumerator();
         var next = stream.MoveNextAsync().AsTask();
-        Assert.Equal("7", Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("7"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
         Assert.True(await next);
-        Assert.Equal("7", Assert.Single(stream.Current).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("7"), Assert.Single(stream.Current).Value?.Integer);
         FieldReadingAssert.CurrentOrNewer(Assert.Single(stream.Current), backend.ReadCached(field));
         next = stream.MoveNextAsync().AsTask();
         Assert.Null(Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value);
         Assert.True(await next); Assert.Null(Assert.Single(stream.Current).ObservedAt);
-        Assert.Equal("8", Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("8"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
         Assert.Equal(0, fixture.Topology.ReadCount); Assert.Equal(0, fixture.Store.SaveCount);
     }
 
@@ -104,8 +104,8 @@ public sealed partial class AcpiInformationSubscriptionTests
         var machine = catalog.Fields.Single(item => item.Field.FieldName == "machine_all_model_declared").Field;
         var cores = catalog.Fields.Single(item => item.Field.FieldName == DeviceInformationFieldRegistry.CpuAllPhysicalCoreCountReported.Name).Field;
         var acpi = catalog.Fields.Single(item => item.Field.FieldName == "firmware_all_acpi_table_revision").Field;
-        Assert.Equal("2", composed.Reads.ReadCached(cores).Value?.Integer);
-        Assert.Equal("6", composed.Reads.ReadCached(acpi).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("2"), composed.Reads.ReadCached(cores).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), composed.Reads.ReadCached(acpi).Value?.Integer);
         var trace = new MixedFirstMoveTrace();
         var diagnosedSubscriptions = WithMixedFirstMoveDiagnostics(composed, trace,
             (memory, "process"), (machine, "information"), (cores, "cpu"), (acpi, "acpi"));
@@ -152,8 +152,8 @@ public sealed partial class AcpiInformationSubscriptionTests
             }
             Assert.True(hasRound, $"A mixed child stream ended before the first round. {DiagnosticSummary()}");
             Assert.Equal(new[] { memory, machine, cores, acpi }, stream.Current.Select(static read => read.Field));
-            Assert.Equal("9007199254740993", stream.Current[0].Value?.Integer);
-            Assert.Equal("2", stream.Current[2].Value?.Integer); Assert.Equal("6", stream.Current[3].Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), stream.Current[0].Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("2"), stream.Current[2].Value?.Integer); Assert.Equal(MetricInteger.Parse("6"), stream.Current[3].Value?.Integer);
             // Shared-frequency delivery uses the latest cache when it reads it. The
             // ordinary capture and delivery at the same period have no ordering.
             Assert.True(stream.Current[2].ObservedAt == initialPeriodicSample.CapturedAt

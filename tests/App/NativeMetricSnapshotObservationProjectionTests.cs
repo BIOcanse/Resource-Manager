@@ -17,28 +17,26 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
         var bitmaskFrame = ProjectionFixture(bitmask: true);
         var formattedFrame = ProjectionFixture(bitmask: false);
 
-        _ = NativeMetricSnapshotCommittedProjection.Create(bitmaskFrame, "CPU", "RAM", workspaceIdentity);
-        _ = NativeMetricSnapshotCommittedProjection.Create(formattedFrame, "CPU", "RAM", workspaceIdentity);
+        _ = NativeMetricSnapshotCommittedProjection.Create(frame: bitmaskFrame, workspaceIdentity: workspaceIdentity);
+        _ = NativeMetricSnapshotCommittedProjection.Create(frame: formattedFrame, workspaceIdentity: workspaceIdentity);
         var bitmaskSnapshots = new HardwareMetricSnapshot[iterations];
         var beforeBitmask = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < bitmaskSnapshots.Length; i++)
-            bitmaskSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(
-                bitmaskFrame, "CPU", "RAM", workspaceIdentity);
+            bitmaskSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: bitmaskFrame, workspaceIdentity: workspaceIdentity);
         var bitmaskAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeBitmask;
 
         var formattedSnapshots = new HardwareMetricSnapshot[iterations];
         var beforeFormatted = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < formattedSnapshots.Length; i++)
-            formattedSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(
-                formattedFrame, "CPU", "RAM", workspaceIdentity);
+            formattedSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: formattedFrame, workspaceIdentity: workspaceIdentity);
         var formattedAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeFormatted;
 
         var first = bitmaskSnapshots[0];
         var last = bitmaskSnapshots[^1];
         var bitmask = first.Items["cpu.core.status"];
-        Assert.Equal(string.Empty, bitmask.DisplayValue);
+        Assert.Equal("bitmask64", bitmask.Unit);
         Assert.Null(bitmask.NumericValue);
-        Assert.Equal("165", bitmask.IntegerValue);
+        Assert.Equal(MetricInteger.Parse("165"), bitmask.IntegerValue);
         Assert.Equal(SamplingObservationStatus.Current, first.Datasets["metric.used"].Status);
         Assert.Equal(SamplingObservationStatus.Current, first.Datasets["gpu.0.vram"].Status);
         Assert.Equal(first.Datasets["metric.used"].ObservedAtUtcTicks,
@@ -48,7 +46,7 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
         Assert.Equal(1_024UL, gpu.UsedMemoryBytes);
         Assert.Equal(4_096UL, gpu.TotalMemoryBytes);
         Assert.Equal(25d, gpu.MemoryUsagePercent);
-        Assert.Equal("1024", first.Items["metric.used"].IntegerValue);
+        Assert.Equal(MetricInteger.Parse("1024"), first.Items["metric.used"].IntegerValue);
         Assert.Equal(first.Items["metric.used"].IntegerValue,
             first.Items["gpu.0.vram"].IntegerValue);
         Assert.Equal(SamplingObservationStatus.Current,
@@ -59,11 +57,9 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
         Assert.NotSame(first.Datasets["offline.metric"], last.Datasets["offline.metric"]);
         Assert.Equal(bitmask, last.Items["cpu.core.status"]);
 
-        // An unsigned count item formats and discards a temporary display string.
-        // A bitmask keeps only its one final MetricValue, so its warmed result
-        // allocation must stay below the same projection with that formatted item.
-        Assert.True(bitmaskAllocated < formattedAllocated,
-            $"Expected one final bitmask MetricValue per projection; bitmask={bitmaskAllocated}, formatted={formattedAllocated}.");
+        // Both units retain the same exact integer representation. Neither
+        // projection constructs display strings or a second formatted value.
+        Assert.Equal(formattedAllocated, bitmaskAllocated);
     }
 
     [Theory]
@@ -105,8 +101,8 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
                 MetricBindings = frame.Catalog.MetricBindings.SetItem(binding.MetricHandle, signed)
             }
         };
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(signedFrame, "CPU", "RAM", 1);
-        Assert.Equal(value.ToString(System.Globalization.CultureInfo.InvariantCulture), snapshot.Items[binding.MetricId].IntegerValue);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: signedFrame, workspaceIdentity: 1);
+        Assert.Equal(MetricInteger.FromSigned64(value), snapshot.Items[binding.MetricId].IntegerValue);
     }
 
     [Fact]

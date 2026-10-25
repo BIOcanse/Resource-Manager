@@ -5,7 +5,7 @@ const wire_contract = @import("wire_contract.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 test "metric snapshot ABI sizes alignments and offsets are fixed" {
-    try std.testing.expectEqual(@as(u32, 0x000B_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000D_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.Capacity, "scratch_byte_count"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Capacity, "scratch_alignment"));
     try std.testing.expectEqual(@as(usize, 100), @offsetOf(protocol.Capacity, "reserved_u32"));
@@ -42,6 +42,15 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         try std.testing.expectEqual(@as(usize, item[1]), @sizeOf(item[0]));
         try std.testing.expectEqual(@as(usize, 8), @alignOf(item[0]));
     }
+    try std.testing.expectEqual(@as(usize, 40), @sizeOf(protocol.CurrentValue));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(protocol.CurrentKey));
+    try std.testing.expectEqual(@as(usize, 8), @alignOf(protocol.CurrentKey));
+    try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.CurrentKey, "cell_handle"));
+    try std.testing.expectEqual(@as(usize, 24), @sizeOf(protocol.CurrentCommitInput));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(protocol.CurrentReadOutput));
+    try std.testing.expectEqual(@as(usize, 8), @alignOf(protocol.CurrentValue));
+    try std.testing.expectEqual(@as(usize, 4), @alignOf(protocol.CurrentCommitInput));
+    try std.testing.expectEqual(@as(usize, 4), @alignOf(protocol.CurrentReadOutput));
 
     try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.Config, "generation"));
     try std.testing.expectEqual(
@@ -125,7 +134,7 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         @offsetOf(protocol.SourcePersistenceOutput, "gpu_inventory_count"),
     );
     try std.testing.expectEqual(
-        @as(u64, 0xbabb9b97e9199c19),
+        @as(u64, 0x074957dc9f9df65b),
         moduleLayoutFingerprint(),
     );
     try std.testing.expectEqual(
@@ -275,6 +284,10 @@ fn moduleLayoutFingerprint() u64 {
         protocol.SourcePersistenceOutput,
         protocol.PersistenceInput,
         protocol.PersistenceHeader,
+        protocol.CurrentValue,
+        protocol.CurrentCommitInput,
+        protocol.CurrentReadOutput,
+        protocol.CurrentKey,
     };
     var hash: u64 = 0xcbf29ce484222325;
     inline for (types) |T| {

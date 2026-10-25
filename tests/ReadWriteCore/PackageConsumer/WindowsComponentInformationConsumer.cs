@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
 using ResourceManager.ReadWrite.Windows.SystemInformation;
@@ -28,10 +29,10 @@ internal static class WindowsComponentInformationConsumer
             throw new InvalidDataException("Component fields must be read-only and have no installation dependency.");
 
         var cached = core.ReadCached(feature.Field);
-        if (cached.Status != FieldObservationStatus.Current || cached.Value?.Integer != "0" || source.Reads != 1)
+        if (cached.Status != FieldObservationStatus.Current || cached.Value?.Integer != MetricInteger.Parse("0") || source.Reads != 1)
             throw new InvalidDataException("Cached feature state did not preserve valid enum zero or sampled again.");
         var direct = (await core.CollectAsync([package.Field], default)).Single();
-        if (direct.Status != FieldObservationStatus.Current || direct.Value?.Integer != "4"
+        if (direct.Status != FieldObservationStatus.Current || direct.Value?.Integer != MetricInteger.Parse("4")
             || direct != core.ReadCached(package.Field) || source.Reads != 2
             || source.LastSelected != WindowsOperatingSystemInformationFields.ComponentPackages)
             throw new InvalidDataException("Selected package collection changed the wrong category or diverged from current.");

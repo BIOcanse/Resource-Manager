@@ -42,6 +42,9 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   const header = await page.locator(".gpu-scheduling-header span").first().textContent();
   const status = await page.locator(".gpu-position-main em").first().textContent();
   const pressure = await page.locator(".gpu-pressure-grid .gpu-pressure-meter strong").allTextContents();
+  // V5 supplies raw numeric clocks, with no backend displayValue.
+  await position.getByText("频率 1500 MHz", { exact: true }).waitFor();
+  await position.getByText("显存频率 7000 MHz", { exact: true }).waitFor();
   assert.match(header ?? "", /GPU 99% \/ 显存 70%/);
   assert.equal(status?.trim(), "可调度");
   assert.deepEqual(pressure.map(value => value.trim()), ["96.0%", "50.0%"]);
@@ -77,7 +80,8 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   assert.equal(await panel.getByRole("alert").count(), 0);
   if (failures.length) throw new Error(failures.join("\n"));
 
-  return { missingThresholds: "classification unknown; telemetry retained", committedThresholds: [99, 70], pressure };
+  return { missingThresholds: "classification unknown; telemetry retained", committedThresholds: [99, 70], pressure,
+    clocks: ["1500 MHz", "7000 MHz"] };
 }
 
 async function openGpuModel(page) {

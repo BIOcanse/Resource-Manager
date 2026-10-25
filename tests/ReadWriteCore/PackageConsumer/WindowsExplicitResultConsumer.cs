@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Text.Json;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Windows.Results.Explicit;
@@ -218,8 +219,8 @@ internal static class WindowsExplicitResultConsumer
         owner.Submit(memory);
         var capacity = backend.ReadCached(new(manualIdentity, "memory_all_test_coverage_manual_test"));
         var errors = backend.ReadCached(new(manualIdentity, "memory_all_test_error_count_manual_test"));
-        Require(capacity.Value?.Integer == UInt128.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            && errors.Value?.Integer == "0", "byte capacity and zero error count remain exact unsigned values");
+        Require(capacity.Value?.Integer == MetricInteger.FromUnsigned128(UInt128.MaxValue)
+            && errors.Value?.Integer == MetricInteger.Parse("0"), "byte capacity and zero error count remain exact unsigned values");
 
         var storagePerformance = Submission(WindowsExplicitResultKind.StoragePerformanceManual,
             WindowsExplicitResultScope.StorageDevice, "storage:recorded-disk-0", "storage-session-1",

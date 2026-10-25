@@ -53,7 +53,7 @@ internal static class IntelPsysSubscriptionConsumer
         fixture.FailRaw = false;
         var independent = await core.CollectAsync(fields, timeout.Token);
         Require(independent.Single(reading => reading.Field.FieldName == RecordedIntelPsysResources.RawName)
-                is { Status: FieldObservationStatus.Current, Value: { Integer: "4294967295", Number: null } }
+                is { Status: FieldObservationStatus.Current, Value: { Integer: { LowBits: uint.MaxValue, HighBits: 0, Negative: false }, Number: null } }
             && independent.Single(reading => reading.Field.FieldName == RecordedIntelPsysResources.UnitName)
                 is { Status: FieldObservationStatus.Unavailable, Value: null },
             "direct raw recovery after Stop does not depend on unit recovery");
@@ -61,14 +61,14 @@ internal static class IntelPsysSubscriptionConsumer
         RecordedIntelPsysResources.RequireValues(await core.CollectAsync(fields, timeout.Token), fixture.Raw, fixture.Unit);
         var current = owner.ReadCachedSnapshot(); var reads = fixture.Reads;
         foreach (var field in fields) _ = core.ReadCached(field);
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads, "passive cache is the original current without a capture");
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads, "passive cache is the original current without a capture");
         using (var canceled = new CancellationTokenSource())
         {
             canceled.Cancel();
             try { await core.CollectAsync(fields, canceled.Token); throw new InvalidDataException("Canceled direct capture completed."); }
             catch (OperationCanceledException) { }
         }
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == reads
             && fixture.CatalogEngineProbeCount == 0 && fixture.UnselectedReads == 0,
             "cancellation and subscription stop preserve owner lifetime without unrelated queries");
         var raw = fields.Single(field => field.FieldName == RecordedIntelPsysResources.RawName);
@@ -82,7 +82,7 @@ internal static class IntelPsysSubscriptionConsumer
             catch (OperationCanceledException) { }
             finally { fixture.ReadCompleted = null; }
         }
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && core.ReadCached(raw) == committedRaw,
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && core.ReadCached(raw) == committedRaw,
             "canceling a different raw read after Stop preserves committed bits and observation time");
         await RequireFrozenRawAsync("canceled");
         await core.CollectAsync([unit], timeout.Token);
@@ -95,7 +95,7 @@ internal static class IntelPsysSubscriptionConsumer
             var beforeRejectedReads = fixture.Reads;
             fixture.Raw = 23;
             var rejected = await retiredBorrow.CollectAsync([raw], new RetiredPermit(original.WorkspaceIdentity, original.ConfigurationGeneration), timeout.Token);
-            Require(!rejected.Committed && fixture.Reads == beforeRejectedReads + 1 && ReferenceEquals(original, owner.ReadCachedSnapshot()),
+            Require(!rejected.Committed && fixture.Reads == beforeRejectedReads + 1 && MetricSnapshotFactAssertions.SameCurrent(original, owner.ReadCachedSnapshot()),
                 "retired borrow rejects the real read after subscription Stop");
         }
         await RequireFrozenRawAsync("rejected borrowed");
@@ -192,7 +192,6 @@ internal sealed class RecordedIntelPsysResources
         => Frozen && source == NativeMetricSnapshotSources.IntelMsr ? NativeMetricSnapshotZoneMode.Freeze : NativeMetricSnapshotZoneMode.Normal;
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded Intel 06_4E", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources
         { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = () => Topology ?? throw new IOException("Recorded topology unavailable") },
@@ -246,7 +245,7 @@ internal sealed class RecordedIntelPsysResources
             if (reading.Field.DeviceIdentity != Identity || reading.SourceId != NativeMetricSnapshotSources.IntelMsr
                 || reading.Status != FieldObservationStatus.Current || reading.ObservedAt is null
                 || (reading.Field.FieldName == RawName
-                    ? reading.Value?.Integer != raw.ToString(System.Globalization.CultureInfo.InvariantCulture) || reading.Value?.Number is not null
+                    ? reading.Value?.Integer != MetricInteger.FromUnsigned128((UInt128)raw) || reading.Value?.Number is not null
                     : reading.Value?.Number != unit || reading.Value?.Integer is not null))
                 throw new InvalidDataException("PSys raw bits and nominal unit must retain exact independent typed values.");
     }

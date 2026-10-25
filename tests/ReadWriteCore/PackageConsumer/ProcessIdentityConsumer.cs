@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Globalization;
 using System.Diagnostics;
 using System.Security.Principal;
@@ -23,7 +24,7 @@ internal static class ProcessIdentityConsumer
         { CreationFileTime100Ns = birth, ImagePath = @"C:\Recorded\application.exe", ParentPid = 0, UserSid = "S-1-5-21-1-2-3-1001" };
         var values = definitions.Select(field => ProcessMetricFieldProjection.CreateBasicValue(field, observation)).ToArray();
         Require(values[0].StringValue == "2026-10-07T12:00:00.1234567Z", "100ns FILETIME UTC projection without new clock");
-        Require(values[1].StringValue == observation.ImagePath && values[2].IntegerValue == "0"
+        Require(values[1].StringValue == observation.ImagePath && values[2].IntegerValue == MetricInteger.Parse("0")
             && values[3].StringValue == observation.UserSid, "typed recorded path, inherited PID zero and untransformed SID");
         var at = DateTimeOffset.UnixEpoch;
         var snapshot = new ProcessMetricFieldSnapshot(at, null, definitions,

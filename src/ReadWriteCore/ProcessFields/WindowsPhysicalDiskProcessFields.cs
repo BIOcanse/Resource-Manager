@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Globalization;
 using ResourceManager.ReadWrite.Windows.Processes;
 
@@ -25,10 +26,10 @@ public static class WindowsPhysicalDiskProcessFields
                 NumberStyles.None, CultureInfo.InvariantCulture, out var birth) || birth == 0) continue;
             foreach (var disk in scopes)
             {
-                string? read = null, write = null;
+                MetricInteger? read = null, write = null;
                 if (complete)
                 {
-                    if (!source!.TryGetValue((disk, process.ProcessId), out var raw)) { read = "0"; write = "0"; }
+                    if (!source!.TryGetValue((disk, process.ProcessId), out var raw)) { read = new(0); write = new(0); }
                     else if (raw?.CreationWindowsFileTime100Ns == process.CreationWindowsFileTime100Ns)
                     { read = Exact(raw.ReadBytes); write = Exact(raw.WriteBytes); }
                 }
@@ -40,7 +41,7 @@ public static class WindowsPhysicalDiskProcessFields
         return new(complete ? window!.CapturedAt : null, complete ? 2000 : null, definitions, rows)
         { Sources = [new("windows.etw.physical-disk", complete ? window!.CapturedAt : null, complete ? 2000 : null)] };
     }
-    private static string? Exact(string? value)
+    private static MetricInteger? Exact(string? value)
         => ulong.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
-            ? number.ToString(CultureInfo.InvariantCulture) : null;
+            ? new MetricInteger(number) : null;
 }

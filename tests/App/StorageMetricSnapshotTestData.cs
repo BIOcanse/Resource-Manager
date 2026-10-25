@@ -28,7 +28,7 @@ internal static class StorageMetricSnapshotTestData
             workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateStorageCompletion(plan, source,
                 new(source.SourceHandle, 1, 1), now, sensors), now);
         }
-        return NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "fixture", "fixture", 1);
+        return NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
     }
 
     internal static WindowsStorageSensorsMonitoringZone Zone(IReadOnlyList<Dictionary<string, object?>> counters)

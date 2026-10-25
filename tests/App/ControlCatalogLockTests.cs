@@ -11,7 +11,7 @@ public sealed class ControlCatalogLockTests
     [InlineData("root")]
     public void MissingWriterIsNeverAdvertisedAsAnAccessLevelFix(string level)
     {
-        var catalog = new WindowsControlObjectCatalog(null!, [], new Access(level), null!, null!);
+        var catalog = new WindowsControlObjectCatalog(null!, [], new Access(level), null!, null!, new EmptyObservations());
         var capability = new ControlCapability("gpu.core-voltage-offset", ControlValueKinds.Number,
             false, "control-writer-not-implemented", ControlUnavailableKinds.NotImplemented, RequiredAccessLevel: ControlAccessLevels.Root);
         var target = new ControlObject("gpu:test", ControlObjectKinds.Gpu, "GPU",
@@ -26,5 +26,12 @@ public sealed class ControlCatalogLockTests
     {
         public string Current => current;
         public Task SetAsync(string level, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyObservations : ResourceManager.App.Application.Metrics.IMetricSnapshotObservationSource
+    {
+        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => null;
+        public IDisposable AcquireSubscription(string id, MetricSampleRequest request, TimeSpan interval)
+            => throw new NotSupportedException();
     }
 }

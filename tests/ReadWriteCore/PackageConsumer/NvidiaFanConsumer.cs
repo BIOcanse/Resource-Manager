@@ -51,7 +51,7 @@ internal static class NvidiaFanConsumer
             "one selected NVML call receives both exact fan selectors and requested quantities");
         var current = owner.ReadCachedSnapshot();
         foreach (var reading in readings) Require(core.ReadCached(reading.Field) == reading, "collection and cache share current");
-        Require(ReferenceEquals(current, owner.ReadCachedSnapshot()) && fixture.Reads == 1 && fixture.UnselectedReads == 0
+        Require(MetricSnapshotFactAssertions.SameCurrent(current, owner.ReadCachedSnapshot()) && fixture.Reads == 1 && fixture.UnselectedReads == 0
             && fixture.CatalogEngineProbeCount == 1,
             "passive current does not capture any source");
 
@@ -67,7 +67,7 @@ internal static class NvidiaFanConsumer
             var beforeRetirement = owner.ReadCachedSnapshot()!;
             var rejected = await borrow.CollectAsync([selected], new RetiredPermit(beforeRetirement.WorkspaceIdentity,
                 beforeRetirement.ConfigurationGeneration), timeout.Token);
-            Require(!rejected.Committed && ReferenceEquals(beforeRetirement, owner.ReadCachedSnapshot())
+            Require(!rejected.Committed && MetricSnapshotFactAssertions.SameCurrent(beforeRetirement, owner.ReadCachedSnapshot())
                 && fixture.CatalogEngineProbeCount == 1,
                 "retired borrowed permit cannot replace original current");
         }
@@ -78,7 +78,7 @@ internal static class NvidiaFanConsumer
             try { await core.CollectAsync(fields, canceled.Token); throw new InvalidDataException("Canceled fan capture completed."); }
             catch (OperationCanceledException) { }
         }
-        Require(ReferenceEquals(beforeCancellation, owner.ReadCachedSnapshot()) && fixture.CatalogEngineProbeCount == 1,
+        Require(MetricSnapshotFactAssertions.SameCurrent(beforeCancellation, owner.ReadCachedSnapshot()) && fixture.CatalogEngineProbeCount == 1,
             "cancellation preserves original current");
 
         fixture.Fail = true;
@@ -120,7 +120,6 @@ internal sealed class RecordedNvidiaFanResources
 
     internal WindowsHardwareMetricResources Create() => new()
     {
-        CpuName = "Recorded CPU", MemoryDescription = "Recorded memory",
         Controls = new WindowsMetricControlResources
         {
             ControlReadCpuIdentity = static () => null,

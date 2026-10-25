@@ -35,7 +35,7 @@ public sealed record DeviceMetricFieldValue(
     string Name,
     string Unit,
     double? NumericValue,
-    string? IntegerValue,
+    MetricInteger? IntegerValue,
     SamplingObservationStatus Status,
     DateTimeOffset? ObservedAt,
     string SourceId)

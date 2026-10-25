@@ -43,7 +43,7 @@ internal static class CanonicalControlFieldConsumer
             var before = owner.ReadCachedSnapshot(); var applied = await core.WriteAsync(power, new(Number: 40));
             Require(applied.Status == "applied" && applied.Evidence?.Kind == FieldWriteEvidence.MaskedRegisterReadback,
                 "Original verified write lost evidence.");
-            Require(ReferenceEquals(before, owner.ReadCachedSnapshot()) && core.ReadCached(power).Value?.Number == 45,
+            Require(MetricSnapshotFactAssertions.SameCurrent(before, owner.ReadCachedSnapshot()) && core.ReadCached(power).Value?.Number == 45,
                 "Write fabricated current before Collect.");
             Require((await core.CollectAsync([power])).Single().Value?.Number == 40, "Explicit Collect did not publish new encoded setting.");
             recording.Topology = Fixture.SingleTopology(recording.Identity) with { Packages = [new("package:0", [0]), new("package:1", [1])] };
@@ -104,7 +104,7 @@ internal static class CanonicalControlFieldConsumer
         };
         internal WindowsMetricControlFields Producer() => new(Controls, () => Inventory);
         internal WindowsHardwareMetricOwner Owner() => new(WindowsMetricConfiguration.CreateDefault(), Readers(), new());
-        internal static HardwareMetricSnapshot Snapshot() => new(DateTimeOffset.UtcNow, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        internal static HardwareMetricSnapshot Snapshot() => new(DateTimeOffset.UtcNow, null!, null!, null!, [], null!, new Dictionary<string, MetricReadingValue>())
             { WorkspaceIdentity = 1, ConfigurationGeneration = 1, CatalogGeneration = 1, CommittedGeneration = 1 };
         internal static CpuOsTopologyInformation SingleTopology(CpuIdentityInformation identity) => new([new("core:0", 0, false, [0])], [])
         {
@@ -124,7 +124,7 @@ internal static class CanonicalControlFieldConsumer
         // Copy of the existing callback fixture shape; no second sampler or metric projection.
         private WindowsHardwareMetricResources Readers() => new()
         {
-            CpuName = "recorded", MemoryDescription = "recorded", Controls = Controls,
+            Controls = Controls,
             ReadCpuCounters = () => throw new InvalidOperationException("unselected CPU telemetry"),
             ReadMemory = () => throw new InvalidOperationException("unselected memory telemetry"),
             ReadVirtualMemory = () => throw new InvalidOperationException(),

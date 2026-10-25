@@ -44,7 +44,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         borrow.Bind(fields);
         var first = await borrow.CollectAsync(fields, new Permit());
         Assert.True(first.Committed);
-        Assert.Equal("0", first.Readings.Single(static reading => reading.Field.FieldName == Raw).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), first.Readings.Single(static reading => reading.Field.FieldName == Raw).Value!.Integer);
         var reads = probe.Reads;
         var calls = probe.DelegateCalls;
         probe.UnavailableTopology = true;
@@ -83,7 +83,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         var raw = fields.Single(static field => field.FieldName == Raw);
         var unit = fields.Single(static field => field.FieldName == Unit);
         var first = Assert.Single(await backend.CollectAsync([raw], default));
-        Assert.Equal("0", first.Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("0"), first.Value!.Integer);
         Assert.Equal(new uint[] { 0x64D }, probe.Registers);
         Assert.Equal(first, backend.ReadCached(raw));
         Assert.Equal(1, probe.Opens);
@@ -95,7 +95,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         Assert.Equal(reads, probe.Reads);
         probe.RawValue = ulong.MaxValue;
         var both = await backend.CollectAsync(fields, default);
-        Assert.Equal("4294967295", both.Single(static reading => reading.Field.FieldName == Raw).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), both.Single(static reading => reading.Field.FieldName == Raw).Value!.Integer);
         Assert.Equal(Math.ScaleB(1d, -14), both.Single(static reading => reading.Field.FieldName == Unit).Value!.Number);
         Assert.All(probe.Addresses, address => Assert.Equal(new CpuProcessorAddress(1, 1), address));
         using var borrow = owner.BorrowSubscriptionCapture();
@@ -104,7 +104,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         var acceptedRaw = backend.ReadCached(raw);
         probe.RawValue = 17;
         Assert.False((await borrow.CollectAsync([raw], new Permit(allowPublish: false))).Committed);
-        Assert.Same(previous, owner.ReadCachedSnapshot());
+        Assert.Equivalent(previous, owner.ReadCachedSnapshot(), strict: true);
         _ = await backend.CollectAsync([unit], default);
         Assert.Equal(acceptedRaw, backend.ReadCached(raw));
         previous = owner.ReadCachedSnapshot();
@@ -112,13 +112,13 @@ public sealed class IntelPsysOwnerIntegrationTests
         using var cancellation = new CancellationTokenSource();
         probe.AfterRead = cancellation.Cancel;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([raw], new Permit(), cancellation.Token).AsTask());
-        Assert.Same(previous, owner.ReadCachedSnapshot());
+        Assert.Equivalent(previous, owner.ReadCachedSnapshot(), strict: true);
         probe.AfterRead = null;
         probe.RawValue = 31;
         using var admissionCancellation = new CancellationTokenSource();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([raw],
             new Permit(beforePublish: admissionCancellation.Cancel), admissionCancellation.Token).AsTask());
-        Assert.Same(previous, owner.ReadCachedSnapshot());
+        Assert.Equivalent(previous, owner.ReadCachedSnapshot(), strict: true);
         var displayed = fields.ToDictionary(static field => field, backend.ReadCached);
         frozen = true;
         var opens = probe.Opens;
@@ -154,21 +154,21 @@ public sealed class IntelPsysOwnerIntegrationTests
             timeout.Token).GetAsyncEnumerator())
         {
             Assert.True(await stream.MoveNextAsync());
-            Assert.Equal("0", Assert.Single(stream.Current).Value!.Integer);
+            Assert.Equal(MetricInteger.Parse("0"), Assert.Single(stream.Current).Value!.Integer);
             probe.RawValue = uint.MaxValue;
             FieldReading delivered;
             do
             {
                 Assert.True(await stream.MoveNextAsync());
                 delivered = Assert.Single(stream.Current);
-            } while (delivered.Value?.Integer != "4294967295");
+            } while (delivered.Value?.Integer != MetricInteger.Parse("4294967295"));
             Assert.Equal(delivered.Value, backend.ReadCached(raw).Value);
         }
         await composition.StopAsync();
         var opens = probe.Opens;
-        Assert.Equal("4294967295", backend.ReadCached(raw).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), backend.ReadCached(raw).Value!.Integer);
         Assert.Equal(opens, probe.Opens);
-        Assert.Equal("4294967295", Assert.Single(await backend.CollectAsync([raw], default)).Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("4294967295"), Assert.Single(await backend.CollectAsync([raw], default)).Value!.Integer);
         Assert.Equal(probe.Opens, probe.Disposals);
     }
 
@@ -188,8 +188,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         await owner.StartAsync(default);
         var dashboard = new DashboardMonitoringCatalogState();
         using (var lease = owner.Acquire())
-            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),
-                "recorded", "recorded", lease.WorkspaceIdentity));
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var zone = new IntelMsrMonitoringZone(probe.Reader);
         var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("PSys cannot read NUMA"),
             () => throw new InvalidOperationException("PSys cannot read global memory"));
@@ -211,7 +210,7 @@ public sealed class IntelPsysOwnerIntegrationTests
             {
                 Assert.True(await stream.MoveNextAsync());
                 var fields = Assert.Single(MetricDeviceFields.Read(stream.Current, Identity)).Fields;
-                Assert.Equal("0", fields.Single(static field => field.Name == Raw).IntegerValue);
+                Assert.Equal(MetricInteger.Parse("0"), fields.Single(static field => field.Name == Raw).IntegerValue);
                 Assert.Equal(Math.ScaleB(1d, -14), fields.Single(static field => field.Name == Unit).NumericValue);
             }
             await sampler.StopAsync(default);
@@ -235,7 +234,7 @@ public sealed class IntelPsysOwnerIntegrationTests
             probe.UnavailableTopology = false;
             owner.RequestTopologyRefresh();
             var recovered = await sampler.CaptureSnapshotAsync(request, default);
-            Assert.Equal("0", Assert.Single(MetricDeviceFields.Read(recovered, Identity)).Fields
+            Assert.Equal(MetricInteger.Parse("0"), Assert.Single(MetricDeviceFields.Read(recovered, Identity)).Fields
                 .Single(static field => field.Name == Raw).IntegerValue);
             Assert.Equal(opens + 1, probe.Opens);
             using var retired = owner.Acquire();
@@ -316,7 +315,6 @@ public sealed partial class IntelMsrThermalCollectorTests
         private WindowsHardwareMetricResources Resources() => new()
         {
             Controls = new() { ControlReadCpuTopology = ReadCpuTopology },
-            CpuName = "recorded", MemoryDescription = "recorded",
             ReadCpuCounters = () => throw new InvalidOperationException(), ReadMemory = () => throw new InvalidOperationException(),
             ReadVirtualMemory = () => throw new InvalidOperationException(), ReadNumaAvailable = (_, _) => throw new InvalidOperationException(),
             ReadNumaIdentities = () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []), ReadGpuInventory = Inventory,

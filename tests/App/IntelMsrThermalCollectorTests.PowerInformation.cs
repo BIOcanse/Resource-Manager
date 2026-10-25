@@ -153,7 +153,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             var at = now.AddSeconds(sequence); var plan = workspace.PlanCollection(handles, modes, false, at); var source = Assert.Single(plan.Sources);
             var reads = reader.Read([device], Request(device, PowerInformationCodes()));
             workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateIntelMsrCompletion(plan, source, new(source.SourceHandle, 1, sequence), at, reads), at);
-            return NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
         }
     }
 
@@ -161,6 +161,6 @@ public sealed partial class IntelMsrThermalCollectorTests
     {
         var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, identity)).Fields,
             field => field.Name == "cpu_intel_package_power_information_raw");
-        Assert.Equal(raw, field.IntegerValue); Assert.Null(field.NumericValue); Assert.Equal("unsigned64", field.ValueKind); Assert.Equal("bitmask64", field.Unit);
+        Assert.Equal(raw is null ? null : MetricInteger.Parse(raw), field.IntegerValue); Assert.Null(field.NumericValue); Assert.Equal("unsigned64", field.ValueKind); Assert.Equal("bitmask64", field.Unit);
     }
 }

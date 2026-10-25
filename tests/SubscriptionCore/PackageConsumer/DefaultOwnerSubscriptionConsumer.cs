@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.ReadWrite.ProcessFields;
 using System.Text.Json;
@@ -191,10 +192,9 @@ internal static class DefaultOwnerSubscriptionConsumer
     private static ulong RawIo(ProcessMetricFieldValues row, string name)
     {
         var value = row.Values.Single(item => item.Field == name);
-        if (value.IntegerValue is not { } text || !ulong.TryParse(text, NumberStyles.None,
-            CultureInfo.InvariantCulture, out var integer))
+        if (value.IntegerValue is not { Negative: false, HighBits: 0 })
             throw new InvalidDataException("Actual general IO raw counter is unavailable or not UInt64: " + name);
-        return integer;
+        return value.IntegerValue!.Value.LowBits;
     }
     private static void VerifyIoWarmup(ProcessMetricFieldSnapshot snapshot, ProcessMetricFieldValues row)
     {
@@ -251,7 +251,7 @@ internal static class DefaultOwnerSubscriptionConsumer
             var raw = core.ReadCached(rawField);
             var rate = core.ReadCached(rateField);
             Require(raw is { Status: FieldObservationStatus.Current, SampleDurationMilliseconds: null }
-                && raw.Value?.Integer == RawIo(row, pair.Raw).ToString(CultureInfo.InvariantCulture)
+                && raw.Value?.Integer == MetricInteger.FromUnsigned128((UInt128)RawIo(row, pair.Raw))
                 && raw.SourceId == "windows.process.query", "raw IO is current, exact and has no rate window");
             var numeric = row.Values.Single(value => value.Field == pair.Rate).NumericValue;
             Require(rate.Status == FieldObservationStatus.Current && rate.Value?.Number == numeric

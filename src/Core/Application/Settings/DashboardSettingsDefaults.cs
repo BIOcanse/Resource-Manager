@@ -49,7 +49,7 @@ public static class DashboardSettingsDefaults
         var selectableDefinitions = MetricCatalog.FromSnapshot(snapshot)
             .Where(static definition => definition.Selectable)
             .ToArray();
-        var selectableItems = new Dictionary<string, MetricValue>(
+        var selectableItems = new Dictionary<string, MetricReadingValue>(
             StringComparer.OrdinalIgnoreCase);
         foreach (var definition in selectableDefinitions)
         {
@@ -57,15 +57,7 @@ public static class DashboardSettingsDefaults
                     definition.Id,
                     out var item)
                 ? item
-                : new MetricValue(
-                    definition.Id,
-                    definition.Label,
-                    definition.Group,
-                    "-",
-                    null,
-                    definition.Unit,
-                    null,
-                    definition.Detail);
+                : new MetricReadingValue(Id: definition.Id, NumericValue: null, Unit: definition.Unit, Percent: null);
         }
         return Create(
             selectableItems,
@@ -94,7 +86,7 @@ public static class DashboardSettingsDefaults
     /// 显存和风扇本来就没有关系。机型是推不出来的，能读到什么才是事实。
     /// </summary>
     public static DashboardSettings Create(
-        IReadOnlyDictionary<string, MetricValue>? items = null,
+        IReadOnlyDictionary<string, MetricReadingValue>? items = null,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         var cards = new List<DashboardCardSettings>
@@ -149,7 +141,7 @@ public static class DashboardSettingsDefaults
         return end > start && int.TryParse(metricId[start..end], out var index) ? index : null;
     }
 
-    internal static int[] GetGpuIndexes(IReadOnlyDictionary<string, MetricValue>? items)
+    internal static int[] GetGpuIndexes(IReadOnlyDictionary<string, MetricReadingValue>? items)
     {
         var indexes = items?.Keys
             .Select(ParseGpuIndex)
@@ -165,7 +157,7 @@ public static class DashboardSettingsDefaults
     internal static void AddGpuUsageCard(
         List<DashboardCardSettings> cards,
         int index,
-        IReadOnlyDictionary<string, MetricValue>? items,
+        IReadOnlyDictionary<string, MetricReadingValue>? items,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         var prefix = $"gpu.{index}";
@@ -185,7 +177,7 @@ public static class DashboardSettingsDefaults
     internal static void AddGpuVramCard(
         List<DashboardCardSettings> cards,
         int index,
-        IReadOnlyDictionary<string, MetricValue>? items,
+        IReadOnlyDictionary<string, MetricReadingValue>? items,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         var prefix = $"gpu.{index}";
@@ -202,7 +194,7 @@ public static class DashboardSettingsDefaults
         }
     }
 
-    internal static DashboardCardSettings CreateCpuCard(IReadOnlyDictionary<string, MetricValue>? items)
+    internal static DashboardCardSettings CreateCpuCard(IReadOnlyDictionary<string, MetricReadingValue>? items)
     {
         return new DashboardCardSettings(
             "cpu",
@@ -210,7 +202,7 @@ public static class DashboardSettingsDefaults
             GetExistingMetrics(items, CpuDetails));
     }
 
-    internal static DashboardCardSettings CreateMemoryCard(IReadOnlyDictionary<string, MetricValue>? items)
+    internal static DashboardCardSettings CreateMemoryCard(IReadOnlyDictionary<string, MetricReadingValue>? items)
     {
         return new DashboardCardSettings(
             "memory",
@@ -220,7 +212,7 @@ public static class DashboardSettingsDefaults
 
     internal static string[] CreateGpuUsageSmallMetrics(
         int index,
-        IReadOnlyDictionary<string, MetricValue>? items)
+        IReadOnlyDictionary<string, MetricReadingValue>? items)
     {
         // 想要哪几项就全列出来，读不到的由 GetExistingMetrics 自己滤掉。
         //
@@ -233,7 +225,7 @@ public static class DashboardSettingsDefaults
 
     internal static void AddCpuSensorCard(
         List<DashboardCardSettings> cards,
-        IReadOnlyDictionary<string, MetricValue>? items)
+        IReadOnlyDictionary<string, MetricReadingValue>? items)
     {
         if (!HasMetric(items, "cpu.fanRpm"))
         {
@@ -249,7 +241,7 @@ public static class DashboardSettingsDefaults
     internal static void AddGpuSensorCard(
         List<DashboardCardSettings> cards,
         int index,
-        IReadOnlyDictionary<string, MetricValue>? items,
+        IReadOnlyDictionary<string, MetricReadingValue>? items,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         // 这张卡的主角是**这块卡的风扇**，所以只看风扇转速读不读得到。
@@ -274,7 +266,7 @@ public static class DashboardSettingsDefaults
     }
 
     internal static IReadOnlyList<ResourceBarSettings> CreateResourceBars(
-        IReadOnlyDictionary<string, MetricValue>? items = null,
+        IReadOnlyDictionary<string, MetricReadingValue>? items = null,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         var bars = new List<ResourceBarSettings>
@@ -319,7 +311,7 @@ public static class DashboardSettingsDefaults
     }
 
     internal static IReadOnlyList<ResourceTableColumnSettings> CreateResourceTableColumns(
-        IReadOnlyDictionary<string, MetricValue>? items = null,
+        IReadOnlyDictionary<string, MetricReadingValue>? items = null,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         return CreateResourceTableColumns(
@@ -329,7 +321,7 @@ public static class DashboardSettingsDefaults
     }
 
     internal static IReadOnlyList<ResourceTableColumnSettings> CreateResourceTableProcessColumns(
-        IReadOnlyDictionary<string, MetricValue>? items = null,
+        IReadOnlyDictionary<string, MetricReadingValue>? items = null,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
         return CreateResourceTableColumns(
@@ -339,7 +331,7 @@ public static class DashboardSettingsDefaults
     }
 
     private static IReadOnlyList<ResourceTableColumnSettings> CreateResourceTableColumns(
-        IReadOnlyDictionary<string, MetricValue>? items,
+        IReadOnlyDictionary<string, MetricReadingValue>? items,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys,
         bool includeProcessDetails)
     {
@@ -380,7 +372,7 @@ public static class DashboardSettingsDefaults
 
     internal static bool IsResourceBarMetricSupported(
         string? metricId,
-        IReadOnlyDictionary<string, MetricValue>? availableMetrics = null)
+        IReadOnlyDictionary<string, MetricReadingValue>? availableMetrics = null)
     {
         if (string.IsNullOrWhiteSpace(metricId))
         {
@@ -411,12 +403,12 @@ public static class DashboardSettingsDefaults
         return availableMetrics is null || availableMetrics.ContainsKey(normalized);
     }
 
-    private static bool HasMetric(IReadOnlyDictionary<string, MetricValue>? items, string metricId)
+    private static bool HasMetric(IReadOnlyDictionary<string, MetricReadingValue>? items, string metricId)
     {
         return items?.ContainsKey(metricId) ?? BuiltInMetricIds.Contains(metricId);
     }
 
-    private static string[] GetExistingMetrics(IReadOnlyDictionary<string, MetricValue>? items, params string[] metricIds)
+    private static string[] GetExistingMetrics(IReadOnlyDictionary<string, MetricReadingValue>? items, params string[] metricIds)
     {
         return metricIds
             .Where(metricId => HasMetric(items, metricId))

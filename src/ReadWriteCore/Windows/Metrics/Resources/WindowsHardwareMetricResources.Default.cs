@@ -114,8 +114,6 @@ public sealed partial class WindowsHardwareMetricResources
         result = new()
         {
             NvidiaControl = nvidiaControl, Controls = controls,
-            CpuName = CpuIdentityInformationReader.Read()?.Brand ?? "CPU",
-            MemoryDescription = memory.HardwareDescription,
             ReadCpuCounters = () => { if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows CPU counters require Windows.");
                 var value = WindowsSystemCounters.ReadCpuCounters(); return new(value.IsAvailable,
                 value.IdleTicks, value.KernelTicks, value.UserTicks, value.MonotonicTicks, value.MonotonicTicksPerSecond, value.ObservedAt); },

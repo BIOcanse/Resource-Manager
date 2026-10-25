@@ -57,6 +57,20 @@ public sealed class InformationReadWriteBackend(Func<DeviceInformationSnapshot> 
         return Read(new InformationFieldSelection(field, definition), current());
     }
 
+    public ImmutableArray<FieldReading> ReadCachedBatch(ImmutableArray<FieldReference> fields)
+    {
+        InformationFieldSelection?[] selection;
+        lock (gate)
+        {
+            Refresh();
+            selection = fields.Select(field => definitions.TryGetValue(field, out var definition)
+                ? new InformationFieldSelection(field, definition) : null).ToArray();
+        }
+        var snapshot = current();
+        return [.. fields.Select((field, index) => selection[index] is { } selected ? Read(selected, snapshot)
+            : new(field, FieldObservationStatus.Unavailable, null, null, string.Empty))];
+    }
+
     public async ValueTask<ImmutableArray<FieldReading>> CollectAsync(ImmutableArray<FieldReference> fields, CancellationToken cancellationToken)
     {
         var selection = Select(fields);

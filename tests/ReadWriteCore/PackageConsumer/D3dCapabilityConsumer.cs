@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Text.Json;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Information;
@@ -42,13 +43,13 @@ internal static class D3dCapabilityConsumer
             field.Field.FieldName == "gpu_all_video_processor_rate_conversion_caps").Field;
         Require(feature.DeviceIdentity.Contains("d3d11|luid:000000010000002A|pci:10DE:2684", StringComparison.Ordinal),
             "public feature identity retains exact API, LUID, and PCI pair");
-        Require(backend.ReadCached(feature).Value?.Integer == "45056", "recorded current D3D11 feature-level code");
-        Require(backend.ReadCached(format).Value?.Integer == "281474976710689", "recorded 64-bit D3D11 format flags");
+        Require(backend.ReadCached(feature).Value?.Integer == MetricInteger.Parse("45056"), "recorded current D3D11 feature-level code");
+        Require(backend.ReadCached(format).Value?.Integer == MetricInteger.Parse("281474976710689"), "recorded 64-bit D3D11 format flags");
         Require(profile.DeviceIdentity.Contains("luid:000000010000002A|pci:10DE:2684|profile:2f7f9f9e-1a4c-4b72-8a8d-0c5c032d5041", StringComparison.Ordinal)
             && backend.ReadCached(profile).Value?.Text == RecordedProvider.ProfileGuid.ToString("D"),
             "profile GUID remains scoped to the exact adapter");
         Require(outputFormat.DeviceIdentity.Contains("luid:000000010000002A|pci:10DE:2684|profile:2f7f9f9e-1a4c-4b72-8a8d-0c5c032d5041|dxgi-format:103", StringComparison.Ordinal)
-            && backend.ReadCached(outputFormat).Value?.Integer == "103",
+            && backend.ReadCached(outputFormat).Value?.Integer == MetricInteger.Parse("103"),
             "supported output format remains scoped to the exact adapter and decoder profile");
         Require(decoderConfiguration.DeviceIdentity.Contains("luid:000000010000002A|pci:10DE:2684"
                 + "|profile:2f7f9f9e-1a4c-4b72-8a8d-0c5c032d5041|sample-size:1920x1080|output-format:103",
@@ -86,7 +87,7 @@ internal static class D3dCapabilityConsumer
         Require(reader.Requests.Count == readsBeforeCache, "cached current reads do not sample");
 
         var selected = (await backend.CollectAsync([feature], CancellationToken.None)).Single();
-        Require(selected.Status == FieldObservationStatus.Current && selected.Value?.Integer == "45056",
+        Require(selected.Status == FieldObservationStatus.Current && selected.Value?.Integer == MetricInteger.Parse("45056"),
             "selected public feature-level collection");
         Require(reader.Requests.Last() == WindowsD3dCapabilityFields.FeatureLevel,
             "selected API requested only the feature-level field");
@@ -137,13 +138,13 @@ internal static class D3dCapabilityConsumer
         Require(field.FieldName == "gpu_all_d3d12_raytracing_tier"
             && field.DeviceIdentity.Contains($"d3d12|luid:{adapter.Luid:X16}|pci:{adapter.PciVendorId:X4}:{adapter.PciDeviceId:X4}", StringComparison.Ordinal),
             "raytracing field has exact API/LUID/PCI identity");
-        Require(access.Backend.ReadCached(field).Value?.Integer == "0", "successful zero is reported no-raytracing");
+        Require(access.Backend.ReadCached(field).Value?.Integer == MetricInteger.Parse("0"), "successful zero is reported no-raytracing");
         var calls = reader.Calls;
         Require(owner.ReadState().InformationFields.FindField(field)?.Value?.GetString() == "0", "same owner current contains zero");
         Require(calls == reader.Calls, "cached raytracing reads do not query");
         reader.Tier = uint.MaxValue;
         var current = (await access.Backend.CollectAsync([field], default)).Single();
-        Require(current.Value?.Integer == "4294967295", "future raw tier retains UInt32 without narrowing");
+        Require(current.Value?.Integer == MetricInteger.Parse("4294967295"), "future raw tier retains UInt32 without narrowing");
         reader.Tier = null;
         current = (await access.Backend.CollectAsync([field], default)).Single();
         Require(current.Status == FieldObservationStatus.Unavailable && current.Value is null && current.ObservedAt is null,
@@ -151,7 +152,7 @@ internal static class D3dCapabilityConsumer
         reader.Tier = 11;
         using var borrow = access.BorrowSubscriptionCapture();
         var published = await borrow.CollectAsync([field], new Permit(), default);
-        Require(published.Committed && published.Readings.Single().Value?.Integer == "11"
+        Require(published.Committed && published.Readings.Single().Value?.Integer == MetricInteger.Parse("11")
             && published.Readings.Single() == access.Backend.ReadCached(field), "public borrow and direct API use the same raytracing current");
         Require(reader.LastFields == WindowsD3dCapabilityFields.RaytracingTier, "only selected raytracing query group");
         Console.WriteLine("[D3D12-RAYTRACING-PACKAGE] recorded zero/raw-UInt32/failure/recovery and original-owner borrow; no native GPU access.");

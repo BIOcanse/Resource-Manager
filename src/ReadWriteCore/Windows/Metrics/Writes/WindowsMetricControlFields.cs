@@ -143,7 +143,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
     {
         if (!HasResources) return snapshot;
         var prepared = AddBindings(snapshot);
-        var items = new Dictionary<string, MetricValue>(prepared.Items, StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, MetricReadingValue>(prepared.Items, StringComparer.OrdinalIgnoreCase);
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(prepared.Datasets, StringComparer.OrdinalIgnoreCase);
         var selected = Volatile.Read(ref declarations).Values.Where(d => request.Includes(d.Binding.RequestAddress)).ToArray();
         if (selected.Length == 0) return prepared;
@@ -171,10 +171,10 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
             var at = DateTimeOffset.UtcNow;
             items.Remove(binding.RequestAddress);
             if (value is not null)
-                items[binding.RequestAddress] = new(binding.RequestAddress, binding.Field.Name,
-                    binding.Field.Resource.ToString(), "", value.Number, binding.Field.Unit, null, null)
+                items[binding.RequestAddress] = new(Id: binding.RequestAddress, NumericValue: value.Number, Unit: binding.Field.Unit, Percent: null)
                 { IntegerValue = value.Integer, BooleanValue = value.Boolean, ValueKind = binding.Field.ValueKind,
-                    FieldName = binding.Field.Name, DeviceIdentity = binding.DeviceIdentity, SourceId = binding.SourceId };
+                    FieldCode = binding.Field.Code, FieldName = binding.Field.Name, DeviceIdentity = binding.DeviceIdentity,
+                    SourceId = binding.SourceId, Status = status, ObservedAt = at };
             datasets[binding.RequestAddress] = new(binding.RequestAddress, status,
                 snapshot.CommittedGeneration, value is null ? 0 : at.UtcTicks, snapshot.WorkspaceIdentity,
                 snapshot.ConfigurationGeneration, snapshot.CatalogGeneration, snapshot.CommittedGeneration)
@@ -194,7 +194,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
                 && WindowsMetricControlBindings.TryFind(binding) is not null).ToArray();
         if (controls.Length == 0) return snapshot;
         var bindings = new Dictionary<string, MetricDeviceFieldBinding>(snapshot.FieldBindings, StringComparer.OrdinalIgnoreCase);
-        var items = new Dictionary<string, MetricValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
+        var items = new Dictionary<string, MetricReadingValue>(snapshot.Items, StringComparer.OrdinalIgnoreCase);
         var datasets = new Dictionary<string, HardwareMetricDatasetObservation>(snapshot.Datasets, StringComparer.OrdinalIgnoreCase);
         foreach (var binding in controls)
         {
@@ -382,15 +382,14 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
         => entry.DeclaredRange with { Minimum = min, Maximum = max, Step = step, DeclaredDefault = baseline,
             RangeOrigin = entry.Family == WindowsMetricControlFamily.AmdDesktopGpu ? "original-adlx-tuning-range" : entry.DeclaredRange.RangeOrigin };
     private static double? Numeric(FieldValue value)
-        => value.Number ?? (long.TryParse(value.Integer, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer)
-            && integer >= int.MinValue && integer <= int.MaxValue ? integer : (double?)null);
+        => value.Number ?? (value.Integer is { FitsSigned32: true } integer ? integer.ToSigned64() : (double?)null);
     private static FieldValue? Value(WindowsMetricControlBinding entry, double? number, bool? toggle = null)
     {
         if (entry.Definition.ValueKind == "boolean") return toggle is { } flag ? new(Boolean: flag) : null;
         if (number is not { } numeric || !double.IsFinite(numeric)) return null;
         return entry.Definition.ValueKind == "signed64"
             ? numeric == Math.Truncate(numeric) && numeric >= int.MinValue && numeric <= int.MaxValue
-                ? new(Integer: ((int)numeric).ToString(CultureInfo.InvariantCulture)) : null : new(Number: numeric);
+                ? new(Integer: MetricInteger.FromSigned64((int)numeric)) : null : new(Number: numeric);
     }
     private async ValueTask<FieldValue?> ReadRawAsync(MetricDeviceFieldBinding binding, WindowsMetricControlBinding entry,
         WindowsGpuAdapter? adapter, CancellationToken token)

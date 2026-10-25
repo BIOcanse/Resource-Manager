@@ -14,7 +14,7 @@ public sealed class UnifiedInformationFieldTests
         fixture.Sampler.Complete(CpuTopologyInformationFieldTests.Snapshot());
         await backend.DiscoverAsync(default); Assert.Equal(1, await fixture.Sampler.WaitForCaptureAsync());
         var field = backend.Catalog.Fields.Single(item => item.Field.FieldName == DeviceInformationFieldRegistry.CpuAllPhysicalCoreCountReported.Name).Field;
-        Assert.Equal("2", backend.ReadCached(field).Value?.Integer); Assert.Equal(1, fixture.Sampler.CaptureCount);
+        Assert.Equal(MetricInteger.Parse("2"), backend.ReadCached(field).Value?.Integer); Assert.Equal(1, fixture.Sampler.CaptureCount);
         var subscriptions = new InformationFieldSubscriptionBackend(backend,
             (id, interval) => fixture.Reader.AcquireInformationSubscription(id, interval), fixture.Reader.SubscribeInformationAsync);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));

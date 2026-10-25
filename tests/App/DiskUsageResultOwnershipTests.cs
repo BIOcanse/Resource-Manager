@@ -143,7 +143,7 @@ public sealed class DiskUsageResultOwnershipTests
     {
         var mft = new FieldCapability(
             new FieldReference("ntfs-object|encoded-path", "directory_all_file_count_aggregated"),
-            new FieldDescriptor("directory_all_file_count_aggregated", "count", "unsigned-integer", null),
+            new FieldDescriptor("directory_all_file_count_aggregated", "count", "unsigned-integer"),
             new OperationSupport(true, null, []),
             OperationSupport.Unsupported("field-write-not-bound"),
             DeviceInformationFieldRegistry.MftSourceId);

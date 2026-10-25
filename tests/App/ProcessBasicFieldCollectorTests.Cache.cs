@@ -48,16 +48,16 @@ public sealed partial class ProcessBasicFieldCollectorTests
             : Network(captured));
         var api = new Api(); using var fixture = Fixture(api, network); var request = Request([.. Names, .. NetworkNames]);
         var first = await fixture.Sampler.CaptureSnapshotAsync(request, CancellationToken.None);
-        Assert.Equal("9007199254740993", Value(first, NetworkNames[0]).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(first, NetworkNames[0]).IntegerValue);
         failed = true; var sample = await fixture.Sampler.CaptureSnapshotAsync(request, CancellationToken.None);
-        Assert.Equal("9007199254740993", Value(sample, Names[1]).IntegerValue); Assert.Equal(9.75, Value(sample, Names[0]).NumericValue);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(sample, Names[1]).IntegerValue); Assert.Equal(9.75, Value(sample, Names[0]).NumericValue);
         Assert.Null(Value(sample, NetworkNames[0]).IntegerValue);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Ready, Assert.Single(sample.Datasets, d => d.DatasetId == SamplingDatasetIds.ProcessBasicMetrics).Status);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Failed, Assert.Single(sample.Datasets, d => d.DatasetId == SamplingDatasetIds.ProcessObservedNetworkTraffic).Status);
         Assert.NotNull(Assert.Single(sample.ProcessFields!.Sources, s => s.SourceId == "windows.process.query").CapturedAt);
         Assert.Null(Assert.Single(sample.ProcessFields.Sources, s => s.SourceId == "windows.etw.network").CapturedAt);
         failed = false; var recovered = await fixture.Sampler.CaptureSnapshotAsync(request, CancellationToken.None);
-        Assert.Equal("9007199254740993", Value(recovered, NetworkNames[0]).IntegerValue); Assert.Equal(3, api.Opens);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(recovered, NetworkNames[0]).IntegerValue); Assert.Equal(3, api.Opens);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
         state.ApplyDirect(request, sample, now, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5));
         state.MarkFailed(Request(Names[1]), now, new InvalidOperationException("basic source failed"));
         var failed = state.ReadOrCreate(now, request);
-        Assert.Null(Value(failed, Names[1]).IntegerValue); Assert.Equal("9007199254740993", Value(failed, NetworkNames[0]).IntegerValue);
+        Assert.Null(Value(failed, Names[1]).IntegerValue); Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(failed, NetworkNames[0]).IntegerValue);
         Assert.Equal(captured, failed.ProcessFields!.CapturedAt);
         using var wire = JsonDocument.Parse(JsonSerializer.Serialize(ResourceBreakdownWireSnapshot.Create(failed with { ProcessFields = sample.ProcessFields }, [.. Names, .. NetworkNames]), WebJson));
         var fields = wire.RootElement.GetProperty("processFields"); var values = fields.GetProperty("processes")[0].GetProperty("values");
@@ -87,9 +87,9 @@ public sealed partial class ProcessBasicFieldCollectorTests
     public void MergeDoesNotAttachAnotherCreationOfSamePidToOldCounterValues()
     {
         var basic = new ProcessMetricFieldSnapshot(DateTimeOffset.UtcNow, null, [ProcessMetricFieldRegistry.Find(Names[1])!],
-            [new(42, "100", [new(Names[1], "5", null)])]);
+            [new(42, "100", [new(Names[1], MetricInteger.Parse("5"), null)])]);
         var net = new ProcessMetricFieldSnapshot(DateTimeOffset.UtcNow, 2000, [ProcessMetricFieldRegistry.Find(NetworkNames[0])!],
-            [new(42, "200", [new(NetworkNames[0], "7", null)]), new(43, "100", [new(NetworkNames[0], "8", null)])]);
+            [new(42, "200", [new(NetworkNames[0], MetricInteger.Parse("7"), null)]), new(43, "100", [new(NetworkNames[0], MetricInteger.Parse("8"), null)])]);
         var merged = ProcessMetricFieldSnapshot.Merge([basic, net]); Assert.Equal(3, merged.Processes.Count);
         Assert.Equal(Names[1], Assert.Single(Assert.Single(merged.Processes, r => r.ProcessId == 42 && r.CreationWindowsFileTime100Ns == "100").Values).Field);
         Assert.Equal(NetworkNames[0], Assert.Single(Assert.Single(merged.Processes, r => r.ProcessId == 42 && r.CreationWindowsFileTime100Ns == "200").Values).Field);

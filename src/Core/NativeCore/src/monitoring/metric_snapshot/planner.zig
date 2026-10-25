@@ -55,6 +55,7 @@ pub fn plan(
     if (scratch_status != .ok) return scratch_status;
     // Output slices are cleared in full, so their capacities are actual write extents.
     const ranges = [_]scratch.Range{
+        scratch.Range.slice(u8, session.current_region) orelse return .invalid_argument,
         scratch.Range.init(scratch_bytes.ptr, session.scratch_layout.byte_count) orelse return .invalid_argument,
         scratch.Range.init(input, @sizeOf(protocol.PlanInput)) orelse return .invalid_argument,
         scratch.Range.slice(protocol.PlanMetricInput, requested_metrics) orelse return .invalid_argument,

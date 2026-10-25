@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ResourceManager.SubscriptionCore" Version="0.1.0-dev.87" />
+    <PackageReference Include="ResourceManager.SubscriptionCore" Version="0.1.0-dev.88" />
     <Compile Include="../../Fixtures/DisplayIdNonModeCtaFixture.cs" Link="DisplayIdNonModeCtaFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdFixture.cs" Link="DisplayIdCtaSvdFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdExpectation.cs" Link="DisplayIdCtaSvdExpectation.cs" />
@@ -26,5 +26,6 @@
     <Compile Include="../../ReadWriteCore/PackageConsumer/SecurityProductConsumer.cs" Link="SecurityProductConsumer.cs" />
     <Compile Include="../../ReadWriteCore/PackageConsumer/CpuInstructionConsumer.cs" Link="CpuInstructionConsumer.cs" />
     <Compile Include="../../ReadWriteCore/PackageConsumer/AmdHardwareTopologyConsumer.cs" Link="AmdHardwareTopologyConsumer.cs" />
+    <Compile Include="../../ReadWriteCore/PackageConsumer/MetricSnapshotFactAssertions.cs" Link="MetricSnapshotFactAssertions.cs" />
   </ItemGroup>
 </Project>

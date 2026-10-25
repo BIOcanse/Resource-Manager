@@ -57,9 +57,9 @@ public sealed partial class WindowsHardwareMetricSampler :
     private readonly SemaphoreSlim demandSignal = new(0, 1);
     private readonly SemaphoreSlim sampleGate;
     private readonly SamplingPublicationSignal publicationSignal = new();
-    private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot = new("Host Manager metric snapshot");
+    private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot;
     // 当前处于“被拒绝”状态的 dataset；只在持有 sampleGate 的发布路径上读写，用于只在状态变化时记日志。
-    private bool catalogRefreshDemand;
+    private bool catalogPublicationDemand;
     private readonly HashSet<string> rejectedDatasetIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly NativeItemSamplingSubscriptionTracker<MetricSampleRequest>
         subscriptions;
@@ -156,6 +156,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         this.intelGclZone = intelGclZone ?? new IntelGclMonitoringZone();
         this.batteryZone = batteryZone ?? new WindowsBatteryMonitoringZone();
         this.metricSnapshotOwner = metricSnapshotOwner;
+        publishedSnapshot = new("metric_snapshot", () => this.metricSnapshotOwner.CreateCurrentSession());
         this.dashboardMonitoringCatalog = dashboardMonitoringCatalog;
         var resources = CreateBorrowedResources(borrowedControls);
         controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory, sourceId =>
@@ -258,7 +259,7 @@ public sealed partial class WindowsHardwareMetricSampler :
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        var snapshot = ReadCachedSnapshot();
+        var snapshot = publishedSnapshot.Read(request);
         return Task.FromResult(snapshot is null
             ? CreateWarmingSnapshot(request)
             : ProjectSnapshot(snapshot, request));
@@ -282,7 +283,11 @@ public sealed partial class WindowsHardwareMetricSampler :
                 });
             if (sampledRequest.IncludesCatalog) dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
             PublishCompletedDatasets(GetPublicationItemIds(sampledRequest));
-            return ProjectSnapshot(snapshot, request);
+            // Capture preparation is not a second read authority. Return the
+            // admitted public slots, including unchanged independent slots.
+            return publishedSnapshot.Read() is { } current
+                ? ProjectSnapshot(current, request)
+                : CreateWarmingSnapshot(request);
         }
         finally
         {
@@ -322,11 +327,14 @@ public sealed partial class WindowsHardwareMetricSampler :
     public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var snapshot = ReadCachedSnapshot();
+        var snapshot = publishedSnapshot.Read(request);
         return snapshot is null
             ? null
             : ProjectSnapshot(snapshot, request);
     }
+
+    public IReadOnlyDictionary<string, MetricReadingValue> ReadItems(ImmutableArray<string> ids)
+        => publishedSnapshot.ReadItems(ids);
 
     public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(
         string subscriptionId,
@@ -516,6 +524,7 @@ public sealed partial class WindowsHardwareMetricSampler :
             cts?.Dispose();
             demandSignal.Dispose();
             sampleGate.Dispose();
+            publishedSnapshot.Dispose();
             Volatile.Write(ref ownedResourcesDisposed, 1);
         }
     }
@@ -562,11 +571,11 @@ public sealed partial class WindowsHardwareMetricSampler :
     private void SynchronizeCounterDemand(IReadOnlyList<string> activeItemIds)
     {
         var hasCatalogDemand = activeItemIds.Contains(SamplingDatasetIds.SystemMetricCatalog, StringComparer.OrdinalIgnoreCase);
-        if (hasCatalogDemand != catalogRefreshDemand)
+        if (hasCatalogDemand != catalogPublicationDemand)
         {
-            catalogRefreshDemand = hasCatalogDemand;
-            logger.LogWarning("Hardware sampling {Transition} requesting topology refresh from {Source}: {Reason}.",
-                hasCatalogDemand ? "started" : "stopped", "metric-catalog", "explicit-catalog-probe");
+            catalogPublicationDemand = hasCatalogDemand;
+            logger.LogDebug("Hardware catalog publication demand {Transition}.",
+                hasCatalogDemand ? "started" : "stopped");
         }
         // The worker also calls this with empty demand when its lifetime ends.
         if (dashboardMonitoringCatalog.Current is null || !metricSnapshotOwner.TryAcquire(out var lease))
@@ -624,8 +633,19 @@ public sealed partial class WindowsHardwareMetricSampler :
             var (snapshot, sampledRequest) = await ReadSnapshotCoreAsync(
                 request,
                 cancellationToken,
-                sourceQueriesCompleted: queriedAddresses.UnionWith);
+                sourceQueriesCompleted: queriedAddresses.UnionWith,
+                publishCurrentCatalog: true);
             request = sampledRequest;
+            if (snapshot is null)
+            {
+                // An unchanged catalog is a delivery of existing current, not a
+                // new query or native-current commit. Still honor hosted admission.
+                var admitted = publishedSnapshot.TryAdmitHostedDelivery(capturedTicket,
+                    () => publicationSignal.Publish([SamplingDatasetIds.SystemMetricCatalog]));
+                completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
+                    triggers, queriedAddresses, committed: admitted));
+                return admitted ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Skipped;
+            }
             if (request.IncludesCatalog)
                 publicationDatasetIds = dueDatasetIds.Concat([SamplingDatasetIds.StorageInventory, SamplingDatasetIds.FanInventory, SamplingDatasetIds.BatteryInventory]).ToArray();
             if (!publishedSnapshot.TryPublishHosted(
@@ -900,13 +920,13 @@ public sealed partial class WindowsHardwareMetricSampler :
                     null,
                     null,
                     null)),
-            new MemoryMetrics(0, 0, 0, false, string.Empty)
+            new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false)
             {
                 ObservationStatus = memoryRequested
                     ? SamplingObservationStatus.Warming
                     : SamplingObservationStatus.NotRequested
             },
-            new VirtualMemoryMetrics(0, 0, 0, string.Empty, false)
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false)
             {
                 ObservationStatus = pageFileRequested
                     ? SamplingObservationStatus.Warming
@@ -924,7 +944,7 @@ public sealed partial class WindowsHardwareMetricSampler :
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>(
+            new Dictionary<string, MetricReadingValue>(
                 StringComparer.OrdinalIgnoreCase))
         {
             Datasets = datasets,
@@ -1012,21 +1032,29 @@ public sealed partial class WindowsHardwareMetricSampler :
             || name.Equals("vramPercent", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<(HardwareMetricSnapshot Snapshot, MetricSampleRequest Request)> ReadSnapshotCoreAsync(MetricSampleRequest request,
+    private async Task<(HardwareMetricSnapshot? Snapshot, MetricSampleRequest Request)> ReadSnapshotCoreAsync(MetricSampleRequest request,
         CancellationToken cancellationToken, Action<HardwareMetricSnapshot, MetricSampleRequest>? onCommitted = null,
-        Action<ImmutableHashSet<string>>? sourceQueriesCompleted = null)
+        Action<ImmutableHashSet<string>>? sourceQueriesCompleted = null, bool publishCurrentCatalog = false)
     {
-        if (request.IncludesCatalog) metricSnapshotOwner.RequestTopologyRefresh();
-        _ = metricSnapshotOwner.RefreshTopologyIfRequested();
+        // Hosted catalog demand only delivers current structure. The explicit
+        // capture API retains its controlled structure-probe semantics.
+        if (!publishCurrentCatalog && request.IncludesCatalog) metricSnapshotOwner.RequestTopologyRefresh();
+        var refreshedTopology = metricSnapshotOwner.RefreshTopologyIfRequested();
         using var lease = await metricSnapshotOwner.AcquireAsync(cancellationToken);
         // Publish structural changes with this due sample; unchanged topology adds no catalog demand.
-        var catalog = dashboardMonitoringCatalog.Current;
+        var catalog = dashboardMonitoringCatalog.Catalog;
         var catalogChanged = catalog is null || catalog.WorkspaceIdentity != lease.WorkspaceIdentity
             || catalog.CatalogGeneration != lease.Workspace.ReadHeader().CatalogGeneration;
+        if (publishCurrentCatalog && request.IsCatalogProbe && !catalogChanged && refreshedTopology is null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!lease.TryPublish(_ => true, out _)) throw new MetricSnapshotWorkspaceRetiredException();
+            return (null, request);
+        }
         if (catalogChanged) request = request.WithCatalog();
         var result = await capture.CaptureUnderGateAsync(request, lease.Workspace, lease.WorkspaceIdentity, lease.Topology,
             commit => lease.TryPublish(_ => { commit(); return true; }, out _),
-            new(HostMetricSnapshotCopy.VirtualMemoryDetail, HostMetricSnapshotCopy.LegacyLabel), cancellationToken,
+            cancellationToken,
             workspace => { _ = workspace.PersistRecoveryCheckpointIfAdvanced(DateTimeOffset.UtcNow); },
             onCommitted is null ? null : completed => onCommitted(completed, request),
             enrichBeforeCommit: async (snapshot, selection, token, sourceQueryStarted) =>

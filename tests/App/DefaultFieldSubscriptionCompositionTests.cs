@@ -246,7 +246,7 @@ public sealed class DefaultFieldSubscriptionCompositionTests
         internal int Captures, Commits;
         private ImmutableArray<FieldReading> current = [];
         internal RecordedScope() => Catalog = new([new("recorded-process", "process", null)],
-            new[] { A, B }.Select(field => new FieldCapability(field, new(field.FieldName, "text", "string", null),
+            new[] { A, B }.Select(field => new FieldCapability(field, new(field.FieldName, "text", "string"),
                 new(true, null, []), OperationSupport.Unsupported("read-only"), "recorded")));
         public ImmutableArray<FieldCollectionBinding> Bind(ImmutableArray<FieldReference> fields)
             => [.. fields.Select(field => { Catalog.Require(field); return BindOverride?.Invoke(field)

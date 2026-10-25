@@ -105,7 +105,7 @@ public sealed class CompositeFieldSubscriptionBackend(CompositeReadWriteBackend 
                 for (var owner = 0; owner < groups.Length; owner++)
                 {
                     var hasResult = ready.Contains(owner);
-                    var published = hasResult ? enumerators[owner].Current : [];
+                    var published = hasResult ? enumerators[owner].Current : ReadCurrent(groups[owner].Backend, expected[owner]);
                     if (hasResult && published.Length != groups[owner].Fields.Length)
                         throw new InvalidOperationException("Subscription owner omitted selected readings.");
                     for (var index = 0; index < groups[owner].Fields.Length; index++)
@@ -113,7 +113,7 @@ public sealed class CompositeFieldSubscriptionBackend(CompositeReadWriteBackend 
                         var original = expected[owner][index];
                         if (hasResult && published[index].Field != original.Field)
                             throw new InvalidOperationException("Subscription owner changed selected identities.");
-                        values[groups[owner].Positions[index]] = hasResult ? published[index] : ReadCurrent(groups[owner].Backend, original);
+                        values[groups[owner].Positions[index]] = published[index];
                     }
                 }
                 yield return [.. values];
@@ -148,16 +148,30 @@ public sealed class CompositeFieldSubscriptionBackend(CompositeReadWriteBackend 
         }
     }
 
-    internal static FieldReading ReadCurrent(IReadWriteBackend owner, FieldCapability original)
+    internal static ImmutableArray<FieldReading> ReadCurrent(IReadWriteBackend owner, ImmutableArray<FieldCapability> expected)
     {
-        var actual = owner.Catalog.GetFields(original.Field.DeviceIdentity).FirstOrDefault(field => field.Field == original.Field);
-        if (actual?.Definition == original.Definition && actual.ReadSource == original.ReadSource)
+        var catalog = owner.Catalog;
+        var selected = expected.Where(original => Matches(catalog, original))
+            .DistinctBy(static original => original.Field).ToImmutableArray();
+        var readings = new Dictionary<FieldReference, FieldReading>();
+        if (!selected.IsEmpty)
         {
-            try { return owner.ReadCached(original.Field); }
-            catch (ArgumentException) { /* A publication removed the binding after the catalog check. */ }
+            var part = owner.ReadCachedBatch([.. selected.Select(static original => original.Field)]);
+            if (part.Length != selected.Length) throw new InvalidOperationException("Field owner omitted selected readings.");
+            for (var index = 0; index < part.Length; index++)
+            {
+                if (part[index].Field != selected[index].Field) throw new InvalidOperationException("Field owner changed selected identities.");
+                readings[part[index].Field] = part[index].Status == FieldObservationStatus.Unavailable && string.IsNullOrEmpty(part[index].SourceId)
+                    ? part[index] with { SourceId = selected[index].ReadSource } : part[index];
+            }
         }
-        return new(original.Field, FieldObservationStatus.Unavailable, null, null, original.ReadSource);
+        return [.. expected.Select(original => Matches(catalog, original) && readings.TryGetValue(original.Field, out var reading)
+            ? reading : new(original.Field, FieldObservationStatus.Unavailable, null, null, original.ReadSource))];
     }
+
+    private static bool Matches(ReadWriteCatalog catalog, FieldCapability original)
+        => catalog.Find(original.Field) is { } current && current.Definition == original.Definition
+            && current.ReadSource == original.ReadSource;
 
     private sealed class Leases(IDisposable[] values) : IDisposable
     {

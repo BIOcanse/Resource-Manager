@@ -34,8 +34,8 @@ public sealed class FanCurveTemperatureFeedTests
     }
 
     private static HardwareMetricSnapshot Snapshot(params (string Id, double Value, DateTimeOffset At)[] values)
-        => new(Now, null!, null!, null!, [], null!, values.ToDictionary(v => v.Id,
-            v => new MetricValue(v.Id, v.Id, "temperature", "", v.Value, "°C", null, null)))
+        => new(Now, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, values.ToDictionary(v => v.Id,
+            v => new MetricReadingValue(Id: v.Id, NumericValue: v.Value, Unit: "°C", Percent: null)))
         {
             Datasets = values.ToDictionary(v => v.Id, v => new HardwareMetricDatasetObservation(v.Id,
                 SamplingObservationStatus.Current, 1, v.At.UtcTicks, 1, 1, 1, 1))

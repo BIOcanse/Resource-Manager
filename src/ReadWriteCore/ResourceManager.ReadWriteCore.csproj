@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PackageId>ResourceManager.ReadWriteCore</PackageId>
-    <Version>0.1.0-dev.84</Version>
+    <Version>0.1.0-dev.85</Version>
     <Description>Explicit device field reads, writes and dependency contracts.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

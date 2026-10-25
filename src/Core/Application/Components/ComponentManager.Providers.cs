@@ -50,11 +50,11 @@ public sealed partial class ComponentManager
     {
         return componentId switch
         {
-            "nvidia-nvml-provider" => HasNumericMetricFromProvider(snapshot, "NVIDIA NVML"),
-            "amd-adlx-provider" => HasNumericMetricFromProvider(snapshot, "AMD ADLX"),
-            "amd-smu-pawnio-provider" => HasNumericMetricFromProvider(snapshot, "AMD SMU / PawnIO"),
-            "librehardwaremonitor-provider" => HasNumericMetricFromProvider(snapshot, "LibreHardwareMonitor Core"),
-            "nvidia-nvapi-provider" => HasNumericMetricFromProvider(snapshot, "NVIDIA NVAPI"),
+            "nvidia-nvml-provider" => HasNumericMetricFromProvider(snapshot, "nvidia.nvml", "NVIDIA NVML"),
+            "amd-adlx-provider" => HasNumericMetricFromProvider(snapshot, "amd.adlx", "AMD ADLX"),
+            "amd-smu-pawnio-provider" => HasNumericMetricFromProvider(snapshot, "amd.smu", "AMD SMU / PawnIO"),
+            "librehardwaremonitor-provider" => HasNumericMetricFromProvider(snapshot, "hardware-monitor.core", "LibreHardwareMonitor Core"),
+            "nvidia-nvapi-provider" => HasNumericMetricFromProvider(snapshot, "nvidia.nvapi", "NVIDIA NVAPI"),
             "notebook-oem-fan-provider" => HasNotebookOemFanMetric(snapshot),
             _ => false
         };
@@ -73,15 +73,15 @@ public sealed partial class ComponentManager
 
     private static bool HasNotebookOemFanMetric(HardwareMetricSnapshot snapshot)
     {
-        return HasNumericMetricFromProvider(snapshot, "Mechrevo UWACPI")
-            || HasNumericMetricFromProvider(snapshot, "Notebook OEM Fan Provider");
+        return HasNumericMetricFromProvider(snapshot, "notebook.oem-fan", "Mechrevo UWACPI")
+            || HasNumericMetricFromProvider(snapshot, "notebook.oem-fan", "Notebook OEM Fan Provider");
     }
 
-    private static bool HasNumericMetricFromProvider(HardwareMetricSnapshot snapshot, string providerName)
+    private static bool HasNumericMetricFromProvider(HardwareMetricSnapshot snapshot, string sourceId, string providerName)
     {
         return snapshot.Items.Values.Any(value =>
             value.NumericValue is not null
-            && value.Detail?.Contains(providerName, StringComparison.OrdinalIgnoreCase) == true)
+            && string.Equals(value.SourceId, sourceId, StringComparison.Ordinal))
             || HasCpuSensorMetricFromProvider(snapshot, providerName)
             || HasGpuSensorMetricFromProvider(snapshot, providerName);
     }

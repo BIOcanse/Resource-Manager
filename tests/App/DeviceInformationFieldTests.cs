@@ -160,7 +160,7 @@ public sealed class DeviceInformationFieldTests
                 : ResourceManager.ReadWrite.FieldObservationStatus.Current, reading.Status);
         }
         var capacity = Field(information, "smbios-memory|17", "memory_all_dimm_capacity");
-        Assert.Equal(ulong.MaxValue.ToString(), InformationFieldProjection.Read("smbios-memory|17", capacity, observedAt).Value!.Integer);
+        Assert.Equal(MetricInteger.FromUnsigned128(ulong.MaxValue), InformationFieldProjection.Read("smbios-memory|17", capacity, observedAt).Value!.Integer);
     }
 
 }

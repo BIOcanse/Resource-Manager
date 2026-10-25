@@ -50,8 +50,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(timeout.Token);
         var dashboard = new DashboardMonitoringCatalogState();
-        using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-            lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+        using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var zone = new WindowsNpuEngineMonitoringZone(recording.Open, recording.Read);
         var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, null!, null!, null!, null!, null!,

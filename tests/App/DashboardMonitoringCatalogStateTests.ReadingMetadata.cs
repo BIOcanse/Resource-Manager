@@ -8,6 +8,43 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DashboardMonitoringCatalogStateTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AliasMetadataBelongsToTheCurrentValueOrPreferredReadingRegardlessOfBindingOrder(
+        bool hasCurrentValue, bool reverseBindings)
+    {
+        const string alias = "cpu.temperature";
+        var preferred = CatalogBinding("cpu_intel_package_dts_temperature", "intel.msr",
+            "a-preferred", alias, "available", preferred: true);
+        var actual = CatalogBinding("cpu_all_temperature_reported_celsius", "windows.wmi",
+            "z-actual", alias, "available", preferred: false);
+        var bindings = reverseBindings ? new[] { actual, preferred } : new[] { preferred, actual };
+        var items = new Dictionary<string, MetricReadingValue>();
+        if (hasCurrentValue)
+            items[alias] = new(alias, 58, "°C")
+            {
+                FieldCode = actual.Field.Code, FieldName = actual.Field.Name,
+                DeviceIdentity = actual.DeviceIdentity, SourceId = actual.SourceId, ValueKind = actual.Field.ValueKind
+            };
+        var snapshot = CreateSnapshot(1, "gpu", []) with
+        {
+            Items = items,
+            FieldBindings = bindings.ToDictionary(static binding => binding.RequestAddress)
+        };
+        var definition = MetricCatalog.FromSnapshot(snapshot).Single(item => item.Id == alias);
+        var expected = hasCurrentValue ? actual : preferred;
+        Assert.True(definition.Selectable);
+        Assert.Equal(expected.SourceId, definition.SourceId);
+        Assert.Equal(expected.Field.Code, definition.FieldCode);
+        Assert.Equal(expected.Field.Name, definition.FieldName);
+        Assert.Equal(expected.DeviceIdentity, definition.DeviceIdentity);
+        Assert.Equal(expected.Field.ValueKind, definition.ValueKind);
+        Assert.Equal("°C", definition.Unit);
+    }
+
+    [Theory]
     [InlineData("motherboard_all_vrm_temperature_celsius", "system.vrmTemperature", "memory_all_temperature_reported_celsius", "hardware-monitor.core")]
     [InlineData("motherboard_all_chipset_temperature_celsius", "system.chipsetTemperature", "memory_all_temperature_reported_celsius", "hardware-monitor.core")]
     [InlineData("cpu_amd_stapm_power_watts", "cpu.stapmPower", "cpu_amd_actual_power_watts", "amd.smu")]
@@ -24,7 +61,6 @@ public sealed partial class DashboardMonitoringCatalogStateTests
         var definition = MetricCatalog.FromSnapshot(initial).Single(item => item.Id == alias);
         Assert.False(definition.Selectable);
         Assert.Null(definition.RequiredComponentId);
-        Assert.Null(definition.RequiredComponentName);
         Assert.Equal(BackendMessageCodes.Metric.NoValidReading, definition.DisabledReason!.Code);
         Assert.Equal("unverified", initial.FieldBindings["target"].Field.Reading!.SourceAvailability);
         Assert.Empty(initial.Items);
@@ -72,7 +108,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
                 { Reading = sibling.Field.Reading! with { SourceAvailability = "available", IsPreferredSource = true } } } } };
         Assert.True(state.PublishReadingMetadata(committed));
         Assert.NotEqual(revision, state.Revision);
-        Assert.Same(initial.Items, state.Current!.Items);
+        Assert.Empty(state.Current!.Items);
         Assert.Equal(BackendMessageCodes.Metric.NoValidReading,
             MetricCatalog.FromSnapshot(state.Current).Single(item => item.Id == "system.vrmTemperature").DisabledReason!.Code);
     }
@@ -97,7 +133,6 @@ public sealed partial class DashboardMonitoringCatalogStateTests
             .Single(item => item.Id == alias);
         Assert.False(installed.Selectable);
         Assert.Null(installed.RequiredComponentId);
-        Assert.Null(installed.RequiredComponentName);
         Assert.Equal(BackendMessageCodes.Metric.NoValidReading, installed.DisabledReason!.Code);
     }
 
@@ -132,7 +167,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
         Assert.Equal(2, changes);
         Assert.Equal(reading, state.Current!.FieldBindings["raw-field"].Field.Reading);
         Assert.Equal(2, state.Current.FieldBindings.Count);
-        Assert.Same(initial.Items, state.Current.Items);
+        Assert.All(state.Current.Items.Values, value => Assert.Null(value.NumericValue));
         Assert.Equal(new[] { "gpu.0.temperature" }, state.Current.FieldBindings["raw-field"].RequestAliases);
         Assert.Contains("gpu.0.temperature", state.SelectSubscribable(MetricSampleRequest.ForIds(["gpu.0.temperature"])).Ids);
         Assert.False(state.PublishReadingMetadata(committed));

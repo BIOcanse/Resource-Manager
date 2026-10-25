@@ -26,7 +26,7 @@ public sealed class HardwarePublicationReasonTests
             ["failed"] = new("failed", status, 1, at, 1, 1, 1, 1),
             ["healthy"] = new("healthy", SamplingObservationStatus.Current, 1, at, 1, 1, 1, 1)
         } };
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         var run = owner.OpenHostedRun();
         Assert.True(owner.TryCaptureHostedTicket(run, new Permit(), 1, 1, out var ticket));
         Assert.True(owner.TryPublishHosted(ticket, snapshot, MetricSampleRequest.All,
@@ -55,8 +55,9 @@ public sealed class HardwarePublicationReasonTests
             Sources = [.. frame.Sources.Select(row =>
             { if (row.SourceHandle == binding.SourceHandle) row.Status = (uint)sourceStatus; return row; })]
         };
-        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frameWithStatus, "CPU", "RAM", 1);
-        var publication = new LastSuccessfulHardwareMetricSnapshot().Publish(snapshot, MetricSampleRequest.ForIds([binding.MetricId]));
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame: frameWithStatus, workspaceIdentity: 1);
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
+        var publication = owner.Publish(snapshot, MetricSampleRequest.ForIds([binding.MetricId]));
         Assert.Equal(reason, publication.RejectionReasons[binding.MetricId]);
     }
 
@@ -68,7 +69,7 @@ public sealed class HardwarePublicationReasonTests
         var binding = catalog.MetricBindings.Values.Single(row => row.FieldCode == MetricFieldCode.CpuUsage);
         var modes = catalog.Sources.Select(row => new NativeMetricSnapshotSourceRuntimeMode(row.SourceHandle, 1,
             NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         for (ulong sequence = 1; sequence <= 2; sequence++)
         {
             var at = DateTimeOffset.UtcNow.AddSeconds((long)sequence);
@@ -117,7 +118,7 @@ public sealed class HardwarePublicationReasonTests
         return workspace;
     }
     private static HardwareMetricSnapshot Snapshot(NativeMetricSnapshotWorkspace workspace)
-        => NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "CPU", "RAM", 1);
+        => NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
 
     private sealed class Permit : IMetricPublicationPermit
     {

@@ -1,5 +1,5 @@
 import { uiText } from "../text.ts";
-import { renderBackendMessage } from "./backendMessage.ts";
+import { backendMessageDomains, renderBackendMessage } from "./backendMessage.ts";
 import type { BackendMessage } from "../types";
 
 const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|diskio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
@@ -175,7 +175,10 @@ export function userFacingMetricUnavailableReason(
   disabledReason?: BackendMessage | null
 ) {
   if (disabledReason) {
-    return renderBackendMessage(disabledReason);
+    return renderBackendMessage(disabledReason.domain === backendMessageDomains.metric
+      && disabledReason.code === 2 && requiredComponentName
+      ? { ...disabledReason, args: [requiredComponentName] }
+      : disabledReason);
   }
 
   return requiredComponentName

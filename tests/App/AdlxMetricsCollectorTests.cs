@@ -203,7 +203,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
             var selectedNpuMetrics=Request(9,3) with { IncludeNpuActivityLevel=true, IncludeNpuFrequency=true };
             workspace.CompleteSource(plan,WindowsHardwareMetricSampler.CreateAdlxCompletion(plan,source,new(source.SourceHandle,1,(ulong)phase+1),at,
                 phase==3 ? [] : [AmdAdlxBridgeReader.ToGpuMetrics(row,selectedNpuMetrics,Inventory())!,AmdAdlxBridgeReader.ToGpuMetrics(other,selectedNpuMetrics,Inventory())!]),at);
-            var snapshot=NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(),"CPU","RAM",1);
+            var snapshot=NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
             var first=Fields(snapshot,a[0].DeviceIdentity);
             if(phase==3)
             {
@@ -212,12 +212,12 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
                 continue;
             }
             Assert.Equal(0d,first[Names[0]].NumericValue); Assert.Equal(phase==1 ? null : 1.2d,first[Names[1]].NumericValue);
-            Assert.Equal("9007199254740993",first[Names[2]].IntegerValue); Assert.Null(first[Names[2]].NumericValue);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), first[Names[2]].IntegerValue); Assert.Null(first[Names[2]].NumericValue);
             Assert.Equal(phase==1 ? null : 0d,first[Names[3]].NumericValue); Assert.Equal(phase==1 ? null : 1800d,first[Names[4]].NumericValue);
             Assert.Contains("\"integerValue\":\"9007199254740993\"",JsonSerializer.Serialize(first[Names[2]],new JsonSerializerOptions(JsonSerializerDefaults.Web)));
             Assert.Equal("unsigned64",first[Names[2]].ValueKind);
             var second=Fields(snapshot,b[0].DeviceIdentity); Assert.Equal(75d,second[Names[0]].NumericValue); Assert.Equal(.95d,second[Names[1]].NumericValue);
-            Assert.Equal("0",second[Names[2]].IntegerValue);
+            Assert.Equal(MetricInteger.Parse("0"), second[Names[2]].IntegerValue);
             Assert.Equal(73d,second[Names[3]].NumericValue); Assert.Equal(0d,second[Names[4]].NumericValue);
             Assert.Equal(Names.Length,MetricDeviceFields.CreateRequest(snapshot,a[0].DeviceIdentity,Names).Ids.Count);
         }
@@ -235,7 +235,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,[],NativeMetricSnapshotCatalogTopologyStatus.Complete,[])),
             new Environment(root),NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None); var dashboard=new DashboardMonitoringCatalogState();
-        using(var lease=owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
+        using(var lease=owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var device=dashboard.Current!.FieldBindings.Values.Single(binding=>binding.Field.Code==MetricFieldCode.AdlxActivity && binding.DeviceIdentity == RecordedGpuIdentities(Inventory()).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
         var native=new Bridge { Metadata=[Row(10,PnpA),Row(20,PnpB)],Values=[row] };
@@ -258,7 +258,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         {
             await using(var stream=sampler.SubscribeAsync("adlx-consumer",request,TimeSpan.FromMilliseconds(100),timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
-                Assert.True(await stream.MoveNextAsync()); Assert.Equal("9007199254740993",Fields(stream.Current,device)[Names[2]].IntegerValue);
+                Assert.True(await stream.MoveNextAsync()); Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(stream.Current,device)[Names[2]].IntegerValue);
                 Assert.Equal(AllFlags,Assert.Single(native.Selections).RequestedFlags); Assert.Equal(10,native.Selections[0].UniqueId);
             }
             using(var pushCancel=CancellationTokenSource.CreateLinkedTokenSource(timeout.Token))
@@ -273,10 +273,10 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
                 await pushCancel.CancelAsync();
             }
             await Task.Delay(150,timeout.Token); var reads=Volatile.Read(ref native.SelectedReads); Assert.True(reads>0);
-            Assert.Equal("9007199254740993",Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
             await Task.Delay(150,timeout.Token); Assert.Equal(reads,Volatile.Read(ref native.SelectedReads));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.Equal("9007199254740993",Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
             using(var cached=JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot"+query,timeout.Token)))
                 CheckWire(cached.RootElement[0].GetProperty("fields"),false);
             Assert.Equal(reads,Volatile.Read(ref native.SelectedReads));

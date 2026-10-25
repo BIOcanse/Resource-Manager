@@ -23,7 +23,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void PublicHistoryConfigurationUsesOriginalNormalizationBeforeMutatingCurrent()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.Publish(HistoryHardwareSnapshot(1, 50), MetricSampleRequest.All);
         owner.ConfigureHistory([new HistoryRequirement(" cpu.usage ", 2), new("CPU.USAGE", 4)]);
         Assert.Equal(4, CompiledDataHistoryPlan.Compile([new(" cpu.usage ", 2), new("CPU.USAGE", 4)])
@@ -32,7 +32,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         Assert.Single(before.History[MetricDatasetIds.SystemCpuUsage]);
         Assert.Throws<ArgumentOutOfRangeException>(() => owner.ConfigureHistory([
             new HistoryRequirement(MetricDatasetIds.SystemMemoryUsage, 3), new(MetricDatasetIds.SystemCpuUsage, 0)]));
-        Assert.Same(before, owner.Read());
+        Assert.Equivalent(before, owner.Read(), strict: true);
         Assert.False(owner.Read()!.History.ContainsKey(MetricDatasetIds.SystemMemoryUsage));
         for (var count = 2; count <= 6; count++)
             owner.Publish(HistoryHardwareSnapshot((ulong)count, count * 10), MetricSampleRequest.ForIds([MetricDatasetIds.SystemCpuUsage]));
@@ -43,7 +43,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     [Fact]
     public void CallerOwnedPermissionAndClosedRunPreventLateSdkPublication()
     {
-        var owner = new LastSuccessfulHardwareMetricSnapshot();
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
         owner.ConfigureHistory([new HistoryRequirement(MetricDatasetIds.SystemCpuUsage, 3)]);
         var permit = new MetricSdkTestPermission(1, 1);
         var run = owner.OpenHostedRun();
@@ -56,7 +56,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         permit.Revoke();
         Assert.False(owner.TryPublishHosted(ticket, HistoryHardwareSnapshot(2, 90), request, null, out _));
         Assert.False(owner.TryRecordHostedFailure(ticket, request, DateTimeOffset.UtcNow, "late-source-failure"));
-        Assert.Same(accepted, owner.Read());
+        Assert.Equivalent(accepted, owner.Read(), strict: true);
         Assert.True(owner.CloseHostedRun(run, DateTimeOffset.UtcNow, "test-stop"));
         var nextPermit = new MetricSdkTestPermission(1, 1);
         var nextRun = owner.OpenHostedRun();

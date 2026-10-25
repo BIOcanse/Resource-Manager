@@ -12,8 +12,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
         this.providerName = providerName;
+        createCurrentSession = static () => ResourceManager.ReadWrite.Native.NativeMetricSnapshotSession.CreateCurrent(
+            ResourceManager.ReadWrite.Windows.Metrics.Configuration.WindowsMetricConfiguration.Default.Configuration);
     }
-    private PublicationState state = PublicationState.Empty;
     private ulong nextHostedRunId;
     private ulong activeHostedRunId;
     private bool acceptingHostedPublications;
@@ -69,22 +70,42 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
     public HardwareMetricSnapshot? Read()
         => Read(DateTimeOffset.UtcNow);
 
+    /// <summary>Admits delivery of an unchanged current value without a new commit.</summary>
+    public bool TryAdmitHostedDelivery(HardwareMetricHostedPublicationTicket ticket, Action deliver)
+    {
+        ArgumentNullException.ThrowIfNull(deliver);
+        ValidateTicketOwner(ticket);
+        var accepted = false;
+        if (!ticket.WorkspaceOwnerToken.TryPublish(() =>
+            {
+                lock (sync)
+                {
+                    if (!CanCommitTicketUnsafe(ticket)) return;
+                    deliver();
+                    accepted = true;
+                }
+            })) return false;
+        return accepted;
+    }
+
     public HardwareMetricSnapshot? Read(DateTimeOffset now)
     {
         _ = now;
-        return Volatile.Read(ref state).Snapshot;
+        lock (sync) return ReadState().Snapshot;
     }
 
-    // Catalog probes are isolated from the hosted observation cache and retain
-    // their exact full projection.
+    // Direct SDK publications use the same native authority as hosted rounds.
     public void Publish(HardwareMetricSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Datasets.Count != 0)
+        {
+            _ = Publish(snapshot, MetricSampleRequest.All);
+            return;
+        }
         lock (sync)
         {
-            Volatile.Write(
-                ref state,
-                new PublicationState(
+            WriteState(new PublicationState(
                     new Dictionary<string, DatasetPublication>(
                         StringComparer.OrdinalIgnoreCase),
                     snapshot));
@@ -123,6 +144,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 requestedDatasetIds, snapshot.FieldBindings.Values);
         lock (sync)
         {
+            var state = ReadState();
             var datasets = new Dictionary<string, DatasetPublication>(
                 state.Datasets,
                 StringComparer.OrdinalIgnoreCase);
@@ -200,23 +222,31 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         committedObservation,
                         snapshot,
                         snapshot,
-                        snapshot.CapturedAt);
+                        new DateTimeOffset(committedObservation.LastAttemptAtUtcTicks, TimeSpan.Zero));
                     committed.Add(datasetId);
                 }
                 else
                 {
+                    var failedObservation = CreateFailureObservation(
+                        datasetId,
+                        snapshot.CapturedAt,
+                        observation.FailureCode ?? FailureCodeForStatus(observation.Status),
+                        snapshot,
+                        workspaceOwnerToken) with
+                    {
+                        // A retained candidate is rejected by the current-value
+                        // contract; the public slot contains no last-good value.
+                        Status = observation.Status == SamplingObservationStatus.RetainedLastGood
+                            ? SamplingObservationStatus.Unavailable : observation.Status,
+                        LastAttemptAtUtcTicks = observation.LastAttemptAtUtcTicks > 0
+                            ? observation.LastAttemptAtUtcTicks : snapshot.CapturedAt.UtcTicks
+                    };
                     datasets[datasetId] = new DatasetPublication(
                         datasetId,
-                        CreateFailureObservation(
-                            datasetId,
-                            snapshot.CapturedAt,
-                            observation.FailureCode
-                                ?? FailureCodeForStatus(observation.Status),
-                            snapshot,
-                            workspaceOwnerToken),
+                        failedObservation,
                         null,
                         snapshot,
-                        snapshot.CapturedAt);
+                        new DateTimeOffset(failedObservation.LastAttemptAtUtcTicks, TimeSpan.Zero));
                     rejected.Add(datasetId);
                     reasons.Add(datasetId, observation.FailureCode ?? FailureCodeForStatus(observation.Status));
                 }
@@ -224,10 +254,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
 
             if (requested.Count != 0)
             {
-                var snapshotWithHistory = PublishHistory(Compose(datasets), datasets, requested);
-                Volatile.Write(
-                    ref state,
-                    new PublicationState(datasets, snapshotWithHistory));
+                var composed = Compose(datasets);
+                WriteState(new PublicationState(datasets, composed));
+                _ = PublishHistory(composed, datasets, requested);
             }
 
             var successful = requested.Count != 0 && rejected.Count == 0;
@@ -384,6 +413,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         ArgumentException.ThrowIfNullOrWhiteSpace(failureCode);
         lock (sync)
         {
+            var state = ReadState();
             var datasets = new Dictionary<string, DatasetPublication>(
                 state.Datasets,
                 StringComparer.OrdinalIgnoreCase);
@@ -433,10 +463,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
 
             if (changed)
             {
-                var snapshotWithHistory = PublishHistory(Compose(datasets), datasets, requested);
-                Volatile.Write(
-                    ref state,
-                    new PublicationState(datasets, snapshotWithHistory));
+                var composed = Compose(datasets);
+                WriteState(new PublicationState(datasets, composed));
+                _ = PublishHistory(composed, datasets, requested);
             }
         }
     }
@@ -498,21 +527,22 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                     null,
                     null,
                     null)),
-            new MemoryMetrics(0, 0, 0, false, string.Empty)
+            new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false)
             {
                 ObservationStatus = datasetIds.Contains(
                     MetricDatasetIds.SystemMemoryUsage)
                     ? SamplingObservationStatus.Unavailable
                     : SamplingObservationStatus.NotRequested
             },
-            new VirtualMemoryMetrics(0, 0, 0, string.Empty, false)
+            new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false)
             {
                 ObservationStatus = datasetIds.Contains(
                     MetricDatasetIds.SystemVirtualMemoryUsage)
                     ? SamplingObservationStatus.Unavailable
                     : SamplingObservationStatus.NotRequested
             },
-            [],
+            catalogSnapshot?.Gpus.Select(gpu => EmptyGpu(new(gpu.Index, gpu.Name, gpu.IdentityKey,
+                gpu.AdapterKey, gpu.UsageProvider))).ToArray() ?? [],
             new SchedulingGpuInventorySnapshot(
                 gpuRequested
                     ? SamplingObservationStatus.Unavailable
@@ -524,7 +554,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>(
+            new Dictionary<string, MetricReadingValue>(
                 StringComparer.OrdinalIgnoreCase))
         {
             Datasets = observations,
@@ -606,7 +636,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             .Where(static ticks => ticks > 0)
             .DefaultIfEmpty(0)
             .Max();
-        var items = new Dictionary<string, MetricValue>(
+        var items = new Dictionary<string, MetricReadingValue>(
             StringComparer.OrdinalIgnoreCase);
         foreach (var publication in datasets.Values)
         {
@@ -636,7 +666,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             {
                 ObservationStatus = memoryPublication.Observation.Status
             }
-            : new MemoryMetrics(0, 0, 0, false, latest.AttemptSnapshot.Memory.HardwareDescription)
+            : new MemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsUsageAvailable: false)
             {
                 ObservationStatus = memoryPublication is null
                     ? SamplingObservationStatus.NotRequested
@@ -651,7 +681,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             {
                 ObservationStatus = virtualPublication.Observation.Status
             }
-            : new VirtualMemoryMetrics(0, 0, 0, "Windows commit", false)
+            : new VirtualMemoryMetrics(UsedBytes: 0, TotalBytes: 0, UsagePercent: 0, IsSelectable: false)
             {
                 ObservationStatus = virtualPublication is null
                     ? SamplingObservationStatus.NotRequested

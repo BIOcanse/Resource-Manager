@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ResourceManager.ReadWriteCore" Version="0.1.0-dev.84" />
+    <PackageReference Include="ResourceManager.ReadWriteCore" Version="0.1.0-dev.85" />
     <Compile Include="../../Fixtures/DisplayIdNonModeCtaFixture.cs" Link="DisplayIdNonModeCtaFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdFixture.cs" Link="DisplayIdCtaSvdFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdExpectation.cs" Link="DisplayIdCtaSvdExpectation.cs" />

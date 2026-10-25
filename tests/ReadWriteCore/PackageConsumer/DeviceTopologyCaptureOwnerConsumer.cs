@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Collections.Immutable;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
@@ -25,7 +26,7 @@ internal static class DeviceTopologyCaptureOwnerConsumer
         var waiting = notification.WaitAsync(timeout.Token).AsTask();
         var captured = (await core.CollectAsync([field], timeout.Token)).Single();
         await waiting;
-        Require(captured.Value?.Integer == "2" && core.ReadCached(field).Value?.Integer == "2",
+        Require(captured.Value?.Integer == MetricInteger.Parse("2") && core.ReadCached(field).Value?.Integer == MetricInteger.Parse("2"),
             "canonical capture, external publication and cached read share one owner");
         Require(typeof(DeviceTopologySnapshot).Assembly == typeof(ReadWriteCore).Assembly
             && typeof(BackendMessage).Assembly == typeof(ReadWriteCore).Assembly, "passive contracts require no product assembly");

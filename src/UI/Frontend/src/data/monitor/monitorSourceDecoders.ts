@@ -16,19 +16,21 @@ import type {
   MetricSnapshot,
   MetricValue
 } from "../../types.ts";
+import { presentMetricDefinition, presentMetricValue } from "../../presentation/metricPresentation.ts";
+import type { RawMetricIdentity } from "./metricWire.ts";
 
 export const metricCatalogDecoder = defineResponseDecoder<MetricDefinition[]>(
-  "monitor.metric-catalog.v1",
+  "monitor.metric-catalog.v2",
   (value) => requireArray(value, "$")
     .map((item, index) => decodeMetricDefinition(item, `$[${index}]`)));
 
 export const metricSnapshotDecoder = defineResponseDecoder<MetricSnapshot>(
-  "monitor.metric-snapshot.v4",
+  "monitor.metric-snapshot.v5",
   (value) => {
     const record = requireRecord(value);
     const version = requireSafeInteger(record.version, "$.version");
-    if (version !== 4) {
-      throw new ResponseDecodeError("$.version", "4");
+    if (version !== 5) {
+      throw new ResponseDecodeError("$.version", "5");
     }
     const itemsRecord = requireRecord(record.items, "$.items");
     const items = Object.fromEntries(Object.entries(itemsRecord).map(([key, item]) => [
@@ -37,7 +39,7 @@ export const metricSnapshotDecoder = defineResponseDecoder<MetricSnapshot>(
       ]));
     const capturedAt = requireNullableTimestamp(record.capturedAt, "$.capturedAt");
     return {
-      version: 4,
+      version: 5,
       capturedAt,
       catalogRevision: requireNonEmptyString(record.catalogRevision, "$.catalogRevision"),
       items
@@ -51,39 +53,57 @@ export const dashboardSettingsDecoder =
 
 function decodeMetricDefinition(value: unknown, path: string): MetricDefinition {
   const record = requireRecord(value, path);
-  return {
+  return presentMetricDefinition({
     id: requireNonEmptyString(record.id, `${path}.id`),
-    label: requireNonEmptyString(record.label, `${path}.label`),
-    group: requireNonEmptyString(record.group, `${path}.group`),
     unit: requireString(record.unit, `${path}.unit`),
-    preferredSlot: requireNonEmptyString(record.preferredSlot, `${path}.preferredSlot`),
-    detail: optionalNullableString(record.detail, `${path}.detail`),
+    ...decodeIdentity(record, path),
     requiredComponentId: optionalNullableString(
       record.requiredComponentId,
       `${path}.requiredComponentId`),
-    requiredComponentName: optionalNullableString(
-      record.requiredComponentName,
-      `${path}.requiredComponentName`),
     selectable: optionalBoolean(record.selectable, `${path}.selectable`),
     disabledReason: optionalBackendMessage(record.disabledReason, `${path}.disabledReason`),
     scopeKind: optionalNullableString(record.scopeKind, `${path}.scopeKind`),
     scopeKey: optionalNullableString(record.scopeKey, `${path}.scopeKey`)
-  };
+  });
 }
 
 function decodeMetricValue(value: unknown, path: string): MetricValue {
   const record = requireRecord(value, path);
-  return {
-    id: optionalString(record.id, `${path}.id`),
-    label: optionalString(record.label, `${path}.label`),
-    group: optionalString(record.group, `${path}.group`),
-    displayValue: requireString(record.displayValue, `${path}.displayValue`),
-    numericValue: optionalNullableNumber(record.numericValue, `${path}.numericValue`),
-    unit: optionalString(record.unit, `${path}.unit`),
+  return presentMetricValue({
+    id: requireNonEmptyString(record.id, `${path}.id`),
+    unit: requireString(record.unit, `${path}.unit`),
+    ...decodeIdentity(record, path),
+    numericValue: record.numericValue === null ? null : requireFiniteNumber(record.numericValue, `${path}.numericValue`),
+    integerValue: optionalInteger(record.integerValue, `${path}.integerValue`),
+    bytesValue: optionalNullableString(record.bytesValue, `${path}.bytesValue`),
+    booleanValue: record.booleanValue === null ? null : optionalBoolean(record.booleanValue, `${path}.booleanValue`),
+    status: requireSafeInteger(record.status, `${path}.status`),
+    observedAt: record.observedAt === undefined ? undefined : requireNullableTimestamp(record.observedAt, `${path}.observedAt`),
+    sampleDurationMilliseconds: optionalNullableNumber(record.sampleDurationMilliseconds, `${path}.sampleDurationMilliseconds`),
     total: optionalNullableNumber(record.total, `${path}.total`),
-    percent: optionalNullableNumber(record.percent, `${path}.percent`),
-    detail: optionalNullableString(record.detail, `${path}.detail`)
+    percent: optionalNullableNumber(record.percent, `${path}.percent`)
+  });
+}
+
+function decodeIdentity(record: Record<string, unknown>, path: string): RawMetricIdentity {
+  return {
+    fieldCode: record.fieldCode === undefined ? undefined : requireSafeInteger(record.fieldCode, `${path}.fieldCode`),
+    fieldName: optionalNullableString(record.fieldName, `${path}.fieldName`),
+    deviceIdentity: optionalNullableString(record.deviceIdentity, `${path}.deviceIdentity`),
+    sourceId: optionalNullableString(record.sourceId, `${path}.sourceId`),
+    valueKind: optionalNullableString(record.valueKind, `${path}.valueKind`)
   };
+}
+
+function optionalInteger(value: unknown, path: string): string | null | undefined {
+  if (value === null || value === undefined) return value;
+  const text = requireString(value, path);
+  if (!/^-?\d{1,39}$/.test(text)) throw new ResponseDecodeError(path, "signed64/unsigned128 decimal integer string");
+  const integer = BigInt(text);
+  if (integer < -(1n << 63n) || integer >= (1n << 128n)) {
+    throw new ResponseDecodeError(path, "signed64/unsigned128 decimal integer string");
+  }
+  return text;
 }
 
 function optionalString(value: unknown, path: string): string | undefined {

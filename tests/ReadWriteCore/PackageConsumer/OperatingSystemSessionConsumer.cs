@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Dependencies;
 using ResourceManager.ReadWrite.Windows.SystemInformation;
@@ -20,7 +21,7 @@ internal static class OperatingSystemSessionConsumer
             if (descriptor.Definition.ValueKind != "unsigned64" || descriptor.Definition.Unit != "session-id" || descriptor.Write.Supported)
                 throw new InvalidDataException("Session declaration lost its exact readonly type.");
             var reading = (await core.CollectAsync([field], timeout.Token)).Single();
-            if (reading.Status == FieldObservationStatus.Current && (reading.Value?.Integer is not { } integer || !uint.TryParse(integer, out _)))
+            if (reading.Status == FieldObservationStatus.Current && (reading.Value?.Integer is not { Negative: false, HighBits: 0, LowBits: <= uint.MaxValue }))
                 throw new InvalidDataException("WTS session identifier was not retained as an exact unsigned integer.");
             if (core.Catalog.Fields.Any(candidate => candidate.Field == field) && core.ReadCached(field) != reading)
                 throw new InvalidDataException("Session consumer did not use original current.");

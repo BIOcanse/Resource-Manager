@@ -14,7 +14,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
         await backend.DiscoverAsync(default);
         var field = Assert.Single(backend.Catalog.Fields, item => item.Field.FieldName == Names[1]).Field;
         Assert.Equal($"windows-process|{Environment.ProcessId}:{Birth}", field.DeviceIdentity);
-        Assert.Equal("9007199254740993", backend.ReadCached(field).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("9007199254740993"), backend.ReadCached(field).Value?.Integer);
         Assert.Equal(1, api.Opens); // explicit discovery query, not a cache read
         var before = api.Opens; _ = backend.Catalog; _ = backend.ReadCached(field); Assert.Equal(before, api.Opens);
 
@@ -25,7 +25,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
             using var subscriptionCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             api.MemoryValue = api.MemoryValue! with { WorkingSet = 17 };
             var direct = Assert.Single(await backend.CollectAsync([field], cancellation.Token));
-            Assert.Equal("17", direct.Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("17"), direct.Value?.Integer);
             Assert.Equal(direct, backend.ReadCached(field));
             Assert.Equal(2, api.Opens); // discovery and explicit direct capture
 
@@ -34,10 +34,10 @@ public sealed partial class ProcessBasicFieldCollectorTests
                 .GetAsyncEnumerator(subscriptionCancellation.Token);
             Assert.True(await stream.MoveNextAsync());
             var fresh = Assert.Single(stream.Current);
-            Assert.Equal("17", fresh.Value?.Integer);
+            Assert.Equal(MetricInteger.Parse("17"), fresh.Value?.Integer);
             Assert.Equal(fresh, backend.ReadCached(field));
             Assert.Equal(3, api.Opens); // one actual source query for the fresh worker trigger
-            Assert.Equal("17", Value(fixture.Sampler.ReadLatest(Request(Names[1])), Names[1]).IntegerValue);
+            Assert.Equal(MetricInteger.Parse("17"), Value(fixture.Sampler.ReadLatest(Request(Names[1])), Names[1]).IntegerValue);
 
             before = api.Opens; _ = backend.Catalog; _ = backend.ReadCached(field); Assert.Equal(before, api.Opens);
             var opensAtCancellation = api.Opens;
@@ -66,11 +66,11 @@ public sealed partial class ProcessBasicFieldCollectorTests
     [Fact]
     public void ProcessSnapshotIndexFollowsWithSelectionAndClear()
     {
-        var first = new ProcessMetricFieldSnapshot(DateTimeOffset.UtcNow, null, [], [new(17, "123", [new("field", "0", null)])]);
-        Assert.Equal("0", Assert.Single(first.FindProcess(17, "123")!.Values).IntegerValue);
-        var replaced = first with { Processes = [new(17, "124", [new("field", "1", null)])] };
+        var first = new ProcessMetricFieldSnapshot(DateTimeOffset.UtcNow, null, [], [new(17, "123", [new("field", MetricInteger.Parse("0"), null)])]);
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(first.FindProcess(17, "123")!.Values).IntegerValue);
+        var replaced = first with { Processes = [new(17, "124", [new("field", MetricInteger.Parse("1"), null)])] };
         Assert.Null(replaced.FindProcess(17, "123")); Assert.NotNull(replaced.FindProcess(17, "124"));
         Assert.Null(Assert.Single(first.Clear().FindProcess(17, "123")!.Values).IntegerValue);
-        Assert.Equal("0", Assert.Single(first.FindProcess(17, "123")!.Values).IntegerValue);
+        Assert.Equal(MetricInteger.Parse("0"), Assert.Single(first.FindProcess(17, "123")!.Values).IntegerValue);
     }
 }

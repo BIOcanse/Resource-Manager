@@ -256,6 +256,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricReadingSource))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricResource))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricValue))]
+    [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricReadingValue))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricVendor))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Optimization.GpuPerformanceScoreOverrideItem))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.Optimization.GpuPerformanceScoreOverrideRequest))]
@@ -610,5 +611,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(System.Int32[]))]
     [JsonSerializable(typeof(System.String[]))]
     [JsonSerializable(typeof(System.UInt32[]))]
+    [JsonSerializable(typeof(ResourceManager.App.Domain.Metrics.MetricInteger))]
     private partial class BackendHttpJsonContext : JsonSerializerContext;
 }

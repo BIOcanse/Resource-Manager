@@ -29,7 +29,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         Assert.Equal<FieldReference>(fields, Fields(await core.DiscoverAsync()));
         Assert.Equal<FieldReference>(fields, Fields(await core.DiscoverAsync()));
         Assert.Equal(1, recording.Opens); Assert.Equal(1, recording.Reads);
-        Assert.Same(current, owner.ReadCachedSnapshot());
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
         foreach (var field in fields) Assert.False(core.Query(field).Write.Supported);
         owner.Dispose(); Assert.True(Assert.Single(recording.Opened).Disposed);
     }
@@ -45,7 +45,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         using var http = new HttpClient(); var core = Core(owner, http);
         var fields = Fields(await core.DiscoverAsync()); var first = await core.CollectAsync(fields);
         Assert.All(first.Where(static row => row.Field.FieldName == NpuEngineRecordedResources.Raw), row =>
-        { Assert.Equal(counter.ToString(System.Globalization.CultureInfo.InvariantCulture), row.Value!.Integer); Assert.Null(row.Value.Number); });
+        { Assert.Equal(MetricInteger.FromUnsigned128(counter), row.Value!.Integer); Assert.Null(row.Value.Number); });
         Assert.All(first.Where(static row => row.Field.FieldName == NpuEngineRecordedResources.Ratio), static row => Assert.Null(row.Value));
         var second = await core.CollectAsync(fields);
         Assert.All(second.Where(static row => row.Field.FieldName == NpuEngineRecordedResources.Ratio), static row => Assert.Equal(0d, row.Value!.Number));
@@ -136,7 +136,7 @@ public sealed class NpuEngineOwnerIntegrationTests
             recording.AfterRead = canceled.Cancel;
             await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await core.CollectAsync(busy, canceled.Token));
             recording.AfterRead = null;
-            Assert.Same(current, owner.ReadCachedSnapshot());
+            Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true);
         }
         Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
 
@@ -188,7 +188,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         var fields = Fields(await core.DiscoverAsync()); await core.CollectAsync(fields); await core.CollectAsync(fields);
         var before = owner.ReadCachedSnapshot()!;
         recording.InvalidateDuringRead = true;
-        recording.ReadMemory = () => new(128, 256, 50, true, "recorded");
+        recording.ReadMemory = () => new(128, 256, 50, true);
         var request = MetricSampleRequest.ForIds([
             "memory.usage",
             .. before.FieldBindings.Values.Where(binding => fields.Any(field =>
@@ -198,11 +198,15 @@ public sealed class NpuEngineOwnerIntegrationTests
         Assert.NotSame(before, owner.ReadCachedSnapshot());
         var npuValues = invalidated.Items.Values.Where(static value => value.FieldName is
             NpuEngineRecordedResources.Raw or NpuEngineRecordedResources.Ratio).ToArray();
-        Assert.Equal(fields.Length, npuValues.Length);
-        Assert.All(npuValues, value =>
+        Assert.Empty(npuValues);
+        Assert.All(fields, field =>
         {
-            Assert.Null(value.NumericValue);
-            Assert.Null(value.IntegerValue);
+            var binding = before.FieldBindings.Values.Single(binding =>
+                binding.DeviceIdentity == field.DeviceIdentity && binding.Field.Name == field.FieldName);
+            Assert.Equal(SamplingObservationStatus.Unavailable, invalidated.Datasets[binding.RequestAddress].Status);
+            var reading = core.ReadCached(field);
+            Assert.Equal(FieldObservationStatus.Unavailable, reading.Status);
+            Assert.Null(reading.Value);
         });
         Assert.Equal(128UL, invalidated.Memory.UsedBytes);
         Assert.Equal(SamplingObservationStatus.Current,
@@ -212,7 +216,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         var current = owner.ReadCachedSnapshot();
         using var canceled = new CancellationTokenSource(); recording.AfterRead = canceled.Cancel;
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await core.CollectAsync(fields, canceled.Token));
-        Assert.Same(current, owner.ReadCachedSnapshot()); recording.AfterRead = null;
+        Assert.Equivalent(current, owner.ReadCachedSnapshot(), strict: true); recording.AfterRead = null;
         // Accepted→next accepted spans2 seconds and4.5mµs =>225. An incorrectly
         // advanced canceled baseline would instead span1 second and3.25mµs =>325.
         recording.AdvanceCounters(2_000_000);

@@ -230,7 +230,7 @@ public sealed class AtaSmartInformationCollectorTests
         Assert.Equal(Page(7), fields.Single(f => f.Name == Data).BytesValue);
         Assert.Equal(Page(13), fields.Single(f => f.Name == Thresholds).BytesValue);
         var request = MetricDeviceFields.CreateRequest(first, Device, [Data, Thresholds]);
-        var cache = new LastSuccessfulHardwareMetricSnapshot(); cache.Publish(first, request);
+        using var cache = new LastSuccessfulHardwareMetricSnapshot(); cache.Publish(first, request);
         var partial = fixture.Commit(2, true);
         cache.Publish(partial, request);
         var failed = Assert.Single(MetricDeviceFields.Read(cache.Read()!, Device, new HashSet<string> { Data, Thresholds })).Fields;
@@ -250,7 +250,7 @@ public sealed class AtaSmartInformationCollectorTests
         Assert.Equal(fixture.ThresholdHandle,
             restoredCatalog.MetricBindings.Values.Single(binding => binding.FieldCode == MetricFieldCode.AtaSmartThresholdsRaw).MetricHandle);
         restored.ReplaceCatalog(restoredCatalog, fixture.Now.AddSeconds(2));
-        var persisted = NativeMetricSnapshotCommittedProjection.Create(restored.ReadCommitted(), "test", "test", 1);
+        var persisted = NativeMetricSnapshotCommittedProjection.Create(frame: restored.ReadCommitted(), workspaceIdentity: 1);
         Assert.Null(Assert.Single(MetricDeviceFields.Read(persisted, Device, new HashSet<string> { Thresholds })).Fields.Single().BytesValue);
         Assert.Equal(Page(13), Assert.Single(MetricDeviceFields.Read(recovered, Device, new HashSet<string> { Thresholds })).Fields.Single().BytesValue);
         Assert.Equal(MonitoringSourceZoneIds.WindowsStorageSensors, NativeMetricSnapshotSourceCatalog.ResolveZoneId("windows.ata-smart"));
@@ -408,7 +408,7 @@ public sealed class AtaSmartInformationCollectorTests
             var sensors = zone.ReadAtaSensors(WindowsHardwareMetricSampler.CreateAtaSmartReadRequest(plan, source.SourceHandle));
             Workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateStorageCompletion(plan, source,
                 new(source.SourceHandle, 1, sequence), Now.AddMilliseconds((long)sequence * 100), sensors), Now.AddMilliseconds((long)sequence * 100));
-            return NativeMetricSnapshotCommittedProjection.Create(Workspace.ReadCommitted(), "test", "test", 1);
+            return NativeMetricSnapshotCommittedProjection.Create(frame: Workspace.ReadCommitted(), workspaceIdentity: 1);
         }
         public void Dispose()
         {

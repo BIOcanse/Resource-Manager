@@ -39,7 +39,7 @@ public sealed class NvidiaMetricWriteOwnerLibraryIntegrationTests
         Assert.False(writer.Query(binding).Supported);
         Assert.Equal(0, nvml.Probes);
         var snapshot = Snapshot(binding);
-        var current = new LastSuccessfulHardwareMetricSnapshot();
+        using var current = new LastSuccessfulHardwareMetricSnapshot();
         current.Publish(snapshot);
         writer.Discover(snapshot, false);
         var probes = nvml.Probes;
@@ -55,7 +55,7 @@ public sealed class NvidiaMetricWriteOwnerLibraryIntegrationTests
         Assert.Equal(1, nvml.Writes);
         Assert.Equal(210, nvml.LastWatts);
         Assert.Equal(9, nvml.LastIndex);
-        Assert.Same(snapshot, current.Read());
+        Assert.Equivalent(snapshot, current.Read(), strict: true);
         Assert.Empty(snapshot.Items); // A setter outcome does not fabricate a metric value.
         // Same LUID cannot authorize another PNP identity; validate before any driver probe/setter.
         var changedPnp = Adapter(9);
@@ -127,7 +127,7 @@ public sealed class NvidiaMetricWriteOwnerLibraryIntegrationTests
         Assert.Equal((0u, 1800u), nvml.ClockPair);
     }
     private static HardwareMetricSnapshot Snapshot(MetricDeviceFieldBinding binding)
-        => new(default, null!, null!, null!, [], null!, new Dictionary<string, MetricValue>())
+        => new(default, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, new Dictionary<string, MetricReadingValue>())
         { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { [binding.RequestAddress] = binding } };
     private static MetricDeviceFieldBinding Binding(WindowsGpuAdapter adapter)
     {

@@ -60,7 +60,7 @@ public sealed class SoftwareInformationSubscriptionTests
             Assert.True(includeConfiguration);
             Assert.True(serviceQueries >= 2); // one explicit direct capture plus an actual worker source query
             Assert.NotNull(stream.Current[0].ObservedAt);
-            Assert.Equal("3", stream.Current[0].Value!.Integer);
+            Assert.Equal(MetricInteger.Parse("3"), stream.Current[0].Value!.Integer);
             FieldReadingAssert.CurrentOrNewer(stream.Current[0], composed.Reads.ReadCached(start.Field));
 
             fast.Dispose(); fast = null;

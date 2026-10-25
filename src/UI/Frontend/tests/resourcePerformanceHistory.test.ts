@@ -57,7 +57,7 @@ function snapshot(
   displayValue = numericValue === null ? "N/A" : `${numericValue}%`
 ) {
   return {
-    version: 4 as const,
+    version: 5 as const,
     capturedAt,
     catalogRevision: "catalog-a",
     items: { "cpu.usage": { numericValue, displayValue } }

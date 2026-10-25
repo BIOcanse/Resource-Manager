@@ -32,6 +32,7 @@ import {
   type ObservationState
 } from "../observation/observationState";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
+import { metricOfferedInPicker } from "../presentation/metricPresentation.ts";
 import {
   normalizeResourceMonitorQuery,
   type ResourceBreakdownQuery,
@@ -351,7 +352,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }));
   const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
   // 卡片上已经放了的字段照常从 cardCatalog 取设备名和标记；只有选择器按设置少列。
-  const pickerCatalog = createMemo(() => cardCatalog().filter((metric) => metric.readingSource?.listed !== false));
+  const pickerCatalog = createMemo(() => cardCatalog().filter(metricOfferedInPicker));
   const cardSnapshot = createMemo<MetricSnapshot | null>(() => {
     const items = fieldCardValues(fieldSlots(), fieldCatalog(), fieldDevices());
     const legacy = snapshot();
@@ -359,7 +360,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       return legacy;
     }
     // 卡片显示不读目录修订号，沿用指标帧的；还没有指标帧时为空。
-    return { version: 4, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
+    return { version: 5, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
   });
 
   createEffect(() => {

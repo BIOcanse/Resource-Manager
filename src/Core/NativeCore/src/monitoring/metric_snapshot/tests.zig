@@ -10,6 +10,244 @@ const source_count = 3;
 const rule_count = 3;
 const metric_count = 2;
 
+test "selected current reads return 100 exact cells from a large table without whole-table buffers" {
+    const current = @import("current.zig");
+    var config = testConfig(1);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    const count = 10_000;
+    const all = try std.testing.allocator.alloc(protocol.CurrentValue, count);
+    defer std.testing.allocator.free(all);
+    const resident = try std.testing.allocator.alignedAlloc(u8, .@"8", 2 * count * @sizeOf(protocol.CurrentValue));
+    defer std.testing.allocator.free(resident);
+    for (all, 0..) |*value, index| value.* = .{ .dataset_handle = 1 + index / 100,
+        .cell_handle = 1 + index % 100, .value_kind = 3, .flags = 1,
+        .value_bits = std.math.maxInt(u64) - index, .value_high_bits = 0 };
+    var datasets: [100]u64 = undefined;
+    var keys: [100]protocol.CurrentKey = undefined;
+    for (&datasets, &keys, 0..) |*dataset, *key, index| {
+        dataset.* = index + 1;
+        key.* = .{ .dataset_handle = 100 - index, .cell_handle = 51 };
+    }
+    const input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = count,
+        .byte_capacity = 0, .flags = 0, .reserved = 0 };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &datasets, &.{}, all, "", resident));
+    var output: protocol.CurrentReadOutput = undefined;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, current.readSelected(session, &keys, &output, &.{}, &.{}));
+    try std.testing.expectEqual(@as(u32, 100), output.cell_count);
+    try std.testing.expectEqual(@as(u32, 0), output.byte_count);
+    var values: [100]protocol.CurrentValue = undefined;
+    try std.testing.expectEqual(ResultCode.ok, current.readSelected(session, &keys, &output, &values, &.{}));
+    for (keys, values) |key, value| try std.testing.expectEqualDeep(all[(key.dataset_handle - 1) * 100 + 50], value);
+    const missing = [_]protocol.CurrentKey{ .{ .dataset_handle = 101, .cell_handle = 51 }, .{ .dataset_handle = 1, .cell_handle = 101 } };
+    try std.testing.expectEqual(ResultCode.ok, current.readSelected(session, &missing, &output, &.{}, &.{}));
+    try std.testing.expectEqual(@as(u32, 0), output.cell_count);
+    try std.testing.expectEqual(ResultCode.ok, current.readSelected(session, &.{}, &output, &.{}, &.{}));
+}
+
+test "selected current reads compact bytes preserve exact time and reject aliases without publication changes" {
+    const current = @import("current.zig");
+    const native_abi = @import("abi.zig");
+    var config = testConfig(1);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var resident: [2 * (4 * @sizeOf(protocol.CurrentValue) + 8)]u8 align(8) = undefined;
+    const input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = 4,
+        .byte_capacity = 8, .flags = 0, .reserved = 0 };
+    const all = [_]protocol.CurrentValue{
+        .{ .dataset_handle = 1, .cell_handle = 1, .value_kind = 5, .flags = 1, .value_bits = 0, .value_high_bits = 3 },
+        .{ .dataset_handle = 1, .cell_handle = 2, .value_kind = 2, .flags = 1, .value_bits = @bitCast(@as(i64, -638_000_000_000_000_001)), .value_high_bits = 0 },
+        .{ .dataset_handle = 2, .cell_handle = 1, .value_kind = 5, .flags = 1, .value_bits = 3, .value_high_bits = 2 },
+        .{ .dataset_handle = 2, .cell_handle = 2, .value_kind = 5, .flags = 0, .value_bits = 0, .value_high_bits = 0 },
+    };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{1, 2}, &.{}, &all, "abcxy", &resident));
+    const keys = [_]protocol.CurrentKey{ .{ .dataset_handle = 2, .cell_handle = 1 },
+        .{ .dataset_handle = 1, .cell_handle = 2 }, .{ .dataset_handle = 2, .cell_handle = 1 },
+        .{ .dataset_handle = 2, .cell_handle = 2 } };
+    var output: protocol.CurrentReadOutput = undefined;
+    var values: [4]protocol.CurrentValue = undefined;
+    var bytes: [4]u8 = undefined;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.abi_mismatch), native_abi.rm_metric_snapshot_read_current_selected(@ptrCast(session),
+        protocol.abi_version - 1, &keys, keys.len, &output, &values, values.len, &bytes, bytes.len));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), native_abi.rm_metric_snapshot_read_current_selected(@ptrCast(session),
+        protocol.abi_version, &keys, keys.len, &output, &values, values.len, &bytes, bytes.len));
+    try std.testing.expectEqualStrings("xyxy", &bytes);
+    try std.testing.expectEqual(@as(u64, 0), values[0].value_bits);
+    try std.testing.expectEqualDeep(all[1], values[1]);
+    try std.testing.expectEqual(@as(u64, 2), values[2].value_bits);
+    try std.testing.expectEqualDeep(all[3], values[3]);
+    @memset(&bytes, 0xA5);
+    const before = values;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, current.readSelected(session, &keys, &output, &values, bytes[0..3]));
+    try std.testing.expectEqualDeep(before, values);
+    for (bytes) |byte| try std.testing.expectEqual(@as(u8, 0xA5), byte);
+    const alias: *protocol.CurrentReadOutput = @ptrCast(&values);
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.readSelected(session, &keys, alias, &values, &bytes));
+    try std.testing.expectEqualDeep(before, values);
+    const key_alias: [*]const protocol.CurrentKey = @ptrCast(&values);
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.readSelected(session, key_alias[0..1], &output, &values, &bytes));
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.readSelected(session, &keys, &output, session.current_values, &bytes));
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.readSelected(session, &.{.{ .dataset_handle = 0, .cell_handle = 1 }}, &output, &values, &bytes));
+    try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(&all), std.mem.sliceAsBytes(session.current_values));
+    try std.testing.expectEqualStrings("abcxy", session.current_bytes);
+}
+
+test "metric current publication preserves typed cells and atomically replaces requested datasets" {
+    const current = @import("current.zig");
+    var config = testConfig(1);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var resident: [2 * (8 * @sizeOf(protocol.CurrentValue) + 16)]u8 align(8) = undefined;
+    const input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = 8,
+        .byte_capacity = 16, .flags = 0, .reserved = 0 };
+    const initial = [_]protocol.CurrentValue{
+        .{ .dataset_handle = 1, .cell_handle = 1, .value_kind = 1, .flags = 1,
+            .value_bits = @bitCast(@as(f64, 12.5)), .value_high_bits = 0 },
+        .{ .dataset_handle = 1, .cell_handle = 2, .value_kind = 2, .flags = 1,
+            .value_bits = @bitCast(@as(i64, -638_000_000_000_000_000)), .value_high_bits = 0 },
+        .{ .dataset_handle = 2, .cell_handle = 1, .value_kind = 4, .flags = 1,
+            .value_bits = 0xfedcba9876543210, .value_high_bits = 0xabcdef0123456789 },
+        .{ .dataset_handle = 3, .cell_handle = 1, .value_kind = 5, .flags = 1,
+            .value_bits = 0, .value_high_bits = 3 },
+        .{ .dataset_handle = 4, .cell_handle = 1, .value_kind = 6, .flags = 1,
+            .value_bits = 1, .value_high_bits = 0 },
+    };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{ 1, 2, 3, 4 }, &.{}, &initial, "abc", &resident));
+    // Inputs are not borrowed after publication, and a failed multi-dataset
+    // transaction must not publish even the valid first dataset.
+    var replacement = [_]protocol.CurrentValue{ initial[0], initial[4] };
+    replacement[0].value_bits = @bitCast(@as(f64, 99));
+    replacement[1].value_bits = 2;
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.commit(session, &input, &.{ 1, 4 }, &.{}, &replacement, "", &resident));
+    var output: protocol.CurrentReadOutput = undefined;
+    var values: [8]protocol.CurrentValue = undefined;
+    var bytes: [16]u8 = undefined;
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &bytes));
+    try std.testing.expectEqual(@as(u32, 5), output.cell_count);
+    try std.testing.expectEqualSlices(u8, std.mem.sliceAsBytes(&initial), std.mem.sliceAsBytes(values[0..5]));
+    try std.testing.expectEqualStrings("abc", bytes[0..3]);
+    replacement[1].flags = 0;
+    replacement[1].value_bits = 0;
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{ 1, 4 }, &.{}, &replacement, "", &resident));
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &bytes));
+    try std.testing.expectEqual(@as(u32, 4), output.cell_count);
+    try std.testing.expectEqual(@as(f64, 99), @as(f64, @bitCast(values[0].value_bits)));
+    try std.testing.expectEqual(initial[2].value_high_bits, values[1].value_high_bits);
+    try std.testing.expectEqualStrings("abc", bytes[0..3]);
+    try std.testing.expectEqual(@as(u32, 0), values[3].flags);
+    const byte_replacement = protocol.CurrentValue{ .dataset_handle = 1, .cell_handle = 1,
+        .value_kind = 5, .flags = 1, .value_bits = 0, .value_high_bits = 2 };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{1}, &.{}, &.{byte_replacement}, "xy", &resident));
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &bytes));
+    try std.testing.expectEqualStrings("xyabc", bytes[0..5]);
+    try std.testing.expectEqual(@as(u64, 2), values[2].value_bits);
+    // Collector workspace reset is not a public current-value transaction.
+    const reset = protocol.ControlInput{ .abi_version = protocol.abi_version, .struct_size = @sizeOf(protocol.ControlInput),
+        .configuration_generation = config.generation, .operation_epoch = 1, .command_at_milliseconds = 100,
+        .flags = 0, .reserved = .{ 0, 0 } };
+    try std.testing.expectEqual(ResultCode.ok, session_module.reset(session, &reset));
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &bytes));
+    try std.testing.expectEqual(@as(u32, 4), output.cell_count);
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{}, &.{ 2, 3 }, &.{}, "", &resident));
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &bytes));
+    try std.testing.expectEqual(@as(u32, 2), output.cell_count);
+    try std.testing.expectEqual(@as(u32, 2), output.byte_count);
+    try std.testing.expectEqualStrings("xy", bytes[0..2]);
+    try std.testing.expectEqual(@as(u64, 4), values[1].dataset_handle);
+}
+
+test "metric current capacity and alias failures leave the whole publication untouched" {
+    const current = @import("current.zig");
+    var config = testConfig(1);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var resident: [2 * (@sizeOf(protocol.CurrentValue) + 8)]u8 align(8) = undefined;
+    const input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = 1,
+        .byte_capacity = 8, .flags = 0, .reserved = 0 };
+    var value = protocol.CurrentValue{ .dataset_handle = 1, .cell_handle = 1,
+        .value_kind = 3, .flags = 1, .value_bits = std.math.maxInt(u64), .value_high_bits = 0 };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{1}, &.{}, &.{value}, "", &resident));
+    value.dataset_handle = 2;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, current.commit(session, &input, &.{2}, &.{}, &.{value}, "", &resident));
+    var output: protocol.CurrentReadOutput = undefined;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, current.read(session, &output, &.{}, &.{}));
+    try std.testing.expectEqual(@as(u32, 1), output.cell_count);
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.read(session, &output, session.current_values, &.{}));
+    var values: [1]protocol.CurrentValue = undefined;
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &values, &.{}));
+    try std.testing.expectEqual(@as(u64, 1), values[0].dataset_handle);
+    try std.testing.expectEqual(std.math.maxInt(u64), values[0].value_bits);
+    var empty_input = input;
+    empty_input.cell_capacity = 0;
+    empty_input.byte_capacity = 0;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, current.commit(session, &empty_input, &.{}, &.{}, &.{}, "", &.{}));
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &empty_input, &.{}, &.{1}, &.{}, "", &.{}));
+    try std.testing.expectEqual(ResultCode.ok, current.read(session, &output, &.{}, &.{}));
+    try std.testing.expectEqual(@as(u32, 0), output.cell_count);
+}
+
+test "metric current storage and collector workspace cannot alias in either direction" {
+    const current = @import("current.zig");
+    var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    var resident: [2 * (8 * @sizeOf(protocol.CurrentValue) + 1024)]u8 align(8) = undefined;
+    const input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = 8,
+        .byte_capacity = 1024, .flags = 0, .reserved = 0 };
+    const value = protocol.CurrentValue{ .dataset_handle = 1, .cell_handle = 1,
+        .value_kind = 3, .flags = 1, .value_bits = 42, .value_high_bits = 0 };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{1}, &.{}, &.{value}, "", &resident));
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    const requested = [_]protocol.PlanMetricInput{planMetric(200)};
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.invalid_argument, runPlan(session, &resident, 2, 1, 200, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, session_scratch, 2, 1, 200, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    try std.testing.expectEqual(ResultCode.invalid_argument, session_module.beginCompletion(session, &header, &resident));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, session_scratch));
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.commit(session, &input, &.{}, &.{}, &.{}, "", session_scratch[0..resident.len]));
+    const finish = finalizeInput(3, 1, 10, 300);
+    try std.testing.expectEqual(ResultCode.ok, session_module.abortCompletion(session, &finish));
+    try std.testing.expectEqualDeep(value, session.current_values[0]);
+}
+
+test "metric current double bank obeys exact resident budget independently of collector limits" {
+    const current = @import("current.zig");
+    var config = testConfig(1);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    config.generation += 1;
+    config.resident_byte_budget = session.requiredByteCount() + 2 * (@sizeOf(protocol.CurrentValue) + 8);
+    try std.testing.expectEqual(ResultCode.ok, session_module.reconfigure(session, &config));
+    var resident: [2 * (@sizeOf(protocol.CurrentValue) + 8)]u8 align(8) = undefined;
+    var input = protocol.CurrentCommitInput{ .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CurrentCommitInput), .cell_capacity = 1,
+        .byte_capacity = 8, .flags = 0, .reserved = 0 };
+    const value = protocol.CurrentValue{ .dataset_handle = 1, .cell_handle = 1,
+        .value_kind = 5, .flags = 1, .value_bits = 0, .value_high_bits = 3 };
+    try std.testing.expectEqual(ResultCode.ok, current.commit(session, &input, &.{1}, &.{}, &.{value}, "abc", &resident));
+    try std.testing.expectEqual(config.resident_byte_budget, session.requiredByteCount());
+    var larger: [2 * (2 * @sizeOf(protocol.CurrentValue) + 8)]u8 align(8) = undefined;
+    input.cell_capacity = 2;
+    try std.testing.expectEqual(ResultCode.invalid_argument, current.commit(session, &input, &.{1}, &.{}, &.{value}, "abc", &larger));
+    try std.testing.expectEqualDeep(value, session.current_values[0]);
+    try std.testing.expectEqualStrings("abc", session.current_bytes);
+}
+
 test "floating counters commit fractional SDK deltas atomically for ratio and percentage" {
     inline for (.{ protocol.MetricKind.floating_counter_ratio, protocol.MetricKind.floating_counter_percentage }) |kind| {
         var config = testConfig(1);

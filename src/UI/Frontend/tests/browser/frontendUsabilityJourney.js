@@ -22,7 +22,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   };
   await page.setViewportSize({ width: 800, height: 500 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await setScenario({ capabilities: "ready", settings: "ready", pausedSubscriptionPaths: ["/api/resource-monitor/subscribe"] });
+  await setScenario({ capabilities: "ready", settings: "ready", pausedSubscriptionPaths: ["/api/resource-facts/subscribe"] });
   await page.reload({ waitUntil: "domcontentloaded" });
   const firstTableValue = await monitorFirstTableValueProbe(page, baseUrl);
   const demandRetention = await monitorDemandRetentionProbe(page, baseUrl);

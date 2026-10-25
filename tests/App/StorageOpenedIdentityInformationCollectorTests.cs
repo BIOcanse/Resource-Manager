@@ -155,7 +155,7 @@ public sealed class StorageOpenedIdentityInformationCollectorTests
             var values = zone.ReadNvmeSensorsCore(request);
             workspace.CompleteSource(plan, WindowsHardwareMetricSampler.CreateStorageCompletion(plan, source,
                 new(source.SourceHandle, 1, (ulong)capture), observedAt, values), observedAt);
-            var committed = NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), "fixture", "fixture", 1);
+            var committed = NativeMetricSnapshotCommittedProjection.Create(frame: workspace.ReadCommitted(), workspaceIdentity: 1);
             var fields = Assert.Single(MetricDeviceFields.Read(committed, identity, new HashSet<string>
                 { "storage_all_nvme_critical_warning_reported", "storage_all_nvme_health_log_raw" })).Fields;
             Assert.Equal(2, fields.Count);
@@ -166,7 +166,7 @@ public sealed class StorageOpenedIdentityInformationCollectorTests
             });
             else
             {
-                Assert.Equal("165", fields.Single(field => field.Name == "storage_all_nvme_critical_warning_reported").IntegerValue);
+                Assert.Equal(MetricInteger.Parse("165"), fields.Single(field => field.Name == "storage_all_nvme_critical_warning_reported").IntegerValue);
                 Assert.Equal(HealthResponse().AsSpan(48).ToArray(), fields.Single(field => field.Name == "storage_all_nvme_health_log_raw").BytesValue);
                 Assert.All(fields, field => Assert.Equal(SamplingObservationStatus.Current, field.Status));
             }

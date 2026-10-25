@@ -184,7 +184,7 @@ public sealed class HostManagerWelfareCapacityProjectionTests
                 0,
                 string.Empty,
                 null!),
-            new MemoryMetrics(8, 16, 50, true, string.Empty)
+            new MemoryMetrics(UsedBytes: 8, TotalBytes: 16, UsagePercent: 50, IsUsageAvailable: true)
             {
                 ObservationStatus = SamplingObservationStatus.Current
             },
@@ -202,7 +202,7 @@ public sealed class HostManagerWelfareCapacityProjectionTests
                     CreateAdapter(0, 11, 20, 2, 8, ticks),
                     CreateAdapter(1, 22, 40, 4, 8, ticks)
                 ]),
-            new Dictionary<string, MetricValue>())
+            new Dictionary<string, MetricReadingValue>())
         {
             Datasets = datasets
         };

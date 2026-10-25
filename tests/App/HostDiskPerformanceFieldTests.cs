@@ -43,8 +43,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             new AmdIntegratedGpuSensorRoute(), platform, fixture.Owner, fixture.Catalog,
             registry, fixture.Slots.Owner, fixture.Slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using (var lease = fixture.Owner.Acquire())
-            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(
-                lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+            fixture.Catalog.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         using var client = new HttpClient();
         var controls = new NoControls();
         var backend = new HostReadWriteBackend(sampler, sampler, fixture.Catalog, controls,
