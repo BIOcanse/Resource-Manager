@@ -2,6 +2,7 @@ import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { getJson, putJson } from "../api";
 import type { ProtectedOptimizationTarget } from "../types";
 import { uiText } from "../text";
+import { SwitchControl } from "../ui/primitives/Switch.tsx";
 
 export function SoftwareProtectionControl(props: { softwareId: string }) {
   const [enabled, setEnabled] = createSignal(false);
@@ -40,10 +41,7 @@ export function SoftwareProtectionControl(props: { softwareId: string }) {
   return <div class="software-protection-section" role="group" aria-label={uiText.softwareDetail.protection.title}>
     <label class="policy-toggle">
       <span>{uiText.softwareDetail.protection.enabled}</span>
-      <span class="settings-switch">
-        <input type="checkbox" checked={enabled()} disabled={state() !== "ready"} onChange={() => void toggle()} />
-        <span />
-      </span>
+      <SwitchControl checked={enabled()} disabled={state() !== "ready"} as="span" onChange={() => void toggle()} />
     </label>
     <p class="software-detail-hint">{uiText.softwareDetail.protection.hint}</p>
     <Show when={state() === "error"}><p class="software-protection-message error" role="alert">{uiText.softwareDetail.protection.failed}</p></Show>

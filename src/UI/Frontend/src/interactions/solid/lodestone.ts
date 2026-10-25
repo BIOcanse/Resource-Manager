@@ -50,6 +50,7 @@ const platform: Platform = {
 export function interactionRuntime(): Runtime {
   if (runtime === null) {
     const created = new Runtime(null, new Trace(), platform, { mode: "optimized" });
+    // 认领的松开之后紧随的 click 由引擎的事件接入拦掉（0.2.2，协议第 4.4 节）。
     attachDom(window, (raw) => created.feed(raw));
     runtime = created;
   }

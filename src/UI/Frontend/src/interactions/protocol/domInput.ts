@@ -12,9 +12,15 @@ export function expectRelease(pointerId: number): void {
 
 export function attachDom(win: Window, feed: (raw: RawInput) => void): () => void {
   let buttons = 0;
+  /**
+   * 松开被认领了（松开那一行写了“框架：认领”，运行时对 pointerup 调用了 preventDefault）：紧随其后的 click 在捕获阶段拦掉，
+   * 拖完不会触发点击（协议第 4.4 节第 3 处）。下一次按下时清掉，松开后没有 click（例如松在别的元素上）也不会拦到以后的点击。
+   */
+  let swallowClick = false;
   // 一个浏览器事件送一次：浏览器按帧合并的采样（getCoalescedEvents）全部带上，进输入层的历史；位置变化只算一次。
   const pointer = (e: PointerEvent) => {
     if (!e.isPrimary) return;
+    if (e.type === "pointerdown") swallowClick = false;
     const coalesced = e.type === "pointermove" && typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [];
     const list = coalesced.length ? coalesced : [e];
     const last = list[list.length - 1];
@@ -22,6 +28,7 @@ export function attachDom(win: Window, feed: (raw: RawInput) => void): () => voi
     feed({ type: "pointer", t: last.timeStamp, x: last.clientX, y: last.clientY, buttons: e.buttons, pointerId: e.pointerId,
       samples: list.map((s) => ({ t: s.timeStamp, x: s.clientX, y: s.clientY })),
       dom: e.type + (list.length > 1 ? `（合并采样 ${list.length} 个）` : ""), modifiers: mods(e), target: e.target, event: e });
+    if (e.type === "pointerup" && e.defaultPrevented) swallowClick = true;
   };
   const handlers: [EventTarget, string, (e: Event) => void][] = [
     [win, "pointerdown", (e) => pointer(e as PointerEvent)],
@@ -52,7 +59,13 @@ export function attachDom(win: Window, feed: (raw: RawInput) => void): () => voi
       feed({ type: "key", t: k.timeStamp, code: k.code, key: k.key, down: false, repeat: false, modifiers: mods(k), target: k.target, event: k });
     }],
     // 指针产生的 click 的 detail ≥ 1，已经由电平处理；detail = 0 的是键盘、辅助技术或脚本发出的激活请求。
-    [win, "click", (e) => { if ((e as MouseEvent).detail === 0) feed({ type: "activate", t: e.timeStamp, target: e.target, event: e }); }],
+    [win, "click", (e) => {
+      if ((e as MouseEvent).detail === 0) { feed({ type: "activate", t: e.timeStamp, target: e.target, event: e }); return; }
+      if (!swallowClick) return;
+      swallowClick = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }],
     [win, "contextmenu", (e) => {
       const m = e as MouseEvent;
       feed({ type: "contextmenu", t: m.timeStamp, x: m.clientX, y: m.clientY, target: m.target, event: m });

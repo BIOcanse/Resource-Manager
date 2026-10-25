@@ -55,8 +55,8 @@ for (const selector of [".resource-table-head-cell", ".resource-table-column-res
 }
 assert.equal(declarationsOf(".fan-curve-point").get("transition"), "fill var(--motion-fast) var(--ease-standard)");
 
-// 开关滑块颜色跟轨道同一时长。
-assert.match(declarationsOf(".settings-switch span::after").get("transition") ?? "",
+// 开关滑块颜色跟轨道同一时长（位置由交互协议的运行时带，不写位移过渡）。
+assert.match(declarationsOf(".settings-switch .settings-switch-knob").get("transition") ?? "",
   /background var\(--motion-medium\) var\(--ease-standard\)/);
 
 // 小弹层入场：下拉和两种右键菜单同一条。

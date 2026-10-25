@@ -3,6 +3,7 @@ import type { AppSystemIntegrationSettings, ServiceRecoveryDiagnostics } from ".
 import type { SettingsTextBundle } from "../../../text.ts";
 import { NumberField } from "./SettingsControls";
 import { recoveryPresentation } from "../serviceRecoveryPresentation.ts";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 export function ServiceRecoverySetting(props: {
   settings: AppSystemIntegrationSettings;
@@ -21,11 +22,7 @@ export function ServiceRecoverySetting(props: {
           <strong>{props.text.crashRecoveryTitle}</strong>
           <span>{props.text.crashRecoveryDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input type="checkbox" aria-label={props.text.crashRecoveryTitle} checked={enabled()}
-            onChange={(event) => props.onChange(event.currentTarget.checked, delay(), count())} />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.crashRecoveryTitle} checked={enabled()} onChange={(checked) => props.onChange(checked, delay(), count())} />
       </div>
       <div class="settings-row">
         <NumberField label={props.text.crashRestartDelayTitle} value={delay()} min={1} max={3600} step={1}

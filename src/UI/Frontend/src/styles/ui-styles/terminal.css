@@ -247,26 +247,26 @@
 
 /* 开关：关时是暗槽里一块次要色的方块，开时整条反显成强调色、方块换成深色。
    这里的选择器比标准风格的状态规则更具体，所以开、开但禁用两种状态都要重写一遍。 */
-:root[data-ui-style="terminal"] .settings-switch span {
+:root[data-ui-style="terminal"] .settings-switch .settings-switch-track {
   border-color: var(--line);
   background: var(--surface-strong);
 }
 
-:root[data-ui-style="terminal"] .settings-switch span::after {
+:root[data-ui-style="terminal"] .settings-switch .settings-switch-knob {
   background: var(--muted);
   box-shadow: none;
 }
 
-:root[data-ui-style="terminal"] .settings-switch input:checked + span {
+:root[data-ui-style="terminal"] .settings-switch input:checked + .settings-switch-track {
   border-color: var(--accent);
   background: var(--accent);
 }
 
-:root[data-ui-style="terminal"] .settings-switch input:checked + span::after {
+:root[data-ui-style="terminal"] .settings-switch input:checked + .settings-switch-track .settings-switch-knob {
   background: var(--on-accent);
 }
 
-:root[data-ui-style="terminal"] .settings-switch input:checked:disabled + span {
+:root[data-ui-style="terminal"] .settings-switch input:checked:disabled + .settings-switch-track {
   border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
   background: color-mix(in oklab, var(--accent) 45%, var(--surface));
 }

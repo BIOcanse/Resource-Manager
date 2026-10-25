@@ -89,17 +89,16 @@ textarea {
     box-shadow var(--motion-fast) var(--ease-standard);
 }
 
-/* 开关：轨道变色 + 滑块减速滑动；滑块颜色（终端风格打开时变色）跟轨道同一时长 */
-.settings-switch span {
+/* 开关：轨道变色（覆盖基础样式里的 120ms ease）；滑块位置由交互协议的运行时带，不用 CSS 过渡，
+   滑块颜色（终端风格打开时变色）跟轨道同一时长 */
+.settings-switch .settings-switch-track {
   transition:
     background var(--motion-medium) var(--ease-standard),
     border-color var(--motion-medium) var(--ease-standard);
 }
 
-.settings-switch span::after {
-  transition:
-    transform var(--motion-medium) var(--ease-decel),
-    background var(--motion-medium) var(--ease-standard);
+.settings-switch .settings-switch-knob {
+  transition: background var(--motion-medium) var(--ease-standard);
 }
 
 /* 不是 button 的悬停、拖动反馈：颜色和 opacity、fill 跟按钮一样 fast + standard */
@@ -370,7 +369,7 @@ textarea:focus-visible {
 }
 
 
-.settings-switch input:focus-visible + span {
+.settings-switch input:focus-visible + .settings-switch-track {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }

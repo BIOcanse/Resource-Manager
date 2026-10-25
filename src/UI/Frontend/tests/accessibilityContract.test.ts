@@ -240,11 +240,14 @@ assert.match(
   "CPU score inputs keep a visible label and a per-core accessible name"
 );
 
+let settingsSwitchCount = 0;
 for (const source of settingsSources) {
-  for (const match of source.matchAll(/<label class="settings-switch">([\s\S]*?)<\/label>/g)) {
-    assert.match(match[1], /<input[\s\S]*?aria-label=/, "Every settings switch must have an accessible name.");
+  for (const match of source.matchAll(/<SwitchControl\b([\s\S]*?)\/>/g)) {
+    settingsSwitchCount += 1;
+    assert.match(match[1], /\bariaLabel=/, "Every settings switch must have an accessible name.");
   }
 }
+assert.ok(settingsSwitchCount > 0, "The settings sources still render their switches through SwitchControl.");
 
 assert.match(resourceTable, /type="search"[\s\S]*?aria-label=/);
 assert.match(monitorPage, /<ObservationStateNotice[\s\S]*?label=\{uiText\.monitorPage\.metricCatalog\}[\s\S]*?presentation="blocking-only"/);

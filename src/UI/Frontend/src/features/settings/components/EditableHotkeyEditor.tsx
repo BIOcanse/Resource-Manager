@@ -11,6 +11,7 @@ import type { SettingsTextBundle } from "../../../text.ts";
 import type { AppEditableHotkeySettings } from "../../../types";
 import { RadioGroupItem, RadioGroupRoot } from "../../../ui/primitives/RadioGroup.tsx";
 import { uiText } from "../../../text.ts";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 const addKeyDefaults = [17, 18, 46, 123];
 
@@ -65,17 +66,7 @@ export function EditableHotkeyEditor(props: {
           <strong>{props.labels.forceTerminateTitle}</strong>
           <span>{props.labels.forceTerminateDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.labels.forceTerminateTitle}
-            checked={props.hotkey.enabled}
-            disabled={!safeToEnable()}
-            title={safeToEnable() ? undefined : uiText.hotkeyEditor.destructiveModifierRequired}
-            onChange={(event) => commit(model().keys, model().relations, event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.labels.forceTerminateTitle} checked={props.hotkey.enabled} title={safeToEnable() ? undefined : uiText.hotkeyEditor.destructiveModifierRequired} disabled={!safeToEnable()} onChange={(checked) => commit(model().keys, model().relations, checked)} />
       </div>
       <div class="settings-hotkey-warning">{props.labels.forceTerminateWarning}</div>
       <Show when={model().keys.length > 0} fallback={<div class="settings-hotkey-empty">{props.labels.hotkeyEmpty}</div>}>

@@ -2,6 +2,7 @@ import { Show } from "solid-js";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type { AppSettings } from "../../../types";
 import { uiText } from "../../../text.ts";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 interface DebugSettingsSectionProps {
   settings: AppSettings["debug"] | undefined;
@@ -28,15 +29,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
           <strong>{props.text.debug.debugModeTitle}</strong>
           <span>{props.text.debug.debugModeDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.debug.debugModeTitle}
-            checked={debug().debugModeEnabled}
-            onChange={(event) => props.onDebugModeChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.debug.debugModeTitle} checked={debug().debugModeEnabled} onChange={(checked) => props.onDebugModeChange(checked)} />
       </div>
       <Show when={debug().debugModeEnabled}>
         <div class="settings-row settings-debug-option">
@@ -44,15 +37,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
             <strong>{props.text.debug.debugLogTitle}</strong>
             <span>{props.text.debug.debugLogDescription}</span>
           </div>
-          <label class="settings-switch">
-            <input
-              type="checkbox"
-              aria-label={props.text.debug.debugLogTitle}
-              checked={debug().debugLogEnabled}
-              onChange={(event) => props.onDebugLogChange(event.currentTarget.checked)}
-            />
-            <span />
-          </label>
+          <SwitchControl ariaLabel={props.text.debug.debugLogTitle} checked={debug().debugLogEnabled} onChange={(checked) => props.onDebugLogChange(checked)} />
         </div>
         <Show when={debug().debugLogEnabled}>
           <div class="settings-row settings-debug-option">
@@ -60,17 +45,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
               <strong>{props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle}</strong>
               <span>{props.text.debug.hostManagerSmartCoordinatorPerformanceLogDescription}</span>
             </div>
-            <label class="settings-switch">
-              <input
-                type="checkbox"
-                aria-label={props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle}
-                checked={debug().hostManagerSmartCoordinatorPerformanceLogEnabled}
-                disabled={!props.optimizationRuntimeAvailable}
-                title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined}
-                onChange={(event) => props.onHostManagerSmartCoordinatorPerformanceLogChange(event.currentTarget.checked)}
-              />
-              <span />
-            </label>
+            <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle} checked={debug().hostManagerSmartCoordinatorPerformanceLogEnabled} title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorPerformanceLogChange(checked)} />
           </div>
         </Show>
       </Show>
@@ -81,17 +56,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
             <strong>{props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle}</strong>
             <span>{props.text.debug.hostManagerSmartCoordinatorScoreOnlyDescription}</span>
           </div>
-          <label class="settings-switch">
-            <input
-              type="checkbox"
-              aria-label={props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle}
-              checked={debug().hostManagerSmartCoordinatorScoreOnlyEnabled}
-              disabled={!props.optimizationRuntimeAvailable}
-              title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined}
-              onChange={(event) => props.onHostManagerSmartCoordinatorScoreOnlyChange(event.currentTarget.checked)}
-            />
-            <span />
-          </label>
+          <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle} checked={debug().hostManagerSmartCoordinatorScoreOnlyEnabled} title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorScoreOnlyChange(checked)} />
         </div>
       </Show>
     </div>

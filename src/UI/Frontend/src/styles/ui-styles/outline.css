@@ -191,11 +191,11 @@
 
 
 /* 开关是方的：轨道和滑块都只留很小的圆角。 */
-:root[data-ui-style="outline"] .settings-switch span {
+:root[data-ui-style="outline"] .settings-switch .settings-switch-track {
   border-radius: var(--radius-sm);
 }
 
-:root[data-ui-style="outline"] .settings-switch span::after {
+:root[data-ui-style="outline"] .settings-switch .settings-switch-knob {
   border-radius: 1px;
   box-shadow: inset 0 0 0 1px var(--line);
 }

@@ -16,6 +16,7 @@ import type {
 } from "../../../types";
 import { EditableHotkeyEditor } from "./EditableHotkeyEditor";
 import { uiText } from "../../../text.ts";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 interface SystemIntegrationSettingsSectionProps {
   settings: AppSystemIntegrationSettings | undefined;
@@ -67,27 +68,14 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
           <strong>{props.text.systemIntegration.autoStartTitle}</strong>
           <span>{props.text.systemIntegration.autoStartDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input type="checkbox" aria-label={props.text.systemIntegration.autoStartTitle}
-            checked={systemIntegration().autoStartEnabled}
-            onChange={(event) => props.onAutoStartChange(event.currentTarget.checked)} />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.autoStartTitle} checked={systemIntegration().autoStartEnabled} onChange={(checked) => props.onAutoStartChange(checked)} />
       </div>
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.taskManagerTitle}</strong>
           <span>{props.text.systemIntegration.taskManagerDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.taskManagerTitle}
-            checked={systemIntegration().taskManagerShortcutReplacementEnabled}
-            onChange={(event) => props.onTaskManagerShortcutReplacementChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.taskManagerTitle} checked={systemIntegration().taskManagerShortcutReplacementEnabled} onChange={(checked) => props.onTaskManagerShortcutReplacementChange(checked)} />
       </div>
       <EditableHotkeyEditor
         hotkey={forceTerminateHotkey()}
@@ -105,65 +93,28 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
           <span>{props.text.systemIntegration.publicServiceDescription}</span>
           <code>http://127.0.0.1:9321/api/public/v1</code>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.publicServiceTitle}
-            checked={publicService().enabled}
-            disabled={!props.publicServicesAvailable}
-            title={!props.publicServicesAvailable ? uiText.misc.publicServicesDisabled : undefined}
-            onChange={(event) => props.onLocalPublicServiceChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.publicServiceTitle} checked={publicService().enabled} title={!props.publicServicesAvailable ? uiText.misc.publicServicesDisabled : undefined} disabled={!props.publicServicesAvailable} onChange={(checked) => props.onLocalPublicServiceChange(checked)} />
       </div>
       <div class="settings-row settings-debug-option">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.publicFileIndexTitle}</strong>
           <span>{props.text.systemIntegration.publicFileIndexDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.publicFileIndexTitle}
-            checked={publicService().fileIndexEnabled}
-            disabled={!props.publicServicesAvailable || !publicService().enabled}
-            onChange={(event) => props.onPublicFileIndexChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.publicFileIndexTitle} checked={publicService().fileIndexEnabled} disabled={!props.publicServicesAvailable || !publicService().enabled} onChange={(checked) => props.onPublicFileIndexChange(checked)} />
       </div>
       <div class="settings-row settings-debug-option">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.publicDatabaseServiceTitle}</strong>
           <span>{props.text.systemIntegration.publicDatabaseServiceDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.publicDatabaseServiceTitle}
-            checked={publicService().databaseServiceEnabled}
-            disabled={!props.publicServicesAvailable || !publicService().enabled}
-            onChange={(event) => props.onPublicDatabaseServiceChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.publicDatabaseServiceTitle} checked={publicService().databaseServiceEnabled} disabled={!props.publicServicesAvailable || !publicService().enabled} onChange={(checked) => props.onPublicDatabaseServiceChange(checked)} />
       </div>
       <div class="settings-row settings-debug-option">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.publicAiModelCatalogTitle}</strong>
           <span>{props.text.systemIntegration.publicAiModelCatalogDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.publicAiModelCatalogTitle}
-            checked={publicService().aiModelCatalogEnabled}
-            disabled={!props.publicServicesAvailable || !publicService().enabled}
-            onChange={(event) => props.onPublicAiModelServiceChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.publicAiModelCatalogTitle} checked={publicService().aiModelCatalogEnabled} disabled={!props.publicServicesAvailable || !publicService().enabled} onChange={(checked) => props.onPublicAiModelServiceChange(checked)} />
       </div>
       <div class="settings-row settings-debug-option">
         <div class="settings-row-copy">
@@ -184,16 +135,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
           <strong>{props.text.systemIntegration.lmStudioAutoStartTitle}</strong>
           <span>{props.text.systemIntegration.lmStudioAutoStartDescription}</span>
         </div>
-        <label class="settings-switch">
-          <input
-            type="checkbox"
-            aria-label={props.text.systemIntegration.lmStudioAutoStartTitle}
-            checked={aiModelService().autoStartEnabled}
-            disabled={!props.publicServicesAvailable || !publicService().enabled || !publicService().aiModelCatalogEnabled}
-            onChange={(event) => props.onLmStudioAutoStartChange(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={props.text.systemIntegration.lmStudioAutoStartTitle} checked={aiModelService().autoStartEnabled} disabled={!props.publicServicesAvailable || !publicService().enabled || !publicService().aiModelCatalogEnabled} onChange={(checked) => props.onLmStudioAutoStartChange(checked)} />
       </div>
       <AiGatewayKeyManager
         enabled={props.publicServicesAvailable && publicService().enabled && publicService().aiModelCatalogEnabled}

@@ -333,22 +333,22 @@
 }
 
 /* ---------- 开关：轨道不描边，滑块是带柔和阴影的白点 ---------- */
-:root[data-ui-style="soft"] .settings-switch span {
+:root[data-ui-style="soft"] .settings-switch .settings-switch-track {
   border-color: transparent;
   background: color-mix(in oklab, var(--muted) 34%, var(--surface));
 }
 
-:root[data-ui-style="soft"] .settings-switch input:checked + span {
+:root[data-ui-style="soft"] .settings-switch input:checked + .settings-switch-track {
   border-color: transparent;
   background: var(--accent);
 }
 
-:root[data-ui-style="soft"] .settings-switch input:checked:disabled + span {
+:root[data-ui-style="soft"] .settings-switch input:checked:disabled + .settings-switch-track {
   border-color: transparent;
   background: color-mix(in oklab, var(--accent) 45%, var(--surface));
 }
 
-:root[data-ui-style="soft"] .settings-switch span::after {
+:root[data-ui-style="soft"] .settings-switch .settings-switch-knob {
   background: color(display-p3 1 1 1);
   box-shadow: var(--elev-2);
 }

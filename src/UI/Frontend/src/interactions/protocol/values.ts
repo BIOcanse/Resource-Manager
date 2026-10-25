@@ -3,6 +3,7 @@
 // 参数照常级联，组件要不同的值就在定义里写（例如分页的投影时长 300 ms）。
 
 import type { ValueContext, ValueFn } from "./definition.ts";
+import { frameOf } from "./physics.ts";
 import type { ParamSpec } from "./params.ts";
 import { cite, declared, show } from "./params.ts";
 import { fmtValue, len, sub, vec } from "./vec.ts";
@@ -31,6 +32,22 @@ export function projection<V extends Value>(ctx: ValueContext<V>): { p: V; expla
   const p = (typeof x === "number" ? x + (v as number) * k : { x: x.x + vec(v).x * k, y: x.y + vec(v).y * k }) as V;
   return { p, explain: `投影 = ${ctx.channel.hand ? "手" : "位置"} ${fmtValue(x)} + 速度 ${fmtValue(v)} × ${show(ms.value)} ms = ${fmtValue(p)}（${cite(ms)}）` };
 }
+
+/**
+ * 指针处：指针此刻的屏幕位置按几何换成通道的值（不出边界前的值，可以在边界外）。没有几何时换不了，报错。
+ * 用处：要交给宿主“指针在哪”、而物体自己不跟手的组件，例如拖动排序项（协议第 4.4 节第 3 处）：调用写 over(指针处)、commit(指针处)，
+ * 宿主映射把它换成指针下是哪一项。几何取 1 个单位 = 1 个屏幕 px 时，值就是指针的屏幕坐标。
+ */
+export const POINTER_AT: ReusableValue<Value> = {
+  name: "指针处",
+  declares: [],
+  fn: (ctx) => {
+    if (!ctx.geometry) throw new Error("取值「指针处」要组件有几何");
+    const p = ctx.input.position();
+    const value = frameOf(ctx.def.channel, ctx.geometry).valueOf(p);
+    return { value, explain: `指针在 (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) px，按几何换成值 ${fmtValue(value)}` };
+  },
+};
 
 /** 离 p 最近的点：直线距离，按给的次序找，距离相同取先找到的。 */
 export function nearestOf<V extends Value>(points: readonly V[], p: V): { index: number; distance: number } {

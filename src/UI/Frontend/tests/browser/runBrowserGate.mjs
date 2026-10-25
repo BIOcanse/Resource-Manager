@@ -53,6 +53,7 @@ import resourceTableContentStateJourney from "./resourceTableContentStateJourney
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
 import columnResizeInteractionJourney from "./columnResizeInteractionJourney.js";
 import fanCurveInteractionJourney from "./fanCurveInteractionJourney.js";
+import switchInteractionJourney from "./switchInteractionJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
 import realtimeActionBudgetSettingsJourney from "./realtimeActionBudgetSettingsJourney.js";
@@ -137,6 +138,7 @@ const allJourneys = [
   ["resource-table-scroll-stability", resourceTableScrollStabilityJourney],
   ["column-resize-interaction", columnResizeInteractionJourney],
   ["fan-curve-interaction", fanCurveInteractionJourney],
+  ["switch-interaction", switchInteractionJourney],
   ["r2-remediation", r2RemediationJourney]
 ];
 const journeyFilter = process.env.RM_BROWSER_JOURNEY?.trim();

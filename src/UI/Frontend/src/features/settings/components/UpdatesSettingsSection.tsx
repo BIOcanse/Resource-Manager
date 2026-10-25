@@ -10,6 +10,7 @@ import type { ProductUpdateStore } from "../../../stores/productUpdateStore.ts";
 import { updateCheckIntervalHours } from "../../../stores/settingsStore.ts";
 import { formatConnectedDuration, formatUtcTime, parseUtcTime } from "../../../data/productUpdateStatus.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 interface ProductVersionOption extends Omit<VersionChoice, "unavailableReason"> {
   version: string;
@@ -93,12 +94,8 @@ export function UpdatesSettingsSection(props: {
         <strong>{title}</strong>
         <span>{description}</span>
       </div>
-      <label class="settings-switch">
-        <input type="checkbox" checked={(props.notifications?.[path] ?? "on") === "on"}
-          aria-label={title}
-          onChange={(event) => props.onNotificationSwitchChange(path, event.currentTarget.checked)} />
-        <span />
-      </label>
+      <SwitchControl ariaLabel={title} checked={(props.notifications?.[path] ?? "on") === "on"}
+        onChange={(checked) => props.onNotificationSwitchChange(path, checked)} />
     </div>;
 
   return <div class="settings-section-panel">
@@ -118,12 +115,9 @@ export function UpdatesSettingsSection(props: {
         <Show when={automaticOff()}><span role="note">{text().offReason}</span></Show>
       </div>
       <div class="settings-update-interval-control">
-        <label class="settings-switch" title={automaticOff() ? text().offReason : undefined}>
-          <input type="checkbox" checked={props.settings?.periodicCheckEnabled === true}
-            aria-label={text().periodicTitle} disabled={automaticOff()}
-            onChange={(event) => props.onPeriodicCheckChange(event.currentTarget.checked)} />
-          <span />
-        </label>
+        <SwitchControl ariaLabel={text().periodicTitle} checked={props.settings?.periodicCheckEnabled === true}
+          disabled={automaticOff()} title={automaticOff() ? text().offReason : undefined}
+          onChange={props.onPeriodicCheckChange} />
         <NumberField label={text().intervalLabel(updateCheckIntervalHours.minimum, updateCheckIntervalHours.maximum)}
           ariaLabel={text().intervalTitle}
           value={props.settings?.checkIntervalHours ?? updateCheckIntervalHours.defaultValue}

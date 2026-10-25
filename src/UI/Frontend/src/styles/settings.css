@@ -411,7 +411,7 @@
 }
 
 /* 关闭状态也要看得出轨道：灰色填充，不和面板底色混在一起。 */
-.settings-switch span {
+.settings-switch .settings-switch-track {
   width: 46px;
   height: 26px;
   border: 1px solid var(--border-strong);
@@ -419,8 +419,7 @@
   background: color-mix(in oklab, var(--muted) 28%, var(--surface));
 }
 
-.settings-switch span::after {
-  content: "";
+.settings-switch .settings-switch-knob {
   position: absolute;
   top: 4px;
   left: 4px;
@@ -431,27 +430,28 @@
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
-.settings-switch input:checked + span {
+.settings-switch input:checked + .settings-switch-track {
   border-color: var(--accent);
   background: var(--accent);
 }
 
-.settings-switch input:disabled + span {
+.settings-switch input:disabled + .settings-switch-track {
   opacity: 0.6;
 }
 
 /* 已打开但不能改：保留绿色，只是变淡，不能看起来像关闭。 */
-.settings-switch input:checked:disabled + span {
+.settings-switch input:checked:disabled + .settings-switch-track {
   border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
   background: color-mix(in oklab, var(--accent) 45%, var(--surface));
   opacity: 1;
 }
 
-.settings-switch input:checked + span::after {
-  transform: translateX(20px);
+.settings-switch input:checked + .settings-switch-track .settings-switch-knob {
+  /* 首帧的静态位置；之后由交互协议的运行时写行内 translate（ui/primitives/Switch.tsx）。 */
+  translate: 20px 0;
 }
 
-.settings-switch input:focus-visible + span {
+.settings-switch input:focus-visible + .settings-switch-track {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
