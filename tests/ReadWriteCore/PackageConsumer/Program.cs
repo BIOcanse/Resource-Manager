@@ -7,6 +7,11 @@ using ResourceManager.ReadWrite.Publications;
 using ResourceManager.ReadWrite.Windows;
 
 // This package consumer intentionally references no Resource Manager host assembly.
+if (args.Contains("--amd-control-recorded-only", StringComparer.Ordinal))
+{
+    await AmdCpuIntegratedGpuControlOwnerConsumer.RunAsync();
+    return;
+}
 if (args.Contains("--current-backend-recorded-only", StringComparer.Ordinal))
 {
     await AmdHardwareTopologyConsumer.RunRecordedAsync();

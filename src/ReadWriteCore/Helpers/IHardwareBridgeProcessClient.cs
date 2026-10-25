@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 namespace ResourceManager.ReadWrite.Helpers;
-/// <summary>The existing helper's SendAsync seam. Implementations retain their own original transport state.</summary>
+/// <summary>The helper transport owns its session. Repeated describe requests reuse that session's facts;
+/// a newly started helper describes before its first operation. Read requests always perform the requested reading.</summary>
 public interface IHardwareBridgeProcessClient : IDisposable
 {
     bool IsInstalled { get; }

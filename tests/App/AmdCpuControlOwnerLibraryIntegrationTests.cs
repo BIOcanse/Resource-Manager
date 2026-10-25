@@ -14,7 +14,7 @@ public sealed class AmdCpuControlOwnerLibraryIntegrationTests : IDisposable
         using(var owner=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(directory)))
         {
             Assert.Empty(helper.Calls); Assert.False(Directory.Exists(directory));
-            var probe=owner.Probe(Cpu,Power);Assert.True(probe.CanWrite); Assert.Equal(45,probe.Range!.DefaultValue);
+            var probe=owner.Probe(Cpu,Power);Assert.True(probe.CanWrite); Assert.Null(probe.Range!.DefaultValue);
             Assert.False(Directory.Exists(directory));
             helper.Stapm = 65; // An OEM profile change after opening the page is the real pre-write value.
             Assert.Equal(AmdCpuControlStatus.Applied,(await owner.WriteAsync(Cpu,Power,new(Power.Field,20))).Status);
@@ -38,7 +38,7 @@ public sealed class AmdCpuControlOwnerLibraryIntegrationTests : IDisposable
         Directory.CreateDirectory(directory); var occupied=Path.Combine(directory,"occupied");File.WriteAllText(occupied,"file");
         var warnings=new List<AmdCpuControlMessage>();var helper=new RecordedControlHelper();
         using var owner=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(occupied),warning:(_,code,_)=>warnings.Add(code));
-        var range=owner.Probe(Cpu,Power).Range;Assert.Equal(45,range!.DefaultValue);
+        var range=owner.Probe(Cpu,Power).Range;Assert.Null(range!.DefaultValue);
         Assert.Empty(warnings);
         Assert.Equal(AmdCpuControlStatus.Failed,(await owner.WriteAsync(Cpu,Power,new(Power.Field,20))).Status);
         Assert.Contains(AmdCpuControlMessage.WriteBaselineWarning,warnings);
@@ -149,20 +149,57 @@ public sealed class AmdCpuControlOwnerLibraryIntegrationTests : IDisposable
         foreach(var (field,which,read,file) in new[]{(AmdCpuControlField.PowerLimit,"stapm",45d,"cpu-power-baseline.txt"),
             (AmdCpuControlField.SlowPowerLimit,"slow",55d,"cpu-slow-power-baseline.txt"),(AmdCpuControlField.FastPowerLimit,"fast",65d,"cpu-fast-power-baseline.txt")})
         {
-            var cap=new AmdCpuControlCapability(field,new(0,100,1,"W"));Assert.Equal(read,owner.Probe(Cpu,cap).Range!.DefaultValue);
+            var cap=new AmdCpuControlCapability(field,new(0,100,1,"W"));Assert.Null(owner.Probe(Cpu,cap).Range!.DefaultValue);
+            Assert.Equal(read,(await owner.ReadAsync(Cpu,cap))!.Number);
             Assert.Empty(Directory.Exists(directory) ? Directory.GetFiles(directory, Path.GetFileNameWithoutExtension(file) + "-*.json") : []);
             Assert.Equal(AmdCpuControlStatus.Applied,(await owner.WriteAsync(Cpu,cap,new(field,150))).Status);
             Assert.Single(Directory.GetFiles(directory, Path.GetFileNameWithoutExtension(file) + "-*.json"));
             var args=helper.Calls.Last().Arguments!;Assert.Equal("W",args["unit"]);Assert.Equal(which,args["which"]);Assert.Equal(100d,args["value"]);
         }
         var co=new AmdCpuControlCapability(AmdCpuControlField.CurveOptimizer,new(-30,30,1,"档"));
-        Assert.Equal(-5,owner.Probe(Cpu,co).Range!.DefaultValue);
+        Assert.Null(owner.Probe(Cpu,co).Range!.DefaultValue);
         Assert.Equal(AmdCpuControlStatus.Applied,(await owner.WriteAsync(Cpu,co,new(co.Field,-10))).Status);Assert.Equal("档",helper.Calls.Last().Arguments!["unit"]);
         var scalar=new AmdCpuControlCapability(AmdCpuControlField.PowerBoostScalar,new(1,10,0.5,"×",1));
         Assert.Equal(1,owner.Probe(Cpu,scalar).Range!.DefaultValue);
         Assert.Null((await owner.ReadAsync(Cpu,scalar,default))!.Number);
         helper.Override=(_,_)=>RecordedControlHelper.Envelope(new {ok=true,status="OK",stapmLimitWatts=20.8});
         Assert.Equal(AmdCpuControlStatus.Applied,(await owner.WriteAsync(Cpu,Power,new(Power.Field,20))).Status);
+    }
+    [Fact]
+    public async Task RepeatedProbesKeepFactsWithoutReadingAndReadsFollowOnlyExplicitCalls()
+    {
+        var helper = new RecordedControlHelper();
+        using var owner = new AmdCpuControlResource(helper, AmdCpuControlOptions.InDirectory(directory));
+        var missingFileExceptions = 0;
+        EventHandler<System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs> capture = (_,args) =>
+        {
+            if ((args.Exception is FileNotFoundException or DirectoryNotFoundException)
+                && args.Exception.Message.Contains(directory,StringComparison.OrdinalIgnoreCase))
+                Interlocked.Increment(ref missingFileExceptions);
+        };
+        AppDomain.CurrentDomain.FirstChanceException += capture;
+        try
+        {
+            for (var round = 0; round < 20; round++) Assert.True(owner.Probe(Cpu, Power).CanWrite);
+        }
+        finally { AppDomain.CurrentDomain.FirstChanceException -= capture; }
+        Assert.Equal(0,missingFileExceptions);
+        Assert.Equal(20, helper.Calls.Count);
+        Assert.Equal(new[] { "describe" }, helper.Requests);
+        Assert.False(Directory.Exists(directory));
+        helper.Stapm = 61;
+        Assert.Equal(61, (await owner.ReadAsync(Cpu, Power))!.Number);
+        helper.Restart(); helper.Stapm = 72;
+        Assert.Equal(72, (await owner.ReadAsync(Cpu, Power))!.Number);
+        Assert.True(owner.Probe(Cpu, Power).CanWrite);
+        Assert.Equal(new[] { "describe", "read", "describe", "read" }, helper.Requests);
+        helper.Override = (_, _) => RecordedControlHelper.Envelope(new { available=false, reason="new-session-unavailable" });
+        helper.Restart();
+        Assert.Equal("new-session-unavailable", owner.Probe(Cpu, Power).Reason);
+        var requests = helper.Requests.Count;
+        for (var round = 0; round < 20; round++) Assert.False(owner.Probe(Cpu,Power).CanWrite);
+        Assert.Null((await owner.ReadAsync(Cpu,Power))!.Number);
+        Assert.Equal(requests,helper.Requests.Count);
     }
     [Fact]
     public void RealFactoryOnlyConstructsAndBorrowedDisposeNeverClosesSharedTransport()

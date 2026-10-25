@@ -27,6 +27,9 @@ public sealed partial class ControlHelperLifecycleTests
             var fail = ++launches == 1;
             var script = $$"""
                 $ErrorActionPreference='Stop'
+                $null=[Console]::In.ReadLine()
+                [Console]::Out.WriteLine('{"available":true}')
+                [Console]::Out.Flush()
                 $request=[Console]::In.ReadLine() | ConvertFrom-Json
                 if (${{fail.ToString().ToLowerInvariant()}}) {
                     [Console]::Out.WriteLine('invalid-json')

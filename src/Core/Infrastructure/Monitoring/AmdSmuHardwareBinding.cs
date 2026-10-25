@@ -16,12 +16,11 @@ internal static class AmdSmuHardwareBinding
         => new(LocateModulePath(contentRoot) ?? Path.Combine(PackagePathResolver.ResolvePackageRoot(contentRoot),
                 "Dependencies", ComponentId, ModuleFileName), CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2));
 
-    internal static AmdCcdMetricResource CreateCcdResource(string contentRoot)
-        => new(target => new AmdCcdTemperatureReader(target.Family, target.Model, 1,
-            () => AmdSmuPawnIoSession.OpenSmn(new(
-                LocateModulePath(contentRoot, "AMDFamily17.bin") ?? Path.Combine(
-                    PackagePathResolver.ResolvePackageRoot(contentRoot), "Dependencies", ComponentId, "AMDFamily17.bin"),
-                CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2)))));
+    internal static AmdSmuCcdBinding CreateCcdResource(string contentRoot, Func<string> readComponentRevision)
+        => new(() => LocateModulePath(contentRoot, "AMDFamily17.bin"), readComponentRevision,
+            (target, modulePath) => new AmdCcdTemperatureReader(target.Family, target.Model, 1,
+                () => AmdSmuPawnIoSession.OpenSmn(new(modulePath,
+                    CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2)))));
 
     private static string? LocateModulePath(string contentRootPath, string moduleFileName = ModuleFileName)
     {

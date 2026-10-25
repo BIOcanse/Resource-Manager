@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Vendors.Amd.Smu;
@@ -9,18 +10,24 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 public sealed class AmdSmuMonitoringZone : MonitoringSourceZone, IDisposable
 {
     private readonly AmdSmuCpuSensorReader reader;
-    private readonly AmdCcdMetricResource ccd;
+    private readonly AmdSmuCcdBinding ccd;
 
-    public AmdSmuMonitoringZone(IHostEnvironment environment)
-        : this(environment.ContentRootPath)
+    public AmdSmuMonitoringZone(IHostEnvironment environment, IManagementInventoryRevisionOwner inventoryRevisionOwner)
+        : this(environment.ContentRootPath, () => inventoryRevisionOwner.Current.ComponentRevision)
     {
     }
 
+    /// <summary>Standalone composition without a component manager. Recreate after package changes.</summary>
     public AmdSmuMonitoringZone(string contentRootPath)
+        : this(contentRootPath, static () => "0")
+    {
+    }
+
+    private AmdSmuMonitoringZone(string contentRootPath, Func<string> readComponentRevision)
         : base(MonitoringSourceZoneIds.VendorAmdSmu)
     {
         reader = AmdSmuHardwareBinding.CreateReader(contentRootPath);
-        ccd = AmdSmuHardwareBinding.CreateCcdResource(contentRootPath);
+        ccd = AmdSmuHardwareBinding.CreateCcdResource(contentRootPath, readComponentRevision);
     }
 
     internal CpuSensorMetrics Read(AmdSmuCpuSensorReadRequest request)

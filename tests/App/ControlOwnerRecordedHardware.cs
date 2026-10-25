@@ -10,11 +10,23 @@ internal sealed class RecordedControlHelper : IHardwareBridgeProcessClient
     public int Disposals;
     public double Stapm = 45, Slow = 55, Fast = 65, CpuCounts = -5, GpuCounts = 8;
     public List<(string Operation,IReadOnlyDictionary<string,object?>? Arguments)> Calls = [];
+    public List<string> Requests = [];
+    private JsonElement? description;
+    public bool ReuseDescription = true;
+    public void Restart() => description = null;
     public Func<string,IReadOnlyDictionary<string,object?>?,JsonElement?>? Override;
     public Task<JsonElement?> SendAsync(string operation,IReadOnlyDictionary<string,object?>? arguments,CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Calls.Add((operation,arguments));
-        if (Override is not null) return Task.FromResult(Override(operation,arguments));
+        if (ReuseDescription && operation == "describe" && description is { } known) return Task.FromResult<JsonElement?>(known);
+        Requests.Add(operation);
+        var response = Respond(operation, arguments);
+        if (operation == "describe") description = response;
+        return Task.FromResult(response);
+    }
+    private JsonElement? Respond(string operation,IReadOnlyDictionary<string,object?>? arguments)
+    {
+        if (Override is not null) return Override(operation,arguments);
         if (operation == "set-power-limit")
         {
             var value=Convert.ToDouble(arguments!["value"]);
@@ -23,9 +35,9 @@ internal sealed class RecordedControlHelper : IHardwareBridgeProcessClient
         }
         if (operation == "set-curve-optimizer") CpuCounts=Convert.ToDouble(arguments!["value"]);
         if (operation == "set-igpu-curve-optimizer") GpuCounts=Convert.ToDouble(arguments!["value"]);
-        return Task.FromResult<JsonElement?>(Envelope(new {ok=true,available=true,powerTable=true,curveOptimizer=true,
+        return Envelope(new {ok=true,available=true,powerTable=true,curveOptimizer=true,
             integratedGpuCurveOptimizer=true,accepted=true,status="OK",stapmLimitWatts=Stapm,slowLimitWatts=Slow,fastLimitWatts=Fast,
-            curveOptimizerCounts=CpuCounts,integratedGpuCurveOptimizerCounts=GpuCounts}));
+            curveOptimizerCounts=CpuCounts,integratedGpuCurveOptimizerCounts=GpuCounts});
     }
     public static JsonElement Envelope(object value) => JsonSerializer.SerializeToElement(value);
     public void Dispose() => Disposals++;

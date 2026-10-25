@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace ResourceManager.ReadWrite.Helpers;
@@ -13,6 +13,7 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
     private readonly SemaphoreSlim inputGate = new(1, 1);
     private Process? process;
     private HelperErrorOutput? errorOutput;
+    private JsonElement? description;
     public string? UnavailableReason { get; private set; }
     private long nextRequestId;
     private volatile bool disposed;
@@ -53,13 +54,6 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
         try
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var id = Interlocked.Increment(ref nextRequestId);
-            var request = new Dictionary<string, object?>(arguments ?? new Dictionary<string, object?>())
-            {
-                ["id"] = id,
-                ["op"] = operation
-            };
-
             using var timeout = new CancellationTokenSource(options.RequestTimeout);
             Process? running;
             await inputGate.WaitAsync(timeout.Token).ConfigureAwait(false);
@@ -69,11 +63,8 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
                 if (disposed) return null;
                 running = EnsureStarted();
                 if (running is null || disposed) return null; // Startup may finish after Dispose.
-                commandStarted = true;
-                await running.StandardInput
-                    .WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), timeout.Token)
-                    .ConfigureAwait(false);
-                await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+                // CPU and iGPU share this transport and the same immutable session facts.
+                if (operation == "describe" && description is { } known) return known;
             }
             finally
             {
@@ -81,25 +72,55 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
                 if (disposed || stopping) Stop();
             }
 
-            var line = await running.StandardOutput
-                .ReadLineAsync(timeout.Token)
-                .ConfigureAwait(false);
-            if (line is null)
+            var pendingOperation = description is null ? "describe" : operation;
+            while (true)
             {
-                if (errorOutput is { } diagnostics)
+                var request = new Dictionary<string, object?>(pendingOperation == operation && arguments is not null
+                    ? arguments : new Dictionary<string, object?>())
                 {
-                    try { await diagnostics.Completion.WaitAsync(options.DiagnosticDrainTimeout).ConfigureAwait(false); }
-                    catch (TimeoutException) { }
-                    UnavailableReason = diagnostics.FailureReason;
-                    warning?.Invoke(null, diagnostics.Detail);
+                    ["id"] = Interlocked.Increment(ref nextRequestId),
+                    ["op"] = pendingOperation
+                };
+                await inputGate.WaitAsync(timeout.Token).ConfigureAwait(false);
+                try
+                {
+                    if (!commandStarted) cancellationToken.ThrowIfCancellationRequested();
+                    if (disposed) return null;
+                    commandStarted = true;
+                    await running.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), timeout.Token).ConfigureAwait(false);
+                    await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
                 }
-                // 对面关掉了输出，说明它已经退出。丢掉这次，下次重新拉起。
-                Stop();
-                return null;
-            }
+                finally
+                {
+                    inputGate.Release();
+                    if (disposed || stopping) Stop();
+                }
+                var line = await running.StandardOutput
+                    .ReadLineAsync(timeout.Token)
+                    .ConfigureAwait(false);
+                if (line is null)
+                {
+                    if (errorOutput is { } diagnostics)
+                    {
+                        try { await diagnostics.Completion.WaitAsync(options.DiagnosticDrainTimeout).ConfigureAwait(false); }
+                        catch (TimeoutException) { }
+                        UnavailableReason = diagnostics.FailureReason;
+                        warning?.Invoke(null, diagnostics.Detail);
+                    }
+                    // 对面关掉了输出，说明它已经退出。丢掉这次，下次重新拉起。
+                    Stop();
+                    return null;
+                }
 
-            using var document = JsonDocument.Parse(line);
-            return document.RootElement.Clone();
+                using var document = JsonDocument.Parse(line);
+                var response = document.RootElement.Clone();
+                if (pendingOperation == "describe") description = response;
+                if (pendingOperation == operation) return response;
+                // The internal handshake has completed. Cancellation still owns the
+                // requested operation until its own JSON line starts below.
+                commandStarted = false;
+                pendingOperation = operation;
+            }
         }
         catch (OperationCanceledException) when (!commandStarted && cancellationToken.IsCancellationRequested)
         {
@@ -130,6 +151,7 @@ public class HardwareBridgeProcessClient : IHardwareBridgeProcessClient
         // Called under inputGate: an exited process has no pending input ownership.
         process?.Dispose();
         process = null;
+        description = null;
 
         if (resolveExecutablePath() is not { } executablePath)
         {

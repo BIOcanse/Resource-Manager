@@ -72,6 +72,16 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         publicationSignal.Publish();
     }
 
+    public void ObserveComponentContentChanged()
+    {
+        lock (gate)
+        {
+            componentRevision = checked(componentRevision + 1);
+        }
+
+        publicationSignal.Publish();
+    }
+
     public void ObserveComponents(string? windowsSid, IReadOnlyList<ComponentStatus> components)
     {
         ArgumentNullException.ThrowIfNull(components);

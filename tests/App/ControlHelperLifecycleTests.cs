@@ -23,6 +23,9 @@ public sealed partial class ControlHelperLifecycleTests
         var finished = Path.Combine(root, "finished");
         var script = $$"""
             $ErrorActionPreference='Stop'
+            $null=[Console]::In.ReadLine()
+            [Console]::Out.WriteLine('{"available":true}')
+            [Console]::Out.Flush()
             [IO.File]::WriteAllText('{{started}}', 'waiting for input')
             $deadline=[DateTime]::UtcNow.AddSeconds(20)
             while (-not [IO.File]::Exists('{{release}}') -and [DateTime]::UtcNow -lt $deadline) { [Threading.Thread]::Sleep(10) }
@@ -55,6 +58,7 @@ public sealed partial class ControlHelperLifecycleTests
         Task<JsonElement?>? pending = null;
         try
         {
+            await client.SendAsync("describe", null, CancellationToken.None);
             pending = send();
             await WaitForFile(started);
             Assert.False(pending.IsCompleted); // The reader cannot yet drain the full JSON line.
@@ -100,6 +104,9 @@ public sealed partial class ControlHelperLifecycleTests
         var started = Path.Combine(root, "started"); var release = Path.Combine(root, "release"); var finished = Path.Combine(root, "finished");
         var script = $$"""
             $ErrorActionPreference='Stop'
+            $null=[Console]::In.ReadLine()
+            [Console]::Out.WriteLine('{"available":true}')
+            [Console]::Out.Flush()
             $line=[Console]::In.ReadLine()
             $request=$line | ConvertFrom-Json
             [IO.File]::WriteAllText('{{started}}', 'started')

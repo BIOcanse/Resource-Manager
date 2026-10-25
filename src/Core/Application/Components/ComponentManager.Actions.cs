@@ -65,6 +65,7 @@ public sealed partial class ComponentManager
         }
 
         var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
+        inventoryRevisionOwner?.ObserveComponentContentChanged();
         if (id.Equals(BrowserRuntimeCatalogIds.InstallComponentId, StringComparison.OrdinalIgnoreCase)
             && browserRuntimeCatalog is not null)
         {
@@ -105,6 +106,7 @@ public sealed partial class ComponentManager
                         BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
                     Status: await GetStatusAsync(id, cancellationToken));
             }
+            inventoryRevisionOwner?.ObserveComponentContentChanged();
         }
 
         var status = await GetStatusAsync(id, cancellationToken)

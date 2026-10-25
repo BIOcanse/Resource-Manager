@@ -24,7 +24,7 @@ public sealed class AmdIntegratedGpuBaselineTests
             await using (var first = new Helper(root, 8))
             {
                 var range = Assert.IsType<ControlNumberRange>(first.Writer.Probe(Target("gpu:A"), Capability).Range);
-                Assert.Equal(8, range.DefaultValue);
+                Assert.Null(range.DefaultValue);
                 Assert.Equal(ControlApplyStatuses.Applied,
                     (await first.Writer.WriteAsync(Target("gpu:A"), Capability, new(Capability.Id, Number: -20), default)).Status);
                 Assert.Equal(8, first.Writer.Probe(Target("gpu:A"), Capability).Range!.DefaultValue);
@@ -39,7 +39,7 @@ public sealed class AmdIntegratedGpuBaselineTests
             await using (var changed = new Helper(root, -4))
             {
                 var own = Capability with { Range = changed.Writer.Probe(Target("gpu:B"), Capability).Range };
-                Assert.Equal(-4, own.Range!.DefaultValue);
+                Assert.Null(own.Range!.DefaultValue);
                 await changed.Writer.WriteAsync(Target("gpu:B"), own, new(Capability.Id, Number: -20), default);
                 Assert.True(await ((IControlWriter)changed.Writer).RestoreAsync(Target("gpu:B"), own, new HashSet<string>(), default));
                 Assert.Equal(-4, (await changed.Writer.ReadAsync(Target("gpu:B"), own, default))!.Number);

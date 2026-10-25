@@ -8,28 +8,41 @@ public sealed class IntegratedGpuControlBaselineStore(string path)
     private readonly object gate = new();
     private Dictionary<string, double>? baselines;
 
+    public bool TryRead(string targetId, out double? baseline)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
+        lock (gate)
+        {
+            baseline = null;
+            if (!Load()) return false;
+            if (baselines!.TryGetValue(targetId, out var value)) baseline = value;
+            return true;
+        }
+    }
+
+    private bool Load()
+    {
+        if (baselines is not null) return true;
+        if (!File.Exists(path)) { baselines = new(StringComparer.Ordinal); return true; }
+        if (new FileInfo(path).Length > 65_536) return false;
+        try
+        {
+            var saved = JsonSerializer.Deserialize<Dictionary<string, double>>(File.ReadAllText(path));
+            if (saved is null || saved.Count > 128 || saved.Any(entry =>
+                string.IsNullOrWhiteSpace(entry.Key) || !double.IsFinite(entry.Value))) return false;
+            baselines = new(saved, StringComparer.Ordinal);
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
     public double? Capture(string targetId, double? current)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetId);
         lock (gate)
         {
-            if (baselines is null)
-            {
-                if (!File.Exists(path)) baselines = new(StringComparer.Ordinal);
-                else
-                {
-                    if (new FileInfo(path).Length > 65_536) return null;
-                    try
-                    {
-                        var saved = JsonSerializer.Deserialize<Dictionary<string, double>>(File.ReadAllText(path));
-                        if (saved is null || saved.Count > 128 || saved.Any(entry =>
-                            string.IsNullOrWhiteSpace(entry.Key) || !double.IsFinite(entry.Value))) return null;
-                        baselines = new(saved, StringComparer.Ordinal);
-                    }
-                    catch (JsonException) { return null; }
-                }
-            }
-            if (baselines.TryGetValue(targetId, out var baseline)) return baseline;
+            if (!Load()) return null;
+            if (baselines!.TryGetValue(targetId, out var baseline)) return baseline;
             if (current is not { } value || !double.IsFinite(value)) return null;
             if (baselines.Count >= 128) return null;
             var next = new Dictionary<string, double>(baselines, StringComparer.Ordinal) { [targetId] = value };

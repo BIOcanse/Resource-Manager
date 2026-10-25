@@ -16,6 +16,7 @@ public sealed class IntegratedGpuControlResource : IDisposable
     private readonly Action<Exception?,IntegratedGpuControlMessage,IReadOnlyList<object?>>? warning;
     private readonly IntegratedGpuControlBaselineStore amdBaseline;
     private readonly bool ownsBridge;
+    private readonly SemaphoreSlim writeGate = new(1, 1);
     private int disposed;
     /// <summary>Borrow the same helper as AMD CPU. Intel hardware remains borrowed; consent is explicit read-only state.</summary>
     public IntegratedGpuControlResource(IHardwareBridgeProcessClient? bridge, IIntelGraphicsControlHardware intel, IntegratedGpuControlOptions options,
@@ -47,8 +48,16 @@ public sealed class IntegratedGpuControlResource : IDisposable
     public async Task<bool> RestoreAsync(IntegratedGpuControlTarget target,IntegratedGpuControlCapability capability,CancellationToken token=default)
     {
         CheckLifetime();
-        if (capability.Range?.DefaultValue is not { } value) return false;
-        return (await WriteAsync(target,capability,new(capability.Field,value,capability.Range.Unit),token).ConfigureAwait(false)).Status == IntegratedGpuControlStatus.Applied;
+        double? original;
+        if (target.Route == IntegratedGpuControlRoute.AmdIntegrated)
+        {
+            try { if (!amdBaseline.TryRead(target.Id, out original)) return false; }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { Warn(error, IntegratedGpuControlMessage.BaselineWarning); return false; }
+        }
+        else original = capability.Range?.DefaultValue;
+        if (original is not { } value) return false;
+        return (await WriteAsync(target,capability,new(capability.Field,value,capability.Range?.Unit),token).ConfigureAwait(false)).Status == IntegratedGpuControlStatus.Applied;
     }
     private string BridgeMissing => Describe(IntegratedGpuControlMessage.BridgeMissing);
     private string BridgeSilent => Describe(IntegratedGpuControlMessage.BridgeSilent);
@@ -94,16 +103,16 @@ public sealed class IntegratedGpuControlResource : IDisposable
             return IntegratedGpuControlAvailability.No(NotSupported);
         }
 
-        var current = Ask("read") is { } reading && Flag(reading, "ok")
-            ? Number(reading, "integratedGpuCurveOptimizerCounts") : null;
         double? baseline;
-        try { baseline = amdBaseline.Capture(target.Id, current); }
+        bool valid;
+        try { valid = amdBaseline.TryRead(target.Id, out baseline); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             Warn(error,IntegratedGpuControlMessage.BaselineWarning);
             baseline = null;
+            valid = false;
         }
-        if (baseline is null)
+        if (!valid)
             return IntegratedGpuControlAvailability.No(Describe(IntegratedGpuControlMessage.BaselineUnavailable), canRead: true);
         return IntegratedGpuControlAvailability.Yes(
             capability.Range is { } declared
@@ -140,32 +149,55 @@ public sealed class IntegratedGpuControlResource : IDisposable
             return await WriteIntelAsync(target, capability, wanted).ConfigureAwait(false);
         }
 
-        var counts = (int)wanted;
-        // 和处理器那几项一样，值连同单位一起发；辅助进程不收裸数字。
-        var response = await SendAsync(
-            "set-igpu-curve-optimizer",
-            new Dictionary<string, object?> { ["value"] = counts, ["unit"] = "档" },
-            cancellationToken).ConfigureAwait(false);
-        if (response is not { } result || !Flag(result, "ok"))
+        await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return Failed(target, capability, BridgeSilent);
-        }
-        if (!Flag(result, "accepted"))
-        {
-            Warn(null,IntegratedGpuControlMessage.SmuRejectedWarning,counts);
-            return Failed(target, capability, Describe(IntegratedGpuControlMessage.SmuRejected));
-        }
-        if (Number(result, "integratedGpuCurveOptimizerCounts") is { } after
-            && (int)after != counts)
-        {
-            return Failed(target, capability, NotEffective);
-        }
+            try
+            {
+                if (!amdBaseline.TryRead(target.Id, out var baseline))
+                    return Failed(target, capability, Describe(IntegratedGpuControlMessage.BaselineUnavailable));
+                if (baseline is null)
+                {
+                    var before = await SendAsync("read", null, cancellationToken).ConfigureAwait(false);
+                    var current = before is { } reading && Flag(reading, "ok")
+                        ? Number(reading, "integratedGpuCurveOptimizerCounts") : null;
+                    if (amdBaseline.Capture(target.Id, current) is null)
+                        return Failed(target, capability, Describe(IntegratedGpuControlMessage.BaselineUnavailable));
+                }
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Warn(error, IntegratedGpuControlMessage.BaselineWarning);
+                return Failed(target, capability, Describe(IntegratedGpuControlMessage.BaselineUnavailable));
+            }
+            var counts = (int)wanted;
+            // 和处理器那几项一样，值连同单位一起发；辅助进程不收裸数字。
+            var response = await SendAsync(
+                "set-igpu-curve-optimizer",
+                new Dictionary<string, object?> { ["value"] = counts, ["unit"] = "档" },
+                cancellationToken).ConfigureAwait(false);
+            if (response is not { } result || !Flag(result, "ok"))
+            {
+                return Failed(target, capability, BridgeSilent);
+            }
+            if (!Flag(result, "accepted"))
+            {
+                Warn(null,IntegratedGpuControlMessage.SmuRejectedWarning,counts);
+                return Failed(target, capability, Describe(IntegratedGpuControlMessage.SmuRejected));
+            }
+            if (Number(result, "integratedGpuCurveOptimizerCounts") is { } after
+                && (int)after != counts)
+            {
+                return Failed(target, capability, NotEffective);
+            }
 
-        return new IntegratedGpuControlOutcome(
-            target.Id,
-            capability.Id,
-            IntegratedGpuControlStatus.Applied,
-            null) { ReadbackVerified = Number(result, "integratedGpuCurveOptimizerCounts") is not null };
+            return new IntegratedGpuControlOutcome(
+                target.Id,
+                capability.Id,
+                IntegratedGpuControlStatus.Applied,
+                null) { ReadbackVerified = Number(result, "integratedGpuCurveOptimizerCounts") is not null };
+        }
+        finally { writeGate.Release(); }
     }
     public async Task<IntegratedGpuControlValue?> ReadAsync(
         IntegratedGpuControlTarget target,
@@ -194,6 +226,9 @@ public sealed class IntegratedGpuControlResource : IDisposable
                         UnreadableReason: intel.IsAvailable ? IntelTargetMissing : IntelDriverMissing);
         }
 
+        var description = await SendAsync("describe", null, cancellationToken).ConfigureAwait(false);
+        if (description is not { } facts || !Flag(facts, "available") || !Flag(facts, "integratedGpuCurveOptimizer"))
+            return new(target.Id, capability.Id, UnreadableReason: Text(description, "reason") ?? bridge?.UnavailableReason ?? BridgeSilent);
         var reading = await SendAsync("read", null, cancellationToken)
             .ConfigureAwait(false);
         if (reading is not { } result || !Flag(result, "ok"))

@@ -23,8 +23,9 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
             using(var cpu=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(directory)))
             using(var gpu=new IntegratedGpuControlResource(helper,intel,new(baseline,_=>Task.FromResult(true))))
             {
-                var initial=cpu.Probe(target,power);Require(initial.CanWrite && initial.Range!.DefaultValue==45,"CPU baseline/limit contract changed.");
-                var gpuInitial=gpu.Probe(gpuTarget,co);Require(gpuInitial.CanWrite && gpuInitial.Range!.DefaultValue==8,"iGPU target baseline missing.");
+                var initial=cpu.Probe(target,power);Require(initial.CanWrite && initial.Range!.DefaultValue is null,"CPU Probe sampled or fabricated a current value.");
+                var gpuInitial=gpu.Probe(gpuTarget,co);Require(gpuInitial.CanWrite && gpuInitial.Range!.DefaultValue is null,"iGPU Probe sampled or fabricated a baseline.");
+                Require(!Directory.Exists(directory),"Probe captured a restore baseline before an explicit write.");
                 Require((await cpu.WriteAsync(target,power,new(power.Field,20),default)).Status==AmdCpuControlStatus.Applied,"Recorded CPU setting failed.");
                 Require(helper.LastUnit=="W" && helper.LastWhich=="stapm","CPU unit/which was not transmitted.");
                 Require((await gpu.WriteAsync(gpuTarget,co,new(co.Field,-20),default)).Status==IntegratedGpuControlStatus.Applied,"Recorded iGPU setting failed.");
@@ -48,11 +49,18 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
             var occupied=Path.Combine(directory,"occupied");File.WriteAllText(occupied,"file");var warnings=0;
             using(var cpu=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(occupied),warning:(_,_,_)=>warnings++))
             {
-                Require(cpu.Probe(target,power).CanWrite && warnings>0,"CPU disk failure incorrectly became strict write gate.");
-                Require((await cpu.WriteAsync(target,power,new(power.Field,25),default)).Status==AmdCpuControlStatus.Applied,"CPU memory baseline/disk failure contract changed.");
+                Require(cpu.Probe(target,power).CanWrite && warnings==0,"CPU Probe attempted to capture a restore baseline.");
+                var count=helper.Calls;
+                Require((await cpu.WriteAsync(target,power,new(power.Field,25),default)).Status==AmdCpuControlStatus.Failed && warnings>0,"CPU write proceeded without a durable restore baseline.");
+                Require(helper.Calls==count+1,"CPU persistence failure reached the setter.");
             }
             using(var gpu=new IntegratedGpuControlResource(helper,intel,new(Path.Combine(occupied,"gpu.json"),_=>Task.FromResult(false))))
-                Require(gpu.Probe(gpuTarget,co) is{CanWrite:false,CanRead:true},"iGPU strict persistence admission changed.");
+            {
+                Require(gpu.Probe(gpuTarget,co).CanWrite,"iGPU Probe tried to capture a restore baseline.");
+                var count=helper.Calls;
+                Require((await gpu.WriteAsync(gpuTarget,co,new(co.Field,-10),default)).Status==IntegratedGpuControlStatus.Failed,"iGPU write proceeded without a durable restore baseline.");
+                Require(helper.Calls==count+1,"iGPU persistence failure reached the setter.");
+            }
             Require(helper.Disposals==0,"Shared helper disposed by resource.");
             Console.WriteLine("AMD CPU and integrated GPU control owners passed recorded shared-transport/table/unit/baseline/restart/unsupported and Intel identity/waiver/fractional MHz contracts; actual factories passive, no helper process/driver or hardware setter executed.");
         }

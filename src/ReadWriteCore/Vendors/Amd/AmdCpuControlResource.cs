@@ -161,15 +161,10 @@ public sealed class AmdCpuControlResource : IDisposable
             return AmdCpuControlAvailability.No(Describe(unverified), kind: AmdCpuControlUnavailableKind.NotImplemented);
         }
 
-        if (Ask("read", null) is not { } reading || !IsUsableReading(reading, writable.ReadingField))
-        {
-            return AmdCpuControlAvailability.No(BridgeSilent);
-        }
-
         if (!TryReadBaseline(target, writable, out var baseline)
             || baseline is null && File.Exists(options.BaselinePath(writable.BaselineFileName)))
             return AmdCpuControlAvailability.No(Describe(AmdCpuControlMessage.BaselineUnavailable));
-        return AmdCpuControlAvailability.Yes(RangeOf(writable, capability, reading, baseline));
+        return AmdCpuControlAvailability.Yes(RangeOf(writable, capability, baseline));
     }
     public static bool IsUsableReading(JsonElement reading, string? field)
         => reading.ValueKind == JsonValueKind.Object && Flag(reading, "ok")
@@ -178,15 +173,12 @@ public sealed class AmdCpuControlResource : IDisposable
     private AmdCpuControlRange RangeOf(
         CpuWritable writable,
         AmdCpuControlCapability capability,
-        JsonElement reading,
         double? saved)
     {
         var declared = capability.Range;
         // 读不回来的项（PBO 标量）用目录里写的默认值 —— 那个 1 倍是有文档的固定值，
         // 不是猜的。
-        var current = writable.ReadingField is { } field
-            ? Number(reading, field)
-            : declared?.DefaultValue;
+        var current = writable.ReadingField is null ? declared?.DefaultValue : null;
         double? baseline = saved ?? current;
 
         return declared is { } shape
@@ -227,7 +219,8 @@ public sealed class AmdCpuControlResource : IDisposable
                 // Capability-only files cannot prove which CPU or explicit operation they belonged to.
                 if (File.Exists(options.BaselinePath(writable.BaselineFileName)))
                     return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
-                var reading = await bridge.SendAsync("read", null, cancellationToken).ConfigureAwait(false);
+                var reading = writable.ReadingField is null ? null
+                    : await bridge.SendAsync("read", null, cancellationToken).ConfigureAwait(false);
                 var original = writable.ReadingField is { } field && reading is { } confirmed && IsUsableReading(confirmed, field)
                     ? Number(confirmed, field)
                     : writable.ReadingField is null ? 1d : null;
@@ -319,6 +312,9 @@ public sealed class AmdCpuControlResource : IDisposable
                 UnreadableReason: Describe(AmdCpuControlMessage.Unreadable));
         }
 
+        var description = await bridge.SendAsync("describe", null, cancellationToken).ConfigureAwait(false);
+        if (description is not { } facts || !Flag(facts, "available") || !Flag(facts, writable.DescribeFlag))
+            return new(target.Id, capability.Id, UnreadableReason: Text(description, "reason") ?? bridge.UnavailableReason ?? BridgeSilent);
         var reading = await bridge.SendAsync("read", null, cancellationToken)
             .ConfigureAwait(false);
         if (reading is not { } result || !Flag(result, "ok"))
@@ -345,6 +341,7 @@ public sealed class AmdCpuControlResource : IDisposable
     {
         value = null;
         var path = BaselinePath(target, writable);
+        if (!File.Exists(path)) return true;
         try
         {
             var baseline = JsonSerializer.Deserialize<RestoreBaseline>(File.ReadAllText(path));

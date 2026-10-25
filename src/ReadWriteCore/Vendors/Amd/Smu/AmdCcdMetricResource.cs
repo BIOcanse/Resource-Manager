@@ -33,15 +33,18 @@ public sealed class AmdCcdMetricResource : IDisposable
 {
     private readonly object gate = new();
     private readonly Func<AmdCcdCpuTarget, AmdCcdTemperatureReader> createReader;
+    private readonly Func<bool>? isAvailable;
     private AmdCcdCpuTarget? currentTarget;
     private AmdCcdTemperatureReader? reader;
     private bool disposed;
     private HashSet<int> discoveredSlots = [];
 
-    public AmdCcdMetricResource(Func<AmdCcdCpuTarget, AmdCcdTemperatureReader> createReader)
+    public AmdCcdMetricResource(Func<AmdCcdCpuTarget, AmdCcdTemperatureReader> createReader,
+        Func<bool>? isAvailable = null)
     {
         ArgumentNullException.ThrowIfNull(createReader);
         this.createReader = createReader;
+        this.isAvailable = isAvailable;
     }
 
     public AmdCcdTopologyRead Discover(CpuOsTopologyInformation? topology, uint maximumInstanceCount)
@@ -53,6 +56,11 @@ public sealed class AmdCcdMetricResource : IDisposable
             if (maximumInstanceCount > 16) throw new ArgumentOutOfRangeException(nameof(maximumInstanceCount));
             var (status, target) = ResolveTarget(topology);
             if (target is null) { Reset(); return new(status, []); }
+            if (isAvailable?.Invoke() == false)
+            {
+                Reset();
+                return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+            }
             if (reader is null || currentTarget?.BindingKey != target.BindingKey)
             {
                 Reset();
