@@ -545,6 +545,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     statuses.push(snapshot.status);
     data = snapshot.data;
   });
+  await waitFor(() => statuses.at(-1) === "error");
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(rejected, 1, "401 ends the stream without retrying");
   assert.equal(statuses.at(-1), "error");
@@ -552,10 +553,11 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   authorized = true;
   channel.reconnect();
   assert.equal(statuses.at(-1), "error", "reconnecting is demand, not a new value: the current snapshot stays until the stream delivers");
-  await flush();
+  // 重连要等旧流结束、传输关闭让出一轮再发请求，繁忙时一次 flush 不够，等到连上为止（上限 1 s）。
+  await waitFor(() => harness.streams.length > 0);
   assert.equal(harness.streams.length, 1, "the unchanged subscription set connects again");
   publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 7);
-  await flush();
+  await waitFor(() => statuses.at(-1) === "ready");
   assert.equal(statuses.at(-1), "ready");
   assert.equal(data, 7);
   assert.equal(rejected, 1);
