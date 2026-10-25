@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="WinUI\**\*.cs" />
+    <Compile Include="..\UI\Overlay\LegacyStartupModuleMigration.cs" Link="FrontendPackaging\LegacyStartupModuleMigration.cs" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Resource Manager-APP.Tests" />

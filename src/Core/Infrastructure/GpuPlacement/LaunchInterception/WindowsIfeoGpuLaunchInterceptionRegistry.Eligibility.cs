@@ -7,7 +7,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
 {
     private const ushort ImageFileMachineAmd64 = 0x8664;
 
-    private static EligibilityResult EvaluateEligibility(string? path, string brokerPath)
+    internal EligibilityResult EvaluateEligibility(string? path, string brokerPath)
     {
         var executablePath = NormalizePath(path);
         if (string.IsNullOrWhiteSpace(executablePath) || !File.Exists(executablePath))
@@ -28,10 +28,8 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
                 executablePath);
         }
 
-        var imageName = Path.GetFileName(executablePath);
-        if (imageName.Equals("ResourceManager.exe", StringComparison.OrdinalIgnoreCase)
-            || imageName.Equals("ResourceManager.NativeUi.exe", StringComparison.OrdinalIgnoreCase)
-            || imageName.Equals(BrokerFileName, StringComparison.OrdinalIgnoreCase))
+        if (imageCatalog.IsInfrastructureImage(executablePath)
+            || executablePath.Equals(Path.GetFullPath(brokerPath), StringComparison.OrdinalIgnoreCase))
         {
             return new EligibilityResult(
                 false,

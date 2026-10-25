@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("All", "Backend", "NativeUi", "Launcher")]
+    [ValidateSet("All", "Backend", "NativeUi", "Launcher", "SessionAgent")]
     [string]$Target = "All",
     [switch]$SkipFrontend,
     [switch]$SkipStop,
@@ -14,6 +14,7 @@ $ClientRoot = Join-Path $RepositoryRoot "src\UI\Frontend"
 $BackendProject = Join-Path $AppRoot "ResourceManager.App.csproj"
 $NativeUiProject = Join-Path $RepositoryRoot "src\UI\Core\ResourceManager.NativeUi.csproj"
 $LauncherProject = Join-Path $RepositoryRoot "src\UI\Launcher\ResourceManager.Launcher.csproj"
+$SessionAgentProject = Join-Path $RepositoryRoot "src\SessionAgent\ResourceManager.SessionAgent.csproj"
 $FrontendManifestPath = Join-Path $AppRoot "wwwroot\frontend-build.json"
 $GpuPlacementShimRoot = Join-Path $AppRoot "Native\GpuPlacementShim"
 $GpuPlacementShimBuild = Join-Path $GpuPlacementShimRoot "build.cmd"
@@ -26,6 +27,7 @@ $OutputRoot = Join-Path $RepositoryRoot "artifacts\local-publish"
 $BackendOutput = Join-Path $OutputRoot "ResourceManager"
 $NativeUiOutput = Join-Path $OutputRoot "ResourceManagerNativeUi"
 $LauncherOutput = Join-Path $OutputRoot "ResourceManagerLauncher"
+$SessionAgentOutput = Join-Path $OutputRoot "ResourceManagerSessionAgent"
 $FinalOutput = Join-Path $OutputRoot "ResourceManagerFinal"
 $BackendExe = Join-Path $BackendOutput "ResourceManager.exe"
 $NativeUiExe = Join-Path $NativeUiOutput "ResourceManager.NativeUi.exe"
@@ -141,6 +143,10 @@ if (-not $SkipStop -and $Target -ne 'Launcher' -and (Test-Path -LiteralPath $Dev
         $RepositoryRoot
 }
 
+if ($Target -eq "All") {
+    Invoke-CheckedCommand "cmd.exe" @("/d", "/c", "build.cmd") (Join-Path $AppRoot "Native\PerformanceOverlay")
+}
+
 if ($publishBackend) {
     if (-not $SkipFrontend) {
         Write-Step "构建前端生产资源。"
@@ -210,6 +216,11 @@ if ($Target -eq 'All' -or $Target -eq 'Launcher') {
         "-p:PublishDir=$LauncherOutput", '--nologo', '--verbosity', 'minimal') $RepositoryRoot
 }
 
+if ($Target -in @("All", "SessionAgent")) {
+    Clear-PublishDirectory $SessionAgentOutput
+    Invoke-CheckedCommand "dotnet" @("publish", $SessionAgentProject, "-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-p:PublishDir=$SessionAgentOutput", "--nologo", "--verbosity", "minimal") $RepositoryRoot
+}
+
 if ($publishBackend -and -not (Test-Path -LiteralPath $BackendExe)) {
     throw "后端发布完成但入口不存在：$BackendExe"
 }
@@ -246,6 +257,7 @@ if ($Target -eq "All") {
             "-BackendDirectory", $BackendOutput,
             "-NativeUiDirectory", $NativeUiOutput,
             "-LauncherDirectory", $LauncherOutput,
+            "-SessionAgentDirectory", $SessionAgentOutput,
             "-OutputDirectory", $FinalOutput
         ) `
         $RepositoryRoot

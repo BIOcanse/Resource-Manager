@@ -4,6 +4,7 @@ using Microsoft.Win32;
 using ResourceManager.Shared.ServiceHosting;
 using ResourceManager.Shared.Localization;
 using ResourceManager.Shared.Packages;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 using ResourceManager.Updater;
 
 namespace ResourceManager.Launcher;
@@ -40,6 +41,7 @@ internal static class Program
                 return 1;
             }
             var installation = DesktopInstallation.Read(registry, text);
+            using var packageUse = PackageUseGuard.Acquire(installation.Root);
             var state = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName);
             if (state is not null) WindowsServiceRegistration.RequireExpectedBinary(state, installation.Backend);
             if (serviceOnly)
@@ -64,7 +66,9 @@ internal static class Program
                         WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
                     }) ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
                 }, text.LauncherServiceStartFailed,
-                () => NativeUiOpenSessionClient.OpenAsync(installation.Backend, background, CancellationToken.None)
+                () => TrustedSessionLaunchClient.LaunchAsync(installation.Backend,
+                    new SessionLaunchRequest(installation.NativeUi, background ? "--background-startup" : "--show-existing"),
+                    string.Empty, text.LauncherUiStartFailed, CancellationToken.None)
                     .GetAwaiter().GetResult());
             return 0;
         }

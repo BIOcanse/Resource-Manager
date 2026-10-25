@@ -66,9 +66,9 @@ public sealed partial class LoopbackApiAccessTests
                 current.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), report, release }
             .Select(static value => $"\"{value}\""));
 
-        Assert.Throws<UnauthorizedAccessException>(() => broker.LaunchNativeUi(
+        Assert.Throws<UnauthorizedAccessException>(() => broker.LaunchDesktopProcess(
             session, identity.User.Value, executable, arguments));
-        using var child = Process.GetProcessById(checked((int)broker.LaunchNativeUi(
+        using var child = Process.GetProcessById(checked((int)broker.LaunchDesktopProcess(
             session, expectedSid, executable, arguments)));
         _ = child.SafeHandle;
         using var deadlineToken = new CancellationTokenSource(TimeSpan.FromSeconds(15));

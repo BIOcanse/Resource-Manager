@@ -60,7 +60,7 @@ inline Environment ConfigureChildEnvironment(
     const std::wstring& policyPath,
     const std::wstring& readyEvent,
     const std::wstring& vulkanDirectory,
-    const std::wstring& overlayVulkanDirectory = std::wstring())
+    const std::vector<std::pair<std::wstring, std::wstring>>& modules = {})
 {
     Environment child = inherited;
     // DEBUG_ONLY_THIS_PROCESS bypasses IFEO for this launch. A depth marker would
@@ -77,12 +77,12 @@ inline Environment ConfigureChildEnvironment(
         PrependEnvironmentList(child, pathVariable, vulkanDirectory);
         PrependEnvironmentList(child, L"VK_INSTANCE_LAYERS", L"VK_LAYER_RESOURCE_MANAGER_gpu_placement");
     }
-    if (!overlayVulkanDirectory.empty())
+    for (const auto& module : modules)
     {
         const wchar_t* pathVariable = child.find(L"VK_LAYER_PATH") != child.end()
             ? L"VK_LAYER_PATH" : L"VK_ADD_LAYER_PATH";
-        PrependEnvironmentList(child, pathVariable, overlayVulkanDirectory);
-        PrependEnvironmentList(child, L"VK_INSTANCE_LAYERS", L"VK_LAYER_RESOURCE_MANAGER_performance_overlay");
+        PrependEnvironmentList(child, pathVariable, module.first);
+        PrependEnvironmentList(child, L"VK_INSTANCE_LAYERS", module.second);
     }
     return child;
 }

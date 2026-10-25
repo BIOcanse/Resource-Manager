@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using ResourceManager.NativeUi;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
@@ -33,27 +35,152 @@ public sealed class NativeTrustedAccessKeyReaderTests(Xunit.Abstractions.ITestOu
         Assert.Equal("third", reader.Read());
     }
 
-    [Fact]
-    public void SecurityMetadataChangeInvalidatesAndValidationFailureCannotReturnTheCachedSecret()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SecurityMetadataChangeInvalidatesAndValidationFailureCannotReturnTheCachedSecret(bool directory)
     {
         using var temporary = new TrustedAccessTemporaryDirectory();
         var path = TrustedAccessKeyFile.PathForPackage(temporary.Root);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "first");
         var deny = false;
+        var validations = 0;
         var reader = new NativeTrustedAccessKeyReader(temporary.Root,
-            () => deny ? throw new UnauthorizedAccessException() : File.ReadAllText(path));
+            () => { validations++; return deny ? throw new UnauthorizedAccessException() : File.ReadAllText(path); });
         Assert.Equal("first", reader.Read());
-        deny = true;
-        var security = new FileInfo(path).GetAccessControl();
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-            FileSystemRights.ReadAttributes, AccessControlType.Allow));
-        new FileInfo(path).SetAccessControl(security);
-        Assert.Throws<UnauthorizedAccessException>(() => reader.Read());
-        Assert.Throws<UnauthorizedAccessException>(() => reader.Read());
-        deny = false;
-        Assert.Equal("first", reader.Read());
+        var target = directory ? Path.GetDirectoryName(path)! : path;
+        for (var index = 0; index < 128; index++)
+        {
+            var metadata = ReadBasicInformation(target);
+            var security = ReadSecurity(target, directory);
+            var before = security.GetSecurityDescriptorBinaryForm();
+            security.SetAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                index % 2 == 0 ? FileSystemRights.ReadAttributes : FileSystemRights.ReadExtendedAttributes, AccessControlType.Allow));
+            WriteSecurity(target, directory, security);
+            Assert.False(before.AsSpan().SequenceEqual(ReadSecurity(target, directory).GetSecurityDescriptorBinaryForm()));
+            // Timestamp collisions are real; force the exact collision deterministically without a timing delay.
+            RestoreBasicInformation(target, metadata);
+            var after = ReadBasicInformation(target);
+            Assert.Equal(metadata.LastWriteTime, after.LastWriteTime);
+            Assert.Equal(metadata.ChangeTime, after.ChangeTime);
+            deny = true;
+            var previousValidations = validations;
+            Assert.Throws<UnauthorizedAccessException>(() => reader.Read());
+            Assert.Equal(previousValidations + 1, validations);
+            Assert.Throws<UnauthorizedAccessException>(() => reader.Read());
+            Assert.Equal(previousValidations + 2, validations);
+            deny = false;
+            Assert.Equal("first", reader.Read());
+        }
+        output.WriteLine("Verified 128 actual {0} owner/DACL byte changes with equal metadata timestamps; each change reentered validation and failure never reused the secret.", directory ? "directory" : "file");
     }
+
+    [Fact]
+    public void LargerActualSecurityDescriptorIsReadAndUnchangedStorageStillUsesOneValidation()
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var path = TrustedAccessKeyFile.PathForPackage(temporary.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "first");
+        var security = new FileInfo(path).GetAccessControl();
+        for (var index = 0; index < 128; index++)
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier($"S-1-5-21-100-200-300-{1000 + index}"),
+                FileSystemRights.ReadAttributes, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
+        Assert.True(new FileInfo(path).GetAccessControl().GetSecurityDescriptorBinaryForm().Length > 512);
+        var validations = 0;
+        var reader = new NativeTrustedAccessKeyReader(temporary.Root, () => { validations++; return File.ReadAllText(path); });
+        for (var index = 0; index < 100; index++) Assert.Equal("first", reader.Read());
+        Assert.Equal(1, validations);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnavailableSecurityReadAccessClearsCacheUntilActualAclIsRestored(bool directory)
+    {
+        using var temporary = new TrustedAccessTemporaryDirectory();
+        var path = TrustedAccessKeyFile.PathForPackage(temporary.Root);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "first");
+        var validations = 0;
+        var reader = new NativeTrustedAccessKeyReader(temporary.Root, () => { validations++; return File.ReadAllText(path); });
+        Assert.Equal("first", reader.Read());
+        var target = directory ? Path.GetDirectoryName(path)! : path;
+        var security = ReadSecurity(target, directory);
+        var original = security.GetSecurityDescriptorBinaryForm();
+        // Keep the already granted WRITE_DAC handle so recovery does not depend on
+        // opening another handle after deliberately denying READ_CONTROL to the owner.
+        using var recovery = CreateFileW(target, 0x60080, FileShare.ReadWrite | FileShare.Delete,
+            IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
+        Assert.False(recovery.IsInvalid);
+        try
+        {
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-3-4"),
+                FileSystemRights.ReadPermissions, AccessControlType.Deny));
+            WriteSecurity(target, directory, security);
+            using var denied = CreateFileW(target, 0x20080, FileShare.ReadWrite | FileShare.Delete,
+                IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
+            var deniedError = Marshal.GetLastWin32Error();
+            Assert.True(denied.IsInvalid);
+            Assert.Equal(5, deniedError);
+            Assert.Throws<IOException>(() => reader.Read());
+            Assert.Throws<IOException>(() => reader.Read());
+            Assert.Equal(1, validations);
+        }
+        finally
+        {
+            if (!SetKernelObjectSecurity(recovery, 0x4, original))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        Assert.Equal("first", reader.Read());
+        Assert.Equal(2, validations);
+    }
+
+    private static FileSystemSecurity ReadSecurity(string path, bool directory)
+        => directory ? new DirectoryInfo(path).GetAccessControl() : new FileInfo(path).GetAccessControl();
+
+    private static void WriteSecurity(string path, bool directory, FileSystemSecurity security)
+    {
+        if (directory) new DirectoryInfo(path).SetAccessControl((DirectorySecurity)security);
+        else new FileInfo(path).SetAccessControl((FileSecurity)security);
+    }
+
+    private static BasicInformation ReadBasicInformation(string path)
+    {
+        using var handle = CreateFileW(path, 0x80, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
+        if (handle.IsInvalid || !GetFileInformationByHandleEx(handle, 0, out var value, checked((uint)Marshal.SizeOf<BasicInformation>())))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return value;
+    }
+
+    private static void RestoreBasicInformation(string path, BasicInformation value)
+    {
+        using var handle = CreateFileW(path, 0x100, FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
+        if (handle.IsInvalid || !SetFileInformationByHandle(handle, 0, ref value, checked((uint)Marshal.SizeOf<BasicInformation>())))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BasicInformation
+    {
+        internal long CreationTime, LastAccessTime, LastWriteTime, ChangeTime;
+        internal uint Attributes;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(string path, uint access, FileShare share, IntPtr security,
+        FileMode mode, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int information, out BasicInformation value, uint length);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int information, ref BasicInformation value, uint length);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetKernelObjectSecurity(SafeFileHandle handle, uint information, byte[] descriptor);
 
     [Fact]
     public void StorageChangingDuringValidationIsRejectedAndNextReadRetries()

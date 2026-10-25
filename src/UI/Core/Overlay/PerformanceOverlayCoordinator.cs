@@ -36,8 +36,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         subscriptionCancellation = cancellation;
         UpdateWindowTimerState();
         var generation = ++streamGeneration;
-        _ = OverlaySubscriptions.RunAsync(session.ReadPerformanceOverlaySettingsAsync,
-            FrontendPreferencesOwner.Current.Read,
+        _ = OverlaySubscriptions.RunAsync(session.ReadStartupModulesAsync, FrontendPreferencesOwner.Current.Read,
             (subscriptions, token) => ReadStreamAsync(session, subscriptions, generation, token),
             () => Post(() => { if (generation == streamGeneration) Clear(); }),
             TimeSpan.FromMilliseconds(500), cancellation.Token);
@@ -56,7 +55,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
     internal void ApplySnapshot(OverlaySnapshot snapshot)
     {
         if (disposed) return;
-        if (snapshot.Version != 2) { Clear(); return; }
+        if (snapshot.Version != 3) { Clear(); return; }
         var current = OverlayTargetSelection.Current(snapshot);
         foreach (var id in targets.Keys.Where(id => !current.ContainsKey(id)).ToArray())
             Remove(id);
@@ -188,6 +187,12 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
                         || !root.TryGetProperty("value", out var value)) continue;
                     var snapshot = value.Deserialize<OverlaySnapshot>(StreamJson);
                     if (snapshot is null) continue;
+                    var preferences = FrontendPreferencesOwner.Current.Read();
+                    snapshot = snapshot with { Targets = snapshot.Targets.Select(target =>
+                    {
+                        var choice = preferences.Overlays.FirstOrDefault(pair => pair.Key.Equals(target.SoftwareId, StringComparison.OrdinalIgnoreCase)).Value ?? new();
+                        return target with { Settings = new(target.SoftwareId, choice.Mode == "injected" || choice.Enabled, choice.Mode) };
+                    }).ToArray() };
                     snapshots[subscriptionId.GetString()!] = snapshot;
                     var combined = snapshot with { Targets = snapshots.Values.SelectMany(static item => item.Targets).ToArray() };
                     Post(() =>

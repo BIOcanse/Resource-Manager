@@ -32,7 +32,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var needsGpu = ids.Contains(PerformanceOverlayMetricIds.Gpu);
         var needsVram = ids.Contains(PerformanceOverlayMetricIds.Vram);
         var systemIds = ids.Where(static id => !id.StartsWith("target.", StringComparison.Ordinal)).ToArray();
-        var store = services.GetRequiredService<IPerformanceOverlaySettingsStore>();
         var processSource = services.GetRequiredService<ISchedulingProcessFactObservationSource>();
         var resourceSource = services.GetRequiredService<IResourceBreakdownObservationSource>();
         var metricSource = services.GetRequiredService<IMetricSnapshotObservationSource>();
@@ -46,19 +45,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 using var timer = new PeriodicTimer(interval);
                 do
                 {
-                    var setting = await store.GetSoftwareAsync(softwareId, cancellationToken);
-                    PerformanceOverlaySettings[] enabled = setting.Enabled ? [setting] : [];
-                    if (setting.Enabled && identityLease is null)
-                        identityLease = resourceSource.AcquireSubscription(
-                            $"performance-overlay:{subscription.Id}:identity", new ResourceBreakdownSampleRequest(
-                                [], new Dictionary<string, string>(), ProcessSampleDetailLevel.SmartSchedulingLite)
-                            { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] }, interval);
-                    else if (!setting.Enabled) { identityLease?.Dispose(); identityLease = null; }
+                    identityLease ??= resourceSource.AcquireSubscription(
+                        $"performance-overlay:{subscription.Id}:identity", new ResourceBreakdownSampleRequest(
+                            [], new Dictionary<string, string>(), ProcessSampleDetailLevel.SmartSchedulingLite)
+                        { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] }, interval);
                     var inventory = new SchedulingGpuInventorySnapshot(
                         SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []);
                     var processes = identityLease is null ? null : processSource.ReadLatest(new(
                         SchedulingProcessMetricMask.None, inventory));
-                    var running = PerformanceOverlayProjection.SelectTargets(enabled, processes);
+                    var running = PerformanceOverlayProjection.SelectTargets([softwareId], processes);
                     var hasTargets = running.Count > 0;
                     if (hasTargets && processMask != SchedulingProcessMetricMask.None && processLease is null)
                         processLease = processSource.AcquireSubscription(
@@ -100,7 +95,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     else if (!hasTargets || !needsFrames) { frameLease?.Dispose(); frameLease = null; }
                     var frames = frameLease is null ? null : frameSource.Read(TimeSpan.FromSeconds(1));
                     await writer.WriteAsync(subscription.Id, PerformanceOverlayProjection.Create(
-                        enabled, ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow), cancellationToken);
+                        [softwareId], ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow), cancellationToken);
                 } while (await timer.WaitForNextTickAsync(cancellationToken));
             }
             finally

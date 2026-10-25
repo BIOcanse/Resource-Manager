@@ -4,27 +4,23 @@ using ResourceManager.NativeUi.Preferences;
 namespace ResourceManager.NativeUi.Overlay;
 
 internal sealed record OverlaySubscription(string Id, string Path);
-internal sealed record OverlaySettingsDocument(int Version, IReadOnlyList<OverlaySettings> Software);
 
 internal static class OverlaySubscriptions
 {
-    internal static OverlaySubscription[] Create(IReadOnlyList<OverlaySettings> settings, FrontendPreferences preferences) =>
-        settings.Where(static setting => setting.Enabled)
-            .OrderBy(static setting => setting.SoftwareId, StringComparer.OrdinalIgnoreCase)
-            .Select(setting => (setting.SoftwareId, Metrics: preferences.Overlays.FirstOrDefault(pair =>
-                pair.Key.Equals(setting.SoftwareId, StringComparison.OrdinalIgnoreCase)).Value?.Metrics
-                ?? FrontendPoints.MetricOrder))
-            .Where(static item => item.Metrics.Count > 0)
-            .Select((item, index) => new OverlaySubscription($"overlay-{index}",
-                "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(item.SoftwareId)
-                + string.Concat(item.Metrics.OrderBy(static id => id, StringComparer.Ordinal)
+    internal static OverlaySubscription[] Create(FrontendPreferences preferences, StartupModuleOperationsDocument? operations = null) =>
+        preferences.Overlays.Where(pair => OverlayStartupModules.Enabled(pair.Key, pair.Value, operations ?? new(1, [])))
+            .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Where(static pair => pair.Value.Metrics.Count > 0)
+            .Select((pair, index) => new OverlaySubscription($"overlay-{index}",
+                "/api/performance-overlay/subscribe?intervalMs=500&softwareId=" + Uri.EscapeDataString(pair.Key)
+                + string.Concat(pair.Value.Metrics.OrderBy(static id => id, StringComparer.Ordinal)
                     .Select(static id => "&ids=" + Uri.EscapeDataString(id)))))
             .ToArray();
 
     // The controller observes operational settings without sampling. Only the
     // explicit data stream below owns observation dependencies.
     internal static async Task RunAsync(
-        Func<CancellationToken, Task<OverlaySettingsDocument>> readSettings,
+        Func<CancellationToken, Task<StartupModuleOperationsDocument>> readOperations,
         Func<FrontendPreferences> readPreferences,
         Func<OverlaySubscription[], CancellationToken, Task> observe,
         Action clear, TimeSpan settingsInterval, CancellationToken cancellationToken)
@@ -39,8 +35,8 @@ internal static class OverlaySubscriptions
             {
                 try
                 {
-                    var settings = await readSettings(cancellationToken);
-                    var desired = Create(settings.Software, readPreferences());
+                    var operations = await readOperations(cancellationToken);
+                    var desired = Create(readPreferences(), operations);
                     var signature = string.Join('\n', desired.Select(static item => item.Path));
                     if (signature == previous) continue;
                     active?.Cancel();

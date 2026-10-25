@@ -7,7 +7,6 @@ using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
-using ResourceManager.App.Infrastructure.Overlay;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -22,7 +21,7 @@ public sealed class GpuGraphicsApiIdentificationTests
     [InlineData("d3d9.dll", GpuGraphicsApi.D3D9, null)]
     public void ModuleCandidatesMapToTheExistingRoute(string modules, GpuGraphicsApi expected, string? provider)
     {
-        var api = new WindowsGpuGraphicsApiDetector((_, _) => modules.Split(',')).Detect(42, "target.exe");
+        var api = GpuGraphicsApiRoutes.CollectModuleCandidates(modules.Split(','));
         Assert.Equal(expected, api);
         Assert.Equal(provider, GpuGraphicsApiRoutes.StartupProvider(api));
         var runtimeProvider = expected == GpuGraphicsApi.Vulkan ? GpuPlacementProviderIds.VulkanExplicitLayer
@@ -30,23 +29,6 @@ public sealed class GpuGraphicsApiIdentificationTests
                 ? GpuPlacementProviderIds.D3dDeviceCreateShim : null;
         Assert.Equal(runtimeProvider, GpuGraphicsApiRoutes.RuntimeProvider(api));
     }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("d3d12core.dll")]
-    [InlineData("d3d12.dll,vulkan-1.dll")]
-    [InlineData("vulkan-1.dll,opengl32.dll")]
-    [InlineData("ResourceManager.GpuPlacementShim.dll,d3d11.dll,d3d12.dll")]
-    [InlineData("ResourceManager.VulkanPlacementLayer.dll,vulkan-1.dll")]
-    [InlineData("ResourceManager.PerformanceOverlay.dll,d3d11.dll")]
-    [InlineData("ResourceManager.VulkanPerformanceOverlayLayer.dll,vulkan-1.dll")]
-    public void MissingAmbiguousAndShimOwnedImportsAreNotSuccessfulDetection(string? modules)
-        => Assert.Null(new WindowsGpuGraphicsApiDetector((_, _) => modules?.Split(',')).Detect(42, "target.exe"));
-
-    [Fact]
-    public void InvalidPidDoesNotReadModules()
-        => Assert.Null(new WindowsGpuGraphicsApiDetector((_, _) => throw new Exception("Unexpected read")).Detect(0, "target.exe"));
 
     [Theory]
     [InlineData(GpuGraphicsApi.D3D11)]
@@ -229,7 +211,7 @@ public sealed class GpuGraphicsApiIdentificationTests
         var plan = new Plans(software);
         var resolver = new GpuStartupPlacementResolver(policies, plan, new D3d11ProxyShimRuntime(files),
             new JsonGpuPlacementProcessHistoryStore(files),
-            new JsonPerformanceOverlaySettingsStore(files), new EmptySoftwareRegistryView(),
+            new EmptyStartupModuleSettingsStore(), ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current, new EmptySoftwareRegistryView(),
             NullLogger<GpuStartupPlacementResolver>.Instance);
         var result = await resolver.ResolveAsync(new(files.Target), default);
         if (expectedProvider is null)
@@ -248,7 +230,7 @@ public sealed class GpuGraphicsApiIdentificationTests
         {
             var withoutHistory = new GpuStartupPlacementResolver(policies, plan, new D3d11ProxyShimRuntime(files),
                 new JsonGpuPlacementProcessHistoryStore(noRecord),
-                new JsonPerformanceOverlaySettingsStore(files), new EmptySoftwareRegistryView(),
+                new EmptyStartupModuleSettingsStore(), ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current, new EmptySoftwareRegistryView(),
                 NullLogger<GpuStartupPlacementResolver>.Instance);
             var unknown = await withoutHistory.ResolveAsync(new(files.Target), default);
             Assert.Equal("graphics-api-unidentified", unknown.Status);

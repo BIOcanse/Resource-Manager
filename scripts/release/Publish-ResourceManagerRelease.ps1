@@ -41,10 +41,16 @@ finally {
 # The backend service and the native UI publish as folders (user decisions 2026-10-24): every assembly
 # is mapped from its own file, so the two long-running processes do not keep a private decompressed
 # copy of each assembly beside the mapped bundle. The short-lived programs stay single-file.
+Push-Location (Join-Path $app 'Native/PerformanceOverlay')
+try {
+    & cmd.exe /d /c build.cmd
+    if ($LASTEXITCODE -ne 0) { throw "Frontend native module build failed: $LASTEXITCODE" }
+} finally { Pop-Location }
 $projects = @(
     @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend'; SingleFile = $false },
     @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui'; SingleFile = $false },
     @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher'; SingleFile = $true },
+    @{ Project = (Join-Path $repo 'src\SessionAgent\ResourceManager.SessionAgent.csproj'); Directory = 'session-agent'; SingleFile = $true },
     @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer'; SingleFile = $true }
     @{ Project = (Join-Path $repo 'src\Uninstaller\ResourceManager.Uninstaller.csproj'); Directory = 'uninstaller'; SingleFile = $true }
     @{ Project = (Join-Path $repo 'src\Updater\WinUI\ResourceManager.UpdateManager.csproj'); Directory = 'update-manager'; SingleFile = $true }
@@ -71,13 +77,15 @@ New-Item -ItemType Directory -Path $startEntryOutput | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEXITCODE" }
 & (Join-Path $scriptsRoot 'validation\Test-ResourceManagerThirdPartyNotices.ps1') `
     -BackendPublishRoot (Join-Path $OutputRoot 'backend') -NativeUiPublishRoot (Join-Path $OutputRoot 'ui') `
-    -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') | Out-Null
+    -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') -SessionAgentPublishRoot (Join-Path $OutputRoot 'session-agent') | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker | Out-Null
+& (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
+    -ExecutablePath (Join-Path $OutputRoot 'session-agent\ResourceManager.SessionAgent.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'installer\Install.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'update-manager\ResourceManager.UpdateManager.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $PSScriptRoot 'New-ResourceManagerFinalImage.ps1') `
     -BackendDirectory (Join-Path $OutputRoot 'backend') -NativeUiDirectory (Join-Path $OutputRoot 'ui') `
-    -LauncherDirectory (Join-Path $OutputRoot 'launcher') -OutputDirectory (Join-Path $OutputRoot 'image')
+    -LauncherDirectory (Join-Path $OutputRoot 'launcher') -SessionAgentDirectory (Join-Path $OutputRoot 'session-agent') -OutputDirectory (Join-Path $OutputRoot 'image')

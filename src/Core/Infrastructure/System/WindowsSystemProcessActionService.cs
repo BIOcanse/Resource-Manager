@@ -31,9 +31,7 @@ public sealed class WindowsSystemProcessActionService(
         var query = CleanQuery(request.Query);
         var url = $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}";
         var shellRequest = new UserShellExecuteRequest(url, "");
-        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
-            NativeUiLaunchHostedService.ResolveNativeUiPath(),
-            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
+        _ = SessionAgentLauncher.Launch(sessionBroker, caller, shellRequest);
 
         return new LocalOnlineSearchResult(query, url);
     }
@@ -48,9 +46,7 @@ public sealed class WindowsSystemProcessActionService(
 
         var normalizedPath = NormalizeExistingPath(request.Path);
         var shellRequest = new UserShellExecuteRequest(normalizedPath, "", "properties");
-        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
-            NativeUiLaunchHostedService.ResolveNativeUiPath(),
-            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
+        _ = SessionAgentLauncher.Launch(sessionBroker, caller, shellRequest);
 
         return new LocalPathOpenResult(
             normalizedPath,

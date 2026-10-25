@@ -149,6 +149,9 @@ export interface SettingsCopy {
     crashRecoveryReadFailed: string;
     autoStartTitle: string;
     autoStartDescription: string;
+    loginStartTitle: string;
+    loginStartDescription: string;
+    loginStartUnavailable: string;
     taskManagerTitle: string;
     taskManagerDescription: string;
     forceTerminateTitle: string;

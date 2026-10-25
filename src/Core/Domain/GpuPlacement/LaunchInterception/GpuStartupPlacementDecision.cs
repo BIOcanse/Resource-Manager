@@ -20,9 +20,10 @@ public sealed record GpuStartupPlacementDecision(
     string? PolicyPath,
     string? TargetAdapterName,
     string? TargetLuid,
-    IReadOnlyList<string> StartupProviders,
-    bool OverlayEnabled = false)
+    IReadOnlyList<string> StartupProviders)
 {
+    public IReadOnlyList<StartupModulePlan> StartupModules { get; init; } = [];
+
     public bool ShouldInject => Decision.Equals(
         GpuStartupPlacementDecisionKinds.Inject,
         StringComparison.OrdinalIgnoreCase);

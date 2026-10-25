@@ -56,7 +56,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ProductUpdateCoordinator>();
         if (hostEnvironment.IsWindowsService && startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
-            services.AddSingleton<IProductUiSessionPresence, ProductUiSessionPresence>();
+            services.AddSingleton<IProductPackageUsage, ProductPackageUsage>();
             services.AddBusinessBlockHostedService<AutomaticProductUpdateService>();
         }
 

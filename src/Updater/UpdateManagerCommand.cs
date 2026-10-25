@@ -79,7 +79,8 @@ public static class UpdateManagerCommand
             var runtime = new WindowsUpdateRuntime();
             var service = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName)
                 ?? throw new InvalidOperationException(text.LauncherServiceStartFailed);
-            await runtime.WaitForNativeUiExitAsync(target, cancellationToken);
+            using var maintenance = await runtime.AcquirePackageMaintenanceAsync(target, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             runtime.StopService(target);
             try
             {

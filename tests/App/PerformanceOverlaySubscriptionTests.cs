@@ -33,10 +33,8 @@ public sealed class PerformanceOverlaySubscriptionTests
         var resourceSource = new ResourceSource();
         var metricSource = new MetricSource();
         var builder = WebApplication.CreateBuilder();
-        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read");
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "metrics.read", "processes.read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var settings = new SettingsStore();
-        builder.Services.AddSingleton<IPerformanceOverlaySettingsStore>(settings);
         builder.Services.AddSingleton<ISchedulingProcessFactObservationSource>(processSource);
         builder.Services.AddSingleton<IFrameTimingObservationSource>(frameSource);
         builder.Services.AddSingleton<IResourceBreakdownObservationSource>(resourceSource);
@@ -106,10 +104,7 @@ public sealed class PerformanceOverlaySubscriptionTests
         Assert.Equal(0, resourceSource.ActiveCount);
         Assert.Equal(0, metricSource.ActiveCount);
         Assert.Equal(0, processSource.ActiveCount);
-        settings.Enabled = false;
-        do { Assert.Empty(await ReadTargetsAsync(reader, timeout.Token)); }
-        while (resourceSource.IdentityActiveCount > 0);
-        Assert.Equal(0, resourceSource.IdentityActiveCount);
+        Assert.Equal(1, resourceSource.IdentityActiveCount); // The explicit subscription owns identity demand.
 
         await timeout.CancelAsync();
         response.Dispose();
@@ -148,28 +143,6 @@ public sealed class PerformanceOverlaySubscriptionTests
             InventoryProcesses = processes,
             AttributionProcesses = processes
         };
-
-    private sealed class SettingsStore : IPerformanceOverlaySettingsStore
-    {
-        public bool Enabled = true;
-        private static readonly PerformanceOverlaySettings GameSettings =
-            PerformanceOverlaySettings.Default("game") with
-            {
-                Enabled = true
-            };
-        private static readonly PerformanceOverlaySettings OtherGameSettings =
-            PerformanceOverlaySettings.Default("other-game") with
-            {
-                Enabled = true
-            };
-
-        public Task<PerformanceOverlaySettingsDocument> GetAsync(CancellationToken cancellationToken)
-            => Task.FromResult(new PerformanceOverlaySettingsDocument(1, [GameSettings, OtherGameSettings]));
-        public Task<PerformanceOverlaySettings> GetSoftwareAsync(string softwareId, CancellationToken cancellationToken)
-            => Task.FromResult(softwareId == "game" ? GameSettings with { Enabled = Enabled } : OtherGameSettings);
-        public Task<PerformanceOverlaySettings> SaveSoftwareAsync(PerformanceOverlaySettings settings, CancellationToken cancellationToken)
-            => Task.FromResult(settings);
-    }
 
     private sealed class ProcessSource : ISchedulingProcessFactObservationSource
     {

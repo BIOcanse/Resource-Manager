@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "15DB31F41AD115E483FC7D9EC13C2DBA8D3C865EFAF7763564BEAA55DCBE8A5B",
+  "contractFingerprint": "68B559F7ABCCFA044BA0BC917EA6D26217DD2C3E7FF780FB13AE45AF22BC3500",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -101,6 +101,16 @@
       "order": 3,
       "points": [
         "0001000200200000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/trusted_access",
+      "parent": "resource-manager/backend",
+      "name": "trusted_access",
+      "description": "Bounded local authorization request lifetime.",
+      "order": 4,
+      "points": [
+        "0001000200210000"
       ]
     }
   ]

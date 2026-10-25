@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "id": "performance-overlay-preload",
+      "kind": "preload",
+      "image": "Bin/ResourceManagerNativeUi/Modules/ResourceManager.PerformanceOverlay.dll",
+      "source": "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.PerformanceOverlay.dll"
+    },
+    {
+      "id": "performance-overlay-vulkan",
+      "kind": "vulkan-layer",
+      "image": "Bin/ResourceManagerNativeUi/Modules/ResourceManager.VulkanPerformanceOverlayLayer.dll",
+      "source": "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.VulkanPerformanceOverlayLayer.dll",
+      "manifest": "Bin/ResourceManagerNativeUi/Modules/ResourceManager.VulkanPerformanceOverlayLayer.json",
+      "manifestSource": "src/Core/Native/PerformanceOverlay/ResourceManager.VulkanPerformanceOverlayLayer.json",
+      "layerName": "VK_LAYER_RESOURCE_MANAGER_performance_overlay"
+    }
+  ]
+}

@@ -292,13 +292,11 @@ public sealed class WindowsSystemProcessActionServiceTests : IDisposable
         internal List<UserShellExecuteRequest> Requests { get; } = [];
         public IReadOnlyList<uint> GetActiveSessionIds() => Active ? [7u] : [];
         public string? GetUserSid(uint sessionId) => UserSid;
-        public NativeUiProcessPresence GetNativeUiProcessPresence(uint sessionId, string executablePath) => throw new NotSupportedException();
-        public uint LaunchNativeUi(uint sessionId, string executablePath, string arguments) => throw new NotSupportedException();
         public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         {
             Assert.Equal(7u, sessionId);
             Assert.Equal(UserSid, expectedUserSid);
-            Assert.EndsWith("ResourceManager.NativeUi.exe", executablePath);
+            Assert.EndsWith("ResourceManager.SessionAgent.exe", executablePath);
             Requests.Add(UserShellExecuteRequest.Decode(arguments[(UserShellExecuteRequest.Argument.Length + 1)..]));
             return 1;
         }

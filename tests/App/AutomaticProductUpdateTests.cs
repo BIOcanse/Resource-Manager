@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Security.Principal;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Updates;
@@ -11,6 +12,36 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AutomaticProductUpdateTests
 {
+    [Fact]
+    public async Task GenericPackageLeasesPermitPreparationAndDeferApplicationUntilBothClientsExit()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        if (identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true
+            && !new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return;
+        using var fixture = new Fixture();
+        PackageUseGuard.Prepare(fixture.Root);
+        fixture.PackageUsage.ReadUsage = () =>
+        {
+            using var maintenance = PackageUseGuard.TryAcquireMaintenance(fixture.Root);
+            return maintenance is null;
+        };
+        using var first = PackageUseGuard.Acquire(fixture.Root);
+        using var second = PackageUseGuard.Acquire(fixture.Root);
+        var coordinator = fixture.Coordinator();
+        using var service = fixture.Service(coordinator);
+        await service.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(["0.3.0"], fixture.Prepared);
+        Assert.Equal("pendingApply", coordinator.Status.Stage);
+        Assert.Equal(0, fixture.Launches);
+        first.Dispose();
+        await service.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(0, fixture.Launches);
+        second.Dispose();
+        await service.RunOnceAsync(CancellationToken.None);
+        await service.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(1, fixture.Launches);
+    }
+
     [Fact]
     public async Task DisabledSwitchPreventsChecksPreparationAndApplication()
     {
@@ -64,17 +95,17 @@ public sealed class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task UiOpenDefersPreparedUpdateUntilSafeWindowAndLaunchesOnlyOnce()
+    public async Task PackageUseDefersPreparedUpdateUntilSafeWindowAndLaunchesOnlyOnce()
     {
         using var fixture = new Fixture();
-        fixture.Sessions.Open = true;
+        fixture.PackageUsage.InUse = true;
         var coordinator = fixture.Coordinator();
         using var service = fixture.Service(coordinator);
         await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal("pendingApply", coordinator.Status.Stage);
         Assert.Equal(["0.3.0"], fixture.Prepared);
         Assert.Equal(0, fixture.Launches);
-        fixture.Sessions.Open = false;
+        fixture.PackageUsage.InUse = false;
         await service.RunOnceAsync(CancellationToken.None);
         await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1, fixture.Launches);
@@ -85,13 +116,13 @@ public sealed class AutomaticProductUpdateTests
     public async Task PendingPreparedPackageSurvivesRestartAndAppliesWithoutRedownload()
     {
         using var fixture = new Fixture();
-        fixture.Sessions.Open = true;
+        fixture.PackageUsage.InUse = true;
         using (var first = fixture.Service(fixture.Coordinator()))
             await first.RunOnceAsync(CancellationToken.None);
         var restarted = fixture.Coordinator();
         Assert.Equal("pendingApply", restarted.Status.Stage);
         Assert.Equal("0.3.0", restarted.Status.TargetVersion);
-        fixture.Sessions.Open = false;
+        fixture.PackageUsage.InUse = false;
         using var second = fixture.Service(restarted);
         await second.RunOnceAsync(CancellationToken.None);
         Assert.Single(fixture.Prepared);
@@ -175,7 +206,7 @@ public sealed class AutomaticProductUpdateTests
         fixture.Enabled = false;
         await service.RunOnceAsync(CancellationToken.None);
         fixture.Enabled = true;
-        fixture.Sessions.Open = true;
+        fixture.PackageUsage.InUse = true;
         fixture.PrepareOverride = null;
         await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal(["0.3.0", "0.3.0"], fixture.Prepared);
@@ -214,7 +245,7 @@ public sealed class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task DisabledIdleHasNoTimersPresenceChecksOrSettingsReadsUntilPublication()
+    public async Task DisabledIdleHasNoTimersPackageUseChecksOrSettingsReadsUntilPublication()
     {
         using var fixture = new Fixture { Enabled = false };
         using var service = fixture.Service(fixture.Coordinator());
@@ -225,7 +256,7 @@ public sealed class AutomaticProductUpdateTests
             fixture.Clock.Advance(TimeSpan.FromDays(30));
             Assert.Equal(1, fixture.SettingsReads);
             Assert.Equal(0, fixture.Clock.ActiveTimers);
-            Assert.Equal(0, fixture.Sessions.Checks);
+            Assert.Equal(0, fixture.PackageUsage.Checks);
             Assert.Equal(0, fixture.Checks);
             fixture.PublishSettings();
             await fixture.WaitForSettingsReadsAsync(2);
@@ -233,7 +264,7 @@ public sealed class AutomaticProductUpdateTests
         finally { await service.StopAsync(CancellationToken.None); }
         Assert.Equal(2, fixture.SettingsReads);
         Assert.Equal(0, fixture.Clock.ActiveTimers);
-        Assert.Equal(0, fixture.Sessions.Checks);
+        Assert.Equal(0, fixture.PackageUsage.Checks);
         fixture.PublishSettings();
         Assert.Equal(2, fixture.SettingsReads); // Subscription is detached on stop.
     }
@@ -253,34 +284,34 @@ public sealed class AutomaticProductUpdateTests
             await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(6));
             Assert.Equal(1, fixture.Checks);
             Assert.Equal(2, fixture.SettingsReads);
-            Assert.Equal(0, fixture.Sessions.Checks);
+            Assert.Equal(0, fixture.PackageUsage.Checks);
         }
         finally { await service.StopAsync(CancellationToken.None); }
     }
 
     [Fact]
-    public async Task PendingPresenceIsCheckedOnlyAtSixtySecondIntervalThenAppliesOnce()
+    public async Task PendingPackageUseIsCheckedOnlyAtSixtySecondIntervalThenAppliesOnce()
     {
         using var fixture = new Fixture();
-        fixture.Sessions.Open = true;
+        fixture.PackageUsage.InUse = true;
         var coordinator = fixture.Coordinator();
         using var service = fixture.Service(coordinator);
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await fixture.Clock.WaitForTimerAsync(AutomaticProductUpdateService.UiPresenceRecheckInterval);
+            await fixture.Clock.WaitForTimerAsync(AutomaticProductUpdateService.PackageUseRecheckInterval);
             Assert.Equal("pendingApply", coordinator.Status.Stage);
-            Assert.Equal(1, fixture.Sessions.Checks);
+            Assert.Equal(1, fixture.PackageUsage.Checks);
             var readsAfterStageChanges = fixture.SettingsReads;
             fixture.Clock.Advance(TimeSpan.FromSeconds(59));
-            Assert.Equal(1, fixture.Sessions.Checks);
+            Assert.Equal(1, fixture.PackageUsage.Checks);
             Assert.Equal(readsAfterStageChanges, fixture.SettingsReads);
-            fixture.Sessions.Open = false;
+            fixture.PackageUsage.InUse = false;
             fixture.Clock.Advance(TimeSpan.FromSeconds(1));
             await fixture.Launched.Task.WaitAsync(TimeSpan.FromSeconds(3));
         }
         finally { await service.StopAsync(CancellationToken.None); }
-        Assert.Equal(2, fixture.Sessions.Checks);
+        Assert.Equal(2, fixture.PackageUsage.Checks);
         Assert.Equal(1, fixture.Launches);
         Assert.Equal("waitingForExit", coordinator.Status.Stage);
         Assert.Equal(0, fixture.Clock.ActiveTimers);
@@ -289,10 +320,10 @@ public sealed class AutomaticProductUpdateTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ManualPreparationWakesSleepingEnabledOwnerAndUsesSafeWindow(bool uiOpen)
+    public async Task ManualPreparationWakesSleepingEnabledOwnerAndUsesSafeWindow(bool packageInUse)
     {
         using var fixture = new Fixture { Listing = Catalog("0.2.4") };
-        fixture.Sessions.Open = uiOpen;
+        fixture.PackageUsage.InUse = packageInUse;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finish = new TaskCompletionSource<PreparedProductUpdate>(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.PrepareOverride = (_, _) => { entered.TrySetResult(); return finish.Task; };
@@ -309,23 +340,23 @@ public sealed class AutomaticProductUpdateTests
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             await fixture.WaitForSettingsReadsAsync(readsBeforeSubmit + 1);
             Assert.Equal(0, fixture.Clock.ActiveTimers); // Busy manual prepare has no deadline.
-            Assert.Equal(0, fixture.Sessions.Checks);
+            Assert.Equal(0, fixture.PackageUsage.Checks);
             finish.SetResult(new("0.3.0", fixture.Workspace, Path.Combine(fixture.Workspace, "package")));
 
-            if (uiOpen)
+            if (packageInUse)
             {
                 await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(60));
                 Assert.Equal(before, fixture.Clock.GetUtcNow());
                 Assert.Equal("pendingApply", coordinator.Status.Stage);
-                Assert.Equal(1, fixture.Sessions.Checks);
+                Assert.Equal(1, fixture.PackageUsage.Checks);
                 Assert.Equal(0, fixture.Launches);
                 fixture.Clock.Advance(TimeSpan.FromSeconds(59));
-                Assert.Equal(1, fixture.Sessions.Checks);
-                fixture.Sessions.Open = false;
+                Assert.Equal(1, fixture.PackageUsage.Checks);
+                fixture.PackageUsage.InUse = false;
                 fixture.Clock.Advance(TimeSpan.FromSeconds(1));
             }
             await fixture.Launched.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            Assert.Equal(before + (uiOpen ? TimeSpan.FromSeconds(60) : TimeSpan.Zero), fixture.Clock.GetUtcNow());
+            Assert.Equal(before + (packageInUse ? TimeSpan.FromSeconds(60) : TimeSpan.Zero), fixture.Clock.GetUtcNow());
         }
         finally
         {
@@ -333,13 +364,13 @@ public sealed class AutomaticProductUpdateTests
             await service.StopAsync(CancellationToken.None);
         }
         Assert.Equal(0, fixture.Plans.Current.Version); // No settings publication was needed.
-        Assert.Equal(uiOpen ? 2 : 1, fixture.Sessions.Checks);
+        Assert.Equal(packageInUse ? 2 : 1, fixture.PackageUsage.Checks);
         Assert.Equal(1, fixture.Launches);
         Assert.Equal("waitingForExit", coordinator.Status.Stage);
     }
 
     [Fact]
-    public async Task ManualPendingUpdateWakesDisabledOwnerWithoutPresenceCheckOrAutomaticApply()
+    public async Task ManualPendingUpdateWakesDisabledOwnerWithoutPackageUseCheckOrAutomaticApply()
     {
         using var fixture = new Fixture { Enabled = false };
         var coordinator = fixture.Coordinator();
@@ -359,7 +390,7 @@ public sealed class AutomaticProductUpdateTests
             fixture.Clock.Advance(TimeSpan.FromDays(30));
         }
         finally { await service.StopAsync(CancellationToken.None); }
-        Assert.Equal(0, fixture.Sessions.Checks);
+        Assert.Equal(0, fixture.PackageUsage.Checks);
         Assert.Equal(0, fixture.Launches);
         Assert.Equal(0, fixture.Clock.ActiveTimers);
         Assert.Equal(0, fixture.Plans.Current.Version);
@@ -393,7 +424,7 @@ public sealed class AutomaticProductUpdateTests
             await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(2));
             Assert.Equal(2, fixture.Checks);
             Assert.Equal(2, fixture.SettingsReads);
-            Assert.Equal(0, fixture.Sessions.Checks);
+            Assert.Equal(0, fixture.PackageUsage.Checks);
         }
         finally { await service.StopAsync(CancellationToken.None); }
     }
@@ -578,11 +609,12 @@ public sealed class AutomaticProductUpdateTests
         }
     }
 
-    private sealed class Sessions : IProductUiSessionPresence
+    private sealed class PackageUsage : IProductPackageUsage
     {
-        public bool Open { get; set; }
+        public bool InUse { get; set; }
         public int Checks { get; private set; }
-        public bool AnyOpen() { Checks++; return Open; }
+        public Func<bool>? ReadUsage { get; set; }
+        public bool AnyInUse() { Checks++; return ReadUsage?.Invoke() ?? InUse; }
     }
 
     private sealed class Fixture : IDisposable
@@ -592,7 +624,7 @@ public sealed class AutomaticProductUpdateTests
         public string Workspace { get; }
         public ProductUpdateStateStore Store { get; }
         public MutableClock Clock { get; } = new();
-        public Sessions Sessions { get; } = new();
+        public PackageUsage PackageUsage { get; } = new();
         public bool Enabled { get; set; } = true;
         public int CheckIntervalHours { get; set; } = 6;
         private int settingsReads;
@@ -650,7 +682,7 @@ public sealed class AutomaticProductUpdateTests
                     SettingsReadObserved?.Invoke();
                     settingsRead.Release();
                     return Task.FromResult(settings);
-                }, coordinator, Sessions, Plans, Clock,
+                }, coordinator, PackageUsage, Plans, Clock,
                 NullLogger<AutomaticProductUpdateService>.Instance);
 
         public void Dispose()

@@ -65,6 +65,8 @@ internal sealed record FrontendRefresh
 
 internal sealed record FrontendOverlayPresentation
 {
+    public bool Enabled { get; init; }
+    public string Mode { get; init; } = "external";
     public IReadOnlyList<string> Metrics { get; init; } = FrontendPoints.MetricOrder;
     public string SizeMode { get; init; } = FrontendPoints.SizeMode;
     public int FontSizePx { get; init; } = FrontendPoints.FontSizePx;
@@ -75,7 +77,7 @@ internal sealed record FrontendOverlayPresentation
 
     internal void Validate()
     {
-        if (Metrics is null || Metrics.Count > 64
+        if (Mode is not ("external" or "injected") || Metrics is null || Metrics.Count > 64
             || Metrics.Any(static id => string.IsNullOrWhiteSpace(id) || id.Length > 128)
             || Metrics.Distinct(StringComparer.OrdinalIgnoreCase).Count() != Metrics.Count
             || SizeMode is not ("absolutePixels" or "windowRatio")
@@ -89,6 +91,7 @@ internal sealed record FrontendOverlayPresentation
 
 internal sealed record FrontendPreferences
 {
+    public int OverlaySelectionVersion { get; init; } = 1;
     public FrontendAppearance Appearance { get; init; } = new();
     public FrontendRefresh Refresh { get; init; } = new();
     public JsonElement? Dashboard { get; init; }
@@ -97,7 +100,7 @@ internal sealed record FrontendPreferences
 
     internal void Validate()
     {
-        if (Appearance is null || Refresh is null || Overlays is null)
+        if (OverlaySelectionVersion != 1 || Appearance is null || Refresh is null || Overlays is null)
             throw new InvalidDataException("Invalid frontend preferences cache.");
         Appearance.Validate();
         Refresh.Validate();

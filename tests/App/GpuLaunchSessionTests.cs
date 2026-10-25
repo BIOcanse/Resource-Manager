@@ -263,8 +263,8 @@ public sealed partial class GpuLaunchSessionTests
 
     private static TrustedAccessInvocationHostedService CreateHost(
         ITrustedAccessKeyService keys,
-        LaunchServices services)
-        => new(keys, services, services, new HostManagerRuntimeIdentity(),
+        LaunchServices services, IInteractiveUserSessionBroker? sessions = null)
+        => new(keys, services, services, sessions ?? new WindowsInteractiveUserSessionBroker(), new HostManagerRuntimeIdentity(),
             NullLogger<TrustedAccessInvocationHostedService>.Instance);
 
     private static async Task<TrustedAccessInvocationResponse> InvokeAsync(

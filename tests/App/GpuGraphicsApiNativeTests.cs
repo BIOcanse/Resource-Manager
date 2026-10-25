@@ -39,7 +39,6 @@ public sealed class GpuGraphicsApiNativeTests(ITestOutputHelper output)
             Assert.Equal(child.Id, json.RootElement.GetProperty("pid").GetInt32());
             var input = new GpuPlacementProcessObservationRequest("software", "Software",
                 [new("native-api-probe", executable, "x64", child.Id, ["real-device-process"])]);
-            Assert.Equal(expected, new WindowsGpuGraphicsApiDetector().Detect(child.Id, executable));
             var store = new JsonGpuPlacementProcessHistoryStore(root);
             Assert.Null(Assert.Single((await store.ObserveAsync(input, default)).Processes).GraphicsApi);
             var process = Assert.Single((await store.SaveFirstGraphicsApiAsync("software", "Software",

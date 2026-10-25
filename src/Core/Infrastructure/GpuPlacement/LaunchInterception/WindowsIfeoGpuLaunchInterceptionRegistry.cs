@@ -28,6 +28,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     private readonly string brokerPath;
     private readonly IfeoOwnedRuleCleanupCoordinator ownedRuleCleanup;
+    private readonly ResourceManager.Shared.Packages.PackageRuntimeCatalog imageCatalog;
 
     public WindowsIfeoGpuLaunchInterceptionRegistry()
         : this(Path.Combine(AppContext.BaseDirectory, BrokerFileName))
@@ -41,9 +42,10 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     internal WindowsIfeoGpuLaunchInterceptionRegistry(
         string brokerPath,
-        IIfeoOwnedRuleStore ownedRuleStore)
+        IIfeoOwnedRuleStore ownedRuleStore, ResourceManager.Shared.Packages.PackageRuntimeCatalog? catalog = null)
     {
         this.brokerPath = Path.GetFullPath(brokerPath);
+        imageCatalog = catalog ?? ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current;
         ownedRuleCleanup = new IfeoOwnedRuleCleanupCoordinator(ownedRuleStore, OwnerValue);
     }
 
@@ -207,14 +209,14 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(
         GpuPlacementPolicyDocument document,
-        IReadOnlyCollection<string> overlayExecutablePaths)
+        IReadOnlyCollection<string> moduleExecutablePaths)
     {
         lock (RegistryOperationGate)
         {
             ArgumentNullException.ThrowIfNull(document);
-            ArgumentNullException.ThrowIfNull(overlayExecutablePaths);
+            ArgumentNullException.ThrowIfNull(moduleExecutablePaths);
 
-            var desiredPolicies = SelectDesiredPolicies(document, overlayExecutablePaths);
+            var desiredPolicies = SelectDesiredPolicies(document, moduleExecutablePaths);
             var desiredPaths = desiredPolicies
                 .Select(static policy => NormalizePath(policy.ExecutablePath))
                 .Where(static path => !string.IsNullOrWhiteSpace(path))
@@ -241,7 +243,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     internal static IReadOnlyList<GpuPlacementProcessPolicy> SelectDesiredPolicies(
         GpuPlacementPolicyDocument document,
-        IReadOnlyCollection<string> overlayExecutablePaths)
+        IReadOnlyCollection<string> moduleExecutablePaths)
     {
         var policies = document.ProcessPolicies
             .Where(static policy => policy.StartupInterceptionEnabled)
@@ -251,7 +253,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
             .Where(static path => !string.IsNullOrWhiteSpace(path))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var path in overlayExecutablePaths)
+        foreach (var path in moduleExecutablePaths)
         {
             var normalized = NormalizePath(path);
             if (normalized is null || !desiredPaths.Add(normalized))
@@ -266,7 +268,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
                 .FirstOrDefault();
             policies.Add(existing is null
                 ? new GpuPlacementProcessPolicy(
-                    "overlay", normalized, Path.GetFileName(normalized), normalized,
+                    "startup-modules", normalized, Path.GetFileName(normalized), normalized,
                     true, [], null, DateTimeOffset.MinValue, true)
                 : existing with { StartupInterceptionEnabled = true });
         }
@@ -340,7 +342,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     private sealed record ViewInspection(bool Registered, string? Conflict);
 
-    private sealed record EligibilityResult(
+    internal sealed record EligibilityResult(
         bool Eligible,
         string Status,
         string Message,

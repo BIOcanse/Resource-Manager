@@ -171,7 +171,7 @@ public sealed class InsideRootUpdateManagerTests
     private sealed class Runtime : IUpdateRuntime
     {
         public bool FailHealth;
-        public Task WaitForNativeUiExitAsync(string root, CancellationToken token) => Task.CompletedTask;
+        public Task<IDisposable> AcquirePackageMaintenanceAsync(string root, CancellationToken token) => Task.FromResult<IDisposable>(new MemoryStream());
         public void StopService(string root) { }
         public void StartService(string root) { }
         public Task WaitForHealthAsync(CancellationToken token) => FailHealth ? Task.FromException(new IOException("health failure")) : Task.CompletedTask;

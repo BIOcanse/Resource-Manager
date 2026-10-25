@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ResourceManager.SessionAgent</AssemblyName>
+    <RootNamespace>ResourceManager.SessionAgent</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <CopyOutputSymbolsToPublishDirectory Condition="'$(Configuration)' == 'Release'">false</CopyOutputSymbolsToPublishDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\ResourceManager.Shared.csproj" />
+    <None Include="..\..\LICENSE;..\..\NOTICE" Link="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\Core\ThirdPartyNotices\**\*" Link="ThirdPartyNotices\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+</Project>

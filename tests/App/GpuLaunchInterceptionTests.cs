@@ -3,7 +3,6 @@ using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
-using ResourceManager.App.Infrastructure.Overlay;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -111,11 +110,11 @@ public sealed class GpuLaunchInterceptionTests
     [Fact]
     public void IfeoRegistration_RejectsMissingBrokerBeforeRegistryAccess()
     {
-        var executablePath = Environment.ProcessPath;
-        Assert.False(string.IsNullOrWhiteSpace(executablePath));
-        Assert.True(WindowsIfeoGpuLaunchInterceptionRegistry.TryReadMachine(executablePath!, out _));
-        var registry = new WindowsIfeoGpuLaunchInterceptionRegistry(
-            Path.Combine(Path.GetTempPath(), $"missing-broker-{Guid.NewGuid():N}.exe"));
+        using var files = new TrustedAccessTemporaryDirectory();
+        var executablePath = Path.Combine(files.Root, "unadmitted-target.exe");
+        File.Copy(Environment.ProcessPath!, executablePath);
+        Assert.True(WindowsIfeoGpuLaunchInterceptionRegistry.TryReadMachine(executablePath, out _));
+        var registry = new WindowsIfeoGpuLaunchInterceptionRegistry(Path.Combine(files.Root, "missing-broker.exe"));
         var policy = new GpuPlacementProcessPolicy(
             "software",
             "process",
@@ -322,7 +321,7 @@ public sealed class GpuLaunchInterceptionTests
                 CompiledRuntimePlan.Default with { GpuPlacement = compiledGpuPlacement }),
             new D3d11ProxyShimRuntime(new TestHostEnvironment(Path.GetTempPath())),
             new JsonGpuPlacementProcessHistoryStore(new TestHostEnvironment(Path.GetTempPath())),
-            new JsonPerformanceOverlaySettingsStore(new TestHostEnvironment(Path.GetTempPath())),
+            new EmptyStartupModuleSettingsStore(), ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current,
             new EmptySoftwareRegistryView(),
             NullLogger<GpuStartupPlacementResolver>.Instance);
 

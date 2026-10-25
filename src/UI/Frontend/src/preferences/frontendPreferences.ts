@@ -17,8 +17,9 @@ export type FrontendRefresh = {
   resourceTable: AppPresetNumericSetting;
   localSystem: AppPresetNumericSetting;
 };
-export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "enabled" | "mode">;
+export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId">;
 export interface FrontendPreferencesCache {
+  overlaySelectionVersion?: 1;
   appearance: AppAppearanceSettings;
   refresh: FrontendRefresh;
   overlays: Record<string, OverlayPresentation>;
@@ -36,7 +37,7 @@ export function cachedOverlay(preferences: FrontendPreferencesCache, softwareId:
 
 export function pointPreferences(): FrontendPreferencesCache {
   return {
-    appearance: {
+    overlaySelectionVersion: 1, appearance: {
       uiStyle: points.UiStyle, theme: points.Theme, animations: points.AnimationMode,
       resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
       barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
@@ -51,7 +52,7 @@ export function pointPreferences(): FrontendPreferencesCache {
 
 export function pointOverlayPresentation(): OverlayPresentation {
   return {
-    metrics: [...points.MetricOrder], fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
+    enabled: false, mode: "external", metrics: [...points.MetricOrder], fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
     regionWidthRatio: points.RegionWidthRatio, regionHeightRatio: points.RegionHeightRatio,
     anchor: points.Anchor, marginPx: points.MarginPx
   };
@@ -162,9 +163,14 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
   return { read: async () => { await writes; return readCache(); }, save, reset: async () => {
     await writes;
     if (!browserStorage) throw new Error("preferences-unavailable");
-    browserStorage.removeItem(key);
+    const current = readCache();
+    const value = pointPreferences();
+    value.overlays = Object.fromEntries(Object.entries(current.overlays).map(([id, overlay]) =>
+      [id, { ...pointOverlayPresentation(), enabled: overlay.enabled ?? false, mode: overlay.mode ?? "external" }]));
+    if (Object.keys(value.overlays).length) browserStorage.setItem(key, JSON.stringify(value));
+    else browserStorage.removeItem(key);
     notifyReset();
-    return pointPreferences();
+    return value;
   } };
 }
 

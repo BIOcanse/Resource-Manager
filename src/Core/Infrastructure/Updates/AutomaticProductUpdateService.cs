@@ -1,72 +1,55 @@
-using System.Diagnostics;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.Paths;
-using ResourceManager.App.Infrastructure.ProcessIdentity;
+using ResourceManager.Shared.Packages;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Updates;
 
-public interface IProductUiSessionPresence
+public interface IProductPackageUsage
 {
-    bool AnyOpen();
+    bool AnyInUse();
 }
 
-// GetProcessesByName includes processes in every Windows user session. An
-// inaccessible process is treated as present, so inspection cannot force an exit.
-public sealed class ProductUiSessionPresence(IHostEnvironment environment) : IProductUiSessionPresence
+// Scheduling advice only. The updater owns the exclusive lease during mutation.
+public sealed class ProductPackageUsage(IHostEnvironment environment) : IProductPackageUsage
 {
-    public bool AnyOpen()
+    public bool AnyInUse()
     {
-        var root = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath)
-            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return ProcessCollectionOwner.Use(Process.GetProcessesByName("ResourceManager.NativeUi"), processes =>
-        {
-            var open = false;
-            foreach (var process in processes)
-            {
-                try
-                {
-                    if (WindowsProcessImagePathReader.TryRead(process) is not { } path
-                        || Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase)) open = true;
-                }
-                catch (System.ComponentModel.Win32Exception) { open = true; }
-                catch (InvalidOperationException) { /* Process exited while inspected. */ }
-            }
-            return open;
-        });
+        using var lease = PackageUseGuard.TryAcquireMaintenance(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath));
+        return lease is null;
     }
 }
 
 public sealed class AutomaticProductUpdateService : BackgroundService
 {
-    // Windows does not notify us when a tray/UI process exits. Application may
-    // therefore wait up to one interval after the last UI exits.
-    internal static readonly TimeSpan UiPresenceRecheckInterval = TimeSpan.FromSeconds(60);
+    // File sharing locks have no release notification. This only schedules handoff;
+    // the manager re-acquires and holds the actual maintenance lease.
+    internal static readonly TimeSpan PackageUseRecheckInterval = TimeSpan.FromSeconds(60);
     private readonly SemaphoreSlim settingsChanged = new(0, 1);
     private readonly Func<CancellationToken, Task<AppUpdateSettings>> readSettings;
     private readonly RuntimePlanProvider plans;
     private readonly ProductUpdateCoordinator coordinator;
-    private readonly IProductUiSessionPresence sessions;
+    private readonly IProductPackageUsage packageUsage;
     private readonly TimeProvider clock;
     private readonly ILogger<AutomaticProductUpdateService> logger;
     private bool checkAtStart = true;
-    private DateTimeOffset? nextUiPresenceCheck;
+    private DateTimeOffset? nextPackageUseCheck;
 
     public AutomaticProductUpdateService(IAppSettingsStore settings, ProductUpdateCoordinator coordinator,
-        IProductUiSessionPresence sessions, RuntimePlanProvider plans, TimeProvider clock, ILogger<AutomaticProductUpdateService> logger)
+        IProductPackageUsage packageUsage, RuntimePlanProvider plans, TimeProvider clock, ILogger<AutomaticProductUpdateService> logger)
         : this(async token => (await settings.LoadReadOnlyAsync(token)).Settings.Update
-            ?? throw new InvalidDataException("Normalized update settings are missing."), coordinator, sessions, plans, clock, logger) { }
+            ?? throw new InvalidDataException("Normalized update settings are missing."), coordinator, packageUsage, plans, clock, logger) { }
 
     internal AutomaticProductUpdateService(Func<CancellationToken, Task<AppUpdateSettings>> readSettings,
-        ProductUpdateCoordinator coordinator, IProductUiSessionPresence sessions, RuntimePlanProvider plans, TimeProvider clock,
+        ProductUpdateCoordinator coordinator, IProductPackageUsage packageUsage, RuntimePlanProvider plans, TimeProvider clock,
         ILogger<AutomaticProductUpdateService> logger)
     {
         this.readSettings = readSettings;
         this.plans = plans;
         this.coordinator = coordinator;
-        this.sessions = sessions;
+        this.packageUsage = packageUsage;
         this.clock = clock;
         this.logger = logger;
     }
@@ -74,10 +57,10 @@ public sealed class AutomaticProductUpdateService : BackgroundService
     internal async Task RunOnceAsync(CancellationToken token)
     {
         var settings = await readSettings(token);
-        await RunPassAsync(settings, checkPresence: true, token);
+        await RunPassAsync(settings, checkPackageUse: true, token);
     }
 
-    private async Task RunPassAsync(AppUpdateSettings settings, bool checkPresence, CancellationToken token)
+    private async Task RunPassAsync(AppUpdateSettings settings, bool checkPackageUse, CancellationToken token)
     {
         if (!settings.AutoUpdateEnabled) { checkAtStart = true; return; }
         var status = coordinator.Status;
@@ -91,12 +74,12 @@ public sealed class AutomaticProductUpdateService : BackgroundService
         // this preparation token and prevents the subsequent application.
         token.ThrowIfCancellationRequested();
         if (coordinator.Status.Stage == "pendingApply"
-            && (checkPresence || status.Stage != "pendingApply"))
+            && (checkPackageUse || status.Stage != "pendingApply"))
         {
-            nextUiPresenceCheck = clock.GetUtcNow() + UiPresenceRecheckInterval;
-            if (!sessions.AnyOpen()) await coordinator.ApplyAsync(token);
+            nextPackageUseCheck = clock.GetUtcNow() + PackageUseRecheckInterval;
+            if (!packageUsage.AnyInUse()) await coordinator.ApplyAsync(token);
         }
-        if (coordinator.Status.Stage != "pendingApply") nextUiPresenceCheck = null;
+        if (coordinator.Status.Stage != "pendingApply") nextPackageUseCheck = null;
     }
 
     private TimeSpan NextDelay(AppUpdateSettings settings)
@@ -106,7 +89,7 @@ public sealed class AutomaticProductUpdateService : BackgroundService
         var status = coordinator.Status;
         var now = clock.GetUtcNow();
         if (status.Stage == "pendingApply")
-            return Remaining((nextUiPresenceCheck ?? now) - now);
+            return Remaining((nextPackageUseCheck ?? now) - now);
         // An in-flight prepare is awaited below. After handoff, the registered
         // manager owns completion/recovery and normally restarts this service.
         if (status.Stage is "checking" or "downloading" or "verifying" or "waitingForExit")
@@ -155,7 +138,7 @@ public sealed class AutomaticProductUpdateService : BackgroundService
                     if (!settings.AutoUpdateEnabled)
                     {
                         checkAtStart = true;
-                        nextUiPresenceCheck = null;
+                        nextPackageUseCheck = null;
                         passCancellation?.Cancel();
                     }
                     if (activePass?.IsCompleted == true)
@@ -168,7 +151,7 @@ public sealed class AutomaticProductUpdateService : BackgroundService
                     {
                         passCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                         activePass = RunPassAsync(settings,
-                            nextUiPresenceCheck is null || clock.GetUtcNow() >= nextUiPresenceCheck,
+                            nextPackageUseCheck is null || clock.GetUtcNow() >= nextPackageUseCheck,
                             passCancellation.Token);
                     }
 

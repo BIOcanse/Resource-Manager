@@ -22,6 +22,25 @@ public sealed class TrustedAccessStartedHostAuthenticationTests
 {
     private const string SubscriptionPath = "/api/operations/subscribe";
 
+    [Theory]
+    [InlineData(AccessKeyScopes.MetricsRead)]
+    [InlineData(AccessKeyScopes.ProcessesRead)]
+    public async Task TargetMetricsSubscriptionRequiresBothMetricAndProcessFactsScopes(string scope)
+    {
+        var (app, credential) = await StartAsync(scope);
+        await using (app)
+        using (var client = Client(app, credential.ApiKey))
+        using (var response = await client.PostAsJsonAsync("/api/subscriptions/stream", new
+        {
+            version = 1,
+            subscriptions = new[] { new { id = "target", path = "/api/performance-overlay/subscribe?softwareId=game&ids=target.cpu" } }
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("access-scope-required", await ErrorAsync(response));
+        }
+    }
+
     [Fact]
     public async Task StartedHostEnforcesOrdinaryGetScopeAndRealHeadOptionsAndCatchallDispatch()
     {

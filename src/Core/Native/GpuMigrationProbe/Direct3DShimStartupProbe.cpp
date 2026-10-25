@@ -17,7 +17,7 @@ int wmain(int argc, wchar_t** argv)
     SetErrorMode(32771);
     HMODULE bootstrap = LoadLibraryExW(argv[1], nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (bootstrap == nullptr) return 3;
-    using Update = DWORD(WINAPI*)(HANDLE, const wchar_t*, DWORD*);
+    using Update = DWORD(WINAPI*)(HANDLE, const wchar_t* const*, DWORD, DWORD*);
     const FARPROC address = GetProcAddress(bootstrap, "ResourceManagerGpuPlacementBootstrapUpdate");
     Update update = nullptr;
     static_assert(sizeof(update) == sizeof(address));
@@ -63,7 +63,8 @@ int wmain(int argc, wchar_t** argv)
         child.dwProcessId, filetime, identityRead ? "true" : "false", ownershipRead && childOwned ? "true" : "false");
     std::fflush(stdout);
     DWORD injectionError = 0;
-    const DWORD injected = identityRead && ownershipRead && childOwned && !failBeforeResume ? update(child.hProcess, argv[2], &injectionError) : 0;
+    const wchar_t* modules[] = {argv[2]};
+    const DWORD injected = identityRead && ownershipRead && childOwned && !failBeforeResume ? update(child.hProcess, modules, 1, &injectionError) : 0;
     const DWORD resumed = injected == 1 ? ResumeThread(child.hThread) : static_cast<DWORD>(-1);
     const DWORD readyWait = resumed == 1 ? WaitForSingleObject(ready, 5000) : WAIT_FAILED;
     const DWORD exitWait = readyWait == WAIT_OBJECT_0 ? WaitForSingleObject(child.hProcess, 10000) : WAIT_FAILED;

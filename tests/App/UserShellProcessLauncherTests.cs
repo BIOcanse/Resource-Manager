@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
-using ResourceManager.NativeUi;
+using ResourceManager.Shared.Runtime.Sessions;
 using ResourceManager.Shared.Runtime;
 
 namespace Resource_Manager_APP.Tests;
@@ -57,6 +57,7 @@ public sealed class UserShellProcessLauncherTests
     {
         using var gate = SyntheticOwnedProcessGate.Create(29);
         var elapsedSlices = 0;
+        var firstSlice = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var execution = Task.Run(() => UserShellProcessLauncher.ExecuteShellStart(
             () => Process.Start(gate.StartInfo),
             waitForExit: true,
@@ -64,12 +65,15 @@ public sealed class UserShellProcessLauncherTests
             onWaitSliceElapsed: () =>
             {
                 if (Interlocked.Increment(ref elapsedSlices) == 1)
+                {
+                    firstSlice.TrySetResult();
                     throw new IOException("synthetic diagnostic observer failure");
+                }
             }));
 
         try
         {
-            await Task.Delay(150);
+            await firstSlice.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(Volatile.Read(ref elapsedSlices) >= 1);
             Assert.False(execution.IsCompleted);
             gate.Release();

@@ -15,7 +15,7 @@ public sealed class BackendProcessOwnershipContractTests
             appRoot,
             "Infrastructure",
             "ServiceHosting",
-            "NativeUiLaunchHostedService.cs"));
+            "SessionAgentLauncher.cs"));
         var userSessionBroker = File.ReadAllText(Path.Combine(
             appRoot,
             "Infrastructure",
@@ -31,7 +31,7 @@ public sealed class BackendProcessOwnershipContractTests
         Assert.DoesNotContain("Process.Start", serviceOwner, StringComparison.Ordinal);
         Assert.DoesNotContain("StopApplication", serviceOwner, StringComparison.Ordinal);
         Assert.DoesNotContain(".Kill(", serviceOwner, StringComparison.Ordinal);
-        Assert.Contains("NativeUiProcessPresence.Conflicting", serviceOwner, StringComparison.Ordinal);
+        Assert.DoesNotContain("NativeUi", serviceOwner, StringComparison.Ordinal);
 
         Assert.Contains("WTSQueryUserToken", userSessionBroker, StringComparison.Ordinal);
         Assert.Contains("DuplicateTokenEx", userSessionBroker, StringComparison.Ordinal);
@@ -41,10 +41,7 @@ public sealed class BackendProcessOwnershipContractTests
         Assert.DoesNotMatch(@"\bUseShellExecute\s*=\s*true\b", userSessionBroker);
         Assert.DoesNotMatch(@"\bVerb\s*=", userSessionBroker);
         Assert.Contains("UseShellExecute = false", userSessionBroker, StringComparison.Ordinal);
-        Assert.Contains(
-            "=> LaunchInSession(sessionId, executablePath, arguments, null);",
-            userSessionBroker,
-            StringComparison.Ordinal);
+        Assert.Contains("allowCurrentUserLaunch: false", userSessionBroker, StringComparison.Ordinal);
         Assert.Matches(
             @"if\s*\(expectedUserSid is not null\s*&&\s*TryLaunchInCurrentUserSession\(",
             userSessionBroker);
@@ -58,7 +55,7 @@ public sealed class BackendProcessOwnershipContractTests
             appRoot,
             "Infrastructure",
             "Shell",
-            "NativeUiLaunchHostedService.cs")));
+            "SessionAgentLauncher.cs")));
     }
 
     [Fact]

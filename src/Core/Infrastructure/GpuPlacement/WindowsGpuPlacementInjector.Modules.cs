@@ -82,7 +82,7 @@ public sealed partial class WindowsGpuPlacementInjector
             while (NativeMethods.Module32Next(snapshot, ref entry));
         }
         _ = EndOfModuleEnumeration(Marshal.GetLastWin32Error());
-        return WindowsGpuGraphicsApiDetector.CollectCandidates(names);
+        return GpuGraphicsApiRoutes.CollectModuleCandidates(names);
     }
 
     internal static ProviderBinding SelectProvider(

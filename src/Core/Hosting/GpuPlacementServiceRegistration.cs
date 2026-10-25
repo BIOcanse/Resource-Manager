@@ -19,7 +19,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         StartupCapabilitySet startupCapabilities)
     {
         services.AddSingleton<IGpuPlacementPolicyStore, JsonGpuPlacementPolicyStore>();
-        services.AddSingleton<IGpuGraphicsApiDetector, WindowsGpuGraphicsApiDetector>();
+        services.AddSingleton(ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current);
+        services.AddSingleton<IStartupModuleSettingsStore, JsonStartupModuleSettingsStore>();
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
         services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
@@ -44,7 +45,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(
                 StartupCapability.GpuLaunchInterceptionReconciliation))
         {
-            // Observe caught exceptions without editing the reconciler's overlay-related code.
+            // Report reconciliation failures through the existing business-block diagnostics.
             services.AddSingleton<ILogger<GpuLaunchInterceptionReconciler>>(provider =>
                 new BusinessBlockFailureLogger<GpuLaunchInterceptionReconciler>(
                     provider.GetRequiredService<ILoggerFactory>().CreateLogger<GpuLaunchInterceptionReconciler>(),

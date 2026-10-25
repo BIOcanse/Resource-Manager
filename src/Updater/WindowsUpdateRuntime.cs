@@ -6,7 +6,7 @@ namespace ResourceManager.Updater;
 
 internal interface IUpdateRuntime
 {
-    Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken);
+    Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken);
     void StopService(string installRoot);
     void StartService(string installRoot);
     Task WaitForHealthAsync(CancellationToken cancellationToken);
@@ -21,36 +21,8 @@ internal sealed partial class WindowsUpdateRuntime : IUpdateRuntime
     private static string Backend(string root)
         => Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe");
 
-    public async Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken)
-    {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(30);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var active = false;
-            foreach (var process in System.Diagnostics.Process.GetProcessesByName("ResourceManager.NativeUi"))
-            {
-                using (process)
-                {
-                    try
-                    {
-                        var path = process.MainModule?.FileName;
-                        if (path is not null && IsUnder(path, installRoot)) active = true;
-                    }
-                    catch (System.ComponentModel.Win32Exception) { active = true; }
-                    catch (InvalidOperationException) { /* Process exited while inspected. */ }
-                }
-            }
-            if (!active) return;
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-        }
-        throw new TimeoutException("等待桌面界面退出超时；请从托盘退出产品后重试。");
-    }
-
-    private static bool IsUnder(string path, string root)
-        => Path.GetFullPath(path).StartsWith(
-            Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar,
-            StringComparison.OrdinalIgnoreCase);
+    public Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken)
+        => ResourceManager.Shared.Packages.PackageUseGuard.AcquireMaintenanceAsync(installRoot, cancellationToken);
 
     public async Task WaitForHealthAsync(CancellationToken cancellationToken)
     {

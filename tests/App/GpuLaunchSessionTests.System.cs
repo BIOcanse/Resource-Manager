@@ -50,7 +50,7 @@ public sealed partial class GpuLaunchSessionTests
             .Select(value => $"\"{value}\""));
         // Do not answer until the owned child's handle and token are captured;
         // the client cannot finish while waiting for its first response.
-        using var child = Process.GetProcessById(checked((int)launcher.LaunchNativeUi(session, path, arguments)));
+        using var child = Process.GetProcessById(checked((int)launcher.LaunchDesktopProcess(session, sid, path, arguments)));
         _ = child.SafeHandle;
         try
         {

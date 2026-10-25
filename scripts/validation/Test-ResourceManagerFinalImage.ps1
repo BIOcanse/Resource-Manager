@@ -137,7 +137,8 @@ if ([string]$manifest.contract -cne $contract -or [int]$manifest.schemaVersion -
 }
 if ([string]$manifest.layout.backendDirectory -cne 'ResourceManager' -or
     [string]$manifest.layout.nativeUiDirectory -cne 'ResourceManagerNativeUi' -or
-    [string]$manifest.layout.launcherDirectory -cne 'ResourceManagerLauncher') {
+    [string]$manifest.layout.launcherDirectory -cne 'ResourceManagerLauncher' -or
+    [string]$manifest.layout.sessionAgentDirectory -cne 'ResourceManagerSessionAgent') {
     throw 'Final image manifest layout is invalid.'
 }
 
@@ -173,6 +174,8 @@ $requiredPaths = @(
     'ResourceManagerNativeUi/ResourceManager.NativeUi.exe'
     'ResourceManagerNativeUi/InstallWebView2Runtime.ps1'
     'ResourceManagerLauncher/ResourceManager.Launcher.exe'
+    'ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe'
+    'runtime-modules.json'
 )
 foreach ($requiredPath in $requiredPaths) {
     if (-not $manifestByPath.ContainsKey($requiredPath)) {
@@ -228,6 +231,25 @@ if ([int]$manifest.payload.fileCount -ne $verifiedEntries.Count -or
     [long]$manifest.payload.totalBytes -ne $totalBytes -or
     [string]$manifest.payload.sha256 -cne $payloadSha256) {
     throw 'Final image aggregate payload identity is invalid.'
+}
+
+$runtimeModules = Get-Content -LiteralPath (Join-Path $root 'runtime-modules.json') -Raw | ConvertFrom-Json
+if ($runtimeModules.version -ne 1 -or @($runtimeModules.modules).Count -gt 16) { throw 'Invalid runtime module catalog.' }
+$moduleIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($module in @($runtimeModules.modules)) {
+    if ($null -eq $module.image -or [string]::IsNullOrWhiteSpace($module.id) -or -not $moduleIds.Add([string]$module.id) -or
+        $module.kind -notin @('preload', 'vulkan-layer')) { throw 'Invalid runtime module identity.' }
+    if ($module.kind -ceq 'preload' -and ($null -ne $module.manifest -or $null -ne $module.layerName)) { throw 'Preload module has Vulkan metadata.' }
+    if ($module.kind -ceq 'vulkan-layer' -and ($null -eq $module.manifest -or [string]::IsNullOrWhiteSpace($module.layerName))) { throw 'Vulkan module metadata is missing.' }
+    foreach ($asset in @($module.image, $module.manifest)) {
+        if ($null -eq $asset) { continue }
+        $relative = [string]$asset.relativePath
+        Assert-CanonicalManifestPath $relative
+        $imageRelative = $relative
+        if (-not $manifestByPath.ContainsKey($imageRelative)) { throw "Runtime module is outside the final image: $relative" }
+        $member = $manifestByPath[$imageRelative]
+        if ([long]$asset.length -ne [long]$member.length -or [string]$asset.sha256 -cne [string]$member.sha256) { throw "Runtime module metadata differs from the final image: $relative" }
+    }
 }
 
 [pscustomobject]@{

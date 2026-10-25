@@ -2,6 +2,7 @@ import { Show } from "solid-js";
 import { ServiceRecoverySetting } from "./ServiceRecoverySetting";
 import { AiGatewayKeyManager } from "./AiGatewayKeyManager";
 import { TrustedAccessManager } from "./TrustedAccessManager";
+import { FrontendStartupSetting } from "./FrontendStartupSetting";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
@@ -60,6 +61,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
     <div class="settings-section-panel">
       <ServiceRecoverySetting settings={systemIntegration()} diagnostics={props.serviceRecovery}
         text={props.text.systemIntegration} onChange={props.onServiceRecoveryChange} />
+      <FrontendStartupSetting text={props.text.systemIntegration} />
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.systemIntegration.autoStartTitle}</strong>

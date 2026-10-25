@@ -244,7 +244,7 @@ if($Stage -eq 'ProductBackend') {
     if($seenOriginals.Count -ne $originals.Count){throw 'Published frontend originals are incomplete.'}
     Save-Json @{originalFiles=$seenOriginals.Count;verifiedCompressedCopies=$compressed.ToArray()} (Join-Path $RunDirectory 'published-frontend-acceptance.json')
     $backendFiles=@(Get-TreeManifest $backend)
-    foreach($item in $native.outputs|Where-Object {[IO.Path]::GetExtension($_.path) -in @('.dll','.exe')}) {
+    foreach($item in $native.outputs|Where-Object {[IO.Path]::GetExtension($_.path) -in @('.dll','.exe') -and $_.path -notmatch '[\\/]PerformanceOverlay[\\/]'}) {
         $copies=@($backendFiles|Where-Object {[IO.Path]::GetFileName($_.path) -ieq [IO.Path]::GetFileName($item.path)})
         if($copies.Count -ne 1 -or $copies[0].sha256 -ine $item.sha256){throw "Published Native input mismatch: $($item.path)"}
     }
@@ -253,21 +253,28 @@ if($Stage -eq 'ProductBackend') {
 } elseif($Stage -eq 'ProductShell') {
     $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @('-p:PublishSingleFile=false')
     $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @('-p:PublishSingleFile=true')
+    $sessionAgent=Invoke-Publish 'src/SessionAgent/ResourceManager.SessionAgent.csproj' 'session-agent' @('-p:PublishSingleFile=true')
     [void](Capture-ResolvedInputs $evidence)
     $product|Add-Member -NotePropertyName shellRun -NotePropertyValue $RunDirectory -Force
     $product|Add-Member -NotePropertyName nativeUiDirectory -NotePropertyValue $nativeUi -Force
     $product|Add-Member -NotePropertyName launcherDirectory -NotePropertyValue $launcher -Force
+    $product|Add-Member -NotePropertyName sessionAgentDirectory -NotePropertyValue $sessionAgent -Force
     Save-Json $product (Join-Path $TaskRoot 'product-publish-context.json')
 } else {
     $shellReceipt=Get-Content (Join-Path $product.shellRun 'bounded-result.json') -Raw|ConvertFrom-Json
     if(-not $shellReceipt.accepted){throw 'Shell publish prerequisite failed.'}
-    foreach($entry in @(@{run=$product.backendRun;name='backend'},@{run=$product.shellRun;name='native-ui'},@{run=$product.shellRun;name='launcher'})) {
+    foreach($entry in @(@{run=$product.backendRun;name='backend'},@{run=$product.shellRun;name='native-ui'},@{run=$product.shellRun;name='launcher'},@{run=$product.shellRun;name='session-agent'})) {
         $before=Get-Content (Join-Path $entry.run ($entry.name+'-output.json')) -Raw|ConvertFrom-Json
         $current=@(Get-TreeManifest (Join-Path $candidate $entry.name))
         if(@(Compare-Object $before $current -Property relativePath,length,sha256).Count){throw 'Published candidate changed before composition.'}
     }
     $image=Join-Path $ScratchRoot 'final-image'
-    & (Join-Path $repo 'scripts/release/New-ResourceManagerFinalImage.ps1') -BackendDirectory $product.backendDirectory -NativeUiDirectory $product.nativeUiDirectory -LauncherDirectory $product.launcherDirectory -OutputDirectory $image *> (Join-Path $RunDirectory 'final-image-build.log')
+    & (Join-Path $repo 'scripts/release/New-ResourceManagerFinalImage.ps1') -BackendDirectory $product.backendDirectory -NativeUiDirectory $product.nativeUiDirectory -LauncherDirectory $product.launcherDirectory -SessionAgentDirectory $product.sessionAgentDirectory -FrontendNativeRoot $native.properties.PerformanceOverlayRoot -OutputDirectory $image *> (Join-Path $RunDirectory 'final-image-build.log')
+    $imageFiles = @(Get-TreeManifest $image)
+    foreach ($item in @($native.outputs | Where-Object { $_.path -match '[\\/]PerformanceOverlay[\\/]' })) {
+        $copies = @($imageFiles | Where-Object { $_.relativePath.StartsWith('ResourceManagerNativeUi/Modules/', [StringComparison]::Ordinal) -and [IO.Path]::GetFileName($_.path) -ieq [IO.Path]::GetFileName($item.path) })
+        if ($copies.Count -ne 1 -or $copies[0].sha256 -ine $item.sha256) { throw "Frontend native module input mismatch: $($item.path)" }
+    }
     & (Join-Path $repo 'scripts/validation/Test-ResourceManagerFinalImage.ps1') -RootDirectory $image *> (Join-Path $RunDirectory 'final-image-validation.log')
     & (Join-Path $repo 'scripts/validation/Test-WindowsExecutableManifest.ps1') -ExecutablePath (Join-Path $image 'ResourceManagerNativeUi/ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker *> (Join-Path $RunDirectory 'native-ui-manifest.log')
     Save-Json @(Get-TreeManifest $image) (Join-Path $RunDirectory 'final-image-output.json')

@@ -13,7 +13,6 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.GpuPlacement;
-using ResourceManager.App.Infrastructure.Overlay;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
@@ -197,7 +196,7 @@ public sealed class GpuPresentGraphicsApiTests
         await policies.SaveProcessPolicyAsync(GpuPlacementPolicyDefaults.CreateProcessPolicy("software", observed) with
             { StartupInterceptionEnabled = true }, default);
         var resolver = new GpuStartupPlacementResolver(policies, new PlanProvider(policy),
-            new D3d11ProxyShimRuntime(files), history, new JsonPerformanceOverlaySettingsStore(files),
+            new D3d11ProxyShimRuntime(files), history, new EmptyStartupModuleSettingsStore(), ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current,
             new SoftwareRegistry(), NullLogger<GpuStartupPlacementResolver>.Instance);
         Assert.Equal("graphics-api-unidentified", (await resolver.ResolveAsync(new(files.Target), default)).Status);
         var source = new Presents();

@@ -12,17 +12,19 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
     private readonly string baseDirectory;
     private readonly string runtimeProviderPath;
     private readonly string rendererRuntimePath;
+    private readonly ResourceManager.Shared.Packages.PackageRuntimeCatalog imageCatalog;
 
     public WindowsGpuPlacementCapabilityReader()
-        : this(AppContext.BaseDirectory)
+        : this(AppContext.BaseDirectory, ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current)
     {
     }
 
     internal WindowsGpuPlacementCapabilityReader(
-        string baseDirectory)
+        string baseDirectory, ResourceManager.Shared.Packages.PackageRuntimeCatalog? catalog = null)
     {
         var root = Path.GetFullPath(baseDirectory);
         this.baseDirectory = root;
+        imageCatalog = catalog ?? ResourceManager.Shared.Packages.PackageRuntimeCatalog.Load(root);
         runtimeProviderPath = Path.Combine(
             root,
             "GpuPlacementShim",
@@ -77,7 +79,7 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
         return new GpuPlacementProcessCapabilities(processKey, startup, runtime);
     }
 
-    private static ExecutableCapability EvaluateExecutable(
+    private ExecutableCapability EvaluateExecutable(
         string? executablePath,
         string? observedArchitecture)
     {
@@ -123,10 +125,8 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
                 path);
         }
 
-        var imageName = Path.GetFileName(path);
-        if (imageName.Equals("ResourceManager.exe", StringComparison.OrdinalIgnoreCase)
-            || imageName.Equals("ResourceManager.NativeUi.exe", StringComparison.OrdinalIgnoreCase)
-            || imageName.Equals(WindowsIfeoGpuLaunchInterceptionRegistry.BrokerFileName, StringComparison.OrdinalIgnoreCase))
+        if (imageCatalog.IsInfrastructureImage(path)
+            || path.Equals(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, WindowsIfeoGpuLaunchInterceptionRegistry.BrokerFileName)), StringComparison.OrdinalIgnoreCase))
         {
             return new ExecutableCapability(
                 GpuPlacementCapabilityStates.Unsupported,

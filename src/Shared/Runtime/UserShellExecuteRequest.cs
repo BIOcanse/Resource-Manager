@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ResourceManager.Shared.Runtime;
 
@@ -14,7 +15,7 @@ public sealed record UserShellExecuteRequest(
     public string Encode()
     {
         Validate();
-        var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(this));
+        var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(this, UserShellExecuteJsonContext.Default.UserShellExecuteRequest));
         if (encoded.Length > MaximumEncodedLength) throw new InvalidDataException("User launch request exceeds the command-line limit.");
         return encoded;
     }
@@ -22,7 +23,7 @@ public sealed record UserShellExecuteRequest(
     public static UserShellExecuteRequest Decode(string encoded)
     {
         if (encoded.Length > MaximumEncodedLength) throw new InvalidDataException("User launch request exceeds the command-line limit.");
-        var request = JsonSerializer.Deserialize<UserShellExecuteRequest>(Convert.FromBase64String(encoded))
+        var request = JsonSerializer.Deserialize(Convert.FromBase64String(encoded), UserShellExecuteJsonContext.Default.UserShellExecuteRequest)
             ?? throw new InvalidDataException("User launch request is empty.");
         request.Validate();
         return request;
@@ -36,3 +37,7 @@ public sealed record UserShellExecuteRequest(
             throw new InvalidDataException("User launch request contains an unsupported shell verb.");
     }
 }
+
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(UserShellExecuteRequest))]
+internal partial class UserShellExecuteJsonContext : JsonSerializerContext;

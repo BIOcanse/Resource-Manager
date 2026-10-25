@@ -85,6 +85,7 @@ try {
     }
     # The image validator rejects reparse points before copying.
     Copy-Item -LiteralPath $imageRoot -Destination (Join-Path $stage 'Bin') -Recurse
+    & (Join-Path $PSScriptRoot 'Write-ResourceManagerReleaseRuntimeModules.ps1') -ImageRoot $imageRoot -PackageRoot $stage
     & (Join-Path $scriptsRoot 'validation\Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
     $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
         [pscustomobject]@{

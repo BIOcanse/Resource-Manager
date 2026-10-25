@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Adaptation.Scheduling;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.App.Domain.ProcessAttribution;
 
@@ -16,26 +17,17 @@ public static class ResourceManagerSelfDescriptor
         AdapterGpuSchedulingGrade.Optimize
     ];
 
-    public static readonly string[] ProcessNames =
-    [
-        "ResourceManager",
-        "ResourceManager.NativeUi"
-    ];
+    public static readonly string[] ProcessNames = PackageRuntimeCatalog.Current.InfrastructureImages
+        .Select(Path.GetFileNameWithoutExtension).Where(static name => !string.IsNullOrEmpty(name))
+        .Select(static name => name!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public static IReadOnlyList<string> ResolveRootPaths()
     {
         var roots = new List<string>();
         AddNormalizedRoot(roots, AppContext.BaseDirectory);
 
-        var backendRoot = NormalizePath(AppContext.BaseDirectory);
-        if (backendRoot is not null)
-        {
-            var binRoot = Directory.GetParent(backendRoot);
-            if (binRoot is not null)
-            {
-                AddNormalizedRoot(roots, Path.Combine(binRoot.FullName, "ResourceManagerNativeUi"));
-            }
-        }
+        foreach (var image in PackageRuntimeCatalog.Current.InfrastructureImages)
+            AddNormalizedRoot(roots, Path.GetDirectoryName(image));
 
         return roots
             .Distinct(StringComparer.OrdinalIgnoreCase)

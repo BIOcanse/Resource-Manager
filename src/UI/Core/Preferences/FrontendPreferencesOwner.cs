@@ -31,6 +31,7 @@ internal sealed partial class FrontendPreferencesOwner
     private readonly string? legacyAppPath;
     private readonly string? legacyOverlayPath;
     private bool initialized;
+    private bool overlayChoicesInitialized;
     private readonly FrontendPreferences pointValues = new();
     private long revision;
     private FrontendPreferences? cached;
@@ -54,6 +55,7 @@ internal sealed partial class FrontendPreferencesOwner
             RemoveRetiredCacheFields();
             InitializeImport();
             InitializeDashboardImport();
+            ImportLegacyOverlayChoices();
             var file = new FileInfo(cachePath);
             if (!file.Exists)
             {
@@ -85,6 +87,7 @@ internal sealed partial class FrontendPreferencesOwner
             WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(value, Json));
             WriteImportMarker();
             WriteDashboardImportMarker();
+            overlayChoicesInitialized = true;
             initialized = true;
             cached = value;
             var file = new FileInfo(cachePath);
@@ -121,10 +124,15 @@ internal sealed partial class FrontendPreferencesOwner
     {
         lock (gate)
         {
+            var current = Read();
+            var choices = current.Overlays.ToDictionary(static pair => pair.Key,
+                static pair => new FrontendOverlayPresentation { Enabled = pair.Value.Enabled, Mode = pair.Value.Mode },
+                StringComparer.OrdinalIgnoreCase);
+            if (choices.Count != 0) return Save(pointValues with { Overlays = choices });
             WriteImportMarker();
             WriteDashboardImportMarker();
             File.Delete(cachePath);
-            initialized = true;
+            initialized = overlayChoicesInitialized = true;
             cached = pointValues;
             version = null;
             revision++;
@@ -209,7 +217,7 @@ internal sealed partial class FrontendPreferencesOwner
             }
         }
         var overlay = ReadLegacy(legacyOverlayPath, static value => value["software"] is JsonArray entries
-            && entries.OfType<JsonObject>().Any(static item => item.ContainsKey("fontSizePx") || item.ContainsKey("metrics")));
+            && entries.OfType<JsonObject>().Any(static item => item.ContainsKey("fontSizePx") || item.ContainsKey("metrics") || item.ContainsKey("enabled")));
         if (overlay?["software"] is JsonArray software)
         {
             var overlays = node["overlays"]!.AsObject();
@@ -240,6 +248,52 @@ internal sealed partial class FrontendPreferencesOwner
         }
         WriteImportMarker();
         initialized = true;
+    }
+
+    // Frontend-only upgrade from the last backend-owned operational writer. Existing
+    // cache choices win; the cache migration version makes resets and explicit saves final.
+    private void ImportLegacyOverlayChoices()
+    {
+        if (overlayChoicesInitialized) return;
+        if (File.Exists(cachePath))
+        {
+            using var input = Configuration.SettingsFileReader.Open(cachePath);
+            var node = JsonNode.Parse(input)!.AsObject();
+            if (node["overlaySelectionVersion"]?.GetValue<int>() == 1) { overlayChoicesInitialized = true; return; }
+            var entries = node["overlays"]!.AsObject();
+            JsonObject? legacy = null;
+            foreach (var source in new[] { legacyOverlayPath, legacyOverlayPath is null ? null : legacyOverlayPath + LegacyBackupSuffix })
+            {
+                if (source is null) continue;
+                try
+                {
+                    using var stream = Configuration.SettingsFileReader.Open(source);
+                    if (JsonNode.Parse(stream) is JsonObject candidate && candidate["software"] is JsonArray)
+                    { legacy = candidate; break; }
+                }
+                catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { }
+            }
+            node["overlaySelectionVersion"] = 1;
+            if (legacy?["software"] is JsonArray software)
+                foreach (var item in software.OfType<JsonObject>())
+                {
+                    var id = item["softwareId"]?.GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    var key = entries.Select(static pair => pair.Key).FirstOrDefault(key => key.Equals(id, StringComparison.OrdinalIgnoreCase)) ?? id;
+                    var existing = entries[key] as JsonObject;
+                    if (existing?.ContainsKey("enabled") == true && existing.ContainsKey("mode")) continue;
+                    var target = existing ?? JsonSerializer.SerializeToNode(new FrontendOverlayPresentation(), Json)!.AsObject();
+                    if (existing?.ContainsKey("enabled") != true && item["enabled"] is JsonValue enabled && enabled.TryGetValue<bool>(out var value))
+                        target["enabled"] = value;
+                    if (existing?.ContainsKey("mode") != true && item["mode"] is JsonValue mode && mode.TryGetValue<string>(out var text))
+                        target["mode"] = text.Equals("injected", StringComparison.OrdinalIgnoreCase) ? "injected" : "external";
+                    if (existing is null) entries[key] = target;
+                }
+            var migrated = node.Deserialize<FrontendPreferences>(Json)!;
+            migrated.Validate();
+            WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(migrated, Json));
+        }
+        overlayChoicesInitialized = true;
     }
 
     private static void CopyKnown(JsonObject source, JsonObject destination)

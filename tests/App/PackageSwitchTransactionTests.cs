@@ -10,6 +10,84 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class PackageSwitchTransactionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SharedClientsBlockStopAndMaintenanceCoversHealthCommitAndRollback(bool failHealth)
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        if (identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true
+            && !new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) return;
+        var sandbox = Path.Combine(Path.GetTempPath(), "rm-update-guard-" + Guid.NewGuid().ToString("N"));
+        var installed = Path.Combine(sandbox, "installed");
+        var package = Path.Combine(sandbox, "package");
+        Directory.CreateDirectory(Path.Combine(installed, "Config"));
+        try
+        {
+            CreatePackage(package, "0.3.0");
+            File.WriteAllText(Path.Combine(installed, "Config", "value"), "original");
+            PackageUseGuard.Prepare(installed);
+            using var first = PackageUseGuard.Acquire(installed);
+            using var second = PackageUseGuard.Acquire(installed);
+            var runtime = new FakeUpdateRuntime(failHealth)
+            {
+                AcquireOverride = PackageUseGuard.AcquireMaintenanceAsync,
+                HealthObserved = () => Assert.Throws<IOException>(() => PackageUseGuard.Acquire(installed))
+            };
+            var plan = new UpdatePlan(ReleasePackageLayout.Verify(package), installed, "0.2.0", true);
+            var apply = PackageSwitchTransaction.ApplyAsync(plan, runtime, CancellationToken.None);
+            Assert.False(apply.IsCompleted);
+            Assert.Equal(0, runtime.StopCount);
+            Assert.Equal("original", File.ReadAllText(Path.Combine(installed, "Config", "value")));
+            first.Dispose();
+            Assert.Null(PackageUseGuard.TryAcquireMaintenance(installed));
+            second.Dispose();
+            if (failHealth)
+                await Assert.ThrowsAsync<InvalidOperationException>(() => apply.WaitAsync(TimeSpan.FromSeconds(15)));
+            else await apply.WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.False(runtime.MaintenanceActive);
+            Assert.Equal("original", File.ReadAllText(Path.Combine(installed, "Config", "value")));
+            using var resumed = PackageUseGuard.Acquire(installed);
+            Assert.NotNull(resumed);
+        }
+        finally
+        {
+            OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(sandbox);
+            OwnedPackageTree.Delete(sandbox);
+        }
+    }
+
+    [Fact]
+    public async Task CancelledMaintenanceWaitNeverStopsOrChangesInstalledPayload()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "rm-update-cancel-" + Guid.NewGuid().ToString("N"));
+        var installed = Path.Combine(sandbox, "installed");
+        var package = Path.Combine(sandbox, "package");
+        Directory.CreateDirectory(installed);
+        try
+        {
+            CreatePackage(package, "0.3.0");
+            File.WriteAllText(Path.Combine(installed, "original"), "retained");
+            var waiting = new TaskCompletionSource<IDisposable>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var runtime = new FakeUpdateRuntime(false)
+            {
+                AcquireOverride = (_, token) => waiting.Task.WaitAsync(token)
+            };
+            using var cancellation = new CancellationTokenSource();
+            var plan = new UpdatePlan(ReleasePackageLayout.Verify(package), installed, "0.2.0", true);
+            var apply = PackageSwitchTransaction.ApplyAsync(plan, runtime, cancellation.Token);
+            Assert.False(apply.IsCompleted);
+            cancellation.Cancel();
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => apply);
+            Assert.IsAssignableFrom<OperationCanceledException>(failure.InnerException);
+            Assert.Equal(0, runtime.StopCount);
+            Assert.Equal(0, runtime.StartCount);
+            Assert.Empty(runtime.WrittenVersions);
+            Assert.Equal("retained", File.ReadAllText(Path.Combine(installed, "original")));
+        }
+        finally { OwnedPackageTree.Delete(sandbox); }
+    }
+
     [Fact]
     public void CompatibilityPreflightReleasesDatabaseBeforeDirectorySwitch()
     {
@@ -222,13 +300,14 @@ public sealed class PackageSwitchTransactionTests
             "Bin/ResourceManager/wwwroot/index.html",
             "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
             "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
+            "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe", "runtime-modules.json",
             "Internal/UpdateManager/ResourceManager.UpdateManager.exe"
         };
         var files = paths.Select(path =>
         {
             var full = Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            File.WriteAllText(full, "fixture:" + path);
+            File.WriteAllText(full, path == "runtime-modules.json" ? "{\"version\":1,\"modules\":[]}" : "fixture:" + path);
             return new { path, length = new FileInfo(full).Length,
                 sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(full))) };
         }).ToArray();
@@ -238,15 +317,32 @@ public sealed class PackageSwitchTransactionTests
 
     private sealed class FakeUpdateRuntime(bool failHealth) : IUpdateRuntime
     {
+        public bool MaintenanceActive { get; private set; }
+        public Func<string, CancellationToken, Task<IDisposable>>? AcquireOverride { get; init; }
+        public Action? HealthObserved { get; init; }
         public int StopCount { get; private set; }
         public int StartCount { get; private set; }
         public List<string> WrittenVersions { get; } = [];
-        public Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken)
-            => Task.CompletedTask;
-        public void StopService(string installRoot) => StopCount++;
-        public void StartService(string installRoot) => StartCount++;
+        public async Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken)
+        {
+            var inner = AcquireOverride is { } acquire ? await acquire(installRoot, cancellationToken) : new MemoryStream();
+            Assert.False(MaintenanceActive);
+            MaintenanceActive = true;
+            return new Lease(inner, () => MaintenanceActive = false);
+        }
+        public void StopService(string installRoot) { Assert.True(MaintenanceActive); StopCount++; }
+        public void StartService(string installRoot) { Assert.True(MaintenanceActive); StartCount++; }
         public Task WaitForHealthAsync(CancellationToken cancellationToken)
-            => failHealth ? Task.FromException(new InvalidOperationException("Injected health failure")) : Task.CompletedTask;
-        public void WriteInstalledVersion(string root, string version) => WrittenVersions.Add(version);
+        {
+            Assert.True(MaintenanceActive);
+            HealthObserved?.Invoke();
+            return failHealth ? Task.FromException(new InvalidOperationException("Injected health failure")) : Task.CompletedTask;
+        }
+        public void WriteInstalledVersion(string root, string version) { Assert.True(MaintenanceActive); WrittenVersions.Add(version); }
+
+        private sealed class Lease(IDisposable inner, Action released) : IDisposable
+        {
+            public void Dispose() { inner.Dispose(); released(); }
+        }
     }
 }

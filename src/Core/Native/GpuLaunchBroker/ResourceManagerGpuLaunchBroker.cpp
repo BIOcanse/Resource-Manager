@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <cwctype>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include "GpuLaunchEnvironment.h"
@@ -58,11 +60,17 @@ struct ScopedModule
     ~ScopedModule() { if (value != nullptr) FreeLibrary(value); }
 };
 
+struct StartupModule
+{
+    std::wstring id, kind, imagePath, manifestPath, layerName;
+};
+
 struct StartupDecision
 {
     bool injectDirect3D = false;
     bool enableVulkan = false;
-    bool injectOverlay = false;
+    std::vector<StartupModule> modules;
+    std::vector<ScopedHandle> admittedFiles;
     std::wstring status = L"backend-unavailable";
     std::wstring message;
     std::wstring policyPath;
@@ -184,12 +192,28 @@ std::wstring ResolvePackageRoot()
     std::wstring current = DirectoryName(ModulePath());
     for (int depth = 0; depth < 10 && !current.empty(); ++depth)
     {
-        if (DirectoryExists(Combine(current, L"Config"))
-            && DirectoryExists(Combine(current, L"Bin")))
+        if (FileExists(Combine(current, L"resource-manager-machine-installation.json"))
+            || (FileExists(Combine(current, L"resource-manager-final-image.manifest.json"))
+                && DirectoryExists(Combine(current, L"UserData\\Security")))
+            || (DirectoryExists(Combine(current, L"Config")) && DirectoryExists(Combine(current, L"Bin"))))
         {
             return current;
         }
         const std::wstring parent = DirectoryName(current);
+        if (parent == current) break;
+        current = parent;
+    }
+    return DirectoryName(ModulePath());
+}
+
+std::wstring ResolveRuntimeCatalogRoot()
+{
+    auto current = DirectoryName(ModulePath());
+    for (int depth = 0; depth < 10 && !current.empty(); ++depth)
+    {
+        if (FileExists(Combine(current, L"release-manifest.json"))
+            || FileExists(Combine(current, L"resource-manager-final-image.manifest.json"))) return current;
+        const auto parent = DirectoryName(current);
         if (parent == current) break;
         current = parent;
     }
@@ -207,7 +231,7 @@ std::map<std::wstring, std::wstring> ParseProtocol(const std::wstring& text)
         const size_t equals = line.find(L'=');
         if (equals != std::wstring::npos && equals > 0)
         {
-            fields[Trim(line.substr(0, equals))] = Trim(line.substr(equals + 1));
+            if (!fields.emplace(Trim(line.substr(0, equals)), Trim(line.substr(equals + 1))).second) return {};
         }
         if (end == std::wstring::npos) break;
         offset = end + 1;
@@ -269,13 +293,131 @@ bool PostStartupReport(
         backend, true, reply) && reply == "ok";
 }
 
+bool ParseUnsigned(const std::wstring& text, unsigned long long& value)
+{
+    if (text.empty() || text.size() > 20) return false;
+    value = 0;
+    for (wchar_t ch : text)
+    {
+        if (ch < L'0' || ch > L'9' || value > (ULLONG_MAX - (ch - L'0')) / 10) return false;
+        value = value * 10 + (ch - L'0');
+    }
+    return true;
+}
+
+bool ReadAdmittedAsset(const std::map<std::wstring, std::wstring>& fields,
+    const std::wstring& prefix, const std::wstring& root, std::wstring& path,
+    std::vector<ScopedHandle>& handles)
+{
+    const auto relative = fields.find(prefix + L"path");
+    const auto length = fields.find(prefix + L"length");
+    const auto sha256 = fields.find(prefix + L"sha256");
+    unsigned long long expected = 0;
+    if (relative == fields.end() || length == fields.end() || sha256 == fields.end()
+        || relative->second.empty() || relative->second.size() > 1024 || sha256->second.size() != 64
+        || relative->second.front() == L'/' || relative->second.find(L'\\') != std::wstring::npos
+        || relative->second.find_first_of(L":;\r\n") != std::wstring::npos || !ParseUnsigned(length->second, expected)
+        || expected > 512ULL * 1024 * 1024) return false;
+    size_t offset = 0;
+    while (offset <= relative->second.size())
+    {
+        const auto end = relative->second.find(L'/', offset);
+        const auto part = relative->second.substr(offset, end == std::wstring::npos ? end : end - offset);
+        if (part.empty() || part == L"." || part == L"..") return false;
+        if (end == std::wstring::npos) break;
+        offset = end + 1;
+    }
+    path = FullPath(Combine(root, relative->second));
+    if (!IsPathUnder(path, root) || !ResourceManagerGpuLaunchSession::NoReparseComponents(path, false)) return false;
+    ScopedHandle file(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (file.value == INVALID_HANDLE_VALUE || !GetFileInformationByHandle(file.value, &info)
+        || (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0
+        || ((static_cast<unsigned long long>(info.nFileSizeHigh) << 32) | info.nFileSizeLow) != expected) return false;
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    bool valid = CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)
+        && CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hash);
+    std::array<BYTE, 65536> buffer{};
+    DWORD bytes = 0;
+    unsigned long long read = 0;
+    while (valid && read < expected)
+    {
+        if (!ReadFile(file.value, buffer.data(), static_cast<DWORD>(std::min<unsigned long long>(buffer.size(), expected - read)), &bytes, nullptr)
+            || bytes == 0 || !CryptHashData(hash, buffer.data(), bytes, 0)) { valid = false; break; }
+        read += bytes;
+    }
+    std::array<BYTE, 32> digest{};
+    DWORD size = static_cast<DWORD>(digest.size());
+    valid = valid && CryptGetHashParam(hash, HP_HASHVAL, digest.data(), &size, 0) && size == digest.size();
+    if (hash) CryptDestroyHash(hash);
+    if (provider) CryptReleaseContext(provider, 0);
+    constexpr wchar_t hex[] = L"0123456789abcdef";
+    std::wstring actual;
+    for (BYTE byte : digest) { actual += hex[byte >> 4]; actual += hex[byte & 15]; }
+    if (!valid || actual != ToLower(sha256->second)
+        || !ResourceManagerGpuLaunchSession::NoReparseComponents(path, false)) return false;
+    handles.push_back(std::move(file));
+    return true;
+}
+
+bool ParseStartupModules(const std::map<std::wstring, std::wstring>& fields, const std::wstring& root,
+    std::vector<StartupModule>& modules, std::vector<ScopedHandle>& handles)
+{
+    const auto count = fields.find(L"moduleCount");
+    unsigned long long length = 0;
+    if (count == fields.end() || !ParseUnsigned(count->second, length) || length > 16) return false;
+    std::set<std::wstring> ids, images;
+    std::set<std::wstring> allowed{L"version", L"decision", L"startupProviders", L"moduleCount", L"moduleRoot", L"status", L"message",
+        L"executablePath", L"softwareId", L"processKey", L"startupTargetGpu", L"assignedPositionId", L"policyPath", L"targetAdapterName", L"targetLuid"};
+    for (unsigned long long index = 0; index < length; ++index)
+    {
+        const auto prefix = L"module" + std::to_wstring(index) + L".";
+        for (const auto suffix : {L"id", L"kind", L"image.path", L"image.length", L"image.sha256"}) allowed.insert(prefix + suffix);
+        const auto id = fields.find(prefix + L"id");
+        const auto kind = fields.find(prefix + L"kind");
+        if (id == fields.end() || kind == fields.end() || id->second.empty() || id->second.size() > 128
+            || !std::all_of(id->second.begin(), id->second.end(), [](wchar_t ch) {
+                return (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'0' && ch <= L'9') || ch == L'-' || ch == L'_' || ch == L'.'; })
+            || !ids.insert(id->second).second) return false;
+        StartupModule module;
+        module.id = id->second;
+        module.kind = kind->second;
+        if (!ReadAdmittedAsset(fields, prefix + L"image.", root, module.imagePath, handles)
+            || !images.insert(ToLower(module.imagePath)).second) return false;
+        if (module.kind == L"vulkan-layer")
+        {
+            for (const auto suffix : {L"layerName", L"manifest.path", L"manifest.length", L"manifest.sha256"}) allowed.insert(prefix + suffix);
+            const auto layer = fields.find(prefix + L"layerName");
+            if (layer == fields.end() || layer->second.empty() || layer->second.size() > 256
+                || !std::all_of(layer->second.begin(), layer->second.end(), [](wchar_t ch) {
+                    return (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'0' && ch <= L'9') || ch == L'_'; })
+                || !ReadAdmittedAsset(fields, prefix + L"manifest.", root, module.manifestPath, handles)) return false;
+            module.layerName = layer->second;
+        }
+        else if (module.kind != L"preload" || fields.count(prefix + L"manifest.path") || fields.count(prefix + L"layerName")) return false;
+        modules.push_back(std::move(module));
+    }
+    return std::all_of(fields.begin(), fields.end(), [&allowed](const auto& field) { return allowed.count(field.first) != 0; });
+}
+
 void ParseStartupDecision(
     const std::wstring& response,
     const std::wstring& targetPath,
     const std::wstring& packageRoot,
-    StartupDecision& decision)
+    StartupDecision& decision, const std::wstring& runtimeRoot = std::wstring())
 {
+    decision.injectDirect3D = decision.enableVulkan = false;
+    decision.modules.clear();
+    decision.admittedFiles.clear();
     const auto fields = ParseProtocol(response);
+    if (fields.empty())
+    {
+        decision.status = L"untrusted-response";
+        decision.message = L"startup resolver returned an invalid protocol";
+        return;
+    }
     auto status = fields.find(L"status");
     auto message = fields.find(L"message");
     decision.status = status == fields.end() ? L"invalid-response" : status->second;
@@ -295,8 +437,12 @@ void ParseStartupDecision(
 
     const auto version = fields.find(L"version");
     const auto providers = fields.find(L"startupProviders");
-    const auto overlayField = fields.find(L"overlayEnabled");
-    const bool overlay = overlayField != fields.end() && overlayField->second == L"true";
+    std::vector<StartupModule> modules;
+    std::vector<ScopedHandle> admittedFiles;
+    const auto moduleRoot = fields.find(L"moduleRoot");
+    const auto expectedModuleRoot = runtimeRoot.empty() ? packageRoot : runtimeRoot;
+    const bool rootValid = moduleRoot == fields.end() || ToLower(FullPath(moduleRoot->second)) == ToLower(FullPath(expectedModuleRoot));
+    const bool validModules = rootValid && ParseStartupModules(fields, expectedModuleRoot, modules, admittedFiles);
     bool direct3D = false;
     bool vulkan = false;
     bool validProviders = providers == fields.end() || !providers->second.empty();
@@ -314,9 +460,8 @@ void ParseStartupDecision(
             offset = end + 1;
         } while (offset <= providers->second.size());
     }
-    if (version == fields.end() || version->second != L"1" || !validProviders
-        || (overlayField != fields.end() && !overlay)
-        || (!direct3D && !vulkan && !overlay))
+    if (version == fields.end() || version->second != L"2" || !validProviders || !validModules
+        || (!direct3D && !vulkan && modules.empty()))
     {
         decision.status = L"untrusted-response";
         decision.message = L"startup resolver returned unsupported providers or protocol";
@@ -339,7 +484,8 @@ void ParseStartupDecision(
 
     decision.injectDirect3D = direct3D;
     decision.enableVulkan = vulkan;
-    decision.injectOverlay = overlay;
+    decision.modules = std::move(modules);
+    decision.admittedFiles = std::move(admittedFiles);
     if (direct3D || vulkan) decision.policyPath = FullPath(policyPath->second);
 }
 
@@ -357,7 +503,7 @@ StartupDecision ResolveStartupDecision(const std::wstring& targetPath, const std
         decision.message = L"startup resolver unavailable";
         return decision;
     }
-    ParseStartupDecision(response, targetPath, packageRoot, decision);
+    ParseStartupDecision(response, targetPath, packageRoot, decision, ResolveRuntimeCatalogRoot());
     return decision;
 }
 
@@ -413,23 +559,73 @@ bool DetachDebugger(DWORD processId)
 }
 
 bool ApplyBootstrap(HANDLE process, const std::wstring& bootstrapPath,
-    const std::wstring& providerPath, const std::wstring& overlayPath)
+    const std::vector<std::wstring>& paths)
 {
+    if (paths.empty() || paths.size() > 17) return false;
     ScopedModule module{LoadLibraryW(bootstrapPath.c_str())};
     if (module.value == nullptr) return false;
-    using UpdateFunction = DWORD (WINAPI*)(HANDLE, const wchar_t*, const wchar_t*, DWORD*);
-    union
-    {
-        FARPROC raw;
-        UpdateFunction typed;
-    } updateAddress{};
+    using UpdateFunction = DWORD (WINAPI*)(HANDLE, const wchar_t* const*, DWORD, DWORD*);
+    union { FARPROC raw; UpdateFunction typed; } updateAddress{};
     updateAddress.raw = GetProcAddress(module.value, "ResourceManagerGpuPlacementBootstrapUpdate");
-    const auto update = updateAddress.typed;
-    if (update == nullptr) return false;
+    if (updateAddress.typed == nullptr) return false;
+    std::vector<const wchar_t*> entries;
+    for (const auto& path : paths) entries.push_back(path.c_str());
     DWORD error = ERROR_SUCCESS;
-    return update(process, providerPath.empty() ? nullptr : providerPath.c_str(),
-        overlayPath.empty() ? nullptr : overlayPath.c_str(), &error) != 0;
+    return updateAddress.typed(process, entries.data(), static_cast<DWORD>(entries.size()), &error) != 0;
 }
+
+ScopedHandle AcquireInheritedPackageGuard(const std::wstring& root)
+{
+    const auto path = Combine(root, L"Internal\\Management\\package-use.guard");
+    if (!ResourceManagerGpuLaunchSession::NoReparseComponents(path, false)) return {};
+    SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    ScopedHandle handle(CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL, FILE_SHARE_READ, &security,
+        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+    if (handle.value == INVALID_HANDLE_VALUE || !ResourceManagerGpuLaunchSession::VerifyStorageAcl(handle.value, true, false)
+        || !ResourceManagerGpuLaunchSession::NoReparseComponents(path, false)) return {};
+    return handle;
+}
+
+struct ChildStartup
+{
+    STARTUPINFOEXW info{};
+    std::vector<unsigned char> attributes;
+    std::vector<ScopedHandle> standardHandles;
+    std::vector<HANDLE> inherited;
+    ~ChildStartup() { if (info.lpAttributeList) DeleteProcThreadAttributeList(info.lpAttributeList); }
+    bool Prepare(HANDLE guard)
+    {
+        GetStartupInfoW(&info.StartupInfo);
+        info.StartupInfo.cb = sizeof(STARTUPINFOW);
+        if (guard && guard != INVALID_HANDLE_VALUE) inherited.push_back(guard);
+        if ((info.StartupInfo.dwFlags & STARTF_USESTDHANDLES) != 0)
+        {
+            HANDLE* slots[] = { &info.StartupInfo.hStdInput, &info.StartupInfo.hStdOutput, &info.StartupInfo.hStdError };
+            for (auto slot : slots)
+            {
+                HANDLE copy = nullptr;
+                if (*slot && *slot != INVALID_HANDLE_VALUE)
+                {
+                    if (!DuplicateHandle(GetCurrentProcess(), *slot, GetCurrentProcess(), &copy, 0, TRUE, DUPLICATE_SAME_ACCESS)) return false;
+                    standardHandles.emplace_back(copy);
+                    inherited.push_back(copy);
+                }
+                *slot = copy;
+            }
+        }
+        if (inherited.empty()) return true;
+        SIZE_T size = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        if (!size) return false;
+        attributes.resize(size);
+        auto list = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributes.data());
+        if (!InitializeProcThreadAttributeList(list, 1, 0, &size)) return false;
+        info.lpAttributeList = list;
+        info.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+        return UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited.data(),
+            inherited.size() * sizeof(HANDLE), nullptr, nullptr) != FALSE;
+    }
+};
 
 int MirrorTargetExit(HANDLE process)
 {
@@ -459,50 +655,55 @@ int LaunchTarget(
     const std::wstring providerPath = Combine(brokerDirectory, L"GpuPlacementShim\\ResourceManager.GpuPlacementShim.dll");
     const std::wstring bootstrapPath = Combine(brokerDirectory, L"GpuPlacementShim\\ResourceManager.GpuPlacementBootstrap.dll");
     const std::wstring vulkanDirectory = Combine(brokerDirectory, L"GpuPlacementShim");
-    const std::wstring overlayDirectory = Combine(brokerDirectory, L"PerformanceOverlay");
-    const std::wstring overlayPath = Combine(overlayDirectory, L"ResourceManager.PerformanceOverlay.dll");
     ResourceManagerGpuLaunch::Environment inherited;
     if (!ResourceManagerGpuLaunch::ReadEnvironmentBlock(inherited)) return static_cast<int>(GetLastError());
-
     bool applyGpu = decision.injectDirect3D || decision.enableVulkan;
-    bool applyOverlay = decision.injectOverlay;
+    bool applyModules = !decision.modules.empty();
     std::wstring fallbackOutcome;
     std::wstring fallbackMessage;
+    auto packageGuard = (applyGpu || applyModules) ? AcquireInheritedPackageGuard(decision.trustedAccessPackageRoot) : ScopedHandle{};
+    if ((applyGpu || applyModules) && (packageGuard.value == nullptr || packageGuard.value == INVALID_HANDLE_VALUE))
+    {
+        applyGpu = applyModules = false;
+        fallbackOutcome = L"provider-unavailable-fallback";
+        fallbackMessage = L"package maintenance guard unavailable; starting without startup modules";
+    }
     if ((decision.injectDirect3D && (!FileExists(providerPath) || !FileExists(bootstrapPath)))
         || (decision.enableVulkan && (!FileExists(Combine(vulkanDirectory, L"ResourceManager.VulkanPlacementLayer.dll"))
             || !FileExists(Combine(vulkanDirectory, L"ResourceManager.VulkanPlacementLayer.json"))
-            || vulkanDirectory.find(L';') != std::wstring::npos
-            || !CanUseVulkanEnvironment())))
+            || vulkanDirectory.find(L';') != std::wstring::npos || !CanUseVulkanEnvironment())))
     {
         applyGpu = false;
         fallbackOutcome = L"provider-unavailable-fallback";
-        fallbackMessage = L"requested startup artifacts or non-elevated Vulkan environment unavailable; starting without providers";
+        fallbackMessage += L"; requested GPU artifacts or non-elevated Vulkan environment unavailable";
     }
-
-    if (applyOverlay && (!FileExists(overlayPath) || !FileExists(bootstrapPath)))
+    if (applyModules && !FileExists(bootstrapPath)
+        && std::any_of(decision.modules.begin(), decision.modules.end(), [](const StartupModule& module) { return module.kind == L"preload"; }))
     {
-        applyOverlay = false;
+        applyModules = false;
         fallbackOutcome = L"provider-unavailable-fallback";
-        if (!fallbackMessage.empty()) fallbackMessage += L"; ";
-        fallbackMessage += L"performance overlay DLL or bootstrap unavailable; starting without overlay";
+        fallbackMessage += L"; startup bootstrap unavailable";
     }
-    const bool overlayVulkanAvailable = FileExists(Combine(overlayDirectory, L"ResourceManager.VulkanPerformanceOverlayLayer.dll"))
-        && FileExists(Combine(overlayDirectory, L"ResourceManager.VulkanPerformanceOverlayLayer.json"))
-        && overlayDirectory.find(L';') == std::wstring::npos
-        && CanUseVulkanEnvironment();
-    if (applyOverlay && !overlayVulkanAvailable)
+    if (applyModules && !CanUseVulkanEnvironment()
+        && std::any_of(decision.modules.begin(), decision.modules.end(), [](const StartupModule& module) { return module.kind == L"vulkan-layer"; }))
     {
         fallbackOutcome = L"provider-unavailable-fallback";
-        if (!fallbackMessage.empty()) fallbackMessage += L"; ";
-        fallbackMessage += L"performance overlay Vulkan layer unavailable; DLL preload remains enabled";
+        fallbackMessage += L"; non-elevated Vulkan environment unavailable; preload modules remain enabled";
     }
 
     for (int attempt = 0; attempt < 3; ++attempt)
     {
         bool inject = applyGpu && decision.injectDirect3D;
         bool vulkan = applyGpu && decision.enableVulkan;
-        bool overlay = applyOverlay;
-        bool overlayVulkan = overlay && overlayVulkanAvailable;
+        std::vector<std::wstring> preloadPaths;
+        std::vector<std::pair<std::wstring, std::wstring>> vulkanModules;
+        if (inject) preloadPaths.push_back(providerPath);
+        if (applyModules)
+            for (const auto& module : decision.modules)
+            {
+                if (module.kind == L"preload") preloadPaths.push_back(module.imagePath);
+                else if (CanUseVulkanEnvironment()) vulkanModules.emplace_back(DirectoryName(module.manifestPath), module.layerName);
+            }
         const std::wstring readyEventName = L"Local\\ResourceManager.GpuPlacement.Broker."
             + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetTickCount64());
         ScopedHandle readyEvent(inject ? CreateEventW(nullptr, TRUE, FALSE, readyEventName.c_str()) : nullptr);
@@ -511,26 +712,30 @@ int LaunchTarget(
             applyGpu = inject = vulkan = false;
             fallbackOutcome = L"provider-unavailable-fallback";
             if (!fallbackMessage.empty()) fallbackMessage += L"; ";
-            fallbackMessage += overlay
-                ? L"provider ready event creation failed; starting without GPU providers"
-                : L"provider ready event creation failed; starting without providers";
+            preloadPaths.erase(std::remove(preloadPaths.begin(), preloadPaths.end(), providerPath), preloadPaths.end());
+            fallbackMessage += L"provider ready event creation failed; starting without GPU providers";
         }
         auto environment = ResourceManagerGpuLaunch::BuildEnvironmentBlock(
             ResourceManagerGpuLaunch::ConfigureChildEnvironment(inherited,
                 applyGpu ? decision.policyPath : std::wstring(),
                 inject ? readyEventName : std::wstring(),
                 vulkan ? vulkanDirectory : std::wstring(),
-                overlayVulkan ? overlayDirectory : std::wstring()));
+                vulkanModules));
 
-        STARTUPINFOW startup{};
-        GetStartupInfoW(&startup);
-        startup.cb = sizeof(startup);
+        ChildStartup startup;
+        if (!startup.Prepare((applyGpu || applyModules) ? packageGuard.value : nullptr))
+        {
+            const DWORD error = GetLastError();
+            PostStartupReport(decision, targetPath, 0, L"launch-failed", L"child handle admission failed");
+            return static_cast<int>(error ? error : ERROR_INVALID_HANDLE);
+        }
         PROCESS_INFORMATION process{};
         std::vector<wchar_t> commandLine(originalCommandLine.begin(), originalCommandLine.end());
         commandLine.push_back(L'\0');
-        if (!CreateProcessW(targetPath.c_str(), commandLine.data(), nullptr, nullptr, TRUE,
-                CREATE_SUSPENDED | DEBUG_ONLY_THIS_PROCESS | CREATE_UNICODE_ENVIRONMENT,
-                environment.data(), nullptr, &startup, &process))
+        if (!CreateProcessW(targetPath.c_str(), commandLine.data(), nullptr, nullptr, startup.inherited.empty() ? FALSE : TRUE,
+                CREATE_SUSPENDED | DEBUG_ONLY_THIS_PROCESS | CREATE_UNICODE_ENVIRONMENT
+                    | (startup.info.lpAttributeList ? EXTENDED_STARTUPINFO_PRESENT : 0),
+                environment.data(), nullptr, &startup.info.StartupInfo, &process))
         {
             const DWORD error = GetLastError();
             PostStartupReport(decision, targetPath, 0, L"launch-failed",
@@ -550,23 +755,19 @@ int LaunchTarget(
             return ERROR_CIRCULAR_DEPENDENCY;
         }
 
-        if ((inject || overlay) && !ApplyBootstrap(process.hProcess, bootstrapPath,
-                inject ? providerPath : std::wstring(), overlay ? overlayPath : std::wstring()))
+        if (!preloadPaths.empty() && !ApplyBootstrap(process.hProcess, bootstrapPath, preloadPaths))
         {
             PostStartupReport(decision, targetPath, process.dwProcessId, L"bootstrap-failed-fallback",
-                overlay ? L"startup bootstrap with performance overlay failed before target resume"
-                        : L"startup bootstrap failed before target resume");
+                L"startup bootstrap failed before target resume");
             const bool terminated = TerminateProcess(process.hProcess, ERROR_DLL_INIT_FAILED) != FALSE;
             const bool detached = DetachDebugger(process.dwProcessId);
             const bool exited = WaitForSingleObject(process.hProcess, 2000) == WAIT_OBJECT_0;
             if (!terminated || !detached || !exited || !allowInjectionFallback) return ERROR_DLL_INIT_FAILED;
-            if (overlay) applyOverlay = false;
+            if (applyModules) applyModules = false;
             else applyGpu = false;
             fallbackOutcome = L"bootstrap-failed-fallback";
             if (!fallbackMessage.empty()) fallbackMessage += L"; ";
-            fallbackMessage += overlay
-                ? L"overlay bootstrap failed before resume; target restarted without overlay"
-                : L"bootstrap failed before resume; target restarted once without providers";
+            fallbackMessage += L"startup bootstrap failed before resume; target restarted without failing component";
             continue;
         }
 
@@ -595,10 +796,9 @@ int LaunchTarget(
             if (wait != WAIT_OBJECT_0)
             {
                 PostStartupReport(decision, targetPath, process.dwProcessId, L"provider-timeout",
-                    overlay ? L"Direct3D startup provider did not report ready; overlay launch remains running"
-                            : L"Direct3D startup provider did not report ready");
+                    L"Direct3D startup provider did not report ready");
                 if (wait == WAIT_OBJECT_0 + 1) return MirrorTargetExit(process.hProcess);
-                if (overlay) return MirrorTargetExit(process.hProcess);
+                if (applyModules) return MirrorTargetExit(process.hProcess);
                 TerminateProcess(process.hProcess, ERROR_TIMEOUT);
                 WaitForSingleObject(process.hProcess, 2000);
                 return ERROR_TIMEOUT;
@@ -607,11 +807,11 @@ int LaunchTarget(
 
         if (!fallbackOutcome.empty())
             PostStartupReport(decision, targetPath, process.dwProcessId, fallbackOutcome, fallbackMessage);
-        else if (overlay)
+        else if (applyModules)
             PostStartupReport(decision, targetPath, process.dwProcessId,
                 inject ? L"provider-ready" : L"startup-configured",
-                inject ? L"Direct3D preload ready; performance overlay preload and Vulkan child environment configured"
-                       : L"performance overlay preload and Vulkan child environment configured");
+                inject ? L"Direct3D preload ready; startup modules and Vulkan child environment configured"
+                       : L"startup modules and Vulkan child environment configured");
         else if (vulkan)
             PostStartupReport(decision, targetPath, process.dwProcessId, L"startup-configured",
                 inject ? L"Direct3D preload ready; Vulkan child environment configured, device selection not yet observed"

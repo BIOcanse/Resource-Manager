@@ -254,6 +254,9 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/public/v1/sqlite/databases",
             "GET /api/public/v1/sqlite/databases/{databaseId}",
             "GET /api/runtime/identity",
+            "GET /api/startup-modules/catalog",
+            "GET /api/startup-modules/settings",
+            "GET /api/startup-modules/software/{softwareId}",
             "GET /api/settings/app",
             "GET /api/settings/dashboard",
             "GET /api/settings/report-rules",
@@ -312,9 +315,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/metrics/fields/snapshot",
             "GET /api/metrics/gpu-specialized",
             "GET /api/metrics/snapshot",
-            "GET /api/performance-overlay/default",
-            "GET /api/performance-overlay/metrics/catalog",
-            "GET /api/performance-overlay/software/{softwareId}");
+            "GET /api/performance-overlay/metrics/catalog");
         Add(KeylessRequestRequirement,
             "POST /api/access-requests",
             "POST /api/access-requests/{requestId}/wait");
@@ -327,7 +328,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/subscriptions/stream");
         Add(InjectionConfigurationRequirement,
             "PUT /api/gpu-placement/process-policy",
-            "PUT /api/performance-overlay/software/{softwareId}");
+            "PUT /api/startup-modules/software/{softwareId}");
         return routes.ToFrozenDictionary(OperationComparer.Instance);
 
         void Add(TrustedAccessHttpRequirement requirement, params string[] operations)
@@ -380,7 +381,7 @@ internal static class TrustedAccessHttpPolicy
             "/api/metrics/gpu-specialized/subscribe" => [AccessKeyScopes.MetricsRead],
             "/api/resource-monitor/subscribe" => [AccessKeyScopes.ProcessesRead],
             "/api/resource-facts/subscribe" => [AccessKeyScopes.ProcessesRead],
-            "/api/performance-overlay/subscribe" => [AccessKeyScopes.MetricsRead],
+            "/api/performance-overlay/subscribe" => [AccessKeyScopes.MetricsRead, AccessKeyScopes.ProcessesRead],
             "/api/adapters/resource-manager/scheduling/subscribe" => [AccessKeyScopes.AdaptersRegisterSelf],
             "/api/control/actual/subscribe" => [AccessKeyScopes.Read],
             "/api/local-system/status/subscribe" => [AccessKeyScopes.Read],

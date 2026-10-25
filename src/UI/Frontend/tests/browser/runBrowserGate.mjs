@@ -7,6 +7,7 @@ import diskUsageLocalTreemapJourney from "./diskUsageLocalTreemapJourney.js";
 import diskUsagePagedTreeJourney from "./diskUsagePagedTreeJourney.js";
 import diskUsageActionErrorsJourney from "./diskUsageActionErrorsJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
+import loginStartupJourney from "./loginStartupJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
 import trustedAccessJourney from "./trustedAccessJourney.js";
@@ -77,6 +78,7 @@ const allJourneys = [
   ["disk-usage-paged-tree", diskUsagePagedTreeJourney],
   ["disk-usage-action-errors", diskUsageActionErrorsJourney],
   ["overlay-settings", overlaySettingsJourney],
+  ["login-startup", loginStartupJourney],
   ["management-feedback", managementFeedbackJourney],
   ["management-shared-refresh", managementSharedRefreshJourney],
   ["frontend-audit", frontendAuditJourney],

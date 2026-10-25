@@ -245,6 +245,8 @@ public sealed class ProductUpdateCoordinator
             if (current.Stage != "pendingApply" || current.TargetVersion is null || current.Workspace is null)
                 throw new ProductUpdateFailure("update.targetUnavailable");
             var prepared = new PreparedProductUpdate(current.TargetVersion, current.Workspace, Path.Combine(current.Workspace, "package"));
+            // The manager acquires the generic package maintenance lease before
+            // stopping this service; a scheduler probe cannot transfer ownership.
             // Persist before launching: a manager can stop this process immediately.
             Save(current with { Stage = "waitingForExit", UpdatedAt = clock.GetUtcNow() });
             try { await launch(prepared, token); }

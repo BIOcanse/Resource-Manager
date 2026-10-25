@@ -65,16 +65,13 @@ public sealed partial class OptionalDependencyManager
                     start.FileName,
                     start.Arguments,
                     string.IsNullOrWhiteSpace(start.Verb) ? null : start.Verb, WaitForExit: waitForExit);
-                var arguments = UserShellExecuteRequest.Argument + " " + shellRequest.Encode();
                 if (waitForExit)
                 {
-                    var exitCode = await sessionBroker.LaunchUserShellAndWaitAsync(caller!.WindowsSessionId, caller.WindowsSid,
-                        NativeUiLaunchHostedService.ResolveNativeUiPath(), arguments, token);
+                    var exitCode = await SessionAgentLauncher.LaunchAndWaitAsync(sessionBroker, caller, shellRequest, token);
                     if (exitCode != 0) throw new InvalidOperationException($"The dependency installer returned exit code {exitCode}.");
                 }
                 else
-                    _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
-                        NativeUiLaunchHostedService.ResolveNativeUiPath(), arguments);
+                    _ = SessionAgentLauncher.Launch(sessionBroker, caller, shellRequest);
             };
         }
 

@@ -52,7 +52,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         var result = await manager.TickAsync();
         Assert.False(manager.IsBackgroundWorkerRunning);
         Assert.Null(result.BackendWorkingSetBytes);
-        Assert.Null(result.NativeUiWorkingSetBytes);
+        Assert.Null(result.PackageClientWorkingSetBytes);
         Assert.Equal(0UL, result.Memory.RegisteredBytes);
         Assert.Equal(0UL, result.Ledger.Released);
         Assert.Empty(result.TrimResults);
@@ -92,7 +92,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             var result = await manager.TickAsync();
             released += result.Ledger.Released;
             Assert.Null(result.BackendWorkingSetBytes);
-            Assert.Null(result.NativeUiWorkingSetBytes);
+            Assert.Null(result.PackageClientWorkingSetBytes);
             Assert.Empty(result.TrimResults);
             Assert.Empty(result.RecheckedTrimObservations);
         }
@@ -111,7 +111,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var failed = await manager.TickAsync();
         Assert.Equal(1000UL, failed.BackendWorkingSetBytes);
-        Assert.Equal(2000UL, failed.NativeUiWorkingSetBytes);
+        Assert.Equal(2000UL, failed.PackageClientWorkingSetBytes);
         Assert.All(failed.TrimResults, trim => Assert.Equal(AdapterResourceActionStatus.Failed, trim.Status));
         Assert.Equal(0UL, failed.Ledger.Released);
     }

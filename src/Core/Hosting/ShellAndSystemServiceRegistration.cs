@@ -17,13 +17,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IServiceRecoveryControl, WindowsServiceRecoveryControl>();
         services.AddSingleton<ServiceRecoverySettings>();
         services.AddBusinessBlockHostedService(provider => provider.GetRequiredService<ServiceRecoverySettings>());
-        if (hostEnvironment.IsWindowsService
-            && !args.Any(static arg => arg.Equals(
-                "--no-native-ui",
-                StringComparison.OrdinalIgnoreCase)))
-        {
-            services.AddHostedService<NativeUiLaunchHostedService>();
-        }
 
         return services;
     }

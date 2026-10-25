@@ -113,21 +113,21 @@ public sealed class PerformanceOverlayNativeUiTests
             new("test", true, "external"), [Metric()]);
         using var dispatcher = new Control();
         using var coordinator = new PerformanceOverlayCoordinator(dispatcher);
-        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(3, [target]));
         Assert.Equal(1, coordinator.TargetCount);
         Assert.True(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(2, []));
+        coordinator.ApplySnapshot(new OverlaySnapshot(3, []));
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target with { ProcessStartKey = id + 1 }]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(3, [target with { ProcessStartKey = id + 1 }]));
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
-        Assert.True(coordinator.WindowRefreshTimerEnabled);
         coordinator.ApplySnapshot(new OverlaySnapshot(3, [target]));
+        Assert.True(coordinator.WindowRefreshTimerEnabled);
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target])); // Obsolete envelope must clear the active target.
         Assert.Equal(0, coordinator.TargetCount);
         Assert.False(coordinator.WindowRefreshTimerEnabled);
-        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
+        coordinator.ApplySnapshot(new OverlaySnapshot(3, [target]));
         Assert.True(coordinator.WindowRefreshTimerEnabled);
         coordinator.Stop();
         Assert.False(coordinator.WindowRefreshTimerEnabled);
@@ -137,9 +137,8 @@ public sealed class PerformanceOverlayNativeUiTests
     public void StreamJsonAndNineMetricLabelsReachTheRenderer()
     {
         const string json = """
-            {"version":2,"targets":[{"softwareId":"test",
+            {"version":3,"targets":[{"softwareId":"test",
               "processId":42,"processStartKey":1337,
-              "settings":{"softwareId":"test","enabled":true,"mode":"external"},
               "metrics":[{"metricId":"target.fps","value":100,"unit":"FPS",
                 "state":"current","reason":null}]}]}
             """;

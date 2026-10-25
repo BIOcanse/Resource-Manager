@@ -910,7 +910,7 @@ export interface PerformanceOverlaySettings {
   marginPx: number;
 }
 
-export type BackendPerformanceOverlaySettings = Pick<PerformanceOverlaySettings, "softwareId" | "enabled" | "mode">;
+
 
 export interface GpuPlacementObservedProcessInput {
   processName: string;

@@ -12,6 +12,7 @@ using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.App.Infrastructure.Software;
 using ResourceManager.NativeUi;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.Shared.Runtime.Sessions;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -83,7 +84,7 @@ public sealed class SoftwareUninstallerCallerTests
     }
 
     [Fact]
-    public async Task RegistryCommandIsDelegatedToFixedUserUiWithoutExpandingServiceEnvironment()
+    public async Task RegistryCommandIsDelegatedToSessionAgentWithoutExpandingServiceEnvironment()
     {
         var broker = new Broker();
         var service = new SoftwareOperationManager(null!, new Inventory(), null!, broker);
@@ -92,7 +93,7 @@ public sealed class SoftwareUninstallerCallerTests
         var launch = Assert.Single(broker.Launches);
         Assert.Equal(7u, launch.Session);
         Assert.Equal(UserSid, launch.Sid);
-        Assert.EndsWith("ResourceManager.NativeUi.exe", launch.Executable);
+        Assert.EndsWith("ResourceManager.SessionAgent.exe", launch.Executable);
         var encoded = launch.Arguments[(UserShellExecuteRequest.Argument.Length + 1)..];
         var shell = UserShellExecuteRequest.Decode(encoded);
         Assert.Equal(@"%LOCALAPPDATA%\Owned Software\uninstall.exe", shell.FileName);
@@ -181,8 +182,6 @@ public sealed class SoftwareUninstallerCallerTests
         internal List<(uint Session, string Sid, string Executable, string Arguments)> Launches { get; } = [];
         public IReadOnlyList<uint> GetActiveSessionIds() => Active ? [7u] : [];
         public string? GetUserSid(uint sessionId) => UserSid;
-        public NativeUiProcessPresence GetNativeUiProcessPresence(uint sessionId, string executable) => throw new NotSupportedException();
-        public uint LaunchNativeUi(uint sessionId, string executable, string arguments) => throw new NotSupportedException();
         public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executable, string arguments)
         { Launches.Add((sessionId, expectedUserSid, executable, arguments)); return 1; }
     }

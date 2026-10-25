@@ -10,7 +10,6 @@
     <AdlxBridgeRoot Condition="'$(AdlxBridgeRoot)' == ''">$(MSBuildProjectDirectory)\Native\AdlxBridge</AdlxBridgeRoot>
     <GpuMigrationProbeRoot Condition="'$(GpuMigrationProbeRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuMigrationProbe</GpuMigrationProbeRoot>
     <GpuPlacementShimRoot Condition="'$(GpuPlacementShimRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuPlacementShim</GpuPlacementShimRoot>
-    <PerformanceOverlayRoot Condition="'$(PerformanceOverlayRoot)' == ''">$(MSBuildProjectDirectory)\Native\PerformanceOverlay</PerformanceOverlayRoot>
     <GpuLaunchBrokerRoot Condition="'$(GpuLaunchBrokerRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuLaunchBroker</GpuLaunchBrokerRoot>
     <GpuWindowActionRoot Condition="'$(GpuWindowActionRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuWindowAction</GpuWindowActionRoot>
     <GpuPlacementExternalRoot Condition="'$(GpuPlacementExternalRoot)' == ''">$(MSBuildProjectDirectory)\Native\GpuPlacementExternal</GpuPlacementExternalRoot>
@@ -84,8 +83,8 @@
     <Content Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
     <Content Remove="Configuration\Disk\**" />
     <None Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
-    <Content Remove="Native\GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json;Native\GpuPlacementShim\bin\**\*.json" />
-    <Content Remove="Native\PerformanceOverlay\ResourceManager.VulkanPerformanceOverlayLayer.json;Native\PerformanceOverlay\bin\**\*.json" />
+    <!-- Native artifact manifests are composed by their package owners, not Web SDK content. -->
+    <Content Remove="Native\**\*.json" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Configuration\HostManager\default.json"
@@ -112,9 +111,6 @@
     <None Include="$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe" Condition="Exists('$(GpuMigrationProbeRoot)\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.D3D11WindowReselectProbe.exe" ExcludeFromSingleFile="true" />
     <None Include="$(GpuMigrationProbeRoot)\bin\win-x64\shim\d3d11.dll" Condition="Exists('$(GpuMigrationProbeRoot)\bin\win-x64\shim\d3d11.dll')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\d3d11.dll" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementShim.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementShim.dll" ExcludeFromSingleFile="true" />
-    <None Include="$(PerformanceOverlayRoot)\bin\win-x64\ResourceManager.PerformanceOverlay.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="PerformanceOverlay\ResourceManager.PerformanceOverlay.dll" ExcludeFromSingleFile="true" />
-    <None Include="$(PerformanceOverlayRoot)\bin\win-x64\ResourceManager.VulkanPerformanceOverlayLayer.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="PerformanceOverlay\ResourceManager.VulkanPerformanceOverlayLayer.dll" ExcludeFromSingleFile="true" />
-    <None Include="$(PerformanceOverlayRoot)\ResourceManager.VulkanPerformanceOverlayLayer.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="PerformanceOverlay\ResourceManager.VulkanPerformanceOverlayLayer.json" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementBootstrap.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementBootstrap.dll" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.VulkanPlacementLayer.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.VulkanPlacementLayer.dll" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementShimRoot)\ResourceManager.VulkanPlacementLayer.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json" ExcludeFromSingleFile="true" />
@@ -157,17 +153,6 @@
       <Compile Include="$(ResourceManagerLedgerOutputRoot)\LedgerOwnerShape.g.cs;$(ResourceManagerLedgerOutputRoot)\LedgerOwnerBuild.g.cs" />
       <None Include="$(ResourceManagerLedgerOutputRoot)\ResourceManager.Ledger.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.Ledger.Native.dll" ExcludeFromSingleFile="true" Visible="false" />
     </ItemGroup>
-  </Target>
-  <ItemGroup>
-    <PerformanceOverlaySource Include="$(PerformanceOverlayRoot)\*.cpp;$(PerformanceOverlayRoot)\*.h;$(PerformanceOverlayRoot)\*.json;$(PerformanceOverlayRoot)\build.cmd" />
-    <PerformanceOverlaySource Include="$(GpuPlacementShimRoot)\third_party\minhook\src\**\*.c;$(GpuPlacementShimRoot)\third_party\minhook\src\**\*.h;$(GpuPlacementShimRoot)\third_party\minhook\include\MinHook.h" />
-    <PerformanceOverlaySource Include="$(GpuPlacementShimRoot)\third_party\vulkan-headers\include\vulkan\*.h" />
-  </ItemGroup>
-  <Target Name="BuildPerformanceOverlay" BeforeTargets="PrepareForBuild"
-          Inputs="@(PerformanceOverlaySource)"
-          Outputs="$(PerformanceOverlayRoot)\bin\win-x64\ResourceManager.PerformanceOverlay.dll;$(PerformanceOverlayRoot)\bin\win-x64\ResourceManager.VulkanPerformanceOverlayLayer.dll;$(PerformanceOverlayRoot)\bin\win-x64\ResourceManager.VulkanPerformanceOverlayLayer.json"
-          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipPerformanceOverlayNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(PerformanceOverlayRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <ItemGroup>
     <GpuLaunchBrokerSource Include="$(GpuLaunchBrokerRoot)\**\*.cpp" />

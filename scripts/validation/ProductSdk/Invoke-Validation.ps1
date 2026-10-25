@@ -166,7 +166,7 @@ $taskInputs=@($taskInputs|Where-Object {$_ -notmatch '(^|[\\/])(bin|obj|node_mod
 if($taskExplicitTestProject) {
     # Seal the complete managed project graph and copied/embedded resources,
     # including xaml/resx, instead of applying the focused C# extension filter.
-    $taskAppInputs=@(& rg --files src/UI/Core src/UI/Launcher src/Installer src/Updater src/Shared src/Core src/ReadWriteCore src/SubscriptionCore tests/App src/UI/Frontend/src src/UI/Frontend/tests)
+    $taskAppInputs=@(& rg --files src/UI/Core src/UI/Launcher src/SessionAgent src/Installer src/Updater src/Shared src/Core src/ReadWriteCore src/SubscriptionCore tests/App src/UI/Frontend/src src/UI/Frontend/tests)
     if($LASTEXITCODE -ne 0){throw 'Could not enumerate full App inputs.'}
     $taskInputs+=@($taskAppInputs|Where-Object {
         $_ -notmatch '(^|[\\/])(bin|obj|node_modules|zig-out|\.zig-cache)([\\/]|$)' -and
@@ -177,7 +177,7 @@ if($taskExplicitTestProject) {
 if($Stage -in @('Frontend','ProductNative','ProductLegacy','ProductDiskNative','ProductBackend','ProductShell','ProductImage')) {
     # Product composition includes the shell, frontend and legacy Native inputs.
     # Enumerate source trees, never their generated caches or compiled outputs.
-    $taskProductInputs=@(& rg --files src/UI src/Updater src/Core/Native src/Core/wwwroot sdk/zig scripts/release tests/Fixtures)
+    $taskProductInputs=@(& rg --files src/UI src/SessionAgent src/Updater src/Core/Native src/Core/wwwroot sdk/zig scripts/release tests/Fixtures)
     if($LASTEXITCODE -ne 0){throw 'Could not enumerate product inputs.'}
     if($taskQualifiedNativeConsumer -and $Stage -in @('ProductBackend','ProductShell','ProductImage')) {
         # These stages consume the qualified prebuilt Native outputs. Their

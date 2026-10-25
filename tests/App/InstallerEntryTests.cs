@@ -22,13 +22,14 @@ public sealed class InstallerEntryTests
                 "Bin/ResourceManager/wwwroot/index.html",
                 "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
                 "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
-                "Internal/UpdateManager/ResourceManager.UpdateManager.exe"
+                "Internal/UpdateManager/ResourceManager.UpdateManager.exe",
+                "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe", "runtime-modules.json"
             };
             var records = files.Select(relative =>
             {
                 var full = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                File.WriteAllText(full, "fixture: " + relative);
+                File.WriteAllText(full, relative == "runtime-modules.json" ? "{\"version\":1,\"modules\":[]}" : "fixture: " + relative);
                 return new { path = relative, length = new FileInfo(full).Length,
                     sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(full))) };
             }).ToArray();

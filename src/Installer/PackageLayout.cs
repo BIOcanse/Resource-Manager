@@ -11,6 +11,8 @@ internal sealed record PackageLayout(string Root, string Version, string Backend
         return ForRoot(verified.Root, verified.Version);
     }
 
+    public string SessionAgent => Path.Combine(Root, "Bin", "ResourceManagerSessionAgent", "ResourceManager.SessionAgent.exe");
+
     public static PackageLayout ForRoot(string root, string version) => new(root, version,
         Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe"),
         Path.Combine(root, "Bin", "ResourceManagerNativeUi", "ResourceManager.NativeUi.exe"),

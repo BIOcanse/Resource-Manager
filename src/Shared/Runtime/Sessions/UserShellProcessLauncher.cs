@@ -3,13 +3,13 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using ResourceManager.Shared.Runtime;
 
-namespace ResourceManager.NativeUi;
+namespace ResourceManager.Shared.Runtime.Sessions;
 
-internal static class UserShellProcessLauncher
+public static class UserShellProcessLauncher
 {
     private const int ProcessWaitSliceMilliseconds = 30 * 60 * 1000;
 
-    internal static int? TryExecute(string[] args)
+    public static int? TryExecute(string[] args)
     {
         if (!args.Contains(UserShellExecuteRequest.Argument, StringComparer.Ordinal)) return null;
         if (args.Length != 2 || args[0] != UserShellExecuteRequest.Argument) return 64;

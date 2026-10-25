@@ -4,14 +4,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Overlay;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.GpuPlacement;
-using ResourceManager.App.Infrastructure.Overlay;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -25,23 +23,19 @@ public sealed class GpuStartupProviderPolicyTests
         var software = Software();
         await policyStore.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await policyStore.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
-        var overlays = new JsonPerformanceOverlaySettingsStore(root.Environment);
-        await overlays.SaveSoftwareAsync(new PerformanceOverlaySettings
-        {
-            SoftwareId = software.SoftwareId,
-            Enabled = true,
-            Mode = "injected"
-        }, CancellationToken.None);
+        using var modules = new StartupModuleTestCatalog();
+        var overlays = new JsonStartupModuleSettingsStore(root.Environment, modules.Catalog);
+        await overlays.SaveAsync(new(software.SoftwareId, ["fixture-module"]), CancellationToken.None);
 
         var decision = await Resolver(policyStore, await policyStore.GetAsync(CancellationToken.None),
-            root.Environment, overlaySettingsStore: overlays,
+            root.Environment, moduleSettingsStore: overlays, moduleCatalog: modules.Catalog,
             softwareRegistry: new SingleSoftwareView(software.SoftwareId, root.Target))
             .ResolveAsync(new(root.Target), CancellationToken.None);
 
         Assert.Equal(GpuStartupPlacementDecisionKinds.Inject, decision.Decision);
         Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, Assert.Single(decision.StartupProviders));
-        Assert.True(decision.OverlayEnabled);
-        Assert.Contains("overlayEnabled=true\n", GpuLaunchBrokerProtocol.Serialize(decision), StringComparison.Ordinal);
+        Assert.Single(decision.StartupModules);
+        Assert.Contains("module0.id=fixture-module\n", GpuLaunchBrokerProtocol.Serialize(decision), StringComparison.Ordinal);
         Assert.NotNull(decision.PolicyPath);
     }
 
@@ -55,12 +49,12 @@ public sealed class GpuStartupProviderPolicyTests
         await store.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
 
         var decision = await Resolver(store, await store.GetAsync(CancellationToken.None),
-            root.Environment, overlaySettingsStore: new FailingOverlaySettingsStore())
+            root.Environment, moduleSettingsStore: new FailingStartupModuleSettingsStore())
             .ResolveAsync(new(root.Target), CancellationToken.None);
 
         Assert.Equal(GpuStartupPlacementDecisionKinds.Inject, decision.Decision);
         Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, Assert.Single(decision.StartupProviders));
-        Assert.False(decision.OverlayEnabled);
+        Assert.Empty(decision.StartupModules);
     }
 
     [Fact]
@@ -290,7 +284,8 @@ public sealed class GpuStartupProviderPolicyTests
 
     private static GpuStartupPlacementResolver Resolver(JsonGpuPlacementPolicyStore store, GpuPlacementPolicyDocument document,
         IHostEnvironment environment, bool globalEnabled = true,
-        IPerformanceOverlaySettingsStore? overlaySettingsStore = null,
+        IStartupModuleSettingsStore? moduleSettingsStore = null,
+        ResourceManager.Shared.Packages.PackageRuntimeCatalog? moduleCatalog = null,
         ISoftwareRegistryView? softwareRegistry = null)
     {
         var software = Assert.Single(document.SoftwarePolicies);
@@ -303,7 +298,8 @@ public sealed class GpuStartupProviderPolicyTests
         }, processes);
         return new(store, new PlanProvider(CompiledRuntimePlan.Default with { GpuPlacement = plan }),
             new D3d11ProxyShimRuntime(environment), new KnownHistory(process),
-            overlaySettingsStore ?? new JsonPerformanceOverlaySettingsStore(environment),
+            moduleSettingsStore ?? new EmptyStartupModuleSettingsStore(),
+            moduleCatalog ?? ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current,
             softwareRegistry ?? new EmptySoftwareRegistryView(),
             NullLogger<GpuStartupPlacementResolver>.Instance);
     }

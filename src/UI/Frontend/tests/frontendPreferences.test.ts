@@ -14,20 +14,26 @@ function storage() {
     removeItem: (key: string) => { values.delete(key); } };
 }
 
-test("a missing frontend cache uses generated point values; a change survives restart and reset removes it", async () => {
+test("frontend changes survive restart; reset restores presentation while retaining module choices", async () => {
   const disk = storage();
   const first = createFrontendPreferencesClient(disk);
   assert.deepEqual(await first.read(), pointPreferences());
+  await first.reset();
+  assert.equal(disk.getItem("resource-manager:frontend-preferences:v1"), null);
   const changed = await first.read();
   changed.appearance.theme = "dark";
   changed.refresh.monitor = { mode: "custom", preset: "quiet", customValue: 4321 };
-  changed.overlays.game = { ...pointOverlayPresentation(), fontSizePx: 26, metrics: ["target.gpu", "target.cpu"] };
+  changed.overlays.game = { ...pointOverlayPresentation(), enabled: true, mode: "injected", fontSizePx: 26, metrics: ["target.gpu", "target.cpu"] };
   await first.save(changed);
   const restarted = createFrontendPreferencesClient(disk);
   assert.deepEqual(await restarted.read(), changed);
   await restarted.reset();
-  assert.deepEqual(await createFrontendPreferencesClient(disk).read(), pointPreferences());
+  assert.deepEqual(await createFrontendPreferencesClient(disk).read(), {
+    ...pointPreferences(), overlays: { game: { ...pointOverlayPresentation(), enabled: true, mode: "injected" } }
+  });
   assert.equal((await restarted.read()).appearance.theme, points.Theme);
+  assert.equal(pointOverlayPresentation().enabled, false);
+  assert.equal(pointOverlayPresentation().mode, "external");
 });
 
 test("every refresh preset and custom interval resolve locally in both foreground/background profiles", () => {

@@ -11,7 +11,7 @@ using ResourceManager.Shared.Runtime;
 namespace ResourceManager.NativeUi;
 
 // One UAC process performs one immutable operation through the existing backend API, then exits.
-internal static class ElevatedProcessActionBroker
+internal static partial class ElevatedProcessActionBroker
 {
     internal static async Task<string> ExecuteAsync(ProcessActionBatch batch,
         BackendProcessIdentity service, CancellationToken cancellationToken)
@@ -79,15 +79,10 @@ internal static class ElevatedProcessActionBroker
 
     private static async Task<int> RunHelperAsync(ElevatedProcessActionRequest request)
     {
-        using var identity = WindowsIdentity.GetCurrent();
-        using var own = Process.GetCurrentProcess();
-        if (identity.IsSystem || own.SessionId == 0
-            || !new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)
-            || request.ParentProcessId == own.Id
-            || !BackendProcessConnection.VerifyProcess(request.ParentProcessId, request.ParentCreatedUtcTicks,
-                Environment.ProcessPath!)) return 5;
-        using var parent = Process.GetProcessById(request.ParentProcessId);
-        if (parent.SessionId != own.SessionId) return 5;
+        if (!IsAuthorizedElevatedHelperParent(request.ParentProcessId, request.ParentCreatedUtcTicks)) return 5;
+        // Rejected utility invocations do not consume package state. An accepted
+        // helper holds the same lease as the ordinary frontend through completion.
+        using var packageUse = new NativeUiPackageUseLifetime();
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         using var pipe = new NamedPipeClientStream(".", request.PipeName, PipeDirection.InOut,
             PipeOptions.Asynchronous, TokenImpersonationLevel.Identification);

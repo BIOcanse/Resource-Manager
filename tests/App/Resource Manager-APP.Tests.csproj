@@ -89,6 +89,7 @@
     <ProjectReference Include="..\..\src\Core\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
+    <ProjectReference Include="..\..\src\SessionAgent\ResourceManager.SessionAgent.csproj" />
     <ProjectReference Include="..\..\src\Installer\ResourceManager.Installer.csproj" />
     <ProjectReference Include="..\..\src\Shared\ResourceManager.Shared.csproj" />
     <ProjectReference Include="..\..\src\Updater\ResourceManager.Updater.csproj" />
@@ -100,5 +101,13 @@
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+<Target Name="CopySessionAgent" AfterTargets="Build">
+  <MSBuild Projects="$(MSBuildProjectDirectory)\..\..\src\SessionAgent\ResourceManager.SessionAgent.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+    <Output TaskParameter="TargetOutputs" ItemName="SessionAgentTarget" />
+  </MSBuild>
+  <PropertyGroup><SessionAgentOutputDirectory>@(SessionAgentTarget->'%(RootDir)%(Directory)')</SessionAgentOutputDirectory></PropertyGroup>
+  <ItemGroup><SessionAgentFile Include="$(SessionAgentOutputDirectory)*" /></ItemGroup>
+  <Copy SourceFiles="@(SessionAgentFile)" DestinationFolder="$(TargetDir)ResourceManagerSessionAgent" />
+</Target>
 <Target Name="CopyFanControlCoreProbe" AfterTargets="Build"><ItemGroup><FanControlCoreProbeFile Include="$(MSBuildProjectDirectory)\..\FanControlCoreProbe\bin\$(Configuration)\net10.0\*" /></ItemGroup><Copy SourceFiles="@(FanControlCoreProbeFile)" DestinationFolder="$(TargetDir)FanControlCoreProbe" /></Target>
 </Project>

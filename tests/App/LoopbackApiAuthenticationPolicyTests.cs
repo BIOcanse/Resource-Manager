@@ -84,8 +84,8 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     [InlineData("HEAD", "/api/targeted-recordings", "Protected", "processes.read")]
     [InlineData("POST", "/api/targeted-recordings", "Protected", "session")]
     [InlineData("DELETE", "/api/targeted-recordings/{id}", "Protected", "session")]
-    [InlineData("GET", "/api/performance-overlay/software/{softwareId}", "Protected", "metrics.read")]
-    [InlineData("HEAD", "/api/performance-overlay/software/{softwareId}", "Protected", "metrics.read")]
+    [InlineData("GET", "/api/startup-modules/software/{softwareId}", "Protected", "read")]
+    [InlineData("HEAD", "/api/startup-modules/software/{softwareId}", "Protected", "read")]
     [InlineData("POST", "/api/system/search-online", "Protected", "session")]
     [InlineData("POST", "/api/access-requests/{requestId}/approve", "Protected", "keys.manage")]
     [InlineData("POST", "/api/access-requests/{requestId}/deny", "Protected", "keys.manage")]
@@ -169,7 +169,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/{softwareId}")]
+    [InlineData("/api/startup-modules/software/{softwareId}")]
     public async Task InjectionConfigMutationsRequireBothScopesEvenForAdministratorKeys(string path)
     {
         foreach (var method in MethodVariants("PUT"))
@@ -201,7 +201,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/{softwareId}")]
+    [InlineData("/api/startup-modules/software/{softwareId}")]
     public async Task InjectionConfigMutationsNeedAdministratorAndAllowFullyAuthorizedKey(string path)
     {
         var context = RequestWithKey("valid-key");
@@ -226,7 +226,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("/api/gpu-placement/process-policy")]
-    [InlineData("/api/performance-overlay/software/{softwareId}")]
+    [InlineData("/api/startup-modules/software/{softwareId}")]
     public async Task InjectionConfigMutationsRemainDeniedWithoutAdministrator(string path)
     {
         var context = RequestWithKey("valid-key");

@@ -10,6 +10,13 @@ param(
     [string]$LauncherDirectory,
 
     [Parameter(Mandatory = $true)]
+    [string]$SessionAgentDirectory,
+
+    [string]$FrontendModuleSourceRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
+
+    [string]$FrontendNativeRoot,
+
+    [Parameter(Mandatory = $true)]
     [string]$OutputDirectory
 )
 
@@ -21,6 +28,7 @@ $manifestFileName = 'resource-manager-final-image.manifest.json'
 $backend = [System.IO.Path]::GetFullPath($BackendDirectory)
 $nativeUi = [System.IO.Path]::GetFullPath($NativeUiDirectory)
 $launcher = [System.IO.Path]::GetFullPath($LauncherDirectory)
+$sessionAgent = [System.IO.Path]::GetFullPath($SessionAgentDirectory)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $outputParent = [System.IO.Path]::GetDirectoryName($output)
 $outputLeaf = [System.IO.Path]::GetFileName($output)
@@ -183,6 +191,7 @@ if (-not [System.IO.Directory]::Exists($nativeUi)) {
 if (-not [System.IO.Directory]::Exists($launcher)) {
     throw "Launcher publish directory does not exist: $launcher"
 }
+if (-not [System.IO.Directory]::Exists($sessionAgent)) { throw "SessionAgent publish directory does not exist: $sessionAgent" }
 if (-not [System.IO.File]::Exists($validator)) {
     throw "Final image validator does not exist: $validator"
 }
@@ -193,6 +202,8 @@ if ([string]::IsNullOrWhiteSpace($outputParent) -or
 if ((Test-IsSameOrDescendant -Candidate $output -Ancestor $backend) -or
     (Test-IsSameOrDescendant -Candidate $output -Ancestor $nativeUi) -or
     (Test-IsSameOrDescendant -Candidate $output -Ancestor $launcher) -or
+    (Test-IsSameOrDescendant -Candidate $output -Ancestor $sessionAgent) -or
+    (Test-IsSameOrDescendant -Candidate $sessionAgent -Ancestor $output) -or
     (Test-IsSameOrDescendant -Candidate $launcher -Ancestor $output) -or
     (Test-IsSameOrDescendant -Candidate $backend -Ancestor $output) -or
     (Test-IsSameOrDescendant -Candidate $nativeUi -Ancestor $output)) {
@@ -209,6 +220,7 @@ $requiredInputs = @(
     (Join-Path $nativeUi 'ResourceManager.NativeUi.exe')
     (Join-Path $nativeUi 'InstallWebView2Runtime.ps1')
     (Join-Path $launcher 'ResourceManager.Launcher.exe')
+    (Join-Path $sessionAgent 'ResourceManager.SessionAgent.exe')
 )
 foreach ($requiredInput in $requiredInputs) {
     if (-not [System.IO.File]::Exists($requiredInput)) {
@@ -233,6 +245,8 @@ try {
     Copy-DirectoryTree -Source $backend -Destination (Join-Path $staging 'ResourceManager')
     Copy-DirectoryTree -Source $nativeUi -Destination (Join-Path $staging 'ResourceManagerNativeUi')
     Copy-DirectoryTree -Source $launcher -Destination (Join-Path $staging 'ResourceManagerLauncher')
+    Copy-DirectoryTree -Source $sessionAgent -Destination (Join-Path $staging 'ResourceManagerSessionAgent')
+    & (Join-Path $PSScriptRoot 'Write-ResourceManagerRuntimeModules.ps1') -ImageRoot $staging -SourceRoot $FrontendModuleSourceRoot -FrontendNativeRoot $FrontendNativeRoot
 
     $prefix = $staging.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
     $entries = [System.Collections.Generic.List[object]]::new()
@@ -260,6 +274,7 @@ try {
             backendDirectory = 'ResourceManager'
             nativeUiDirectory = 'ResourceManagerNativeUi'
             launcherDirectory = 'ResourceManagerLauncher'
+            sessionAgentDirectory = 'ResourceManagerSessionAgent'
         }
         payload = [ordered]@{
             fileCount = $orderedEntries.Count

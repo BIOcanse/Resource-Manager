@@ -329,7 +329,7 @@ public sealed partial class GpuApiObservationBridgeTests
     [InlineData("vulkan-1.dll;opengl32.dll", 12)]
     public void CandidateModulesAreOnlyAnUnfilteredSetNotActualApiIdentification(string modules, int expected)
     {
-        Assert.Equal((GpuGraphicsApi)expected, WindowsGpuGraphicsApiDetector.CollectCandidates(modules.Split(';')));
+        Assert.Equal((GpuGraphicsApi)expected, GpuGraphicsApiRoutes.CollectModuleCandidates(modules.Split(';')));
     }
 
     [Theory]

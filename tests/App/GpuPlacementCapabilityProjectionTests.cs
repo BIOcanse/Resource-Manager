@@ -80,7 +80,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
         var executablePath = Environment.ProcessPath;
         Assert.False(string.IsNullOrWhiteSpace(executablePath));
         using var files = new ProviderFiles();
-        var api = new WindowsGpuGraphicsApiDetector((_, _) => modules.Split(',')).Detect(42, executablePath!);
+        var api = GpuGraphicsApiRoutes.CollectModuleCandidates(modules.Split(','));
         var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
         var missing = reader.Evaluate("process", executablePath, "x64", api);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, missing.Startup.State);
@@ -114,7 +114,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
         using var files = new ProviderFiles();
         files.CreateAll();
         var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
-        var api = new WindowsGpuGraphicsApiDetector((_, _) => modules.Split(',')).Detect(42, Environment.ProcessPath!);
+        var api = GpuGraphicsApiRoutes.CollectModuleCandidates(modules.Split(','));
 
         var result = reader.Evaluate("process", Environment.ProcessPath, "x64", api);
 
@@ -208,13 +208,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
     public void CapabilityReader_VulkanStartupRequiresItsOwnCompleteArtifacts(string modules)
     {
         using var files = new ProviderFiles();
-        var reads = 0;
-        var detector = new WindowsGpuGraphicsApiDetector((_, _) =>
-        {
-            reads++;
-            return modules.Split(',');
-        });
-        var api = detector.Detect(42, Environment.ProcessPath!);
+        var api = GpuGraphicsApi.Vulkan;
         var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
         files.CreateAll();
         File.Delete(files.VulkanManifest);
@@ -233,7 +227,6 @@ public sealed class GpuPlacementCapabilityProjectionTests
         Assert.Equal("startup-vulkan-instance-only", available.Startup.ReasonCode);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Runtime.State);
         Assert.Equal("Vulkan", available.Runtime.GraphicsApi);
-        Assert.Equal(1, reads);
     }
 
     [Theory]
@@ -245,7 +238,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
     {
         using var files = new ProviderFiles();
         files.CreateAll();
-        var api = new WindowsGpuGraphicsApiDetector((_, _) => modules?.Split(',')).Detect(42, Environment.ProcessPath!);
+        var api = (GpuGraphicsApi?)null;
         var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
 
         var result = reader.Evaluate("process", Environment.ProcessPath, "x64", api);

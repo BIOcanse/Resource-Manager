@@ -1,4 +1,5 @@
 import { readDashboardPreferences, saveDashboardPreferences } from "./preferences/dashboardPreferences.ts";
+import { putElevatedBackendJson } from "./api/elevatedBackendRequest.ts";
 import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
 import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
 import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
@@ -83,14 +84,17 @@ export async function getMetricCatalog() {
   return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
+const overlayStartupModuleIds = ["performance-overlay-preload", "performance-overlay-vulkan"];
+type StartupModuleSelection = { softwareId: string; moduleIds: string[] };
+
 export async function getPerformanceOverlaySettings(softwareId: string): Promise<PerformanceOverlaySettings> {
-  const [operation, preferences] = await Promise.all([
-    getJson<import("./types.ts").BackendPerformanceOverlaySettings>(`/api/performance-overlay/software/${encodeURIComponent(softwareId)}`),
-    frontendPreferencesClient().read()
-  ]);
-  const presentation = cachedOverlay(preferences, softwareId) ?? pointOverlayPresentation();
-  return { softwareId: operation.softwareId, enabled: operation.enabled, mode: operation.mode,
-    ...presentation, metrics: [...presentation.metrics] };
+  const preferences = await frontendPreferencesClient().read();
+  const presentation = { ...pointOverlayPresentation(), ...cachedOverlay(preferences, softwareId) };
+  if (presentation.mode === "injected") {
+    const operation = await getJson<StartupModuleSelection>(`/api/startup-modules/software/${encodeURIComponent(softwareId)}`);
+    presentation.enabled = overlayStartupModuleIds.every(id => operation.moduleIds.includes(id));
+  }
+  return { softwareId, ...presentation, metrics: [...presentation.metrics] };
 }
 
 export async function getPerformanceOverlayMetricCatalog() {
@@ -99,25 +103,32 @@ export async function getPerformanceOverlayMetricCatalog() {
 }
 
 export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings,
-    previous?: import("./types.ts").BackendPerformanceOverlaySettings): Promise<PerformanceOverlaySettings> {
-  const { softwareId, enabled, mode, ...presentation } = settings;
-  const operation = previous?.enabled === enabled && previous.mode === mode ? { softwareId, enabled, mode }
-    : await putJson<import("./types.ts").BackendPerformanceOverlaySettings>(
-      `/api/performance-overlay/software/${encodeURIComponent(softwareId)}`, { softwareId, enabled, mode },
-      uiText.apiError.saveGpuSoftwarePolicyFailed);
+    previous?: Pick<PerformanceOverlaySettings, "enabled" | "mode">): Promise<PerformanceOverlaySettings> {
+  const { softwareId, ...presentation } = settings;
+  if (!previous || previous.enabled !== settings.enabled || previous.mode !== settings.mode) {
+    const path = `/api/startup-modules/software/${encodeURIComponent(softwareId)}`;
+    const current = await getJson<StartupModuleSelection>(path);
+    const unrelated = current.moduleIds.filter(id => !overlayStartupModuleIds.includes(id));
+    const moduleIds = [...unrelated, ...(settings.enabled && settings.mode === "injected" ? overlayStartupModuleIds : [])];
+    if (JSON.stringify([...current.moduleIds].sort()) !== JSON.stringify([...moduleIds].sort()))
+      await putElevatedBackendJson<StartupModuleSelection>(path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
+  }
   const owner = frontendPreferencesClient();
   const preferences = await owner.read();
   await owner.save({ ...preferences, overlays: { ...preferences.overlays, [softwareId]: presentation } }, { overlay: softwareId });
-  return { ...operation, ...presentation, metrics: [...presentation.metrics] };
+  return { softwareId, ...presentation, metrics: [...presentation.metrics] };
 }
 
 export async function resetPerformanceOverlayPresentation(softwareId: string) {
   const owner = frontendPreferencesClient();
   const preferences = await owner.read();
   const overlays = { ...preferences.overlays };
+  const current = cachedOverlay(preferences, softwareId) ?? pointOverlayPresentation();
+  const presentation = { ...pointOverlayPresentation(), enabled: current.enabled, mode: current.mode };
   for (const id of Object.keys(overlays)) if (id.toLowerCase() === softwareId.toLowerCase()) delete overlays[id];
+  overlays[softwareId] = presentation;
   await owner.save({ ...preferences, overlays }, { overlay: softwareId });
-  return pointOverlayPresentation();
+  return presentation;
 }
 
 export async function getDashboardSettings() {

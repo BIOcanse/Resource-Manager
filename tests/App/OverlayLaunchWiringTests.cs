@@ -1,16 +1,14 @@
-using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Overlay;
-using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Software;
+using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
-using ResourceManager.App.Domain.Overlay;
-using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.Shared.Packages;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -21,167 +19,74 @@ public sealed class OverlayLaunchWiringTests
     [InlineData(true, false, 1)]
     [InlineData(false, true, 1)]
     [InlineData(true, true, 1)]
-    public void RuleSelection_UsesGpuAndOverlayUnion(bool gpu, bool overlay, int expectedCount)
+    public void RuleSelectionUnionsGpuAndAdmittedModules(bool gpu, bool modules, int count)
     {
         const string path = @"C:\Apps\Game\game.exe";
-        var document = Document(Process(path, gpu));
-        var selected = WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(
-            document, overlay ? [path] : []);
-
-        Assert.Equal(expectedCount, selected.Count);
-        if (expectedCount != 0)
-        {
-            Assert.True(Assert.Single(selected).StartupInterceptionEnabled);
-            Assert.Equal(path, selected[0].ExecutablePath, ignoreCase: true);
-            Assert.Equal("process", selected[0].ProcessKey);
-        }
-    }
-
-    [Fact]
-    public void RemovingOverlayRule_KeepsTheGpuRuleOnlyWhenRequested()
-    {
-        const string path = @"C:\Apps\Game\game.exe";
-        Assert.Empty(WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(Document(Process(path, false)), []));
-        Assert.Single(WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(Document(Process(path, true)), []));
-    }
-
-    [Fact]
-    public void OverlayRuleDoesNotRequireAGpuProcessPolicy()
-    {
-        const string path = @"C:\Apps\Game\game.exe";
-        var policy = Assert.Single(WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(
-            Document(), [path]));
-        Assert.True(policy.StartupInterceptionEnabled);
-        Assert.Equal(path, policy.ExecutablePath, ignoreCase: true);
+        var selected = WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(Document(Process(path, gpu)), modules ? [path] : []);
+        Assert.Equal(count, selected.Count);
+        if (count > 0) Assert.True(Assert.Single(selected).StartupInterceptionEnabled);
     }
 
     [Theory]
-    [InlineData(true, "injected", true)]
-    [InlineData(true, "external", false)]
-    [InlineData(false, "injected", false)]
-    public void OverlayRulePaths_ComeFromRegisteredSoftware(bool enabled, string mode, bool expected)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ModuleOnlyDecisionHasNoGpuPolicyAndGenericWire(bool enabled)
     {
-        const string path = @"C:\Apps\Game\game.exe";
-        var settings = new PerformanceOverlaySettingsDocument(1,
-            [new PerformanceOverlaySettings { SoftwareId = "software", Enabled = enabled, Mode = mode }]);
-        var software = new[] { Software(path) };
-        var paths = GpuLaunchInterceptionReconciler.SelectOverlayExecutablePaths(settings, software);
-
-        Assert.Equal(expected, paths.Contains(path));
-    }
-
-    [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, true, false)]
-    [InlineData(true, true, false)]
-    [InlineData(true, true, true)]
-    public async Task Reconciliation_GatesGpuRulesButPreservesInjectedOverlay(
-        bool gpuAvailable, bool overlayEnabled, bool availabilityFails)
-    {
-        const string gpuPath = @"C:\Apps\Gpu\gpu.exe";
-        const string overlayPath = @"C:\Apps\Overlay\overlay.exe";
-        var registry = new CapturingRegistry();
-        var reconciler = new GpuLaunchInterceptionReconciler(
-            new StaticGpuPolicyStore(Document(Process(gpuPath, true))),
-            new StaticOverlayStore(new PerformanceOverlaySettingsDocument(1,
-                [new PerformanceOverlaySettings { SoftwareId = "software", Enabled = overlayEnabled, Mode = "injected" }])),
-            new StaticSoftwareView([Software(overlayPath)]),
-            registry,
-            new StaticGpuSchedulingAvailability(gpuAvailable, availabilityFails),
-            NullLogger<GpuLaunchInterceptionReconciler>.Instance);
-
-        await reconciler.ReconcileAsync(CancellationToken.None);
-
-        var desired = WindowsIfeoGpuLaunchInterceptionRegistry.SelectDesiredPolicies(
-            registry.GpuDocument!, registry.OverlayPaths);
-        Assert.Equal(gpuAvailable && !availabilityFails,
-            desired.Any(policy => string.Equals(policy.ExecutablePath, gpuPath, StringComparison.OrdinalIgnoreCase)));
-        Assert.Equal(overlayEnabled,
-            desired.Any(policy => string.Equals(policy.ExecutablePath, overlayPath, StringComparison.OrdinalIgnoreCase)));
-        Assert.Equal((gpuAvailable && !availabilityFails ? 1 : 0) + (overlayEnabled ? 1 : 0), desired.Count);
-    }
-
-    [Fact]
-    public async Task OverlaySettingsFailureDoesNotDiscardGpuLaunchRules()
-    {
-        var path = Environment.ProcessPath!;
-        var registry = new CapturingRegistry();
-        var reconciler = new GpuLaunchInterceptionReconciler(
-            new StaticGpuPolicyStore(Document(Process(path, true))),
-            new FailingOverlaySettingsStore(),
-            new StaticSoftwareView([Software(path)]),
-            registry,
-            new StaticGpuSchedulingAvailability(true),
-            NullLogger<GpuLaunchInterceptionReconciler>.Instance);
-
-        await reconciler.ReconcileAsync(CancellationToken.None);
-
-        Assert.Empty(registry.OverlayPaths);
-        Assert.True(Assert.Single(registry.GpuDocument!.ProcessPolicies).StartupInterceptionEnabled);
-    }
-
-    [Theory]
-    [InlineData(false, "injected", false)]
-    [InlineData(true, "external", false)]
-    [InlineData(true, "injected", true)]
-    public async Task Resolver_OverlayOnlyDecisionDoesNotRequireGpuPolicy(
-        bool enabled, string mode, bool expectedOverlay)
-    {
-        var path = Environment.ProcessPath!;
-        var resolver = new GpuStartupPlacementResolver(
-            new StaticGpuPolicyStore(Document()),
-            new StaticPlanProvider(),
-            new D3d11ProxyShimRuntime(new TestHostEnvironment(Path.GetTempPath())),
-            new JsonGpuPlacementProcessHistoryStore(new TestHostEnvironment(Path.GetTempPath())),
-            new StaticOverlayStore(new PerformanceOverlaySettingsDocument(1,
-                [new PerformanceOverlaySettings { SoftwareId = "software", Enabled = enabled, Mode = mode }])),
-            new StaticSoftwareView([Software(path)]),
-            NullLogger<GpuStartupPlacementResolver>.Instance);
-
-        var decision = await resolver.ResolveAsync(new(path), CancellationToken.None);
-
-        Assert.Equal(expectedOverlay, decision.OverlayEnabled);
-        Assert.Equal(expectedOverlay ? GpuStartupPlacementDecisionKinds.Inject
-            : GpuStartupPlacementDecisionKinds.PassThrough, decision.Decision);
+        using var files = new StartupModuleTestCatalog();
+        var modules = new MemoryModuleStore(new(1, [new("software", enabled ? ["fixture-module"] : [])]));
+        var resolver = new GpuStartupPlacementResolver(new StaticGpuPolicyStore(Document()), new StaticPlanProvider(),
+            new D3d11ProxyShimRuntime(files), new JsonGpuPlacementProcessHistoryStore(files), modules, files.Catalog,
+            new StaticSoftwareView([Software(files.Image)]), NullLogger<GpuStartupPlacementResolver>.Instance);
+        var decision = await resolver.ResolveAsync(new(files.Image), default);
+        Assert.Equal(enabled ? GpuStartupPlacementDecisionKinds.Inject : GpuStartupPlacementDecisionKinds.PassThrough, decision.Decision);
+        Assert.Equal(enabled ? 1 : 0, decision.StartupModules.Count);
         Assert.Empty(decision.StartupProviders);
         Assert.Null(decision.PolicyPath);
-        Assert.Equal(expectedOverlay, GpuLaunchBrokerProtocol.Serialize(decision).Contains(
-            "overlayEnabled=true\n", StringComparison.Ordinal));
+        var wire = GpuLaunchBrokerProtocol.Serialize(decision);
+        Assert.Contains("version=2\n", wire);
+        Assert.DoesNotContain("overlayEnabled", wire);
+        if (enabled) Assert.Contains("module0.id=fixture-module\n", wire);
     }
 
     [Theory]
     [InlineData(false, false)]
-    [InlineData(true, false)]
     [InlineData(false, true)]
+    [InlineData(true, false)]
     [InlineData(true, true)]
-    public void StartupDecisionWire_SeparatesGpuAndOverlay(bool gpu, bool overlay)
+    public async Task ReconcilerKeepsModulesIndependentOfGpuAvailability(bool available, bool failure)
     {
-        var decision = new GpuStartupPlacementDecision(
-            gpu || overlay ? GpuStartupPlacementDecisionKinds.Inject : GpuStartupPlacementDecisionKinds.PassThrough,
-            "ready", "configured", @"C:\Apps\game.exe", "software", "process", gpu ? "gpu0" : null,
-            null, gpu ? @"C:\Package\UserData\GpuPlacement\gpu-policy.txt" : null,
-            null, null, gpu ? [GpuPlacementProviderIds.D3dDeviceCreateShim] : [], overlay);
-
-        var json = JsonSerializer.SerializeToElement(decision, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Assert.Equal(overlay, json.GetProperty("overlayEnabled").GetBoolean());
-        Assert.Equal(gpu ? 1 : 0, json.GetProperty("startupProviders").GetArrayLength());
-        var protocol = GpuLaunchBrokerProtocol.Serialize(decision);
-        Assert.Equal(overlay, protocol.Contains("overlayEnabled=true\n", StringComparison.Ordinal));
-        Assert.Equal(gpu, protocol.Contains("startupProviders=d3d-device-create-shim\n", StringComparison.Ordinal));
+        using var files = new StartupModuleTestCatalog();
+        var registry = new CapturingRegistry();
+        var reconciler = new GpuLaunchInterceptionReconciler(new StaticGpuPolicyStore(Document(Process("gpu.exe", true))),
+            new MemoryModuleStore(new(1, [new("software", ["fixture-module"])])), files.Catalog,
+            new StaticSoftwareView([Software(files.Image)]), registry,
+            new StaticGpuSchedulingAvailability(available, failure), NullLogger<GpuLaunchInterceptionReconciler>.Instance);
+        await reconciler.ReconcileAsync(default);
+        Assert.Equal([files.Image], registry.ModulePaths);
+        Assert.Equal(available && !failure ? 1 : 0, registry.GpuDocument!.ProcessPolicies.Count);
     }
 
-    private static GpuPlacementPolicyDocument Document(params GpuPlacementProcessPolicy[] policies) =>
-        new(GpuPlacementPolicyDocumentVersions.Current, [], policies, DateTimeOffset.UnixEpoch);
+    [Fact]
+    public async Task UnadmittedSelectionCannotCreateRuleOrDecision()
+    {
+        using var files = new StartupModuleTestCatalog();
+        var settings = new StartupModuleSettingsDocument(1, [new("software", ["unadmitted"])]);
+        Assert.Empty(GpuLaunchInterceptionReconciler.SelectModuleExecutablePaths(settings, [Software(files.Image)], files.Catalog));
+        var resolver = new GpuStartupPlacementResolver(new StaticGpuPolicyStore(Document()), new StaticPlanProvider(),
+            new D3d11ProxyShimRuntime(files), new JsonGpuPlacementProcessHistoryStore(files), new MemoryModuleStore(settings),
+            files.Catalog, new StaticSoftwareView([Software(files.Image)]), NullLogger<GpuStartupPlacementResolver>.Instance);
+        Assert.False((await resolver.ResolveAsync(new(files.Image), default)).ShouldInject);
+    }
 
-    private static GpuPlacementProcessPolicy Process(string path, bool enabled) => new(
-        "software", "process", Path.GetFileName(path), path, true,
-        [], null, DateTimeOffset.UnixEpoch, enabled);
-
-    private static SoftwareRecord Software(string path) => new(
-        "software", "Software", SoftwareKinds.Game, "registered",
-        [], [], new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"),
-        null, ExecutablePaths: [path]);
-
+    private sealed class MemoryModuleStore(StartupModuleSettingsDocument document) : IStartupModuleSettingsStore
+    {
+        public Task<StartupModuleSettingsDocument> GetAsync(CancellationToken token) => Task.FromResult(document);
+        public Task<StartupModuleSelection> SaveAsync(StartupModuleSelection selection, CancellationToken token) => throw new NotSupportedException();
+    }
+    private static GpuPlacementPolicyDocument Document(params GpuPlacementProcessPolicy[] policies) => new(GpuPlacementPolicyDocumentVersions.Current, [], policies, DateTimeOffset.UnixEpoch);
+    private static GpuPlacementProcessPolicy Process(string path, bool enabled) => new("software", "process", "game.exe", path, true, [], null, DateTimeOffset.UnixEpoch, enabled);
+    private static SoftwareRecord Software(string path) => new("software", "Software", SoftwareKinds.Game, "registered", [], [],
+        new SoftwareOperationCapabilities(false, "None", "missing_uninstall_entry"), null, ExecutablePaths: [path]);
     private sealed class StaticGpuPolicyStore(GpuPlacementPolicyDocument document) : IGpuPlacementPolicyStore
     {
         public Task<GpuPlacementPolicyDocument> GetAsync(CancellationToken cancellationToken) => Task.FromResult(document);
@@ -190,15 +95,6 @@ public sealed class OverlayLaunchWiringTests
         public Task<GpuPlacementSoftwarePolicy> SaveSoftwarePolicyAsync(GpuPlacementSoftwarePolicy policy,
             CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<GpuPlacementProcessPolicy> SaveProcessPolicyAsync(GpuPlacementProcessPolicy policy,
-            CancellationToken cancellationToken) => throw new NotSupportedException();
-    }
-
-    private sealed class StaticOverlayStore(PerformanceOverlaySettingsDocument document) : IPerformanceOverlaySettingsStore
-    {
-        public Task<PerformanceOverlaySettingsDocument> GetAsync(CancellationToken cancellationToken) => Task.FromResult(document);
-        public Task<PerformanceOverlaySettings> GetSoftwareAsync(string softwareId,
-            CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<PerformanceOverlaySettings> SaveSoftwareAsync(PerformanceOverlaySettings settings,
             CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
@@ -224,15 +120,15 @@ public sealed class OverlayLaunchWiringTests
 
     private sealed class CapturingRegistry : IGpuLaunchInterceptionRegistry
     {
-        public IReadOnlyCollection<string> OverlayPaths { get; private set; } = [];
+        public IReadOnlyCollection<string> ModulePaths { get; private set; } = [];
         public GpuPlacementPolicyDocument? GpuDocument { get; private set; }
         public GpuLaunchInterceptionStatus Apply(GpuPlacementProcessPolicy policy) => throw new NotSupportedException();
         public GpuLaunchInterceptionStatus GetStatus(GpuPlacementProcessPolicy policy) => throw new NotSupportedException();
         public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(GpuPlacementPolicyDocument document,
-            IReadOnlyCollection<string> overlayExecutablePaths)
+            IReadOnlyCollection<string> moduleExecutablePaths)
         {
             GpuDocument = document;
-            OverlayPaths = overlayExecutablePaths;
+            ModulePaths = moduleExecutablePaths;
             return [];
         }
         public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules() => throw new NotSupportedException();
@@ -261,14 +157,4 @@ internal sealed class EmptySoftwareRegistryView : ISoftwareRegistryView
 
     public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) =>
         GetSoftwareAsync(cancellationToken);
-}
-
-internal sealed class FailingOverlaySettingsStore : IPerformanceOverlaySettingsStore
-{
-    public Task<PerformanceOverlaySettingsDocument> GetAsync(CancellationToken cancellationToken) =>
-        Task.FromException<PerformanceOverlaySettingsDocument>(new IOException("Overlay settings unavailable."));
-    public Task<PerformanceOverlaySettings> GetSoftwareAsync(string softwareId,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
-    public Task<PerformanceOverlaySettings> SaveSoftwareAsync(PerformanceOverlaySettings settings,
-        CancellationToken cancellationToken) => throw new NotSupportedException();
 }

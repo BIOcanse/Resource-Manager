@@ -256,12 +256,13 @@ public sealed class ManagerSelfUpdateTests
             File.WriteAllText(OldManager, "old-manager");
             var paths = new[] { "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
                 "Bin/ResourceManager/wwwroot/index.html", "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
-                "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe", "Internal/UpdateManager/ResourceManager.UpdateManager.exe" };
+                "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe", "Bin/ResourceManagerSessionAgent/ResourceManager.SessionAgent.exe",
+                "runtime-modules.json", "Internal/UpdateManager/ResourceManager.UpdateManager.exe" };
             var files = paths.Select(path =>
             {
                 var full = Path.Combine(Download, path.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                File.WriteAllText(full, "fixture:" + path);
+                File.WriteAllText(full, path == "runtime-modules.json" ? "{\"version\":1,\"modules\":[]}" : "fixture:" + path);
                 return Entry(path, full);
             }).ToArray();
             File.WriteAllText(Path.Combine(Download, "release-manifest.json"),
@@ -292,7 +293,7 @@ public sealed class ManagerSelfUpdateTests
     }
     private sealed class Runtime : IUpdateRuntime
     {
-        public Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<IDisposable> AcquirePackageMaintenanceAsync(string installRoot, CancellationToken cancellationToken) => Task.FromResult<IDisposable>(new MemoryStream());
         public void StopService(string installRoot) { }
         public void StartService(string installRoot) { }
         public Task WaitForHealthAsync(CancellationToken cancellationToken) => Task.CompletedTask;

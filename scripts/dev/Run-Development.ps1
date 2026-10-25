@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet("Start", "Restart", "Stop")]
     [string]$Action = "Start",
     [switch]$SkipBuild,
@@ -19,6 +19,8 @@ $SoftwareRoot = Join-Path $Root '.local\development-runtime'
 $ClientRoot = Join-Path $Root "src\UI\Frontend"
 $AppProject = Join-Path $AppRoot "ResourceManager.App.csproj"
 $NativeUiProject = Join-Path $Root "src\UI\Core\ResourceManager.NativeUi.csproj"
+$SessionAgentProject = Join-Path $Root "src\SessionAgent\ResourceManager.SessionAgent.csproj"
+$SessionAgentOutput = Join-Path $SoftwareRoot "Bin\ResourceManagerSessionAgent"
 $FrontendIndexPath = Join-Path $AppRoot "wwwroot\index.html"
 $GpuPlacementShimRoot = Join-Path $AppRoot "Native\GpuPlacementShim"
 $GpuPlacementShimBuild = Join-Path $GpuPlacementShimRoot "build.cmd"
@@ -540,6 +542,8 @@ function Build-ResourceManager {
     Write-Step "构建后端。"
     Invoke-CheckedCommand "dotnet" @("build", $AppProject, "-c", $Configuration, "--nologo", "--verbosity", "minimal") $Root
 
+    Invoke-CheckedCommand "dotnet" @("build", $SessionAgentProject, "-c", $Configuration, "--nologo", "--verbosity", "minimal", "-p:OutputPath=$SessionAgentOutput", "-p:AppendTargetFrameworkToOutputPath=false") $Root
+
     Write-Step "构建 Web 壳。"
     Invoke-CheckedCommand "dotnet" @("build", $NativeUiProject, "-c", $Configuration, "--nologo", "--verbosity", "minimal") $Root
 }
@@ -588,6 +592,8 @@ function Start-ResourceManager {
     if (-not (Test-Path -LiteralPath $NativeUiExe)) {
         throw "未找到主窗口可执行文件：$NativeUiExe"
     }
+
+    Invoke-CheckedCommand $BackendExe @("--prepare-package-use-guard", $SoftwareRoot) $Root
 
     if (Test-LoopbackPortInUse) {
         throw "127.0.0.1:9321 已被当前仓库以外的后端占用；拒绝启动路径身份不匹配的调试 UI。"

@@ -24,6 +24,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         app.MapMetricsEndpoints();
         app.MapPerformanceOverlayEndpoints();
+        app.MapStartupModuleEndpoints(startupCapabilities);
         app.MapSubscriptionChannelEndpoints();
         app.MapSystemEndpoints(startupCapabilities);
         app.MapDebugEndpoints();

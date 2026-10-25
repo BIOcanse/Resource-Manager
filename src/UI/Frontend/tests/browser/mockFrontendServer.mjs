@@ -29,6 +29,7 @@ const defaultScenario = {
   settingsRevision: "frontend-harness-r1",
   overlaySaveDelayMs: 0,
   overlaySaveFailure: false,
+  overlayElevationOutcome: null,
   diskUsageVolumesFailure: false,
   diskUsageVolumesEmpty: false,
   diskUsageResultFailure: false,
@@ -145,14 +146,7 @@ let metricSlot = {
 };
 let resourceSlotCapturedAt = now();
 
-const overlaySettings = new Map();
-function overlayDefaults(softwareId) {
-  return { softwareId, enabled: false, mode: "external" };
-}
-function normalizeOverlay(settings, softwareId) {
-  return { softwareId, enabled: settings.enabled === true,
-    mode: settings.mode?.toLowerCase() === "injected" ? "injected" : "external" };
-}
+const startupModuleSelections = new Map();
 const metricCatalog = [
   metric("cpu.usage", "处理器", "CPU", "%"),
   metric("cpu.frequency", "处理器频率", "CPU", "MHz"),
@@ -248,6 +242,20 @@ const server = createServer(async (request, response) => {
     }
     if (url.pathname === "/__test/requests") {
       return json(response, 200, requestTelemetry);
+    }
+    if (url.pathname === "/__test/elevated-backend-request" && request.method === "POST") {
+      const command = JSON.parse(await readBody(request));
+      const result = { type: "backend.elevatedRequest.result", requestId: command.requestId, statusCode: null, body: null, error: null };
+      const match = typeof command.path === "string" && /^\/api\/startup-modules\/software\/([^/?#\\]+)$/.exec(command.path);
+      if (command.type !== "backend.elevatedRequest" || typeof command.requestId !== "string" || !command.requestId
+        || command.method !== "PUT" || !match || typeof command.body !== "string" || Buffer.byteLength(command.body) > 128 * 1024) {
+        return json(response, 200, { ...result, error: "unavailable" });
+      }
+      if (scenario.overlayElevationOutcome) return json(response, 200, { ...result, error: scenario.overlayElevationOutcome });
+      let settings;
+      try { settings = JSON.parse(command.body); } catch { return json(response, 200, { ...result, error: "unavailable" }); }
+      const saved = await saveStartupModuleSelection(decodeURIComponent(match[1]), settings);
+      return json(response, 200, { ...result, statusCode: saved.statusCode, body: saved.body === null ? "" : JSON.stringify(saved.body) });
     }
     if (url.pathname === "/__test/management-inventory-revisions/publish"
       && request.method === "POST") {
@@ -373,24 +381,15 @@ async function handleApi(request, response, url) {
     return json(response, 200, ["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow", "target.cpu", "target.gpu", "target.memory", "target.vram"]
       .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")));
   }
-  if (path === "/api/performance-overlay/default" && request.method === "GET") {
-    const id = url.searchParams.get("softwareId")?.trim();
-    return json(response, id ? 200 : 400, id ? overlayDefaults(id) : { error: "Software ID is required." });
+  if (path === "/api/startup-modules/settings" && request.method === "GET") {
+    return json(response, 200, { version: 1, software: [...startupModuleSelections.values()] });
   }
-  if (path.startsWith("/api/performance-overlay/software/")) {
-    const id = decodeURIComponent(path.slice("/api/performance-overlay/software/".length)).trim();
+  if (path.startsWith("/api/startup-modules/software/")) {
+    const id = decodeURIComponent(path.slice("/api/startup-modules/software/".length)).trim();
     if (!id) return json(response, 400, { error: "Software ID is required." });
-    if (request.method === "GET") return json(response, 200, overlaySettings.get(id) ?? overlayDefaults(id));
+    if (request.method === "GET") return json(response, 200, startupModuleSelections.get(id.toLowerCase()) ?? { softwareId: id, moduleIds: [] });
     if (request.method === "PUT") {
-      const settings = JSON.parse(await readBody(request));
-      if (Object.keys(settings).some(key => !["softwareId", "enabled", "mode"].includes(key))) {
-        return json(response, 400, { error: "Presentation does not belong to the backend." });
-      }
-      await delay(normalizeDelay(scenario.overlaySaveDelayMs));
-      if (scenario.overlaySaveFailure) return json(response, 503, { error: "fixture overlay save failure" });
-      const saved = normalizeOverlay(settings, id);
-      overlaySettings.set(id, saved);
-      return json(response, 200, saved);
+      return json(response, 403, { error: "access-scope-required" });
     }
   }
   if (path === "/api/disk-usage/volumes" && request.method === "GET") {
@@ -813,6 +812,24 @@ async function handleApi(request, response, url) {
   return json(response, 404, { error: "frontend harness route not configured" });
 }
 
+async function saveStartupModuleSelection(id, settings) {
+  // Minimal API JSON binding rejects undeclared DTO fields before the handler.
+  if (settings && typeof settings === "object"
+    && Object.keys(settings).some(key => !["softwareId", "moduleIds"].includes(key))) {
+    return { statusCode: 400, body: null };
+  }
+  if (!id || id !== mockSoftware.id || !settings || typeof settings !== "object"
+    || settings.softwareId !== id || !Array.isArray(settings.moduleIds)
+    || settings.moduleIds.some(id => !["performance-overlay-preload", "performance-overlay-vulkan"].includes(id))) {
+    return { statusCode: 400, body: { code: "startup-modules.invalid-selection" } };
+  }
+  await delay(normalizeDelay(scenario.overlaySaveDelayMs));
+  if (scenario.overlaySaveFailure) return { statusCode: 503, body: { code: "fixture-startup-module-save-failed" } };
+  const saved = { softwareId: id, moduleIds: [...new Set(settings.moduleIds)].sort() };
+  startupModuleSelections.set(id.toLowerCase(), saved);
+  return { statusCode: 200, body: saved };
+}
+
 function fixtureOperations() {
   const active = {
     id: "000000000000000000000000000000a1",
@@ -1191,7 +1208,7 @@ function applyScenarioPatch(patch) {
 }
 
 function resetScenario() {
-  overlaySettings.clear();
+  startupModuleSelections.clear();
   if (diskScanCompletionTimer) clearTimeout(diskScanCompletionTimer);
   if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
   diskScanCompletionTimer = null;

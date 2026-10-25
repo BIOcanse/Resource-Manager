@@ -74,54 +74,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         }
     }
 
-    public NativeUiProcessPresence GetNativeUiProcessPresence(
-        uint sessionId,
-        string expectedExecutablePath)
-    {
-        var expected = NormalizeExecutablePath(expectedExecutablePath);
-        var processName = Path.GetFileNameWithoutExtension(expected);
-        var foundConflict = false;
-        return ProcessCollectionOwner.Use(Process.GetProcessesByName(processName), processes =>
-        {
-            foreach (var process in processes)
-            {
-                try
-                {
-                    if (checked((uint)process.SessionId) != sessionId)
-                    {
-                        continue;
-                    }
-
-                    var actual = WindowsProcessImagePathReader.TryRead(process);
-                    if (!string.IsNullOrWhiteSpace(actual)
-                        && PathsEqual(actual, expected))
-                    {
-                        return NativeUiProcessPresence.Expected;
-                    }
-
-                    foundConflict = true;
-                }
-                catch (Exception ex) when (ex is InvalidOperationException
-                                            or Win32Exception
-                                            or NotSupportedException)
-                {
-                    foundConflict = true;
-                }
-            }
-
-            return foundConflict
-                ? NativeUiProcessPresence.Conflicting
-                : NativeUiProcessPresence.Absent;
-        });
-    }
-
-    public uint LaunchNativeUi(
-        uint sessionId,
-        string executablePath,
-        string arguments)
-        => LaunchInSession(sessionId, executablePath, arguments, null);
-
-    public uint LaunchNativeUi(uint sessionId, string expectedUserSid, string executablePath, string arguments)
+    public uint LaunchDesktopProcess(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         => LaunchInSession(sessionId, executablePath, arguments,
             new SecurityIdentifier(expectedUserSid).Value, allowCurrentUserLaunch: false);
 
@@ -180,7 +133,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         if (!File.Exists(executable))
         {
             throw new FileNotFoundException(
-                "Native UI executable does not exist.",
+                "Interactive process executable does not exist.",
                 executable);
         }
 
@@ -281,7 +234,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                     {
                         var error = Marshal.GetLastWin32Error();
                         Trace.WriteLine(
-                            $"DestroyEnvironmentBlock failed after Native UI launch with Win32 error {error}.");
+                            $"DestroyEnvironmentBlock failed after interactive process launch with Win32 error {error}.");
                     }
                 }
             }

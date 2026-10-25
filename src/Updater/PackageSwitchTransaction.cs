@@ -22,6 +22,7 @@ internal static class PackageSwitchTransaction
         var stage = "verified";
         var serviceStopped = false;
         var registeredVersionChanged = false;
+        IDisposable? maintenance = null;
         void Journal(string value)
         {
             WriteJournal(workspace, plan.InstallRoot, plan.PreviousVersion,
@@ -34,11 +35,13 @@ internal static class PackageSwitchTransaction
             CopyTree(plan.Package.Root, next);
             _ = ReleasePackageLayout.Verify(next);
             Journal("verified");
-            await runtime.WaitForNativeUiExitAsync(plan.InstallRoot, cancellationToken);
+            maintenance = await runtime.AcquirePackageMaintenanceAsync(plan.InstallRoot, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             runtime.StopService(plan.InstallRoot);
             serviceStopped = true;
             CopyMutableData(plan.InstallRoot, next);
             PackageUserDirectoryAccess.Prepare(next);
+            ResourceManager.Frontend.Packaging.LegacyStartupModuleMigration.Migrate(next, next);
             Journal("dataCopied");
 
             // Record intent before each potentially partial move. The root and
@@ -80,6 +83,7 @@ internal static class PackageSwitchTransaction
             }
             throw new InvalidOperationException($"更新失败，旧程序和数据已恢复。工作目录：{workspace}。{failure.Message}", failure);
         }
+        finally { maintenance?.Dispose(); }
     }
 
     public static IReadOnlyList<PendingUpdate> ListPending(string installRoot)
@@ -154,7 +158,12 @@ internal static class PackageSwitchTransaction
     {
         var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
         var recovered = new List<string>();
-        foreach (var entry in ListPending(root))
+        var pending = ListPending(root);
+        if (pending.Count == 0) return recovered;
+        // One lease covers every restoration and all service/version recovery.
+        using var maintenance = await runtime.AcquirePackageMaintenanceAsync(root, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var entry in pending)
         {
             try
             {
@@ -163,7 +172,6 @@ internal static class PackageSwitchTransaction
                 {
                     if (entry.Stage is not ("verified" or "dataCopied"))
                     {
-                        await runtime.WaitForNativeUiExitAsync(root, cancellationToken);
                         runtime.StopService(root);
                         PackagePayloadSwitch.Restore(root, entry.Workspace, entry.Stage, value =>
                             WriteJournal(entry.Workspace, root, entry.PreviousVersion,
@@ -174,14 +182,13 @@ internal static class PackageSwitchTransaction
                 else if (Directory.Exists(previous))
                 {
                     ReleasePackageLayout.RejectReparse(previous);
-                    await runtime.WaitForNativeUiExitAsync(root, cancellationToken);
                     runtime.StopService(root);
                     if (Directory.Exists(root))
                     {
                         ReleasePackageLayout.RejectReparse(root);
-                        Directory.Move(root, AvailableFailedPath(Path.Combine(entry.Workspace, "failed")));
+                        PackagePayloadSwitch.Move(root, AvailableFailedPath(Path.Combine(entry.Workspace, "failed")));
                     }
-                    Directory.Move(previous, root);
+                    PackagePayloadSwitch.Move(previous, root);
                 }
                 else if (!Directory.Exists(root))
                 {

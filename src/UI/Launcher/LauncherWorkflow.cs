@@ -19,7 +19,7 @@ public static class LauncherWorkflow
         WindowsServiceRegistration.RequireExpectedBinary(running, backend);
         if (!running.Running) throw new InvalidOperationException(failureMessage ?? "The SYSTEM service did not reach the running state.");
         if (elevated)
-            (requestInterface ?? throw new InvalidOperationException("The service UI opening request is unavailable."))();
+            (requestInterface ?? throw new InvalidOperationException("The desktop session launch request is unavailable."))();
         else launchInterface();
     }
 }

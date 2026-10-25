@@ -1,15 +1,15 @@
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Overlay;
+using ResourceManager.Shared.Packages;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
-using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
 public sealed class GpuLaunchInterceptionReconciler(
     IGpuPlacementPolicyStore policyStore,
-    IPerformanceOverlaySettingsStore overlaySettingsStore,
+    IStartupModuleSettingsStore moduleSettingsStore,
+    PackageRuntimeCatalog moduleCatalog,
     ISoftwareRegistryView softwareRegistry,
     IGpuLaunchInterceptionRegistry registry,
     IGpuSchedulingAvailability schedulingAvailability,
@@ -64,17 +64,13 @@ public sealed class GpuLaunchInterceptionReconciler(
             IReadOnlyCollection<string> paths = [];
             try
             {
-                var settings = await overlaySettingsStore.GetAsync(cancellationToken);
-                if (settings.Software.Any(static item => item.Enabled
-                    && item.Mode.Equals("injected", StringComparison.OrdinalIgnoreCase)))
-                {
-                    var software = await softwareRegistry.GetSoftwareAsync(cancellationToken);
-                    paths = SelectOverlayExecutablePaths(settings, software);
-                }
+                var settings = await moduleSettingsStore.GetAsync(cancellationToken);
+                var software = await softwareRegistry.GetSoftwareAsync(cancellationToken);
+                paths = SelectModuleExecutablePaths(settings, software, moduleCatalog);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "Overlay launch rule selection failed; GPU rules will still be reconciled.");
+                logger.LogWarning(ex, "Startup module rule selection failed; GPU rules will still be reconciled.");
             }
             var statuses = registry.Reconcile(
                 gpuAvailable ? document : document with { ProcessPolicies = [] }, paths);
@@ -94,12 +90,12 @@ public sealed class GpuLaunchInterceptionReconciler(
         }
     }
 
-    internal static IReadOnlyCollection<string> SelectOverlayExecutablePaths(
-        PerformanceOverlaySettingsDocument settings,
-        IReadOnlyList<SoftwareRecord> software)
+    internal static IReadOnlyCollection<string> SelectModuleExecutablePaths(
+        StartupModuleSettingsDocument settings,
+        IReadOnlyList<SoftwareRecord> software, PackageRuntimeCatalog catalog)
     {
         var enabled = settings.Software
-            .Where(static item => item.Enabled && item.Mode.Equals("injected", StringComparison.OrdinalIgnoreCase))
+            .Where(item => item.ModuleIds.Count > 0 && item.ModuleIds.All(id => catalog.TryGetStartupModule(id, out _)))
             .Select(static item => item.SoftwareId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return software

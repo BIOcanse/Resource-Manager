@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$BackendPublishRoot,
     [Parameter(Mandatory = $true)][string]$NativeUiPublishRoot,
-    [Parameter(Mandatory = $true)][string]$LauncherPublishRoot
+    [Parameter(Mandatory = $true)][string]$LauncherPublishRoot,
+    [string]$SessionAgentPublishRoot
 )
 
 Set-StrictMode -Version Latest
@@ -12,6 +13,7 @@ $app = Join-Path $repo 'src\Core'
 $backend = [IO.Path]::GetFullPath($BackendPublishRoot)
 $ui = [IO.Path]::GetFullPath($NativeUiPublishRoot)
 $launcher = [IO.Path]::GetFullPath($LauncherPublishRoot)
+$sessionAgent = if ($SessionAgentPublishRoot) { [IO.Path]::GetFullPath($SessionAgentPublishRoot) } else { $null }
 $noticeRoot = Join-Path $app 'ThirdPartyNotices'
 $inventory = [IO.File]::ReadAllText((Join-Path $noticeRoot 'README.md'))
 $managedInventory = [IO.File]::ReadAllText((Join-Path $noticeRoot 'ManagedDependencyAcknowledgements.md'))
@@ -28,11 +30,13 @@ function Assert-CopiedNotice([string]$Source, [string]$Destination) {
 foreach ($file in (Get-ChildItem -LiteralPath $noticeRoot -File)) {
     Assert-CopiedNotice $file.FullName (Join-Path $backend ('ThirdPartyNotices\' + $file.Name))
     Assert-CopiedNotice $file.FullName (Join-Path $launcher ('ThirdPartyNotices\' + $file.Name))
+    if ($sessionAgent) { Assert-CopiedNotice $file.FullName (Join-Path $sessionAgent ('ThirdPartyNotices\' + $file.Name)) }
 }
 Assert-CopiedNotice (Join-Path $repo 'LICENSE') (Join-Path $backend 'LICENSE')
 Assert-CopiedNotice (Join-Path $repo 'LICENSE') (Join-Path $ui 'LICENSE')
 Assert-CopiedNotice (Join-Path $repo 'LICENSE') (Join-Path $launcher 'LICENSE')
-foreach ($root in @($backend, $ui, $launcher)) {
+if ($sessionAgent) { Assert-CopiedNotice (Join-Path $repo 'LICENSE') (Join-Path $sessionAgent 'LICENSE') }
+foreach ($root in @($backend, $ui, $launcher) + @($sessionAgent | Where-Object { $_ })) {
     Assert-CopiedNotice (Join-Path $repo 'NOTICE') (Join-Path $root 'NOTICE')
 }
 foreach ($name in @('WebView2.LICENSE.txt', 'WebView2.NOTICE.txt', 'DotNet.LICENSE.txt',

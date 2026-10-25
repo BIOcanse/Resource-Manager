@@ -311,7 +311,11 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             frontendProxy,
             batch => backendReady && backendSession is { } session
                 ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
-                : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
+                : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
+            mutation => backendReady && backendSession is { } current
+                ? current.ExecuteElevatedBackendRequestAsync(mutation, shutdown.Token)
+                : Task.FromException<ResourceManager.Shared.Runtime.ElevatedBackendResponse>(
+                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
         form.BackendRetryRequested += OnBackendRetryRequested;
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested += OnDiagnosticsRequested;

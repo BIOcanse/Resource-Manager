@@ -57,7 +57,7 @@ export default async function settingsSourceJourney(page, baseUrl) {
   assert.equal(await interval.inputValue(), "2300");
   // Operational settings retain backend revision/conflict semantics.
   await page.getByRole("button", { name: "系统集成", exact: true }).click();
-  const autoStart = page.getByRole("checkbox", { name: "开机自启", exact: true });
+  const autoStart = page.getByRole("checkbox", { name: text.systemIntegration.autoStartTitle, exact: true });
   await autoStart.check();
   await scenario({ settingsConflict: true });
   const conflict = page.waitForResponse(response => response.status() === 409 && new URL(response.url()).pathname === "/api/settings/app");
@@ -68,7 +68,7 @@ export default async function settingsSourceJourney(page, baseUrl) {
   const reloaded = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/settings/app");
   await page.getByRole("button", { name: "重新加载", exact: true }).click();
   await reloaded;
-  await page.waitForFunction(() => !Array.from(document.querySelectorAll('input[type="checkbox"]')).find(input => input.closest('label')?.textContent?.includes('开机自启'))?.checked);
+  await page.waitForFunction(label => !Array.from(document.querySelectorAll('input[type="checkbox"]')).find(input => input.getAttribute('aria-label') === label)?.checked, text.systemIntegration.autoStartTitle);
   await autoStart.check();
   const operation = page.waitForResponse(response => response.ok() && response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/settings/app");
   await save(); await operation;

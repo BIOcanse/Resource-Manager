@@ -45,6 +45,7 @@ function New-ResourceManagerMachineDeploymentPlan {
         SourceManifestPath = Join-Path $source 'resource-manager-final-image.manifest.json'
         SourceBackendPath = Join-Path $source 'ResourceManager\ResourceManager.exe'
         SourceNativeUiPath = Join-Path $source 'ResourceManagerNativeUi\ResourceManager.NativeUi.exe'
+        SourceSessionAgentPath = Join-Path $source 'ResourceManagerSessionAgent\ResourceManager.SessionAgent.exe'
         InstallRoot = $install
         InstallationMarkerPath = Join-Path $install $script:ResourceManagerInstallationMarkerFileName
         CurrentRoot = $current
@@ -91,6 +92,7 @@ function Assert-ResourceManagerDeploymentPlan {
             $Plan.SourceManifestPath,
             $Plan.SourceBackendPath,
             $Plan.SourceNativeUiPath,
+            $Plan.SourceSessionAgentPath,
             $Plan.InstallerScriptPath,
             $Plan.DeploymentModulePath,
             $Plan.FinalImageValidatorPath,
@@ -466,6 +468,30 @@ function Invoke-ResourceManagerNativeCommand {
     return $output
 }
 
+function Invoke-ResourceManagerBackendAdministration {
+    param(
+        [Parameter(Mandatory = $true)][object]$Plan,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+    $previousRoot = $env:RESOURCE_MANAGER_PACKAGE_ROOT
+    try {
+        $env:RESOURCE_MANAGER_PACKAGE_ROOT = [IO.Path]::GetFullPath([string]$Plan.InstallRoot)
+        Invoke-ResourceManagerNativeCommand -FilePath $Plan.BackendPath -Arguments $Arguments
+    }
+    finally {
+        if ($null -eq $previousRoot) { Remove-Item Env:RESOURCE_MANAGER_PACKAGE_ROOT -ErrorAction SilentlyContinue }
+        else { $env:RESOURCE_MANAGER_PACKAGE_ROOT = $previousRoot }
+    }
+}
+
+function Get-ResourceManagerMachineServiceEnvironment {
+    param([Parameter(Mandatory = $true)][object]$Plan, [string[]]$Existing = @())
+    foreach ($entry in $Existing) {
+        if (-not $entry.StartsWith('RESOURCE_MANAGER_PACKAGE_ROOT=', [StringComparison]::OrdinalIgnoreCase)) { $entry }
+    }
+    'RESOURCE_MANAGER_PACKAGE_ROOT=' + [IO.Path]::GetFullPath([string]$Plan.InstallRoot)
+}
+
 function Enter-ResourceManagerMachineDeploymentLock {
     [CmdletBinding()]
     param([TimeSpan]$Timeout = [TimeSpan]::FromMinutes(2))
@@ -542,6 +568,10 @@ function Set-ResourceManagerMachineServiceRegistration {
             'obj=', 'LocalSystem',
             'DisplayName=', 'Resource Manager Service')
     }
+    $serviceKey = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\' + $Plan.ServiceName
+    $existingEnvironment = @(Get-ItemPropertyValue -LiteralPath $serviceKey -Name Environment -ErrorAction SilentlyContinue)
+    $environment = @(Get-ResourceManagerMachineServiceEnvironment -Plan $Plan -Existing $existingEnvironment)
+    New-ItemProperty -LiteralPath $serviceKey -Name Environment -Value $environment -PropertyType MultiString -Force | Out-Null
     $null = Invoke-ResourceManagerNativeCommand -FilePath $sc -Arguments @(
         'description', $Plan.ServiceName,
         'Resource Manager machine backend and interactive-session coordinator.')
@@ -837,8 +867,11 @@ function Invoke-ResourceManagerMachineInstallCore {
         $machineMutationStarted = $true
         Stop-ResourceManagerMachineService -ServiceName $Plan.ServiceName
 
-        $null = Invoke-ResourceManagerNativeCommand `
-            -FilePath $Plan.BackendPath `
+        $null = Invoke-ResourceManagerBackendAdministration `
+            -Plan $Plan `
+            -Arguments @('--prepare-package-use-guard', $Plan.InstallRoot)
+        $null = Invoke-ResourceManagerBackendAdministration `
+            -Plan $Plan `
             -Arguments @('--initialize-trusted-access')
         Set-ResourceManagerMachineServiceRegistration -Plan $Plan
         Start-ResourceManagerMachineService -Plan $Plan

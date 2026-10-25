@@ -129,8 +129,8 @@ extern "C" BOOL WINAPI DetourVirtualProtectSameExecuteEx(
 
 extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementBootstrapUpdate(
     HANDLE process,
-    const wchar_t* providerPath,
-    const wchar_t* overlayPath,
+    const wchar_t* const* modulePaths,
+    DWORD moduleCount,
     DWORD* win32Error)
 {
     if (win32Error != nullptr)
@@ -147,40 +147,28 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementBootstr
         return 0;
     }
 
-    if (providerPath == nullptr && overlayPath == nullptr)
+    if (modulePaths == nullptr || moduleCount == 0 || moduleCount > 17)
     {
         if (win32Error != nullptr) *win32Error = ERROR_INVALID_PARAMETER;
         SetLastError(ERROR_INVALID_PARAMETER);
         return 0;
     }
-
-    std::string providerLoaderPath;
-    std::string overlayLoaderPath;
-    if ((providerPath != nullptr && !TryConvertLoaderPath(providerPath, providerLoaderPath))
-        || (overlayPath != nullptr && !TryConvertLoaderPath(overlayPath, overlayLoaderPath)))
+    std::vector<std::string> loaderPaths(moduleCount);
+    std::vector<LPCSTR> injectedDlls(moduleCount);
+    for (DWORD index = 0; index < moduleCount; ++index)
     {
-        const DWORD error = GetLastError();
-        if (win32Error != nullptr)
+        if (modulePaths[index] == nullptr || !TryConvertLoaderPath(modulePaths[index], loaderPaths[index]))
         {
-            *win32Error = error;
+            const DWORD error = GetLastError();
+            if (win32Error != nullptr) *win32Error = error;
+            return 0;
         }
-        return 0;
+        injectedDlls[index] = loaderPaths[index].c_str();
     }
-
-    const LPCSTR injectedDlls[] = {
-        providerPath != nullptr ? providerLoaderPath.c_str() : overlayLoaderPath.c_str(),
-        providerPath != nullptr && overlayPath != nullptr ? overlayLoaderPath.c_str() : nullptr
-    };
-    if (!DetourUpdateProcessWithDll(
-            process,
-            injectedDlls,
-            providerPath != nullptr && overlayPath != nullptr ? 2 : 1))
+    if (!DetourUpdateProcessWithDll(process, injectedDlls.data(), moduleCount))
     {
         const DWORD error = GetLastError();
-        if (win32Error != nullptr)
-        {
-            *win32Error = error;
-        }
+        if (win32Error != nullptr) *win32Error = error;
         return 0;
     }
 

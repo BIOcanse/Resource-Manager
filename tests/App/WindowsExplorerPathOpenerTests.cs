@@ -26,7 +26,7 @@ public sealed class WindowsExplorerPathOpenerTests : IDisposable
         var launch = Assert.Single(broker.Launches);
         Assert.Equal(7u, launch.SessionId);
         Assert.Equal(UserSid, launch.UserSid);
-        Assert.EndsWith("ResourceManager.NativeUi.exe", launch.ExecutablePath);
+        Assert.EndsWith("ResourceManager.SessionAgent.exe", launch.ExecutablePath);
         var shell = UserShellExecuteRequest.Decode(launch.Arguments[(UserShellExecuteRequest.Argument.Length + 1)..]);
         Assert.Equal("explorer.exe", shell.FileName);
         Assert.Equal($"/select,\"{filePath}\"", shell.Arguments);
@@ -55,10 +55,6 @@ public sealed class WindowsExplorerPathOpenerTests : IDisposable
 
         public IReadOnlyList<uint> GetActiveSessionIds() => [7];
         public string? GetUserSid(uint sessionId) => UserSid;
-        public NativeUiProcessPresence GetNativeUiProcessPresence(uint sessionId, string expectedExecutablePath)
-            => throw new NotSupportedException();
-        public uint LaunchNativeUi(uint sessionId, string executablePath, string arguments)
-            => throw new NotSupportedException();
         public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
         {
             Launches.Add((sessionId, expectedUserSid, executablePath, arguments));

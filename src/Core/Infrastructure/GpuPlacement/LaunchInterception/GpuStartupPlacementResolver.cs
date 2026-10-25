@@ -1,5 +1,5 @@
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Overlay;
+using ResourceManager.Shared.Packages;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
@@ -11,7 +11,8 @@ public sealed class GpuStartupPlacementResolver(
     IRuntimePlanProvider runtimePlanProvider,
     D3d11ProxyShimRuntime shimRuntime,
     IGpuPlacementProcessHistoryStore processHistoryStore,
-    IPerformanceOverlaySettingsStore overlaySettingsStore,
+    IStartupModuleSettingsStore moduleSettingsStore,
+    PackageRuntimeCatalog moduleCatalog,
     ISoftwareRegistryView softwareRegistry,
     ILogger<GpuStartupPlacementResolver> logger) : IGpuStartupPlacementResolver
 {
@@ -27,36 +28,32 @@ public sealed class GpuStartupPlacementResolver(
 
         try
         {
-            var settings = await overlaySettingsStore.GetAsync(cancellationToken);
-            var enabledIds = settings.Software
-                .Where(static item => item.Enabled && item.Mode.Equals("injected", StringComparison.OrdinalIgnoreCase))
-                .Select(static item => item.SoftwareId)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (enabledIds.Count == 0)
-            {
-                return gpuDecision;
-            }
-
+            var settings = await moduleSettingsStore.GetAsync(cancellationToken);
             var software = await softwareRegistry.GetSoftwareAsync(cancellationToken);
-            var overlaySoftwareId = software
-                .Where(item => enabledIds.Contains(item.Id)
-                    && (item.ExecutablePaths ?? []).Any(path => string.Equals(
-                        NormalizePath(path), gpuDecision.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
-                .Select(static item => item.Id)
-                .Order(StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            return overlaySoftwareId is null
-                ? gpuDecision
-                : gpuDecision with
-                {
-                    Decision = GpuStartupPlacementDecisionKinds.Inject,
-                    SoftwareId = gpuDecision.SoftwareId ?? overlaySoftwareId,
-                    OverlayEnabled = true
-                };
+            var selection = software
+                .Where(item => (item.ExecutablePaths ?? []).Any(path => string.Equals(
+                    NormalizePath(path), gpuDecision.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
+                .Select(item => settings.Software.FirstOrDefault(setting => setting.SoftwareId.Equals(item.Id, StringComparison.OrdinalIgnoreCase)))
+                .Where(static item => item is { ModuleIds.Count: > 0 })
+                .OrderBy(static item => item!.SoftwareId, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if (selection is null) return gpuDecision;
+            var plans = new List<StartupModulePlan>();
+            foreach (var id in selection.ModuleIds)
+            {
+                if (!moduleCatalog.TryGetStartupModule(id, out var module))
+                    throw new InvalidDataException("Selected startup module is not admitted by this package.");
+                plans.Add(new(moduleCatalog.PackageRoot, module!));
+            }
+            return gpuDecision with
+            {
+                Decision = GpuStartupPlacementDecisionKinds.Inject,
+                SoftwareId = gpuDecision.SoftwareId ?? selection.SoftwareId,
+                StartupModules = plans
+            };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "Overlay startup selection failed for {ExecutablePath}; keeping GPU decision.",
+            logger.LogWarning(ex, "Startup module selection failed for {ExecutablePath}; keeping GPU decision.",
                 gpuDecision.ExecutablePath);
             return gpuDecision;
         }

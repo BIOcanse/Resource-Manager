@@ -29,20 +29,11 @@ public sealed class ProcessAncestryTests
     }
 
     [Fact]
-    public void NativeUiRootRequiresTheFullInstalledImagePath()
-    {
-        var expected = Path.Combine(AppContext.BaseDirectory, "ResourceManager.NativeUi.exe");
-        Assert.True(ResourceManagerSelfProcessFamilySampler.IsNativeUiImage(expected.ToUpperInvariant(), expected));
-        Assert.False(ResourceManagerSelfProcessFamilySampler.IsNativeUiImage(
-            Path.Combine(Path.GetTempPath(), "ResourceManager.NativeUi.exe"), expected));
-    }
-
-    [Fact]
-    public void ActualSameNamedChildIsNotAnInterfaceRootAndRetainsItsCreationIdentity()
+    public void ActualUnadmittedChildIsNotAPackageRootAndRetainsItsCreationIdentity()
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-self-family-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        var image = Path.Combine(root, "ResourceManager.NativeUi.exe");
+        var image = Path.Combine(root, "UnadmittedClient.exe");
         Process? child = null;
         try
         {
@@ -52,7 +43,7 @@ public sealed class ProcessAncestryTests
             child = Process.Start(start)!;
             var rows = ResourceManagerSelfProcessFamilySampler.Capture(Environment.ProcessId);
             var row = Assert.Single(rows, item => item.ProcessId == child.Id);
-            Assert.False(row.IsNativeUi); Assert.False(row.IsNativeUiDescendant);
+            Assert.False(row.IsPackageClient); Assert.False(row.IsPackageClientDescendant);
             Assert.Equal(new DateTimeOffset(child.StartTime.ToUniversalTime()), row.StartedAt);
             Assert.True(Assert.Single(rows, item => item.ProcessId == Environment.ProcessId).IsBackend);
         }

@@ -13,10 +13,11 @@ public static class GpuLaunchBrokerProtocol
 
         var fields = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
-            ["version"] = "1",
+            ["version"] = "2",
             ["decision"] = decision.Decision,
             ["startupProviders"] = string.Join(',', decision.StartupProviders),
-            ["overlayEnabled"] = decision.OverlayEnabled ? "true" : null,
+            ["moduleCount"] = decision.StartupModules.Count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["moduleRoot"] = decision.StartupModules.FirstOrDefault()?.PackageRoot,
             ["status"] = decision.Status,
             ["message"] = decision.Message,
             ["executablePath"] = decision.ExecutablePath,
@@ -28,6 +29,25 @@ public static class GpuLaunchBrokerProtocol
             ["targetAdapterName"] = decision.TargetAdapterName,
             ["targetLuid"] = decision.TargetLuid
         };
+
+        if (decision.StartupModules.Count > ResourceManager.Shared.Packages.PackageRuntimeCatalog.MaximumModules)
+            throw new ArgumentException("Startup module limit exceeded.", nameof(decision));
+        for (var index = 0; index < decision.StartupModules.Count; index++)
+        {
+            var module = decision.StartupModules[index].Module;
+            var prefix = $"module{index}.";
+            fields[prefix + "id"] = module.Id;
+            fields[prefix + "kind"] = module.Kind;
+            AddAsset(prefix + "image.", module.Image);
+            if (module.Manifest is not null) AddAsset(prefix + "manifest.", module.Manifest);
+            fields[prefix + "layerName"] = module.LayerName;
+        }
+        void AddAsset(string prefix, ResourceManager.Shared.Packages.PackageRuntimeAsset asset)
+        {
+            fields[prefix + "path"] = asset.RelativePath;
+            fields[prefix + "length"] = asset.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            fields[prefix + "sha256"] = asset.Sha256;
+        }
 
         var output = new StringBuilder(512);
         foreach (var (key, value) in fields)

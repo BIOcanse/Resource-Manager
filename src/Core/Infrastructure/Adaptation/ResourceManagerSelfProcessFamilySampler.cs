@@ -1,17 +1,19 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
+using System.Runtime.InteropServices;
 using ResourceManager.App.Infrastructure.Windows;
 using ResourceManager.App.Infrastructure.Adaptation.Transport;
 using ResourceManager.App.Infrastructure.ProcessIdentity;
-using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
 internal readonly record struct ResourceManagerSelfProcessResource(
     int ProcessId,
     bool IsBackend,
-    bool IsNativeUi,
-    bool IsNativeUiDescendant,
+    bool IsPackageClient,
+    bool IsPackageClientDescendant,
     ulong WorkingSetBytes,
     DateTimeOffset StartedAt);
 
@@ -21,27 +23,28 @@ internal static class ResourceManagerSelfProcessFamilySampler
     {
         var parents = ReadProcessParentIds();
         var rows = new List<ResourceManagerSelfProcessResource>();
-        var expectedUiPath = NativeUiLaunchHostedService.ResolveNativeUiPath();
+        var catalog = PackageRuntimeCatalog.Current;
+        var imageBuffer = new StringBuilder(512);
         return ProcessCollectionOwner.Use(Process.GetProcesses(), processes =>
         {
             foreach (var process in processes)
             {
-                if (TryCreateProcessResource(process, backendProcessId, expectedUiPath, out var row)) rows.Add(row);
+                if (TryCreateProcessResource(process, backendProcessId, catalog, imageBuffer, out var row)) rows.Add(row);
             }
             var identities = rows.ToDictionary(row => row.ProcessId, row => new ProcessAncestryIdentity(
                 row.ProcessId, parents.GetValueOrDefault(row.ProcessId), row.StartedAt.UtcDateTime.ToFileTimeUtc()));
-            var roots = rows.Where(row => row.IsBackend || row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
-            var uiRoots = rows.Where(row => row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
+            var roots = rows.Where(row => row.IsBackend || row.IsPackageClient).Select(row => row.ProcessId).ToHashSet();
+            var clientRoots = rows.Where(row => row.IsPackageClient).Select(row => row.ProcessId).ToHashSet();
             var family = ProcessAncestry.FindFamily(identities, roots);
-            var uiFamily = ProcessAncestry.FindFamily(identities, uiRoots);
+            var clientFamily = ProcessAncestry.FindFamily(identities, clientRoots);
             return rows.Where(row => family.Contains(row.ProcessId))
-                .Select(row => row with { IsNativeUiDescendant = !row.IsBackend && !row.IsNativeUi && uiFamily.Contains(row.ProcessId) })
+                .Select(row => row with { IsPackageClientDescendant = !row.IsBackend && !row.IsPackageClient && clientFamily.Contains(row.ProcessId) })
                 .OrderBy(row => row.ProcessId).ToArray();
         });
     }
 
     private static bool TryCreateProcessResource(Process process, int backendProcessId,
-        string expectedUiPath, out ResourceManagerSelfProcessResource row)
+        PackageRuntimeCatalog catalog, StringBuilder image, out ResourceManagerSelfProcessResource row)
     {
         row = default;
         var handle = IntPtr.Zero;
@@ -51,14 +54,28 @@ internal static class ResourceManagerSelfProcessFamilySampler
             handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, processId);
             if (handle == IntPtr.Zero || !NativeMethods.GetProcessTimes(handle, out var created, out _, out _, out _)) return false;
             var startedAt = new DateTimeOffset(DateTime.FromFileTimeUtc(checked((long)created.ToUInt64())));
-            var isNativeUi = false;
-            if (process.ProcessName.Equals("ResourceManager.NativeUi", StringComparison.OrdinalIgnoreCase))
+            var isPackageClient = false;
+            if (processId != backendProcessId && catalog.MayBeInfrastructureImageName(process.ProcessName))
             {
-                var identity = WindowsNamedPipeCallerAttester.ReadProcessIdentity(checked((uint)processId));
-                isNativeUi = identity.CreatedUtcTicks == startedAt.UtcTicks
-                    && IsNativeUiImage(identity.CanonicalExecutablePath, expectedUiPath);
+                // Read the image through the already-open process handle first. Token and
+                // canonical-file attestation is only needed for an admitted package image.
+                image.Clear();
+                var length = image.Capacity;
+                var found = NativeMethods.QueryFullProcessImageName(handle, 0, image, ref length);
+                if (!found && Marshal.GetLastWin32Error() == 122 && image.Capacity < 32768)
+                {
+                    image.EnsureCapacity(32768);
+                    length = image.Capacity;
+                    found = NativeMethods.QueryFullProcessImageName(handle, 0, image, ref length);
+                }
+                if (found && catalog.IsInfrastructureImage(image.ToString()))
+                {
+                    var identity = WindowsNamedPipeCallerAttester.ReadProcessIdentity(checked((uint)processId));
+                    isPackageClient = identity.CreatedUtcTicks == startedAt.UtcTicks
+                        && catalog.IsInfrastructureImage(identity.CanonicalExecutablePath);
+                }
             }
-            row = new(processId, processId == backendProcessId, isNativeUi, false,
+            row = new(processId, processId == backendProcessId, isPackageClient, false,
                 (ulong)Math.Max(0, process.WorkingSet64), startedAt);
             return true;
         }
@@ -69,9 +86,6 @@ internal static class ResourceManagerSelfProcessFamilySampler
         }
         finally { if (handle != IntPtr.Zero) NativeMethods.CloseHandle(handle); }
     }
-
-    internal static bool IsNativeUiImage(string actualPath, string expectedPath)
-        => StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(actualPath), Path.GetFullPath(expectedPath));
 
     private static Dictionary<int, int> ReadProcessParentIds()
     {

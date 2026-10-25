@@ -85,8 +85,15 @@ public sealed partial class MainForm
             case "shell.pickFolder":
                 HandleFolderPickerRequest(message);
                 break;
+            case "shell.loginStartup.get":
+            case "shell.loginStartup.set":
+                HandleLoginStartupRequest(message, typeProperty.GetString() == "shell.loginStartup.set");
+                break;
             case "shell.processAction":
                 _ = HandleProcessActionRequestAsync(message.Clone());
+                break;
+            case "backend.elevatedRequest":
+                _ = HandleElevatedBackendRequestAsync(message.Clone());
                 break;
             case "shell.language":
                 Localization.NativeUiText.Apply(

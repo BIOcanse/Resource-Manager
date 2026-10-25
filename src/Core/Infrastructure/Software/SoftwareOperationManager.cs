@@ -116,9 +116,7 @@ public sealed class SoftwareOperationManager(
         var command = WindowsInstalledSoftwareInventory.ParseExecutableCommandLine(entry.UninstallString);
         cancellationToken.ThrowIfCancellationRequested();
         var shellRequest = new UserShellExecuteRequest(command.FileName, command.Arguments);
-        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
-            NativeUiLaunchHostedService.ResolveNativeUiPath(),
-            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
+        _ = SessionAgentLauncher.Launch(sessionBroker, caller, shellRequest);
 
         return new SoftwareOperationResult(
             id,

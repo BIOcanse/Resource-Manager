@@ -17,6 +17,7 @@ public sealed class FinalImagePackagingContractTests
         var ui = Path.Combine(root, "ui");
         var launcher = Path.Combine(root, "launcher");
         var image = Path.Combine(root, "image");
+        var sessionAgent = Path.Combine(root, "session-agent");
         try
         {
             foreach (var relative in new[]
@@ -31,17 +32,90 @@ public sealed class FinalImagePackagingContractTests
             WriteFixtureFile(ui, "ResourceManager.NativeUi.exe");
             WriteFixtureFile(ui, "InstallWebView2Runtime.ps1");
             WriteFixtureFile(launcher, "ResourceManager.Launcher.exe");
+            WriteFixtureFile(sessionAgent, "ResourceManager.SessionAgent.exe");
+            WriteFixtureFile(root, "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.PerformanceOverlay.dll");
+            WriteFixtureFile(root, "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.VulkanPerformanceOverlayLayer.dll");
+            var layerPath = Path.Combine(root, "src/Core/Native/PerformanceOverlay/ResourceManager.VulkanPerformanceOverlayLayer.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(layerPath)!);
+            File.WriteAllText(layerPath, "{\"layer\":{\"name\":\"VK_LAYER_RESOURCE_MANAGER_performance_overlay\",\"library_path\":\"ResourceManager.VulkanPerformanceOverlayLayer.dll\"}}");
 
             var built = await RunScriptAsync(builder, "-BackendDirectory", backend,
-                "-NativeUiDirectory", ui, "-LauncherDirectory", launcher, "-OutputDirectory", image);
-            Assert.Equal(0, built.ExitCode);
+                "-NativeUiDirectory", ui, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
+                "-FrontendModuleSourceRoot", root, "-OutputDirectory", image);
+            Assert.True(built.ExitCode == 0, built.Error + built.Output);
             var validated = await RunScriptAsync(validator, "-RootDirectory", image);
-            Assert.Equal(0, validated.ExitCode);
+            Assert.True(validated.ExitCode == 0, validated.Error + validated.Output);
             using (var result = JsonDocument.Parse(validated.Output))
             {
                 Assert.True(result.RootElement.GetProperty("Valid").GetBoolean());
-                Assert.Equal(9, result.RootElement.GetProperty("PayloadFileCount").GetInt32());
+                Assert.Equal(14, result.RootElement.GetProperty("PayloadFileCount").GetInt32());
             }
+
+            using (var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(image, "runtime-modules.json"))))
+            {
+                var modules = catalog.RootElement.GetProperty("modules").EnumerateArray().ToArray();
+                Assert.Equal(2, modules.Length);
+                foreach (var module in modules)
+                {
+                    var asset = module.GetProperty("image");
+                    var relative = asset.GetProperty("relativePath").GetString()!;
+                    Assert.StartsWith("ResourceManagerNativeUi/Modules/", relative);
+                    var path = Path.Combine(image, relative);
+                    Assert.Equal(new FileInfo(path).Length, asset.GetProperty("length").GetInt64());
+                    Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))), asset.GetProperty("sha256").GetString());
+                }
+            }
+
+            var imageCatalog = ResourceManager.Shared.Packages.PackageRuntimeCatalog.Load(image);
+            Assert.Equal(2, imageCatalog.StartupModules.Count);
+            Assert.Contains(Path.Combine(image, "ResourceManagerSessionAgent", "ResourceManager.SessionAgent.exe"), imageCatalog.InfrastructureImages);
+            var package = Path.Combine(root, "package");
+            Directory.CreateDirectory(package);
+            var releaseFiles = new List<object>();
+            using (var imageManifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(image, "resource-manager-final-image.manifest.json"))))
+            {
+                foreach (var entry in imageManifest.RootElement.GetProperty("files").EnumerateArray())
+                {
+                    var relative = entry.GetProperty("path").GetString()!;
+                    var destination = Path.Combine(package, "Bin", relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(Path.Combine(image, relative), destination);
+                    releaseFiles.Add(new { path = "Bin/" + relative, length = new FileInfo(destination).Length,
+                        sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(destination))) });
+                }
+            }
+            var releaseComposer = Path.Combine(repository, "scripts", "release", "Write-ResourceManagerReleaseRuntimeModules.ps1");
+            var composed = await RunScriptAsync(releaseComposer, "-ImageRoot", image, "-PackageRoot", package);
+            Assert.True(composed.ExitCode == 0, composed.Error + composed.Output);
+            var catalogPath = Path.Combine(package, "runtime-modules.json");
+            releaseFiles.Add(new { path = "runtime-modules.json", length = new FileInfo(catalogPath).Length,
+                sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(catalogPath))) });
+            File.WriteAllText(Path.Combine(package, "release-manifest.json"), JsonSerializer.Serialize(new { files = releaseFiles }));
+            var installedCatalog = ResourceManager.Shared.Packages.PackageRuntimeCatalog.Load(package);
+            Assert.Equal(2, installedCatalog.StartupModules.Count);
+            Assert.All(installedCatalog.StartupModules, module => Assert.StartsWith("Bin/", module.Image.RelativePath));
+            var retainedData = Path.Combine(root, "retained-data");
+            var profiles = Path.Combine(retainedData, "UserData", "SoftwareProfiles");
+            Directory.CreateDirectory(profiles);
+            var legacyPath = Path.Combine(profiles, "performance-overlay.local.json");
+            const string legacy = "{\"software\":[{\"softwareId\":\"injected\",\"enabled\":true,\"mode\":\"injected\"},{\"softwareId\":\"disabled\",\"enabled\":false,\"mode\":\"injected\"}]}";
+            File.WriteAllText(legacyPath, legacy);
+            ResourceManager.Frontend.Packaging.LegacyStartupModuleMigration.Migrate(package, retainedData);
+            var genericPath = Path.Combine(profiles, "startup-modules.local.json");
+            using (var migrated = JsonDocument.Parse(File.ReadAllText(genericPath)))
+            {
+                var selections = migrated.RootElement.GetProperty("software").EnumerateArray().ToArray();
+                Assert.Empty(selections.Single(item => item.GetProperty("softwareId").GetString() == "disabled").GetProperty("moduleIds").EnumerateArray());
+                Assert.Equal(installedCatalog.StartupModules.Select(module => module.Id),
+                    selections.Single(item => item.GetProperty("softwareId").GetString() == "injected").GetProperty("moduleIds").EnumerateArray().Select(item => item.GetString()));
+            }
+            Assert.Equal(legacy, File.ReadAllText(legacyPath));
+            const string emptySelection = "{\"version\":1,\"software\":[]}";
+            File.WriteAllText(genericPath, emptySelection);
+            ResourceManager.Frontend.Packaging.LegacyStartupModuleMigration.Migrate(package, retainedData);
+            Assert.Equal(emptySelection, File.ReadAllText(genericPath));
+            File.AppendAllText(installedCatalog.AssetPath(installedCatalog.StartupModules[0].Image), "tampered");
+            Assert.Throws<InvalidDataException>(() => ResourceManager.Shared.Packages.PackageRuntimeCatalog.Load(package));
 
             var helper = Path.Combine(image, "ResourceManager", "GpuPlacementShim", "ResourceManager.GpuWindowAction.exe");
             var originalHelper = File.ReadAllBytes(helper);
@@ -66,7 +140,8 @@ public sealed class FinalImagePackagingContractTests
                          (backend, "GpuPlacementShim/ResourceManager.GpuPlacementPreparation.exe"),
                          (backend, "GpuPlacementShim/ResourceManager.GpuPlacementExternal.exe"),
                          (backend, "GpuPlacementShim/ResourceManager.GpuRendererExternal.exe"),
-                         (launcher, "ResourceManager.Launcher.exe")
+                         (launcher, "ResourceManager.Launcher.exe"),
+                         (sessionAgent, "ResourceManager.SessionAgent.exe")
                      })
             {
                 var path = Path.Combine(folder, relative);
@@ -75,7 +150,8 @@ public sealed class FinalImagePackagingContractTests
                 try
                 {
                     var rejected = await RunScriptAsync(builder, "-BackendDirectory", backend,
-                        "-NativeUiDirectory", ui, "-LauncherDirectory", launcher,
+                        "-NativeUiDirectory", ui, "-LauncherDirectory", launcher, "-SessionAgentDirectory", sessionAgent,
+                        "-FrontendModuleSourceRoot", root,
                         "-OutputDirectory", Path.Combine(root, $"rejected-{Guid.NewGuid():N}"));
                     Assert.NotEqual(0, rejected.ExitCode);
                     Assert.Contains("Published input is incomplete", rejected.Error + rejected.Output);

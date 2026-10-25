@@ -5,7 +5,7 @@ using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace ResourceManager.NativeUi;
 
-// A request checks identity and change metadata, never an asynchronous notification alone.
+// A request checks identity, metadata and exact owner/DACL bytes, never timestamps alone.
 // Only a stable, fully validated read can populate the cache; every failure drops it.
 internal sealed class NativeTrustedAccessKeyReader
 {
@@ -13,6 +13,8 @@ internal sealed class NativeTrustedAccessKeyReader
     private readonly string[] paths;
     private readonly FileStamp[] accepted;
     private readonly FileStamp[] current;
+    private readonly SecuritySnapshot[] acceptedSecurity = [new(), new()];
+    private readonly SecuritySnapshot[] currentSecurity = [new(), new()];
     private readonly Func<string?> validatedRead;
     private bool cached;
     private string? key;
@@ -39,13 +41,13 @@ internal sealed class NativeTrustedAccessKeyReader
         {
             try
             {
-                Capture(current);
-                if (cached && current.AsSpan().SequenceEqual(accepted)) return key;
+                Capture(current, currentSecurity);
+                if (cached && MatchesAccepted()) return key;
                 cached = false;
                 key = null;
                 var value = validatedRead();
-                Capture(accepted);
-                if (!current.AsSpan().SequenceEqual(accepted))
+                Capture(accepted, acceptedSecurity);
+                if (!MatchesAccepted())
                     throw new IOException("The default key storage changed during validation.");
                 key = value;
                 cached = true;
@@ -60,21 +62,27 @@ internal sealed class NativeTrustedAccessKeyReader
         }
     }
 
-    private void Capture(FileStamp[] destination)
+    private bool MatchesAccepted()
+        => current.AsSpan().SequenceEqual(accepted)
+            && currentSecurity[0].Matches(acceptedSecurity[0])
+            && currentSecurity[1].Matches(acceptedSecurity[1]);
+
+    private void Capture(FileStamp[] destination, SecuritySnapshot[] security)
     {
         for (var index = 0; index < paths.Length; index++)
-            destination[index] = ReadStamp(paths[index], includeChangeMetadata: index < 2);
+            destination[index] = ReadStamp(paths[index], includeChangeMetadata: index < 2,
+                index < 2 ? security[index] : null);
     }
 
-    private static FileStamp ReadStamp(string path, bool includeChangeMetadata)
+    private static FileStamp ReadStamp(string path, bool includeChangeMetadata, SecuritySnapshot? security)
     {
         // Opening the link itself makes each ancestor replacement/reparse visible.
-        using var handle = CreateFileW(path, 0x80, FileShare.ReadWrite | FileShare.Delete,
+        using var handle = CreateFileW(path, security is null ? 0x80u : 0x20080u, FileShare.ReadWrite | FileShare.Delete,
             IntPtr.Zero, FileMode.Open, 0x02200000, IntPtr.Zero);
         if (handle.IsInvalid)
         {
             var error = Marshal.GetLastWin32Error();
-            if (error is 2 or 3) return default;
+            if (error is 2 or 3) { security?.Clear(); return default; }
             throw new IOException("Cannot inspect default key storage.", new Win32Exception(error));
         }
         if (!GetFileInformationByHandle(handle, out var identity)
@@ -82,6 +90,7 @@ internal sealed class NativeTrustedAccessKeyReader
             throw new IOException("Cannot inspect default key metadata.", new Win32Exception(Marshal.GetLastWin32Error()));
         if ((basic.Attributes & FileAttributes.ReparsePoint) != 0)
             throw new UnauthorizedAccessException("Trusted access storage cannot use reparse points in its path.");
+        security?.Capture(handle);
         return new FileStamp(true, identity.Volume, identity.IndexHigh, identity.IndexLow,
             includeChangeMetadata ? basic.LastWriteTime : 0, includeChangeMetadata ? basic.ChangeTime : 0,
             identity.SizeHigh, identity.SizeLow, basic.Attributes);
@@ -89,6 +98,43 @@ internal sealed class NativeTrustedAccessKeyReader
 
     private readonly record struct FileStamp(bool Exists, uint Volume, uint IndexHigh, uint IndexLow,
         long LastWriteTime, long ChangeTime, uint SizeHigh, uint SizeLow, FileAttributes Attributes);
+
+    private sealed class SecuritySnapshot
+    {
+        // Security descriptors are bounded independently of file contents. Buffers are reused
+        // on ordinary requests and grow only after the kernel reports insufficient capacity.
+        private const int MaximumBytes = 128 * 1024;
+        private byte[] buffer = new byte[512];
+        private int length;
+
+        internal void Clear() => length = 0;
+        internal bool Matches(SecuritySnapshot other)
+            => length == other.length && buffer.AsSpan(0, length).SequenceEqual(other.buffer.AsSpan(0, other.length));
+
+        internal unsafe void Capture(SafeFileHandle handle)
+        {
+            length = 0;
+            for (var attempt = 0; attempt < 16; attempt++)
+            {
+                uint needed;
+                bool success;
+                fixed (byte* destination = buffer)
+                    success = GetKernelObjectSecurity(handle, 0x1 | 0x4, destination, checked((uint)buffer.Length), out needed);
+                if (success)
+                {
+                    if (needed is < 20 || needed > buffer.Length)
+                        throw new IOException("The default key security descriptor has an invalid length.");
+                    length = checked((int)needed);
+                    return;
+                }
+                var error = Marshal.GetLastWin32Error();
+                if (error != 122 || needed <= buffer.Length || needed > MaximumBytes)
+                    throw new IOException("Cannot inspect default key security.", new Win32Exception(error));
+                buffer = new byte[Math.Min(MaximumBytes, Math.Max(checked((int)needed), buffer.Length * 2))];
+            }
+            throw new IOException("The default key security descriptor did not stabilize within its bound.");
+        }
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BasicInformation
@@ -115,4 +161,8 @@ internal sealed class NativeTrustedAccessKeyReader
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int type,
         out BasicInformation information, uint size);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern unsafe bool GetKernelObjectSecurity(SafeFileHandle handle, uint information,
+        byte* descriptor, uint length, out uint needed);
 }

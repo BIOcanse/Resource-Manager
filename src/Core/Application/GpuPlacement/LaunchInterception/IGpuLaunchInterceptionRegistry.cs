@@ -10,7 +10,7 @@ public interface IGpuLaunchInterceptionRegistry
 
     IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(
         GpuPlacementPolicyDocument document,
-        IReadOnlyCollection<string> overlayExecutablePaths);
+        IReadOnlyCollection<string> moduleExecutablePaths);
 
     GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules();
 }

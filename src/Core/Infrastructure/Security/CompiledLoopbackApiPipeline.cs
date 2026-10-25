@@ -74,7 +74,6 @@ public static class LoopbackApiPipelineConfigurator
         services.AddHostedService(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
         services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
-        services.AddHostedService<NativeUiOpenSessionHostedService>();
         services.AddHostedService<TrustedAccessInvocationHostedService>();
     }
 

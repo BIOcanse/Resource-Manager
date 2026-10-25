@@ -61,12 +61,15 @@ public sealed record ReleasePackageLayout(string Root, string Version, string Ba
         if (Directory.Exists(UpdateManagerPaths.InstalledDirectory(root)))
             throw new InvalidDataException("A release package must not contain the installed management directory.");
         var layout = ForRoot(root, version);
+        _ = PackageRuntimeCatalog.Load(root);
         foreach (var path in new[] { layout.Backend, layout.NativeUi, layout.InternalLauncher,
-                     layout.Start, layout.Installer, Path.Combine(root, UninstallationPlan.ExecutableName), UpdateManagerPaths.PackagedExecutable(root),
+                     layout.SessionAgent, layout.Start, layout.Installer, Path.Combine(root, PackageRuntimeCatalog.ModuleManifestName), Path.Combine(root, UninstallationPlan.ExecutableName), UpdateManagerPaths.PackagedExecutable(root),
                      Path.Combine(root, "Bin", "ResourceManager", "wwwroot", "index.html") })
             if (!File.Exists(path)) throw new InvalidDataException($"发行包缺少程序：{path}");
         return layout;
     }
+
+    public string SessionAgent => Path.Combine(Root, "Bin", "ResourceManagerSessionAgent", "ResourceManager.SessionAgent.exe");
 
     public static ReleasePackageLayout ForRoot(string root, string version) => new(root, version,
         Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe"),

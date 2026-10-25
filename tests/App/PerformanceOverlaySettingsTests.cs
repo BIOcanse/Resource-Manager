@@ -1,98 +1,83 @@
-using System.Text.Json;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
-using ResourceManager.App.Domain.Overlay;
-using ResourceManager.App.Infrastructure.Overlay;
+using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.Shared.Packages;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class PerformanceOverlaySettingsTests : IDisposable
+public sealed class PerformanceOverlaySettingsTests
 {
-    private readonly string root = Path.Combine(Path.GetTempPath(),
-        "resource-manager-overlay-settings-tests", Guid.NewGuid().ToString("N"));
-
     [Fact]
-    public async Task DefaultsAndSaveAreNormalizedAndPersisted()
+    public async Task GenericSelectionPersistsWithoutRenderingPolicy()
     {
-        var store = CreateStore();
-        var initial = await store.GetSoftwareAsync(" game ", CancellationToken.None);
-        Assert.False(initial.Enabled);
-        Assert.Equal("external", initial.Mode);
-
-        var saved = await store.SaveSoftwareAsync(initial with
-        {
-            Enabled = true,
-            Mode = "INJECTED"
-        }, CancellationToken.None);
-        Assert.Equal("injected", saved.Mode);
-
-        var reloaded = await CreateStore().GetSoftwareAsync("GAME", CancellationToken.None);
-        Assert.Equal(JsonSerializer.Serialize(saved), JsonSerializer.Serialize(reloaded));
-        Assert.True(reloaded.Enabled);
-        var directory = Path.Combine(root, "UserData", "SoftwareProfiles");
-        Assert.True(File.Exists(Path.Combine(directory, "performance-overlay.local.json")));
-        Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp"));
+        using var files = new StartupModuleTestCatalog();
+        var store = new JsonStartupModuleSettingsStore(files, files.Catalog);
+        Assert.Empty((await store.GetAsync(default)).Software);
+        await store.SaveAsync(new("software", ["fixture-module"]), default);
+        var saved = Assert.Single((await new JsonStartupModuleSettingsStore(files, files.Catalog).GetAsync(default)).Software);
+        Assert.Equal(["fixture-module"], saved.ModuleIds);
+        var path = Path.Combine(files.Root, "UserData", "SoftwareProfiles", "startup-modules.local.json");
+        var bytes = await File.ReadAllTextAsync(path);
+        foreach (var presentation in new[] { "enabled", "mode", "metrics", "fontSizePx", "overlay" })
+            Assert.DoesNotContain(presentation, bytes, StringComparison.OrdinalIgnoreCase);
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SaveAsync(new("software", ["not-admitted"]), default));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SaveAsync(new("software", ["fixture-module", "fixture-module"]), default));
     }
 
     [Fact]
-    public async Task LoadNormalizesIncompleteAndDuplicateRecords()
+    public void ExactManifestImagesAreProtectedRegardlessOfBasename()
     {
-        var store = CreateStore();
-        var directory = Directory.CreateDirectory(Path.Combine(root, "UserData", "SoftwareProfiles"));
-        await File.WriteAllTextAsync(Path.Combine(directory.FullName, "performance-overlay.local.json"),
-            """{"version":0,"software":[{"softwareId":"game","enabled":true,"mode":"invalid","metrics":null,"fontSizePx":1},{"softwareId":"GAME","enabled":false,"anchor":"topRight"},{"softwareId":" "}]}""");
-
-        var document = await store.GetAsync(CancellationToken.None);
-        var setting = Assert.Single(document.Software);
-        Assert.Equal("GAME", setting.SoftwareId);
-        Assert.False(setting.Enabled);
-        Assert.Equal("external", setting.Mode);
-        Assert.Equal(3, document.Version);
+        using var files = new StartupModuleTestCatalog();
+        var image = Path.Combine(files.Root, "Bin", "Tools", "renamed-client.exe");
+        File.WriteAllBytes(image, [4, 5, 6]);
+        files.WriteRelease("Bin/Tools/renamed-client.exe");
+        var catalog = PackageRuntimeCatalog.Load(files.Root);
+        Assert.True(catalog.IsInfrastructureImage(image));
+        Assert.True(catalog.MayBeInfrastructureImageName("RENAMED-CLIENT"));
+        Assert.False(catalog.MayBeInfrastructureImageName("unlisted-client"));
+        Assert.False(catalog.IsInfrastructureImage(Path.Combine(files.Root, "elsewhere", "renamed-client.exe")));
+        Assert.Single(catalog.StartupModules);
+        File.AppendAllText(files.Image, "corrupt");
+        Assert.Throws<InvalidDataException>(() => PackageRuntimeCatalog.Load(files.Root));
     }
 
     [Fact]
-    public async Task AbsentFileIsNotReopenedAndCreationAndChangesAreObserved()
+    public void CapabilityAndIfeoEligibilityConsumeTheSameExactImageAdmission()
     {
-        var store = CreateStore();
-        var exceptions = 0;
-        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
-        {
-            if (args.Exception is FileNotFoundException or DirectoryNotFoundException
-                && args.Exception.Message.Contains(root, StringComparison.OrdinalIgnoreCase)) Interlocked.Increment(ref exceptions);
-        }
-        AppDomain.CurrentDomain.FirstChanceException += Observe;
-        try
-        {
-            var empty = await store.GetAsync(default);
-            for (var i = 0; i < 20; i++) Assert.Same(empty, await store.GetAsync(default));
-            Assert.Equal(0, exceptions);
-            var path = Path.Combine(root, "UserData", "SoftwareProfiles", "performance-overlay.local.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllTextAsync(path, """{"version":1,"software":[{"softwareId":"game","enabled":true}]}""");
-            var loaded = await store.GetAsync(default);
-            Assert.True(Assert.Single(loaded.Software).Enabled);
-            for (var i = 0; i < 20; i++) Assert.Same(loaded, await store.GetAsync(default));
-            await store.SaveSoftwareAsync(Assert.Single(loaded.Software) with { Enabled = false }, default);
-            Assert.False(Assert.Single((await store.GetAsync(default)).Software).Enabled);
-            File.Delete(path);
-            Assert.Empty((await store.GetAsync(default)).Software);
-        }
-        finally { AppDomain.CurrentDomain.FirstChanceException -= Observe; }
+        using var files = new StartupModuleTestCatalog();
+        var image = Path.Combine(files.Root, "Bin", "Tools", "renamed.exe");
+        var outside = Path.Combine(Directory.CreateDirectory(Path.Combine(files.Root, "Outside")).FullName, "renamed.exe");
+        File.Copy(Environment.ProcessPath!, image);
+        File.Copy(Environment.ProcessPath!, outside);
+        var broker = Path.Combine(files.Root, "broker.exe");
+        File.WriteAllBytes(broker, []);
+        files.WriteRelease("Bin/Tools/renamed.exe");
+        var catalog = PackageRuntimeCatalog.Load(files.Root);
+        var reader = new WindowsGpuPlacementCapabilityReader(files.Root, catalog);
+        Assert.Equal("self-process-blocked", reader.Evaluate("inside", image, "x64", null).Startup.ReasonCode);
+        Assert.NotEqual("self-process-blocked", reader.Evaluate("outside", outside, "x64", null).Startup.ReasonCode);
+        var registry = new WindowsIfeoGpuLaunchInterceptionRegistry(broker, new NeverReadRegistry(), catalog);
+        Assert.False(registry.EvaluateEligibility(image, broker).Eligible);
+        Assert.False(registry.EvaluateEligibility(broker, broker).Eligible);
+        Assert.True(registry.EvaluateEligibility(outside, broker).Eligible);
     }
 
-    private JsonPerformanceOverlaySettingsStore CreateStore()
-        => new(new OverlayHostEnvironment(Directory.CreateDirectory(Path.Combine(root, "APP")).FullName));
-
-    public void Dispose()
+    private sealed class NeverReadRegistry : IIfeoOwnedRuleStore
     {
-        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        public IReadOnlyList<string> EnumerateImageNames(Microsoft.Win32.RegistryView view) => throw new InvalidOperationException();
+        public IfeoImageSnapshot? ReadImage(Microsoft.Win32.RegistryView view, string imageName) => throw new InvalidOperationException();
+        public int DeleteOwnedRules(Microsoft.Win32.RegistryView view, string imageName, IReadOnlyList<IfeoOwnedRuleCandidate> candidates, bool settleParentOwnership)
+            => throw new InvalidOperationException();
     }
 
-    private sealed class OverlayHostEnvironment(string contentRootPath) : IHostEnvironment
+    [Fact]
+    public void MissingManifestProtectsOnlyActualHostAndFinalImageManifestIsSupported()
     {
-        public string EnvironmentName { get; set; } = Environments.Development;
-        public string ApplicationName { get; set; } = "ResourceManager.Tests";
-        public string ContentRootPath { get; set; } = contentRootPath;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        using var files = new StartupModuleTestCatalog();
+        File.Move(Path.Combine(files.Root, "release-manifest.json"), Path.Combine(files.Root, "resource-manager-final-image.manifest.json"));
+        Assert.Single(PackageRuntimeCatalog.Load(files.Root).StartupModules);
+        File.Delete(Path.Combine(files.Root, "resource-manager-final-image.manifest.json"));
+        var catalog = PackageRuntimeCatalog.Load(files.Root, files.Image);
+        Assert.Empty(catalog.StartupModules);
+        Assert.True(catalog.IsInfrastructureImage(files.Image));
     }
 }

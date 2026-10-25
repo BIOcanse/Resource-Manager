@@ -82,9 +82,11 @@ internal static class InstallerWorkflow
                 throw new InvalidOperationException("更新管理器目录已被其他进程创建，拒绝覆盖。");
             Directory.CreateDirectory(managerRoot);
             managerCreated = true;
+            PackageUseGuard.Prepare(target.Root);
             File.Copy(UpdateManagerPaths.PackagedExecutable(target.Root), managerExecutable, overwrite: false);
             File.Copy(target.Start, Path.Combine(managerRoot, "Start.exe"), overwrite: false);
             File.Copy(Path.Combine(target.Root, UninstallationPlan.ExecutableName), Path.Combine(managerRoot, UninstallationPlan.ExecutableName), overwrite: false);
+            ResourceManager.Frontend.Packaging.LegacyStartupModuleMigration.Migrate(target.Root, target.Root);
             TrustedAccessInstallLifecycle.InitializeBeforeServiceRegistration(
                 target.Backend,
                 TrustedAccessInstallLifecycle.RunBackendAdministration,

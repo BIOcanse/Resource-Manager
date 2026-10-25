@@ -53,7 +53,7 @@ public sealed class NormalReadOnlyServiceGraphTests
         {
             Assert.Single(owners);
             Assert.NotNull(host.Services.GetRequiredService<RuntimePlanProvider>());
-            Assert.NotNull(host.Services.GetRequiredService<IProductUiSessionPresence>());
+            Assert.NotNull(host.Services.GetRequiredService<IProductPackageUsage>());
         }
         else Assert.Empty(owners);
         // Resolve the production constructor without starting any hosted service.

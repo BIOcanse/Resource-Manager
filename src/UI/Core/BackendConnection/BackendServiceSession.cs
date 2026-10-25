@@ -113,15 +113,17 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         throw new HttpRequestException($"Overlay stream returned {(int)statusCode}.");
     }
 
-    internal async Task<ResourceManager.NativeUi.Overlay.OverlaySettingsDocument> ReadPerformanceOverlaySettingsAsync(
-        CancellationToken cancellationToken)
+
+    internal async Task<ResourceManager.NativeUi.Overlay.StartupModuleOperationsDocument> ReadStartupModulesAsync(CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/performance-overlay/settings");
-        GetRequestAuthorization().Apply(request);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/startup-modules/settings");
+        ApplyRequestAuthorization(request);
         using var response = await actionClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ResourceManager.NativeUi.Overlay.OverlaySettingsDocument>(
-            cancellationToken) ?? throw new InvalidDataException("Missing overlay operational settings.");
+        var document = await response.Content.ReadFromJsonAsync(ResourceManager.NativeUi.Overlay.OverlayStartupModulesJson.Default.StartupModuleOperationsDocument,
+            cancellationToken) ?? throw new InvalidDataException("Missing startup module operations.");
+        if (document.Version != 1 || document.Software is null) throw new InvalidDataException("Invalid startup module operations.");
+        return document;
     }
 
     public async Task<string> TerminateProcessesAsync(
@@ -181,6 +183,14 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         ObjectDisposedException.ThrowIf(disposed, this);
         var backend = backendProcessIdentity ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
         return ElevatedProcessActionBroker.ExecuteAsync(batch, backend, cancellationToken);
+    }
+
+    internal Task<ElevatedBackendResponse> ExecuteElevatedBackendRequestAsync(ElevatedBackendMutation mutation,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var backend = backendProcessIdentity ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
+        return ElevatedProcessActionBroker.ExecuteBackendRequestAsync(mutation, backend, cancellationToken);
     }
 
     internal static bool RequiresProcessElevation(string payload)
@@ -481,8 +491,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             : ["Debug", "Release"];
     }
 
-    // Source layout: this project is src/UI/Core and the backend project is src/Core,
-    // the counterpart of the backend's "../UI/Core" lookup in NativeUiLaunchHostedService.
+    // Source layout: the shell locates the backend; the backend never resolves shell paths.
     private static bool TryFindAppRoot(string startPath, out string appRoot)
     {
         for (var directory = new DirectoryInfo(startPath); directory is not null; directory = directory.Parent)

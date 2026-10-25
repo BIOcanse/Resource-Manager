@@ -6,6 +6,21 @@ using ResourceManager.App.Infrastructure.Security;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using System.Security.Principal;
 using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.Shared.Packages;
+
+if (args.Contains("--prepare-package-use-guard", StringComparer.Ordinal))
+{
+    if (args.Length != 2 || args[0] != "--prepare-package-use-guard"
+        || args[1].Length > 32767 || !Path.IsPathFullyQualified(args[1]))
+        throw new ArgumentException("Usage: --prepare-package-use-guard <absolute-package-root>");
+    using var identity = WindowsIdentity.GetCurrent();
+    if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+        throw new UnauthorizedAccessException("Preparing a package use guard requires an elevated administrator.");
+    // Explicit package provisioning only; do not build a host or open any listener.
+    PackageUseGuard.Prepare(args[1]);
+    Console.WriteLine("package.use_guard.prepared");
+    return;
+}
 
 if (OperatingSystem.IsWindows())
     WindowsNativeLaunchErrorPolicy.InitializeForCurrentProcess();

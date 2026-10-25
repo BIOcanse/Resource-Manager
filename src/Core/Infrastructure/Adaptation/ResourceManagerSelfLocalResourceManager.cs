@@ -8,7 +8,7 @@ using ResourceManager.Ledger;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
-public enum ResourceManagerSelfProcessGroup { Backend, NativeUi }
+public enum ResourceManagerSelfProcessGroup { Backend, PackageClients }
 
 public sealed record ResourceManagerSelfWorkingSetObservation(
     int ProcessId,
@@ -30,7 +30,7 @@ public sealed record ResourceManagerSelfLocalResourceTickResult(
     LedgerTickResult Ledger,
     LedgerTableView Memory,
     ulong? BackendWorkingSetBytes,
-    ulong? NativeUiWorkingSetBytes,
+    ulong? PackageClientWorkingSetBytes,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> TrimResults,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> RecheckedTrimObservations,
     int PendingTrimObservationCount)
@@ -143,7 +143,7 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
             var observeWorkingSets = mode == LocalResourceSoftwareMemoryMode.PagedFrozen;
             var sample = observeWorkingSets ? captureProcesses() : [];
             var backend = sample.Where(static row => row.IsBackend).ToArray();
-            var nativeUi = sample.Where(static row => row.IsNativeUi || row.IsNativeUiDescendant).ToArray();
+            var packageClients = sample.Where(static row => row.IsPackageClient || row.IsPackageClientDescendant).ToArray();
             var trims = new List<ResourceManagerSelfWorkingSetTrimResult>(2);
             cancellationToken.ThrowIfCancellationRequested();
             lock (modeGate)
@@ -159,7 +159,7 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
             if (mode == LocalResourceSoftwareMemoryMode.PagedFrozen)
             {
                 TrimGroup(ResourceManagerSelfProcessGroup.Backend, backend, generation, trims, cancellationToken);
-                TrimGroup(ResourceManagerSelfProcessGroup.NativeUi, nativeUi, generation, trims, cancellationToken);
+                TrimGroup(ResourceManagerSelfProcessGroup.PackageClients, packageClients, generation, trims, cancellationToken);
             }
             LedgerTickResult tick;
             lock (modeGate)
@@ -169,7 +169,7 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
                 tick = ledger.Tick();
             }
             return new(tick, ledger.ReadTable(), observeWorkingSets ? SumWorkingSetBytes(backend) : null,
-                observeWorkingSets ? SumWorkingSetBytes(nativeUi) : null,
+                observeWorkingSets ? SumWorkingSetBytes(packageClients) : null,
                 trims, rechecked, pendingTrimObservations.Count) { Workspaces = ledger.ReadWorkspaceCapacities() };
         }
         finally { tickGate.Release(); }

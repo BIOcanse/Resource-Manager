@@ -15,7 +15,6 @@ public sealed record PerformanceOverlayFrameStream(
 
 public sealed record PerformanceOverlayTarget(
     string SoftwareId, int ProcessId, ulong ProcessStartKey,
-    PerformanceOverlaySettings Settings,
     IReadOnlyList<PerformanceOverlayMetricItem> Metrics,
     IReadOnlyList<PerformanceOverlayFrameStream> FrameStreams);
 
@@ -25,7 +24,7 @@ public sealed record PerformanceOverlaySnapshot(
 public static class PerformanceOverlayProjection
 {
     public static IReadOnlyList<SchedulingProcessFact> SelectTargets(
-        IReadOnlyList<PerformanceOverlaySettings> settings,
+        IReadOnlyList<string> softwareIds,
         SchedulingProcessFactSnapshot? processes)
     {
         if (processes is null || processes.InventoryStatus != SamplingObservationStatus.Current)
@@ -33,9 +32,7 @@ public static class PerformanceOverlayProjection
             return [];
         }
 
-        var enabled = settings.Where(static item => item.Enabled)
-            .Select(static item => item.SoftwareId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var enabled = softwareIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var attributedProcesses = processes.HasSeparateFoundationPayloads
             ? processes.AttributionProcesses : processes.Processes;
         var liveIdentities = processes.HasSeparateFoundationPayloads
@@ -53,7 +50,7 @@ public static class PerformanceOverlayProjection
     }
 
     public static PerformanceOverlaySnapshot Create(
-        IReadOnlyList<PerformanceOverlaySettings> settings,
+        IReadOnlyList<string> softwareIds,
         IReadOnlyList<string> metricIds,
         SchedulingProcessFactSnapshot? processes,
         ResourceBreakdownSnapshot? breakdown,
@@ -61,15 +58,12 @@ public static class PerformanceOverlayProjection
         FrameTimingSnapshot? frames,
         DateTimeOffset capturedAt)
     {
-        var settingsById = settings.Where(static item => item.Enabled)
-            .ToDictionary(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase);
         var systemDefinitions = hardware is null
             ? new Dictionary<string, MetricDefinition>(StringComparer.OrdinalIgnoreCase)
             : MetricCatalog.ForPerformanceOverlay(hardware).ToDictionary(
                 static item => item.Id, StringComparer.OrdinalIgnoreCase);
-        var targets = SelectTargets(settings, processes).Select(process =>
+        var targets = SelectTargets(softwareIds, processes).Select(process =>
         {
-            var selectedSettings = settingsById[process.SoftwareId];
             var metricProcess = processes?.Processes.FirstOrDefault(item =>
                 item.ProcessId == process.ProcessId
                 && item.ProcessStartKey == process.ProcessStartKey);
@@ -99,11 +93,10 @@ public static class PerformanceOverlayProjection
                 process.SoftwareId,
                 process.ProcessId,
                 process.ProcessStartKey,
-                selectedSettings,
                 metrics,
                 streamRows);
         }).ToArray();
-        return new PerformanceOverlaySnapshot(2, capturedAt, targets);
+        return new PerformanceOverlaySnapshot(3, capturedAt, targets);
     }
 
     private static PerformanceOverlayMetricItem ProjectMetric(

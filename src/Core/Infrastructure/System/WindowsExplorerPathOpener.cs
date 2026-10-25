@@ -33,9 +33,7 @@ public sealed class WindowsExplorerPathOpener(IInteractiveUserSessionBroker sess
             : Quote(openedPath);
 
         var shellRequest = new UserShellExecuteRequest("explorer.exe", arguments);
-        _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
-            NativeUiLaunchHostedService.ResolveNativeUiPath(),
-            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
+        _ = SessionAgentLauncher.Launch(sessionBroker, caller, shellRequest);
 
         return new LocalPathOpenResult(
             normalizedPath,

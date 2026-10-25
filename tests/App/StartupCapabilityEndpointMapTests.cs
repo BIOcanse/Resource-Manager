@@ -29,6 +29,9 @@ public sealed class StartupCapabilityEndpointMapTests
             routes);
         Assert.Contains("GET /api/settings/app", routes);
         Assert.Contains("GET /api/control/state", routes);
+        Assert.Contains("GET /api/startup-modules/catalog", routes);
+        Assert.Contains("GET /api/startup-modules/settings", routes);
+        Assert.DoesNotContain("PUT /api/startup-modules/software/{softwareId}", routes);
         Assert.DoesNotContain(routes, route => (route.Contains(" /api/control/", StringComparison.Ordinal)
             || route.Contains(" /api/settings/", StringComparison.Ordinal)) && !route.StartsWith("GET ", StringComparison.Ordinal));
         Assert.Contains("GET /api/components", routes);
@@ -97,6 +100,7 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("POST /api/subscriptions/stream", routes);
         Assert.DoesNotContain(routes, static route => route.Contains(" /api/migrations/", StringComparison.Ordinal));
         Assert.Contains("PUT /api/gpu-placement/process-policy", routes);
+        Assert.Contains("PUT /api/startup-modules/software/{softwareId}", routes);
         Assert.Contains("GET /api/software", routes);
         Assert.Contains("GET /api/software/metadata/{softwareIdentityId}", routes);
         Assert.Contains("GET /api/index/files/search", routes);

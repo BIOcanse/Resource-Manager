@@ -8,108 +8,68 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.GpuPlacement;
-using ResourceManager.App.Application.Overlay;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
-using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Application.Components;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.GpuPlacement;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Security;
+using Microsoft.AspNetCore.Http;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class PerformanceOverlayEndpointTests
 {
     [Fact]
-    public async Task DefaultGetAndPutUseCompleteSettingsAndRouteIdentity()
+    public async Task GenericStartupSelectionUsesRouteIdentityAndAdmittedModuleIds()
     {
-        const string executablePath = @"C:\Apps\Overlay\overlay.exe";
+        using var files = new StartupModuleTestCatalog();
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        var store = new MemoryStore();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read", "machine.write", "injection.configure");
+        builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(new Administrator());
+        builder.Services.ConfigureHttpJsonOptions(options => ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
+        var store = new JsonStartupModuleSettingsStore(files, files.Catalog);
         var registry = new CapturingLaunchRegistry();
-        builder.Services.AddSingleton<IPerformanceOverlaySettingsStore>(store);
-        builder.Services.AddSingleton(new GpuLaunchInterceptionReconciler(
-            new EmptyGpuPolicyStore(), store, new SingleSoftwareRegistryView(executablePath),
-            registry, new UnavailableGpuScheduling(),
-            NullLogger<GpuLaunchInterceptionReconciler>.Instance));
-        builder.Services.AddSingleton<HardwareMetricCatalogState>();
-        builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
-        await using var app = builder.Build();
-        typeof(ResourceManagerEndpointRouteBuilderExtensions)
-            .GetMethod("MapPerformanceOverlayEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [app]);
+        var software = new SingleSoftwareRegistryView(files.Image);
+        builder.Services.AddSingleton(files.Catalog);
+        builder.Services.AddSingleton<IStartupModuleSettingsStore>(store);
+        builder.Services.AddSingleton<ISoftwareRegistryView>(software);
+        builder.Services.AddSingleton(new GpuLaunchInterceptionReconciler(new EmptyGpuPolicyStore(), store,
+            files.Catalog, software, registry, new UnavailableGpuScheduling(), NullLogger<GpuLaunchInterceptionReconciler>.Instance));
+        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
+        typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapStartupModuleEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,
+            [app, ResourceManager.App.Hosting.StartupCapabilities.StartupCapabilitySet.Full]);
+        app.MapApiNotFoundEndpoint();
         await app.StartAsync();
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
-                .Features.Get<IServerAddressesFeature>()!.Addresses))
-        };
-
-        var defaults = await client.GetFromJsonAsync<PerformanceOverlaySettings>(
-            "/api/performance-overlay/default?softwareId=game");
-        Assert.NotNull(defaults);
-        Assert.Equal("game", defaults.SoftwareId);
-        Assert.Equal("external", defaults.Mode);
-        using var wire = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/performance-overlay/default?softwareId=game"));
-        foreach (var key in new[] { "metrics", "fontSizePx", "sizeMode", "regionWidthRatio", "regionHeightRatio", "anchor", "marginPx" })
-            Assert.False(wire.RootElement.TryGetProperty(key, out _));
-
-        var catalog = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
-            "/api/performance-overlay/metrics/catalog");
-        Assert.Contains(catalog.EnumerateArray(), item =>
-            item.GetProperty("id").GetString() == "target.fps");
-
-        var missing = await client.GetFromJsonAsync<PerformanceOverlaySettings>(
-            "/api/performance-overlay/software/game");
-        Assert.False(missing!.Enabled);
-
-        using var response = await client.PutAsJsonAsync("/api/performance-overlay/software/game",
-            defaults with { SoftwareId = "spoof", Enabled = true, Mode = "injected" });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var saved = await response.Content.ReadFromJsonAsync<PerformanceOverlaySettings>();
-        Assert.Equal("game", saved!.SoftwareId);
-        Assert.True(saved.Enabled);
-        Assert.Equal("injected", saved.Mode);
-        var retrieved = await client.GetFromJsonAsync<PerformanceOverlaySettings>(
-            "/api/performance-overlay/software/game");
-        Assert.Equal(saved.SoftwareId, retrieved!.SoftwareId);
-        Assert.Equal(saved.Mode, retrieved.Mode);
-        Assert.True(retrieved.Enabled);
-        using var all = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/performance-overlay/settings"));
-        foreach (var item in all.RootElement.GetProperty("software").EnumerateArray())
-            Assert.Equal(new[] { "enabled", "mode", "softwareId" }, item.EnumerateObject().Select(static field => field.Name).Order());
-        Assert.Equal(executablePath, Assert.Single(registry.OverlayPaths));
-
-        using var externalResponse = await client.PutAsJsonAsync("/api/performance-overlay/software/game",
-            saved with { Mode = "external" });
-        Assert.Equal(HttpStatusCode.OK, externalResponse.StatusCode);
+        using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
+        TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
+        var initial = await client.GetFromJsonAsync<StartupModuleSelection>("/api/startup-modules/software/game");
+        Assert.Empty(initial!.ModuleIds);
+        using var saved = await client.PutAsJsonAsync("/api/startup-modules/software/game", new StartupModuleSelection("spoofed", ["fixture-module"]));
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var value = await saved.Content.ReadFromJsonAsync<StartupModuleSelection>();
+        Assert.Equal("game", value!.SoftwareId);
+        Assert.Equal(["fixture-module"], value.ModuleIds);
+        Assert.Equal([files.Image], registry.OverlayPaths);
+        using var presentation = await client.PutAsJsonAsync("/api/startup-modules/software/game",
+            new { softwareId = "game", moduleIds = new[] { "fixture-module" }, fontSize = 24 });
+        Assert.Equal(HttpStatusCode.BadRequest, presentation.StatusCode);
+        Assert.Equal(["fixture-module"], Assert.Single((await store.GetAsync(default)).Software).ModuleIds);
+        using var invalid = await client.PutAsJsonAsync("/api/startup-modules/software/game", new StartupModuleSelection("game", ["unadmitted"]));
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var unknown = await client.PutAsJsonAsync("/api/startup-modules/software/missing", new StartupModuleSelection("game", []));
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        using var removed = await client.PutAsJsonAsync("/api/startup-modules/software/game", new StartupModuleSelection("game", []));
+        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
         Assert.Empty(registry.OverlayPaths);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/performance-overlay/software/game")).StatusCode);
         await app.StopAsync();
     }
 
-    private sealed class MemoryStore : IPerformanceOverlaySettingsStore
+    private sealed class Administrator : ILoopbackApiAdministratorReader
     {
-        private readonly Dictionary<string, PerformanceOverlaySettings> software =
-            new(StringComparer.OrdinalIgnoreCase);
-
-        public Task<PerformanceOverlaySettingsDocument> GetAsync(CancellationToken cancellationToken)
-            => Task.FromResult(new PerformanceOverlaySettingsDocument(1, software.Values.ToArray()));
-
-        public Task<PerformanceOverlaySettings> GetSoftwareAsync(
-            string softwareId, CancellationToken cancellationToken)
-            => Task.FromResult(software.GetValueOrDefault(softwareId)
-                ?? PerformanceOverlaySettings.Normalize(null, softwareId));
-
-        public Task<PerformanceOverlaySettings> SaveSoftwareAsync(
-            PerformanceOverlaySettings settings, CancellationToken cancellationToken)
-        {
-            var normalized = PerformanceOverlaySettings.Normalize(settings, settings.SoftwareId);
-            software[normalized.SoftwareId] = normalized;
-            return Task.FromResult(normalized);
-        }
+        public bool IsAdministrator(HttpContext context) => true;
     }
 
     private sealed class EmptyGpuPolicyStore : IGpuPlacementPolicyStore

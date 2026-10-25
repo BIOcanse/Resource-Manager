@@ -23,7 +23,7 @@ public sealed class BackendHostEnvironmentTests
     }
 
     [Fact]
-    public void ServiceGraph_RegistersOnlyTheWtsNativeUiOwner()
+    public void ServiceGraph_RegistersGenericWtsSessionBroker()
     {
         var services = new ServiceCollection()
             .AddLogging()
@@ -38,10 +38,10 @@ public sealed class BackendHostEnvironmentTests
 
         Assert.IsType<WindowsInteractiveUserSessionBroker>(
             provider.GetRequiredService<IInteractiveUserSessionBroker>());
-        Assert.Contains(
+        Assert.DoesNotContain(
             services,
             static registration => registration.ServiceType == typeof(IHostedService)
-                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
+                && registration.ImplementationType?.Name.Contains("NativeUi", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -73,10 +73,10 @@ public sealed class BackendHostEnvironmentTests
         Assert.DoesNotContain(
             interactiveServices,
             static registration => registration.ServiceType == typeof(IHostedService)
-                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
+                && registration.ImplementationType?.Name.Contains("NativeUi", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(
             headlessServices,
             static registration => registration.ServiceType == typeof(IHostedService)
-                && registration.ImplementationType == typeof(NativeUiLaunchHostedService));
+                && registration.ImplementationType?.Name.Contains("NativeUi", StringComparison.Ordinal) == true);
     }
 }

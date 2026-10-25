@@ -104,8 +104,6 @@ public sealed partial class OptionalDependencyUserSessionTests
         internal readonly TaskCompletionSource<int> Completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IReadOnlyList<uint> GetActiveSessionIds() => [7u];
         public string? GetUserSid(uint sessionId) => UserSid;
-        public NativeUiProcessPresence GetNativeUiProcessPresence(uint sessionId, string path) => throw new NotSupportedException();
-        public uint LaunchNativeUi(uint sessionId, string path, string arguments) => throw new NotSupportedException();
         public uint LaunchUserShell(uint sessionId, string expectedSid, string path, string arguments)
             => throw new InvalidOperationException("A release installer must request completion evidence.");
         public async Task<int> LaunchUserShellAndWaitAsync(uint sessionId, string expectedSid, string path, string arguments, CancellationToken token)
