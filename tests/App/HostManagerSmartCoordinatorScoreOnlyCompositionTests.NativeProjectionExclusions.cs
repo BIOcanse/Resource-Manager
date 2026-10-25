@@ -11,6 +11,92 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task SamplingExitAndUnattributedLiveProcessDoNotVoidPeerExitEvidence()
+    {
+        var facts = CreateCompleteProcessFacts((42831, 101, "software:healthy", 20, 25, 10),
+            (42832, 102, "software:unattributed", 20, 25, 10));
+        var initial = CreateCompleteProcessFacts((42830, 100, "software:exited", 20, 25, 10),
+            (42831, 101, "software:healthy", 20, 25, 10),
+            (42832, 102, "software:unattributed", 20, 25, 10));
+        facts = facts with
+        {
+            // One enumerated process exited during capture. Another live identity
+            // has no attribution/decision target, but remains in the inventory.
+            EnumeratedCount = 3, ExcludedCount = 1, EmittedCount = 1, SkippedCount = 1,
+            HasSeparateFoundationPayloads = true, InventoryProcesses = facts.Processes,
+            AttributionProcesses = [facts.Processes[0]], Processes = [facts.Processes[0]]
+        };
+        Assert.True(facts.IsInventoryCurrentComplete());
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsSnapshot: initial, automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null));
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(3U, fixture.Workspace.Snapshot.ProcessCount);
+        fixture.ProcessFacts.SetSnapshot(facts);
+        var probe = new NativeSmartInputCaptureProbe();
+        fixture.Coordinator.TransitionProbe = probe;
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "inventory");
+        Assert.Contains(probe.Rows, row => row.ProcessId == 42832);
+        Assert.Equal(2U, fixture.Workspace.Snapshot.ProcessCount);
+        Assert.DoesNotContain(fixture.Workspace.CurrentSnapshotRows.ToArray(), row => row.ProcessId == 42830);
+        Assert.DoesNotContain(diagnostics.NativeCoordinator!.ReasonMask, reason => reason == "no_complete_snapshot");
+    }
+
+    [Fact]
+    public async Task IncompleteInventoryChurnReportsCapacityFailureAndNextFullRoundRecovers()
+    {
+        var facts = CreateCompleteProcessFacts(43001, 100, "software:churn", 20, 25, 10) with { OverflowCount = 1 };
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsSnapshot: facts, smartCoordinatorMaximumProcesses: 2, automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null));
+        for (var i = 0; i < 3; i++)
+        {
+            fixture.ProcessFacts.SetSnapshot(CreateCompleteProcessFacts(43001 + i, (ulong)(100 + i), "software:churn", 20, 25, 10)
+                with { OverflowCount = 1 });
+            if (i == 2) await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Coordinator.RunOnceAsync(CancellationToken.None));
+            else await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        }
+        var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "native-plan" && e.Reason == "capacity-exceeded");
+        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "inventory" && e.Reason == "inventory-overflow");
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, fixture.Workspace.RefreshSnapshot());
+        Assert.Equal(2U, fixture.Workspace.Snapshot.ProcessCount);
+        fixture.ProcessFacts.SetSnapshot(CreateCompleteProcessFacts(43004, 104, "software:churn", 20, 25, 10));
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(1U, fixture.Workspace.Snapshot.ProcessCount);
+        diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "native-plan");
+    }
+
+    [Fact]
+    public async Task BusyInventoryWithSamplingExitsAndUnattributedPeersRemovesOnlyExitedRows()
+    {
+        var initial = CreateScaleProcessFacts(256);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsSnapshot: initial, automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null));
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(256U, fixture.Workspace.Snapshot.ProcessCount);
+        var current = initial with
+        {
+            HasSeparateFoundationPayloads = true,
+            InventoryProcesses = initial.Processes.Take(240).ToArray(),
+            AttributionProcesses = initial.Processes.Take(160).ToArray(),
+            Processes = initial.Processes.Take(160).ToArray(),
+            EmittedCount = 160, SkippedCount = 80, ExcludedCount = 16
+        };
+        Assert.True(current.IsInventoryCurrentComplete());
+        fixture.ProcessFacts.SetSnapshot(current);
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        Assert.Equal(240U, fixture.Workspace.Snapshot.ProcessCount);
+        var rows = fixture.Workspace.CurrentSnapshotRows.ToArray();
+        Assert.All(initial.Processes.Skip(240), p => Assert.DoesNotContain(rows, row => row.ProcessId == p.ProcessId));
+        Assert.All(initial.Processes.Skip(160).Take(80), p => Assert.Contains(rows, row => row.ProcessId == p.ProcessId));
+    }
+
     [Theory]
     [InlineData("process-count")]
     [InlineData("start-key")]
@@ -54,11 +140,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
                     fixture.RuntimePlan.OptimizationMode, false, false, fixture.Coordinator.SchedulingAuthority.Compute])!;
         }
-        Assert.DoesNotContain(probe.Rows, row => row.ProcessId == malformedPid);
+        Assert.Equal(NativeSmartCoordinatorInputValidity.ProcessIdentity,
+            Assert.Single(probe.Rows, row => row.ProcessId == malformedPid).ValidMask);
         Assert.True(Assert.Single(probe.Rows, row => row.ProcessId == healthyPid
             && row.MetricKind == NativeSmartCoordinatorMetricKind.CpuUsagePercent)
             .ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
-        Assert.False((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
+        Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
         Assert.Contains(exclusions, exclusion => exclusion.Fact == "identity" && exclusion.Reason.StartsWith("target-process-", StringComparison.Ordinal));
     }
@@ -127,7 +214,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
                     fixture.RuntimePlan.OptimizationMode, false, false, compute])!;
         }
-        Assert.False((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
+        Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
         Assert.True(Assert.Single(probe.Rows, row => row.ProcessId == healthyPid
             && row.MetricKind == NativeSmartCoordinatorMetricKind.CpuUsagePercent)
             .ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));

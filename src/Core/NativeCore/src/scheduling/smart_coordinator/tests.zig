@@ -7,6 +7,93 @@ const software_aggregation = @import("../compute_scoring/software_aggregation.zi
 
 const ActionBuffer = [corpus.default_action_capacity]protocol.Action;
 
+test "owned grade without running evidence remains owned and does not schedule restoration" {
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var row = std.mem.zeroes(protocol.InputRow);
+    row.struct_size = @sizeOf(protocol.InputRow);
+    row.target_key = 91_001;
+    row.software_key = 91_002;
+    row.process_id = 912;
+    row.process_start_key = 91_003;
+    row.valid_mask = protocol.InputValidity.process_identity | protocol.InputValidity.software_identity |
+        protocol.InputValidity.applied_process_grade | protocol.InputValidity.applied_cpu_grade | protocol.InputValidity.applied_gpu_grade;
+    row.flags = protocol.InputFlags.owns_process_grade;
+    row.applied_process_grade = protocol.ProcessGrade.level2;
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var sequence: u64 = 1;
+    while (sequence <= 4) : (sequence += 1) {
+        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, 1, sequence == 1);
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, @ptrCast(&row), 1, &actions, actions.len, &snapshot));
+        const slot = session.findProcess(row.target_key, row.process_id, row.process_start_key) orelse return error.MissingProcess;
+        try std.testing.expectEqual(@intFromEnum(protocol.RuntimeState.unknown), session.processes[slot].runtime_state);
+        try std.testing.expect(session.processes[slot].transition.owned);
+        try std.testing.expectEqual(protocol.ProcessGrade.level2, session.processes[slot].transition.applied);
+        try std.testing.expectEqual(@as(u32, 0), snapshot.inflight_count);
+        for (actions[0..snapshot.action_count]) |action|
+            try std.testing.expectEqual(@as(u32, 0), action.flags & protocol.ActionFlags.requires_feedback);
+    }
+}
+
+test "first full inventory clears exited pending rows and churn stays near live count" {
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var sequence: u64 = 1;
+    while (sequence <= 3) : (sequence += 1) {
+        var rows = lowScoreProcessRows(90_000 + sequence, 91_000, @intCast(1_000 + sequence), 92_000 + sequence);
+        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
+        input.flags &= ~protocol.CycleFlags.full_process_snapshot;
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot));
+    }
+    try std.testing.expectEqual(@as(u32, 3), snapshot.process_count);
+    try std.testing.expectEqual(@as(u32, 3), snapshot.pending_count);
+    // One attributable live process and one excluded-by-identity live process.
+    // Missing software/metrics on the latter must not invalidate exit evidence.
+    while (sequence <= 10_003) : (sequence += 1) {
+        const scored = lowScoreProcessRows(100_000 + sequence, 91_000, @intCast(2_000 + sequence), 200_000 + sequence);
+        var rows = [_]protocol.InputRow{ scored[0], scored[1], scored[0] };
+        rows[2].source_index = 2;
+        rows[2].target_key = 300_000;
+        rows[2].process_id = 300;
+        rows[2].process_start_key = 301;
+        rows[2].valid_mask = protocol.InputValidity.process_identity;
+        rows[2].software_key = 0;
+        rows[2].flags = 0;
+        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot));
+        try std.testing.expectEqual(@as(u32, 2), snapshot.process_count);
+        try std.testing.expectEqual(@as(u32, 1), snapshot.pending_count);
+        try std.testing.expect(session.findProcess(90_001, 1_001, 92_001) == null);
+        try std.testing.expect(session.findProcess(300_000, 300, 301) != null);
+    }
+}
+
+test "incomplete inventory churn reaches the finite process capacity visibly and full inventory recovers" {
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var actions: ActionBuffer = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var sequence: u64 = 1;
+    while (sequence <= config.max_processes + 1) : (sequence += 1) {
+        var rows = lowScoreProcessRows(90_000 + sequence, 91_000, @intCast(1_000 + sequence), 92_000 + sequence);
+        var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, sequence == 1);
+        input.flags &= ~protocol.CycleFlags.full_process_snapshot;
+        const result = corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot);
+        try std.testing.expectEqual(if (sequence <= config.max_processes) protocol.Status.ok else protocol.Status.capacity_exceeded, result);
+    }
+    try std.testing.expectEqual(config.max_processes, snapshot.process_count);
+    var rows = lowScoreProcessRows(99_000, 91_000, 9_000, 99_001);
+    var input = corpus.cycle(&config, sequence, @as(i64, @intCast(sequence)) * 1_000, rows.len, false);
+    try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.process_count);
+}
+
 test {
     _ = @import("growth_tests.zig");
 }

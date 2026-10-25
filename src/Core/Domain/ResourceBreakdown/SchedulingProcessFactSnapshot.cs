@@ -308,19 +308,18 @@ public sealed partial record SchedulingProcessFactSnapshot(
         => HasSeparateFoundationPayloads ? InventoryProcesses : Processes;
 
     public bool IsInventoryCurrentComplete()
+        => InventoryIncompleteReason() is null;
+
+    internal string? InventoryIncompleteReason()
     {
-        if (HasUnidentifiedProcesses
-            || InventoryStatus != SamplingObservationStatus.Current
-            || Generation == 0
-            || ObservedAtUtcTicks <= 0
-            || OverflowCount != 0
-            || EmittedCount != Processes.Count
-            || (ulong)EnumeratedCount != (ulong)CurrentInventoryProcesses.Count + ExcludedCount
-            || (ulong)EnumeratedCount !=
-                (ulong)EmittedCount + ExcludedCount + SkippedCount)
-        {
-            return false;
-        }
+        if (HasUnidentifiedProcesses) return "unidentified-live-process";
+        if (!IsInventoryCurrent()) return "dataset-not-current";
+        if (OverflowCount != 0) return "inventory-overflow";
+        if (EmittedCount != Processes.Count) return "emitted-count-mismatch";
+        if ((ulong)EnumeratedCount != (ulong)CurrentInventoryProcesses.Count + ExcludedCount)
+            return "inventory-count-mismatch";
+        if ((ulong)EnumeratedCount != (ulong)EmittedCount + ExcludedCount + SkippedCount)
+            return "capture-count-mismatch";
 
         var identities = new HashSet<(int ProcessId, ulong ProcessStartKey)>();
         foreach (var process in CurrentInventoryProcesses)
@@ -329,11 +328,11 @@ public sealed partial record SchedulingProcessFactSnapshot(
                 || process.ProcessStartKey == 0
                 || !identities.Add((process.ProcessId, process.ProcessStartKey)))
             {
-                return false;
+                return "invalid-or-duplicate-inventory-identity";
             }
         }
 
-        return true;
+        return null;
     }
 
     public bool IsCpuCurrentComplete()

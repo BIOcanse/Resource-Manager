@@ -86,11 +86,11 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
             var mask = definitions.Aggregate(ProcessMetricReadMask.None, static (value, field) => value | field.ReadMask);
             var includeCpu = definitions.Any(static field => field.Code == ProcessMetricFieldCode.CpuUsage);
             IReadOnlyDictionary<Process, CapturedProcessBasic>? prepared = null;
-            bool Capture(Process process, out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? identity)
-                => CaptureFieldSample(process, mask, includeCpu, out sample, out cpu, out identity, prepared);
+            bool Capture(Process process, ProcessCreationRead creation, out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? identity)
+                => CaptureFieldSample(process, creation, mask, includeCpu, out sample, out cpu, out identity, prepared);
             var batch = CaptureBatch(includeCpu, DirectCpu, (TryCaptureProcess<ProcessFieldSample>)Capture, static row => row.HasProcessorTime,
                 prepare: mask.HasFlag(ProcessMetricReadMask.ThreadCount)
-                    ? processes => prepared = ReadBasicBatch(processes, (_, _) => mask) : null);
+                    ? (processes, creations) => prepared = ReadBasicBatch(processes, (_, _) => mask, creations) : null);
             if (batch.Status != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
                 throw new InvalidOperationException("The process inventory did not produce a complete current observation.");
             var rows = batch.Samples.Select(sample =>
@@ -192,6 +192,7 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
     }
     private void ReleaseResources()
     {
+        inventoryBuffer.Dispose();
         HostedIo.Clear();
         DirectIo.Clear();
         try { network?.Dispose(); }

@@ -35,8 +35,27 @@ public sealed class ProcessCommandLineFieldTests
     {
         var calls = new Calls { Fault = fault };
         if (fault == "throw-query") Assert.Throws<Win32Exception>(() => WindowsProcessCommandLineQuery.Read(new(42), calls));
-        else Assert.Throws<InvalidOperationException>(() => WindowsProcessCommandLineQuery.Read(new(42), calls));
+        else
+        {
+            var result = WindowsProcessCommandLineQuery.ReadResult(new(42), calls);
+            Assert.Equal(ProcessReadStatus.Unavailable, result.Status);
+            Assert.Null(result.Value);
+            Assert.NotNull(result.Reason);
+        }
         Assert.Equal(fault is "small" or "oversized" ? 0 : 1, calls.Allocations);
+        Assert.Equal(calls.Allocations, calls.Frees);
+    }
+    [Theory]
+    [InlineData("exit-before")]
+    [InlineData("exit-during")]
+    [InlineData("exit-invalid-length")]
+    public void ProcessExitIsTypedAbsenceWithoutThrowing(string fault)
+    {
+        var calls = new Calls { Fault = fault };
+        var result = WindowsProcessCommandLineQuery.ReadResult(new(42), calls);
+        Assert.Equal(ProcessReadStatus.Exited, result.Status);
+        Assert.Null(result.Value);
+        Assert.Equal("process-exited", result.Reason);
         Assert.Equal(calls.Allocations, calls.Frees);
     }
     [Fact]
@@ -168,13 +187,16 @@ public sealed class ProcessCommandLineFieldTests
     private sealed class Calls : IWindowsProcessCommandLineCalls
     {
         internal string Text = "app.exe --arg"; internal string Fault = ""; internal int Queries, Allocations, Frees, AllocatedBytes;
+        public bool IsExited(IntPtr process) => Fault == "exit-invalid-length";
         public int Query(IntPtr process, int kind, IntPtr buffer, int length, out int returned)
         {
             Assert.Equal(new IntPtr(42), process); Assert.Equal(60, kind); Queries++;
             var header = Marshal.SizeOf<WindowsProcessCommandLineQuery.UnicodeString>();
             var bytes = Fault == "raw-surrogate" ? new byte[] { 0, 0xD8 } : Encoding.Unicode.GetBytes(Text);
             returned = header + bytes.Length + 2;
-            if (buffer == IntPtr.Zero) { if (Fault == "small") returned = header - 1; if (Fault == "oversized") returned = 65536; return unchecked((int)0xC0000004); }
+            if (Fault == "exit-before" || Fault == "exit-during" && buffer != IntPtr.Zero)
+                return unchecked((int)0xC000010A);
+            if (buffer == IntPtr.Zero) { if (Fault is "small" or "exit-invalid-length") returned = header - 1; if (Fault == "oversized") returned = 65536; return unchecked((int)0xC0000004); }
             Assert.InRange(length, header, ushort.MaxValue);
             if (Fault == "throw-query") throw new Win32Exception(5);
             if (Fault == "denied") return unchecked((int)0xC0000022);

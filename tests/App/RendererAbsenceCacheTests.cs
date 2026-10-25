@@ -8,6 +8,39 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RendererAbsenceCacheTests
 {
     [Fact]
+    public void TypedUnknownArgumentsNeverPublishNegativeAndAreRetriedNextCycle()
+    {
+        var broker = new FakeBroker();
+        using var cache = new RendererAbsenceCache(broker);
+        var api = new RendererQualificationReadCycleTests.Api();
+        var parent = api.Add(90, 133_899_999_999_999_990);
+        var gpu = api.Add(100);
+        api.Parents[100] = parent.ProcessId;
+        api.Arguments[100] = [gpu.ExecutablePath, "--type=gpu-process"];
+        api.UnreadableArguments.Add(100);
+        for (var cycle = 0; cycle < 2; cycle++)
+        {
+            using var reads = new RendererQualificationReadCycle(api);
+            Assert.Null(WindowsExternalGpuPlacementRuntime.ReadQualifiedRendererPlan(gpu, reads,
+                _ => [new(1, 0, 11)], true, true, cache));
+            Assert.False(WindowsExternalGpuPlacementRuntime.HasNoRendererMarkers(gpu, reads));
+            Assert.False(cache.Read(gpu).IsAbsent);
+            Assert.Equal(0, reads.NegativeHits);
+        }
+        Assert.Equal(2, api.ArgumentReads);
+        Assert.Equal(2, api.ModuleReads);
+        api.UnreadableArguments.Clear();
+        using (var reads = new RendererQualificationReadCycle(api))
+        {
+            Assert.NotNull(WindowsExternalGpuPlacementRuntime.ReadQualifiedRendererPlan(gpu, reads,
+                _ => [new(1, 0, 11)], true, true, cache));
+            Assert.Equal(0, reads.NegativeHits);
+        }
+        Assert.False(cache.Read(gpu).IsAbsent);
+        Assert.Equal(api.Opens, api.Closes);
+    }
+
+    [Fact]
     public void RuntimeSkipsAbsentInstanceUntilImageLoadThenReverifiesQualifiedResultsEveryCycle()
     {
         var broker = new FakeBroker();

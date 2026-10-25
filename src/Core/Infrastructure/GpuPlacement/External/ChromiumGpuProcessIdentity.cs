@@ -39,12 +39,14 @@ internal static class ChromiumGpuProcessIdentity
         try
         {
             var gpu = reads.Get(expected);
-            if (gpu is null || !gpu.IsAmd64() || !HasCompatibleRenderer(gpu.Arguments(), confirmedApi))
+            if (gpu is null || !gpu.IsAmd64() || gpu.Arguments().Value is not { } gpuArguments
+                || !HasCompatibleRenderer(gpuArguments, confirmedApi))
                 return null;
             var browser = gpu.ParentId() is int parentId ? reads.Get(parentId) : null;
             if (browser is null || browser.Identity.StartKey > expected.ProcessStartKey || browser.Identity.SessionId == 0
                 || browser.Identity.SessionId != gpu.Identity.SessionId
-                || browser.Arguments().Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal))
+                || browser.Arguments().Value is not { } browserArguments
+                || browserArguments.Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal))
                 || browser.IsDebugged() != false) return null;
             return new(new(browser.Identity.ProcessId, browser.Identity.StartKey,
                 Path.GetFileNameWithoutExtension(browser.Identity.ImagePath), browser.Identity.ImagePath), expected);

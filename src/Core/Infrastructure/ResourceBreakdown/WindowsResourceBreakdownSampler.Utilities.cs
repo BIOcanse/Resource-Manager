@@ -401,6 +401,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         internal DateTimeOffset CapturedAt { get; init; }
         internal TimeSpan? CpuInterval { get; init; }
+        internal bool HasUnidentifiedProcesses { get; init; }
     }
 
     internal readonly record struct SchedulingProcessSampleAccounting(

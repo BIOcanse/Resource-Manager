@@ -413,19 +413,22 @@ public sealed partial class WindowsResourceBreakdownSampler(
             if (samplingTask is null)
             {
                 samplingOwnerToken = null;
-                return;
+                drain = null;
             }
-
-            samplingStopInProgress = true;
-            samplingDrainTask ??= DrainSamplingWorkerAsync(
-                samplingTask,
-                samplingCts,
-                samplingOwnerToken);
-            drain = samplingDrainTask;
-            samplingCts?.Cancel();
+            else
+            {
+                samplingStopInProgress = true;
+                samplingDrainTask ??= DrainSamplingWorkerAsync(
+                    samplingTask,
+                    samplingCts,
+                    samplingOwnerToken);
+                drain = samplingDrainTask;
+                samplingCts?.Cancel();
+            }
         }
 
-        await drain.WaitAsync(cancellationToken);
+        if (drain is not null) await drain.WaitAsync(cancellationToken);
+        else await processFieldOwner.ReleaseProcessInventoryBufferAsync(cancellationToken);
     }
 
     public void Dispose()
@@ -553,6 +556,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 });
         }
         catch (Exception) when (ownerRevoked) { }
+        finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
     }
 
     private async Task<SubscriptionSampleCompletion> CollectAndPublishAsync(

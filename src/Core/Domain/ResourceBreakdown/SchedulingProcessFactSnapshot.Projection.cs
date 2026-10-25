@@ -16,8 +16,8 @@ public sealed partial record SchedulingProcessFactSnapshot
             Exclude(null, "inventory", "dataset-not-current");
             return this with { Processes = [], FactExclusions = exclusions };
         }
-        var complete = IsInventoryCurrentComplete();
-        if (!complete) Exclude(null, "inventory", "full-list-not-proven");
+        var incompleteReason = InventoryIncompleteReason();
+        if (incompleteReason is not null) Exclude(null, "inventory", incompleteReason);
         var duplicates = Processes.GroupBy(p => (p.ProcessId, p.ProcessStartKey))
             .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
         if (HasSeparateFoundationPayloads)
@@ -42,7 +42,7 @@ public sealed partial record SchedulingProcessFactSnapshot
             if (process.ProcessId <= 0 || process.ProcessStartKey == 0
                 || duplicates.Contains((process.ProcessId, process.ProcessStartKey)))
             {
-                unidentified = true;
+                if (!HasSeparateFoundationPayloads) unidentified = true;
                 Exclude(process, "identity", "invalid-or-duplicate-process");
                 continue;
             }
@@ -111,11 +111,16 @@ public sealed partial record SchedulingProcessFactSnapshot
                 if (!gpuRows.Any(g => g.HasMetric(metric))) mask &= ~metric;
             selected.Add(process with { ValidMetricMask = mask, Gpus = gpuRows });
         }
+        var removedDecisionRows = checked((uint)(Processes.Count - selected.Count));
+        var accountDecisionExclusions = HasSeparateFoundationPayloads && incompleteReason is null;
         return this with
         {
             Processes = selected, CurrentMetricMask = current,
-            // Preserve the source accounting. Removed identities cannot prove absence.
-            HasUnidentifiedProcesses = unidentified || !complete,
+            // With a separate inventory, filtering a decision row changes only
+            // emitted/skipped accounting. Its live inventory identity remains.
+            EmittedCount = accountDecisionExclusions ? EmittedCount - removedDecisionRows : EmittedCount,
+            SkippedCount = accountDecisionExclusions ? SkippedCount + removedDecisionRows : SkippedCount,
+            HasUnidentifiedProcesses = unidentified,
             FactExclusions = exclusions
         };
     }

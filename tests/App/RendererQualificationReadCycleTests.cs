@@ -179,6 +179,35 @@ public sealed class RendererQualificationReadCycleTests
     }
 
     [Fact]
+    public void TypedUnknownParentArgumentsCannotQualifyARendererAsTheBrowserRoot()
+    {
+        var api = new Api();
+        var parent = api.Add(90, Start - 10);
+        var gpu = api.Add(100);
+        api.Parents[100] = 90;
+        api.Arguments[100] = [gpu.ExecutablePath, "--type=gpu-process"];
+        api.Arguments[90] = [parent.ExecutablePath, "--type=renderer"];
+        api.UnreadableArguments.Add(90);
+        using (var reads = new RendererQualificationReadCycle(api))
+        {
+            Assert.Null(ChromiumGpuProcessIdentity.Read(gpu, GpuGraphicsApi.D3D11, reads));
+            Assert.Null(reads.Get(parent)!.Arguments().Value);
+            Assert.Equal(2, api.ArgumentReads); // Unknown is retained only for this read cycle.
+        }
+        api.UnreadableArguments.Clear();
+        using (var reads = new RendererQualificationReadCycle(api))
+            Assert.Null(ChromiumGpuProcessIdentity.Read(gpu, GpuGraphicsApi.D3D11, reads));
+        api.Arguments[90] = [parent.ExecutablePath];
+        using (var reads = new RendererQualificationReadCycle(api))
+            Assert.Equal(parent.ProcessId, ChromiumGpuProcessIdentity.Read(gpu, GpuGraphicsApi.D3D11, reads)!.Root.ProcessId);
+        Assert.Equal(api.Opens, api.Closes);
+    }
+
+    [Fact]
+    public void NativeUnavailableCommandLineIsTypedUnknownWithoutThrowing()
+        => Assert.Null(WindowsRendererQualificationNativeApi.Instance.ReadArguments(IntPtr.Zero).Value);
+
+    [Fact]
     public void DisposalReleasesAllHandlesEvenIfOneReleaseThrowsAndDoesNotReleaseTwice()
     {
         var api = new Api();
@@ -226,6 +255,7 @@ public sealed class RendererQualificationReadCycleTests
         internal readonly Dictionary<int, int> Parents = [];
         internal readonly List<RendererModuleName> Modules = [new("kernel32.dll", new(1)), new("unused.dll", new(2))];
         internal readonly HashSet<int> UnreadableModules = [];
+        internal readonly HashSet<int> UnreadableArguments = [];
         internal readonly List<string> PathsRead = [], VersionsRead = [], HashesRead = [], SizesRead = [];
         internal int Opens, Closes, IdentitiesRead, ModuleReads, ArgumentReads, MemoryReads;
         internal bool Amd64 = true, BadHash, SeparateGuiDirectory, ThrowOnClose, ArgumentsFail;
@@ -255,7 +285,12 @@ public sealed class RendererQualificationReadCycleTests
         public IntPtr Open(int processId) { var handle = new IntPtr(++Opens); Handles.Add(handle, processId); return handle; }
         public void Close(IntPtr process) { Assert.True(Handles.Remove(process)); Closes++; if (ThrowOnClose) throw new IOException("Close failed."); }
         public RendererProcessIdentity? ReadIdentity(IntPtr process, int processId) { IdentitiesRead++; Assert.Equal(processId, Handles[process]); return Identities.GetValueOrDefault(processId); }
-        public string[] ReadArguments(IntPtr process) { ArgumentReads++; if (ArgumentsFail) throw new InvalidOperationException("No command line."); return Arguments[Handles[process]]; }
+        public RendererArgumentsRead ReadArguments(IntPtr process)
+        {
+            ArgumentReads++;
+            if (ArgumentsFail) throw new InvalidOperationException("No command line.");
+            return UnreadableArguments.Contains(Handles[process]) ? default : new(Arguments[Handles[process]]);
+        }
         public int? ReadParentId(IntPtr process) => Parents.GetValueOrDefault(Handles[process]);
         public bool? IsDebugged(IntPtr process) { Assert.True(Handles.ContainsKey(process)); return Debugged; }
         public bool IsAmd64(string path) => Amd64;

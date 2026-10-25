@@ -5,15 +5,26 @@ using ResourceManager.ReadWrite.ProcessFields;
 
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
-internal delegate bool TryCaptureProcess<T>(Process process, out T sample, out TimeSpan cpu, out ProcessInstanceKey? identity);
+internal delegate bool TryCaptureProcess<T>(Process process, ProcessCreationRead creation, out T sample, out TimeSpan cpu, out ProcessInstanceKey? identity);
 internal sealed record ProcessCaptureBatch<T>(SamplingObservationStatus Status, uint EnumeratedCount,
     uint ExcludedCount, uint SkippedCount, IReadOnlyList<T> Samples, DateTimeOffset CapturedAt,
-    ProcessCpuDeltaTracker.IntervalResult Cpu);
+    ProcessCpuDeltaTracker.IntervalResult Cpu)
+{
+    internal bool HasUnidentifiedProcesses { get; init; }
+}
 internal sealed record ProcessFieldSample(int ProcessId, long? Creation, ProcessBasicMetricObservation Basic,
     bool HasProcessorTime);
 
 public sealed partial class WindowsProcessFieldOwner
 {
+    private readonly WindowsProcessInventoryBuffer inventoryBuffer = new();
+    internal int InventoryBufferCapacityBytes => inventoryBuffer.CapacityBytes;
+    internal async Task ReleaseProcessInventoryBufferAsync(CancellationToken cancellationToken)
+    {
+        await CaptureGate.WaitAsync(cancellationToken);
+        try { inventoryBuffer.Release(); }
+        finally { CaptureGate.Release(); }
+    }
     internal IWindowsProcessInventoryReader Inventory { get; set; } = WindowsProcessInventoryReader.Instance;
     internal WindowsProcessBasicMetricReader BasicReader { get; set; } = new();
     internal ProcessCpuDeltaTracker HostedCpu { get; } = new();
@@ -22,7 +33,7 @@ public sealed partial class WindowsProcessFieldOwner
     internal ProcessCaptureBatch<T> CaptureBatch<T>(bool includeCpu, ProcessCpuDeltaTracker tracker,
         TryCaptureProcess<T> capture, Func<T, bool> hasCpu,
         Action<List<T>, HashSet<ProcessInstanceKey>>? afterCapture = null, DateTimeOffset? captureStart = null,
-        Action<Process[]>? prepare = null, int maximumProcessCount = int.MaxValue)
+        Action<Process[], IReadOnlyDictionary<int, ProcessCreationRead>>? prepare = null, int maximumProcessCount = int.MaxValue)
     {
         if (maximumProcessCount <= 0) throw new ArgumentOutOfRangeException(nameof(maximumProcessCount));
         var now = captureStart ?? CaptureClock();
@@ -41,13 +52,24 @@ public sealed partial class WindowsProcessFieldOwner
                 new(now, null, new Dictionary<ProcessInstanceKey, double>()));
         }
         uint excluded = 0, skipped = 0;
+        var unidentified = false;
         try
         {
-            prepare?.Invoke(processes);
+            var creations = Inventory.ReadCreations(processes, inventoryBuffer);
+            prepare?.Invoke(processes, creations);
             foreach (var process in processes)
             {
                 if (process.Id <= 0) { excluded++; continue; }
-                if (!capture(process, out var sample, out var time, out var key)) { skipped++; continue; }
+                var creation = creations.GetValueOrDefault(process.Id, new(ProcessReadStatus.Unavailable, null));
+                if (creation.Status == ProcessReadStatus.Exited) { excluded++; continue; }
+                var captured = capture(process, creation, out var sample, out var time, out var key);
+                if (key is null)
+                {
+                    // Only a proven exit may be absent from a complete inventory.
+                    // A live identity failure must remain visible to its owner.
+                    unidentified = true;
+                }
+                if (!captured) { skipped++; continue; }
                 if (key is { } identity) live.Add(identity);
                 if (includeCpu && hasCpu(sample) && key is { } cpuIdentity) cpu[cpuIdentity] = time;
                 samples.Add(sample);
@@ -64,11 +86,12 @@ public sealed partial class WindowsProcessFieldOwner
         BasicReader.PruneCommandLineFailures(live);
         afterCapture?.Invoke(samples, live);
         var interval = tracker.UpdateInterval(includeCpu, now, cpu, Environment.ProcessorCount);
-        return new(SamplingObservationStatus.Current, checked((uint)processes.Length), excluded, skipped, samples, now, interval);
+        return new(SamplingObservationStatus.Current, checked((uint)processes.Length), excluded, skipped, samples, now, interval)
+        { HasUnidentifiedProcesses = unidentified };
     }
     internal sealed record CapturedProcessBasic(long? Creation, ProcessBasicMetricObservation Basic);
     internal IReadOnlyDictionary<Process, CapturedProcessBasic> ReadBasicBatch(Process[] processes,
-        Func<Process, long?, ProcessMetricReadMask> selectMask)
+        Func<Process, long?, ProcessMetricReadMask> selectMask, IReadOnlyDictionary<int, ProcessCreationRead> creations)
     {
         var selected = new List<(Process Process, long? Creation, ProcessBasicMetricRequest Request)>();
         foreach (var process in processes)
@@ -76,7 +99,7 @@ public sealed partial class WindowsProcessFieldOwner
             try
             {
                 if (process.Id <= 0) continue;
-                var creation = ReadCreation(process);
+                var creation = creations.GetValueOrDefault(process.Id).Creation;
                 selected.Add((process, creation, new(process.Id, creation ?? 0, selectMask(process, creation))));
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
@@ -85,12 +108,9 @@ public sealed partial class WindowsProcessFieldOwner
         return selected.Select((row, index) => (row.Process, Value: new CapturedProcessBasic(row.Creation, readings[index])))
             .ToDictionary(row => row.Process, row => row.Value);
     }
-    internal static long? ReadCreation(Process process)
-    {
-        try { return process.StartTime.ToFileTimeUtc(); }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { return null; }
-    }
-    private bool CaptureFieldSample(Process process, ProcessMetricReadMask mask, bool includeCpu,
+    internal static ProcessCreationRead ReadCreation(Process process)
+        => WindowsProcessCreationQuery.Read(process.Id);
+    private bool CaptureFieldSample(Process process, ProcessCreationRead creationRead, ProcessMetricReadMask mask, bool includeCpu,
         out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? key,
         IReadOnlyDictionary<Process, CapturedProcessBasic>? prepared = null)
     {
@@ -99,7 +119,7 @@ public sealed partial class WindowsProcessFieldOwner
         {
             var pid = process.Id;
             var captured = prepared?.GetValueOrDefault(process);
-            var creation = captured is null ? ReadCreation(process) : captured.Creation;
+            var creation = captured is null ? creationRead.Creation : captured.Creation;
             key = creation is { } birth ? new(pid, birth) : null;
             var basic = prepared is null ? BasicReader.Read(pid, creation ?? 0, mask)
                 : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;

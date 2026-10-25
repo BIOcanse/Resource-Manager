@@ -11,6 +11,43 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(2);
 
+    [Fact]
+    public void BadDecisionIdentityDoesNotInvalidateTheIndependentInventory()
+    {
+        var sample = Sample(DateTimeOffset.UtcNow, 1, SchedulingProcessMetricMask.CpuUsage,
+            Fact(42, 100, SchedulingProcessMetricMask.CpuUsage, 17, 0),
+            Fact(43, 101, SchedulingProcessMetricMask.CpuUsage, 18, 0));
+        sample = sample with { HasSeparateFoundationPayloads = true,
+            InventoryProcesses = sample.Processes,
+            Processes = [sample.Processes[0] with { ProcessStartKey = 0 }, sample.Processes[1]] };
+        var projected = sample.ProjectValidFacts(FactRequest(SchedulingProcessMetricMask.CpuUsage).GpuInventory);
+        Assert.True(projected.IsInventoryCurrentComplete());
+        Assert.Equal(2, projected.CurrentInventoryProcesses.Count);
+        Assert.Single(projected.Processes);
+        Assert.Equal(1U, projected.EmittedCount);
+        Assert.Equal(1U, projected.SkippedCount);
+        Assert.Contains(projected.FactExclusions, e => e.ProcessId == 42 && e.Fact == "identity");
+    }
+
+    [Fact]
+    public void InventoryPublicationPreservesUnidentifiedLiveAbsenceAndReplacesItOnRecovery()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var sample = Sample(now, 1, SchedulingProcessMetricMask.CpuUsage,
+            Fact(42, 100, SchedulingProcessMetricMask.CpuUsage, 17, 0)) with
+        { HasUnidentifiedProcesses = true, EnumeratedCount = 2, ExcludedCount = 1 };
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.CpuUsage), sample, now, Schedule(now));
+        var current = state.ReadLatest(FactRequest(SchedulingProcessMetricMask.CpuUsage), now)!;
+        Assert.True(current.HasUnidentifiedProcesses);
+        Assert.False(current.IsInventoryCurrentComplete());
+        Assert.Contains(current.ProjectValidFacts(FactRequest(SchedulingProcessMetricMask.CpuUsage).GpuInventory).FactExclusions,
+            e => e.Fact == "inventory" && e.Reason == "unidentified-live-process");
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.CpuUsage),
+            sample with { HasUnidentifiedProcesses = false }, now, Schedule(now));
+        Assert.True(state.ReadLatest(FactRequest(SchedulingProcessMetricMask.CpuUsage), now)!.IsInventoryCurrentComplete());
+    }
+
     [Theory]
     [InlineData(false, "game")]
     [InlineData(true, "game")]

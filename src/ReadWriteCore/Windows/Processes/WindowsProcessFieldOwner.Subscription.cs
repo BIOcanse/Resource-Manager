@@ -28,7 +28,7 @@ public sealed partial class WindowsProcessFieldOwner
         finally { CaptureGate.Release(); }
     }
 
-    private void SetBorrowDemand(ProcessCollectionBorrow borrow, bool networkDemand, bool diskDemand, bool gpuDemand, bool residencyDemand, bool remove)
+    private void SetBorrowDemand(ProcessCollectionBorrow borrow, bool processDemand, bool networkDemand, bool diskDemand, bool gpuDemand, bool residencyDemand, bool remove)
     {
         if (Volatile.Read(ref disposed) != 0) return;
         try { CaptureGate.Wait(); }
@@ -37,7 +37,9 @@ public sealed partial class WindowsProcessFieldOwner
         {
             if (Volatile.Read(ref disposed) != 0) return;
             if (remove) collectionBorrows.Remove(borrow);
-            else { borrow.RequireActive(); borrow.NetworkDemand = networkDemand; borrow.DiskDemand = diskDemand; borrow.GpuDemand = gpuDemand; borrow.ResidencyDemand = residencyDemand; }
+            else { borrow.RequireActive(); borrow.ProcessDemand = processDemand; borrow.NetworkDemand = networkDemand; borrow.DiskDemand = diskDemand; borrow.GpuDemand = gpuDemand; borrow.ResidencyDemand = residencyDemand; }
+            if (!collectionBorrows.Any(static item => !item.IsDisposed && item.ProcessDemand))
+                inventoryBuffer.Release();
             if (!directNetworkDemand && !collectionBorrows.Any(static item => !item.IsDisposed && item.NetworkDemand))
                 network?.Stop();
             if (!directDiskDemand && !collectionBorrows.Any(static item => !item.IsDisposed && item.DiskDemand))
@@ -57,6 +59,7 @@ public sealed partial class WindowsProcessFieldOwner
         private int disposed;
         internal bool IsDisposed => Volatile.Read(ref disposed) != 0;
         internal bool NetworkDemand;
+        internal bool ProcessDemand;
         internal bool DiskDemand;
         internal bool GpuDemand;
         internal bool ResidencyDemand;
@@ -83,7 +86,7 @@ public sealed partial class WindowsProcessFieldOwner
         public void SynchronizeDemand(ImmutableArray<FieldReference> activeFields)
         {
             var selected = Select(activeFields);
-            owner.SetBorrowDemand(this, selected.Any(static item =>
+            owner.SetBorrowDemand(this, !selected.IsEmpty, selected.Any(static item =>
                 item.Definition.DatasetId == ProcessMetricDatasetIds.ObservedNetworkTraffic), selected.Any(static item =>
                 item.Definition.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo), selected.Any(static item =>
                 item.Definition.DatasetId == ProcessMetricDatasetIds.GpuResidency), selected.Any(static item =>
@@ -103,7 +106,7 @@ public sealed partial class WindowsProcessFieldOwner
         public void Dispose()
         {
             if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            owner.SetBorrowDemand(this, false, false, false, false, true);
+            owner.SetBorrowDemand(this, false, false, false, false, false, true);
         }
     }
 }

@@ -97,8 +97,12 @@ public sealed partial class HostManagerSmartCoordinator
 
         ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.BeforeNativeCall);
         var previousNativeSnapshot = workspace.Snapshot;
+        var planStatus = workspace.Plan(in cycle);
+        if (planStatus != NativeSmartCoordinatorStatus.Ok)
+            cycleFactExclusions.Add(new(null, null, null, "native-plan",
+                planStatus == NativeSmartCoordinatorStatus.CapacityExceeded ? "capacity-exceeded" : $"status-{planStatus}"));
         RequireNativePlanStatus(
-            workspace.Plan(in cycle),
+            planStatus,
             workspace,
             projection.InputCount,
             in previousNativeSnapshot);

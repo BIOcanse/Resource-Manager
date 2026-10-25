@@ -123,7 +123,7 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
     }
 
     [Fact]
-    public void StandaloneProcessIsAnExplicitNotRunningRestoreFact()
+    public void StandaloneOwnedProcessDoesNotInventNotRunningEvidence()
     {
         var process = CreateProcessRecord();
         var identity = new NativeAppliedOwnershipProcessIdentity(
@@ -132,7 +132,7 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
             ProcessId,
             ProcessStartKey);
 
-        var row = HostManagerSmartCoordinator.CreateNativeStandaloneProcessRestoreFact(
+        var row = HostManagerSmartCoordinator.CreateNativeStandaloneOwnedProcessFact(
             identity,
             in process,
             sourceIndex: 8);
@@ -140,7 +140,6 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         Assert.Equal(
             NativeSmartCoordinatorInputValidity.ProcessIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.SurfaceFacts
                 | NativeSmartCoordinatorInputValidity.AppliedProcessGrade
                 | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
                 | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,

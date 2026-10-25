@@ -4,13 +4,14 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 internal sealed record RendererProcessIdentity(int ProcessId, ulong StartKey, string ImagePath, uint SessionId);
 internal sealed record RendererModuleName(string Name, IntPtr Address);
+internal readonly record struct RendererArgumentsRead(string[]? Value);
 
 internal interface IRendererQualificationNativeApi
 {
     IntPtr Open(int processId);
     void Close(IntPtr process);
     RendererProcessIdentity? ReadIdentity(IntPtr process, int processId);
-    string[] ReadArguments(IntPtr process);
+    RendererArgumentsRead ReadArguments(IntPtr process);
     int? ReadParentId(IntPtr process);
     bool? IsDebugged(IntPtr process);
     bool IsAmd64(string path);
@@ -89,15 +90,15 @@ internal sealed class RendererProcessRead(
 {
     private bool disposed;
     private bool argumentsRead, modulesRead;
-    private string[]? arguments;
+    private RendererArgumentsRead arguments;
     private IReadOnlyList<RendererModuleName>? modules;
     private readonly Dictionary<IntPtr, string?> paths = [];
     internal RendererProcessIdentity Identity { get; } = identity;
     internal IntPtr Handle => !disposed ? handle : throw new ObjectDisposedException(nameof(RendererProcessRead));
-    internal string[] Arguments()
+    internal RendererArgumentsRead Arguments()
     {
         if (!argumentsRead) { argumentsRead = true; arguments = api.ReadArguments(Handle); }
-        return arguments ?? throw new InvalidOperationException("Process arguments could not be read.");
+        return arguments;
     }
     internal IReadOnlyList<RendererModuleName>? Modules()
     {

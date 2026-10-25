@@ -145,7 +145,8 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
             var process = reads.Get(identity);
             return process?.Modules() is { } modules
                 && !modules.Any(module => module.Name.Equals("Qt6Quick.dll", StringComparison.OrdinalIgnoreCase))
-                && !process.Arguments().Contains("--type=gpu-process", StringComparer.Ordinal);
+                && process.Arguments().Value is { } arguments
+                && !arguments.Contains("--type=gpu-process", StringComparer.Ordinal);
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or OverflowException
             or IOException or UnauthorizedAccessException) { return false; }

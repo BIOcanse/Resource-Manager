@@ -46,7 +46,8 @@ public sealed partial class HostManagerSmartCoordinator
     {
         // Ownership records may need a standalone restore row. Counting all current
         // records also covers ones represented by a target without a second index.
-        ulong rows = checked((ulong)ownership.ProcessRecords.Count + (ulong)ownership.AdapterRecords.Count);
+        ulong rows = checked((ulong)ownership.ProcessRecords.Count + (ulong)ownership.AdapterRecords.Count
+            + (ulong)sample.ProcessFacts.CurrentInventoryProcesses.Count);
         for (var targetIndex = 0; targetIndex < sample.Targets.Count; targetIndex++)
         {
             var target = sample.Targets[targetIndex];
@@ -337,6 +338,26 @@ public sealed partial class HostManagerSmartCoordinator
             observedGpuSoftwareMembers,
             cycleFactExclusions);
 
+        // Inventory, not decision eligibility, owns presence. An unreadable or
+        // unattributed live process still needs an identity row so a full list
+        // removes only identities that really disappeared.
+        foreach (var process in sample.ProcessFacts.CurrentInventoryProcesses)
+        {
+            if (process.ProcessId <= 0 || process.ProcessStartKey == 0
+                || !representedProcesses.Add((process.ProcessId, process.ProcessStartKey))) continue;
+            var targetId = HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey);
+            Append(inputRows, new NativeSmartCoordinatorInputRow
+            {
+                StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorInputRow>()),
+                SourceIndex = sourceIndex++,
+                ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity,
+                TargetKey = NativeStableIdentity.CreateCaseInsensitiveKey(targetId),
+                ProcessId = checked((uint)process.ProcessId),
+                ProcessStartKey = process.ProcessStartKey
+            });
+            Exclude(process.ProcessId, process.ProcessStartKey, targetId, "decision-target", "live-identity-without-decision-facts");
+        }
+
         foreach (var pair in ownership.ProcessRecords
             .Where(pair => !seenProcessOwnership.Contains(pair.Key))
             .OrderBy(static pair => pair.Key.ProcessId)
@@ -345,7 +366,7 @@ public sealed partial class HostManagerSmartCoordinator
             .ThenBy(static pair => pair.Key.SoftwareKey))
         {
             var record = pair.Value;
-            Append(inputRows, CreateNativeStandaloneProcessRestoreFact(
+            Append(inputRows, CreateNativeStandaloneOwnedProcessFact(
                 pair.Key,
                 in record,
                 sourceIndex++));
@@ -370,9 +391,7 @@ public sealed partial class HostManagerSmartCoordinator
         Volatile.Read(ref transitionProbe)?.ObserveNativeInputs(inputRows[..cursor]);
         return new NativeFactProjectionResult(
             checked((uint)cursor),
-            sample.ProcessFacts.IsInventoryCurrentComplete()
-                && representedProcesses.SetEquals(sample.ProcessFacts.CurrentInventoryProcesses
-                    .Select(static process => (process.ProcessId, process.ProcessStartKey))),
+            sample.ProcessFacts.IsInventoryCurrentComplete(),
             allNativeOwnershipRepresented);
 
         void AppendMetric(
@@ -584,7 +603,7 @@ public sealed partial class HostManagerSmartCoordinator
         };
     }
 
-    internal static NativeSmartCoordinatorInputRow CreateNativeStandaloneProcessRestoreFact(
+    internal static NativeSmartCoordinatorInputRow CreateNativeStandaloneOwnedProcessFact(
         NativeAppliedOwnershipProcessIdentity identity,
         in NativeAppliedOwnershipRecord record,
         uint sourceIndex)
@@ -601,7 +620,7 @@ public sealed partial class HostManagerSmartCoordinator
                 (uint)NativeAppliedOwnershipGradeValidity.Process)
         {
             throw new InvalidDataException(
-                "The Host Manager applied ownership record cannot be projected as an absent-process restore fact.");
+                "The Host Manager applied ownership record cannot be projected as an owned-process fact.");
         }
 
         return new NativeSmartCoordinatorInputRow
@@ -609,10 +628,11 @@ public sealed partial class HostManagerSmartCoordinator
             StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorInputRow>()),
             ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareIdentity
-                | NativeSmartCoordinatorInputValidity.SurfaceFacts
                 | NativeSmartCoordinatorInputValidity.AppliedProcessGrade
                 | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
                 | NativeSmartCoordinatorInputValidity.AppliedGpuGrade,
+            // Ownership proves the applied grade, not whether the process is
+            // running. Exit reconciliation supplies the separate exit evidence.
             Flags = NativeSmartCoordinatorInputFlags.OwnsProcessGrade,
             TargetKey = identity.TargetKey,
             SoftwareKey = identity.SoftwareKey,

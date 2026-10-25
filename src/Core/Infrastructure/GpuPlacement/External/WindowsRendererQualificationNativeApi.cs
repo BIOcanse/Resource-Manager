@@ -23,16 +23,19 @@ internal sealed class WindowsRendererQualificationNativeApi : IRendererQualifica
         var image = processApi.ImagePath(process); // The existing ReadWriteCore image-path reader, borrowing this handle.
         return string.IsNullOrWhiteSpace(image) ? null : new(processId, creation.ToUInt64(), image, session);
     }
-    public string[] ReadArguments(IntPtr process)
+    public RendererArgumentsRead ReadArguments(IntPtr process)
     {
-        var pointer = CommandLineToArgvW(WindowsProcessCommandLineQuery.Read(process), out var count);
-        if (pointer == IntPtr.Zero) throw new Win32Exception();
+        var commandLine = WindowsProcessCommandLineQuery.Read(process);
+        if (commandLine is null) return default;
+        if (commandLine.Length == 0) return new([]);
+        var pointer = CommandLineToArgvW(commandLine, out var count);
+        if (pointer == IntPtr.Zero) return default;
         try
         {
-            if (count <= 0 || count > 4096) throw new InvalidOperationException("Invalid argument count.");
+            if (count <= 0 || count > 4096) return default;
             var arguments = new string[count];
             for (var index = 0; index < count; index++) arguments[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(pointer, index * IntPtr.Size)) ?? string.Empty;
-            return arguments;
+            return new(arguments);
         }
         finally { _ = LocalFree(pointer); }
     }

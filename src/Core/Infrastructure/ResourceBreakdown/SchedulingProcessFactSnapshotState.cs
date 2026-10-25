@@ -174,6 +174,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         foundation.ObservedAtUtcTicks = observedAtUtcTicks;
         foundation.EnumeratedCount = sample.EnumeratedCount;
         foundation.ExcludedCount = sample.ExcludedCount;
+        foundation.HasUnidentifiedProcesses = sample.HasUnidentifiedProcesses;
         foundation.SkippedCount = sample.SkippedCount;
         foundation.OverflowCount = sample.OverflowCount;
         foundation.LastSuccessAt = new DateTimeOffset(
@@ -349,6 +350,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         foundation.ObservedAtUtcTicks = 0;
         foundation.EnumeratedCount = 0;
         foundation.ExcludedCount = 0;
+        foundation.HasUnidentifiedProcesses = false;
         foundation.SkippedCount = 0;
         foundation.OverflowCount = 0;
         foundation.LastSuccessAt = null;
@@ -535,6 +537,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 inventory.ExcludedCount)
             {
                 HasSeparateFoundationPayloads = true,
+                HasUnidentifiedProcesses = inventory.HasUnidentifiedProcesses,
                 InventoryProcesses = processes.Values.Where(static row => row.HasInventory)
                     .Select(static row => ProjectInventory(row.Fact)).ToArray(),
                 AttributionProcesses = processes.Values.Where(static row => row.HasAttribution)
@@ -883,6 +886,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         public long ObservedAtUtcTicks { get; set; }
         public uint EnumeratedCount { get; set; }
         public uint ExcludedCount { get; set; }
+        public bool HasUnidentifiedProcesses { get; set; }
         public uint SkippedCount { get; set; }
         public uint OverflowCount { get; set; }
         public DateTimeOffset? LastAttemptAt { get; set; }
@@ -900,6 +904,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 ObservedAtUtcTicks = ObservedAtUtcTicks,
                 EnumeratedCount = EnumeratedCount,
                 ExcludedCount = ExcludedCount,
+                HasUnidentifiedProcesses = HasUnidentifiedProcesses,
                 SkippedCount = SkippedCount,
                 OverflowCount = OverflowCount,
                 LastAttemptAt = LastAttemptAt,

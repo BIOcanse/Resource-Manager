@@ -216,6 +216,28 @@ internal sealed class WindowsProcessDetailsInformationReader : IWindowsProcessDe
 /// <summary>Bounds and validates the documented variable-length process/thread table.</summary>
 internal static class WindowsProcessSystemThreadParser
 {
+    internal static bool TryParseCreations(ReadOnlySpan<byte> data, WindowsProcessDetailsOptions options,
+        out Dictionary<int, long> creations)
+    {
+        creations = [];
+        var headerSize = ProcessHeaderSize;
+        if (data.Length == 0 || data.Length > options.MaximumSystemInformationBufferBytes) return false;
+        var offset = 0;
+        var count = 0;
+        while (offset < data.Length && count++ < options.MaximumProcesses)
+        {
+            if (offset % IntPtr.Size != 0 || data.Length - offset < headerSize) return false;
+            var header = MemoryMarshal.Read<SystemProcessInformationHeader>(data.Slice(offset, headerSize));
+            var remaining = data.Length - offset;
+            if (header.NextEntryOffset != 0 && (header.NextEntryOffset < headerSize
+                || header.NextEntryOffset > remaining || header.NextEntryOffset % (uint)IntPtr.Size != 0)) return false;
+            var pid = PointerValue(header.UniqueProcessId);
+            if (pid > int.MaxValue || !creations.TryAdd((int)pid, header.CreationTime)) return false;
+            if (header.NextEntryOffset == 0) return true;
+            offset += (int)header.NextEntryOffset;
+        }
+        return false;
+    }
     internal static int ProcessHeaderSize => Marshal.SizeOf<SystemProcessInformationHeader>();
     internal static int ThreadInformationSize => Marshal.SizeOf<SystemThreadInformation>();
     internal static int ProcessIdOffset => Marshal.OffsetOf<SystemProcessInformationHeader>(nameof(SystemProcessInformationHeader.UniqueProcessId)).ToInt32();
@@ -306,7 +328,7 @@ internal static class WindowsProcessSystemThreadParser
         internal uint NumberOfThreads;
         // Inline reserved bytes allow reading directly from the bounded native
         // byte table without boxed structs or unused managed reserved arrays.
-        internal long Reserved1a, Reserved1b, Reserved1c, Reserved1d, Reserved1e, Reserved1f;
+        internal long Reserved1a, Reserved1b, Reserved1c, CreationTime, Reserved1e, Reserved1f;
         internal UnicodeString ImageName;
         internal int BasePriority;
         internal IntPtr UniqueProcessId;

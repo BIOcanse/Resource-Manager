@@ -190,14 +190,14 @@ public sealed partial class WindowsProcessFieldOwner
     private WindowsProcessDetailsInventory CaptureNativeProcessDetailsInventory(WindowsProcessDetailsOptions options,
         CancellationToken cancellationToken)
     {
-        bool Capture(Process process, out ProcessDetailsInventoryRow row, out TimeSpan cpu, out ProcessInstanceKey? identity)
+        bool Capture(Process process, ProcessCreationRead creationRead, out ProcessDetailsInventoryRow row, out TimeSpan cpu, out ProcessInstanceKey? identity)
         {
             cancellationToken.ThrowIfCancellationRequested();
             cpu = default;
             try
             {
                 var pid = process.Id;
-                var creation = ReadCreation(process);
+                var creation = creationRead.Creation;
                 identity = creation is > 0 ? new ProcessInstanceKey(pid, creation.Value) : null;
                 row = new(pid, identity);
                 return true;

@@ -298,6 +298,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             excludedCount)
         {
             HasSeparateFoundationPayloads = true,
+            HasUnidentifiedProcesses = batch.HasUnidentifiedProcesses,
             InventoryProcesses = inventoryFacts,
             AttributionProcesses = attributionFacts,
             SoftwareBaseScores = attribution?.SoftwareBaseScores ?? [],

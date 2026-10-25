@@ -69,7 +69,7 @@ public sealed class ProcessOwnershipTests
 
         Assert.Throws<InvalidOperationException>(() => owner.CaptureBatch<int>(
             false, new ProcessCpuDeltaTracker(), ThrowCapture, static _ => false,
-            prepare: static _ => throw new InvalidOperationException("prepare failed")));
+            prepare: static (_, _) => throw new InvalidOperationException("prepare failed")));
 
         Assert.All(handles, static handle => Assert.True(handle.IsClosed));
     }
@@ -149,7 +149,7 @@ public sealed class ProcessOwnershipTests
         return owner;
     }
 
-    private static bool ThrowCapture(Process process, out int sample, out TimeSpan cpu,
+    private static bool ThrowCapture(Process process, ProcessCreationRead creation, out int sample, out TimeSpan cpu,
         out ProcessInstanceKey? identity)
     {
         sample = 0;

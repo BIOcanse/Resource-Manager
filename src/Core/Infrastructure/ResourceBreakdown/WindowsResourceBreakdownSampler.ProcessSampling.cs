@@ -34,11 +34,12 @@ public sealed partial class WindowsResourceBreakdownSampler
         var windowIdentities = preserveProductIdentity && ShouldReadWindowIdentities(detailLevel)
             ? shellIdentityReader.ReadWindowIdentities() : new Dictionary<int, ShellProcessIdentity>();
         IReadOnlyDictionary<Process, WindowsProcessFieldOwner.CapturedProcessBasic>? prepared = null;
-        bool Capture(Process process, out ProcessResourceSample sample, out TimeSpan cpu, out ProcessInstanceKey? key)
+        bool Capture(Process process, ProcessCreationRead creation, out ProcessResourceSample sample, out TimeSpan cpu, out ProcessInstanceKey? key)
             => TryCreateProcessSample(process, includeCpu, detailLevel,
                 includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask, preserveProductIdentity,
-                parentProcessIds, windowIdentities, out sample, out cpu, out key, prepared is null ? null : prepared.GetValueOrDefault(process)
-                    ?? new(null, ProcessBasicMetricObservation.Unavailable));
+                parentProcessIds, windowIdentities, creation.Creation, out sample, out cpu, out key,
+                prepared is null ? null : prepared.GetValueOrDefault(process)
+                    ?? new(creation.Creation, ProcessBasicMetricObservation.Unavailable));
         List<ProcessResourceSample>? projected = null;
         var batch = processFieldOwner.CaptureBatch(includeCpu, cpuDeltaTracker,
             (TryCaptureProcess<ProcessResourceSample>)Capture, static row => row.HasProcessorTime,
@@ -54,14 +55,14 @@ public sealed partial class WindowsResourceBreakdownSampler
                 foreach (var path in fileMetadataCache.Keys)
                     if (!livePaths.Contains(path)) fileMetadataCache.TryRemove(path, out _);
             }, now, basicMask.HasFlag(ProcessMetricReadMask.ThreadCount)
-                ? processes => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
+                ? (processes, creations) => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
                 {
                     var mask = includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask;
                     var cached = creation is { } birth ? TryGetCachedProcessIdentity(new(process.Id, birth)) : null;
                     if (preserveProductIdentity && cached is null) mask |= ProcessMetricReadMask.ImagePath;
                     if (preserveProductIdentity) mask |= ProcessMetricReadMask.UserSid;
                     return mask;
-                }) : null);
+                }, creations) : null);
         if (batch.Status != SamplingObservationStatus.Current)
             return new(batch.Status, batch.EnumeratedCount, batch.ExcludedCount, batch.SkippedCount, []);
         var samples = projected ?? batch.Samples.ToList();
@@ -84,7 +85,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             batch.EnumeratedCount,
             batch.ExcludedCount,
             batch.SkippedCount,
-            samples) { CapturedAt = now, CpuInterval = cpuInterval.Interval };
+            samples) { CapturedAt = now, CpuInterval = cpuInterval.Interval,
+                HasUnidentifiedProcesses = batch.HasUnidentifiedProcesses };
     }
 
     internal static bool IsStructurallyExcludedProcessId(int processId)
@@ -115,6 +117,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         bool preserveProductIdentity,
         IReadOnlyDictionary<int, int> parentProcessIds,
         IReadOnlyDictionary<int, ShellProcessIdentity> windowIdentities,
+        long? creation,
         out ProcessResourceSample sample,
         out TimeSpan cpuState,
         out ProcessInstanceKey? processInstanceKey,
@@ -127,11 +130,11 @@ public sealed partial class WindowsResourceBreakdownSampler
         try
         {
             var processId = process.Id;
-            var processName = preserveProductIdentity ? process.ProcessName : string.Empty;
-            var startKey = prepared is null ? TryReadProcessStartKey(process) : prepared.Creation;
+            var startKey = prepared is null ? creation : prepared.Creation;
             processInstanceKey = startKey is { } stableStartKey
                 ? new ProcessInstanceKey(processId, stableStartKey)
                 : null;
+            var processName = preserveProductIdentity ? process.ProcessName : string.Empty;
             var cachedIdentity = TryGetCachedProcessIdentity(processInstanceKey);
             var queryMask = basicMask;
             if (preserveProductIdentity && cachedIdentity is null) queryMask |= ProcessMetricReadMask.ImagePath;
@@ -212,6 +215,13 @@ public sealed partial class WindowsResourceBreakdownSampler
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
+            if (processInstanceKey is { } identity)
+            {
+                sample = new ProcessResourceSample() with
+                { ProcessId = identity.ProcessId, StartKey = identity.StartKey, Name = string.Empty,
+                    BasicMetrics = ProcessBasicMetricObservation.Unavailable };
+                return true;
+            }
             return false;
         }
     }
@@ -357,8 +367,6 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         return detailLevel >= ProcessSampleDetailLevel.ResourceTableFull;
     }
-
-    private static long? TryReadProcessStartKey(Process process) => WindowsProcessFieldOwner.ReadCreation(process);
 
     private ProcessFileMetadata ReadProcessFileMetadata(string? executablePath)
     {
