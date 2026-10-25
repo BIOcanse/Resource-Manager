@@ -4,7 +4,7 @@ import type { SpecializedDeviceModel } from "../adapters/adapterRegistry";
 
 export function DeviceSpecializedSummary(props: { model: SpecializedDeviceModel }) {
   return (
-    <div class="device-detail-summary" aria-label={uiText.misc.keyFacts(props.model.deviceTypeLabel)}>
+    <div class="device-detail-summary" role="group" aria-label={uiText.misc.keyFacts(props.model.deviceTypeLabel)}>
       <Index each={props.model.summaryFields}>
         {(field) => (
           <div class="device-detail-summary-item">

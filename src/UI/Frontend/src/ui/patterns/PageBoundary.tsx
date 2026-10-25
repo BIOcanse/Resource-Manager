@@ -92,7 +92,7 @@ function PageBoundaryFallback(props: {
         </Show>
       </div>
       <Show when={props.lastGood}>
-        <div class="page-boundary-last-good" aria-label={uiText.misc.lastGoodContent(props.name)}>
+        <div class="page-boundary-last-good" role="group" aria-label={uiText.misc.lastGoodContent(props.name)}>
           {props.lastGood}
         </div>
       </Show>

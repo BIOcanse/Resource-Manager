@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const readSource = (relativePath: string) =>
   readFileSync(new URL(`../src/${relativePath}`, import.meta.url), "utf8");
@@ -299,3 +301,34 @@ assert.doesNotMatch(
   /<ObservationStateBoundary[\s\S]{0,240}state=\{monitor\.catalogObservation\(\)\}/,
   "catalog availability must not gate the whole monitor page"
 );
+
+// 读屏不读没有角色的 div/span 上的 aria-label：带名字的通用元素必须同时给角色（group、region、img 等）。
+// 交互协议引擎 interactions/protocol 是原样拷贝的外部代码，不在扫描范围内。
+{
+  const sourceRoot = fileURLToPath(new URL("../src/", import.meta.url));
+  const pending = [sourceRoot];
+  const unnamedRoles: string[] = [];
+  const genericTag = /<(div|span|p|li|ul|strong|em|small|header|footer|canvas|svg|figure)\b((?:[^<>{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)>/gs;
+  let visitedDirectories = 0;
+  while (pending.length > 0) {
+    const directory = pending.pop()!;
+    visitedDirectories += 1;
+    assert.ok(visitedDirectories < 2000, "source scan exceeded its directory limit");
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "protocol" && entry.name !== "generated") pending.push(path);
+        continue;
+      }
+      if (!entry.name.endsWith(".tsx")) continue;
+      const source = readFileSync(path, "utf8");
+      for (const match of source.matchAll(genericTag)) {
+        if (/\baria-label(?:ledby)?=/.test(match[2]) && !/\brole=/.test(match[2])) {
+          const line = source.slice(0, match.index).split("\n").length;
+          unnamedRoles.push(`${relative(sourceRoot, path)}:${line} <${match[1]}>`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(unnamedRoles, [], "generic elements with aria-label need a role");
+}

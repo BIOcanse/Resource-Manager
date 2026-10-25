@@ -9,7 +9,7 @@ export function SoftwareIssueTagStrip(props: {
 }) {
   return (
     <Show when={(props.issues?.length ?? 0) > 0}>
-      <div class="software-issue-tag-strip" aria-label={uiText.management.issueStrip}>
+      <div class="software-issue-tag-strip" role="group" aria-label={uiText.management.issueStrip}>
         <For each={props.issues ?? []}>
           {(issue) => (
             <span
@@ -46,7 +46,7 @@ export function SoftwareIssueDetailSection(props: {
                 </div>
                 <p>{softwareIssueMessage(issue)}</p>
                 <Show when={(issue.references?.length ?? 0) > 0}>
-                  <div class="software-issue-references" aria-label={uiText.management.issueReferences(softwareIssueLabel(issue))}>
+                  <div class="software-issue-references" role="group" aria-label={uiText.management.issueReferences(softwareIssueLabel(issue))}>
                     <For each={issue.references ?? []}>
                       {(reference) => (
                         <a href={reference.url} target="_blank" rel="noreferrer">

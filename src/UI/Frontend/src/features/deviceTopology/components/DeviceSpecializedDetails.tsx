@@ -167,7 +167,7 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel; information:
         [uiText.deviceSpecialized.deviceRevision, props.model.deviceRevision]
       ])} />
       <Show when={props.model.partitions.length > 0}>
-        <div class="device-storage-partitions" aria-label={uiText.deviceSpecialized.partitionsAndVolumes}>
+        <div class="device-storage-partitions" role="group" aria-label={uiText.deviceSpecialized.partitionsAndVolumes}>
           <Index each={props.model.partitions}>
             {(partition) => (
               <div class="device-storage-partition">
@@ -246,7 +246,7 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
         </div>
       </Show>
       <Show when={props.model.nativeModes.length > 0}>
-        <div class="device-camera-modes" aria-label={uiText.deviceSpecialized.cameraNativeModes}>
+        <div class="device-camera-modes" role="group" aria-label={uiText.deviceSpecialized.cameraNativeModes}>
           <Index each={props.model.nativeModes}>
             {(mode) => (
               <span>{mode().width} x {mode().height} @ {mode().maximumFrameRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} fps · {mode().pixelFormat}</span>
@@ -382,7 +382,7 @@ function StatusStrip(props: { values: Array<[string, boolean]> }) {
 function CapabilityList(props: { values: string[] }) {
   return (
     <Show when={props.values.length > 0}>
-      <div class="device-capability-list" aria-label={uiText.deviceSpecialized.deviceCapabilities}>
+      <div class="device-capability-list" role="group" aria-label={uiText.deviceSpecialized.deviceCapabilities}>
         <For each={props.values}>{(value) => <span>{value}</span>}</For>
       </div>
     </Show>
@@ -402,7 +402,7 @@ function VolumeUsage(props: { capacity?: number | null; free?: number | null }) 
     if (!props.capacity || typeof props.free !== "number") return 0;
     return Math.max(0, Math.min(100, ((props.capacity - props.free) / props.capacity) * 100));
   };
-  return <div class="device-storage-usage" aria-label={uiText.deviceSpecialized.usedPercent(usedPercent().toFixed(1))}><span style={{ width: `${usedPercent()}%` }} /></div>;
+  return <div class="device-storage-usage" role="img" aria-label={uiText.deviceSpecialized.usedPercent(usedPercent().toFixed(1))}><span style={{ width: `${usedPercent()}%` }} /></div>;
 }
 
 function formatVolumeCapacity(capacity?: number | null, free?: number | null) {

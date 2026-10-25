@@ -537,7 +537,7 @@ function PressureMeter(props: { label: string; value?: number | null; emptyLabel
 
 function SpecializedUsageStrip(props: { usages: GpuSpecializedUsage[] }) {
   return (
-    <div class="gpu-specialized-strip" aria-label={uiText.gpuScheduling.specializedStrip}>
+    <div class="gpu-specialized-strip" role="group" aria-label={uiText.gpuScheduling.specializedStrip}>
       <For each={props.usages} fallback={
         <SpecializedUsageMeter usage={{
           counterId: "gpu.specialized.none",

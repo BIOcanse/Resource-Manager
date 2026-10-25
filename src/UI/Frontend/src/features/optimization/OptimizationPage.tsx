@@ -238,7 +238,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
           onRetry={props.onRefresh}
         >
           <Show when={reportFilter() === "trusted"}>
-            <div class="optimization-trusted-targets" aria-label={uiText.optimization.trusted}>
+            <div class="optimization-trusted-targets" role="group" aria-label={uiText.optimization.trusted}>
               <For each={trustedTargets().filter(target =>
                 matchesSearch(normalizeSearchQuery(searchQuery()), optimizationTargetName(target), target.targetKey))}>
                 {(target) => <article class="optimization-report">

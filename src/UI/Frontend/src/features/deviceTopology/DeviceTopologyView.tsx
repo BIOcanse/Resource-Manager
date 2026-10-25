@@ -278,7 +278,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                 </Show>
               </aside>
 
-              <div class="device-top-view" aria-label={uiText.deviceTopology.topView}>
+              <div class="device-top-view" role="group" aria-label={uiText.deviceTopology.topView}>
                 <div class="device-laptop">
                   <div class="device-laptop-lid">
                     <span class="device-brand-logo">{data().system.brandLogoText}</span>
@@ -315,7 +315,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           </div>
                       </div>
                       <Show when={selectedNode()?.path && (selectedNode()?.path?.length ?? 0) > 1}>
-                        <div class="device-relation-path" aria-label={uiText.deviceTopology.relationPath}>
+                        <div class="device-relation-path" role="group" aria-label={uiText.deviceTopology.relationPath}>
                           <For each={selectedNode()?.path ?? []}>
                             {(segment) => <span>{segment}</span>}
                           </For>
@@ -324,7 +324,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       <Show
                         when={selectedNode()?.specializedDevice}
                         fallback={
-                          <div class="device-detail-summary" aria-label={uiText.deviceTopology.keyFacts}>
+                          <div class="device-detail-summary" role="group" aria-label={uiText.deviceTopology.keyFacts}>
                             <Index each={selectedPortSummary()}>
                               {(field) => (
                                 <div class="device-detail-summary-item">
