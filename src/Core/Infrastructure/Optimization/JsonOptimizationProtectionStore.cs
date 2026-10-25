@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Persistence;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -27,8 +28,8 @@ public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment env
         {
             try
             {
-                var image = await File.ReadAllBytesAsync(protectionPath, cancellationToken);
-                if (!IsCurrentProtectionImage(image))
+                var image = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(protectionPath, cancellationToken);
+                if (IsLegacyProtectionImage(image))
                     return await MigrateDisplayTextAsync(image, cancellationToken);
                 var document = JsonSerializer.Deserialize<OptimizationProtectionDocument>(image, JsonOptions)
                     ?? throw new InvalidDataException("The optimization protection document is null.");
@@ -111,18 +112,10 @@ public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment env
         }
     }
 
-    private static bool IsCurrentProtectionImage(byte[] image)
+    private static bool IsLegacyProtectionImage(byte[] image)
     {
-        try
-        {
-            using var json = JsonDocument.Parse(image);
-            return json.RootElement.ValueKind == JsonValueKind.Object
-                && json.RootElement.TryGetProperty("version", out var version)
-                && version.ValueKind == JsonValueKind.Number
-                && version.TryGetInt32(out var number)
-                && number == OptimizationProtectionDocument.CurrentVersion;
-        }
-        catch (JsonException) { return false; }
+        using var json = JsonDocument.Parse(image);
+        return json.RootElement.ValueKind == JsonValueKind.Array;
     }
 
     private async Task<IReadOnlyList<ProtectedOptimizationTarget>> MigrateDisplayTextAsync(byte[] image, CancellationToken cancellationToken)
@@ -150,18 +143,9 @@ public sealed partial class JsonOptimizationProtectionStore(IHostEnvironment env
             System.Diagnostics.Trace.TraceWarning("Optimization protection migration starts empty: {0}", error.Message);
             targets = [];
         }
-        var backup = protectionPath + ".display-text.byte-exact." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(image)).ToLowerInvariant() + ".backup";
-        if (!File.Exists(backup))
-        {
-            await using var output = new FileStream(backup, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            await output.WriteAsync(image, cancellationToken);
-            await output.FlushAsync(cancellationToken);
-            output.Flush(flushToDisk: true);
-        }
-        var preserved = await File.ReadAllBytesAsync(backup, cancellationToken);
-        if (!image.AsSpan().SequenceEqual(preserved))
-            throw new IOException("Optimization protection migration backup differs from its source.");
-        var current = await File.ReadAllBytesAsync(protectionPath, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        OptimizationDisplayTextBackup.Preserve(protectionPath, image);
+        var current = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(protectionPath, cancellationToken);
         if (!image.AsSpan().SequenceEqual(current))
             throw new IOException("Optimization protection changed during migration.");
         await SaveCoreAsync(targets, cancellationToken);

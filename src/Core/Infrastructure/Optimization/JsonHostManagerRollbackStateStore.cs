@@ -402,7 +402,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         var canonicalImage = await ReadBoundedImageAsync(statePath, cancellationToken);
         if (canonicalImage is not null)
         {
-            if (IsCurrentStateImage(canonicalImage))
+            if (!IsLegacyStateImage(canonicalImage))
             {
                 var decoded = HostManagerRollbackStateEnvelopeCodec.Decode(canonicalImage);
                 rootManifest.ValidateExistingCanonical(canonicalImage);
@@ -470,7 +470,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 continue;
             }
 
-            var candidate = IsCurrentStateImage(image)
+            var candidate = !IsLegacyStateImage(image)
                 ? HostManagerRollbackStateEnvelopeCodec.Decode(image).State
                 : MigrateDisplayTextState(image, legacyPath, out _, out _);
             PreserveExactFile(legacyPath);
@@ -496,16 +496,8 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         FileStream stream;
         try
         {
-            stream = new FileStream(
-                path,
-                new FileStreamOptions
-                {
-                    Mode = FileMode.Open,
-                    Access = FileAccess.Read,
-                    Share = FileShare.Read,
-                    BufferSize = 64 * 1024,
-                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-                });
+            stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(
+                path, FileOptions.Asynchronous | FileOptions.SequentialScan);
         }
         catch (FileNotFoundException)
         {
@@ -538,13 +530,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         FileStream stream;
         try
         {
-            stream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                1,
-                FileOptions.SequentialScan);
+            stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(path, FileOptions.SequentialScan);
         }
         catch (FileNotFoundException)
         {

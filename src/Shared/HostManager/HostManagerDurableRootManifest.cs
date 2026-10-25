@@ -27,13 +27,7 @@ internal sealed class WindowsHostManagerDurableRootManifestCommitter
         ReadOnlySpan<byte> expectedImage)
     {
         WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, manifestPath);
-        using var stream = new FileStream(
-            manifestPath,
-            FileMode.Open,
-            FileAccess.Read,
-            WindowsNativeAtomicFileCommitter.CommittedReadShare,
-            4096,
-            FileOptions.SequentialScan);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(manifestPath, FileOptions.SequentialScan);
         if (stream.Length != expectedImage.Length)
         {
             throw new IOException(
@@ -159,7 +153,7 @@ internal sealed class HostManagerDurableRootManifest
     private static void RequireExactBackup(string original, string backup)
     {
         using var source = WindowsNativeAtomicFileCommitter.OpenCommittedRead(original);
-        using var preserved = File.OpenRead(backup);
+        using var preserved = WindowsNativeAtomicFileCommitter.OpenCommittedRead(backup);
         if (source.Length != preserved.Length || !CryptographicOperations.FixedTimeEquals(SHA256.HashData(source), SHA256.HashData(preserved)))
             throw new IOException("The durable store byte-exact backup differs from its source.");
     }
@@ -335,13 +329,7 @@ internal sealed class HostManagerDurableRootManifest
                 "The Host Manager durable root is not initialized.");
         }
 
-        using var stream = new FileStream(
-            canonicalPath,
-            FileMode.Open,
-            FileAccess.Read,
-            WindowsNativeAtomicFileCommitter.CommittedReadShare,
-            64 * 1024,
-            FileOptions.SequentialScan);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonicalPath, FileOptions.SequentialScan);
         if (stream.Length <= 0)
         {
             throw new InvalidDataException(
@@ -371,13 +359,7 @@ internal sealed class HostManagerDurableRootManifest
         FileStream stream;
         try
         {
-            stream = new FileStream(
-                manifestPath,
-                FileMode.Open,
-                FileAccess.Read,
-                WindowsNativeAtomicFileCommitter.CommittedReadShare,
-                4096,
-                FileOptions.SequentialScan);
+            stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(manifestPath, FileOptions.SequentialScan);
         }
         catch (FileNotFoundException)
         {
@@ -499,13 +481,7 @@ internal sealed class HostManagerDurableRootManifest
         FileStream stream;
         try
         {
-            stream = new FileStream(
-                canonicalPath,
-                FileMode.Open,
-                FileAccess.Read,
-                WindowsNativeAtomicFileCommitter.CommittedReadShare,
-                64 * 1024,
-                FileOptions.SequentialScan);
+            stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonicalPath, FileOptions.SequentialScan);
         }
         catch (FileNotFoundException exception)
         {

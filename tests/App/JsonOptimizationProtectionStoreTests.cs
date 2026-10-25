@@ -3,6 +3,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Optimization;
+using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -96,16 +97,56 @@ public sealed class JsonOptimizationProtectionStoreTests : IDisposable
     [InlineData("null")]
     [InlineData("{}")]
     [InlineData("")]
-    public async Task UnconvertibleOldFileStartsEmptyWithExactBackup(string original)
+    public async Task UnrecognizedFormatIsNotMigrated(string original)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(StoragePath())!);
         await File.WriteAllTextAsync(StoragePath(), original);
-        var originalBytes = await File.ReadAllBytesAsync(StoragePath());
-        Assert.Empty(await CreateStore().LoadAsync(default));
-        var backup = Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
-        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
-        Assert.Empty(await CreateStore().LoadAsync(default));
-        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "optimization-protection.json.*.backup"));
+        var originalBytes = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath());
+        await Assert.ThrowsAsync<InvalidDataException>(() => CreateStore().LoadAsync(default));
+        Assert.Equal(originalBytes, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath()));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "*.backup"));
+    }
+
+    [Fact]
+    public async Task TruncatedCurrentDocumentIsNotResetAsLegacy()
+    {
+        var store = CreateStore();
+        await store.SaveAsync([CreateTarget()], default);
+        var original = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath());
+        var truncated = original[..^1];
+        File.WriteAllBytes(StoragePath(), truncated);
+        await Assert.ThrowsAsync<InvalidDataException>(() => CreateStore().LoadAsync(default));
+        Assert.Equal(truncated, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath()));
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "*.backup"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedProtectionBackupCanRetryWithoutOverwritingEarlierBytes(bool oldPartialFinal)
+    {
+        await WriteTargetsAsync([CreateTarget()]);
+        var original = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath());
+        var firstBackup = StoragePath() + ".display-text.byte-exact." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(original)).ToLowerInvariant() + ".backup";
+        var partial = original[..(original.Length / 2)];
+        if (oldPartialFinal) File.WriteAllBytes(firstBackup, partial);
+        else
+        {
+            Assert.Throws<IOException>(() => OptimizationDisplayTextBackup.Preserve(StoragePath(), original, (output, bytes) =>
+            {
+                output.Write(bytes.AsSpan(0, bytes.Length / 2));
+                throw new IOException("interrupted backup");
+            }));
+            Assert.False(File.Exists(firstBackup));
+            Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "*.tmp"));
+        }
+        Assert.Equal(original, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(StoragePath()));
+        Assert.Single(await CreateStore().LoadAsync(default));
+        var complete = OptimizationDisplayTextBackup.Preserve(StoragePath(), original);
+        Assert.Equal(original, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(complete));
+        Assert.Equal(complete, OptimizationDisplayTextBackup.Preserve(StoragePath(), original));
+        Assert.Equal(oldPartialFinal ? 2 : 1, Directory.GetFiles(Path.GetDirectoryName(StoragePath())!, "*.backup").Length);
+        if (oldPartialFinal) Assert.Equal(partial, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(firstBackup));
     }
 
     public void Dispose()

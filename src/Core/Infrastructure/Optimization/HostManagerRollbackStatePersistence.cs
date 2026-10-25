@@ -93,13 +93,7 @@ internal sealed class WindowsHostManagerRollbackStateFileCommitter
         string canonicalPath,
         ReadOnlySpan<byte> expectedImage)
     {
-        using var stream = new FileStream(
-            canonicalPath,
-            FileMode.Open,
-            FileAccess.Read,
-            WindowsNativeAtomicFileCommitter.CommittedReadShare,
-            IoBufferSize,
-            FileOptions.SequentialScan);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonicalPath, FileOptions.SequentialScan);
         if (stream.Length != expectedImage.Length)
         {
             throw new InvalidDataException(

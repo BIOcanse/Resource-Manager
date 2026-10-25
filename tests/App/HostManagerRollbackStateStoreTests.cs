@@ -243,7 +243,7 @@ public sealed class HostManagerRollbackStateStoreTests
     [Theory]
     [InlineData("null")]
     [InlineData("{not-json")]
-    public async Task LoadAsync_ResetsUnconvertibleOldJson(string json)
+    public async Task LoadAsync_RejectsUnrecognizedJsonWithoutMigration(string json)
     {
         var root = CreateTempDirectory();
         var path = Path.Combine(root, "smart-optimization-state.json");
@@ -254,7 +254,9 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(DateTimeOffset.UtcNow),
                 TimeSpan.FromMinutes(1));
-            Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
+            await Assert.ThrowsAnyAsync<Exception>(() => store.LoadAsync(CancellationToken.None));
+            Assert.Equal(json, await File.ReadAllTextAsync(path));
+            Assert.Empty(Directory.GetFiles(root, "*.backup"));
         }
         finally
         {
@@ -369,10 +371,18 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(DateTimeOffset.UtcNow),
                 TimeSpan.FromMinutes(1));
-            Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
-
-            var backup = Assert.Single(Directory.GetFiles(root, "smart-optimization-state.json.*.backup"));
-            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
+            if (version == 1)
+            {
+                Assert.Empty((await store.LoadAsync(CancellationToken.None)).AppliedPlacements);
+                var backup = Assert.Single(Directory.GetFiles(root, "smart-optimization-state.json.*.backup"));
+                Assert.Equal(originalBytes, await File.ReadAllBytesAsync(backup));
+            }
+            else
+            {
+                await Assert.ThrowsAnyAsync<Exception>(() => store.LoadAsync(CancellationToken.None));
+                Assert.Equal(originalBytes, await File.ReadAllBytesAsync(path));
+                Assert.Empty(Directory.GetFiles(root, "*.backup"));
+            }
             Assert.Empty(Directory.EnumerateFiles(root, "*.tmp"));
         }
         finally

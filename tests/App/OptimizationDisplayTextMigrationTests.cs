@@ -76,5 +76,81 @@ public sealed class OptimizationDisplayTextMigrationTests
             Directory.Delete(directory);
         }
     }
-}
+    [Fact]
+    public async Task TruncatedCurrentV3DoesNotMigrateOrChangeCanonicalAndManifest()
+    {
+        var root = Directory.CreateTempSubdirectory("rm-truncated-v3-").FullName;
+        var path = Path.Combine(root, "rollback-state.json");
+        try
+        {
+            using (var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1)))
+                await store.SaveAsync(HostManagerRollbackStateDocument.Empty with
+                {
+                    AppliedPlacements = [new("process:42:123", "example", "cpu",
+                        [new("cpu_affinity", "owned-record")], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch)]
+                }, default);
+            var complete = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path);
+            var truncated = complete[..^1];
+            File.WriteAllBytes(path, truncated);
+            var manifest = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path + ".root.manifest");
+            using var reopened = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1));
+            await Assert.ThrowsAnyAsync<JsonException>(() => reopened.LoadAsync(default));
+            Assert.Equal(truncated, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path));
+            Assert.Equal(manifest, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path + ".root.manifest"));
+            Assert.Empty(Directory.GetFiles(root, "*.backup"));
+        }
+        finally
+        {
+            foreach (var file in Directory.GetFiles(root)) File.Delete(file);
+            Directory.Delete(root);
+        }
+    }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InterruptedBackupCanRetryAndDifferentEarlierBackupIsPreserved(bool interruptedFinalFromOldWriter)
+    {
+        var root = Directory.CreateTempSubdirectory("rm-backup-retry-").FullName;
+        var path = Path.Combine(root, "rollback-state.json");
+        try
+        {
+            using var source = typeof(OptimizationDisplayTextMigrationTests).Assembly.GetManifestResourceStream(
+                Assert.Single(typeof(OptimizationDisplayTextMigrationTests).Assembly.GetManifestResourceNames(),
+                    name => name.EndsWith("rollback-state.c16-v2.json", StringComparison.Ordinal)))!;
+            using var buffer = new MemoryStream();
+            source.CopyTo(buffer);
+            var original = buffer.ToArray();
+            File.WriteAllBytes(path, original);
+            var firstBackup = path + ".display-text.byte-exact." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(original)).ToLowerInvariant() + ".backup";
+            var partial = original[..(original.Length / 2)];
+            if (interruptedFinalFromOldWriter) File.WriteAllBytes(firstBackup, partial);
+            else
+            {
+                Assert.Throws<OperationCanceledException>(() => OptimizationDisplayTextBackup.Preserve(path, original, (output, bytes) =>
+                {
+                    output.Write(bytes.AsSpan(0, bytes.Length / 2));
+                    output.Flush();
+                    throw new OperationCanceledException("interrupted backup");
+                }));
+                Assert.False(File.Exists(firstBackup));
+                Assert.Empty(Directory.GetFiles(root, "*.tmp"));
+            }
+            Assert.Equal(original, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path));
+            using (var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1)))
+                Assert.Single((await store.LoadAsync(default)).AppliedPlacements);
+            var completeBackup = OptimizationDisplayTextBackup.Preserve(path, original);
+            Assert.Equal(original, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(completeBackup));
+            Assert.Equal(completeBackup, OptimizationDisplayTextBackup.Preserve(path, original));
+            Assert.Equal(interruptedFinalFromOldWriter ? 2 : 1, Directory.GetFiles(root, "*.backup").Length);
+            if (interruptedFinalFromOldWriter)
+                Assert.Equal(partial, WindowsNativeAtomicFileCommitter.ReadCommittedBytes(firstBackup));
+        }
+        finally
+        {
+            foreach (var file in Directory.GetFiles(root)) File.Delete(file);
+            Directory.Delete(root);
+        }
+    }
+
+}

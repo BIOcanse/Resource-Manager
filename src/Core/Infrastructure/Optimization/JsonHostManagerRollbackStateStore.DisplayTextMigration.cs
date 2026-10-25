@@ -10,21 +10,29 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class JsonHostManagerRollbackStateStore
 {
     // Only startup migration reads retired formats. The current wire and store have no text readers.
-    private static bool IsCurrentStateImage(byte[] image)
+    private static bool IsLegacyStateImage(byte[] image)
     {
-        try
+        using var document = JsonDocument.Parse(image, new JsonDocumentOptions
         {
-            using var document = JsonDocument.Parse(image);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return false;
-            var state = root.TryGetProperty("state", out var nested) ? nested : root;
-            return state.ValueKind == JsonValueKind.Object
-                && state.TryGetProperty("version", out var version)
-                && version.ValueKind == JsonValueKind.Number
-                && version.TryGetInt32(out var number)
-                && number == HostManagerRollbackStateDocument.CurrentVersion;
+            MaxDepth = HostManagerRollbackStateEnvelopeCodec.MaximumJsonDepth
+        });
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return false;
+        var state = root;
+        if (root.TryGetProperty("state", out var nested))
+        {
+            if (!root.TryGetProperty("magic", out var magic) || magic.ValueKind != JsonValueKind.String
+                || magic.GetString() != HostManagerRollbackStateEnvelopeCodec.Magic
+                || !root.TryGetProperty("schemaVersion", out var schema) || schema.ValueKind != JsonValueKind.Number
+                || !schema.TryGetUInt32(out var schemaVersion) || schemaVersion != HostManagerRollbackStateEnvelopeCodec.SchemaVersion)
+                return false;
+            state = nested;
         }
-        catch (JsonException) { return false; }
+        return state.ValueKind == JsonValueKind.Object
+            && state.TryGetProperty("version", out var version)
+            && version.ValueKind == JsonValueKind.Number
+            && version.TryGetInt32(out var number)
+            && number is 1 or 2;
     }
 
     private static HostManagerRollbackStateDocument MigrateDisplayTextState(byte[] image, string sourcePath, out ulong revision, out bool converted)
@@ -105,16 +113,7 @@ public sealed partial class JsonHostManagerRollbackStateStore
     private static string? PreserveExactFile(string path)
     {
         if (!File.Exists(path)) return null;
-        var original = File.ReadAllBytes(path);
-        var backup = path + ".display-text.byte-exact." + Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant() + ".backup";
-        if (!File.Exists(backup))
-        {
-            using var stream = new FileStream(backup, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            stream.Write(original);
-            stream.Flush(flushToDisk: true);
-        }
-        if (!original.AsSpan().SequenceEqual(File.ReadAllBytes(backup)))
-            throw new IOException("Rollback migration backup differs from its original.");
-        return backup;
+        return OptimizationDisplayTextBackup.Preserve(path,
+            ResourceManager.App.Infrastructure.NativeCore.WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path));
     }
 }
