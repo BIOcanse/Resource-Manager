@@ -37,7 +37,10 @@ import { uiText } from "../../text.ts";
  * 后端只发布扫描事实。事实缓冲区交给本页的 Worker，布局、剪枝、缩放和钻取都留在前端。
  * 画图与悬停纯查表；右键菜单另读单节点的分配字节等事实。
  */
-export function DiskUsageWorkspace() {
+export function DiskUsageWorkspace(props: {
+  /** 右键菜单和选文件夹这类动作失败时当场提示。 */
+  onActionError: (error: unknown, fallback: string) => void;
+}) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
   const [volumes, setVolumes] = createSignal<DiskUsageVolume[]>([]);
@@ -358,6 +361,7 @@ export function DiskUsageWorkspace() {
           : summary() === undefined || layout() === undefined ? "loading" : "ready"}
         onRetryVolumes={() => void readVolumes()}
         onScan={(scope, mode, target) => void startScan(scope, mode, target)}
+        onActionError={props.onActionError}
       >
         <Show when={scanFailed()}>
           <p role="alert">{uiText.diskUsage.scanFailed}</p>
@@ -421,17 +425,20 @@ export function DiskUsageWorkspace() {
             onOpenLocation={() => {
               const path = current().node.fullPath;
               setMenu(null);
-              void openPath(path, true);
+              void openPath(path, true).catch((error: unknown) =>
+                props.onActionError(error, uiText.softwareActions.openFileLocationFailed));
             }}
             onProperties={() => {
               const path = current().node.fullPath;
               setMenu(null);
-              void openProperties(path);
+              void openProperties(path).catch((error: unknown) =>
+                props.onActionError(error, uiText.softwareActions.openPropertiesFailed));
             }}
             onCopyPath={() => {
               const path = current().node.fullPath;
               setMenu(null);
-              void navigator.clipboard?.writeText(path);
+              void navigator.clipboard?.writeText(path).catch((error: unknown) =>
+                props.onActionError(error, uiText.misc.copyFailed));
             }}
           />
         )}

@@ -62,6 +62,8 @@ const defaultScenario = {
   softwareIssues: true,
   operations: "empty",
   operationCanceled: false,
+  // 进行中的那个任务还在排队（同一 ID，状态修订更早）。
+  operationQueued: false,
   componentPayloadFailure: false,
   managementInventoryRevisions: {
     softwareRevision: "0",
@@ -808,9 +810,9 @@ function fixtureOperations() {
     kind: "component.install",
     domainKey: "component.frontend-harness",
     subject: { targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
-    state: scenario.operationCanceled ? "canceled" : "running",
+    state: scenario.operationCanceled ? "canceled" : scenario.operationQueued ? "queued" : "running",
     configurationGeneration: "1",
-    stateRevision: scenario.operationCanceled ? "2" : "1",
+    stateRevision: scenario.operationCanceled ? "2" : scenario.operationQueued ? "0" : "1",
     attemptNumber: 1,
     maximumAttempts: 3,
     createdAt: "2026-08-22T12:00:00.000Z",
@@ -819,7 +821,7 @@ function fixtureOperations() {
       : "2026-08-22T12:00:01.000Z",
     completedAt: scenario.operationCanceled ? "2026-08-22T12:00:03.000Z" : null,
     cancelRequested: scenario.operationCanceled,
-    progress: scenario.operationCanceled ? null : {
+    progress: scenario.operationCanceled || scenario.operationQueued ? null : {
       sequence: "1",
       percent: 40,
       bytesDone: "4096",
@@ -1160,6 +1162,7 @@ function applyScenarioPatch(patch) {
   settleMockValueSlots(patch);
   if (Object.hasOwn(patch, "operations")
     || Object.hasOwn(patch, "operationCanceled")
+    || Object.hasOwn(patch, "operationQueued")
     || Object.hasOwn(patch, "componentPayloadFailure")) {
     commitOperationsValue();
   }

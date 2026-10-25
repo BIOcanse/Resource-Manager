@@ -39,7 +39,8 @@ export function readManagementSnapshotCache(): ManagementSnapshotCache | null {
   const components = parsed.components.slice(0, maximumComponents)
     .map((item, index) => decodeManagedComponent(item, `$.components[${index}]`));
   const software = parsed.software.slice(0, maximumSoftwareRecords)
-    .map((item, index) => withoutIssueState(decodeSoftwareRecord(item, `$.software[${index}]`)));
+    // 问题标签是实时状态，缓存不保留；旧缓存里残留的标签在解码前丢弃，不参与校验。
+    .map((item, index) => decodeSoftwareRecord(withoutCachedIssues(item), `$.software[${index}]`));
   memoryCache = {
     version: cacheVersion,
     capturedAt: typeof parsed.capturedAt === "string" ? parsed.capturedAt : "",
@@ -68,6 +69,10 @@ export function writeManagementSnapshotCache(components: ManagedComponent[], sof
   } catch {
     // Retain the bounded in-memory cache when browser storage is unavailable.
   }
+}
+
+function withoutCachedIssues(item: unknown): unknown {
+  return typeof item === "object" && item !== null && !Array.isArray(item) ? { ...item, issues: undefined } : item;
 }
 
 function withoutIssueState(record: SoftwareRecord): SoftwareRecord {

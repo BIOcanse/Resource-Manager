@@ -349,6 +349,7 @@ export default function App() {
           message
         })}
         onInspectOptimizationTarget={(report) => void softwareActions.inspectOptimizationTarget(report)}
+        onActionError={showErrorToast}
         />
       </AppShell>
 

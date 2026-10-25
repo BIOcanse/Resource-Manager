@@ -405,6 +405,7 @@ const koKrAppCopy: AppCopy = {
     modeFullHint: "디렉터리를 한 단계씩 탐색합니다. 느리지만 모든 드라이브에서 작동합니다.",
     chooseFolder: "폴더 선택",
     folderNotChosen: "아직 선택한 폴더가 없음",
+    chooseFolderFailed: "폴더를 선택하지 못했습니다",
     scan: "스캔 시작",
     rescan: "다시 스캔",
     cancel: "스캔 취소",

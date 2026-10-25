@@ -275,6 +275,7 @@ export const zhShellCopy = {
     modeFullHint: "逐級遍歷目錄。慢，但任何磁碟都能掃。",
     chooseFolder: "選擇資料夾",
     folderNotChosen: "還沒選資料夾",
+    chooseFolderFailed: "選擇資料夾失敗",
     scan: "開始掃描",
     rescan: "重新掃描",
     cancel: "取消掃描",

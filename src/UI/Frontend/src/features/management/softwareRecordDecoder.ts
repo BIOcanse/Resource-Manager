@@ -1,6 +1,8 @@
-import type { SoftwareRecord, SoftwareSourceFact, SoftwareRegistrationFacts, SoftwareIssueTag } from "../../types.ts";
+import type {
+  SoftwareRecord, SoftwareSourceFact, SoftwareRegistrationFacts, SoftwareIssueTag, SoftwareIssueEvidence, SoftwareIssueReference
+} from "../../types.ts";
 import {
-  requireArray, requireRecord, requireString, requireStringArray, requireBoolean,
+  requireArray, requireRecord, requireString, requireStringArray, requireBoolean, requireFiniteNumber,
   requireNonNegativeSafeInteger, requireOneOf, requireNullable, ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
@@ -34,6 +36,39 @@ function decodeRegistration(value: unknown, path: string): SoftwareRegistrationF
   };
 }
 
+function decodeIssueReference(value: unknown, path: string): SoftwareIssueReference {
+  const record = requireRecord(value, path);
+  return { label: requireString(record.label, `${path}.label`), url: requireString(record.url, `${path}.url`) };
+}
+
+function decodeIssueEvidence(value: unknown, path: string): SoftwareIssueEvidence {
+  const record = requireRecord(value, path);
+  return {
+    metricKind: requireString(record.metricKind, `${path}.metricKind`),
+    value: requireFiniteNumber(record.value, `${path}.value`),
+    valueUnit: requireString(record.valueUnit, `${path}.valueUnit`),
+    ...(record.moduleName === undefined ? {} : { moduleName: optionalString(record.moduleName, `${path}.moduleName`) })
+  };
+}
+
+function decodeIssue(value: unknown, path: string): SoftwareIssueTag {
+  const record = requireRecord(value, path);
+  return {
+    id: requireString(record.id, `${path}.id`),
+    kind: requireString(record.kind, `${path}.kind`),
+    severity: requireString(record.severity, `${path}.severity`),
+    source: requireString(record.source, `${path}.source`),
+    label: requireString(record.label, `${path}.label`),
+    message: requireString(record.message, `${path}.message`),
+    dynamic: requireBoolean(record.dynamic, `${path}.dynamic`),
+    references: requireArray(record.references, `${path}.references`).map((item, index) => decodeIssueReference(item, `${path}.references[${index}]`)),
+    reportIds: requireStringArray(record.reportIds, `${path}.reportIds`),
+    ...(record.evidence === undefined ? {} : {
+      evidence: requireArray(record.evidence, `${path}.evidence`).map((item, index) => decodeIssueEvidence(item, `${path}.evidence[${index}]`))
+    })
+  };
+}
+
 export function decodeSoftwareRecord(value: unknown, path = "$"): SoftwareRecord {
   const record = requireRecord(value, path);
   for (const field of ["sources", "message", "messageCode", "displayKind"]) {
@@ -60,7 +95,7 @@ export function decodeSoftwareRecord(value: unknown, path = "$"): SoftwareRecord
     executablePaths: record.executablePaths == null ? undefined : requireStringArray(record.executablePaths, `${path}.executablePaths`),
     requiresRootPathConfirmation: requireBoolean(record.requiresRootPathConfirmation, `${path}.requiresRootPathConfirmation`),
     identityConfirmed: requireBoolean(record.identityConfirmed, `${path}.identityConfirmed`),
-    issues: record.issues == null ? undefined : requireArray(record.issues, `${path}.issues`).map((item, index) => requireRecord(item, `${path}.issues[${index}]`) as unknown as SoftwareIssueTag),
+    issues: record.issues == null ? undefined : requireArray(record.issues, `${path}.issues`).map((item, index) => decodeIssue(item, `${path}.issues[${index}]`)),
     operations: {
       canUninstall: requireBoolean(operations.canUninstall, `${path}.operations.canUninstall`),
       uninstallKind: requireOneOf(operations.uninstallKind, `${path}.operations.uninstallKind`, ["None", "ManagedRootCleanup", "WindowsUninstaller"]),

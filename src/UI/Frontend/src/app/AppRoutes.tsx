@@ -56,6 +56,8 @@ interface AppRoutesProps {
   onInspectOptimizationTarget: (report: OptimizationReportItem) => void;
   /** 流程提示：某个动作做不成时当场说一句，不在页面上常驻。 */
   onNotice: (message: string) => void;
+  /** 页面动作失败时的错误提示。 */
+  onActionError: (error: unknown, fallback: string) => void;
 }
 
 export function AppRoutes(props: AppRoutesProps) {
@@ -106,7 +108,7 @@ export function AppRoutes(props: AppRoutesProps) {
               )}
             >
               <PageBoundary name={uiText.page.diskUsage}>
-                <DiskUsageWorkspace />
+                <DiskUsageWorkspace onActionError={props.onActionError} />
               </PageBoundary>
             </Show>
               )}

@@ -276,6 +276,7 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
     chooseFolder: "Choose folder",
     folderNotChosen: "No folder chosen yet",
+    chooseFolderFailed: "Choosing the folder failed",
     scan: "Start scan",
     rescan: "Scan again",
     cancel: "Cancel scan",

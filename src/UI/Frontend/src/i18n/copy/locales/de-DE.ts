@@ -405,6 +405,7 @@ const deDeAppCopy: AppCopy = {
     modeFullHint: "Durchsucht Verzeichnisse Ebene für Ebene. Langsam, funktioniert aber auf jedem Laufwerk.",
     chooseFolder: "Ordner auswählen",
     folderNotChosen: "Noch kein Ordner ausgewählt",
+    chooseFolderFailed: "Die Ordnerauswahl ist fehlgeschlagen",
     scan: "Scan starten",
     rescan: "Erneut scannen",
     cancel: "Scan abbrechen",

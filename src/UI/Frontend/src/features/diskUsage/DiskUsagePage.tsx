@@ -26,6 +26,8 @@ export function DiskUsagePage(props: {
   volumesReadState: "loading" | "ready" | "error";
   onRetryVolumes: () => void;
   onScan: (scope: DiskUsageScanScope, mode: DiskUsageScanMode, target: string) => void;
+  /** 动作失败时当场提示；fallback 是这一动作自己的失败说明。 */
+  onActionError: (error: unknown, fallback: string) => void;
   /** 扫描结果面板。还没有结果时由这里出空态。 */
   children?: JSX.Element;
 }) {
@@ -59,7 +61,13 @@ export function DiskUsagePage(props: {
       : target().length > 0);
 
   async function chooseFolder() {
-    const chosen = await pickShellFolder(uiText.diskUsage.chooseFolder, folder() || undefined);
+    let chosen: string | null;
+    try {
+      chosen = await pickShellFolder(uiText.diskUsage.chooseFolder, folder() || undefined);
+    } catch (error) {
+      props.onActionError(error, uiText.diskUsage.chooseFolderFailed);
+      return;
+    }
     if (chosen) {
       setFolder(chosen);
       setScope("folder");

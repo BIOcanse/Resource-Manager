@@ -63,4 +63,23 @@ for (const field of ["uninstallLabel", "uninstallMessage", "uninstallLabelCode",
 assert.throws(() => decodeSoftwareRecord({ ...base, sourceFacts: [{ kind: "unknown" }] }), /sourceFacts\[0\].kind/);
 assert.throws(() => decodeSoftwareRecord({ ...base, registrationFacts: { ...base.registrationFacts, processCount: -1 } }), /processCount/);
 assert.throws(() => decodeSoftwareRecord({ ...base, operations: { ...base.operations, uninstallConstraint: "unknown" } }), /uninstallConstraint/);
+// 问题标签的证据和参考链接按字段校验：结构错误在解码边界失败，而不是到展示层才抛 TypeError。
+const issue = {
+  id: "dynamic:abnormal_memory_usage:software", kind: "abnormal_memory_usage", severity: "info", source: "dynamic_report",
+  label: "Memory", message: "Memory", dynamic: true, references: [{ label: "CVE", url: "https://example.invalid/cve" }],
+  reportIds: ["report"], evidence: [{ metricKind: "memory", value: 1024, valueUnit: "B", moduleName: null }]
+};
+assert.deepEqual(decodeSoftwareRecord({ ...base, issues: [issue] }).issues, [issue]);
+const { evidence: _evidence, ...issueWithoutEvidence } = issue;
+assert.deepEqual(decodeSoftwareRecord({ ...base, issues: [issueWithoutEvidence] }).issues, [issueWithoutEvidence]);
+for (const [invalid, location] of [
+  [{ ...issue, evidence: { value: 1 } }, /issues\[0\]\.evidence/],
+  [{ ...issue, evidence: [{ metricKind: "memory", value: "1", valueUnit: "B" }] }, /issues\[0\]\.evidence\[0\]\.value/],
+  [{ ...issue, references: { label: "CVE" } }, /issues\[0\]\.references/],
+  [{ ...issue, references: [{ label: "CVE" }] }, /issues\[0\]\.references\[0\]\.url/],
+  [{ ...issue, reportIds: [1] }, /issues\[0\]\.reportIds/],
+  [{ ...issue, dynamic: "yes" }, /issues\[0\]\.dynamic/]
+] as const) {
+  assert.throws(() => decodeSoftwareRecord({ ...base, issues: [invalid] }), location);
+}
 console.log("Software facts render in every selectable language and reject presentation wire fields.");

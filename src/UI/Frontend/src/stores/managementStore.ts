@@ -289,16 +289,21 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     return requestSoftwareRefresh(refreshPortableRegistrations, false);
   }
 
+  // 合并进行中的刷新时，只有要求刷新便携登记的调用方会收到便携刷新的失败；
+  // 普通读取的失败已经写进 softwareObservation，它的调用方不会因为别人的便携刷新失败而失败。
   function requestSoftwareRefresh(
     refreshPortableRegistrations: boolean,
     visibleOnly: boolean
   ): Promise<void> {
+    const forCaller = (shared: Promise<void>) => refreshPortableRegistrations
+      ? shared
+      : shared.catch(() => undefined);
     if (softwareRefreshPromise) {
       softwareRefreshPending = {
         visibleOnly: (softwareRefreshPending?.visibleOnly ?? true) && visibleOnly,
         portable: (softwareRefreshPending?.portable ?? false) || refreshPortableRegistrations
       };
-      return softwareRefreshPromise;
+      return forCaller(softwareRefreshPromise);
     }
 
     softwareRefreshPending = null;
@@ -337,7 +342,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       }
     });
     softwareRefreshPromise = tracked;
-    return tracked;
+    return forCaller(tracked);
   }
 
   function softwareListIsDemanded(): boolean {

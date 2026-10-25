@@ -5,6 +5,7 @@ import managementInventoryRevisionJourney from "./managementInventoryRevisionJou
 import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
 import diskUsageLocalTreemapJourney from "./diskUsageLocalTreemapJourney.js";
 import diskUsagePagedTreeJourney from "./diskUsagePagedTreeJourney.js";
+import diskUsageActionErrorsJourney from "./diskUsageActionErrorsJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
@@ -53,6 +54,8 @@ import serviceRecoverySettingsJourney from "./serviceRecoverySettingsJourney.js"
 import softwareIssueJourney from "./softwareIssueJourney.js";
 import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
+import taskCenterStatusIconJourney from "./taskCenterStatusIconJourney.js";
+import managementSharedRefreshJourney from "./managementSharedRefreshJourney.js";
 import targetedRecordingSourceJourney from "./targetedRecordingSourceJourney.js";
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
 import pageTabsConsistencyJourney from "./pageTabsConsistencyJourney.js";
@@ -71,8 +74,10 @@ const allJourneys = [
   ["disk-usage-read-recovery", diskUsageReadRecoveryJourney],
   ["disk-usage-local-treemap", diskUsageLocalTreemapJourney],
   ["disk-usage-paged-tree", diskUsagePagedTreeJourney],
+  ["disk-usage-action-errors", diskUsageActionErrorsJourney],
   ["overlay-settings", overlaySettingsJourney],
   ["management-feedback", managementFeedbackJourney],
+  ["management-shared-refresh", managementSharedRefreshJourney],
   ["frontend-audit", frontendAuditJourney],
   ["report-rule-settings", reportRuleSettingsJourney],
   ["localization", localizationJourney],
@@ -116,6 +121,7 @@ const allJourneys = [
   ["frontend-visibility-demand", frontendVisibilityDemandJourney],
   ["optimization-reports", optimizationReportsJourney],
   ["task-center", taskCenterJourney],
+  ["task-center-status-icon", taskCenterStatusIconJourney],
   ["resource-layout-task", resourceLayoutTaskJourney],
   ["resource-table-content-state", resourceTableContentStateJourney],
   ["resource-table-scroll-stability", resourceTableScrollStabilityJourney],

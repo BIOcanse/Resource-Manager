@@ -405,6 +405,7 @@ const ruRuAppCopy: AppCopy = {
     modeFullHint: "Обходит каталоги по уровням. Медленнее, но работает на любом диске.",
     chooseFolder: "Выбрать папку",
     folderNotChosen: "Папка ещё не выбрана",
+    chooseFolderFailed: "Не удалось выбрать папку",
     scan: "Начать сканирование",
     rescan: "Сканировать снова",
     cancel: "Отменить сканирование",

@@ -405,6 +405,7 @@ const frFrAppCopy: AppCopy = {
     modeFullHint: "Parcourt les dossiers niveau par niveau. Plus lent, mais compatible avec tous les lecteurs.",
     chooseFolder: "Choisir un dossier",
     folderNotChosen: "Aucun dossier choisi",
+    chooseFolderFailed: "Le choix du dossier a échoué",
     scan: "Lancer l’analyse",
     rescan: "Analyser à nouveau",
     cancel: "Annuler l’analyse",

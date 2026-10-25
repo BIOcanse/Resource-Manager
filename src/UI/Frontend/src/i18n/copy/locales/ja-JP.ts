@@ -405,6 +405,7 @@ const jaJpAppCopy: AppCopy = {
     modeFullHint: "ディレクトリを階層ごとに調べます。時間はかかりますが、どのドライブでも利用できます。",
     chooseFolder: "フォルダーを選択",
     folderNotChosen: "フォルダーが未選択です",
+    chooseFolderFailed: "フォルダーを選択できませんでした",
     scan: "スキャン開始",
     rescan: "再スキャン",
     cancel: "スキャンを中止",

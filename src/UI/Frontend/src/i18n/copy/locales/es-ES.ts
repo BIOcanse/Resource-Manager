@@ -405,6 +405,7 @@ const esEsAppCopy: AppCopy = {
     modeFullHint: "Recorre los directorios nivel por nivel. Es más lento, pero funciona en cualquier unidad.",
     chooseFolder: "Elegir carpeta",
     folderNotChosen: "Todavía no se ha elegido una carpeta",
+    chooseFolderFailed: "No se pudo elegir la carpeta",
     scan: "Iniciar análisis",
     rescan: "Analizar de nuevo",
     cancel: "Cancelar análisis",

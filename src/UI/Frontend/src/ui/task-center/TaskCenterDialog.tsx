@@ -1,7 +1,9 @@
 import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import {
   For,
+  Match,
   Show,
+  Switch,
   createEffect,
   createMemo,
   createSignal,
@@ -281,22 +283,26 @@ function TaskCenterList(props: {
   );
 }
 
+// 同一任务 ID 的行会保留下来，状态变化时图标必须跟着变，所以按状态响应式切换，而不是创建时选一次。
 function TaskStatusIcon(props: { readonly item: TaskCenterItem }) {
-  if (props.item.stateUncertain) {
-    return <TriangleAlert size={19} />;
-  }
-  if (props.item.active) {
-    return props.item.status === "queued" || props.item.status === "retryWait"
-      ? <Clock3 size={19} />
-      : <LoaderCircle class="task-center-spinner" size={19} />;
-  }
-  if (props.item.status === "succeeded") {
-    return <CircleCheck size={19} />;
-  }
-  if (props.item.status === "failed") {
-    return <CircleX size={19} />;
-  }
-  return <CircleEllipsis size={19} />;
+  const glyph = () => {
+    if (props.item.stateUncertain) return "uncertain";
+    if (props.item.active) {
+      return props.item.status === "queued" || props.item.status === "retryWait" ? "waiting" : "running";
+    }
+    if (props.item.status === "succeeded") return "succeeded";
+    if (props.item.status === "failed") return "failed";
+    return "other";
+  };
+  return (
+    <Switch fallback={<CircleEllipsis size={19} />}>
+      <Match when={glyph() === "uncertain"}><TriangleAlert size={19} /></Match>
+      <Match when={glyph() === "waiting"}><Clock3 size={19} /></Match>
+      <Match when={glyph() === "running"}><LoaderCircle class="task-center-spinner" size={19} /></Match>
+      <Match when={glyph() === "succeeded"}><CircleCheck size={19} /></Match>
+      <Match when={glyph() === "failed"}><CircleX size={19} /></Match>
+    </Switch>
+  );
 }
 
 function taskKindLabel(item: TaskCenterItem): string {
