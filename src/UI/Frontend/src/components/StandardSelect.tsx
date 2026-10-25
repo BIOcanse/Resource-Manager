@@ -45,6 +45,19 @@ export function StandardSelect<T extends string>(props: {
       || option.label.toLocaleLowerCase().includes(filter)
       || option.group?.toLocaleLowerCase().includes(filter));
   });
+  // 相邻且同组的选项归成一段；无分组的选项单独成段，不套组容器。
+  const visibleOptionGroups = createMemo(() => {
+    const runs: { group: string | undefined; start: number; entries: { option: StandardSelectOption<T>; index: number }[] }[] = [];
+    visibleOptions().forEach((option, index) => {
+      const last = runs[runs.length - 1];
+      if (last && last.group === option.group) {
+        last.entries.push({ option, index });
+      } else {
+        runs.push({ group: option.group, start: index, entries: [{ option, index }] });
+      }
+    });
+    return runs;
+  });
   const activeOptionId = createMemo(() => {
     const option = visibleOptions()[activeIndex()];
     return option && !option.disabled ? `${instanceId}-option-${activeIndex()}` : undefined;
@@ -241,6 +254,38 @@ export function StandardSelect<T extends string>(props: {
     (target ?? trigger).focus({ preventScroll: true });
   };
 
+  const renderOption = (entry: { option: StandardSelectOption<T>; index: number }) => {
+    const { option, index } = entry;
+    return (
+      <button
+        id={`${instanceId}-option-${index}`}
+        type="button"
+        role="option"
+        data-standard-select-index={index}
+        aria-selected={option.value === props.value}
+        tabIndex={!props.searchable && index === activeIndex() ? 0 : -1}
+        classList={{ active: index === activeIndex(), selected: option.value === props.value }}
+        disabled={option.disabled}
+        onFocus={() => {
+          if (!option.disabled) {
+            setActiveIndex(index);
+          }
+        }}
+        onPointerMove={() => {
+          if (!option.disabled) {
+            setActiveIndex(index);
+          }
+        }}
+        onClick={() => choose(option)}
+      >
+        <span>{option.label}</span>
+        <Show when={option.value === props.value}>
+          <Check size={16} aria-hidden="true" />
+        </Show>
+      </button>
+    );
+  };
+
   return (
     <div class={`standard-select ${props.class ?? ""}`}>
       <button
@@ -313,45 +358,26 @@ export function StandardSelect<T extends string>(props: {
                 />
               </label>
             </Show>
-            <div id={listboxId} class="standard-select-options" role="listbox" aria-label={props.ariaLabel}>
-              <For each={visibleOptions()} fallback={<div class="standard-select-empty">{uiText.misc.noMatchingOption}</div>}>
-                {(option, index) => {
-                  const previousGroup = () => index() > 0 ? visibleOptions()[index() - 1]?.group : undefined;
-                  return (
-                    <>
-                      <Show when={option.group && option.group !== previousGroup()}>
-                        <div class="standard-select-group">{option.group}</div>
-                      </Show>
-                      <button
-                        id={`${instanceId}-option-${index()}`}
-                        type="button"
-                        role="option"
-                        data-standard-select-index={index()}
-                        aria-selected={option.value === props.value}
-                        tabIndex={!props.searchable && index() === activeIndex() ? 0 : -1}
-                        classList={{ active: index() === activeIndex(), selected: option.value === props.value }}
-                        disabled={option.disabled}
-                        onFocus={() => {
-                          if (!option.disabled) {
-                            setActiveIndex(index());
-                          }
-                        }}
-                        onPointerMove={() => {
-                          if (!option.disabled) {
-                            setActiveIndex(index());
-                          }
-                        }}
-                        onClick={() => choose(option)}
-                      >
-                        <span>{option.label}</span>
-                        <Show when={option.value === props.value}>
-                          <Check size={16} aria-hidden="true" />
-                        </Show>
-                      </button>
-                    </>
-                  );
-                }}
-              </For>
+            <div class="standard-select-options">
+              <div id={listboxId} role="listbox" aria-label={props.ariaLabel}>
+                <For each={visibleOptionGroups()}>
+                  {(run) => (
+                    <Show when={run.group} fallback={<For each={run.entries}>{renderOption}</For>}>
+                      {(group) => (
+                        // 组容器不占布局（display: contents），组标题照旧贴着滚动框顶部吸住。
+                        <div class="standard-select-option-group" role="group" aria-labelledby={`${instanceId}-group-${run.start}`}>
+                          <div id={`${instanceId}-group-${run.start}`} class="standard-select-group" role="presentation">{group()}</div>
+                          <For each={run.entries}>{renderOption}</For>
+                        </div>
+                      )}
+                    </Show>
+                  )}
+                </For>
+              </div>
+              {/* 空状态不是选项，放在列表框外面。 */}
+              <Show when={visibleOptions().length === 0}>
+                <div class="standard-select-empty">{uiText.misc.noMatchingOption}</div>
+              </Show>
             </div>
           </div>
         </Portal>

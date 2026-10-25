@@ -170,7 +170,11 @@ const softwareContextMenu = readSource("components/SoftwareContextMenu.tsx");
 assert.match(softwareContextMenu, /^\s+softwareId: string;\r?$/m);
 assert.match(softwareContextMenu, /id: "details",\s*label: uiText\.contextMenu\.goToDetails,\s*separatorBefore: true,\s*onSelect:/);
 assert.match(standardSelect, /event\.key === "Tab"/);
-assert.match(standardSelect, /tabIndex=\{!props\.searchable && index\(\) === activeIndex\(\) \? 0 : -1\}/);
+assert.match(standardSelect, /tabIndex=\{!props\.searchable && index === activeIndex\(\) \? 0 : -1\}/);
+// 列表框里只放选项和选项组：组标题在 role="group" 里并给组命名，空状态在列表框外面。
+assert.match(standardSelect, /role="group" aria-labelledby=\{`\$\{instanceId\}-group-\$\{run\.start\}`\}/);
+assert.match(standardSelect, /id=\{`\$\{instanceId\}-group-\$\{run\.start\}`\} class="standard-select-group" role="presentation"/);
+assert.match(standardSelect, /<\/div>\s*\{\/\* 空状态不是选项，放在列表框外面。 \*\/\}\s*<Show when=\{visibleOptions\(\)\.length === 0\}>/);
 assert.match(
   settingsPage,
   /canRenderSettings = \(\) => props\.loadState === "ready"[\s\S]*?props\.loadState === "refreshing"[\s\S]*?props\.loadState === "stale"/,

@@ -158,7 +158,7 @@ button:disabled:disabled {
   padding: 5px;
 }
 
-.standard-select-options > button {
+.standard-select-options button {
   width: 100%;
   min-height: var(--control-height);
   display: grid;
@@ -174,26 +174,31 @@ button:disabled:disabled {
   box-shadow: none;
 }
 
-.standard-select-options > button > span {
+.standard-select-options button > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.standard-select-options > button.active,
-.standard-select-options > button:not(:disabled):hover {
+.standard-select-options button.active,
+.standard-select-options button:not(:disabled):hover {
   background: var(--hover-bg);
 }
 
-.standard-select-options > button.selected {
+.standard-select-options button.selected {
   color: color-mix(in oklab, var(--accent) 78%, var(--text));
   font-weight: 700;
 }
 
-.standard-select-options > button:disabled {
+.standard-select-options button:disabled {
   opacity: 1;
   background-color: transparent;
   color: var(--control-disabled-text);
+}
+
+/* 分组只是语义容器：不生成盒子，标题和选项仍按原来的顺序排在滚动框里。 */
+.standard-select-option-group {
+  display: contents;
 }
 
 .standard-select-group {

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 /**
  * 读屏语义与键盘，真实页面上逐项验收：
  * - 软件设置的「进程」列表框：只有选中项在 Tab 顺序里，上下键、Home/End 移动焦点，选中跟着焦点走；
- * - 对话框打开时页面其余部分 inert，关闭后恢复。
+ * - 对话框打开时页面其余部分 inert，关闭后恢复；
+ * - 标准下拉框的列表框里只有选项和选项组：组用 role="group" 并由组标题命名，空状态放在列表框外面。
  */
 export default async function accessibilitySemanticsJourney(page, baseUrl) {
   const errors = [];
@@ -75,6 +76,56 @@ export default async function accessibilitySemanticsJourney(page, baseUrl) {
   await dialog.waitFor({ state: "detached" });
   assert.equal(await shellInert(), false, "Closing the dialog did not restore the application");
 
+  // 下拉框的分组和空状态（强制结束快捷键的按键选择：按字符、功能键、小键盘等分组，可搜索）。
+  await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "系统集成", exact: true }).click();
+  const editor = page.locator(".settings-hotkey-editor");
+  await editor.waitFor();
+  if (await editor.getByRole("button", { name: "按键 1", exact: true }).count() === 0) {
+    await editor.getByRole("button", { name: "添加按键" }).click();
+  }
+  await editor.getByRole("button", { name: "按键 1", exact: true }).click();
+  const popover = page.locator(".standard-select-popover");
+  await popover.waitFor();
+  const structure = () => popover.evaluate((element) => {
+    const listbox = element.querySelector("[role='listbox']");
+    const children = [...(listbox?.children ?? [])];
+    const groups = children.filter(child => child.getAttribute("role") === "group");
+    return {
+      childRoles: [...new Set(children.map(child => child.getAttribute("role")))].sort(),
+      groups: groups.map(group => {
+        const label = document.getElementById(group.getAttribute("aria-labelledby") ?? "");
+        return {
+          name: label?.textContent?.trim() ?? "",
+          labelInside: Boolean(label && group.contains(label)),
+          labelRole: label?.getAttribute("role"),
+          options: group.querySelectorAll("[role='option']").length,
+          otherChildren: [...group.children].filter(child => child !== label && child.getAttribute("role") !== "option").length
+        };
+      }),
+      looseHeadings: [...(listbox?.querySelectorAll(".standard-select-group") ?? [])].filter(heading => !heading.closest("[role='group']")).length,
+      emptyInside: Boolean(listbox?.querySelector(".standard-select-empty")),
+      emptyOutside: Boolean(element.querySelector(".standard-select-empty")),
+      optionCount: listbox?.querySelectorAll("[role='option']").length ?? 0
+    };
+  });
+  const grouped = await structure();
+  assert.ok(grouped.groups.length >= 2, `The key list is grouped: ${JSON.stringify(grouped)}`);
+  assert.deepEqual(grouped.childRoles.filter(role => role !== "option" && role !== "group"), [], `Listbox children: ${grouped.childRoles}`);
+  for (const group of grouped.groups) {
+    assert.ok(group.name && group.labelInside && group.labelRole === "presentation" && group.options > 0 && group.otherChildren === 0,
+      `Option group semantics: ${JSON.stringify(group)}`);
+  }
+  assert.equal(grouped.looseHeadings, 0);
+  assert.equal(grouped.emptyOutside, false);
+  await popover.getByRole("combobox").fill("zzzz-no-such-key");
+  await popover.locator(".standard-select-empty").waitFor();
+  const empty = await structure();
+  assert.deepEqual({ emptyInside: empty.emptyInside, emptyOutside: empty.emptyOutside, optionCount: empty.optionCount, childRoles: empty.childRoles },
+    { emptyInside: false, emptyOutside: true, optionCount: 0, childRoles: [] }, "The empty state sits outside the listbox");
+  await page.keyboard.press("Escape");
+  await popover.waitFor({ state: "detached" });
+
   assert.deepEqual(errors, []);
-  return { processKeys: visited, dialogInertRestored: true };
+  return { processKeys: visited, dialogInertRestored: true, optionGroups: grouped.groups.map(group => group.name), emptyOutsideListbox: true };
 }

@@ -253,7 +253,7 @@
 }
 
 /* 下拉选项是列表项：全局主按钮的阴影会落到没有 class 的选项按钮上，这里去掉，圆角跟列表走。 */
-:root[data-ui-style="soft"] .standard-select-options > button {
+:root[data-ui-style="soft"] .standard-select-options button {
   border-radius: var(--radius-sm);
   box-shadow: none;
 }
