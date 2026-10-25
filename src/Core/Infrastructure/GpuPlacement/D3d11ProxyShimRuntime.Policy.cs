@@ -48,7 +48,7 @@ public sealed partial class D3d11ProxyShimRuntime
     {
         try
         {
-            using var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var reader = WindowsNativeAtomicFileCommitter.OpenCommittedRead(path);
             using var content = new MemoryStream();
             reader.CopyTo(content);
             return content.ToArray();

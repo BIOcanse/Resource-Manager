@@ -31,7 +31,7 @@ internal sealed class WindowsHostManagerDurableRootManifestCommitter
             manifestPath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            WindowsNativeAtomicFileCommitter.CommittedReadShare,
             4096,
             FileOptions.SequentialScan);
         if (stream.Length != expectedImage.Length)
@@ -158,7 +158,7 @@ internal sealed class HostManagerDurableRootManifest
 
     private static void RequireExactBackup(string original, string backup)
     {
-        using var source = File.OpenRead(original);
+        using var source = WindowsNativeAtomicFileCommitter.OpenCommittedRead(original);
         using var preserved = File.OpenRead(backup);
         if (source.Length != preserved.Length || !CryptographicOperations.FixedTimeEquals(SHA256.HashData(source), SHA256.HashData(preserved)))
             throw new IOException("The durable store byte-exact backup differs from its source.");
@@ -242,7 +242,7 @@ internal sealed class HostManagerDurableRootManifest
     {
         var manifestPath = transferManifestPath ?? ResolveAdjacentManifestPath(canonicalPath);
         byte[] image;
-        using (var file = File.OpenRead(manifestPath))
+        using (var file = WindowsNativeAtomicFileCommitter.OpenCommittedRead(manifestPath))
         {
             if (file.Length is not ManifestSize and not LegacyManifestSize)
                 throw new InvalidDataException("Invalid transferred durable root manifest length.");
@@ -264,7 +264,7 @@ internal sealed class HostManagerDurableRootManifest
                 throw new InvalidDataException("A transferred durable root lost its canonical file.");
             return kind;
         }
-        using var stream = new FileStream(canonicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonicalPath);
         var digest = SHA256.HashData(stream);
         if (manifest.State == StateInitializing || DigestsEqual(digest, manifest.CanonicalSha256)
             || manifest.State == StatePending && DigestsEqual(digest, manifest.PendingCanonicalSha256))
@@ -339,7 +339,7 @@ internal sealed class HostManagerDurableRootManifest
             canonicalPath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            WindowsNativeAtomicFileCommitter.CommittedReadShare,
             64 * 1024,
             FileOptions.SequentialScan);
         if (stream.Length <= 0)
@@ -375,7 +375,7 @@ internal sealed class HostManagerDurableRootManifest
                 manifestPath,
                 FileMode.Open,
                 FileAccess.Read,
-                FileShare.Read,
+                WindowsNativeAtomicFileCommitter.CommittedReadShare,
                 4096,
                 FileOptions.SequentialScan);
         }
@@ -503,7 +503,7 @@ internal sealed class HostManagerDurableRootManifest
                 canonicalPath,
                 FileMode.Open,
                 FileAccess.Read,
-                FileShare.Read,
+                WindowsNativeAtomicFileCommitter.CommittedReadShare,
                 64 * 1024,
                 FileOptions.SequentialScan);
         }

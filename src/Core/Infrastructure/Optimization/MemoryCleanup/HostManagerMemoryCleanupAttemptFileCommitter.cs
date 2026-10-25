@@ -94,7 +94,7 @@ internal sealed class WindowsHostManagerMemoryCleanupAttemptFileCommitter
             canonicalPath,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            WindowsNativeAtomicFileCommitter.CommittedReadShare,
             IoBufferSize,
             FileOptions.SequentialScan);
         if (stream.Length != expectedImage.Length)

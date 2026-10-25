@@ -29,7 +29,7 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path, Action<s
         byte[] image;
         try
         {
-            image = File.ReadAllBytes(path);
+            image = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path);
         }
         catch (FileNotFoundException)
         {
@@ -236,7 +236,7 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path, Action<s
             WindowsNativeAtomicFileCommitter.CommitReplace(
                 temporaryPath,
                 path);
-            var committed = File.ReadAllBytes(path);
+            var committed = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(path);
             if (!committed.AsSpan().SequenceEqual(image))
             {
                 throw new IOException(

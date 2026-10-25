@@ -78,7 +78,7 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
     {
         try
         {
-            using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var stream = NativeCore.WindowsNativeAtomicFileCommitter.OpenCommittedRead(storagePath);
             var document = JsonSerializer.Deserialize<GpuPerformanceScoreOverrideDocument>(stream, JsonOptions)
                 ?? throw new InvalidDataException("The GPU performance score file is empty.");
             if (document.Version != CurrentVersion || document.ScoresByGpuId is null

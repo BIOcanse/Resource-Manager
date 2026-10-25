@@ -75,7 +75,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
     {
         try
         {
-            await using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await using var stream = NativeCore.WindowsNativeAtomicFileCommitter.OpenCommittedRead(storagePath);
             return Normalize(await JsonSerializer.DeserializeAsync<PerformanceOverlaySettingsDocument>(
                 stream, JsonOptions, cancellationToken));
         }

@@ -805,7 +805,7 @@ internal sealed partial class NativeTransactionJournalPayloadStore : IDisposable
             {
                 Mode = FileMode.Open,
                 Access = FileAccess.Read,
-                Share = FileShare.Read,
+                Share = WindowsNativeAtomicFileCommitter.CommittedReadShare,
                 BufferSize = 1,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });

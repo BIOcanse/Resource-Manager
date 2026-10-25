@@ -172,7 +172,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
                     RewritePerformed: false));
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(settingsPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
         ParsedSettingsImage image;
         try
         {
@@ -239,7 +239,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
                     RewritePerformed: false));
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(settingsPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
         try
         {
             var image = ParseSettingsImage(sourceBytes, settingsPath);
@@ -277,7 +277,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
     {
         if (File.Exists(lastKnownGoodPath))
         {
-            var lastKnownGoodBytes = await File.ReadAllBytesAsync(
+            var lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
                 lastKnownGoodPath,
                 cancellationToken);
             try
@@ -404,7 +404,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
         byte[] expectedPayload,
         CancellationToken cancellationToken)
     {
-        var committedPayload = await File.ReadAllBytesAsync(path, cancellationToken);
+        var committedPayload = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(path, cancellationToken);
         var committed = JsonSerializer.Deserialize<AppSettings>(committedPayload, JsonOptions)
             ?? throw new InvalidDataException(
                 "The application settings image is empty.");
@@ -453,7 +453,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
         Exception? lastKnownGoodFailure = null;
         if (File.Exists(lastKnownGoodPath))
         {
-            lastKnownGoodBytes = await File.ReadAllBytesAsync(
+            lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
                 lastKnownGoodPath,
                 cancellationToken);
             try
@@ -567,7 +567,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
             return null;
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(lastKnownGoodPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
         ParsedSettingsImage image;
         try
         {
@@ -618,7 +618,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
     {
         if (File.Exists(lastKnownGoodPath))
         {
-            var existing = await File.ReadAllBytesAsync(lastKnownGoodPath, cancellationToken);
+            var existing = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
             if (existing.AsSpan().SequenceEqual(payload))
             {
                 return;
@@ -719,7 +719,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
             }
 
             WindowsNativeAtomicFileCommitter.CommitNew(temporaryPath, quarantinePath);
-            var committed = await File.ReadAllBytesAsync(quarantinePath, cancellationToken);
+            var committed = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(quarantinePath, cancellationToken);
             if (!committed.AsSpan().SequenceEqual(sourceBytes))
             {
                 throw new InvalidDataException(

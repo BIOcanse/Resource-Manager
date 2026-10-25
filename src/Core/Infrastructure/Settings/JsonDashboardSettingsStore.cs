@@ -145,7 +145,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
                     RewritePerformed: false));
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(settingsPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
         try
         {
             var image = ParseSettingsImage(sourceBytes, settingsPath);
@@ -200,7 +200,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
                     RewritePerformed: false));
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(settingsPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(settingsPath, cancellationToken);
         try
         {
             var image = ParseSettingsImage(sourceBytes, settingsPath);
@@ -238,7 +238,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
     {
         if (File.Exists(lastKnownGoodPath))
         {
-            var lastKnownGoodBytes = await File.ReadAllBytesAsync(
+            var lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
                 lastKnownGoodPath,
                 cancellationToken);
             try
@@ -356,7 +356,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
         Exception? lastKnownGoodFailure = null;
         if (File.Exists(lastKnownGoodPath))
         {
-            lastKnownGoodBytes = await File.ReadAllBytesAsync(
+            lastKnownGoodBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(
                 lastKnownGoodPath,
                 cancellationToken);
             try
@@ -468,7 +468,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
             return null;
         }
 
-        var sourceBytes = await File.ReadAllBytesAsync(lastKnownGoodPath, cancellationToken);
+        var sourceBytes = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
         ParsedSettingsImage image;
         try
         {
@@ -517,7 +517,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
     {
         if (File.Exists(lastKnownGoodPath))
         {
-            var existing = await File.ReadAllBytesAsync(lastKnownGoodPath, cancellationToken);
+            var existing = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(lastKnownGoodPath, cancellationToken);
             if (existing.AsSpan().SequenceEqual(payload))
             {
                 return;
@@ -562,7 +562,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
         byte[] expectedPayload,
         CancellationToken cancellationToken)
     {
-        var committedPayload = await File.ReadAllBytesAsync(path, cancellationToken);
+        var committedPayload = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(path, cancellationToken);
         var committed = ParseSettingsImage(committedPayload, path);
         var normalizedReadbackPayload = JsonSerializer.SerializeToUtf8Bytes(
             committed.Settings,
@@ -674,7 +674,7 @@ public sealed partial class JsonDashboardSettingsStore : IDashboardSettingsStore
             }
 
             WindowsNativeAtomicFileCommitter.CommitNew(temporaryPath, quarantinePath);
-            var committed = await File.ReadAllBytesAsync(quarantinePath, cancellationToken);
+            var committed = await WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(quarantinePath, cancellationToken);
             if (!committed.AsSpan().SequenceEqual(sourceBytes))
             {
                 throw new InvalidDataException(

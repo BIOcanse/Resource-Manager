@@ -116,7 +116,7 @@ public sealed class JsonCpuCorePerformanceOverrideStore : ICpuCorePerformanceOve
 
         try
         {
-            using var stream = File.OpenRead(storagePath);
+            using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(storagePath);
             var document = JsonSerializer.Deserialize<CpuCorePerformanceOverrideDocument>(stream, JsonOptions);
             cachedDocument = NormalizeDocument(document);
         }

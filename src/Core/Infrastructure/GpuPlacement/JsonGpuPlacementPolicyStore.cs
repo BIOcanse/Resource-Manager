@@ -127,7 +127,7 @@ public sealed partial class JsonGpuPlacementPolicyStore(
         byte[] content;
         try
         {
-            content = await File.ReadAllBytesAsync(storagePath, cancellationToken);
+            content = await NativeCore.WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(storagePath, cancellationToken);
         }
         catch (FileNotFoundException)
         {

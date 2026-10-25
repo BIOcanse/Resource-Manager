@@ -81,7 +81,7 @@ internal sealed class NativeAppliedOwnershipFileStore
                     {
                         Mode = FileMode.Open,
                         Access = FileAccess.Read,
-                        Share = FileShare.Read,
+                        Share = WindowsNativeAtomicFileCommitter.CommittedReadShare,
                         BufferSize = IoBufferSize,
                         Options = FileOptions.Asynchronous | FileOptions.SequentialScan
                     });
@@ -217,7 +217,7 @@ internal sealed class NativeAppliedOwnershipFileStore
             {
                 Mode = FileMode.Open,
                 Access = FileAccess.Read,
-                Share = FileShare.Read,
+                Share = WindowsNativeAtomicFileCommitter.CommittedReadShare,
                 BufferSize = IoBufferSize,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });

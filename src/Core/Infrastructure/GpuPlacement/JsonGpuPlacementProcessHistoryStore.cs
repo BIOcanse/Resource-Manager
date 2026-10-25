@@ -195,7 +195,7 @@ public sealed partial class JsonGpuPlacementProcessHistoryStore(IHostEnvironment
 
         try
         {
-            await using var stream = File.OpenRead(storagePath);
+            await using var stream = NativeCore.WindowsNativeAtomicFileCommitter.OpenCommittedRead(storagePath);
             var document = await JsonSerializer.DeserializeAsync<GpuPlacementProcessHistoryDocument>(
                 stream,
                 JsonOptions,

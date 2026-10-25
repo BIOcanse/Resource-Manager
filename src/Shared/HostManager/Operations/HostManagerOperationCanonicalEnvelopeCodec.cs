@@ -38,7 +38,7 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })
             ?? throw new InvalidDataException("The operation coordinator capacity is missing.");
         if (!capacity.IsPublished) throw new InvalidDataException("The operation coordinator capacity is invalid.");
-        using var stream = new FileStream(canonicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonicalPath);
         if (stream.Length <= 0 || (ulong)stream.Length > capacity.MaximumEnvelopeByteCount || stream.Length > int.MaxValue)
             throw new InvalidDataException("The operation canonical envelope length is invalid.");
         var image = new byte[(int)stream.Length];

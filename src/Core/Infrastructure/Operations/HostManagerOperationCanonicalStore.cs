@@ -82,7 +82,7 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
         try
         {
             byte[] image;
-            using (var file = new FileStream(envelopePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var file = WindowsNativeAtomicFileCommitter.OpenCommittedRead(envelopePath))
             {
                 if (file.Length < 352 || (ulong)file.Length > capacity.MaximumEnvelopeByteCount || file.Length > int.MaxValue)
                     throw new InvalidDataException("The operation canonical file length is outside its explicit capacity.");
@@ -201,12 +201,12 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
             var backup = PreserveOriginal(HasUnresolvedLoad ? "unconverted" : "legacy-v1");
             if (HasUnresolvedLoad)
                 rootManifest.InitializeAfterPreservedReset(backup.Bank, backup.Manifest);
-            else rootManifest.ValidateOrAdoptCanonical(File.ReadAllBytes(envelopePath));
+            else rootManifest.ValidateOrAdoptCanonical(WindowsNativeAtomicFileCommitter.ReadCommittedBytes(envelopePath));
             logger?.LogWarning("Operation bank {Path} {Action}; byte-exact original backup: {Backup}. Recovery evidence is retained there.",
                 envelopePath, HasUnresolvedLoad ? "is reset for an explicit new operation after an unresolved load" : "is migrated from envelope-v1/ABI1 to facts-only envelope-v2/ABI2", backup.Bank ?? backup.Manifest ?? "(no source files)");
         }
         else if (originalBankSha256 is not null)
-            rootManifest.ValidateOrAdoptCanonical(File.ReadAllBytes(envelopePath));
+            rootManifest.ValidateOrAdoptCanonical(WindowsNativeAtomicFileCommitter.ReadCommittedBytes(envelopePath));
         if (!HasUnresolvedLoad) VerifyDestinationIdentity(expectedPriorEnvelopeSha256);
         var directory = Path.GetDirectoryName(envelopePath)
             ?? throw new InvalidOperationException(
@@ -234,7 +234,7 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
             WindowsNativeAtomicFileCommitter.CommitReplace(
                 temporaryPath,
                 envelopePath);
-            var readback = File.ReadAllBytes(envelopePath);
+            var readback = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(envelopePath);
             if (!readback.AsSpan().SequenceEqual(image))
             {
                 throw new IOException(
@@ -325,7 +325,7 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
         byte[] current;
         try
         {
-            current = File.ReadAllBytes(envelopePath);
+            current = WindowsNativeAtomicFileCommitter.ReadCommittedBytes(envelopePath);
         }
         catch (FileNotFoundException)
         {

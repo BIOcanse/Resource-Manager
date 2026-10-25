@@ -205,7 +205,7 @@ public sealed class HostManagerUserDataArrival : IHostManagerUserDataArrival
             // another journal may not replace it. Its owner must settle it first.
             if (kind is "transaction-journal" or "applied-ownership")
             {
-                using var stream = File.OpenRead(canonical);
+                using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonical);
                 stream.ReadExactly(header[..128]);
                 if (stream.Length != 128 || BinaryPrimitives.ReadUInt32LittleEndian(header[48..]) != 0)
                     throw new InvalidOperationException($"Settle the current {kind} before importing user data.");
@@ -217,7 +217,7 @@ public sealed class HostManagerUserDataArrival : IHostManagerUserDataArrival
             }
             else
             {
-                using var stream = File.OpenRead(canonical);
+                using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(canonical);
                 if (stream.Length > 4 * 1024 * 1024) throw new InvalidDataException("Current recovery document exceeds its bound.");
                 using var document = JsonDocument.Parse(stream);
                 var value = document.RootElement;
@@ -263,7 +263,7 @@ public sealed class HostManagerUserDataArrival : IHostManagerUserDataArrival
 
     private static T? ReadIfPresent<T>(string path, int limit) where T : class
     {
-        try { using var stream = File.OpenRead(path); return Read<T>(stream, limit); }
+        try { using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(path); return Read<T>(stream, limit); }
         catch (FileNotFoundException) { return null; }
         catch (DirectoryNotFoundException) { return null; }
     }
