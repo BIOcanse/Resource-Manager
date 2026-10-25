@@ -1,6 +1,10 @@
-import { createMemo, createSignal, For, onCleanup } from "solid-js";
+import { createMemo, For } from "solid-js";
 import { uiText } from "../../text.ts";
 import { curveStops, percentAt } from "./fanCurve.ts";
+import { curvePointDefinition } from "../../interactions/components/curvePoint.ts";
+import { solidHost, useInteraction, useInteractionComposite } from "../../interactions/solid/lodestone.ts";
+import type { InteractionHandle } from "../../interactions/solid/lodestone.ts";
+import type { Instance, Presentation } from "../../interactions/protocol/runtime.ts";
 
 /**
  * 风扇曲线图：温度对转速，点直接落在曲线上，上下拖。
@@ -9,10 +13,13 @@ import { curveStops, percentAt } from "./fanCurve.ts";
  * 点的温度由外面给定（每 5 度一个），这里只能上下动，不能横向移动。
  * 相邻点直线连接，与执行端一致。
  *
+ * 拖动由交互协议的运行时处理（协议第 4.4 节第 2 处迁移）：曲线图是组合，每个温度一个曲线点。
+ * 按在点上是抓住，不跳；按在图里的空白处交给横向最近的点，点跳到指针处接着拖（「点哪儿就调哪个，不用精确按中那个小圆」）。
+ * Esc 或右键取消，回到这次拖动前的值；窗口失焦后丢失的松开由输入层校正。
  * 改动只改本地，什么时候写下去由外面的「应用」决定。
  */
 
-/** Fixed plot geometry; pointer coordinates use the actual SVG transform. */
+/** Fixed plot geometry; screen positions use the actual SVG transform. */
 const viewWidth = 100;
 const viewHeight = 56;
 const padding = { left: 10, right: 5, top: 5, bottom: 8 };
@@ -32,9 +39,7 @@ export function FanCurveChart(props: {
   disabled?: boolean;
   onChange: (stops: number[]) => void;
 }) {
-  let surface: SVGSVGElement | undefined;
-  const [dragging, setDragging] = createSignal(-1);
-  let pointerId: number | null = null;
+  let surface!: SVGSVGElement;
   const temperatures = () => props.temperatures ?? curveStops;
   const temperatureRange = createMemo(() => temperatures().reduce(
     (range, temperature) => ({
@@ -70,76 +75,44 @@ export function FanCurveChart(props: {
   });
 
   /** Includes borders, scaling, and any SVG letterboxing. */
+  function toScreen(x: number, y: number) {
+    return new DOMPoint(x, y).matrixTransform(surface.getScreenCTM()!);
+  }
   function toView(clientX: number, clientY: number) {
-    return new DOMPoint(clientX, clientY).matrixTransform(surface!.getScreenCTM()!.inverse());
+    return new DOMPoint(clientX, clientY).matrixTransform(surface.getScreenCTM()!.inverse());
   }
 
-  /** 离这个横坐标最近的控制点。点哪儿就调哪个，不用精确按中那个小圆。 */
-  function nearestStop(x: number): number {
-    let best = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    temperatures().forEach((temperature, index) => {
-      const distance = Math.abs(xOf(temperature) - x);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = index;
+  /** 每个温度一个曲线点，按温度找。 */
+  const points = new Map<number, InteractionHandle<number>>();
+
+  // 区域路由：落在绘图区里、不在任何点上的按下交给横向最近的点；绘图区外不交。
+  useInteractionComposite("风扇曲线图", () => surface,
+    () => [...points.values()].flatMap((point) => point.instance ? [point.instance as Instance] : []),
+    (position) => {
+      const point = toView(position.x, position.y);
+      if (point.x < padding.left || point.x > viewWidth - padding.right
+        || point.y < padding.top || point.y > viewHeight - padding.bottom) return null;
+      let best: { temperature: number; child: Instance } | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const temperature of temperatures()) {
+        const child = points.get(temperature)?.instance;
+        const distance = Math.abs(xOf(temperature) - point.x);
+        if (child && distance < bestDistance) {
+          bestDistance = distance;
+          best = { temperature, child: child as Instance };
+        }
       }
+      return best ? { child: best.child, why: `横向最近的是 ${best.temperature} °C 的点` } : null;
     });
-    return best;
-  }
-
-  function write(index: number, y: number) {
-    const ratio = 1 - ((y - padding.top) / plotHeight);
-    const percent = Math.round(Math.min(100, Math.max(0, ratio * 100)));
-    const next = temperatures().map((_, at) => props.stops[at] ?? 0);
-    next[index] = percent;
-    props.onChange(next);
-  }
-
-  // 拖动期间在 window 上听：指针会跑出图外，只在 svg 上听会中途断掉。
-  const onWindowMove = (event: PointerEvent) => {
-    const index = dragging();
-    if (index < 0 || !surface || props.disabled || event.pointerId !== pointerId) {
-      return;
-    }
-    write(index, toView(event.clientX, event.clientY).y);
-  };
-  const onWindowUp = (event: PointerEvent) => {
-    if (event.pointerId !== pointerId) return;
-    pointerId = null;
-    setDragging(-1);
-  };
-
-  window.addEventListener("pointermove", onWindowMove);
-  window.addEventListener("pointerup", onWindowUp);
-  window.addEventListener("pointercancel", onWindowUp);
-  onCleanup(() => {
-    window.removeEventListener("pointermove", onWindowMove);
-    window.removeEventListener("pointerup", onWindowUp);
-    window.removeEventListener("pointercancel", onWindowUp);
-  });
 
   return (
     <svg
       class="fan-curve-chart"
       classList={{ "fan-curve-chart-off": props.disabled === true }}
       viewBox={`0 0 ${viewWidth} ${viewHeight}`}
-      ref={(element) => { surface = element; }}
+      ref={surface}
       role="group"
       aria-label={uiText.control.curvePreview}
-      onPointerDown={(event) => {
-        if (props.disabled || event.button !== 0 || pointerId !== null) {
-          return;
-        }
-        const point = toView(event.clientX, event.clientY);
-        if (point.x < padding.left || point.x > viewWidth - padding.right
-          || point.y < padding.top || point.y > viewHeight - padding.bottom) return;
-        event.preventDefault();
-        pointerId = event.pointerId;
-        const index = nearestStop(point.x);
-        setDragging(index);
-        write(index, point.y);
-      }}
     >
       <text class="fan-curve-axis" x={padding.left - 2} y={3} text-anchor="end">%</text>
       <text class="fan-curve-axis" x={viewWidth - padding.right} y={viewHeight - 0.5} text-anchor="end">°C</text>
@@ -170,10 +143,38 @@ export function FanCurveChart(props: {
       <For each={temperatures()}>
         {(temperature, index) => {
           const percent = () => props.stops[index()] ?? 0;
+          let handle!: SVGGElement;
+          const view = (): Presentation => ({
+            element: handle,
+            bindingLabel: "位移",
+            // 逻辑中心是点的圆心：转速 0、100 时圆心在屏幕上的位置。
+            geometry: () => {
+              const atMin = toScreen(xOf(temperature), yOf(0));
+              const atMax = toScreen(xOf(temperature), yOf(100));
+              return { center: "点的圆心", atMin: { x: atMin.x, y: atMin.y }, atMax: { x: atMax.x, y: atMax.y } };
+            },
+            // 点按宿主值画（拖动中每次移动都改宿主值）；这里只标按住的点。
+            render: ({ mode }) => handle.classList.toggle("fan-curve-handle-active", mode !== "静止"),
+            aria: (value) => {
+              handle.setAttribute("aria-valuenow", String(value));
+              handle.setAttribute("aria-valuetext", `${temperature} °C, ${value}%`);
+              return `aria-valuenow=${value}`;
+            }
+          });
+          points.set(temperature, useInteraction(`曲线点「${temperature} °C」`, curvePointDefinition, view, solidHost<number>({
+            value: percent,
+            enabled: () => props.disabled !== true,
+            call: (port, args) => {
+              if (port !== "select") return;
+              const next = temperatures().map((_, at) => props.stops[at] ?? 0);
+              next[index()] = Math.round(Math.min(100, Math.max(0, Number(args[0]))));
+              props.onChange(next);
+            }
+          })));
           return (
             <g
+              ref={handle}
               class="fan-curve-handle"
-              classList={{ "fan-curve-handle-active": dragging() === index() }}
               tabindex={props.disabled ? -1 : 0}
               role="slider"
               aria-disabled={props.disabled === true}
@@ -181,29 +182,6 @@ export function FanCurveChart(props: {
               aria-label={`${temperature} °C`}
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={percent()}
-              aria-valuetext={`${temperature} °C, ${percent()}%`}
-              onKeyDown={(event) => {
-                if (props.disabled) {
-                  return;
-                }
-                // 键盘也能调。按住 Shift 走大步。
-                const step = event.shiftKey ? 10 : 1;
-                const next = temperatures().map((_, at) => props.stops[at] ?? 0);
-                if (event.key === "Home" || event.key === "End") {
-                  event.preventDefault();
-                  next[index()] = event.key === "Home" ? 0 : 100;
-                  props.onChange(next);
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  next[index()] = Math.min(100, percent() + step);
-                  props.onChange(next);
-                } else if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  next[index()] = Math.max(0, percent() - step);
-                  props.onChange(next);
-                }
-              }}
             >
               <title>{`${temperature} °C: ${percent()}%`}</title>
               <circle class="fan-curve-hit" cx={xOf(temperature)} cy={yOf(percent())} r={2} />

@@ -32,12 +32,16 @@ import { projectResourceTableHeat } from "./resourceTableHeat";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
+import { columnResizeHandleDefinition } from "../../interactions/components/columnResizeHandle.ts";
+import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
+import type { Presentation } from "../../interactions/protocol/runtime.ts";
 
 const rowHeight = 38;
 const overscan = 6;
 const slotReserve = 10;
 const minColumnWidth = 56;
 const maxColumnWidth = 520;
+const columnResizeDefinition = columnResizeHandleDefinition({ min: minColumnWidth, max: maxColumnWidth, keyStep: 12 });
 type CssVars = JSX.CSSProperties & Record<string, string>;
 interface RowSearchKeyCacheEntry {
   signature: string;
@@ -376,6 +380,14 @@ function VirtualResourceTable(props: {
     return resourceTableColumnsEqual(previous, next) ? previous : next;
   }, []);
   const columnIds = createMemo(() => columns().map((column) => column.id));
+  /** 第 index 列存的宽度改成 width 时，它的右边缘离表头左边缘多远（多余宽度照常分给各列）。 */
+  const columnRightEdge = (index: number, width: number) => {
+    const resized = baseColumns().map((column, at) => at === index ? { ...column, width } : column);
+    const total = resized.reduce((sum, column) => sum + clampColumnWidth(column.width), 0);
+    return distributeColumnWidths(resized, Math.max(total, viewportWidth()))
+      .slice(0, index + 1)
+      .reduce((sum, columnWidth) => sum + columnWidth, 0);
+  };
   const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
   const visibleRange = createMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
@@ -584,49 +596,6 @@ function VirtualResourceTable(props: {
     props.onSortChange(column.id, nextDirection);
   };
 
-  const startResize = (event: PointerEvent, column: ResourceTableColumn) => {
-    if (!props.editMode) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const startX = event.clientX;
-    const startWidth = clampColumnWidth(column.width);
-    const resize = (moveEvent: PointerEvent) => {
-      const nextWidth = clampColumnWidth(startWidth + moveEvent.clientX - startX);
-      props.onColumnWidthChange(column.id, nextWidth, false);
-    };
-    const stop = (upEvent: PointerEvent) => {
-      window.removeEventListener("pointermove", resize);
-      window.removeEventListener("pointerup", stop);
-      const nextWidth = clampColumnWidth(startWidth + upEvent.clientX - startX);
-      props.onColumnWidthChange(column.id, nextWidth, true);
-    };
-
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", stop, { once: true });
-  };
-
-  const resizeByKeyboard = (
-    event: KeyboardEvent,
-    column: ResourceTableColumn
-  ) => {
-    if (!props.editMode
-      || event.altKey
-      || event.ctrlKey
-      || event.metaKey
-      || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const direction = event.key === "ArrowRight" ? 1 : -1;
-    props.onColumnWidthChange(
-      column.id,
-      clampColumnWidth(column.width + direction * 12),
-      false);
-  };
-
   return (
     <div
       class="resource-table-frame"
@@ -653,6 +622,18 @@ function VirtualResourceTable(props: {
           <For each={columnIds()}>
             {(columnId, columnIndex) => {
               const column = () => columns().find((candidate) => candidate.id === columnId)!;
+              // 列宽把手由交互协议的运行时处理（协议第 4.4 节）：编辑模式才能拖，拖动中连续改宽度，松开、方向键、取消时提交。
+              // 宿主值是这一列存的宽度；把手的屏幕位置按多余宽度分配后的右边缘算。
+              let resizeHandle!: HTMLSpanElement;
+              const storedWidth = () => clampColumnWidth(baseColumns()[columnIndex()].width);
+              useInteraction(`列宽把手「${columnId}」`, columnResizeDefinition,
+                () => columnResizeView(resizeHandle, (width) => columnRightEdge(columnIndex(), width), storedWidth), solidHost<number>({
+                value: storedWidth,
+                enabled: () => props.editMode,
+                call: (port, args) => {
+                  if (port === "resize") props.onColumnWidthChange(columnId, clampColumnWidth(Number(args[0])), args[1] === true);
+                }
+              }));
               return (
               <div
                 role="columnheader"
@@ -724,6 +705,7 @@ function VirtualResourceTable(props: {
                   </span>
                 </Show>
                 <span
+                  ref={resizeHandle}
                   class="resource-table-column-resizer"
                   role="separator"
                   tabIndex={props.editMode ? 0 : -1}
@@ -731,10 +713,7 @@ function VirtualResourceTable(props: {
                   aria-label={uiText.resourceTableView.resizeColumn(resourceTableColumnLabel(column().id))}
                   aria-valuemin={minColumnWidth}
                   aria-valuemax={maxColumnWidth}
-                  aria-valuenow={Math.round(clampColumnWidth(column().width))}
                   aria-disabled={props.editMode ? "false" : "true"}
-                  onPointerDown={(event) => startResize(event, column())}
-                  onKeyDown={(event) => resizeByKeyboard(event, column())}
                 />
               </div>
               );
@@ -1190,6 +1169,32 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
       sortable: true,
       width: metric.id.endsWith(".vram") ? 132 : 108
     }));
+}
+
+/**
+ * 列宽把手的呈现层：逻辑中心是把手中线，也就是列的右边缘。
+ * 表格把多余宽度按权重分给各列，所以存的宽度变了，这一列和它前面各列分到的都跟着变；
+ * rightEdge 按分配算出存的宽度为某值时右边缘离表头左边缘多远，几何取最小、最大宽度时的两点。
+ * 列宽由表格按宿主值画，把手自己不另画。
+ */
+function columnResizeView(handle: HTMLElement, rightEdge: (width: number) => number, storedWidth: () => number): Presentation {
+  return {
+    element: handle,
+    bindingLabel: "宽度",
+    geometry: () => {
+      const cell = handle.parentElement;
+      if (!cell) return null;
+      const rect = cell.getBoundingClientRect();
+      const origin = rect.right - rightEdge(storedWidth());
+      const y = (rect.top + rect.bottom) / 2;
+      return { center: "把手中线（列的右边缘）", atMin: { x: origin + rightEdge(minColumnWidth), y }, atMax: { x: origin + rightEdge(maxColumnWidth), y } };
+    },
+    render: () => {},
+    aria: (width) => {
+      handle.setAttribute("aria-valuenow", String(width));
+      return `aria-valuenow=${width}`;
+    }
+  };
 }
 
 function clampColumnWidth(value: number) {

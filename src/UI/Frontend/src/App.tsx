@@ -5,6 +5,7 @@ import { AppRoutes } from "./app/AppRoutes";
 import { AppShell } from "./app/AppShell";
 import { usePageRefreshScheduler } from "./app/usePageRefreshScheduler";
 import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
+import { setInteractionAnimationMode } from "./interactions/solid/lodestone.ts";
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
@@ -281,6 +282,7 @@ export default function App() {
 
   createEffect(() => {
     document.body.dataset.animations = gpuRuntimePlan().animations;
+    setInteractionAnimationMode(gpuRuntimePlan().animations);
   });
 
   createEffect(() => {
