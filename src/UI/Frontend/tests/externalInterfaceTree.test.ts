@@ -292,6 +292,21 @@ assert.equal(mobile?.specializedDevice?.summaryFields[1]?.value, "Samsung · SM-
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "external-gpu-dock"));
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "power-input"));
 
+// 两个集线器互为下游的成环关系由解码边界拒绝；直接喂给构建器时遍历也必须结束。
+const hubAPath = String.raw`\\?\usb#vid_aaaa&pid_0001#hub-a`;
+const hubBPath = String.raw`\\?\usb#vid_bbbb&pid_0001#hub-b`;
+const cyclicHubTree = buildExternalInterfaceTree([
+  usbPort({ id: "hub-a-port", name: "Hub A", connectorKind: "usb-a", hubPath: hubAPath, portNumber: 1, connected: true, isHub: true, downstreamHubPath: hubBPath }),
+  usbPort({ id: "hub-b-port", name: "Hub B", connectorKind: "usb-a", hubPath: hubBPath, portNumber: 1, connected: true, isHub: true, downstreamHubPath: hubAPath }),
+  usbPort({ id: "self-hub-port", name: "Self Hub", connectorKind: "usb-a", hubPath: rootHubPath, portNumber: 9, connected: true, isHub: true, downstreamHubPath: rootHubPath })
+]);
+assert.ok(cyclicHubTree.nodes.length <= 6);
+const cyclicFilter = filterExternalInterfaceTree([
+  { ...tree.nodes[0], id: "cycle-x", parentId: "cycle-y", searchText: "needle" },
+  { ...tree.nodes[0], id: "cycle-y", parentId: "cycle-x", searchText: "other" }
+], "needle");
+assert.deepEqual(cyclicFilter.map((node) => node.id), ["cycle-x", "cycle-y"]);
+
 function deviceKind(tree: ReturnType<typeof buildExternalInterfaceTree>, title: string) {
   return tree.nodes.find((node) => node.title === title)?.specializedDevice?.kind;
 }

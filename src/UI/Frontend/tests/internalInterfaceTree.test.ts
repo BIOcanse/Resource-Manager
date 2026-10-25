@@ -293,6 +293,16 @@ const topologyViewSource = readFileSync(new URL("../src/features/deviceTopology/
 assert.doesNotMatch(topologyViewSource, /device-port-section-tabs/);
 assert.match(topologyViewSource, /device-scope-tabs[\s\S]*uiText\.deviceTopology\.externalScope[\s\S]*uiText\.deviceTopology\.internalScope/);
 
+// 成环的父子关系由解码边界拒绝；直接喂给构建器时遍历也必须结束（自指和两个设备互为父）。
+const cyclicTree = buildInternalInterfaceTree([
+  port({ id: "self-parent", name: "Self Parent", deviceId: String.raw`PCI\VEN_1\SELF`, nativeParentDeviceId: String.raw`PCI\VEN_1\SELF`, busKind: "pci" }),
+  port({ id: "cycle-a", name: "Cycle A", deviceId: String.raw`PCI\VEN_1\A`, nativeParentDeviceId: String.raw`PCI\VEN_1\B`, busKind: "pci" }),
+  port({ id: "cycle-b", name: "Cycle B", deviceId: String.raw`PCI\VEN_1\B`, upstreamDeviceId: String.raw`PCI\VEN_1\A`, busKind: "pci" }),
+  port({ id: "plain", name: "Plain Device", deviceId: String.raw`PCI\VEN_1\PLAIN`, busKind: "pci" })
+]);
+assert.ok(cyclicTree.nodes.some((node) => node.port.id === "plain" && node.role !== "internal-interface"));
+assert.ok(cyclicTree.nodes.length <= 8);
+
 function requiredNode(portId: string) {
   const node = tree.nodes.find((candidate) => candidate.port.id === portId && candidate.role !== "internal-interface");
   assert.ok(node, `missing internal node ${portId}`);

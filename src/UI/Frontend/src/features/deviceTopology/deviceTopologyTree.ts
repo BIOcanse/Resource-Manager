@@ -59,7 +59,8 @@ function includeAncestors<TNode extends DeviceTopologyTreeNode>(
   included: Set<string>
 ) {
   let cursor: TNode | undefined = node;
-  while (cursor && included.add(cursor.id)) {
+  while (cursor && !included.has(cursor.id)) {
+    included.add(cursor.id);
     cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
   }
 }
@@ -72,9 +73,38 @@ function includeDescendants<TNode extends DeviceTopologyTreeNode>(
   const stack = [...(childrenByParent.get(nodeId) ?? [])];
   while (stack.length > 0) {
     const child = stack.pop()!;
-    if (!included.add(child.id)) {
+    if (included.has(child.id)) {
       continue;
     }
+    included.add(child.id);
     stack.push(...(childrenByParent.get(child.id) ?? []));
+  }
+}
+
+/**
+ * 先序遍历构建中的树：父节点先于子节点访问，visit 返回传给子节点的上下文；
+ * compareChildren 给出时子节点按它的顺序访问。树由构建方保证无环（见 deviceTopologyRelations.ts），
+ * nodeLimit 是遍历的硬上限，超过即说明输入违反了这一保证。
+ */
+export function visitPendingTree<TNode extends { children: readonly TNode[] }, TContext>(
+  roots: readonly TNode[],
+  rootContext: TContext,
+  nodeLimit: number,
+  visit: (node: TNode, context: TContext) => TContext,
+  compareChildren?: (left: TNode, right: TNode) => number
+) {
+  const stack = roots.map((node) => ({ node, context: rootContext })).reverse();
+  let visited = 0;
+  while (stack.length > 0) {
+    const { node, context } = stack.pop()!;
+    visited += 1;
+    if (visited > nodeLimit) {
+      throw new Error(`Device topology tree exceeds ${nodeLimit} nodes; its port relations are not a tree.`);
+    }
+    const childContext = visit(node, context);
+    const children = compareChildren ? [...node.children].sort(compareChildren) : node.children;
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: children[index], context: childContext });
+    }
   }
 }

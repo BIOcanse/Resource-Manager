@@ -20,6 +20,7 @@ import type {
   DeviceTopologyInformationSnapshot
 } from "../../types.ts";
 import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
+import { findDeviceTopologyRelationCycle } from "./deviceTopologyRelations.ts";
 
 const currentSchemaVersion = "4.0.0";
 const statuses = ["warming", "ready", "refreshing", "failed"] as const;
@@ -125,6 +126,13 @@ function decodeSnapshot(value: unknown, path: string): DeviceTopologySnapshot {
       throw new ResponseDecodeError(`${path}.ports[${index}].id`, "unique port id");
     }
     portIds.add(id);
+  }
+  // 设备父子与 USB 集线器关系必须无环（含自指）：树构建直接按这两张图展开。
+  const cycle = findDeviceTopologyRelationCycle(ports);
+  if (cycle) {
+    throw new ResponseDecodeError(
+      `${path}.ports[${cycle.portIndex}].${cycle.field}`,
+      "port relation that does not form a parent cycle");
   }
   return {
     capturedAt: requireTimestamp(record.capturedAt, `${path}.capturedAt`),

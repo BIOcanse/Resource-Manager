@@ -7,8 +7,10 @@ import {
 } from "./externalInterfaceTree.ts";
 import {
   filterDeviceTopologyTree,
+  visitPendingTree,
   type DeviceTopologyTreeNode
 } from "./deviceTopologyTree.ts";
+import { normalizeDeviceId } from "./deviceTopologyRelations.ts";
 import { uiText } from "../../text.ts";
 
 export type InternalInterfaceNodeRole =
@@ -74,20 +76,13 @@ export function buildInternalInterfaceTree(
     nodesByPortId.set(port.id, createDeviceNode(port));
   }
 
-  const parentPortIdByPortId = new Map<string, string>();
-  for (const port of candidates) {
-    const parent = resolveVisibleParent(port, candidateByDeviceId);
-    if (parent && parent.id !== port.id) {
-      parentPortIdByPortId.set(port.id, parent.id);
-    }
-  }
-
+  // 解码边界已保证设备关系无环，可见父设备直接挂接。
   const orphanedNodes: PendingNode[] = [];
   for (const port of candidates) {
     const node = nodesByPortId.get(port.id)!;
-    const parentPortId = parentPortIdByPortId.get(port.id);
-    const parent = parentPortId ? nodesByPortId.get(parentPortId) : undefined;
-    if (!parent || createsParentCycle(port.id, parentPortIdByPortId)) {
+    const parentPort = resolveVisibleParent(port, candidateByDeviceId);
+    const parent = parentPort ? nodesByPortId.get(parentPort.id) : undefined;
+    if (!parent) {
       orphanedNodes.push(node);
       continue;
     }
@@ -121,15 +116,19 @@ export function buildInternalInterfaceTree(
       return root;
     });
 
-  for (const root of roots) {
-    applySpecializedDevicePresentation(root);
-  }
+  // 每个端口最多产生一个设备节点和一个接口节点。
+  const nodeLimit = 2 * ports.length;
+  visitPendingTree<PendingNode, string | undefined>(roots, undefined, nodeLimit, (node, parentTitle) => {
+    applySpecializedDevicePresentation(node, parentTitle);
+    return node.title;
+  });
 
   const flattened: InternalInterfaceTreeNode[] = [];
-  const visited = new Set<string>();
-  for (const root of roots) {
-    appendNode(root, 0, [], flattened, visited);
-  }
+  visitPendingTree<PendingNode, readonly string[]>(roots, [], nodeLimit, (node, parentPath) => {
+    const path = [...parentPath, node.title];
+    flattened.push(createTreeNode(node, parentPath.length, path));
+    return path;
+  }, comparePendingNodes);
 
   return {
     nodes: flattened,
@@ -209,25 +208,10 @@ function applySpecializedDevicePresentation(node: PendingNode, parentTitle?: str
     node.badge = model.badge;
     node.iconKind = model.iconKind;
   }
-
-  for (const child of node.children) {
-    applySpecializedDevicePresentation(child, node.title);
-  }
 }
 
-function appendNode(
-  node: PendingNode,
-  depth: number,
-  parentPath: readonly string[],
-  output: InternalInterfaceTreeNode[],
-  visited: Set<string>
-) {
-  if (!visited.add(node.id)) {
-    return;
-  }
-
-  const path = [...parentPath, node.title];
-  output.push({
+function createTreeNode(node: PendingNode, depth: number, path: string[]): InternalInterfaceTreeNode {
+  return {
     id: node.id,
     port: node.port,
     role: node.role,
@@ -242,11 +226,7 @@ function appendNode(
     path,
     searchText: createSearchText(node, path),
     specializedDevice: node.specializedDevice
-  });
-
-  for (const child of [...node.children].sort(comparePendingNodes)) {
-    appendNode(child, depth + 1, path, output, visited);
-  }
+  };
 }
 
 function createSearchText(node: PendingNode, path: readonly string[]) {
@@ -298,12 +278,14 @@ function isDescendantOfExternalDevice(
   const pending = [port.nativeParentDeviceId, port.upstreamDeviceId]
     .map(normalizeDeviceId)
     .filter(Boolean);
+  // 每个设备 ID 只展开一次，步数以不同设备 ID 的数量为界。
   const visited = new Set<string>();
-  while (pending.length > 0 && visited.size < 32) {
+  while (pending.length > 0) {
     const current = pending.shift()!;
-    if (!visited.add(current)) {
+    if (visited.has(current)) {
       continue;
     }
+    visited.add(current);
     if (externalDeviceIds.has(current)) {
       return true;
     }
@@ -430,18 +412,6 @@ function inferDeviceConnectorKind(port: DeviceTopologyPort) {
   return port.connectorKind || "device";
 }
 
-function createsParentCycle(portId: string, parents: ReadonlyMap<string, string>) {
-  const visited = new Set([portId]);
-  let cursor = parents.get(portId);
-  while (cursor) {
-    if (!visited.add(cursor)) {
-      return true;
-    }
-    cursor = parents.get(cursor);
-  }
-  return false;
-}
-
 function indexPortsByDeviceId(ports: readonly DeviceTopologyPort[]) {
   const result = new Map<string, DeviceTopologyPort>();
   for (const port of ports) {
@@ -501,10 +471,6 @@ function stableHash(value: string) {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-function normalizeDeviceId(value?: string | null) {
-  return value?.trim().replaceAll("/", "\\").toLocaleUpperCase() ?? "";
 }
 
 function meaningfulSpeed(value?: string | null) {

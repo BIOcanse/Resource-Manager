@@ -3,9 +3,11 @@ import type { DeviceTopologyPort } from "../../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
   filterDeviceTopologyTree,
+  visitPendingTree,
   type DeviceTopologyTreeConnectionState,
   type DeviceTopologyTreeNode
 } from "./deviceTopologyTree.ts";
+import { normalizeHubPath } from "./deviceTopologyRelations.ts";
 import { uiText } from "../../text.ts";
 
 export type ExternalInterfaceNodeRole =
@@ -72,13 +74,14 @@ export function buildExternalInterfaceTree(ports: readonly DeviceTopologyPort[])
     }
   }
 
+  // 解码边界已保证 USB 集线器关系无环，上游设备直接挂接。
   for (const connector of connectorByPortId.values()) {
     if (!connector.parentId) {
       continue;
     }
 
     const parent = deviceByPortId.get(portIdFromDeviceNodeId(connector.parentId));
-    if (!parent || createsCycle(parent, connector, connectorByPortId, deviceByPortId)) {
+    if (!parent) {
       connector.parentId = undefined;
       connector.role = "host-interface";
       connector.badge = roleLabel("host-interface");
@@ -96,24 +99,18 @@ export function buildExternalInterfaceTree(ports: readonly DeviceTopologyPort[])
     .filter((node) => !node.parentId)
     .concat(ports.filter(isNonUsbExternalPort).map(createNonUsbRootNode))
     .sort(comparePendingNodes);
-  for (const root of roots) {
-    applySpecializedDevicePresentation(root);
-  }
+  // 每个端口最多产生一个接口节点和一个设备节点。
+  const nodeLimit = 2 * ports.length;
+  visitPendingTree<PendingNode, string | undefined>(roots, undefined, nodeLimit, (node, parentTitle) => {
+    applySpecializedDevicePresentation(node, parentTitle);
+    return node.title;
+  });
   const flattened: ExternalInterfaceTreeNode[] = [];
-  const visited = new Set<string>();
-  for (const root of roots) {
-    appendNode(root, 0, [], flattened, visited);
-  }
-
-  for (const connector of connectorByPortId.values()) {
-    if (!visited.has(connector.id)) {
-      connector.parentId = undefined;
-      connector.role = "host-interface";
-      connector.badge = roleLabel("host-interface");
-      applySpecializedDevicePresentation(connector);
-      appendNode(connector, 0, [], flattened, visited);
-    }
-  }
+  visitPendingTree<PendingNode, readonly string[]>(roots, [], nodeLimit, (node, parentPath) => {
+    const path = [...parentPath, node.title];
+    flattened.push(createTreeNode(node, parentPath.length, path));
+    return path;
+  }, comparePendingNodes);
 
   return {
     nodes: flattened,
@@ -259,10 +256,6 @@ function applySpecializedDevicePresentation(node: PendingNode, parentTitle?: str
     node.badge = model.badge;
     node.iconKind = model.iconKind;
   }
-
-  for (const child of node.children) {
-    applySpecializedDevicePresentation(child, node.title);
-  }
 }
 
 function isActiveExternalDisplay(port: DeviceTopologyPort) {
@@ -271,19 +264,8 @@ function isActiveExternalDisplay(port: DeviceTopologyPort) {
     && port.display.internal === false;
 }
 
-function appendNode(
-  node: PendingNode,
-  depth: number,
-  parentPath: readonly string[],
-  output: ExternalInterfaceTreeNode[],
-  visited: Set<string>
-) {
-  if (!visited.add(node.id)) {
-    return;
-  }
-
-  const path = [...parentPath, node.title];
-  output.push({
+function createTreeNode(node: PendingNode, depth: number, path: string[]): ExternalInterfaceTreeNode {
+  return {
     id: node.id,
     port: node.port,
     role: node.role,
@@ -298,11 +280,7 @@ function appendNode(
     path,
     searchText: createSearchText(node, path),
     specializedDevice: node.specializedDevice
-  });
-
-  for (const child of [...node.children].sort(comparePendingNodes)) {
-    appendNode(child, depth + 1, path, output, visited);
-  }
+  };
 }
 
 function createSearchText(node: PendingNode, path: readonly string[]) {
@@ -331,28 +309,6 @@ function createSearchText(node: PendingNode, path: readonly string[]) {
   ].filter(Boolean).join(" ").toLocaleLowerCase();
 }
 
-function createsCycle(
-  parent: PendingNode,
-  child: PendingNode,
-  connectors: ReadonlyMap<string, PendingNode>,
-  devices: ReadonlyMap<string, PendingNode>
-) {
-  const seen = new Set([child.id]);
-  let cursor: PendingNode | undefined = parent;
-  while (cursor) {
-    if (!seen.add(cursor.id)) {
-      return true;
-    }
-    if (!cursor.parentId) {
-      return false;
-    }
-    cursor = cursor.parentId.endsWith(":device")
-      ? devices.get(portIdFromDeviceNodeId(cursor.parentId))
-      : connectors.get(portIdFromConnectorNodeId(cursor.parentId));
-  }
-  return false;
-}
-
 function comparePendingNodes(left: PendingNode, right: PendingNode) {
   const leftPort = left.port.usb?.portNumber ?? Number.MAX_SAFE_INTEGER;
   const rightPort = right.port.usb?.portNumber ?? Number.MAX_SAFE_INTEGER;
@@ -367,22 +323,8 @@ function deviceNodeId(portId: string) {
   return `external:${portId}:device`;
 }
 
-function portIdFromConnectorNodeId(nodeId: string) {
-  return nodeId.slice("external:".length, -":connector".length);
-}
-
 function portIdFromDeviceNodeId(nodeId: string) {
   return nodeId.slice("external:".length, -":device".length);
-}
-
-function normalizeHubPath(value?: string | null) {
-  let normalized = value?.trim()
-    .replace(/^\\\\\.\\/, "\\\\?\\")
-    .replace(/^\\\?\?\\/, "\\\\?\\");
-  if (normalized && !normalized.startsWith("\\") && normalized.includes("#")) {
-    normalized = `\\\\?\\${normalized}`;
-  }
-  return normalized?.toLocaleLowerCase() || undefined;
 }
 
 function externalInterfaceLabel(connectorKind: string) {

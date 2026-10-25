@@ -377,3 +377,36 @@ nullableProtocolWire.snapshot.ports[0].connectorKind = null;
 assert.throws(() => deviceTopologyStateDecoder.decode(nullableProtocolWire),
   (error: unknown) => error instanceof ResponseDecodeError
     && error.path === "$.snapshot.ports[0].connectorKind");
+
+// 端口父子关系成环（自指、两个设备互为父、两个集线器互为下游）在解码边界失败，
+// 指向闭合环的那个字段；无环的父子链照常通过。
+const relationPort = (id: string, deviceId: string, extra: Record<string, unknown> = {}) => ({
+  ...port, id, deviceId, nativeParentDeviceId: null, upstreamDeviceId: null,
+  usb: { ...port.usb, hubDevicePath: String.raw`\\?\usb#hub-` + id, downstreamHubDevicePath: null },
+  ...extra
+});
+const relationWire = (ports: unknown[]) => ({ ...source, snapshot: { ...source.snapshot, ports } });
+const relationCycleCases: Array<[unknown[], string]> = [
+  [[relationPort("self", String.raw`PCI\SELF`, { nativeParentDeviceId: "pci/self" })],
+    "$.snapshot.ports[0].nativeParentDeviceId"],
+  [[relationPort("a", String.raw`USB\A`, { upstreamDeviceId: String.raw`USB\B` }),
+    relationPort("b", String.raw`USB\B`, { nativeParentDeviceId: String.raw`USB\A` })],
+    "$.snapshot.ports[1].nativeParentDeviceId"],
+  [[relationPort("hub-a", String.raw`USB\HUB_A`, { usb: { ...port.usb, hubDevicePath: String.raw`\\?\usb#hub-a`, downstreamHubDevicePath: String.raw`\\?\usb#hub-b` } }),
+    relationPort("hub-b", String.raw`USB\HUB_B`, { usb: { ...port.usb, hubDevicePath: String.raw`\\?\usb#hub-b`, downstreamHubDevicePath: "USB#HUB-A" } })],
+    "$.snapshot.ports[1].usb.downstreamHubDevicePath"]
+];
+for (const [ports, expectedPath] of relationCycleCases) {
+  assert.throws(
+    () => deviceTopologyStateDecoder.decode(relationWire(ports)),
+    (error: unknown) => error instanceof ResponseDecodeError && error.path === expectedPath,
+    expectedPath);
+}
+const relationChain = deviceTopologyStateDecoder.decode(relationWire([
+  relationPort("controller", String.raw`PCI\CONTROLLER`),
+  relationPort("root-hub", String.raw`USB\ROOT`, { nativeParentDeviceId: String.raw`PCI\CONTROLLER`, upstreamDeviceId: String.raw`PCI\CONTROLLER`,
+    usb: { ...port.usb, hubDevicePath: String.raw`\\?\usb#root`, downstreamHubDevicePath: String.raw`\\?\usb#dock` } }),
+  relationPort("dock", String.raw`USB\DOCK`, { nativeParentDeviceId: String.raw`USB\ROOT`, upstreamDeviceId: String.raw`PCI\CONTROLLER`,
+    usb: { ...port.usb, hubDevicePath: String.raw`\\?\usb#dock`, downstreamHubDevicePath: null } })
+]));
+assert.equal(relationChain.snapshot?.ports.length, 3);
