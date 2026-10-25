@@ -166,6 +166,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
             var activeController = host.Services.GetRequiredService<BusinessBlockController>();
             controller = activeController;
             var hosted = Assert.Single(host.Services.GetServices<IHostedService>());
+            // BackgroundService starts ExecuteAsync on a pool thread. Stopping before it runs leaves no
+            // execution behind, so the outstanding-execution case needs it to be running first.
+            if (!useContinueWaitingDeadline) await backgroundService!.ExecutionStarted.Task.WaitAsync(TestTimeout);
             var stopping = hosted.StopAsync(stopCancellation.Token);
             stopTask = stopping;
             var stopStarted = useContinueWaitingDeadline
@@ -364,11 +367,13 @@ public sealed class BusinessBlockHostedCompatibilityTests
         private int stopCount;
 
         public TaskCompletionSource StopStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ExecutionStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int StopCount => Volatile.Read(ref stopCount);
         public CancellationToken? LastStopToken { get; private set; }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            ExecutionStarted.TrySetResult();
             // Deliberately remains gated after stoppingToken is canceled so the controller
             // can report the outstanding execution while BackgroundService.StopAsync returns.
             return executionRelease;

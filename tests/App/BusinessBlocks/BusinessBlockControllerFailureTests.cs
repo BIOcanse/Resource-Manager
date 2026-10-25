@@ -35,7 +35,9 @@ public sealed class BusinessBlockControllerFailureTests
         using var services = new ServiceCollection().BuildServiceProvider();
         await using var controller = Create(services, new("worker", [], _ => new CallbackBlock(async stop =>
         {
-            using var registration = stop.Register(() => throw new IOException("callback failure"));
+            // Not disposed when the run ends: the block's continuation can observe cancellation and
+            // leave before the canceling thread reaches this callback, which would unregister it.
+            stop.Register(() => throw new IOException("callback failure"));
             try { await Task.Delay(Timeout.InfiniteTimeSpan, stop); }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
             return BusinessBlockResult.Stopped;
