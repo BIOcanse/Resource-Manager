@@ -56,9 +56,26 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
 
   const update = (patch: Partial<PerformanceOverlaySettings>) =>
     setDraft((current) => current && !saving() ? { ...current, ...patch } : current);
-  const numberValue = (text: string, previous: number) => {
-    const value = Number(text);
-    return Number.isFinite(value) ? value : previous;
+  type NumberField = "fontSizePx" | "regionWidthRatio" | "regionHeightRatio" | "marginPx";
+  // 打到一半（清空、"0."）时数字框的 value 是 ""：只有有限数才写进草稿，否则草稿不变，
+  // Solid 不回写，框里留着用户正在打的内容（Number("") 是 0，直接换算会把框改成 "0"）。
+  const editNumber = (field: NumberField, input: HTMLInputElement) => {
+    const value = input.value.trim() === "" ? Number.NaN : Number(input.value);
+    if (Number.isFinite(value)) update({ [field]: value });
+  };
+  // 草稿值写进框：框里已经是这个数（比如正在打的 "0"）时不写，程序改 value 会打断输入、把光标挪走。
+  const bindNumber = (field: NumberField) => (input: HTMLInputElement) => {
+    createEffect(() => {
+      const current = draft();
+      if (current && (input.value.trim() === "" || Number(input.value) !== current[field])) {
+        input.value = String(current[field]);
+      }
+    });
+  };
+  // 离开框或确认时把框显示成草稿值，用户看到的就是会保存的值。
+  const showDraftNumber = (field: NumberField, input: HTMLInputElement) => {
+    const current = draft();
+    if (current) input.value = String(current[field]);
   };
   const save = async () => {
     const current = draft();
@@ -156,18 +173,21 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             onChange={(sizeMode) => update({ sizeMode })} />
           <Show when={current().sizeMode === "absolutePixels"}>
             <label>{uiText.performanceOverlay.fontSizePx}
-              <input disabled={saving()} type="number" min="8" max="72" value={current().fontSizePx}
-                onInput={(event) => update({ fontSizePx: numberValue(event.currentTarget.value, current().fontSizePx) })} />
+              <input disabled={saving()} type="number" min="8" max="72" ref={bindNumber("fontSizePx")}
+                onInput={(event) => editNumber("fontSizePx", event.currentTarget)}
+                onChange={(event) => showDraftNumber("fontSizePx", event.currentTarget)} />
             </label>
           </Show>
           <Show when={current().sizeMode === "windowRatio"}>
             <label>{uiText.performanceOverlay.regionWidthRatio}
-              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" value={current().regionWidthRatio}
-                onInput={(event) => update({ regionWidthRatio: numberValue(event.currentTarget.value, current().regionWidthRatio) })} />
+              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" ref={bindNumber("regionWidthRatio")}
+                onInput={(event) => editNumber("regionWidthRatio", event.currentTarget)}
+                onChange={(event) => showDraftNumber("regionWidthRatio", event.currentTarget)} />
             </label>
             <label>{uiText.performanceOverlay.regionHeightRatio}
-              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" value={current().regionHeightRatio}
-                onInput={(event) => update({ regionHeightRatio: numberValue(event.currentTarget.value, current().regionHeightRatio) })} />
+              <input disabled={saving()} type="number" min="0.05" max="1" step="0.01" ref={bindNumber("regionHeightRatio")}
+                onInput={(event) => editNumber("regionHeightRatio", event.currentTarget)}
+                onChange={(event) => showDraftNumber("regionHeightRatio", event.currentTarget)} />
             </label>
           </Show>
           <label>{uiText.performanceOverlay.anchor}</label>
@@ -180,8 +200,9 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             ]}
             onChange={(anchor) => update({ anchor })} />
           <label>{uiText.performanceOverlay.marginPx}
-            <input disabled={saving()} type="number" min="0" max="256" value={current().marginPx}
-              onInput={(event) => update({ marginPx: numberValue(event.currentTarget.value, current().marginPx) })} />
+            <input disabled={saving()} type="number" min="0" max="256" ref={bindNumber("marginPx")}
+              onInput={(event) => editNumber("marginPx", event.currentTarget)}
+                onChange={(event) => showDraftNumber("marginPx", event.currentTarget)} />
           </label>
         </div>}
       </Show>

@@ -224,6 +224,23 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.overlays["frontend-harness.software"]?.mode === "injected");
   assert(backendOverlayRequests.every(({ path }) => path.startsWith("/api/startup-modules/") || path === "/api/performance-overlay/metrics/catalog"), "Renderer requested a removed backend overlay settings route");
   assert(backendOverlayRequests.filter(({ method }) => method === "PUT").length === 1, "Product tried to write modules with the default web key");
+  // 数字框打到一半时（清空、"0."）不能被改写成 0；离开框后显示的是会保存的草稿值。
+  const defaults = pointOverlayPresentation();
+  const margin = editor.getByRole("spinbutton", { name: copy.performanceOverlay.marginPx });
+  await margin.fill("");
+  assert(await margin.inputValue() === "", `Clearing the margin was rewritten to ${await margin.inputValue()}`);
+  assert(await save.isDisabled(), "An empty number box changed the draft");
+  await margin.blur();
+  assert(await margin.inputValue() === String(defaults.marginPx), "Leaving an empty box did not show the draft value");
+  await editor.getByRole("combobox", { name: copy.performanceOverlay.sizeMode, exact: true }).click();
+  await page.getByRole("option", { name: copy.performanceOverlay.windowRatio, exact: true }).click();
+  const width = editor.getByRole("spinbutton", { name: copy.performanceOverlay.regionWidthRatio });
+  await width.fill("");
+  await width.pressSequentially("0.5");
+  assert(await width.inputValue() === "0.5", `Typing 0.5 ended as ${await width.inputValue()}`);
+  await width.blur();
+  assert(await width.inputValue() === "0.5", "Leaving the box changed a typed 0.5");
+  assert(await save.isEnabled(), "A typed 0.5 did not reach the draft");
   assert(errors.length === 0, errors.join("\n"));
-  return { persistence: true, metricOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, explicitNativeElevation: true, ordinaryWriteDenied: true, canceledElevationRetainsDraft: true, failedBridgeRetainsDraft: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true, moduleMismatchVisible: true, preferenceFailureAfterModulesVisible: true };
+  return { numberBoxesKeepPartialInput: true, persistence: true, metricOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, explicitNativeElevation: true, ordinaryWriteDenied: true, canceledElevationRetainsDraft: true, failedBridgeRetainsDraft: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true, moduleMismatchVisible: true, preferenceFailureAfterModulesVisible: true };
 }
