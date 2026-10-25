@@ -51,4 +51,35 @@ public sealed class UserShellProcessLauncherTests
 
         Assert.Equal(23, result);
     }
+
+    [Fact]
+    public async Task ShellWrapperRepeatsBoundedWaitSlicesUntilOwnedChildExit()
+    {
+        using var gate = SyntheticOwnedProcessGate.Create(29);
+        var elapsedSlices = 0;
+        var execution = Task.Run(() => UserShellProcessLauncher.ExecuteShellStart(
+            () => Process.Start(gate.StartInfo),
+            waitForExit: true,
+            waitSliceMilliseconds: 50,
+            onWaitSliceElapsed: () =>
+            {
+                if (Interlocked.Increment(ref elapsedSlices) == 1)
+                    throw new IOException("synthetic diagnostic observer failure");
+            }));
+
+        try
+        {
+            await Task.Delay(150);
+            Assert.True(Volatile.Read(ref elapsedSlices) >= 1);
+            Assert.False(execution.IsCompleted);
+            gate.Release();
+            Assert.Equal(29, await execution.WaitAsync(TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            gate.Release();
+            if (!execution.IsCompleted)
+                await execution.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+    }
 }

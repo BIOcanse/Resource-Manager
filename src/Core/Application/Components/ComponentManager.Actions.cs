@@ -60,9 +60,9 @@ public sealed partial class ComponentManager
         if (statusBeforeInstall.UpdateAvailable && !string.IsNullOrWhiteSpace(versionChoice)
             && versionChoice != DependencyVersionChoices.Verified)
             throw new InvalidOperationException("Component updates require the catalog's verified release.");
-        if (statusBeforeInstall.Installed && statusBeforeInstall.UpdateAvailable && definition.PayloadSource is not null)
+        if (statusBeforeInstall.UpdateAvailable && definition.PayloadSource is not null)
         {
-            // Modules and helpers already have one payload owner; use its pinned replacement path.
+            // Modules, helpers, and interrupted owned replacements use the catalog's pinned payload path.
             var payload = await payloadAcquisition.InstallAsync(definition, cancellationToken);
             if (!payload.Satisfied)
                 return new(id, "runtimeFilesUnavailable",
@@ -83,20 +83,24 @@ public sealed partial class ComponentManager
         }
 
         var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
+        // A completed owned installer may outlive the caller's cancellation request. Once it
+        // reports completion, finish payload publication and status reconciliation before
+        // releasing the component-change reservation.
+        var completionToken = result.State == "installerCompleted" ? CancellationToken.None : cancellationToken;
         if (definition.PayloadSource is { IncludeArchiveContents: false })
         {
-            var payload = await payloadAcquisition.InstallAsync(definition, cancellationToken);
+            var payload = await payloadAcquisition.InstallAsync(definition, completionToken);
             if (!payload.Satisfied)
                 return new(id, "runtimeFilesUnavailable",
                     BackendMessage.Create(BackendMessageDomains.Dependency, BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
-                    Status: await ReadStatusAsync(id, caller?.WindowsSid, cancellationToken, contentChanged: true));
+                    Status: await ReadStatusAsync(id, caller?.WindowsSid, completionToken, contentChanged: true));
         }
         if (id.Equals(BrowserRuntimeCatalogIds.InstallComponentId, StringComparison.OrdinalIgnoreCase)
             && browserRuntimeCatalog is not null)
         {
             try
             {
-                _ = await browserRuntimeCatalog.GetSnapshotAsync(forceRefresh: true, cancellationToken);
+                _ = await browserRuntimeCatalog.GetSnapshotAsync(forceRefresh: true, completionToken);
             }
             catch (Exception exception)
             {
@@ -104,7 +108,7 @@ public sealed partial class ComponentManager
                     "Could not refresh browser runtime inventory after component install {ComponentId}.", id);
             }
         }
-        var status = await ReadStatusAsync(id, caller?.WindowsSid, cancellationToken, contentChanged: true);
+        var status = await ReadStatusAsync(id, caller?.WindowsSid, completionToken, contentChanged: true);
         return new ComponentActionResult(
             id,
             result.State,

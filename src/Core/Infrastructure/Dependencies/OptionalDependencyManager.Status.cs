@@ -13,29 +13,57 @@ public sealed partial class OptionalDependencyManager
         var paths = GetPaths(definition);
         var installerPath = ResolveInstallerPath(definition, paths.InstallerDirectory);
         var installerAvailable = installerPath is not null;
-        var managedInstalled = IsDependencyInstalledAt(definition, paths.InstallDirectory);
-        var externalInstall = managedInstalled
+        var managedRuntimeInstalled = IsDependencyInstalledAt(definition, paths.InstallDirectory);
+        var managedRecordPath = DependencyReleaseRecordStore.InstalledPath(paths.InstallDirectory);
+        var managedRecord = DependencyReleaseRecordStore.Read(
+            managedRecordPath, logger);
+        var ownsInstalledProbe = PayloadSourceOwnsInstalledProbe(definition);
+        var managedReceiptExists = ownsInstalledProbe && DependencyInstallPaths.IsRegularFile(managedRecordPath);
+        var liveDirectoryExists = Directory.Exists(paths.InstallDirectory);
+        IReadOnlyList<string> interruptedBackups = Array.Empty<string>();
+        if (!liveDirectoryExists && definition.PayloadSource is not null)
+        {
+            try
+            {
+                interruptedBackups = DependencyPayloadTransaction.FindInterruptedBackups(paths.InstallDirectory);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(error, "Could not inspect interrupted component payload backups for {ComponentId}.", definition.Id);
+            }
+        }
+        var interruptedReplacement = interruptedBackups.Count > 0;
+        var managedInstalled = managedRuntimeInstalled || managedReceiptExists;
+        // Keep external runtime discovery independent from a module receipt: module payloads
+        // do not include PawnIOLib.dll and cannot claim that the driver/runtime is installed.
+        var externalInstall = managedRuntimeInstalled
             ? null
             : ResolveExternalInstall(definition, installedSoftware, paths.InstallDirectory);
         var installed = managedInstalled || externalInstall is not null;
         var payloadFilesPresent = definition.PayloadSource is not { } payload
             || payload.FileNames.All(name => DependencyInstallPaths.IsRegularFile(Path.Combine(paths.InstallDirectory, name)));
         // An external runtime stays external; missing owned module files may be explicitly installed in our root.
-        var updateAvailable = (managedInstalled || externalInstall is not null && !payloadFilesPresent && definition.PayloadSource is not null)
-            && (definition.ReleaseSource is not null || definition.PayloadSource is not null)
-            && !DependencyReleaseRecordStore.MatchesPin(
-                DependencyReleaseRecordStore.Read(DependencyReleaseRecordStore.InstalledPath(paths.InstallDirectory), logger), definition);
+        var updateAvailable = interruptedReplacement
+            || ((managedInstalled || externalInstall is not null && !payloadFilesPresent && definition.PayloadSource is not null)
+                && (definition.ReleaseSource is not null || definition.PayloadSource is not null)
+                && !DependencyReleaseRecordStore.MatchesPin(managedRecord, definition));
         var effectiveInstallDirectory = externalInstall?.InstallDirectory ?? paths.InstallDirectory;
-        var detectionSource = managedInstalled ? "ManagedDependencies" : externalInstall?.Source ?? "None";
+        var detectionSource = interruptedReplacement
+            ? "ManagedDependenciesInterruptedReplacement"
+            : managedInstalled
+                ? "ManagedDependencies"
+                : externalInstall?.Source ?? "None";
         var sourceKind = definition.InstallerSourceKind;
         var canDownload = sourceKind != DependencyInstallerSourceKinds.Manual;
-        var state = installed
-            ? !payloadFilesPresent ? "payload_missing" : updateAvailable ? "update_available" : "installed"
-            : installerAvailable
-                ? "readyToInstall"
-                : canDownload
-                    ? "downloadable"
-                    : "manualDownloadRequired";
+        var state = updateAvailable && !installed
+            ? "update_available"
+            : installed
+                ? !payloadFilesPresent ? "payload_missing" : updateAvailable ? "update_available" : "installed"
+                : installerAvailable
+                    ? "readyToInstall"
+                    : canDownload
+                        ? "downloadable"
+                        : "manualDownloadRequired";
         var messageCode = updateAvailable ? BackendMessageCodes.Dependency.UpdateAvailable : state switch
         {
             "payload_missing" => BackendMessageCodes.Dependency.PayloadMissing,
@@ -73,4 +101,10 @@ public sealed partial class OptionalDependencyManager
             payloadFilesPresent,
             updateAvailable);
     }
+
+    private static bool PayloadSourceOwnsInstalledProbe(OptionalDependencyDefinition definition)
+        => definition.PayloadSource is { } payload
+            && definition.InstalledProbeRelativePaths.Count > 0
+            && definition.InstalledProbeRelativePaths.All(probe => payload.FileNames.Any(name =>
+                string.Equals(name, probe, StringComparison.OrdinalIgnoreCase)));
 }

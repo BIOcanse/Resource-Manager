@@ -174,7 +174,13 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         CancellationToken ownerStopping)
     {
         var now = NativeOperationCoordinatorWorkspace.MonotonicMilliseconds();
-        if (IsActionExpired(now, ticket.Action.DeadlineMonotonicMilliseconds))
+        var retainOwnedCompletion =
+            (NativeOperationActionKind)ticket.Action.Kind
+                == NativeOperationActionKind.Cancel
+            && (ticket.Action.Flags
+                & (ulong)NativeOperationActionFlags.RetainOwnedCompletion) != 0;
+        if (!retainOwnedCompletion
+            && IsActionExpired(now, ticket.Action.DeadlineMonotonicMilliseconds))
         {
             await SettleExpiredTicketAsync(ticket, ownerStopping)
                 .ConfigureAwait(false);
@@ -218,16 +224,25 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         HostManagerOperationEffectCompletion completion;
         try
         {
-            completion = await effectRouter.Require(ticket.Kind)
-                .ExecuteStartAsync(ticket, this, control.Token)
+            try
+            {
+                completion = await effectRouter.Require(ticket.Kind)
+                    .ExecuteStartAsync(ticket, this, control.Token)
+                    .ConfigureAwait(false);
+                completion = NormalizeStartedCompletion(completion);
+            }
+            catch (Exception error)
+            {
+                completion = new(
+                    HostManagerOperationEffectOutcome.Uncertain,
+                    HostManagerOperationFeedback.Failure(error));
+            }
+
+            // A cancel action waits for this attempt. Publish the actual effect
+            // result before acknowledging that wait, so cancellation cannot win
+            // the completion race after an owned child has already exited.
+            await SettleCompletionAsync(ticket, completion, ownerStopping)
                 .ConfigureAwait(false);
-            completion = NormalizeStartedCompletion(completion);
-        }
-        catch (Exception error)
-        {
-            completion = new(
-                HostManagerOperationEffectOutcome.Uncertain,
-                HostManagerOperationFeedback.Failure(error));
         }
         finally
         {
@@ -235,8 +250,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ticket.Action.OperationId,
                 ticket.Action.AttemptToken);
         }
-        await SettleCompletionAsync(ticket, completion, ownerStopping)
-            .ConfigureAwait(false);
     }
 
     internal static HostManagerOperationEffectCompletion

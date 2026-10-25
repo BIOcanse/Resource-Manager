@@ -43,13 +43,13 @@ public sealed partial class ComponentManager : IComponentManager
         string? windowsSid,
         CancellationToken cancellationToken)
     {
-        var observedRevision = inventoryRevisionOwner?.Current.ComponentRevision;
+        var observedComponent = inventoryRevisionOwner?.CaptureComponentObservationToken();
         var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
         var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
         var statuses = ComponentCatalog.Definitions
             .Select(definition => BuildStatus(definition, dependencyStatuses, snapshot))
             .ToArray();
-        inventoryRevisionOwner?.ObserveComponents(windowsSid, statuses, observedRevision);
+        inventoryRevisionOwner?.ObserveComponents(windowsSid, statuses, observedComponent);
         return statuses;
     }
 
@@ -74,7 +74,7 @@ public sealed partial class ComponentManager : IComponentManager
             return null;
         }
 
-        var observedRevision = inventoryRevisionOwner?.Current.ComponentRevision;
+        var observedComponent = inventoryRevisionOwner?.CaptureComponentObservationToken();
         ComponentStatus status;
         try
         {
@@ -92,7 +92,7 @@ public sealed partial class ComponentManager : IComponentManager
         if (contentChanged)
             inventoryRevisionOwner?.ObserveComponentContentChanged(windowsSid, status);
         else
-            inventoryRevisionOwner?.ObserveComponent(windowsSid, status, observedRevision);
+            inventoryRevisionOwner?.ObserveComponent(windowsSid, status, observedComponent);
         return status;
     }
 }

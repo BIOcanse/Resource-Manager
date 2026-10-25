@@ -78,9 +78,13 @@ public sealed class NativeOperationCoordinatorAbiTests
             (uint)NativeOperationActionFeedbackOutcome.RecoveredUncertain);
         Assert.Equal(5U, (uint)NativeOperationCompletionOutcome.StateUncertain);
         Assert.Equal(7UL, (ulong)NativeOperationSubmitValidity.Known);
-        Assert.Equal(0x1FFUL, (ulong)NativeOperationFlags.Known);
+        Assert.Equal(1UL, (ulong)NativeOperationSubmitFlags.RetainOwnedCompletion);
+        Assert.Equal(1UL, (ulong)NativeOperationSubmitFlags.Known);
+        Assert.Equal(0x3FFUL, (ulong)NativeOperationFlags.Known);
+        Assert.Equal(1UL << 9, (ulong)NativeOperationFlags.RetainOwnedCompletion);
         Assert.Equal(7U, (uint)NativeOperationSubmitOutputFlags.Known);
-        Assert.Equal(7UL, (ulong)NativeOperationActionFlags.Known);
+        Assert.Equal(15UL, (ulong)NativeOperationActionFlags.Known);
+        Assert.Equal(1UL << 3, (ulong)NativeOperationActionFlags.RetainOwnedCompletion);
         Assert.Equal(3UL, (ulong)NativeOperationResultValidity.Known);
         Assert.Equal(0x7FUL, (ulong)NativeOperationProgressValidity.Known);
         Assert.Equal(1UL, (ulong)NativeOperationSnapshotFlags.Known);

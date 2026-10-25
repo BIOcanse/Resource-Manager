@@ -15,6 +15,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
     private readonly Dictionary<string, Dictionary<string, string>> componentFingerprintsByScope = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> completeComponentScopes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, object> activeComponentChanges = new(StringComparer.OrdinalIgnoreCase);
+    private object componentObservationFence = new();
     private string? browserRuntimeFingerprint;
     private ulong softwareRevision;
     private ulong componentRevision;
@@ -28,6 +29,14 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
             {
                 return CurrentLocked();
             }
+        }
+    }
+
+    public ManagementInventoryComponentObservationToken CaptureComponentObservationToken()
+    {
+        lock (gate)
+        {
+            return new ManagementInventoryComponentObservationToken(componentRevision, componentObservationFence);
         }
     }
 
@@ -148,6 +157,8 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
             {
                 throw new InvalidOperationException($"A component change is already active for '{componentId}'.");
             }
+
+            componentObservationFence = token;
         }
 
         return new ComponentChangeLease(this, componentId, token);
@@ -156,7 +167,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
     public void ObserveComponents(
         string? windowsSid,
         IReadOnlyList<ComponentStatus> components,
-        string? observedComponentRevision = null)
+        ManagementInventoryComponentObservationToken? observedComponent = null)
     {
         ArgumentNullException.ThrowIfNull(components);
         var scope = NormalizeScope(windowsSid);
@@ -167,7 +178,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         var publish = false;
         lock (gate)
         {
-            if (!IsCurrentComponentObservationLocked(observedComponentRevision))
+            if (!IsCurrentComponentObservationLocked(observedComponent))
             {
                 return;
             }
@@ -212,7 +223,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
     public void ObserveComponent(
         string? windowsSid,
         ComponentStatus component,
-        string? observedComponentRevision = null)
+        ManagementInventoryComponentObservationToken? observedComponent = null)
     {
         ArgumentNullException.ThrowIfNull(component);
         var scope = NormalizeScope(windowsSid);
@@ -221,7 +232,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         var publish = false;
         lock (gate)
         {
-            if (!IsCurrentComponentObservationLocked(observedComponentRevision)
+            if (!IsCurrentComponentObservationLocked(observedComponent)
                 || activeComponentChanges.ContainsKey(id))
             {
                 return;
@@ -250,11 +261,10 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
         }
     }
 
-    private bool IsCurrentComponentObservationLocked(string? observedComponentRevision)
-        => observedComponentRevision is null
-            || string.Equals(observedComponentRevision,
-                componentRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                StringComparison.Ordinal);
+    private bool IsCurrentComponentObservationLocked(ManagementInventoryComponentObservationToken? observedComponent)
+        => observedComponent is null
+            || observedComponent.ComponentRevision == componentRevision
+                && ReferenceEquals(observedComponent.ChangeFence, componentObservationFence);
 
     private bool PreserveActiveComponentFingerprintsLocked(
         Dictionary<string, string> next,
@@ -285,6 +295,7 @@ public sealed partial class ManagementInventoryRevisionOwner : IManagementInvent
                 && ReferenceEquals(activeToken, token))
             {
                 activeComponentChanges.Remove(componentId);
+                componentObservationFence = new object();
             }
         }
     }

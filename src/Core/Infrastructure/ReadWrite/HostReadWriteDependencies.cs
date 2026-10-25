@@ -97,6 +97,15 @@ internal static class HostReadWriteDependencies
 
         if (Path.GetExtension(packagePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
         {
+            var installed = DependencyReleaseRecordStore.Read(DependencyReleaseRecordStore.InstalledPath(installDirectory));
+            // This low-level selected-source API has no Update confirmation or terms acknowledgement.
+            // It may only repair missing files using the exact archive of a recorded current pin.
+            if (!DependencyReleaseRecordStore.MatchesPin(installed, definition))
+                return new(package.DependencyId, "unsupported", "dependency-update-confirmation-required");
+            var actualSha256 = Convert.ToHexString(SHA256.HashData(asset));
+            asset.Position = 0;
+            if (!string.Equals(installed!.AssetSha256, actualSha256, StringComparison.OrdinalIgnoreCase))
+                return new(package.DependencyId, "unsupported", "dependency-update-confirmation-required");
             using var archive = new ZipArchive(asset, ZipArchiveMode.Read, leaveOpen: true);
             return await InstallSelectedZipAsync(package, componentId, definition, installDirectory,
                 archive, hardwareBridge, inventoryRevisionOwner, cancellationToken).ConfigureAwait(false);
@@ -119,18 +128,21 @@ internal static class HostReadWriteDependencies
         IManagementInventoryRevisionOwner inventoryRevisionOwner,
         CancellationToken cancellationToken)
     {
+        var declared = definition.PayloadSource?.FileNames ?? definition.InstalledProbeRelativePaths;
+        var missing = declared.Where(name => !DependencyInstallPaths.IsRegularFile(DependencyInstallPaths.InRoot(installDirectory, name))).ToArray();
+        if (missing.Length == 0) return new(package.DependencyId, "alreadyInstalled", null);
         using var change = inventoryRevisionOwner.BeginComponentChange(componentId);
-        using var transaction = new DependencyPayloadTransaction(installDirectory, replaceRelease: true);
-        var payload = definition.PayloadSource;
+        using var transaction = new DependencyPayloadTransaction(installDirectory, replaceRelease: false);
         transaction.Prepare(
             archive,
-            payload?.FileNames ?? definition.InstalledProbeRelativePaths,
-            [],
-            payload?.IncludeArchiveContents == true,
+            declared,
+            missing,
+            false,
             null,
             cancellationToken);
 
         await using var helperSession = componentId.Equals("hardware-bridge", StringComparison.OrdinalIgnoreCase)
+            && missing.Any(name => name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             ? await hardwareBridge.SuspendForInstallationAsync(cancellationToken).ConfigureAwait(false)
             : null;
         transaction.Publish(cancellationToken);

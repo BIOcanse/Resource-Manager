@@ -8,7 +8,13 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
     [Fact]
     public async Task DuplicatedProcessHandleReturnsExitCodeAfterOriginalHandleIsDisposed()
     {
-        using var process = StartCommand("/d /c exit 37");
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            Arguments = "/d /c exit 37",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        }) ?? throw new InvalidOperationException("The synthetic child process did not start.");
         var waitHandle = WindowsInteractiveUserSessionBroker.DuplicateProcessHandleForWaiting(
             process.SafeHandle.DangerousGetHandle());
         process.Dispose();
@@ -16,67 +22,89 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
         Assert.Equal(37, await WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
             waitHandle,
             CancellationToken.None,
-            timeoutMilliseconds: 10_000));
+            waitSliceMilliseconds: 10_000));
     }
 
     [Fact]
-    public async Task CancellationClosesWaitHandleWithoutTerminatingLaunchedProcess()
+    public async Task CancellationRetainsWaitHandleAndOwnershipUntilActualChildExit()
     {
-        using var process = StartCommand("/d /c timeout /t 2 /nobreak >nul");
+        using var gate = SyntheticOwnedProcessGate.Create(37);
+        using var process = Process.Start(gate.StartInfo)
+            ?? throw new InvalidOperationException("The synthetic child process did not start.");
         var waitHandle = WindowsInteractiveUserSessionBroker.DuplicateProcessHandleForWaiting(
             process.SafeHandle.DangerousGetHandle());
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cancellation = new CancellationTokenSource();
+        var cancellationObserved = 0;
+        var wait = WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
+            waitHandle,
+            cancellation.Token,
+            waitSliceMilliseconds: 50,
+            onCancellationObserved: () =>
+            {
+                Interlocked.Increment(ref cancellationObserved);
+                throw new IOException("synthetic diagnostic observer failure");
+            });
 
         try
         {
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-                WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
-                    waitHandle,
-                    cancellation.Token));
+            await Task.Delay(100);
+            cancellation.Cancel();
+            await Task.Delay(100);
 
+            Assert.Equal(1, Volatile.Read(ref cancellationObserved));
+            Assert.False(wait.IsCompleted);
             Assert.False(process.HasExited);
+            Assert.False(waitHandle.IsClosed);
+            gate.Release();
+            Assert.Equal(37, await wait.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.True(waitHandle.IsClosed);
         }
         finally
         {
+            gate.Release();
+            if (!wait.IsCompleted)
+                await wait.WaitAsync(TimeSpan.FromSeconds(10));
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
     [Fact]
-    public async Task TimeoutIsReportedAndClosesWaitHandleWithoutTerminatingProcess()
+    public async Task ElapsedWaitSlicesAreObservableAndDoNotReleaseOwnedProcess()
     {
-        using var process = StartCommand("/d /c timeout /t 2 /nobreak >nul");
+        using var gate = SyntheticOwnedProcessGate.Create(23);
+        using var process = Process.Start(gate.StartInfo)
+            ?? throw new InvalidOperationException("The synthetic child process did not start.");
         var waitHandle = WindowsInteractiveUserSessionBroker.DuplicateProcessHandleForWaiting(
             process.SafeHandle.DangerousGetHandle());
+        var elapsedSlices = 0;
+        var wait = WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
+            waitHandle,
+            CancellationToken.None,
+            waitSliceMilliseconds: 50,
+            onWaitSliceElapsed: () =>
+            {
+                if (Interlocked.Increment(ref elapsedSlices) == 1)
+                    throw new IOException("synthetic diagnostic observer failure");
+            });
 
         try
         {
-            await Assert.ThrowsAsync<TimeoutException>(() =>
-                WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
-                    waitHandle,
-                    CancellationToken.None,
-                    timeoutMilliseconds: 50));
-
+            await Task.Delay(150);
+            Assert.True(Volatile.Read(ref elapsedSlices) >= 1);
+            Assert.False(wait.IsCompleted);
             Assert.False(process.HasExited);
+            Assert.False(waitHandle.IsClosed);
+            gate.Release();
+            Assert.Equal(23, await wait.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.True(waitHandle.IsClosed);
         }
         finally
         {
+            gate.Release();
+            if (!wait.IsCompleted)
+                await wait.WaitAsync(TimeSpan.FromSeconds(10));
             await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         }
     }
 
-    private static Process StartCommand(string arguments)
-    {
-        var processPath = Environment.GetEnvironmentVariable("ComSpec");
-        if (string.IsNullOrWhiteSpace(processPath))
-            processPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
-
-        return Process.Start(new ProcessStartInfo
-        {
-            FileName = processPath,
-            Arguments = arguments,
-            CreateNoWindow = true,
-            UseShellExecute = false
-        }) ?? throw new InvalidOperationException("Test command did not start.");
-    }
 }

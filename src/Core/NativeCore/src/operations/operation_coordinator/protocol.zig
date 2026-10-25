@@ -75,6 +75,11 @@ pub const SubmitValid = struct {
     pub const known: u64 = domain | subject | request;
 };
 
+pub const SubmitFlags = struct {
+    pub const retain_owned_completion: u64 = 1 << 0;
+    pub const known: u64 = retain_owned_completion;
+};
+
 pub const OperationFlags = struct {
     pub const domain_valid: u64 = 1 << 0;
     pub const subject_valid: u64 = 1 << 1;
@@ -85,9 +90,10 @@ pub const OperationFlags = struct {
     pub const cancel_requested: u64 = 1 << 6;
     pub const terminal: u64 = 1 << 7;
     pub const imported_recovery: u64 = 1 << 8;
+    pub const retain_owned_completion: u64 = 1 << 9;
     pub const known: u64 = domain_valid | subject_valid | request_valid |
         result_valid | error_valid | progress_valid | cancel_requested |
-        terminal | imported_recovery;
+        terminal | imported_recovery | retain_owned_completion;
 };
 
 pub const SubmitOutputFlags = struct {
@@ -101,7 +107,9 @@ pub const ActionFlags = struct {
     pub const cancel_requested: u64 = 1 << 0;
     pub const execution_timeout: u64 = 1 << 1;
     pub const imported_recovery: u64 = 1 << 2;
-    pub const known: u64 = cancel_requested | execution_timeout | imported_recovery;
+    pub const retain_owned_completion: u64 = 1 << 3;
+    pub const known: u64 = cancel_requested | execution_timeout |
+        imported_recovery | retain_owned_completion;
 };
 
 pub const FeedbackValid = struct {
@@ -507,7 +515,7 @@ pub fn validSubmit(input: *const SubmitInput, config: *const Config) bool {
         input.observed_monotonic_milliseconds >=
             input.created_monotonic_milliseconds and
         (input.valid_mask & ~SubmitValid.known) == 0 and
-        input.flags == 0 and allZero(&input.reserved) and
+        (input.flags & ~SubmitFlags.known) == 0 and allZero(&input.reserved) and
         handleMatchesValidity(input.domain_id, input.valid_mask, SubmitValid.domain) and
         handleMatchesValidity(input.subject_handle, input.valid_mask, SubmitValid.subject) and
         handleMatchesValidity(input.request_handle, input.valid_mask, SubmitValid.request);

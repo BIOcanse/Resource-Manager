@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.ServiceHosting;
@@ -14,7 +15,16 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
     private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint MaximumAllowed = 0x02000000;
     private const int WtsActive = 0;
-    private const int UserShellWaitTimeoutMilliseconds = 30 * 60 * 1000;
+    private const int UserShellWaitSliceMilliseconds = 30 * 60 * 1000;
+    private readonly ILogger<WindowsInteractiveUserSessionBroker>? logger;
+
+    public WindowsInteractiveUserSessionBroker()
+    {
+    }
+
+    public WindowsInteractiveUserSessionBroker(
+        ILogger<WindowsInteractiveUserSessionBroker> logger)
+        => this.logger = logger;
 
     public string? GetUserSid(uint sessionId)
     {
@@ -131,7 +141,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         SafeWaitHandle? processWaitHandle = null;
         try
         {
-            _ = LaunchInSession(
+            var processId = LaunchInSession(
                 sessionId,
                 executablePath,
                 arguments,
@@ -142,7 +152,19 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
             var launchedProcessWaitHandle = processWaitHandle
                 ?? throw new InvalidOperationException("The interactive user process did not provide a wait handle.");
             processWaitHandle = null;
-            return await WaitForProcessExitAsync(launchedProcessWaitHandle, cancellationToken).ConfigureAwait(false);
+            return await WaitForProcessExitAsync(
+                    launchedProcessWaitHandle,
+                    cancellationToken,
+                    UserShellWaitSliceMilliseconds,
+                    () => logger?.LogInformation(
+                        "Cancellation was requested while waiting for owned user process {ProcessId} in session {SessionId}; continuing to observe its exit.",
+                        processId,
+                        sessionId),
+                    () => logger?.LogWarning(
+                        "Owned user process {ProcessId} in session {SessionId} is still running after a bounded wait slice; retaining operation ownership.",
+                        processId,
+                        sessionId))
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -316,29 +338,57 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
     internal static Task<int> WaitForProcessExitAsync(
         SafeWaitHandle processWaitHandle,
         CancellationToken cancellationToken,
-        int timeoutMilliseconds = UserShellWaitTimeoutMilliseconds)
+        int waitSliceMilliseconds = UserShellWaitSliceMilliseconds,
+        Action? onCancellationObserved = null,
+        Action? onWaitSliceElapsed = null)
     {
         ArgumentNullException.ThrowIfNull(processWaitHandle);
-        if (timeoutMilliseconds < 0) throw new ArgumentOutOfRangeException(nameof(timeoutMilliseconds));
+        if (waitSliceMilliseconds <= 0) throw new ArgumentOutOfRangeException(nameof(waitSliceMilliseconds));
 
         return Task.Run(() =>
         {
             using var processWait = new EventWaitHandle(false, EventResetMode.ManualReset);
             processWait.SafeWaitHandle = processWaitHandle;
-
-            var waitResult = WaitHandle.WaitAny(
-                [processWait, cancellationToken.WaitHandle],
-                timeoutMilliseconds);
-            if (waitResult == WaitHandle.WaitTimeout)
-                throw new TimeoutException("Timed out waiting for the interactive user process to exit.");
-            if (waitResult == 1)
-                throw new OperationCanceledException(cancellationToken);
-            if (waitResult != 0)
-                throw new InvalidOperationException($"Waiting for the interactive user process returned unexpected result {waitResult}.");
-            if (!GetExitCodeProcess(processWait.SafeWaitHandle, out var exitCode))
-                throw CreateWin32Exception("GetExitCodeProcess");
-            return unchecked((int)exitCode);
+            WaitHandle[] waitHandles = cancellationToken.CanBeCanceled
+                ? [processWait, cancellationToken.WaitHandle]
+                : [processWait];
+            while (true)
+            {
+                var waitResult = WaitHandle.WaitAny(waitHandles, waitSliceMilliseconds);
+                if (waitResult == WaitHandle.WaitTimeout)
+                {
+                    NotifyWaitObserver(onWaitSliceElapsed);
+                    continue;
+                }
+                if (waitResult == 1)
+                {
+                    NotifyWaitObserver(onCancellationObserved);
+                    waitHandles = [processWait];
+                    continue;
+                }
+                if (waitResult != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Waiting for the interactive user process returned unexpected result {waitResult}.");
+                }
+                if (!GetExitCodeProcess(processWait.SafeWaitHandle, out var exitCode))
+                    throw CreateWin32Exception("GetExitCodeProcess");
+                return unchecked((int)exitCode);
+            }
         }, CancellationToken.None);
+    }
+
+    private static void NotifyWaitObserver(Action? observer)
+    {
+        if (observer is null) return;
+        try
+        {
+            observer();
+        }
+        catch (Exception error)
+        {
+            Trace.WriteLine($"Owned-process wait observer failed; retaining the wait until process exit. {error}");
+        }
     }
 
     private static string NormalizeExecutablePath(string path)

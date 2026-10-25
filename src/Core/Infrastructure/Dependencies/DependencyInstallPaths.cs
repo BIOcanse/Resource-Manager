@@ -33,7 +33,9 @@ internal static class DependencyInstallPaths
                 using var handle = File.OpenHandle(cursor, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 if (!GetFileInformationByHandle(handle, out var information))
                     throw new IOException($"Cannot validate the component file identity: {cursor}", new Win32Exception(Marshal.GetLastWin32Error()));
-                if (information.NumberOfLinks != 1)
+                // A committed replacement may unlink this already-open version (zero links).
+                // It remains an ordinary readable file; only multiple names are hard links.
+                if (information.NumberOfLinks > 1)
                     throw new IOException($"Component installation rejects a hard-linked file: {cursor}");
             }
             cursor = Path.GetDirectoryName(cursor);

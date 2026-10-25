@@ -94,7 +94,7 @@ internal sealed class DependencyPayloadTransaction : IDisposable
                     continue;
                 }
                 var name = DependencyInstallPaths.Relative(Path.GetRelativePath(live, path));
-                if (name == DependencyReleaseRecordStore.FileName || replaced.Contains(name)) continue;
+                if (name.Equals(DependencyReleaseRecordStore.FileName, StringComparison.OrdinalIgnoreCase) || replaced.Contains(name)) continue;
                 var destination = DependencyInstallPaths.InRoot(stage, name);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 using var source = File.OpenRead(path);
@@ -110,6 +110,28 @@ internal sealed class DependencyPayloadTransaction : IDisposable
         => openStagedFile is null ? new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None)
             : openStagedFile(path);
 
+    // Only this owner's exact backup naming convention is evidence of an interrupted replacement.
+    internal static IReadOnlyList<string> FindInterruptedBackups(string livePath)
+    {
+        var liveRoot = Path.GetFullPath(livePath);
+        var parent = Path.GetDirectoryName(liveRoot)!;
+        DependencyInstallPaths.RejectLinks(parent);
+        if (!Directory.Exists(parent)) return [];
+        var prefix = Path.GetFileName(liveRoot) + ".previous-";
+        var backups = new List<string>();
+        var count = 0;
+        foreach (var path in Directory.EnumerateFileSystemEntries(parent))
+        {
+            if (++count > DependencyInstallPaths.MaximumEntries) throw new IOException("Component backup discovery exceeded its entry bound.");
+            var name = Path.GetFileName(path);
+            if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || !Guid.TryParseExact(name[prefix.Length..], "N", out _)) continue;
+            DependencyInstallPaths.RejectLinks(path);
+            if (Directory.Exists(path)) backups.Add(path);
+        }
+        return backups;
+    }
+
     internal void Publish(CancellationToken token)
     {
         if (!prepared) throw new InvalidOperationException("Component payload was not prepared.");
@@ -117,6 +139,7 @@ internal sealed class DependencyPayloadTransaction : IDisposable
         DependencyInstallPaths.RejectLinks(live);
         DependencyInstallPaths.RejectLinks(stage);
         if (!replaceRelease) { PublishMissingFiles(); return; }
+        var interruptedBackups = FindInterruptedBackups(live);
         var backup = live + ".previous-" + Guid.NewGuid().ToString("N");
         DependencyInstallPaths.RejectLinks(backup);
         var hadLive = Directory.Exists(live);
@@ -141,6 +164,13 @@ internal sealed class DependencyPayloadTransaction : IDisposable
             try { DependencyInstallPaths.DeleteOwnedTree(backup); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             { logger?.LogWarning(error, "Component replacement succeeded; old payload backup remains at {BackupPath}", backup); }
+        }
+        // Explicit successful replacement is the recovery action; discovery never restores a backup.
+        foreach (var interrupted in interruptedBackups)
+        {
+            try { DependencyInstallPaths.DeleteOwnedTree(interrupted); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            { logger?.LogWarning(error, "Component replacement succeeded; interrupted backup remains at {BackupPath}", interrupted); }
         }
     }
 

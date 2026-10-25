@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -24,7 +25,7 @@ internal static class DependencyReleaseRecordStore
         try
         {
             DependencyInstallPaths.RejectLinks(path);
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(path);
             var record = JsonSerializer.Deserialize(stream, DependencyReleaseJsonContext.Default.DependencyReleaseRecord);
             if (record is null || string.IsNullOrWhiteSpace(record.Tag) || string.IsNullOrWhiteSpace(record.AssetName)
                 || record.AssetSha256 is not { Length: 64 } || !record.AssetSha256.All(char.IsAsciiHexDigit))
@@ -60,7 +61,7 @@ internal static class DependencyReleaseRecordStore
                 JsonSerializer.Serialize(stream, record, DependencyReleaseJsonContext.Default.DependencyReleaseRecord);
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(temporary, path, overwrite: true);
+            WindowsNativeAtomicFileCommitter.CommitReplace(temporary, path);
         }
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -68,7 +69,7 @@ internal static class DependencyReleaseRecordStore
     internal static string Hash(string path)
     {
         DependencyInstallPaths.RejectLinks(path);
-        using var stream = File.OpenRead(path);
+        using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(path);
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 }

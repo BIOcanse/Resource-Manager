@@ -13,6 +13,15 @@ public sealed partial class OptionalDependencyUserSessionTests
     [InlineData(0)]
     [InlineData(7)]
     public async Task ManagedDriverRecordRequiresVerifiedInstallerExitAndInstalledProbe(int exitCode)
+        => await VerifyManagedDriverRecordAsync(exitCode, cancelWhileWaiting: false);
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    public async Task CanceledManagedDriverWaitUsesActualInstallerExitForRecord(int exitCode)
+        => await VerifyManagedDriverRecordAsync(exitCode, cancelWhileWaiting: true);
+
+    private async Task VerifyManagedDriverRecordAsync(int exitCode, bool cancelWhileWaiting)
     {
         const string id = "hardware-sensors-pawnio-provider";
         var definition = OptionalDependencyCatalog.Find(id)!;
@@ -29,12 +38,25 @@ public sealed partial class OptionalDependencyUserSessionTests
         using var bridge = new HardwareBridgeClient(environment);
         using var client = new HttpClient();
         var manager = new OptionalDependencyManager(client, environment, new NoTracking(), new EmptyInventory(), new NoSourceResolution(), bridge, broker);
+        using var cancellation = new CancellationTokenSource();
         Assert.True((await manager.GetStatusAsync(id, default))!.UpdateAvailable);
-        var launch = manager.LaunchInstallerAsync(id, true, "verified", default, new SoftwareOperationCaller(UserSid, 7));
+        var launch = manager.LaunchInstallerAsync(
+            id,
+            true,
+            "verified",
+            cancellation.Token,
+            new SoftwareOperationCaller(UserSid, 7));
         await broker.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(Assert.Single(broker.Requests).WaitForExit);
         Assert.False(File.Exists(DependencyReleaseRecordStore.InstalledPath(managed)));
         Assert.False(launch.IsCompleted);
+        if (cancelWhileWaiting)
+        {
+            cancellation.Cancel();
+            await broker.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(launch.IsCompleted);
+            Assert.False(File.Exists(DependencyReleaseRecordStore.InstalledPath(managed)));
+        }
         broker.Completed.TrySetResult(exitCode);
         if (exitCode == 0)
         {
@@ -78,6 +100,7 @@ public sealed partial class OptionalDependencyUserSessionTests
     {
         internal readonly List<UserShellExecuteRequest> Requests = [];
         internal readonly TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource CancellationObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource<int> Completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IReadOnlyList<uint> GetActiveSessionIds() => [7u];
         public string? GetUserSid(uint sessionId) => UserSid;
@@ -91,7 +114,9 @@ public sealed partial class OptionalDependencyUserSessionTests
             Assert.Equal(7u, sessionId);
             Requests.Add(UserShellExecuteRequest.Decode(arguments[(UserShellExecuteRequest.Argument.Length + 1)..]));
             Started.TrySetResult();
-            return await Completed.Task.WaitAsync(token);
+            using var cancellationRegistration = token.Register(
+                () => { CancellationObserved.TrySetResult(); });
+            return await Completed.Task;
         }
     }
 }

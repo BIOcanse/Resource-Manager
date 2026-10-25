@@ -7,6 +7,8 @@ namespace ResourceManager.NativeUi;
 
 internal static class UserShellProcessLauncher
 {
+    private const int ProcessWaitSliceMilliseconds = 30 * 60 * 1000;
+
     internal static int? TryExecute(string[] args)
     {
         if (!args.Contains(UserShellExecuteRequest.Argument, StringComparer.Ordinal)) return null;
@@ -80,17 +82,37 @@ internal static class UserShellProcessLauncher
         return ShellExecuteExW(ref info);
     }
 
-    internal static int ExecuteShellStart(Func<Process?> startProcess, bool waitForExit = false)
+    internal static int ExecuteShellStart(
+        Func<Process?> startProcess,
+        bool waitForExit = false,
+        int waitSliceMilliseconds = ProcessWaitSliceMilliseconds,
+        Action? onWaitSliceElapsed = null)
     {
+        if (waitSliceMilliseconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(waitSliceMilliseconds));
         using var launched = startProcess();
         if (waitForExit)
         {
             if (launched is null) return 2;
-            launched.WaitForExit();
+            while (!launched.WaitForExit(waitSliceMilliseconds))
+                NotifyWaitSliceElapsed(onWaitSliceElapsed);
             return launched.ExitCode;
         }
 
         return 0;
+    }
+
+    private static void NotifyWaitSliceElapsed(Action? observer)
+    {
+        if (observer is null) return;
+        try
+        {
+            observer();
+        }
+        catch (Exception error)
+        {
+            Trace.WriteLine($"User-shell wait observer failed; retaining the wait until child exit. {error}");
+        }
     }
 
     private const uint SeeMaskInvokeIdList = 0x0000000C;

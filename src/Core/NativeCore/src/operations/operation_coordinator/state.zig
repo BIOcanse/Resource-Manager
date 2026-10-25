@@ -252,6 +252,9 @@ pub const Session = struct {
         if ((input.valid_mask & protocol.SubmitValid.request) != 0) {
             flags |= protocol.OperationFlags.request_valid;
         }
+        if ((input.flags & protocol.SubmitFlags.retain_owned_completion) != 0) {
+            flags |= protocol.OperationFlags.retain_owned_completion;
+        }
         const record = &self.bank.records[record_index];
         record.* = .{
             .occupied = true,
@@ -442,12 +445,26 @@ pub const Session = struct {
                     if (record.pending_deadline_monotonic_milliseconds <=
                         input.observed_monotonic_milliseconds)
                     {
-                        self.finishRecord(
-                            record,
-                            .state_uncertain,
-                            input.observed_utc_milliseconds,
-                            input.observed_monotonic_milliseconds,
-                        );
+                        if ((record.flags &
+                            protocol.OperationFlags.retain_owned_completion) != 0)
+                        {
+                            record.pending_deadline_monotonic_milliseconds = addSaturating(
+                                input.observed_monotonic_milliseconds,
+                                record.cancel_grace_milliseconds,
+                            );
+                            updateRecordObserved(
+                                record,
+                                input.observed_utc_milliseconds,
+                                input.observed_monotonic_milliseconds,
+                            );
+                        } else {
+                            self.finishRecord(
+                                record,
+                                .state_uncertain,
+                                input.observed_utc_milliseconds,
+                                input.observed_monotonic_milliseconds,
+                            );
+                        }
                         changed = true;
                     }
                 },
@@ -1078,6 +1095,11 @@ pub const Session = struct {
         };
         var flags = reason_flags;
         if (kind == .recover) flags |= protocol.ActionFlags.imported_recovery;
+        if (kind == .cancel and
+            (record.flags & protocol.OperationFlags.retain_owned_completion) != 0)
+        {
+            flags |= protocol.ActionFlags.retain_owned_completion;
+        }
         const action = protocol.ActionOutput{
             .struct_size = @sizeOf(protocol.ActionOutput),
             .kind = @intFromEnum(kind),
@@ -1482,6 +1504,8 @@ fn sameSubmissionIdentity(record: *const Record, input: *const protocol.SubmitIn
         else
             0);
     return record_valid_mask == input.valid_mask and
+        ((record.flags & protocol.OperationFlags.retain_owned_completion) != 0) ==
+            ((input.flags & protocol.SubmitFlags.retain_owned_completion) != 0) and
         protocol.equalHandle(record.kind_handle, input.kind_handle) and
         protocol.equalHandle(record.domain_id, input.domain_id) and
         protocol.equalHandle(record.subject_handle, input.subject_handle) and

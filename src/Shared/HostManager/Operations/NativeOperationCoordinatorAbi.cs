@@ -75,6 +75,14 @@ internal enum NativeOperationSubmitValidity : ulong
 }
 
 [Flags]
+internal enum NativeOperationSubmitFlags : ulong
+{
+    None = 0,
+    RetainOwnedCompletion = 1UL << 0,
+    Known = RetainOwnedCompletion
+}
+
+[Flags]
 internal enum NativeOperationFlags : ulong
 {
     None = 0,
@@ -87,8 +95,10 @@ internal enum NativeOperationFlags : ulong
     CancelRequested = 1UL << 6,
     Terminal = 1UL << 7,
     ImportedRecovery = 1UL << 8,
+    RetainOwnedCompletion = 1UL << 9,
     Known = DomainValid | SubjectValid | RequestValid | ResultValid | ErrorValid
         | ProgressValid | CancelRequested | Terminal | ImportedRecovery
+        | RetainOwnedCompletion
 }
 
 [Flags]
@@ -108,7 +118,9 @@ internal enum NativeOperationActionFlags : ulong
     CancelRequested = 1UL << 0,
     ExecutionTimeout = 1UL << 1,
     ImportedRecovery = 1UL << 2,
+    RetainOwnedCompletion = 1UL << 3,
     Known = CancelRequested | ExecutionTimeout | ImportedRecovery
+        | RetainOwnedCompletion
 }
 
 [Flags]

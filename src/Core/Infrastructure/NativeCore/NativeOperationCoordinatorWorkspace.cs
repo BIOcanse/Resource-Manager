@@ -95,11 +95,16 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     internal NativeOperationSubmitOutput SubmitLocked(ref NativeOperationSubmitInput input)
     {
         ThrowIfDisposed();
+        if ((input.Flags & ~(ulong)NativeOperationSubmitFlags.Known) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(input),
+                "Native operation submission flags are non-canonical.");
+        }
         input.AbiVersion = NativeOperationCoordinatorAbi.Version;
         input.StructSize = SizeOf<NativeOperationSubmitInput>();
         input.ConfigurationGeneration = ConfigurationGeneration;
         input.SubmitEpoch = Next(ref nextSubmitEpoch, "submit epoch");
-        input.Flags = 0;
         ZeroReserved(ref input);
         RequireOk(session.Submit(in input, out var output), "submit");
         if (output.StructSize != SizeOf<NativeOperationSubmitOutput>()
@@ -436,6 +441,10 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || action.AttemptNumber == 0
             || action.DeadlineMonotonicMilliseconds == 0
             || (action.Flags & ~(ulong)NativeOperationActionFlags.Known) != 0
+            || ((action.Flags
+                    & (ulong)NativeOperationActionFlags.RetainOwnedCompletion) != 0
+                && (NativeOperationActionKind)action.Kind
+                    != NativeOperationActionKind.Cancel)
             || action.ReservedU32 != 0
             || !ReservedZero(in action))
         {

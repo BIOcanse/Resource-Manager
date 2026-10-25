@@ -1115,6 +1115,252 @@ test "retry scheduling and cancellation grace are explicit" {
     try std.testing.expectEqual(ResultCode.stale_frame, session.feedback(&late));
 }
 
+test "owned completion cancellation renews grace and retains its slot until completion" {
+    var config = testConfig();
+    config.maximum_global_running_count = 3;
+    var session = try state.Session.create(&config);
+    defer session.destroy();
+
+    var submit_output = std.mem.zeroes(protocol.SubmitOutput);
+    var owned_submit = submitInput(1, 0, 1, 100, 100);
+    owned_submit.valid_mask = 0;
+    owned_submit.domain_id = zeroHandle();
+    owned_submit.cancel_grace_milliseconds = 5;
+    owned_submit.flags = protocol.SubmitFlags.retain_owned_completion;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session.submit(&owned_submit, &submit_output),
+    );
+
+    var invalid_flags = submitInput(9, 9, 9, 100, 100);
+    invalid_flags.flags = 1 << 1;
+    try std.testing.expectEqual(
+        ResultCode.abi_mismatch,
+        session.submit(&invalid_flags, &submit_output),
+    );
+    var mismatched_duplicate = owned_submit;
+    mismatched_duplicate.submit_epoch = 9;
+    mismatched_duplicate.flags = 0;
+    try std.testing.expectEqual(
+        ResultCode.invalid_argument,
+        session.submit(&mismatched_duplicate, &submit_output),
+    );
+
+    const owned_start_plan = try runPlan(session, 1, 101, 101, 8);
+    var actions = zeroActions();
+    try readCurrentActions(session, &owned_start_plan, &actions);
+    const owned_start_action = actions[0];
+    try std.testing.expectEqual(
+        @intFromEnum(protocol.ActionKind.start),
+        owned_start_action.kind,
+    );
+    const started = feedbackInput(&owned_start_action, 1, .started, 102, 102);
+    try std.testing.expectEqual(ResultCode.ok, session.feedback(&started));
+
+    const unrelated_a = submitInput(2, 2, 2, 103, 103);
+    const unrelated_b = submitInput(3, 3, 3, 103, 103);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session.submit(&unrelated_a, &submit_output),
+    );
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session.submit(&unrelated_b, &submit_output),
+    );
+    const unrelated_plan = try runPlan(session, 2, 104, 104, 8);
+    try std.testing.expectEqual(@as(u32, 2), unrelated_plan.action_count);
+    actions = zeroActions();
+    try readCurrentActions(session, &unrelated_plan, &actions);
+    for (actions[0..2], 0..) |*action, index| {
+        const feedback = feedbackInput(
+            action,
+            @as(u64, @intCast(index)) + 2,
+            .started,
+            105 + @as(i64, @intCast(index)),
+            105 + @as(u64, @intCast(index)),
+        );
+        try std.testing.expectEqual(ResultCode.ok, session.feedback(&feedback));
+    }
+
+    var cancel_output = std.mem.zeroes(protocol.CancelOutput);
+    const cancel = cancelInput(owned_submit.operation_id, 1, 107, 107);
+    try std.testing.expectEqual(ResultCode.ok, session.cancel(&cancel, &cancel_output));
+    const cancel_plan = try runPlan(session, 3, 108, 108, 8);
+    try std.testing.expectEqual(@as(u32, 1), cancel_plan.action_count);
+    actions = zeroActions();
+    try readCurrentActions(session, &cancel_plan, &actions);
+    const cancel_action = actions[0];
+    try std.testing.expectEqual(
+        @intFromEnum(protocol.ActionKind.cancel),
+        cancel_action.kind,
+    );
+    try std.testing.expect(
+        (cancel_action.flags & protocol.ActionFlags.retain_owned_completion) != 0,
+    );
+    const owned_record_index = session.bank.findOperation(owned_submit.operation_id).?;
+    const original_cancel_action_id = session.bank.records[
+        owned_record_index
+    ].pending_action_id;
+    const next_action_id_after_cancel = session.next_action_id;
+
+    var queued_unrelated = submitInput(4, 4, 4, 109, 109);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session.submit(&queued_unrelated, &submit_output),
+    );
+    const before_grace = try runPlan(session, 4, 110, 110, 8);
+    try std.testing.expectEqual(@as(u32, 0), before_grace.action_count);
+
+    const first_renewal = try runPlan(session, 5, 113, 113, 8);
+    try std.testing.expectEqual(@as(u32, 0), first_renewal.action_count);
+    try std.testing.expectEqual(@as(u32, 3), first_renewal.running_operation_count);
+    try std.testing.expectEqual(@as(u64, 118), first_renewal.next_wake_monotonic_milliseconds);
+    try std.testing.expectEqual(
+        original_cancel_action_id,
+        session.bank.records[owned_record_index].pending_action_id,
+    );
+    try std.testing.expectEqual(next_action_id_after_cancel, session.next_action_id);
+
+    const second_renewal = try runPlan(session, 6, 118, 118, 8);
+    try std.testing.expectEqual(@as(u32, 0), second_renewal.action_count);
+    try std.testing.expectEqual(@as(u32, 3), second_renewal.running_operation_count);
+    try std.testing.expectEqual(@as(u32, 0), second_renewal.terminal_operation_count);
+    try std.testing.expectEqual(@as(u64, 123), second_renewal.next_wake_monotonic_milliseconds);
+    try std.testing.expectEqual(
+        original_cancel_action_id,
+        session.bank.records[owned_record_index].pending_action_id,
+    );
+    try std.testing.expectEqual(next_action_id_after_cancel, session.next_action_id);
+
+    var header = std.mem.zeroes(protocol.PersistenceHeader);
+    var records = zeroOperations();
+    var export_input = persistenceInput(1);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session.exportPersistence(&export_input, &header, &records),
+    );
+    try std.testing.expect(
+        (records[0].flags
+            & protocol.OperationFlags.retain_owned_completion) != 0,
+    );
+
+    var restored = try state.Session.create(&config);
+    defer restored.destroy();
+    var import_input = persistenceImportInput(
+        1,
+        119,
+        119,
+        config.clock_instance_id,
+    );
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.importPersistence(
+            &import_input,
+            &header,
+            records[0..@intCast(header.operation_count)],
+        ),
+    );
+    var restored_snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&restored_snapshot));
+    var restored_records = zeroOperations();
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.readOperations(
+            &readInput(restored_snapshot.state_revision, 0),
+            &restored_records,
+        ),
+    );
+    try std.testing.expect(
+        (restored_records[0].flags
+            & protocol.OperationFlags.retain_owned_completion) != 0,
+    );
+
+    const completed = completionInput(
+        &owned_start_action,
+        1,
+        .succeeded,
+        119,
+        119,
+    );
+    try std.testing.expectEqual(ResultCode.ok, session.complete(&completed));
+    const released_slot = try runPlan(session, 7, 120, 120, 8);
+    try std.testing.expectEqual(@as(u32, 1), released_slot.action_count);
+    actions = zeroActions();
+    try readCurrentActions(session, &released_slot, &actions);
+    try std.testing.expectEqual(
+        queued_unrelated.operation_id.high,
+        actions[0].operation_id.high,
+    );
+    try std.testing.expectEqual(
+        queued_unrelated.operation_id.low,
+        actions[0].operation_id.low,
+    );
+}
+
+test "owned completion renews an execution-timeout cancel until actual completion" {
+    var config = testConfig();
+    var session = try state.Session.create(&config);
+    defer session.destroy();
+
+    var submit_output = std.mem.zeroes(protocol.SubmitOutput);
+    var submit = submitInput(1, 0, 1, 100, 100);
+    submit.valid_mask = 0;
+    submit.domain_id = zeroHandle();
+    submit.execution_timeout_milliseconds = 5;
+    submit.cancel_grace_milliseconds = 5;
+    submit.flags = protocol.SubmitFlags.retain_owned_completion;
+    try std.testing.expectEqual(ResultCode.ok, session.submit(&submit, &submit_output));
+
+    const start_plan = try runPlan(session, 1, 101, 101, 8);
+    var actions = zeroActions();
+    try readCurrentActions(session, &start_plan, &actions);
+    const start_action = actions[0];
+    const started = feedbackInput(&start_action, 1, .started, 102, 102);
+    try std.testing.expectEqual(ResultCode.ok, session.feedback(&started));
+
+    const timeout_cancel = try runPlan(session, 2, 107, 107, 8);
+    try std.testing.expectEqual(@as(u32, 1), timeout_cancel.action_count);
+    actions = zeroActions();
+    try readCurrentActions(session, &timeout_cancel, &actions);
+    const cancel_action = actions[0];
+    try std.testing.expectEqual(
+        @intFromEnum(protocol.ActionKind.cancel),
+        cancel_action.kind,
+    );
+    try std.testing.expect(
+        (cancel_action.flags & protocol.ActionFlags.execution_timeout) != 0,
+    );
+    try std.testing.expect(
+        (cancel_action.flags & protocol.ActionFlags.retain_owned_completion) != 0,
+    );
+    const pending_action_id = session.bank.records[0].pending_action_id;
+
+    const first_renewal = try runPlan(session, 3, 112, 112, 8);
+    try std.testing.expectEqual(@as(u32, 0), first_renewal.action_count);
+    try std.testing.expectEqual(@as(u32, 1), first_renewal.running_operation_count);
+    try std.testing.expectEqual(@as(u32, 0), first_renewal.terminal_operation_count);
+    try std.testing.expectEqual(@as(u64, 117), first_renewal.next_wake_monotonic_milliseconds);
+    try std.testing.expectEqual(pending_action_id, session.bank.records[0].pending_action_id);
+
+    const second_renewal = try runPlan(session, 4, 117, 117, 8);
+    try std.testing.expectEqual(@as(u32, 0), second_renewal.action_count);
+    try std.testing.expectEqual(@as(u32, 1), second_renewal.running_operation_count);
+    try std.testing.expectEqual(@as(u32, 0), second_renewal.terminal_operation_count);
+    try std.testing.expectEqual(@as(u64, 122), second_renewal.next_wake_monotonic_milliseconds);
+    try std.testing.expectEqual(pending_action_id, session.bank.records[0].pending_action_id);
+
+    const actual_result = completionInput(
+        &start_action,
+        1,
+        .state_uncertain,
+        118,
+        118,
+    );
+    try std.testing.expectEqual(ResultCode.ok, session.complete(&actual_result));
+    const completed = try runPlan(session, 5, 119, 119, 8);
+    try std.testing.expectEqual(@as(u32, 1), completed.terminal_operation_count);
+}
+
 test "cancel requested during start prevents every later retry" {
     var config = testConfig();
     var session = try state.Session.create(&config);

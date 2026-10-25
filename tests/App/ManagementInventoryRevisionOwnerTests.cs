@@ -138,19 +138,43 @@ public sealed class ManagementInventoryRevisionOwnerTests
         var original = Component(componentId, "ReadyToInstall");
         var changed = Component(componentId, "Installed");
         owner.ObserveComponents(null, [original]);
-        var revisionBeforeRead = owner.Current.ComponentRevision;
+        var observationBeforeChange = owner.CaptureComponentObservationToken();
 
         using (owner.BeginComponentChange(componentId))
         {
             owner.ObserveComponentContentChanged(null, changed);
         }
 
-        owner.ObserveComponent(null, original, revisionBeforeRead);
-        owner.ObserveComponents(null, [original], revisionBeforeRead);
+        owner.ObserveComponent(null, original, observationBeforeChange);
+        owner.ObserveComponents(null, [original], observationBeforeChange);
 
         Assert.Equal("1", owner.Current.ComponentRevision);
-        owner.ObserveComponents(null, [changed], owner.Current.ComponentRevision);
+        owner.ObserveComponents(null, [changed], owner.CaptureComponentObservationToken());
         Assert.Equal("1", owner.Current.ComponentRevision);
+    }
+
+    [Fact]
+    public void DelayedObservationStartedInsideFailedChangeIsDiscardedAfterRollbackAndLeaseDisposal()
+    {
+        const string componentId = "dependency:one";
+        var owner = new ManagementInventoryRevisionOwner();
+        var original = Component(componentId, "Installed");
+        var transientMissing = Component(componentId, ComponentStatusStates.PayloadMissing);
+        owner.ObserveComponents(null, [original]);
+        var initial = owner.Current;
+
+        var failedChange = owner.BeginComponentChange(componentId);
+        // This token is captured while the transaction has live->backup in flight. The GET
+        // reads the temporary absence, then its result is delayed until rollback/disposal.
+        var delayedRead = owner.CaptureComponentObservationToken();
+        // Disposing this uncommitted lease represents a successful rollback.
+        failedChange.Dispose();
+
+        owner.ObserveComponent(null, transientMissing, delayedRead);
+        Assert.Equal(initial, owner.Current);
+
+        owner.ObserveComponent(null, original, owner.CaptureComponentObservationToken());
+        Assert.Equal(initial, owner.Current);
     }
 
     [Fact]

@@ -45,7 +45,7 @@ public sealed partial class OptionalDependencyUserSessionTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(testRoot)) Directory.Delete(testRoot, recursive: true);
+        DependencyInstallPaths.DeleteOwnedTree(testRoot);
     }
 
     private sealed class RecordedBroker : IInteractiveUserSessionBroker
@@ -72,7 +72,10 @@ public sealed partial class OptionalDependencyUserSessionTests : IDisposable
     private sealed class EmptyInventory : IInstalledSoftwareInventory
     {
         public Task<IReadOnlyList<InstalledSoftwareEntry>> GetInstalledSoftwareAsync(CancellationToken token)
-            => Task.FromResult<IReadOnlyList<InstalledSoftwareEntry>>([]);
+        {
+            token.ThrowIfCancellationRequested();
+            return Task.FromResult<IReadOnlyList<InstalledSoftwareEntry>>([]);
+        }
     }
     private sealed class NoTracking : IFileChangeTracker
     {

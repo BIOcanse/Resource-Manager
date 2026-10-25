@@ -97,7 +97,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ObservedUtcMilliseconds = now,
                 ObservedMonotonicMilliseconds = monotonic,
                 ValidMask = (ulong)validity,
-                Flags = 0
+                Flags = command.Kind is HostManagerOperationKinds.ComponentInstall
+                    or HostManagerOperationKinds.DependencyLaunchInstaller
+                    ? (ulong)NativeOperationSubmitFlags.RetainOwnedCompletion
+                    : 0
             };
             var output = workspace.SubmitLocked(ref input);
             var inserted = (output.Flags

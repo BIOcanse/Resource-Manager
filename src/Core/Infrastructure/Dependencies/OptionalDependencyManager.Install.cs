@@ -98,7 +98,12 @@ public sealed partial class OptionalDependencyManager
             cancellationToken);
         if (installed.Status == "installerCompleted")
         {
-            var softwareAfterInstall = await installedSoftwareInventory.GetInstalledSoftwareAsync(caller?.WindowsSid, cancellationToken);
+            // The child process is already owned through its actual exit. Finish
+            // reconciling that outcome even when the operation's cancel flag was
+            // raised while the installer was running.
+            var softwareAfterInstall = await installedSoftwareInventory.GetInstalledSoftwareAsync(
+                caller?.WindowsSid,
+                CancellationToken.None);
             if (!IsDependencyInstalledAt(definition, status.InstallDirectory)
                 && ResolveExternalInstall(definition, softwareAfterInstall, status.InstallDirectory) is null)
                 throw new InvalidOperationException("The installer exited successfully but its installed runtime could not be verified.");

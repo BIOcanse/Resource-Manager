@@ -188,6 +188,8 @@ pub fn assertValues() void {
     assertValue(protocol.SubmitValid.subject, 2, "SubmitValid.subject");
     assertValue(protocol.SubmitValid.request, 4, "SubmitValid.request");
     assertValue(protocol.SubmitValid.known, 7, "SubmitValid.known");
+    assertValue(protocol.SubmitFlags.retain_owned_completion, 1, "SubmitFlags.retain_owned_completion");
+    assertValue(protocol.SubmitFlags.known, 1, "SubmitFlags.known");
     assertValue(protocol.OperationFlags.domain_valid, 1, "OperationFlags.domain_valid");
     assertValue(protocol.OperationFlags.subject_valid, 2, "OperationFlags.subject_valid");
     assertValue(protocol.OperationFlags.request_valid, 4, "OperationFlags.request_valid");
@@ -197,7 +199,8 @@ pub fn assertValues() void {
     assertValue(protocol.OperationFlags.cancel_requested, 64, "OperationFlags.cancel_requested");
     assertValue(protocol.OperationFlags.terminal, 128, "OperationFlags.terminal");
     assertValue(protocol.OperationFlags.imported_recovery, 256, "OperationFlags.imported_recovery");
-    assertValue(protocol.OperationFlags.known, 0x1ff, "OperationFlags.known");
+    assertValue(protocol.OperationFlags.retain_owned_completion, 512, "OperationFlags.retain_owned_completion");
+    assertValue(protocol.OperationFlags.known, 0x3ff, "OperationFlags.known");
     assertValue(protocol.SubmitOutputFlags.inserted, 1, "SubmitOutputFlags.inserted");
     assertValue(protocol.SubmitOutputFlags.active_domain_duplicate, 2, "SubmitOutputFlags.active_domain_duplicate");
     assertValue(protocol.SubmitOutputFlags.operation_id_duplicate, 4, "SubmitOutputFlags.operation_id_duplicate");
@@ -205,7 +208,8 @@ pub fn assertValues() void {
     assertValue(protocol.ActionFlags.cancel_requested, 1, "ActionFlags.cancel_requested");
     assertValue(protocol.ActionFlags.execution_timeout, 2, "ActionFlags.execution_timeout");
     assertValue(protocol.ActionFlags.imported_recovery, 4, "ActionFlags.imported_recovery");
-    assertValue(protocol.ActionFlags.known, 7, "ActionFlags.known");
+    assertValue(protocol.ActionFlags.retain_owned_completion, 8, "ActionFlags.retain_owned_completion");
+    assertValue(protocol.ActionFlags.known, 15, "ActionFlags.known");
     assertValue(protocol.FeedbackValid.result, 1, "FeedbackValid.result");
     assertValue(protocol.FeedbackValid.error_handle, 2, "FeedbackValid.error_handle");
     assertValue(protocol.FeedbackValid.known, 3, "FeedbackValid.known");
@@ -235,7 +239,11 @@ pub fn expectValues() !void {
 
     try std.testing.expectEqual(@as(u64, 0), protocol.ConfigFlags.known);
     try expectU64(&.{ 1, 2, 4, 7 }, &.{ protocol.SubmitValid.domain, protocol.SubmitValid.subject, protocol.SubmitValid.request, protocol.SubmitValid.known });
-    try expectU64(&.{ 1, 2, 4, 8, 16, 32, 64, 128, 256, 0x1ff }, &.{
+    try expectU64(&.{ 1, 1 }, &.{
+        protocol.SubmitFlags.retain_owned_completion,
+        protocol.SubmitFlags.known,
+    });
+    try expectU64(&.{ 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 0x3ff }, &.{
         protocol.OperationFlags.domain_valid,
         protocol.OperationFlags.subject_valid,
         protocol.OperationFlags.request_valid,
@@ -245,6 +253,7 @@ pub fn expectValues() !void {
         protocol.OperationFlags.cancel_requested,
         protocol.OperationFlags.terminal,
         protocol.OperationFlags.imported_recovery,
+        protocol.OperationFlags.retain_owned_completion,
         protocol.OperationFlags.known,
     });
     try expectU32(&.{ 1, 2, 4, 7 }, &.{
@@ -253,7 +262,7 @@ pub fn expectValues() !void {
         protocol.SubmitOutputFlags.operation_id_duplicate,
         protocol.SubmitOutputFlags.known,
     });
-    try expectU64(&.{ 1, 2, 4, 7 }, &.{ protocol.ActionFlags.cancel_requested, protocol.ActionFlags.execution_timeout, protocol.ActionFlags.imported_recovery, protocol.ActionFlags.known });
+    try expectU64(&.{ 1, 2, 4, 8, 15 }, &.{ protocol.ActionFlags.cancel_requested, protocol.ActionFlags.execution_timeout, protocol.ActionFlags.imported_recovery, protocol.ActionFlags.retain_owned_completion, protocol.ActionFlags.known });
     try expectU64(&.{ 1, 2, 3 }, &.{ protocol.FeedbackValid.result, protocol.FeedbackValid.error_handle, protocol.FeedbackValid.known });
     try expectU64(&.{ 1, 2, 3 }, &.{ protocol.CompletionValid.result, protocol.CompletionValid.error_handle, protocol.CompletionValid.known });
     try expectU64(&.{ 1, 2, 4, 8, 16, 32, 64, 0x7f }, &.{

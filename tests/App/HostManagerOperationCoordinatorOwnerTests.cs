@@ -490,6 +490,15 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             => CreateAsync(CreateTemporaryRoot(), CreateSmallPlan(), ownsRoot: true);
 
         internal static Task<Fixture> CreateAsync(
+            IHostManagerOperationEffectExecutor dependencyInstallerExecutor,
+            CompiledHostManagerPlan? plan = null)
+            => CreateAsync(
+                CreateTemporaryRoot(),
+                plan ?? CreateSmallPlan(),
+                ownsRoot: true,
+                dependencyInstallerExecutor: dependencyInstallerExecutor);
+
+        internal static Task<Fixture> CreateAsync(
             string root,
             CompiledHostManagerPlan plan)
             => CreateAsync(root, plan, ownsRoot: false);
@@ -501,7 +510,8 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             bool start = true,
             Func<ulong, IComputeScratch>? createScratch = null,
             Microsoft.Extensions.Logging.ILogger<HostManagerOperationCoordinatorOwner>? operationLogger = null,
-            TimeProvider? operationClock = null)
+            TimeProvider? operationClock = null,
+            IHostManagerOperationEffectExecutor? dependencyInstallerExecutor = null)
         {
             var deployment = new HostManagerDeploymentState();
             var provider = new RuntimePlanProvider(deployment);
@@ -514,13 +524,20 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             });
             var component = new RecordingEffectExecutor(
                 HostManagerOperationKinds.ComponentDownload);
+            var dependencyInstaller = dependencyInstallerExecutor
+                ?? new RecordingEffectExecutor(HostManagerOperationKinds.DependencyLaunchInstaller);
             var executors = HostManagerOperationKinds.All
                 .Select(kind => string.Equals(
                     kind,
                     HostManagerOperationKinds.ComponentDownload,
                     StringComparison.Ordinal)
                     ? component
-                    : new RecordingEffectExecutor(kind))
+                    : string.Equals(
+                        kind,
+                        HostManagerOperationKinds.DependencyLaunchInstaller,
+                        StringComparison.Ordinal)
+                        ? dependencyInstaller
+                        : new RecordingEffectExecutor(kind))
                 .Cast<IHostManagerOperationEffectExecutor>()
                 .ToArray();
             var runtime = new HostManagerOperationCoordinatorRuntime(provider, deployment);
@@ -533,7 +550,14 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             {
                 await owner.StartAsync(CancellationToken.None);
             }
-            return new Fixture(root, plan, owner, provider, deployment, component, ownsRoot);
+            return new Fixture(
+                root,
+                plan,
+                owner,
+                provider,
+                deployment,
+                component,
+                ownsRoot);
         }
 
         internal Task<HostManagerOperationSnapshot> SubmitComponentDownloadAsync()

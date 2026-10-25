@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Management;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Infrastructure.Control.Writers;
@@ -72,6 +73,7 @@ public sealed class HostReadWriteDependencyTests
     {
         using var modules = new ModuleRoot();
         File.Delete(modules.AmdModule);
+        File.WriteAllText(modules.AmdSmnModule, "healthy SMN retained");
         using var client = new HttpClient();
         using var bridge = CreateBridge(modules);
         var providers = new Providers();
@@ -82,8 +84,6 @@ public sealed class HostReadWriteDependencyTests
         var dependencies = HostReadWriteDependencies.Create(client, providers, modules.Root, bridge, revisions,
             installer: installer);
         Assert.Equal("dependency-module-missing", dependencies.Query("amd.smu").Reason);
-        DependencyReleaseRecordStore.Write(modules.AmdReleaseRecord,
-            new("0.2.10", "previous-modules.zip", new string('A', 64)));
         var package = Path.Combine(modules.Root, "selected.zip");
         using (var archive = System.IO.Compression.ZipFile.Open(package, System.IO.Compression.ZipArchiveMode.Create))
         {
@@ -92,13 +92,16 @@ public sealed class HostReadWriteDependencyTests
             using var ignored = new StreamWriter(archive.CreateEntry("extras/ignored.txt").Open());
             ignored.Write("not a declared module");
         }
+        RecordCurrentZip(modules, package);
+        var previousRecord = File.ReadAllBytes(modules.AmdReleaseRecord);
         try
         {
             Assert.Equal("filesExtracted", (await dependencies.InstallAsync(new("amd.smu", package), default)).Status);
             Assert.True(File.Exists(modules.AmdModule));
             Assert.True(File.Exists(modules.AmdSmnModule));
+            Assert.Equal("healthy SMN retained", File.ReadAllText(modules.AmdSmnModule));
             Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(modules.AmdModule)!, "extras", "ignored.txt")));
-            Assert.False(File.Exists(modules.AmdReleaseRecord));
+            Assert.Equal(previousRecord, File.ReadAllBytes(modules.AmdReleaseRecord));
             Assert.Equal(0, launches);
             Assert.Equal("1", revisions.Current.ComponentRevision);
             Assert.Equal(DependencyAvailability.Ready, dependencies.Query("amd.smu").Availability);
@@ -121,9 +124,6 @@ public sealed class HostReadWriteDependencyTests
         var componentDirectory = Path.GetDirectoryName(modules.AmdModule)!;
         var previousModule = "previous module bytes";
         File.WriteAllText(modules.AmdModule, previousModule);
-        DependencyReleaseRecordStore.Write(modules.AmdReleaseRecord,
-            new("0.2.10", "previous-modules.zip", new string('B', 64)));
-        var previousRecord = File.ReadAllBytes(modules.AmdReleaseRecord);
         var package = Path.Combine(modules.Root, archiveShape + ".zip");
         using (var archive = System.IO.Compression.ZipFile.Open(package, System.IO.Compression.ZipArchiveMode.Create))
         {
@@ -140,7 +140,8 @@ public sealed class HostReadWriteDependencyTests
                 smu.Write("one declared file only");
             }
         }
-
+        RecordCurrentZip(modules, package);
+        var previousRecord = File.ReadAllBytes(modules.AmdReleaseRecord);
         try
         {
             await Assert.ThrowsAsync<InvalidDataException>(async () =>
@@ -151,6 +152,46 @@ public sealed class HostReadWriteDependencyTests
             Assert.True(Directory.Exists(componentDirectory));
         }
         finally { File.Delete(package); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SelectedDifferentZipCannotReplaceAnInstalledReleaseWithoutUpdateConsent(bool currentRecord)
+    {
+        using var modules = new ModuleRoot();
+        using var client = new HttpClient();
+        using var bridge = CreateBridge(modules);
+        var revisions = new ManagementInventoryRevisionOwner();
+        var dependencies = HostReadWriteDependencies.Create(client, new Providers(), modules.Root, bridge, revisions);
+        var package = Path.Combine(modules.Root, "selected.zip");
+        using (var archive = System.IO.Compression.ZipFile.Open(package, System.IO.Compression.ZipArchiveMode.Create))
+            foreach (var name in new[] { "RyzenSMU.bin", "AMDFamily17.bin" })
+            { using var writer = new StreamWriter(archive.CreateEntry(name).Open()); writer.Write("different release"); }
+        var source = OptionalDependencyCatalog.Find("amd-smu-pawnio-provider")!.PayloadSource!;
+        DependencyReleaseRecordStore.Write(modules.AmdReleaseRecord,
+            new(currentRecord ? source.VerifiedTag : "older", source.VerifiedAssetName, new string('A', 64)));
+        File.WriteAllText(modules.AmdSmnModule, "healthy old SMN");
+        var oldBytes = File.ReadAllBytes(modules.AmdModule);
+        var oldRecord = File.ReadAllBytes(modules.AmdReleaseRecord);
+        try
+        {
+            var result = await dependencies.InstallAsync(new("amd.smu", package), default);
+            Assert.Equal("unsupported", result.Status);
+            Assert.Equal("dependency-update-confirmation-required", result.Reason);
+            Assert.Equal(oldBytes, File.ReadAllBytes(modules.AmdModule));
+            Assert.Equal("healthy old SMN", File.ReadAllText(modules.AmdSmnModule));
+            Assert.Equal(oldRecord, File.ReadAllBytes(modules.AmdReleaseRecord));
+            Assert.Equal("0", revisions.Current.ComponentRevision);
+        }
+        finally { File.Delete(package); }
+    }
+
+    private static void RecordCurrentZip(ModuleRoot modules, string package)
+    {
+        var source = OptionalDependencyCatalog.Find("amd-smu-pawnio-provider")!.PayloadSource!;
+        DependencyReleaseRecordStore.Write(modules.AmdReleaseRecord,
+            new(source.VerifiedTag, source.VerifiedAssetName, DependencyReleaseRecordStore.Hash(package)));
     }
 
     [Fact]

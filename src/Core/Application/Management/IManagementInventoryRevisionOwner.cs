@@ -4,9 +4,24 @@ using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Management;
 
+public sealed class ManagementInventoryComponentObservationToken
+{
+    internal ManagementInventoryComponentObservationToken(ulong componentRevision, object changeFence)
+    {
+        ComponentRevision = componentRevision;
+        ChangeFence = changeFence;
+    }
+
+    internal ulong ComponentRevision { get; }
+
+    internal object ChangeFence { get; }
+}
+
 public interface IManagementInventoryRevisionOwner
 {
     ManagementInventoryRevisionSnapshot Current { get; }
+
+    ManagementInventoryComponentObservationToken CaptureComponentObservationToken();
 
     void ObserveSoftwareContent(
         string? windowsSid,
@@ -25,12 +40,12 @@ public interface IManagementInventoryRevisionOwner
     void ObserveComponents(
         string? windowsSid,
         IReadOnlyList<ComponentStatus> components,
-        string? observedComponentRevision = null);
+        ManagementInventoryComponentObservationToken? observedComponent = null);
 
     void ObserveComponent(
         string? windowsSid,
         ComponentStatus component,
-        string? observedComponentRevision = null);
+        ManagementInventoryComponentObservationToken? observedComponent = null);
 
     void ObserveBrowserRuntimeSnapshot(BrowserRuntimeSnapshot snapshot);
 
