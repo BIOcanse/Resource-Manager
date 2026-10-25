@@ -54,8 +54,8 @@ internal sealed partial class FrontendPreferencesOwner
         {
             RemoveRetiredCacheFields();
             InitializeImport();
-            InitializeDashboardImport();
             ImportLegacyOverlayChoices();
+            InitializeDashboardImport();
             var file = new FileInfo(cachePath);
             if (!file.Exists)
             {
@@ -258,9 +258,14 @@ internal sealed partial class FrontendPreferencesOwner
         if (File.Exists(cachePath))
         {
             using var input = Configuration.SettingsFileReader.Open(cachePath);
-            var node = JsonNode.Parse(input)!.AsObject();
+            var node = JsonSerializer.Deserialize<JsonObject>(input, Json)
+                ?? throw new InvalidDataException("Frontend preferences cache must be an object.");
+            // Missing fields use the same defaults as Read; malformed committed values
+            // must fail before a migration can replace the cache.
+            var current = node.Deserialize<FrontendPreferences>(Json)!;
+            current.Validate();
             if (node["overlaySelectionVersion"]?.GetValue<int>() == 1) { overlayChoicesInitialized = true; return; }
-            var entries = node["overlays"]!.AsObject();
+            var entries = (node["overlays"] ??= new JsonObject()).AsObject();
             JsonObject? legacy = null;
             foreach (var source in new[] { legacyOverlayPath, legacyOverlayPath is null ? null : legacyOverlayPath + LegacyBackupSuffix })
             {

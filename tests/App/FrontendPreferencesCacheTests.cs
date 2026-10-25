@@ -34,7 +34,7 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
             Appearance = new() { Theme = "dark", ResourceBarFrameRate = 120 },
             Refresh = new() { Monitor = new("custom", "balanced", 3456) },
             Overlays = new Dictionary<string, FrontendOverlayPresentation>
-            { ["game"] = new() { FontSizePx = 22, Metrics = ["custom.metric", "target.cpu"] } }
+            { ["game"] = new() { Enabled = true, Mode = "injected", FontSizePx = 22, Metrics = ["custom.metric", "target.cpu"] } }
         };
         owner.Save(desired);
         var restarted = Owner();
@@ -44,7 +44,76 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(22, restarted.Overlay("GAME").FontSizePx);
         Assert.Equal(new[] { "custom.metric", "target.cpu" }, restarted.Overlay("game").Metrics);
         restarted.Reset();
-        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(Owner().Read()));
+        var expected = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
+            { ["game"] = new() { Enabled = true, Mode = "injected" } } };
+        Assert.Equal(Serialize(expected), Serialize(Owner().Read()));
+    }
+
+    [Fact]
+    public void SparseCacheUsesPointDefaultsAndPreservesTheSelectedLanguage()
+    {
+        File.WriteAllText(Cache, """{"appearance":{"language":"de-DE"}}""");
+        var current = Owner().Read();
+        Assert.Equal("de-DE", current.Appearance.Language);
+        Assert.Equal(FrontendPoints.Theme, current.Appearance.Theme);
+        Assert.Equal(FrontendPoints.Monitor.CustomValue, current.Refresh.Monitor.CustomValue);
+        Assert.Empty(current.Overlays);
+        Assert.Equal(Serialize(current), Serialize(Owner().Read()));
+    }
+
+    [Fact]
+    public void OverlayChoicesImportBeforeDashboardRoundTripAndResetKeepsOnlyTheChoices()
+    {
+        WriteLegacy();
+        var existing = JsonSerializer.SerializeToNode(new FrontendPreferences
+        {
+            Appearance = new() { Language = "de-DE" },
+            Overlays = new Dictionary<string, FrontendOverlayPresentation>
+            { ["game"] = new() { FontSizePx = 22 } }
+        }, FrontendPreferencesOwner.Json)!.AsObject();
+        existing.Remove("overlaySelectionVersion");
+        existing["overlays"]!["game"]!.AsObject().Remove("enabled");
+        existing["overlays"]!["game"]!.AsObject().Remove("mode");
+        File.WriteAllText(Cache, existing.ToJsonString(FrontendPreferencesOwner.Json));
+        var dashboard = Path.Combine(root, "dashboard-settings.json");
+        File.WriteAllText(dashboard, """{"cards":[{"id":"existing-layout","main":"cpu"}]}""");
+        var owner = new FrontendPreferencesOwner(Cache, App, Overlay, dashboard);
+        var current = owner.Read();
+        Assert.Equal("de-DE", current.Appearance.Language);
+        Assert.Equal("existing-layout", current.Dashboard!.Value.GetProperty("cards")[0].GetProperty("id").GetString());
+        Assert.True(current.Overlays["game"].Enabled);
+        Assert.Equal("injected", current.Overlays["game"].Mode);
+        Assert.Equal(22, current.Overlays["game"].FontSizePx);
+        var expected = new FrontendPreferences { Overlays = new Dictionary<string, FrontendOverlayPresentation>
+            { ["game"] = new() { Enabled = true, Mode = "injected" } } };
+        Assert.Equal(Serialize(expected), Serialize(owner.Reset()));
+        Assert.Equal(Serialize(expected), Serialize(new FrontendPreferencesOwner(Cache, App, Overlay, dashboard).Read()));
+    }
+
+    [Fact]
+    public void ExplicitSaveBeforeFirstReadPreventsBothLegacyImports()
+    {
+        WriteLegacy();
+        var dashboard = Path.Combine(root, "dashboard-settings.json");
+        File.WriteAllText(dashboard, """{"cards":[{"id":"old-layout"}]}""");
+        var desired = new FrontendPreferences { Appearance = new() { Language = "ja-JP" } };
+        var owner = new FrontendPreferencesOwner(Cache, App, Overlay, dashboard);
+        owner.Save(desired);
+        Assert.Equal(Serialize(desired), Serialize(owner.Read()));
+        Assert.Equal(Serialize(desired), Serialize(new FrontendPreferencesOwner(Cache, App, Overlay, dashboard).Read()));
+        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(owner.Reset()));
+        Assert.False(File.Exists(Cache));
+        Assert.Equal(Serialize(new FrontendPreferences()), Serialize(new FrontendPreferencesOwner(Cache, App, Overlay, dashboard).Read()));
+        Assert.False(File.Exists(Cache));
+    }
+
+    [Fact]
+    public void ExplicitNullOverlaysAreRejectedWithoutReplacingTheCommittedCache()
+    {
+        const string bytes = """{"appearance":{"language":"de-DE"},"overlays":null}""";
+        File.WriteAllText(Cache, bytes);
+        Assert.Throws<InvalidDataException>(() => Owner().Read());
+        Assert.Equal(bytes, File.ReadAllText(Cache));
     }
 
     [Fact]

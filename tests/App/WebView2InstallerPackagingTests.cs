@@ -21,7 +21,10 @@ public sealed class WebView2InstallerPackagingTests
                 "backend/GpuPlacementShim/ResourceManager.GpuPlacementPreparation.exe",
                 "backend/GpuPlacementShim/ResourceManager.GpuPlacementExternal.exe",
                 "backend/GpuPlacementShim/ResourceManager.GpuRendererExternal.exe",
-                "native/ResourceManager.NativeUi.exe", "launcher/ResourceManager.Launcher.exe" };
+                "native/ResourceManager.NativeUi.exe", "launcher/ResourceManager.Launcher.exe",
+                "session-agent/ResourceManager.SessionAgent.exe",
+                "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.PerformanceOverlay.dll",
+                "src/Core/Native/PerformanceOverlay/bin/win-x64/ResourceManager.VulkanPerformanceOverlayLayer.dll" };
             if (includeInstaller) paths.Add("native/InstallWebView2Runtime.ps1");
             if (includeDevelopmentScript) paths.Add("native/Development.ps1");
             foreach (var relative in paths)
@@ -30,19 +33,35 @@ public sealed class WebView2InstallerPackagingTests
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 await File.WriteAllTextAsync(path, "fixture");
             }
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "src/Core/Native/PerformanceOverlay/ResourceManager.VulkanPerformanceOverlayLayer.json"),
+                "{\"layer\":{\"name\":\"VK_LAYER_RESOURCE_MANAGER_performance_overlay\",\"library_path\":\"ResourceManager.VulkanPerformanceOverlayLayer.dll\"}}");
             var start = new ProcessStartInfo("powershell.exe")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File",
                 Path.Combine(RepositoryRoot(), "scripts", "release", "New-ResourceManagerFinalImage.ps1"),
                 "-BackendDirectory", Path.Combine(root, "backend"), "-NativeUiDirectory", Path.Combine(root, "native"),
-                "-LauncherDirectory", Path.Combine(root, "launcher"), "-OutputDirectory", Path.Combine(root, "image") })
+                "-LauncherDirectory", Path.Combine(root, "launcher"),
+                "-SessionAgentDirectory", Path.Combine(root, "session-agent"), "-FrontendModuleSourceRoot", root,
+                "-OutputDirectory", Path.Combine(root, "image") })
                 start.ArgumentList.Add(argument);
             using var process = Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
             try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30)); }
             catch (TimeoutException) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); throw; }
-            Assert.True(process.ExitCode == expectedExit, $"stdout={await output}; stderr={await error}");
+            var diagnostics = $"stdout={await output}; stderr={await error}";
+            Assert.True(process.ExitCode == expectedExit, diagnostics);
+            if (!includeInstaller)
+            {
+                Assert.Contains("Published input is incomplete", diagnostics);
+                Assert.Contains("InstallWebView2Runtime.ps1", diagnostics);
+            }
+            else if (includeDevelopmentScript)
+            {
+                Assert.Contains("forbidden development artifact", diagnostics);
+                Assert.Contains("ResourceManagerNativeUi/Development.ps1", diagnostics);
+            }
         }
         finally { Directory.Delete(root, recursive: true); }
     }

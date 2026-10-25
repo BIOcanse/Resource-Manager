@@ -171,8 +171,9 @@ public sealed class SubscriptionChannelContractTests
             new FrontendSubscriptionChannelFrame<ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>(
                 "facts", ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot.Empty), options));
         Assert.Equal("facts", facts.RootElement.GetProperty("subscriptionId").GetString());
-        Assert.Equal(1, facts.RootElement.GetProperty("value").GetProperty("version").GetInt32());
+        Assert.Equal(2, facts.RootElement.GetProperty("value").GetProperty("version").GetInt32());
         Assert.Empty(facts.RootElement.GetProperty("value").GetProperty("processes").EnumerateArray());
+        Assert.Empty(facts.RootElement.GetProperty("value").GetProperty("attributions").EnumerateArray());
         using var rejection = JsonDocument.Parse(JsonSerializer.Serialize(
             new FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>(
                 "unknown", new(400, "unsupported-subscription-selector")), options));

@@ -122,8 +122,9 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal("unsupported-subscription-selector", rejection.RootElement.GetProperty("value").GetProperty("error").GetString());
         using var value = JsonDocument.Parse((await reader.ReadLineAsync(deadline.Token))!);
         Assert.Equal("facts", value.RootElement.GetProperty("subscriptionId").GetString());
-        Assert.Equal(1, value.RootElement.GetProperty("value").GetProperty("version").GetInt32());
+        Assert.Equal(2, value.RootElement.GetProperty("value").GetProperty("version").GetInt32());
         Assert.Empty(value.RootElement.GetProperty("value").GetProperty("processes").EnumerateArray());
+        Assert.Empty(value.RootElement.GetProperty("value").GetProperty("attributions").EnumerateArray());
         Assert.Equal(0, fixture.Sampler.Captures);
         await deadline.CancelAsync();
     }
