@@ -28,7 +28,15 @@ export const call = (port: string, ...args: readonly (string | number | boolean)
 export const stopAt = (value: string | number | boolean): Output =>
   ({ tag: "停住点", value: typeof value === "string" ? { value } : { literal: value } });
 
-interface DragOptions { cancel?: readonly Output[]; ignore?: readonly string[] }
+interface DragOptions {
+  cancel?: readonly Output[];
+  ignore?: readonly string[];
+  /**
+   * 按取消处理的输入丢失事件（协议第 4.1 节“拖动的公共行”）。不写就只有指针离开响应区是取消，其余保持、等校正出的左键松开。
+   * 一次提交的拖动（例如拖动排序：校正出的松开可能落在用户没想放的地方）可以写全部输入丢失事件。
+   */
+  cancelOnLoss?: readonly (typeof LOSS_EVENTS)[number][];
+}
 
 /**
  * 按住时（按下、拖动）每个拖动组件都一样的三行：取消、输入丢失、明确忽略。
@@ -36,10 +44,13 @@ interface DragOptions { cancel?: readonly Output[]; ignore?: readonly string[] }
  * 其余输入丢失保持，等校正出的左键松开（用户：「输入丢失不当做取消，输入丢失那就是事件」，由组件的行决定）。
  */
 export function heldRows(from: readonly Mode[], opts: DragOptions = {}): Row[] {
+  const lossCancels = (opts.cancelOnLoss ?? []).filter((e) => e !== "loss.leftzone");
+  const kept = LOSS_EVENTS.filter((e) => e !== "loss.leftzone" && !lossCancels.includes(e));
+  const what = `右键、Esc、指针离开响应区${lossCancels.length ? `、${lossCancels.join("、")}` : ""}`;
   return [
-    { from, on: ["pointer.right↑", "key.Escape↑", "loss.leftzone"], to: "静止", out: [CLAIM, ...(opts.cancel ?? [])],
-      note: opts.cancel?.length ? "取消（右键、Esc、指针离开响应区）：回起点" : "取消（右键、Esc、指针离开响应区），不调用" },
-    { from, on: LOSS_EVENTS.filter((e) => e !== "loss.leftzone"), to: "=", note: "保持，等校正出的左键松开" },
+    { from, on: ["pointer.right↑", "key.Escape↑", "loss.leftzone", ...lossCancels], to: "静止", out: [CLAIM, ...(opts.cancel ?? [])],
+      note: opts.cancel?.length ? `取消（${what}）：回起点` : `取消（${what}），不调用` },
+    ...(kept.length ? [{ from, on: kept, to: "=", note: "保持，等校正出的左键松开" } satisfies Row] : []),
     { from, on: [...OTHER_BUTTONS, "key.Escape↓", "key.Escape⟳", "wheel~", "request.activate", "request.contextmenu", ...(opts.ignore ?? [])],
       to: "=", out: [CLAIM], note: "明确忽略：拖动中不滚页面、不弹菜单、不前进后退" },
   ];

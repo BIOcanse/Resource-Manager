@@ -32,7 +32,7 @@ import { projectResourceTableHeat } from "./resourceTableHeat";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
-import { columnResizeHandleDefinition } from "../../interactions/components/columnResizeHandle.ts";
+import { columnEdgeBound, columnResizeHandleDefinition } from "../../interactions/components/columnResizeHandle.ts";
 import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 
@@ -41,7 +41,7 @@ const overscan = 6;
 const slotReserve = 10;
 const minColumnWidth = 56;
 const maxColumnWidth = 520;
-const columnResizeDefinition = columnResizeHandleDefinition({ min: minColumnWidth, max: maxColumnWidth, keyStep: 12 });
+const columnResizeKeyStep = 12;
 type CssVars = JSX.CSSProperties & Record<string, string>;
 interface RowSearchKeyCacheEntry {
   signature: string;
@@ -388,6 +388,20 @@ function VirtualResourceTable(props: {
       .slice(0, index + 1)
       .reduce((sum, columnWidth) => sum + columnWidth, 0);
   };
+  /**
+   * 右边缘要到 edge 时第 index 列存多宽：右边缘随存的宽度单调不减，取到得了 edge 的最小宽度，限制在最小、最大宽度之间。
+   * 最后一列铺满前右边缘不动，这时一拖过右边缘就取到刚好不再分多余宽度的那个宽度。整数二分，最多十来步。
+   */
+  const columnWidthForEdge = (index: number, edge: number) => {
+    let low = minColumnWidth;
+    let high = maxColumnWidth;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (columnRightEdge(index, middle) >= edge) high = middle;
+      else low = middle + 1;
+    }
+    return low;
+  };
   const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
   const visibleRange = createMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
@@ -623,15 +637,26 @@ function VirtualResourceTable(props: {
             {(columnId, columnIndex) => {
               const column = () => columns().find((candidate) => candidate.id === columnId)!;
               // 列宽把手由交互协议的运行时处理（协议第 4.4 节）：编辑模式才能拖，拖动中连续改宽度，松开、方向键、取消时提交。
-              // 宿主值是这一列存的宽度；把手的屏幕位置按多余宽度分配后的右边缘算。
+              // 宿主值是把手离表头左边缘的位置（存的宽度按多余宽度分配后的右边缘）；宿主把位置换回存的宽度。
               let resizeHandle!: HTMLSpanElement;
               const storedWidth = () => clampColumnWidth(baseColumns()[columnIndex()].width);
-              useInteraction(`列宽把手「${columnId}」`, columnResizeDefinition,
-                () => columnResizeView(resizeHandle, (width) => columnRightEdge(columnIndex(), width), storedWidth), solidHost<number>({
-                value: storedWidth,
+              // 这次拖动前存的宽度：第一次连续调用时记下，取消时回到它，最终调用或取消后清掉。
+              let widthBeforeDrag: number | null = null;
+              useInteraction(`列宽把手「${columnId}」`, columnResizeHandleDefinition, () => columnResizeView(resizeHandle), solidHost<number>({
+                value: () => columnRightEdge(columnIndex(), storedWidth()),
                 enabled: () => props.editMode,
                 call: (port, args) => {
-                  if (port === "resize") props.onColumnWidthChange(columnId, clampColumnWidth(Number(args[0])), args[1] === true);
+                  if (port === "resize") {
+                    const final = args[1] === true;
+                    if (!final && widthBeforeDrag === null) widthBeforeDrag = storedWidth();
+                    props.onColumnWidthChange(columnId, columnWidthForEdge(columnIndex(), Number(args[0])), final);
+                    if (final) widthBeforeDrag = null;
+                  } else if (port === "step") {
+                    props.onColumnWidthChange(columnId, clampColumnWidth(storedWidth() + Number(args[0]) * columnResizeKeyStep), true);
+                  } else if (port === "cancel" && widthBeforeDrag !== null) {
+                    props.onColumnWidthChange(columnId, widthBeforeDrag, true);
+                    widthBeforeDrag = null;
+                  }
                 }
               }));
               return (
@@ -713,6 +738,7 @@ function VirtualResourceTable(props: {
                   aria-label={uiText.resourceTableView.resizeColumn(resourceTableColumnLabel(column().id))}
                   aria-valuemin={minColumnWidth}
                   aria-valuemax={maxColumnWidth}
+                  aria-valuenow={storedWidth()}
                   aria-disabled={props.editMode ? "false" : "true"}
                 />
               </div>
@@ -1172,31 +1198,27 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
 }
 
 /**
- * 列宽把手的呈现层：逻辑中心是把手中线，也就是列的右边缘。
- * 表格把多余宽度按权重分给各列，所以存的宽度变了，这一列和它前面各列分到的都跟着变；
- * rightEdge 按分配算出存的宽度为某值时右边缘离表头左边缘多远，几何取最小、最大宽度时的两点。
- * 列宽由表格按宿主值画，把手自己不另画。
+ * 列宽把手的呈现层：逻辑中心是把手中线，也就是列的右边缘。通道是右边缘离表头左边缘多少屏幕 px，
+ * 几何就是表头左边缘两侧各一个边界远的两点（1 个单位 = 1 px），表头横向滚动时跟着表头走。
+ * 列宽由表格按宿主值画，把手自己不另画；无障碍的当前宽度由表格按存的宽度写在把手上。
  */
-function columnResizeView(handle: HTMLElement, rightEdge: (width: number) => number, storedWidth: () => number): Presentation {
+function columnResizeView(handle: HTMLElement): Presentation {
   return {
     element: handle,
-    bindingLabel: "宽度",
+    bindingLabel: "右边缘位置",
     geometry: () => {
+      const header = handle.closest(".resource-table-header");
       const cell = handle.parentElement;
-      if (!cell) return null;
+      if (!header || !cell) return null;
+      const left = header.getBoundingClientRect().left;
       const rect = cell.getBoundingClientRect();
-      const origin = rect.right - rightEdge(storedWidth());
       const y = (rect.top + rect.bottom) / 2;
-      return { center: "把手中线（列的右边缘）", atMin: { x: origin + rightEdge(minColumnWidth), y }, atMax: { x: origin + rightEdge(maxColumnWidth), y } };
+      return { center: "把手中线（列的右边缘）", atMin: { x: left - columnEdgeBound, y }, atMax: { x: left + columnEdgeBound, y } };
     },
     render: () => {},
-    aria: (width) => {
-      handle.setAttribute("aria-valuenow", String(width));
-      return `aria-valuenow=${width}`;
-    }
+    aria: (edge) => `右边缘 ${edge} px，宽度见 aria-valuenow`
   };
 }
-
 function clampColumnWidth(value: number) {
   return Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, Number(value) || 100)));
 }

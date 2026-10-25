@@ -58,6 +58,11 @@ export interface Presentation<V extends Value = number> {
   bindingLabel: string;
   /** 通道能对应到屏幕位置时报告几何（值最小、最大时逻辑中心的屏幕位置），否则 null。 */
   geometry(): Geometry | null;
+  /**
+   * 组件元素里交给浏览器的原生控件（协议第 4.2 节第 2 项）：事件目标在这样的控件上时为 true，这次输入（指针、键盘、激活请求）交给浏览器，不进路由。
+   * 只问包含事件目标的最内层组件。不写就是没有：组件自己的控件（例如开关的 checkbox）不算。
+   */
+  nativeControl?(target: unknown): boolean;
   /** 按驱动量画：有几何时把逻辑中心放在 x 对应的位置；部件自身的缩放以逻辑中心为基准。 */
   render(d: Drive<V>): void;
   /** 写无障碍状态，返回写了什么。 */
@@ -565,6 +570,12 @@ export class Runtime {
     if (c.id === "loss.leftzone") this.leave(change, []);
     const chain = this.chainAt(raw.target);
     if (c.key === "pointer.position~") this.leave(change, chain);
+    // 落在最内层组件声明的原生控件上：交给浏览器，不进路由（内外层都不收）
+    const innermost = chain.find((n): n is Instance => n instanceof Instance);
+    if (innermost?.view.nativeControl?.(raw.target)) {
+      if (c.key !== "pointer.position~") this.unread(change, innermost.name, "原生控件", `事件目标是 ${innermost.name} 里交给浏览器的原生控件（呈现层声明，协议第 4.2 节第 2 项）`);
+      return;
+    }
     if (chain.length === 0) {
       // 不在任何组件上的指针和键盘变化不记，否则点页面控件也会刷屏；请求和输入丢失事件照记。
       if (c.kind === "request" || c.kind === "event") this.unread(change, "", "没有组件", "事件目标不在任何组件内");

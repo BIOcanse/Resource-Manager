@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fanModeFacts } from "./fanModeFacts.js";
 
 /**
  * 风扇曲线走交互协议的运行时（Lodestone 协议第 4.4 节第 2 处迁移），真实鼠标事件：
@@ -10,7 +11,7 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
     readAt: new Date().toISOString(), objects: [{
       id: "A", kind: "fan", reportedName: "Fan A", isControllable: true,
       platform: { operatingSystem: "windows", vendor: "test" },
-      terms: ["curve-firmware", "curve-software"],
+      ...fanModeFacts(["fan.curve"]),
       capabilities: [{ id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }]
   } }));
