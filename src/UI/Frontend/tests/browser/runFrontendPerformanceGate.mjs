@@ -7,6 +7,7 @@ import { basename, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:net";
 import { gzipSync } from "node:zlib";
+import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const repositoryRoot = resolve(projectRoot, "../../..");
@@ -81,7 +82,6 @@ try {
   await waitForServer(baseUrl, server, () => serverOutput);
   await setScenario(baseUrl, {
     optimizationRuntime: true,
-    animations: "normal",
     resourceSegmentCount: 1,
     resourceTableRowCount: 1,
     resourceBreakdownGeneration: 1
@@ -536,6 +536,8 @@ function renderReport(assessment) {
 
 async function createMeasuredContext(browserHandle, diagnostics) {
   const context = await browserHandle.newContext({ viewport: scenario.viewport });
+  // 动画效果是前端偏好：每个测量上下文首次加载前写入常规动画。
+  await seedFrontendPreferences(context, (value) => { value.appearance.animations = "normal"; });
   await context.addInitScript(({ capacity }) => {
     globalThis.__resourceManagerFrontendPerformanceBootstrap = {
       schemaVersion: 1,

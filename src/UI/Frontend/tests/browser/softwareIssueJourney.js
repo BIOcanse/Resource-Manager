@@ -1,6 +1,7 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 export default async function softwareIssueJourney(page, baseUrl) {
   const failures = [];
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
@@ -30,10 +31,13 @@ export default async function softwareIssueJourney(page, baseUrl) {
   await postScenario({
     capabilities: "ready",
     settings: "ready",
-    settingsTheme: "light",
     softwareIssues: true
   });
+  // 配色是前端偏好：从用户保存过的浅色起步。
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+  await writeFrontendPreferences(page, value => { value.appearance.theme = "light"; });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "light", null, { timeout: 5000 });
   await openSoftwareInventory(page);
 
   const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
@@ -78,7 +82,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
   const themeSnapshots = [];
   themeSnapshots.push(await readTagThemeSnapshot(page));
   for (const theme of ["dark", "lowContrast"]) {
-    await postScenario({ settingsTheme: theme, softwareIssues: true });
+    await writeFrontendPreferences(page, value => { value.appearance.theme = theme; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(
       (expected) => document.documentElement.dataset.theme === expected,

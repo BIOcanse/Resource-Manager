@@ -31,7 +31,7 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await page.waitForFunction(() => document.documentElement.dataset.theme === "dark" && document.body.dataset.barColor === "distinct");
   assert.equal(patches.length, 0, "Presentation was sent to the backend");
   assert.equal((await cache()).appearance.theme, "dark");
-  await scenario({ settingsRevision: "frontend-harness-r7", settingsTheme: "light" });
+  await scenario({ settingsRevision: "frontend-harness-r7" });
   await page.reload({ waitUntil: "domcontentloaded" });
   await open("外观");
   assert(await theme("深色").isChecked(), "Backend refresh or restart overwrote the cache");

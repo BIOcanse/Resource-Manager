@@ -2,6 +2,7 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
+import { customRefresh, frontendPreferencesKey, readFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
   const failures = [];
@@ -38,11 +39,8 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
     });
     assert(response.ok, `Unable to update the browser fixture: ${response.status}`);
   };
-  const readStoredMonitorInterval = () => page.evaluate(async () => {
-    const response = await fetch("/api/settings/app");
-    const result = await response.json();
-    return result.settings.performance.monitorRefreshIntervalMs.customValue;
-  });
+  // 刷新选择是前端偏好，只存在前端缓存里，后端设置不携带。
+  const readStoredMonitorInterval = async () => (await readFrontendPreferences(page))?.refresh.monitor.customValue;
   const settingsInput = (settings) => page.getByRole("textbox", {
     name: `${settings.performance.refreshCadenceItems.monitor.label} ${settings.performance.refreshCadenceCustomLabel}`,
     exact: true
@@ -76,11 +74,13 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
 
   await patchScenario({
     diskUsageScanFailure: true,
-    diskUsageMultiRoot: true,
-    performanceMonitorRefreshIntervalMs: 500
+    diskUsageMultiRoot: true
   });
   await page.setViewportSize({ width: 1200, height: 950 });
+  // 从用户保存过的 500 ms 自定义监控间隔起步。
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+  await writeFrontendPreferences(page, value => { value.refresh.monitor = customRefresh(500); });
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   const zhApp = await loadAppCopy("zh-CN");
   const zhSettings = await loadSettingsText("zh-CN");
@@ -107,7 +107,7 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
   assert(settingsPatchBodies.length === 0,
     "Typing into the custom interval submitted a settings patch before commit");
   assert(await readStoredMonitorInterval() === 500,
-    "The service value changed before the custom interval was committed and saved");
+    "The stored interval changed before the custom interval was committed and saved");
 
   const saveSettings = page.getByRole("button", { name: zhSettings.actions.save, exact: true });
   assert(await saveSettings.isDisabled(),
@@ -118,17 +118,14 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
     "Committing the interval did not update the page draft for its explicit Save action");
   assert(settingsPatchBodies.length === 0,
     "Committing the local interval draft persisted it before the page Save action");
-  const saveResponsePromise = page.waitForResponse(response =>
-    response.request().method() === "PATCH"
-      && new URL(response.url()).pathname === "/api/settings/app");
+  // 显式保存把已提交的 2000 ms 写进前端偏好；刷新选择不进入后端设置请求。
   await saveSettings.click();
-  const saveResponse = await saveResponsePromise;
-  assert(saveResponse.ok(), `Saving the interval failed with ${saveResponse.status()}`);
-  const intervalPatch = settingsPatchBodies.at(-1)?.changes?.performance?.monitorRefreshIntervalMs;
-  assert(intervalPatch?.customValue === 2000,
-    `The settings PATCH did not contain the committed 2000 ms interval: ${JSON.stringify(intervalPatch)}`);
-  assert(await readStoredMonitorInterval() === 2000,
-    "The mock settings service did not persist the 2000 ms interval");
+  await page.waitForFunction(key => JSON.parse(localStorage.getItem(key) ?? "null")?.refresh.monitor.customValue === 2000,
+    frontendPreferencesKey, { timeout: 5000 });
+  assert((await readFrontendPreferences(page)).refresh.monitor.mode === "custom",
+    "Saving the interval did not keep the custom refresh mode");
+  assert(settingsPatchBodies.every(patch => !patch.changes?.performance?.monitorRefreshIntervalMs),
+    `The refresh interval was sent to the backend: ${JSON.stringify(settingsPatchBodies)}`);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".shell-pages")

@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { uiStyles } from "../../src/presentation/uiStyles.ts";
+import { frontendPreferencesKey } from "./frontendPreferencesFixture.js";
 import {
   checkFieldCardDisplay,
   enableMetricFields,
@@ -171,8 +172,21 @@ async function checkReadingSources(page, baseUrl, app) {
     throw new Error("Reading sources do not default to the most accurate source only");
   }
   await choice.getByRole("radio", { name: "所有可用" }).click();
+  // 读数来源是前端呈现偏好：保存写前端缓存，不进入后端设置请求。
+  const settingsPatches = [];
+  const recordPatch = (request) => {
+    if (request.method() === "PATCH" && new URL(request.url()).pathname === "/api/settings/app") {
+      settingsPatches.push(request.postDataJSON());
+    }
+  };
+  page.on("request", recordPatch);
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.appearance?.readingSourceMode === "all");
+  await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key) ?? "null")?.appearance?.readingSourceMode === "all",
+    frontendPreferencesKey, { timeout: 5_000 });
+  page.off("request", recordPatch);
+  if (settingsPatches.some((patch) => patch.changes?.appearance)) {
+    throw new Error(`The reading-source choice was sent to the backend: ${JSON.stringify(settingsPatches)}`);
+  }
 
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   await expectCard({ main: [marks.preferred], alternate: [], pending: [marks.pending] }, "all");

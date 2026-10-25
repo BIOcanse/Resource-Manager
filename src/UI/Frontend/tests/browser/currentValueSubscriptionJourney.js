@@ -1,3 +1,4 @@
+import { customRefresh, seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
 
 export default async function currentValueSubscriptionJourney(
@@ -16,10 +17,13 @@ export default async function currentValueSubscriptionJourney(
   const scenarioResponse = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ localSystemIntervalMs: 1_000, optimizationRuntime: true })
+    body: JSON.stringify({ optimizationRuntime: true })
   });
   assert(scenarioResponse.ok,
     `Unable to configure current-value fixture: ${scenarioResponse.status}`);
+  // 本机状态的刷新选择是前端偏好，决定订阅提交的 intervalMs；首次加载前设为 1 秒自定义，
+  // 首个发布在 1 秒对齐边界到达，不必等默认前台 30 秒。
+  await seedFrontendPreferences(page, value => { value.refresh.localSystem = customRefresh(1_000); });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await Promise.all([
     waitForStarted(page, localStreamPath),
@@ -39,6 +43,8 @@ export default async function currentValueSubscriptionJourney(
     uptime: await page.locator("#captureTime").textContent()
   };
   assertSingleActiveSubscription(initial.local, "local system");
+  assert(initial.local.queries.every(query => new URLSearchParams(query).get("intervalMs") === "1000"),
+    `Local-system subscription ignored the saved 1 s refresh choice: ${JSON.stringify(initial.local.queries)}`);
   assertSingleActiveSubscription(initial.scheduling, "self scheduling");
   assertSinglePhysicalChannel(initial.channel, "physical callback channel");
   initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();

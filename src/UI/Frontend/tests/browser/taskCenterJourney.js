@@ -1,6 +1,7 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
 
 export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.1:4177") {
@@ -45,9 +46,10 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     debugMode: true,
     operations: "mixed",
     operationCanceled: false,
-    animations: "normal",
     resourceBreakdownGeneration: 0
   });
+  // 动画效果是前端偏好：首次加载前写入常规动画。
+  await seedFrontendPreferences(page, (value) => { value.appearance.animations = "normal"; });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 
   const taskButton = page.locator("#taskCenterButton");

@@ -1,13 +1,16 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 export default async function resourceBarProportionJourney(page, baseUrl) {
   const results = [];
+  // 配色是前端偏好：首次加载前写入深色。
+  await seedFrontendPreferences(page, (value) => { value.appearance.theme = "dark"; });
   for (const width of [390, 1100]) {
     await page.setViewportSize({ width, height: 844 });
     for (const value of [1, 25, 95, 99, 99.9, 100]) {
       await page.request.post(`${baseUrl}/__test/scenario`, {
-        data: { resourceCpuValue: value, resourceSegmentCount: 1, settingsTheme: "dark" }
+        data: { resourceCpuValue: value, resourceSegmentCount: 1 }
       });
       await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
       const canvas = page.locator('.resource-bar-track[data-metric-id="cpu.usage"] canvas');
@@ -31,7 +34,7 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
   for (const width of [390, 1100]) {
     await page.setViewportSize({ width, height: 844 });
     await page.request.post(`${baseUrl}/__test/scenario`, {
-      data: { resourceSharedMemory: true, resourceSegmentCount: 1, settingsTheme: "dark" }
+      data: { resourceSharedMemory: true, resourceSegmentCount: 1 }
     });
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     const canvas = page.locator('.resource-bar-track[data-metric-id="memory.usage"] canvas');

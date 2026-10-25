@@ -1,3 +1,5 @@
+import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+
 export default async function resourceLayoutTaskJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const pageErrors = [];
   const consoleErrors = [];
@@ -49,6 +51,8 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
       moving: probe?.track?.classList.contains("moving") ?? null
     };
   });
+  // 动画效果是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。
+  const setAnimations = (mode) => writeFrontendPreferences(page, (value) => { value.appearance.animations = mode; });
   const disposeMotionObserver = () => page.evaluate(() => {
     window.__resourceLayoutMotionProbe?.observer?.disconnect();
     delete window.__resourceLayoutMotionProbe;
@@ -59,9 +63,9 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   await setScenario({
     capabilities: "ready",
     settings: "ready",
-    animations: "normal",
     resourceBreakdownGeneration: 0
   });
+  await setAnimations("normal");
   await page.reload({ waitUntil: "domcontentloaded" });
 
   const track = page.locator('[data-metric-id="cpu.usage"].resource-bar-track');
@@ -92,10 +96,10 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   await disposeMotionObserver();
 
   await setScenario({
-    animations: "auto",
     gpuGrade: "optimize",
     resourceBreakdownGeneration: 4
   });
+  await setAnimations("auto");
   await page.reload({ waitUntil: "domcontentloaded" });
   await track.waitFor({ state: "visible", timeout: 7000 });
   await page.waitForFunction(() => document.body.dataset.selfGpuGrade === "optimize", null, {
@@ -130,7 +134,8 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   `Reactive animation-mode change did not settle immediately: ${JSON.stringify(reactive)}`);
   await disposeMotionObserver();
 
-  await setScenario({ animations: "none", resourceBreakdownGeneration: 2 });
+  await setScenario({ resourceBreakdownGeneration: 2 });
+  await setAnimations("none");
   await page.reload({ waitUntil: "domcontentloaded" });
   await track.waitFor({ state: "visible", timeout: 7000 });
   await page.waitForFunction(() => document.body.dataset.animations === "none");
@@ -144,7 +149,6 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   `Disabled motion entered a moving state: ${JSON.stringify(disabled)}`);
   await disposeMotionObserver();
   await setScenario({
-    animations: "normal",
     gpuGrade: "normal",
     resourceBreakdownGeneration: 0
   });

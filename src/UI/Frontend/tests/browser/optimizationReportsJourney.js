@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 export default async function optimizationReportsJourney(page, baseUrl) {
   const failures = [];
   const reportRequests = [];
@@ -261,13 +262,8 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   const availabilityLanguages = [];
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     const app = await loadAppCopy(option.id);
-    const settingsLocale = async route => {
-      const response = await route.fetch();
-      const result = await response.json();
-      result.settings.appearance.language = option.id;
-      await route.fulfill({ json: result });
-    };
-    await page.route("**/api/settings/app", settingsLocale);
+    // 语言是前端偏好，后端设置不携带；按用户保存后的缓存起步。
+    await writeFrontendPreferences(page, value => { value.appearance.language = option.id; });
     await postScenario({ optimizationReports: "ready" });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
@@ -284,7 +280,6 @@ export default async function optimizationReportsJourney(page, baseUrl) {
         `${option.id} ${state} incorrectly claimed no problems`);
     }
     availabilityLanguages.push(option.id);
-    await page.unroute("**/api/settings/app", settingsLocale);
   }
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 

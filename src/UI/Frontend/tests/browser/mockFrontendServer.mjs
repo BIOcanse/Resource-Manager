@@ -27,10 +27,6 @@ const defaultScenario = {
   settingsGetDelayMs: 0,
   settingsPatchDelayMs: 0,
   settingsRevision: "frontend-harness-r1",
-  settingsTheme: "system",
-  settingsUiStyle: "standard",
-  localSystemIntervalMs: null,
-  performanceMonitorRefreshIntervalMs: null,
   overlaySaveDelayMs: 0,
   overlaySaveFailure: false,
   diskUsageVolumesFailure: false,
@@ -48,7 +44,6 @@ const defaultScenario = {
   deviceTopologyNullProtocol: false,
   deviceTopologyPortCount: null,
   displayEdid: "off",
-  animations: "normal",
   gpuGrade: "normal",
   cpuGrade: "normal",
   resourceBreakdownGeneration: 0,
@@ -137,15 +132,6 @@ const defaultAppSettings = {
   version: "1.0.32",
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
-  appearance: {
-    uiStyle: scenario.settingsUiStyle,
-    theme: scenario.settingsTheme,
-    animations: scenario.animations,
-    resourceBarFrameRateMode: "display",
-    resourceBarFrameRate: 60,
-    language: "zh-CN",
-    readingSourceMode: "preferred"
-  },
   debug: {
     debugModeEnabled: scenario.debugMode
   }
@@ -173,10 +159,6 @@ const metricCatalog = [
 ];
 const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => {
   const settings = structuredClone(appSettings);
-  delete settings.appearance;
-  for (const key of ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]) {
-    delete settings.performance?.[key];
-  }
   if (scenario.gpuOverflowThresholdsMissing) {
     delete settings.performance?.gpuOverflowUsagePercent;
     delete settings.performance?.gpuOverflowDedicatedMemoryPercent;
@@ -550,9 +532,6 @@ async function handleApi(request, response, url) {
       }
       mergeRecord(appSettings, patch.changes);
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
-      scenario.settingsTheme = appSettings.appearance?.theme ?? "system";
-      scenario.settingsUiStyle = appSettings.appearance?.uiStyle ?? "standard";
-      scenario.animations = appSettings.appearance?.animations ?? "normal";
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       return json(response, 200, appSettingsResult());
     }
@@ -1169,7 +1148,13 @@ function delay(milliseconds) {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
 
+// 外观、动效和刷新选择是前端偏好（docs/frontend_preferences_2026-10-24.md），后端设置不携带，
+// mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
+const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
+
 function applyScenarioPatch(patch) {
+  const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
+  if (presentation.length > 0) throw new Error(`Frontend preferences are not backend scenario values: ${presentation.join(", ")}`);
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
@@ -1177,25 +1162,6 @@ function applyScenarioPatch(patch) {
     || Object.hasOwn(patch, "operationCanceled")
     || Object.hasOwn(patch, "componentPayloadFailure")) {
     commitOperationsValue();
-  }
-  if (Number.isSafeInteger(patch.localSystemIntervalMs)
-    && patch.localSystemIntervalMs > 0) {
-    appSettings.performance ??= {};
-    appSettings.performance.localSystemRefreshIntervalMs = {
-      mode: "custom",
-      preset: "responsive",
-      customValue: patch.localSystemIntervalMs
-    };
-  }
-  if (Number.isSafeInteger(patch.performanceMonitorRefreshIntervalMs)
-    && patch.performanceMonitorRefreshIntervalMs >= 500
-    && patch.performanceMonitorRefreshIntervalMs <= 300000) {
-    appSettings.performance ??= {};
-    appSettings.performance.monitorRefreshIntervalMs = {
-      mode: "custom",
-      preset: "responsive",
-      customValue: patch.performanceMonitorRefreshIntervalMs
-    };
   }
   if (Number.isSafeInteger(patch.gpuOverflowUsagePercent)
     && patch.gpuOverflowUsagePercent >= 1
@@ -1206,15 +1172,6 @@ function applyScenarioPatch(patch) {
     && patch.gpuOverflowDedicatedMemoryPercent >= 1
     && patch.gpuOverflowDedicatedMemoryPercent <= 100) {
     appSettings.performance.gpuOverflowDedicatedMemoryPercent = patch.gpuOverflowDedicatedMemoryPercent;
-  }
-  if (typeof patch.settingsTheme === "string") {
-    appSettings.appearance.theme = patch.settingsTheme;
-  }
-  if (typeof patch.settingsUiStyle === "string") {
-    appSettings.appearance.uiStyle = patch.settingsUiStyle;
-  }
-  if (typeof patch.animations === "string") {
-    appSettings.appearance.animations = patch.animations;
   }
   if (typeof patch.debugMode === "boolean") {
     appSettings.debug.debugModeEnabled = patch.debugMode;

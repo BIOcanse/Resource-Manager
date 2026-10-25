@@ -1,10 +1,14 @@
+import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
+
 export default async function resourceBarColorModesJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   const setup = await page.request.post(`${baseUrl}/__test/scenario`, {
-    data: { resourceSegmentCount: 8, settingsTheme: "light", resourceDetailsDelayMs: 650 }
+    data: { resourceSegmentCount: 8, resourceDetailsDelayMs: 650 }
   });
   assert(setup.ok(), `Fixture setup failed: ${setup.status()}`);
+  // 配色是前端偏好：首次加载前写入浅色。
+  await seedFrontendPreferences(page, (value) => { value.appearance.theme = "light"; });
   await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 

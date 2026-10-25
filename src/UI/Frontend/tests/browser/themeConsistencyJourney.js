@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkRecordedDisplayDialog } from "./displayEdidDialogProbe.js";
+import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 export default async function themeConsistencyJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const failures = [];
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
@@ -31,14 +32,12 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
     settingsGetDelayMs: 0,
     settingsPatchDelayMs: 0,
     settingsRevision: "theme-r1",
-    settingsTheme: "light",
     displayEdid: "ready"
   });
 
+  // 配色是前端偏好：从用户保存过的浅色起步。
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await page.evaluate(() => localStorage.setItem(
-    "resource-manager:appearance",
-    JSON.stringify({ theme: "dark" })));
+  await writeFrontendPreferences(page, value => { value.appearance.theme = "light"; });
   await page.reload({ waitUntil: "domcontentloaded" });
   await openAppearanceSettings(page);
 
@@ -96,7 +95,7 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
         && document.documentElement.dataset.theme === theme,
       transition,
       { timeout: 5000 });
-    const applied = await page.evaluate(() => {
+    const applied = await page.evaluate((key) => {
       const resolve = (name) => {
         const probe = document.createElement("span");
         probe.style.color = `var(${name})`;
@@ -111,15 +110,15 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
         bodyBackground: getComputedStyle(document.body).backgroundColor,
         surface: resolve("--surface"),
         contentBackground: getComputedStyle(document.querySelector(".settings-content")).backgroundColor,
-        cache: localStorage.getItem("resource-manager:appearance")
+        cache: JSON.parse(localStorage.getItem(key) ?? "null")?.appearance
       };
-    });
+    }, frontendPreferencesKey);
     assert(applied.colorScheme === transition.scheme,
       `${transition.uiStyle}/${transition.theme} uses the wrong color scheme: ${JSON.stringify(applied)}`);
     assert(applied.bodyBackground === applied.background && applied.contentBackground === applied.surface,
       `${transition.uiStyle}/${transition.theme} surfaces diverged from its tokens: ${JSON.stringify(applied)}`);
-    assert(applied.cache === JSON.stringify({ uiStyle: transition.uiStyle, theme: transition.theme }),
-      `Preboot cache does not hold the style and palette: ${applied.cache}`);
+    assert(applied.cache?.uiStyle === transition.uiStyle && applied.cache?.theme === transition.theme,
+      `Frontend preferences do not hold the style and palette: ${JSON.stringify(applied.cache)}`);
     const layout = await settingsLayout(page);
     const moved = Object.keys(standardLayout).filter((key) => {
       const before = standardLayout[key];
@@ -133,12 +132,12 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
   assert(new Set(styleResults.map((result) => result.background)).size === styleResults.length,
     `Styles share a background and are not distinguishable: ${JSON.stringify(styleResults)}`);
 
-  await page.evaluate(() => localStorage.setItem(
-    "resource-manager:appearance",
-    JSON.stringify({ theme: "dark" })));
+  // 重启后启动外观和界面读同一份前端偏好：最后保存的标准风格、浅色配色保留。
   await page.reload({ waitUntil: "domcontentloaded" });
   await openAppearanceSettings(page);
   snapshots.push(await assertThemeIsConsistent(page, "light", assert));
+  assert(await page.locator("html").getAttribute("data-ui-style") === "standard",
+    "The saved interface style did not survive a reload");
   await checkEdid();
 
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
@@ -146,8 +145,7 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
     edidThemes,
     modes: snapshots.map((snapshot) => snapshot.theme),
     styles: styleResults,
-    stalePrebootConverged: snapshots[0].theme === "light"
-      && snapshots.at(-1)?.theme === "light",
+    savedAppearanceSurvivedReload: snapshots.at(-1)?.theme === "light",
     pageErrors: failures
   };
 }
