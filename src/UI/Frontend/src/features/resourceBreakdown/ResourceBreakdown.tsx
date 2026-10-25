@@ -2,7 +2,8 @@ import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, 
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
-import { pointerReorderProps } from "../../interactions/pointerReorder";
+import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
+import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type {
   AppAnimationMode,
   MetricDefinition,
@@ -90,15 +91,10 @@ type ResourceSelectableSegment =
 export function ResourceBreakdown(props: ResourceBreakdownProps) {
   let editButton: HTMLButtonElement | undefined;
   let editorRegion: HTMLDivElement | undefined;
-  const [dragBarId, setDragBarId] = createSignal<string | null>(null);
-  const [overBarId, setOverBarId] = createSignal<string | null>(null);
   const snapshotBarIds = createMemo(() =>
     props.snapshotBars.map((bar) => bar.metricId));
-
-  const clearDragState = () => {
-    setDragBarId(null);
-    setOverBarId(null);
-  };
+  // 编辑时按住资源条拖到另一条上换位。
+  const barReorder = createReorderGroup("资源条", (source, target) => props.onReorderBar(source, target));
   useInlineEditorFocus({
     active: () => props.editMode,
     opener: () => editButton,
@@ -192,14 +188,10 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                       processDetails={props.processDetails}
                       processDetailsObservation={props.processDetailsObservation}
                       editMode={props.editMode}
-                      dragging={dragBarId() === metricId}
-                      dragOver={overBarId() === metricId && dragBarId() !== null && dragBarId() !== metricId}
                       selected={props.selection?.metricId === metricId ? props.selection : null}
                       expandedSoftwareId={props.expanded[metricId]}
                       onSelect={props.onSelect}
-                      onBarDragStart={setDragBarId}
-                      onBarDragOver={setOverBarId}
-                      onBarDragEnd={clearDragState}
+                      reorder={barReorder}
                       canMoveBefore={index() > 0}
                       canMoveAfter={index() < snapshotBarIds().length - 1}
                       onMoveBefore={() => {
@@ -213,10 +205,6 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                         if (next) {
                           props.onReorderBar(next.metricId, metricId);
                         }
-                      }}
-                      onBarDrop={(sourceMetricId, targetMetricId) => {
-                        clearDragState();
-                        props.onReorderBar(sourceMetricId, targetMetricId);
                       }}
                     />
                   )}
@@ -283,19 +271,14 @@ function ResourceBreakdownItem(props: {
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
   editMode: boolean;
-  dragging: boolean;
-  dragOver: boolean;
   selected: ResourcePrecisionSelection | null;
   expandedSoftwareId?: string;
   onSelect: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
-  onBarDragStart: (metricId: string) => void;
-  onBarDragOver: (metricId: string | null) => void;
-  onBarDragEnd: () => void;
+  reorder: ReorderGroup;
   canMoveBefore: boolean;
   canMoveAfter: boolean;
   onMoveBefore: () => void;
   onMoveAfter: () => void;
-  onBarDrop: (sourceMetricId: string, targetMetricId: string) => void;
 }) {
   const selectable = () => resourceSelectableSoftwareSegments(props.bar);
   const label = () => resourceBreakdownLabel(props.bar);
@@ -412,20 +395,8 @@ function ResourceBreakdownItem(props: {
     <article
       class="resource-breakdown-item"
       data-resource-tooltip-boundary
-      classList={{
-        editing: props.editMode,
-        "drag-source": props.dragging,
-        "drag-over": props.dragOver
-      }}
-      {...pointerReorderProps(() => ({
-        enabled: props.editMode,
-        group: "resource-bar",
-        sourceId: props.bar.metricId,
-        onStart: props.onBarDragStart,
-        onOver: props.onBarDragOver,
-        onCommit: props.onBarDrop,
-        onEnd: props.onBarDragEnd
-      }))}
+      classList={{ editing: props.editMode }}
+      ref={props.reorder.item({ id: () => props.bar.metricId, enabled: () => props.editMode })}
     >
       <div class="resource-breakdown-header">
         <strong title={resourceMetricBasis(props.bar.metricId)}>{label()}</strong>

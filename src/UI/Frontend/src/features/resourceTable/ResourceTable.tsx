@@ -7,7 +7,6 @@ import {
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
-import { pointerReorderProps } from "../../interactions/pointerReorder";
 import { userFacingLabel } from "../../presentation/userFacingText";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
@@ -34,6 +33,7 @@ import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { columnEdgeBound, columnResizeHandleDefinition } from "../../interactions/components/columnResizeHandle.ts";
 import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
+import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 
 const rowHeight = 38;
@@ -338,8 +338,6 @@ function VirtualResourceTable(props: {
   const [viewportHeight, setViewportHeight] = createSignal(360);
   const [viewportWidth, setViewportWidth] = createSignal(0);
   const [scrollbarWidth, setScrollbarWidth] = createSignal(0);
-  const [dragColumnId, setDragColumnId] = createSignal<string | null>(null);
-  const [overColumnId, setOverColumnId] = createSignal<string | null>(null);
   const [activeRowId, setActiveRowId] = createSignal<string | null>(null);
   // 被右键的那一行钉在它当时所在的位置；菜单关掉就松开。
   const [pinnedRowId, setPinnedRowId] = createSignal<string | null>(null);
@@ -365,10 +363,8 @@ function VirtualResourceTable(props: {
         (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
   });
 
-  const clearColumnDragState = () => {
-    setDragColumnId(null);
-    setOverColumnId(null);
-  };
+  // 编辑时按住表头格拖到另一列上换位；里面的列宽把手是内层组件，按在它上面由它处理。
+  const columnReorder = createReorderGroup("表头列", (source, target) => props.onReorderColumn(source, target));
   const baseTableWidth = createMemo(() => baseColumns().reduce((sum, column) => sum + clampColumnWidth(column.width), 0));
   const tableWidth = createMemo(() => Math.max(baseTableWidth(), viewportWidth()));
   const columnWidths = createMemo(() => distributeColumnWidths(baseColumns(), tableWidth()));
@@ -669,25 +665,18 @@ function VirtualResourceTable(props: {
                 class="resource-table-head-cell"
                 classList={{
                   active: props.sortColumnId === columnId,
-                  editing: props.editMode,
-                  "drag-source": dragColumnId() === columnId,
-                  "drag-over": overColumnId() === columnId && dragColumnId() !== null && dragColumnId() !== columnId
+                  editing: props.editMode
                 }}
-                {...pointerReorderProps(() => ({
-                  enabled: props.editMode,
-                  group: "resource-table-column",
-                  sourceId: columnId,
-                  onStart: setDragColumnId,
-                  onOver: setOverColumnId,
-                  onCommit: props.onReorderColumn,
-                  onEnd: clearColumnDragState
-                }))}
+                data-column-id={columnId}
+                ref={columnReorder.item({ id: () => columnId, enabled: () => props.editMode })}
               >
+                {/* 编辑时整个表头格是拖动排序的把手，排序按钮停用：按下拖动时运行时捕获指针，浏览器把随后的 click 交给表头格，
+                    按钮本来也收不到；停用的按钮算表头格的一部分，可用的按钮按在上面交给浏览器（interactions/solid/reorderGroup.ts）。 */}
                 <button
                   class="resource-table-sort-button"
                   type="button"
                   title={resourceMetricBasis(column().id, "table")}
-                  disabled={!column().sortable}
+                  disabled={!column().sortable || props.editMode}
                   onClick={() => updateSort(column())}
                 >
                   <span>{resourceTableColumnLabel(column().id)}</span>

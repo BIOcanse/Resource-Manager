@@ -184,6 +184,8 @@
 
 .resource-table-head-cell.editing .resource-table-sort-button {
   padding-right: 52px;
+  /* 编辑时表头格是拖动排序的把手，排序按钮停用（ResourceTable.tsx）。 */
+  cursor: grab;
 }
 
 .resource-table-column-order-actions {
@@ -221,14 +223,14 @@
 
 /*
   表头和单元格同侧对齐：文本列（名称、状态、PID、用户、架构）靠左，数值列靠右。
-  列 id 取自表头上拖动排序用的 data-pointer-reorder-id，列被拖到别的位置时照样对得上。
+  列 id 取自表头格的 data-column-id，列被拖到别的位置时照样对得上。
 */
 .resource-table-head-cell:is(
-  [data-pointer-reorder-id="name"],
-  [data-pointer-reorder-id="status"],
-  [data-pointer-reorder-id="pid"],
-  [data-pointer-reorder-id="user"],
-  [data-pointer-reorder-id="architecture"]
+  [data-column-id="name"],
+  [data-column-id="status"],
+  [data-column-id="pid"],
+  [data-column-id="user"],
+  [data-column-id="architecture"]
 ) .resource-table-sort-button {
   justify-content: flex-start;
 }

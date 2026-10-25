@@ -1,8 +1,9 @@
 import { localizedMetricLabel, metricCardReading, resourceMetricBasis
 } from "../../presentation/metricLabels";
 import { Plus, Replace, X } from "lucide-solid";
-import { createSignal, For, Show } from "solid-js";
-import { pointerReorderProps } from "../../interactions/pointerReorder";
+import { For, Show } from "solid-js";
+import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
+import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../../types";
 import { dashboardSmallMetricLimit } from "../../stores/monitorConfig";
 import { uiText } from "../../text.ts";
@@ -36,17 +37,15 @@ function slotKey(slot: DashboardSlotRef) {
 }
 
 export function Dashboard(props: DashboardProps) {
-  const [dragCardId, setDragCardId] = createSignal<string | null>(null);
-  const [overCardId, setOverCardId] = createSignal<string | null>(null);
-  const [dragSlotKey, setDragSlotKey] = createSignal<string | null>(null);
-  const [overSlotKey, setOverSlotKey] = createSignal<string | null>(null);
-
-  const clearDragState = () => {
-    setDragCardId(null);
-    setOverCardId(null);
-    setDragSlotKey(null);
-    setOverSlotKey(null);
-  };
+  // 编辑时拖动排序：卡片一组，指标槽一组（槽在卡片里，按在有指标的槽上拖的是槽）。
+  const cardReorder = createReorderGroup("仪表盘卡片", (source, target) => props.onMoveCard(source, target));
+  const slotReorder = createReorderGroup("仪表盘指标槽", (sourceKey, targetKey) => {
+    const source = parseSlotKey(sourceKey);
+    const target = parseSlotKey(targetKey);
+    if (source && target) {
+      props.onMoveMetricSlot(source, target);
+    }
+  });
 
   return (
     <section class="dashboard" aria-label={uiText.dashboard.panel}>
@@ -58,20 +57,9 @@ export function Dashboard(props: DashboardProps) {
           <article
             {...frontendVisibilitySurface(demandId, [demandId])}
             class="metric-card"
-            classList={{
-              editing: props.editMode,
-              "drag-source": dragCardId() === card.id,
-              "drag-over": overCardId() === card.id && dragCardId() !== null && dragCardId() !== card.id
-            }}
-            {...pointerReorderProps(() => ({
-              enabled: props.editMode,
-              group: "dashboard-card",
-              sourceId: card.id,
-              onStart: setDragCardId,
-              onOver: setOverCardId,
-              onCommit: props.onMoveCard,
-              onEnd: clearDragState
-            }))}
+            classList={{ editing: props.editMode }}
+            data-card-id={card.id}
+            ref={cardReorder.item({ id: () => card.id, enabled: () => props.editMode })}
           >
             <div class="metric-main">
               <MetricSlot
@@ -84,14 +72,9 @@ export function Dashboard(props: DashboardProps) {
                 metricSelectionAvailable={props.metricSelectionAvailable}
                 catalog={props.catalog}
                 snapshot={props.snapshot}
-                dragSlotKey={dragSlotKey()}
-                overSlotKey={overSlotKey()}
-                onSlotDragStart={setDragSlotKey}
-                onSlotDragOver={setOverSlotKey}
-                onSlotDragEnd={clearDragState}
+                reorder={slotReorder}
                 onOpenMetricModal={props.onOpenMetricModal}
                 onClearSlot={props.onClearSlot}
-                onMoveMetricSlot={props.onMoveMetricSlot}
               />
             </div>
             <div class="metric-small-grid">
@@ -107,14 +90,9 @@ export function Dashboard(props: DashboardProps) {
                     metricSelectionAvailable={props.metricSelectionAvailable}
                     catalog={props.catalog}
                     snapshot={props.snapshot}
-                    dragSlotKey={dragSlotKey()}
-                    overSlotKey={overSlotKey()}
-                    onSlotDragStart={setDragSlotKey}
-                    onSlotDragOver={setOverSlotKey}
-                    onSlotDragEnd={clearDragState}
+                    reorder={slotReorder}
                     onOpenMetricModal={props.onOpenMetricModal}
                     onClearSlot={props.onClearSlot}
-                    onMoveMetricSlot={props.onMoveMetricSlot}
                   />
                 )}
               </For>
@@ -148,14 +126,9 @@ function MetricSlot(props: {
   metricSelectionAvailable: boolean;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
-  dragSlotKey: string | null;
-  overSlotKey: string | null;
-  onSlotDragStart: (key: string | null) => void;
-  onSlotDragOver: (key: string | null) => void;
-  onSlotDragEnd: () => void;
+  reorder: ReorderGroup;
   onOpenMetricModal: DashboardProps["onOpenMetricModal"];
   onClearSlot: DashboardProps["onClearSlot"];
-  onMoveMetricSlot: DashboardProps["onMoveMetricSlot"];
 }) {
   const isMain = () => props.slot === "main";
   const slotRef = (): DashboardSlotRef => ({ cardId: props.card.id, slot: props.slot, index: props.index });
@@ -175,26 +148,8 @@ function MetricSlot(props: {
     >
       <div
         class="edit-slot"
-        classList={{
-          "has-metric": Boolean(props.metricId),
-          "drag-source": props.dragSlotKey === key(),
-          "drag-over": props.overSlotKey === key() && props.dragSlotKey !== null && props.dragSlotKey !== key()
-        }}
-        {...pointerReorderProps(() => ({
-          enabled: props.editMode && Boolean(props.metricId),
-          group: "dashboard-slot",
-          sourceId: key(),
-          onStart: props.onSlotDragStart,
-          onOver: props.onSlotDragOver,
-          onCommit: (sourceKey, targetKey) => {
-            const source = parseSlotKey(sourceKey);
-            const target = parseSlotKey(targetKey);
-            if (source && target) {
-              props.onMoveMetricSlot(source, target);
-            }
-          },
-          onEnd: props.onSlotDragEnd
-        }))}
+        classList={{ "has-metric": Boolean(props.metricId) }}
+        ref={props.reorder.item({ id: key, enabled: () => props.editMode && Boolean(props.metricId) })}
       >
         <Show
           when={props.metricId}

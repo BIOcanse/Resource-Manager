@@ -7,7 +7,7 @@ const page = readSource("../src/features/monitor/MonitorPage.tsx");
 const dashboard = readSource("../src/features/monitor/Dashboard.tsx");
 const resourceBreakdown = readSource("../src/features/resourceBreakdown/ResourceBreakdown.tsx");
 const resourceTable = readSource("../src/features/resourceTable/ResourceTable.tsx");
-const pointerReorder = readSource("../src/interactions/pointerReorder.ts");
+const reorderGroup = readSource("../src/interactions/solid/reorderGroup.ts");
 const types = readSource("../src/types.ts");
 
 assert.match(types, /scopeKind\?: string \| null/);
@@ -35,12 +35,12 @@ assert.match(page, /saveState=\{monitor\.resourceTableSaveState\(\)\}/);
 assert.match(config, /"virtualMemory\.usage"/);
 assert.match(resourceBreakdown, /resourceMetric\("virtualMemory\.usage"/);
 for (const source of [dashboard, resourceBreakdown, resourceTable]) {
-  assert.match(source, /pointerReorderProps/);
+  assert.match(source, /createReorderGroup|\.reorder\.item\(/);
   assert.doesNotMatch(source, /\bdraggable=|onDragStart=|onDragOver=|onDrop=/);
 }
-assert.match(pointerReorder, /new PointerEvent|PointerEvent/);
-assert.match(pointerReorder, /document\s*\.elementFromPoint/);
-assert.match(pointerReorder, /setPointerCapture|addEventListener\("pointermove"/);
+// 拖动排序走交互协议的运行时：同一组共用的宿主映射按指针处的元素找目标项。
+assert.match(reorderGroup, /reorderItemDefinition/);
+assert.match(reorderGroup, /document\s*\.elementFromPoint/);
 
 function readSource(relativePath: string) {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");

@@ -247,7 +247,7 @@ async function observeCoreMetrics(page, durationMilliseconds) {
   do {
     const sample = await page.evaluate(() => {
       const value = id => document.querySelector(
-        `.metric-card[data-pointer-reorder-id='${id}'] .metric-main .metric-value`)?.textContent?.trim() ?? "";
+        `.metric-card[data-card-id='${id}'] .metric-main .metric-value`)?.textContent?.trim() ?? "";
       return { at: new Date().toISOString(), cpu: value("cpu"), memory: value("memory") };
     });
     assert(sample.cpu && sample.cpu !== "N/A" && sample.cpu !== "--",

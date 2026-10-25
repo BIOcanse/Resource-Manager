@@ -55,7 +55,7 @@ export default async function resourceTableScrollStabilityJourney(
       regions: [...document.querySelectorAll(".monitor-work-region")]
         .map((element) => ({ label: element.getAttribute("aria-label"), height: element.getBoundingClientRect().height })),
       bars: [...document.querySelectorAll(".resource-breakdown-item")]
-        .map((element) => element.getAttribute("data-pointer-reorder-id"))
+        .map((element) => element.getAttribute("data-column-id"))
     };
   });
   if (before.top < 100) {
@@ -87,7 +87,7 @@ export default async function resourceTableScrollStabilityJourney(
       regions: [...document.querySelectorAll(".monitor-work-region")]
         .map((element) => ({ label: element.getAttribute("aria-label"), height: element.getBoundingClientRect().height })),
       bars: [...document.querySelectorAll(".resource-breakdown-item")]
-        .map((element) => element.getAttribute("data-pointer-reorder-id"))
+        .map((element) => element.getAttribute("data-column-id"))
     };
   });
   if (after.top === null

@@ -61,8 +61,8 @@
   cursor: grabbing;
 }
 
-body.pointer-reordering,
-body.pointer-reordering * {
+body.reordering,
+body.reordering * {
   cursor: grabbing !important;
   user-select: none !important;
 }
