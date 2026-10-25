@@ -15,6 +15,28 @@
   --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
 }
 
+/* --- 手感：一组动效参数（目录 presentation/motionFeel.ts，标准就是上面的 :root）。
+   --ease-bar 三种手感都不变：数据条连续更新，换曲线会在每次更新时起步发顿。 --- */
+:root[data-motion-feel="smooth"] {
+  --motion-fast: 150ms;
+  --motion-medium: 260ms;
+  --motion-page: 380ms;
+  --motion-panel: 420ms;
+  --motion-bar: 480ms;
+  --ease-decel: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.1, 1);
+}
+
+:root[data-motion-feel="crisp"] {
+  --motion-fast: 70ms;
+  --motion-medium: 120ms;
+  --motion-page: 170ms;
+  --motion-panel: 200ms;
+  --motion-bar: 240ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
 /* --- 入场关键帧：小位移 + 淡入 --- */
 @keyframes motion-fade-in {
   from { opacity: 0; }
