@@ -193,6 +193,9 @@ public sealed class BackendFrontendWireAcceptanceTests
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+        // The generated frontend preference values use TypeScript namespaces, which need transformation,
+        // exactly as the package.json test scripts run them.
+        startInfo.ArgumentList.Add("--experimental-transform-types");
         startInfo.ArgumentList.Add("--experimental-strip-types");
         startInfo.ArgumentList.Add(decoderPath);
 

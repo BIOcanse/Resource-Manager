@@ -18,7 +18,7 @@ public sealed class ServiceRecoveryMigrationTests
         using var document = JsonDocument.Parse(node.ToJsonString());
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
-        Assert.Equal("1.0.31", migrated.Version);
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, migrated.Version);
         Assert.True(migrated.SystemIntegration.RestartAfterCrashEnabled);
         Assert.Equal(10, migrated.SystemIntegration.CrashRestartDelaySeconds);
         Assert.Equal(3, migrated.SystemIntegration.CrashRestartCount);
