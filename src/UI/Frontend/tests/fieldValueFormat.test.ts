@@ -25,7 +25,7 @@ assert.equal(formatFieldValue(v("B", { integerValue: 1073741824n })), "1.00 GiB"
 assert.equal(formatFieldValue(v("B", { integerValue: 1000000000n }), "storage"), "1.00 GB");
 assert.equal(formatFieldValue(v("MiB", { integerValue: 32768n })), "32.0 GiB");
 assert.equal(formatFieldValue(v("count", { integerValue: 340282366920938463463374607431768211455n })),
-  (340282366920938463463374607431768211455n).toLocaleString(), "unsigned128 counts stay exact");
+  (340282366920938463463374607431768211455n).toLocaleString(currentLanguage()), "unsigned128 counts stay exact");
 assert.equal(formatFieldValue(v("bitmask64", { integerValue: 255n })), "0xFF");
 assert.equal(formatFieldValue(v("flag", { booleanValue: false })), "否", "a false flag is shown, not hidden");
 assert.equal(formatFieldValue(v("J/count", { numericValue: 0.0000152587890625 })), "0.00001526 J/count");

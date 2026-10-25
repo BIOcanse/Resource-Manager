@@ -6,7 +6,7 @@ import type {
   SpecializedDeviceSummaryField,
   SpecializedInternalDeviceFacts
 } from "./types";
-import { uiText } from "../../../text.ts";
+import { uiText, currentLanguage } from "../../../text.ts";
 
 export function firstText(...values: Array<string | null | undefined>) {
   return values.map((value) => value?.trim()).find(Boolean);
@@ -118,7 +118,7 @@ export function formatBytes(value: number | null | undefined, fallback = "--") {
 
 export function formatRate(value: number | null | undefined, unit: string, fallback = "--") {
   return typeof value === "number" && Number.isFinite(value)
-    ? `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`
+    ? `${value.toLocaleString(currentLanguage(), { maximumFractionDigits: 2 })} ${unit}`
     : fallback;
 }
 
@@ -127,8 +127,8 @@ export function formatPollingInterval(value: number | null | undefined) {
     return "--";
   }
   return value >= 1000
-    ? `${(value / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 })} ms`
-    : `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} us`;
+    ? `${(value / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 })} ms`
+    : `${value.toLocaleString(currentLanguage(), { maximumFractionDigits: 1 })} us`;
 }
 
 function internalTransport(port: DeviceTopologyPort) {

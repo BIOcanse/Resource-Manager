@@ -12,7 +12,7 @@ import { smartPlacementTarget } from "../../presentation/smartScheduling.ts";
 import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import type { SoftwareRecord, HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
-import { uiText } from "../../text.ts";
+import { uiText, currentLanguage } from "../../text.ts";
 
 
 interface DetailRecord {
@@ -155,7 +155,7 @@ function detailRecordSections(record: DetailRecord) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat().format(value);
+  return new Intl.NumberFormat(currentLanguage()).format(value);
 }
 
 

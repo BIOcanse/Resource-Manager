@@ -246,13 +246,17 @@ async function observeCoreMetrics(page, durationMilliseconds) {
   const deadline = Date.now() + durationMilliseconds;
   do {
     const sample = await page.evaluate(() => {
-      const value = id => document.querySelector(
-        `.metric-card[data-card-id='${id}'] .metric-main .metric-value`)?.textContent?.trim() ?? "";
-      return { at: new Date().toISOString(), cpu: value("cpu"), memory: value("memory") };
+      const element = id => document.querySelector(
+        `.metric-card[data-card-id='${id}'] .metric-main .metric-value`);
+      const value = id => element(id)?.textContent?.trim() ?? "";
+      // 没有读数时卡片显示界面语言的短话并带 missing 标记；按标记判断，不按某种语言的文字。
+      const missing = id => element(id)?.classList.contains("missing") ?? true;
+      return { at: new Date().toISOString(), cpu: value("cpu"), memory: value("memory"),
+        cpuMissing: missing("cpu"), memoryMissing: missing("memory") };
     });
-    assert(sample.cpu && sample.cpu !== "N/A" && sample.cpu !== "--",
+    assert(sample.cpu && !sample.cpuMissing && sample.cpu !== "--",
       `CPU metric lost its published value: ${JSON.stringify(sample)}`);
-    assert(sample.memory && sample.memory !== "N/A" && sample.memory !== "--",
+    assert(sample.memory && !sample.memoryMissing && sample.memory !== "--",
       `Memory metric lost its published value: ${JSON.stringify(sample)}`);
     samples.push(sample);
     if (Date.now() < deadline) await page.waitForTimeout(1_000);

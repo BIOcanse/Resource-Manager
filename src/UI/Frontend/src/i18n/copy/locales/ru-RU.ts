@@ -609,6 +609,7 @@ const ruRuAppCopy: AppCopy = {
     valueUnavailable: "Недоступно",
     needsComponent: "Нужен компонент",
     noReadingHint: "Сейчас нет показаний",
+    noReading: "Нет данных",
     notInCatalogHint: "Этого элемента нет в каталоге метрик",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

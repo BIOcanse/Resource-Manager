@@ -2,7 +2,7 @@ import { Copy, KeyRound, RefreshCw, ShieldCheck, Trash2 } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect.tsx";
 import { userFacingErrorMessage } from "../../../presentation/userFacingText.ts";
-import { uiText } from "../../../text.ts";
+import { uiText, currentLanguage } from "../../../text.ts";
 import { ConfirmDialog, type ConfirmDialogRecord, type ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
 import { useAccessRequestSnapshot } from "../../trustedAccess/AccessRequestSnapshotContext.tsx";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
@@ -312,7 +312,7 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
     }
   };
   const scopeLabel = (scope: string) => accessScopeLabel(props.copy, scope);
-  const formatDate = (value: string) => new Date(value).toLocaleString();
+  const formatDate = (value: string) => new Date(value).toLocaleString(currentLanguage());
   const outcomeText = (outcome: AccessRequestOutcome) => props.copy.requestOutcome(outcome.name,
     outcome.status === "approved" ? props.copy.requestApproved
       : outcome.status === "expired" ? props.copy.requestExpired

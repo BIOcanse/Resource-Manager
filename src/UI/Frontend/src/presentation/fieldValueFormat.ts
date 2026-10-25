@@ -1,6 +1,6 @@
 import type { MetricFieldValue } from "../data/metricFields/metricFieldSource.ts";
 import { formatBytes, formatBytesPerSecond, type ByteQuantityKind } from "./byteUnits.ts";
-import { uiText } from "../text.ts";
+import { uiText, currentLanguage } from "../text.ts";
 
 /*
  * 规范字段数值的统一显示：按字段自带的单位格式化。
@@ -40,7 +40,7 @@ export function formatFieldValue(value: MetricFieldValue, quantityKind: ByteQuan
     case "count":
     case "generation":
     case "lanes":
-    case "enum": return integer !== null ? integer.toLocaleString() : trimmed(number, 2);
+    case "enum": return integer !== null ? integer.toLocaleString(currentLanguage()) : trimmed(number, 2);
     case "bitmask64": return `0x${(integer ?? BigInt(Math.trunc(number))).toString(16).toUpperCase()}`;
     case "1":
     case "ratio": return trimmed(number, 3);

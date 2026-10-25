@@ -3,6 +3,7 @@ import { createRoot, createSignal } from "solid-js";
 import { createResourceFactsProjection, projectResourceFacts, type ResourceFacts, type ResourceFactsMetric } from "../src/features/resourceTable/resourceFacts.ts";
 import type { ResourceSoftwareSegment, ResourceTableColumnSettings, ResourceTableViewMode } from "../src/types.ts";
 import { resourceTableCellText } from "../src/presentation/metricLabels.ts";
+import { uiText } from "../src/text.ts";
 import { projectResourceTableHeat } from "../src/features/resourceTable/resourceTableHeat.ts";
 
 const time = "2026-10-24T12:00:00Z";
@@ -86,7 +87,7 @@ for (const missing of ["totalValue", "totalSystemPercent", "capacityValue"] as c
   assert.equal(cells["gpu.1.usage"].value, null);
   assert.equal(cells["gpu.1.usage"].percent, null);
   assert.equal(cells["gpu.1.usage"].availability, "Unavailable");
-  assert.equal(resourceTableCellText(cells["gpu.1.usage"]), "N/A");
+  assert.equal(resourceTableCellText(cells["gpu.1.usage"]), uiText.dashboard.noReading);
   assert.equal(cells["gpu.2.usage"], undefined);
   assert.equal(resourceTableCellText(cells["gpu.2.usage"]), "--");
 }

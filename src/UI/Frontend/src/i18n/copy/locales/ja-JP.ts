@@ -609,6 +609,7 @@ const jaJpAppCopy: AppCopy = {
     valueUnavailable: "利用できません",
     needsComponent: "コンポーネントが必要",
     noReadingHint: "現在、読み取り値がありません",
+    noReading: "読み取り値なし",
     notInCatalogHint: "この項目はメトリック カタログにありません",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

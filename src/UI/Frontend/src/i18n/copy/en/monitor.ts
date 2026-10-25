@@ -38,6 +38,7 @@ export const enMonitorCopy: Pick<
     valueUnavailable: "Unavailable",
     needsComponent: "Needs component",
     noReadingHint: "No reading right now",
+    noReading: "No reading",
     notInCatalogHint: "This item isn't in the metric catalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

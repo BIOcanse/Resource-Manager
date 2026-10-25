@@ -609,6 +609,7 @@ const esEsAppCopy: AppCopy = {
     valueUnavailable: "No disponible",
     needsComponent: "Requiere componente",
     noReadingHint: "Sin lectura por ahora",
+    noReading: "Sin lectura",
     notInCatalogHint: "Este elemento no está en el catálogo de métricas",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

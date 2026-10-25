@@ -166,7 +166,13 @@ assert.deepEqual([needsComponent.missing, needsComponent.value], [true, uiText.d
 assert.ok(needsComponent.title?.includes("LibreHardwareMonitor"), "the hint names the missing component");
 const noReading = metricCardReading({ ...sensor, selectable: true, disabledReason: null },
   { id: "cpu.temperature", displayValue: "N/A", numericValue: null, unit: "°C" });
-assert.deepEqual([noReading.missing, noReading.value, noReading.title], [true, "N/A", uiText.dashboard.noReadingHint]);
+// 后端的「N/A」不原样显示：没有读数用界面语言的短话；设备字段写好的「不可用」原样保留。
+assert.deepEqual([noReading.missing, noReading.value, noReading.title], [true, uiText.dashboard.noReading, uiText.dashboard.noReadingHint]);
+assert.notEqual(uiText.dashboard.noReading, "N/A");
+assert.equal(metricCardReading({ ...sensor, selectable: true, disabledReason: null },
+  { id: "cpu.temperature", displayValue: "", numericValue: null, unit: "°C" }).value, uiText.dashboard.noReading);
+assert.equal(metricCardReading({ ...sensor, selectable: true, disabledReason: null },
+  { id: "cpu.temperature", displayValue: uiText.dashboard.valueUnavailable, numericValue: null, unit: "°C" }).value, uiText.dashboard.valueUnavailable);
 // 字节速率走字节单位设置，不用后端拼好的「MB/s」。
 const rate = { id: "disk.total.readBytesPerSec", displayValue: "212.47 MB/s", numericValue: 222_789_000, unit: "B/s" };
 assert.equal(metricDisplayValue(rate), "212 MiB/s", "binary mode");
