@@ -87,7 +87,10 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             || address.Scheme != endpoint.Scheme || address.Authority != endpoint.Authority
             || address.UserInfo.Length != 0)
             throw new UnauthorizedAccessException("The frontend request does not target the configured backend.");
-        ApplyRequestAuthorization(request);
+        // Static documents use the same pinned peer without depending on a business key.
+        ApplyRequestAuthorization(request, includeApiKey:
+            address.AbsolutePath.Equals("/api", StringComparison.OrdinalIgnoreCase)
+            || address.AbsolutePath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase));
         return frontendClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
@@ -292,16 +295,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             }
             backendProcessIdentity = identity;
 
-            var apiKey = readApiKey();
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                return false;
-            }
-
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
                 "/api/runtime/capabilities");
-            request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, apiKey);
 
             using var response = await probeClient.SendAsync(
                 request,
@@ -515,10 +511,15 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return false;
     }
 
-    private void ApplyRequestAuthorization(HttpRequestMessage request)
+    private void ApplyRequestAuthorization(HttpRequestMessage request, bool includeApiKey = true)
     {
-        if (backendProcessIdentity is null || readApiKey() is not { Length: > 0 } apiKey)
+        if (backendProcessIdentity is null)
             throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
-        request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, apiKey);
+        if (!includeApiKey) return;
+        var apiKey = readApiKey()
+            ?? throw new IOException("The default access key file is unavailable.");
+        // An empty, validated file deliberately disables the default credential.
+        // Leave authorization to the backend; read/validation failures still propagate.
+        if (apiKey.Length != 0) request.Headers.TryAddWithoutValidation(ApiKeyHeaderName, apiKey);
     }
 }

@@ -131,14 +131,15 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
         var accepted = new System.Collections.Concurrent.ConcurrentQueue<string>();
         await using var backend = await StartBackendAsync(async context =>
         {
-            var supplied = context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString();
-            if (supplied != Volatile.Read(ref currentKey)) { context.Response.StatusCode = 401; return; }
             if (context.Request.Path == "/api/runtime/capabilities")
             {
+                Assert.False(context.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader));
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync("{\"profileId\":\"test\"}");
                 return;
             }
+            var supplied = context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString();
+            if (supplied != Volatile.Read(ref currentKey)) { context.Response.StatusCode = 401; return; }
             accepted.Enqueue(supplied);
             await context.Response.WriteAsync("accepted");
         });
@@ -225,14 +226,15 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
                     await context.Response.WriteAsync("<!doctype html><html><body>Native bridge test</body></html>");
                     return;
                 }
-                var key = context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString();
-                if (key != Volatile.Read(ref currentKey)) { context.Response.StatusCode = 401; return; }
                 if (context.Request.Path == "/api/runtime/capabilities")
                 {
+                    Assert.False(context.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader));
                     context.Response.ContentType = "application/json";
                     await context.Response.WriteAsync("{\"profileId\":\"test\"}");
                     return;
                 }
+                var key = context.Request.Headers[TrustedAccessHeaders.KeyHeader].ToString();
+                if (key != Volatile.Read(ref currentKey)) { context.Response.StatusCode = 401; return; }
                 acceptedKeys.Enqueue(key);
                 await context.Response.WriteAsync("accepted");
             });
