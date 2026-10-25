@@ -187,14 +187,16 @@ public sealed class BusinessBlockControllerTests
         await controller.StartAsync("worker", UserReason("worker"));
         await block.Started.Task.WaitAsync(TestTimeout);
         var stopping = controller.StopAsync("worker", UserReason("worker"));
-        await Task.Delay(120);
-
-        Assert.False(stopping.IsCompleted);
-        Assert.True(Facts(controller, "worker").ExecutionOutstanding);
-        Assert.Contains(controller.Read().History, transition =>
-            transition.BlockId == "worker" && transition.Outcome == BusinessBlockTransitionOutcome.StopTimeout);
-
-        block.Complete(BusinessBlockResult.Stopped);
+        try
+        {
+            await WaitUntilAsync(() => controller.Read().History.Any(transition =>
+                transition.BlockId == "worker" && transition.Outcome == BusinessBlockTransitionOutcome.StopTimeout));
+            Assert.False(stopping.IsCompleted);
+            Assert.True(Facts(controller, "worker").ExecutionOutstanding);
+            Assert.Contains(controller.Read().History, transition =>
+                transition.BlockId == "worker" && transition.Outcome == BusinessBlockTransitionOutcome.StopTimeout);
+        }
+        finally { block.Complete(BusinessBlockResult.Stopped); }
         await stopping.WaitAsync(TestTimeout);
         Assert.False(Facts(controller, "worker").ExecutionOutstanding);
     }

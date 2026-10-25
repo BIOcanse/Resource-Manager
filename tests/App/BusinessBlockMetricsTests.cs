@@ -73,7 +73,7 @@ public sealed class BusinessBlockMetricsTests
         try
         {
             threadHandle = NativeThreadTimes.Open(checked((uint)nativeThreadId));
-            Thread.Sleep(200);
+            NativeThreadTimes.WaitForCpuTicksAfter(threadHandle, cpuAfterRegistration);
             var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - cpuAfterRegistration;
             metrics.Sample(DateTimeOffset.UtcNow);
             var sample = metrics.Read();
@@ -321,14 +321,13 @@ public sealed class BusinessBlockMetricsTests
             await controller.StartAsync("busy", reason);
             started = true;
             var thread = await block.Started.WaitAsync(TimeSpan.FromSeconds(5));
-            await Task.Delay(150);
-
             var threadHandle = NativeThreadTimes.Open(thread.NativeThreadId);
             try
             {
                 var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - thread.CpuTicksAtRegistration;
                 var beforeRead = controller.Read();
-                await Task.Delay(100);
+                // Read the independent baseline after the product read, then require real CPU progress.
+                NativeThreadTimes.WaitForCpuTicksAfter(threadHandle, NativeThreadTimes.GetCpuTicks(threadHandle));
                 var snapshot = controller.Read();
                 var blockFacts = Assert.Single(snapshot.Blocks);
                 var metrics = blockFacts.Metrics;
@@ -446,6 +445,10 @@ public sealed class BusinessBlockMetricsTests
 
         public static long GetCurrentThreadCpuTicks()
             => GetCpuTicks(GetCurrentThread());
+
+        public static void WaitForCpuTicksAfter(IntPtr threadHandle, long previous)
+            => Assert.True(SpinWait.SpinUntil(() => GetCpuTicks(threadHandle) > previous, TimeSpan.FromSeconds(10)),
+                "The busy thread did not receive CPU time within the test deadline.");
 
         public static long GetCpuTicks(IntPtr threadHandle)
         {

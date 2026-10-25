@@ -12,9 +12,11 @@ public sealed partial class CpuThreadCpuidInformationTests
         await using var subscription = fixture.Reader.SubscribeInformationAsync("cpuid", TimeSpan.FromMilliseconds(100),
             cancellation.Token).GetAsyncEnumerator();
         var first = subscription.MoveNextAsync().AsTask();
-        await fixture.Reader.StartAsync(CancellationToken.None);
+        // Drive captures explicitly: cache assertions must not race a periodic capture.
+        var capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
         Assert.Equal(1, await fixture.Sampler.WaitForCaptureAsync());
         var snapshot = InstructionSnapshot(); fixture.Sampler.Complete(snapshot);
+        await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
         Assert.True(await first.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         var information = subscription.Current;
         Assert.Same(snapshot, fixture.Reader.GetSnapshot());
@@ -33,11 +35,13 @@ public sealed partial class CpuThreadCpuidInformationTests
             .Single(row => row.GetProperty("leaf").GetUInt32() == 0x1F).GetProperty("edx").GetUInt32());
 
         var next = subscription.MoveNextAsync().AsTask();
+        capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
         Assert.Equal(2, await fixture.Sampler.WaitForCaptureAsync());
         Assert.Same(information, fixture.Reader.GetInformationSnapshot());
         var failed = snapshot with { OsTopologyInformation = snapshot.OsTopologyInformation! with
             { ThreadCpuid = [new(1, null), snapshot.OsTopologyInformation.ThreadCpuid![1]] } };
         fixture.Sampler.Complete(failed);
+        await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
         Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         Assert.Null(Field(Device(subscription.Current, "windows-cpu-thread|0:1"), "cpu_all_cpuid_vendor").Value);
         Assert.Null(Field(Device(subscription.Current, "windows-cpu-thread|0:1"), "cpu_all_instruction_feature").Value);

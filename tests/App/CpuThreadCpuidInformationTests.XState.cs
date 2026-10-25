@@ -98,9 +98,11 @@ public sealed partial class CpuThreadCpuidInformationTests
             CancellationToken.None).GetAsyncEnumerator();
         var next = subscription.MoveNextAsync().AsTask();
         Assert.Equal(0, fixture.Sampler.CaptureCount);
-        await fixture.Reader.StartAsync(CancellationToken.None);
+        // Drive the original capture owner without racing the subscription's next due time.
+        var capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
         Assert.Equal(1, await fixture.Sampler.WaitForCaptureAsync());
         fixture.Sampler.Complete(XStateSnapshot());
+        await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
         Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         Assert.Same(subscription.Current, fixture.Reader.GetInformationSnapshot());
         Assert.Equal(ulong.MaxValue.ToString(), Field(Device(subscription.Current, "windows-cpu-os-features"), "cpu_all_os_enabled_xstate_mask").Value!.Value.GetString());

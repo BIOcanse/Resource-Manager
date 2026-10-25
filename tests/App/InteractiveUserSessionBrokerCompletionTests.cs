@@ -35,6 +35,7 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
             process.SafeHandle.DangerousGetHandle());
         using var cancellation = new CancellationTokenSource();
         var cancellationObserved = 0;
+        var cancellationReported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var wait = WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
             waitHandle,
             cancellation.Token,
@@ -42,14 +43,14 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
             onCancellationObserved: () =>
             {
                 Interlocked.Increment(ref cancellationObserved);
+                cancellationReported.TrySetResult();
                 throw new IOException("synthetic diagnostic observer failure");
             });
 
         try
         {
-            await Task.Delay(100);
             cancellation.Cancel();
-            await Task.Delay(100);
+            await cancellationReported.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.Equal(1, Volatile.Read(ref cancellationObserved));
             Assert.False(wait.IsCompleted);
@@ -77,6 +78,7 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
         var waitHandle = WindowsInteractiveUserSessionBroker.DuplicateProcessHandleForWaiting(
             process.SafeHandle.DangerousGetHandle());
         var elapsedSlices = 0;
+        var sliceReported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var wait = WindowsInteractiveUserSessionBroker.WaitForProcessExitAsync(
             waitHandle,
             CancellationToken.None,
@@ -84,12 +86,15 @@ public sealed class InteractiveUserSessionBrokerCompletionTests
             onWaitSliceElapsed: () =>
             {
                 if (Interlocked.Increment(ref elapsedSlices) == 1)
+                {
+                    sliceReported.TrySetResult();
                     throw new IOException("synthetic diagnostic observer failure");
+                }
             });
 
         try
         {
-            await Task.Delay(150);
+            await sliceReported.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(Volatile.Read(ref elapsedSlices) >= 1);
             Assert.False(wait.IsCompleted);
             Assert.False(process.HasExited);

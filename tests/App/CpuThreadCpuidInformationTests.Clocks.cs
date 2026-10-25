@@ -112,19 +112,28 @@ public sealed partial class CpuThreadCpuidInformationTests
         await using var fixture = new CpuTopologyProviderTestFixture(); using var cancellation = new CancellationTokenSource();
         Assert.Empty(fixture.Reader.GetInformationSnapshot().Devices); Assert.Equal(0, fixture.Sampler.CaptureCount);
         await using var stream = fixture.Reader.SubscribeInformationAsync("clock-declarations", TimeSpan.FromMilliseconds(100), cancellation.Token).GetAsyncEnumerator();
-        var next = stream.MoveNextAsync().AsTask(); await fixture.Reader.StartAsync(CancellationToken.None);
+        var next = stream.MoveNextAsync().AsTask();
+        // Explicit captures keep the cache assertions independent of the subscription cadence.
+        var capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
         Assert.Equal(1, await fixture.Sampler.WaitForCaptureAsync()); var data = ClockData(); var snapshot = ClockSnapshot(data, data);
-        fixture.Sampler.Complete(snapshot); Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
+        fixture.Sampler.Complete(snapshot); await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
+        Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         var first = stream.Current; Assert.All(ClockFields(Device(first, "windows-cpu-thread|0:1")), field => Assert.NotNull(field.Value));
         Assert.Equal(5, ClockFields(Device(first, "windows-cpu-thread|0:1")).Count);
         for (var index = 0; index < 10; index++) Assert.Same(first, fixture.Reader.GetInformationSnapshot());
         Assert.Equal(1, fixture.Sampler.CaptureCount); Assert.Equal(1U, fixture.ReadDemand().SourceCount); Assert.Equal(1U, fixture.ReadDemand().ItemCount);
-        next = stream.MoveNextAsync().AsTask(); Assert.Equal(2, await fixture.Sampler.WaitForCaptureAsync());
+        next = stream.MoveNextAsync().AsTask();
+        capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
+        Assert.Equal(2, await fixture.Sampler.WaitForCaptureAsync());
         fixture.Sampler.Complete(snapshot with { OsTopologyInformation = snapshot.OsTopologyInformation! with { ThreadCpuid = [new(1, null), new(135, data)] } });
+        await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
         Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         Assert.All(ClockFields(Device(stream.Current, "windows-cpu-thread|0:1")), field => Assert.Null(field.Value));
-        next = stream.MoveNextAsync().AsTask(); Assert.Equal(3, await fixture.Sampler.WaitForCaptureAsync());
-        fixture.Sampler.Complete(snapshot); Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
+        next = stream.MoveNextAsync().AsTask();
+        capture = Task.Run(async () => await fixture.Reader.CaptureInformationAsync(CancellationToken.None));
+        Assert.Equal(3, await fixture.Sampler.WaitForCaptureAsync());
+        fixture.Sampler.Complete(snapshot); await capture.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
+        Assert.True(await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
         Assert.All(ClockFields(Device(stream.Current, "windows-cpu-thread|0:1")), field => Assert.NotNull(field.Value));
     }
 
