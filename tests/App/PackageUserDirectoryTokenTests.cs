@@ -195,7 +195,7 @@ public sealed class PackageUserDirectoryTokenTests
             source.SetAccessControl(access);
             var destination = Path.Combine(root, "copied");
             typeof(PackageSwitchTransaction).GetMethod("CopyTree", BindingFlags.NonPublic | BindingFlags.Static)!
-                .Invoke(null, [source.FullName, destination, true, false]);
+                .Invoke(null, [source.FullName, destination, true, false, false]);
             WindowsIdentity.RunImpersonated(token, () =>
             {
                 Assert.Equal("read-only-content", File.ReadAllText(Path.Combine(destination, relative)));

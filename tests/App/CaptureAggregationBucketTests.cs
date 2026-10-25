@@ -12,6 +12,7 @@ using Xunit.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
+[Collection(ProcessHeapMeasurementCollection.Name)]
 public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
 {
     private static readonly DateTimeOffset Time = DateTimeOffset.UnixEpoch;

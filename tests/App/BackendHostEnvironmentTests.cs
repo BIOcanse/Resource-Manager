@@ -27,6 +27,7 @@ public sealed class BackendHostEnvironmentTests
     {
         using var provider = new ServiceCollection()
             .AddLogging()
+            .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
                 [],
                 StartupCapabilitySet.NormalReadOnly,
@@ -47,6 +48,7 @@ public sealed class BackendHostEnvironmentTests
     {
         using var interactiveProvider = new ServiceCollection()
             .AddLogging()
+            .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
                 [],
                 StartupCapabilitySet.NormalReadOnly,
@@ -54,6 +56,7 @@ public sealed class BackendHostEnvironmentTests
             .BuildServiceProvider();
         using var headlessServiceProvider = new ServiceCollection()
             .AddLogging()
+            .AddSingleton<IHostEnvironment>(new FanTestEnvironment())
             .AddResourceManagerApp(
                 ["--no-native-ui"],
                 StartupCapabilitySet.NormalReadOnly,
