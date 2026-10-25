@@ -62,6 +62,21 @@ public sealed class JsonMetadataContractTests
     private static readonly Assembly ReadWrite = typeof(WindowsMetricConfiguration).Assembly;
 
     [Fact]
+    public void ProcessFieldCatalogSerializesWithTheProductionResolver()
+    {
+        // Candidate .22 answered /api/resource-breakdown/fields/catalog with 500: Results.Ok serializes the runtime
+        // type, and the registry's collection expression has no generated metadata. Test hosts resolve by reflection.
+        var options = new JsonSerializerOptions();
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        Assert.Throws<NotSupportedException>(() =>
+            JsonSerializer.Serialize((object)ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldRegistry.Definitions, options));
+        object wire = ResourceManagerEndpointRouteBuilderExtensions.ProcessFieldCatalogWire;
+        using var catalog = JsonDocument.Parse(JsonSerializer.Serialize(wire, wire.GetType(), options));
+        Assert.Equal(ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldRegistry.Definitions.Count,
+            catalog.RootElement.GetArrayLength());
+    }
+
+    [Fact]
     public void GenericSessionConsumersUseTheProductionGeneratedWire()
     {
         var launch = new ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchRequest(

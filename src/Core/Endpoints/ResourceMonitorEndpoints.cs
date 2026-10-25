@@ -28,9 +28,14 @@ namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
+    // Results.Ok serializes the runtime type, and the production resolver only has generated metadata.
+    // The registry's collection expression is a compiler-synthesized list without metadata, so the wire is the
+    // registered array type.
+    internal static readonly ProcessMetricFieldDefinition[] ProcessFieldCatalogWire = [.. ProcessMetricFieldRegistry.Definitions];
+
     private static IEndpointRouteBuilder MapResourceMonitorEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/resource-breakdown/fields/catalog", () => Results.Ok(ProcessMetricFieldRegistry.Definitions))
+        app.MapGet("/api/resource-breakdown/fields/catalog", () => Results.Ok(ProcessFieldCatalogWire))
             .AllowAnonymous();
         app.MapGet("/api/resource-breakdown/snapshot", async (
             HttpRequest request,
