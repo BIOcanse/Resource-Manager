@@ -1,16 +1,28 @@
 import {
   createContext,
+  createMemo,
+  createSignal,
   createUniqueId,
+  onCleanup,
   useContext,
+  type Accessor,
   type JSX
 } from "solid-js";
 import { moveRovingFocus } from "./RovingFocus.ts";
+
+interface RadioGroupItemEntry {
+  readonly value: string;
+  readonly disabled: Accessor<boolean>;
+}
 
 interface RadioGroupContextValue {
   readonly value: () => string;
   readonly setValue: (value: string) => void;
   readonly disabled: () => boolean;
   readonly idPrefix: string;
+  // 组内唯一的 Tab 停靠项：选中且可用的项；没有选中项或选中项不可用时是第一个可用项，组才能被 Tab 到。
+  readonly tabStopValue: Accessor<string | null>;
+  readonly registerItem: (entry: RadioGroupItemEntry) => void;
 }
 
 const RadioGroupContext = createContext<RadioGroupContextValue>();
@@ -27,11 +39,21 @@ export function RadioGroupRoot(props: {
 }) {
   const generatedId = createUniqueId();
   const orientation = () => props.orientation ?? "horizontal";
+  const [items, setItems] = createSignal<readonly RadioGroupItemEntry[]>([]);
+  const tabStopValue = createMemo(() => {
+    const enabled = items().filter((item) => !item.disabled());
+    return (enabled.find((item) => item.value === props.value) ?? enabled[0])?.value ?? null;
+  });
   const context: RadioGroupContextValue = {
     value: () => props.value,
     setValue: props.onChange,
     disabled: () => Boolean(props.disabled),
-    idPrefix: props.id ?? `radio-group-${generatedId}`
+    idPrefix: props.id ?? `radio-group-${generatedId}`,
+    tabStopValue,
+    registerItem: (entry) => {
+      setItems((current) => [...current, entry]);
+      onCleanup(() => setItems((current) => current.filter((item) => item !== entry)));
+    }
   };
 
   return (
@@ -72,6 +94,7 @@ export function RadioGroupItem(props: {
   const value = normalizeRadioValue(props.value);
   const selected = () => context.value() === value;
   const disabled = () => context.disabled() || Boolean(props.disabled);
+  context.registerItem({ value, disabled });
 
   return (
     <button
@@ -81,7 +104,7 @@ export function RadioGroupItem(props: {
       type="button"
       role="radio"
       aria-checked={selected()}
-      tabIndex={selected() && !disabled() ? 0 : -1}
+      tabIndex={context.tabStopValue() === value ? 0 : -1}
       disabled={disabled()}
       title={props.title}
       onClick={() => context.setValue(value)}

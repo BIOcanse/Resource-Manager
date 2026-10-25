@@ -51,7 +51,12 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   assert.equal(writes.length, 0, "Leaving the reminder must not save a category");
   await card.getByRole("button", { name: "选择分类", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "添加一般应用" });
-  await dialog.getByRole("combobox", { name: "组件和软件分类", exact: true }).click();
+  const kindSelect = dialog.getByRole("combobox", { name: "组件和软件分类", exact: true });
+  // aria-controls 只在列表展开、列表确实在页面上时指向它。
+  assert.equal(await kindSelect.getAttribute("aria-controls"), null);
+  await kindSelect.click();
+  const listboxId = await kindSelect.getAttribute("aria-controls");
+  assert.ok(listboxId && await page.locator(`[id="${listboxId}"][role="listbox"]`).count() === 1);
   await page.getByRole("option", { name: "游戏", exact: true }).click();
   await page.getByRole("dialog", { name: "添加游戏" }).waitFor();
   await page.getByRole("combobox", { name: "组件和软件分类", exact: true }).click();

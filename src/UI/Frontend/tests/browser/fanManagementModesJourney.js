@@ -49,6 +49,10 @@ export default async function fanManagementModesJourney(page, baseUrl) {
   await mixed.getByRole("alert").filter({hasText:"重新选择"}).waitFor();
   assert.equal(await mixed.getByRole("button",{name:"应用",exact:true}).isDisabled(),true);
   assert.equal(await mixed.locator('.control-ownership-choice [aria-checked="true"]').count(),0);
+  // 没有选中项时组里仍要有一个 Tab 停靠项（第一个可用项），否则键盘用户 Tab 不到这组选择。
+  assert.deepEqual((await mixed.locator('.control-ownership-choice [role="radio"][tabindex="0"]').allTextContents()).map(text=>text.trim()),["固件管理"]);
+  // 选中项不可用时同样落到第一个可用项上。
+  assert.equal(await limited.locator('.control-ownership-choice [role="radio"][tabindex="0"]').count(),1);
   assert.deepEqual(writes,[]);
   for(const mode of ["固件写入","软件管理","固件管理"]) {
     await card.getByRole("radio",{name:mode,exact:true}).click();

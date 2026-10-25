@@ -37,7 +37,9 @@ export function ControlFirstRunNotice(props: { onAcknowledge: () => void; busy?:
             </DialogBody>
             <div class="modal-actions">
               <Show when={props.failed}><p role="alert">{uiText.control.recovery.noticeAckFailed}</p></Show>
-              <button type="button" disabled={props.busy} onClick={props.onAcknowledge}>{text.accept}</button>
+              {/* “下一步”换屏时会把自己连同焦点一起卸掉，焦点交给第二屏的按钮，不能掉到 body 上。 */}
+              <button type="button" disabled={props.busy} onClick={props.onAcknowledge}
+                ref={(element) => queueMicrotask(() => element.focus({ preventScroll: true }))}>{text.accept}</button>
             </div>
           </>
         }

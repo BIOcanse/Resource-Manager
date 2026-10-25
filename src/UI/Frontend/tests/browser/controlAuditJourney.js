@@ -116,6 +116,11 @@ export default async function controlAuditJourney(page, baseUrl) {
   noticeAvailable = true;
   await page.getByRole("button", { name: "重新读取", exact: true }).click();
   await page.locator(".control-first-run-notice").waitFor();
+  // 键盘按“下一步”换到第二屏后，焦点落在第二屏的按钮上，而不是随第一屏的按钮掉到 body。
+  await page.locator(".control-first-run-notice").getByRole("button", { name: "下一步", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.activeElement?.closest(".control-first-run-notice")
+    && document.activeElement.textContent?.trim() === "我已知悉", null, { timeout: 3000 });
   assert.equal(noticeWrites, 0, "The journey never acknowledges the warranty notice");
   assert.equal(writes.length, beforeNoticeWrites, "Retrying reads never applies a draft");
   return { unavailableBaselineBlocked: true, siblingSettingRetained: true, failedCurveUnavailable: true,

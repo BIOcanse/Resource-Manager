@@ -252,7 +252,8 @@ export function StandardSelect<T extends string>(props: {
         aria-label={props.ariaLabel}
         aria-expanded={open()}
         aria-haspopup="listbox"
-        aria-controls={listboxId}
+        // 列表只在展开时渲染；收起时指向它就是指向页面上不存在的 ID。
+        aria-controls={open() ? listboxId : undefined}
         onClick={() => open() ? close() : openPopup()}
         onKeyDown={(event) => {
           if (open() && event.key === "Tab") {

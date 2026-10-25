@@ -194,7 +194,9 @@ assert.match(rovingFocus, /focus\(\{ preventScroll: true \}\)/);
 assert.match(radioGroup, /role="radiogroup"/);
 assert.match(radioGroup, /role="radio"/);
 assert.match(radioGroup, /aria-checked=\{selected\(\)\}/);
-assert.match(radioGroup, /tabIndex=\{selected\(\) && !disabled\(\) \? 0 : -1\}/);
+// 唯一的 Tab 停靠项：选中且可用的项，否则第一个可用项（没有选中项时组也要能被 Tab 到）。
+assert.match(radioGroup, /tabIndex=\{context\.tabStopValue\(\) === value \? 0 : -1\}/);
+assert.match(radioGroup, /enabled\.find\(\(item\) => item\.value === props\.value\) \?\? enabled\[0\]/);
 assert.match(segmentedControl, /<RadioGroupRoot/);
 assert.match(settingsControls, /<PrimitiveSegmentedControl/);
 assert.match(aiGatewayKeyManager, /<SegmentedControl/);
