@@ -158,11 +158,17 @@ internal sealed class NativeTransactionJournalFileStore
                     in configuration,
                     image,
                     out var session);
-                if (status == NativeTransactionJournalStatus.Ok)
+                try
                 {
-                    rootManifest.ValidateOrAdoptCanonical(image);
+                    if (status == NativeTransactionJournalStatus.Ok)
+                        rootManifest.ValidateOrAdoptCanonical(image);
+                    return new NativeTransactionJournalOpenResult(status, session);
                 }
-                return new NativeTransactionJournalOpenResult(status, session);
+                catch
+                {
+                    session?.Dispose();
+                    throw;
+                }
             }
         }
         finally

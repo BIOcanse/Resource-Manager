@@ -39,12 +39,19 @@ public sealed partial class ResourceManagerLedgerOwner : IDiskUsageTreePayloadAl
         {
             ThrowIfDisposed();
             scratchRows = computeScratch.Select(static scratch => new ResourceManagerWorkspaceCapacity(
-                scratch.Uid.ToString()!, scratch.WorkArea, scratch.Rows, scratch.Length, scratch.InLedger)).ToArray();
+                FormatUid(scratch.Uid), scratch.WorkArea, scratch.Rows, scratch.Length, scratch.InLedger)).ToArray();
             native = nativeWorkspaces.ToArray();
         }
         // Native session locks must never be taken while holding the Ledger gate.
         return scratchRows.Concat(native.Select(static entry => entry.Read())
             .OfType<ResourceManagerWorkspaceCapacity>()).ToArray();
+    }
+
+    private static string FormatUid(LedgerUid128 uid)
+    {
+        Span<byte> bytes = stackalloc byte[LedgerUid128.ByteLength];
+        uid.CopyTo(bytes);
+        return Convert.ToHexString(bytes);
     }
 
     public ResourceManagerLedgerOwner(string nativeLibraryPath)

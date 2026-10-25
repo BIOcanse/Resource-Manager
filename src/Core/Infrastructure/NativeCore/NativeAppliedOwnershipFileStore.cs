@@ -119,11 +119,17 @@ internal sealed class NativeAppliedOwnershipFileStore
                     in configuration,
                     image,
                     out var session);
-                if (status == NativeAppliedOwnershipStatus.Ok)
+                try
                 {
-                    rootManifest.ValidateOrAdoptCanonical(image);
+                    if (status == NativeAppliedOwnershipStatus.Ok)
+                        rootManifest.ValidateOrAdoptCanonical(image);
+                    return new NativeAppliedOwnershipOpenResult(status, session);
                 }
-                return new NativeAppliedOwnershipOpenResult(status, session);
+                catch
+                {
+                    session?.Dispose();
+                    throw;
+                }
             }
         }
         finally

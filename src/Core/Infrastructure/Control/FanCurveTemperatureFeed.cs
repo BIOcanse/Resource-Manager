@@ -37,6 +37,7 @@ public sealed class FanCurveTemperatureFeed(
     internal static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
 
     private const string SubscriptionId = "control.fan-curve.temperature";
+    private static readonly string[] CpuTemperatureMetricIds = ["cpu.temperature"];
     internal static readonly TimeSpan MaximumSampleAge = TimeSpan.FromSeconds(3);
     private readonly object subscriptionGate = new();
     private readonly SemaphoreSlim activated = new(0, 1);
@@ -133,7 +134,7 @@ public sealed class FanCurveTemperatureFeed(
     /// </summary>
     internal static MetricSampleRequest TemperatureRequest(HardwareMetricSnapshot? snapshot)
     {
-        return MetricSampleRequest.ForIds(new[] { "cpu.temperature" }.Concat(
+        return MetricSampleRequest.ForIds(CpuTemperatureMetricIds.Concat(
             snapshot?.Items.Keys.Where(id => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
                 && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase)) ?? []));
     }

@@ -9,6 +9,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class CompositeFieldSubscriptionSamplingModeTests
 {
     [Fact]
+    public async Task ProjectionFailureRemainsFirstWhenChildCleanupAlsoFails()
+    {
+        var first = new Source("one");
+        var cleanup = new IOException("child cleanup failed");
+        var second = new Source("two") { CleanupFailure = cleanup };
+        var composition = Compose(first, second);
+        await using var stream = composition.SubscribeAsync("mixed", [first.Field, second.Field],
+            TimeSpan.FromSeconds(1), FieldSubscriptionOptions.Default, CancellationToken.None).GetAsyncEnumerator();
+        var next = stream.MoveNextAsync().AsTask();
+        first.Results.Writer.TryWrite(new(new("wrong", "identity"), FieldObservationStatus.Unavailable, null, null, "recorded"));
+        second.Results.Writer.TryWrite(new(second.Field, FieldObservationStatus.Unavailable, null, null, "recorded"));
+        var error = await Assert.ThrowsAsync<AggregateException>(() => next.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal("Subscription owner changed selected identities.", error.InnerExceptions[0].Message);
+        Assert.Same(cleanup, error.InnerExceptions[1]);
+        Assert.Equal(0, first.Leases + second.Leases);
+    }
+
+    [Fact]
     public async Task FreshMixedOwnersAwaitBothAttemptResultsWithoutReadingAnotherOwnersCache()
     {
         var first = new Source("one");
@@ -67,6 +85,7 @@ public sealed class CompositeFieldSubscriptionSamplingModeTests
         internal readonly Channel<FieldReading> Results = Channel.CreateUnbounded<FieldReading>();
         internal int Leases, CachedReads;
         internal FieldSubscriptionOptions? Options;
+        internal Exception? CleanupFailure;
         public ReadWriteCatalog Catalog { get; }
         public ValueTask<ReadWriteCatalog> DiscoverAsync(CancellationToken cancellationToken) => ValueTask.FromResult(Catalog);
         public FieldReading ReadCached(FieldReference field)
@@ -88,7 +107,11 @@ public sealed class CompositeFieldSubscriptionSamplingModeTests
             TimeSpan interval, FieldSubscriptionOptions options, [EnumeratorCancellation] CancellationToken token)
         {
             using var demand = Acquire(id, fields, interval, options);
-            await foreach (var result in Results.Reader.ReadAllAsync(token)) yield return [result];
+            try
+            {
+                await foreach (var result in Results.Reader.ReadAllAsync(token)) yield return [result];
+            }
+            finally { if (CleanupFailure is { } error) throw error; }
         }
         private sealed class Lease(Action release) : IDisposable
         {

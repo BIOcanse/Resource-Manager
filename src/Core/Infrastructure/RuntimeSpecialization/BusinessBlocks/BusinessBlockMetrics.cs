@@ -273,17 +273,23 @@ public sealed class BusinessBlockMetrics
                 throw new InvalidOperationException("The registered business-block thread is no longer active.");
             }
 
-            var finalCpuTicks = NativeMethods.GetThreadCpuTicks(state.Handle);
-            var finalAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
-            var cpuDelta = GetDelta(finalCpuTicks, state.LastCpuTicks, "A registered thread CPU counter moved backwards.");
-            var allocatedDelta = GetDelta(finalAllocatedBytes, state.InitialAllocatedBytes, "A registered thread allocation counter moved backwards.");
+            try
+            {
+                var finalCpuTicks = NativeMethods.GetThreadCpuTicks(state.Handle);
+                var finalAllocatedBytes = GC.GetAllocatedBytesForCurrentThread();
+                var cpuDelta = GetDelta(finalCpuTicks, state.LastCpuTicks, "A registered thread CPU counter moved backwards.");
+                var allocatedDelta = GetDelta(finalAllocatedBytes, state.InitialAllocatedBytes, "A registered thread allocation counter moved backwards.");
 
-            totalCpuTicks = checked(totalCpuTicks + cpuDelta);
-            totalAllocatedBytes = checked(totalAllocatedBytes + allocatedDelta);
-            intervalCpuTicks = checked(intervalCpuTicks + cpuDelta);
-            intervalAllocatedBytes = checked(intervalAllocatedBytes + allocatedDelta);
-            activeThreads.Remove(state.NativeThreadId);
-            state.Handle.Dispose();
+                totalCpuTicks = checked(totalCpuTicks + cpuDelta);
+                totalAllocatedBytes = checked(totalAllocatedBytes + allocatedDelta);
+                intervalCpuTicks = checked(intervalCpuTicks + cpuDelta);
+                intervalAllocatedBytes = checked(intervalAllocatedBytes + allocatedDelta);
+            }
+            finally
+            {
+                activeThreads.Remove(state.NativeThreadId);
+                state.Handle.Dispose();
+            }
         }
     }
 

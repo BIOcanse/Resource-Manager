@@ -9,6 +9,33 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsHardwareMetricTopologySourceTests
 {
     [Fact]
+    public void PhysicalPnpCaseDoesNotChangeTopologyContent()
+    {
+        var identity = new WindowsGpuPhysicalIdentity(0, @"PCI\VEN_10DE&DEV_2D19\A",
+            WindowsGpuPnpKind.Pci, true, true, 0, 1, 0, 0, 0x10DE, 0x2D19, 0x1462, 0x1234, 1,
+            WindowsGpuIdentityEvidence.KmtLuidOpen, WindowsGpuPhysicalIdentityStatus.Bound, 0);
+        var adapter = new WindowsGpuAdapter(0, "recorded", 0x10DE, 0x2D19, 0x1234,
+            new() { LowPart = 23 }, false, 8192, WindowsGpuAdapterKind.Dedicated)
+            { PhysicalIdentityStatus = SamplingObservationStatus.Current, PhysicalIdentities = [identity] };
+        var pnp = identity.PnpInstanceId;
+        var source = new WindowsHardwareMetricTopologySource(new(
+            () => new(SamplingObservationStatus.Current, 1, 1, 1, 0, 0, 17,
+                [adapter with { PhysicalIdentities = [identity with { PnpInstanceId = pnp }] }]),
+            _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, [])) { ReadNvmlFanIdentities = _ => [] }, () => null);
+        var initial = source.Capture();
+        pnp = pnp.ToLowerInvariant();
+        var recased = source.Capture();
+        Assert.True(WindowsHardwareMetricTopologySource.SameContent(initial, recased));
+        Assert.Equal(initial.Generation, recased.Generation);
+        pnp += "-different-device";
+        Assert.NotEqual(initial.Generation, source.Capture().Generation);
+    }
+
+    [Fact]
     public void FreshCpuMemberListsDoNotChangePublishedContentButMembershipChangesDo()
     {
         NativeMetricSnapshotCatalogTopologySnapshot Content(byte member)

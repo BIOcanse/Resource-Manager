@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace ResourceManager.ReadWrite.Windows.Results.Explicit;
@@ -20,6 +21,7 @@ internal sealed partial class WindowsRawInputCaptureHost
     private const ushort MouseUsage = 0x02;
     private const ushort KeyboardUsage = 0x06;
     private const int MaximumRegisteredDevices = 4096;
+    internal static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<IntPtr, WindowsRawInputCaptureHost> ByWindow = new();
     private static readonly WndProcDelegate WindowProcedure = StaticWindowProcedure;
 
@@ -97,23 +99,39 @@ internal sealed partial class WindowsRawInputCaptureHost
         Volatile.Write(ref stopRequested, 1);
         if (thread.IsAlive)
         {
-            if (window != IntPtr.Zero)
+            WindowsRawInputCaptureException? closeFailure = null;
+            var stopWindow = window;
+            if (stopWindow != IntPtr.Zero)
             {
-                if (!PostMessageW(window, WmClose, UIntPtr.Zero, IntPtr.Zero))
-                    _ = PostThreadMessageW(threadId, 0x0012, UIntPtr.Zero, IntPtr.Zero);
+                if (!PostMessageW(stopWindow, WmClose, UIntPtr.Zero, IntPtr.Zero))
+                    closeFailure = NativeFailure(WindowsRawInputCaptureFailureCode.RegistrationFailure,
+                        "PostMessageW(WM_CLOSE) failed during Raw Input shutdown.");
             }
-            else if (threadId != 0)
+            if (stopWindow == IntPtr.Zero || closeFailure is not null)
             {
-                _ = PostThreadMessageW(threadId, 0x0012, UIntPtr.Zero, IntPtr.Zero);
+                if (!PostThreadMessageW(threadId, 0x0012, UIntPtr.Zero, IntPtr.Zero))
+                {
+                    var quitFailure = NativeFailure(WindowsRawInputCaptureFailureCode.RegistrationFailure,
+                        "PostThreadMessageW(WM_QUIT) failed during Raw Input shutdown.");
+                    throw new WindowsRawInputCaptureException(WindowsRawInputCaptureFailureCode.RegistrationFailure,
+                        "Raw Input shutdown could not post a stop message.", quitFailure.NativeError,
+                        closeFailure is null ? quitFailure : new AggregateException(closeFailure, quitFailure));
+                }
+                if (closeFailure is not null) Trace.TraceWarning("Raw Input shutdown used WM_QUIT after: {0}", closeFailure);
             }
         }
-        stopped.Task.GetAwaiter().GetResult();
+        try { stopped.Task.WaitAsync(ShutdownTimeout).GetAwaiter().GetResult(); }
+        catch (TimeoutException error)
+        {
+            throw new WindowsRawInputCaptureException(WindowsRawInputCaptureFailureCode.RegistrationFailure,
+                $"Raw Input shutdown did not complete within {ShutdownTimeout.TotalSeconds} seconds.", innerException: error);
+        }
     }
 
     internal void StopAfterFailedStart()
     {
         try { Stop(); }
-        catch { }
+        catch (Exception error) { Trace.TraceError("Raw Input cleanup after failed start failed: {0}", error); }
     }
 
     private void WorkerMain()

@@ -386,19 +386,30 @@ public sealed partial class BusinessBlockController : IBusinessBlockQuery, IBusi
                 entry.ConsumersReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
             entry.ObservedThreads++;
         }
-        IDisposable registration;
-        try { registration = entry.Metrics.RegisterCurrentThread(sessionName); }
+        IDisposable? registration = null;
+        try
+        {
+            registration = entry.Metrics.RegisterCurrentThread(sessionName);
+            lock (sync) entry.Metrics.Sample(DateTimeOffset.UtcNow);
+        }
         catch (Exception error)
         {
-            lock (sync)
+            Exception? cleanupFailure = null;
+            try { registration?.Dispose(); }
+            catch (Exception cleanupError) { cleanupFailure = cleanupError; }
+            finally
             {
-                entry.ObservedThreads--;
-                if (entry.ObservedThreads == 0) entry.ConsumersReleased!.TrySetResult();
+                lock (sync)
+                {
+                    entry.ObservedThreads--;
+                    if (entry.ObservedThreads == 0) entry.ConsumersReleased!.TrySetResult();
+                }
             }
-            ReportFailure(blockId, error, "thread-registration");
+            var failure = cleanupFailure is null ? error : new AggregateException(error, cleanupFailure);
+            ReportFailure(blockId, failure, "thread-registration");
+            if (cleanupFailure is not null) throw failure;
             throw;
         }
-        lock (sync) entry.Metrics.Sample(DateTimeOffset.UtcNow);
         return new ThreadRegistration(this, entry, registration);
     }
 

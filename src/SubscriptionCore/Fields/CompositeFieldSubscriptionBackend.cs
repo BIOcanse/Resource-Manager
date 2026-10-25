@@ -70,65 +70,80 @@ public sealed class CompositeFieldSubscriptionBackend(CompositeReadWriteBackend 
         var pending = new Dictionary<int, Task<bool>>();
         var completeRound = options is not null || groups.All(group => Require(group.Backend).SupportsPeriodicDelivery);
         var expected = groups.Select(group => group.Fields.Select(group.Backend.Catalog.Require).ToImmutableArray()).ToArray();
+        Exception? failure = null;
         try
         {
-            for (var index = 0; index < groups.Length; index++)
+            try
             {
-                var backend = Require(groups[index].Backend);
-                var source = (options is null
-                    ? backend.SubscribeAsync(subscriptionId, groups[index].Fields, interval, linked.Token)
-                    : backend.SubscribeAsync(subscriptionId, groups[index].Fields, interval, options, linked.Token))
-                        .GetAsyncEnumerator(linked.Token);
-                enumerators.Add(source);
-                pending.Add(index, MoveNextOrStopAsync(source, linked));
+                for (var index = 0; index < groups.Length; index++)
+                {
+                    var backend = Require(groups[index].Backend);
+                    var source = (options is null
+                        ? backend.SubscribeAsync(subscriptionId, groups[index].Fields, interval, linked.Token)
+                        : backend.SubscribeAsync(subscriptionId, groups[index].Fields, interval, options, linked.Token))
+                            .GetAsyncEnumerator(linked.Token);
+                    enumerators.Add(source);
+                    pending.Add(index, MoveNextOrStopAsync(source, linked));
+                }
             }
+            catch (Exception error) { failure = error; throw; }
             while (pending.Count > 0)
             {
-                bool[] finished = [];
+                ImmutableArray<FieldReading> values;
                 int[] ready = [];
-                var stopped = false;
                 try
                 {
-                    if (completeRound) ready = [.. pending.Keys];
-                    else
+                    bool[] finished = [];
+                    var stopped = false;
+                    try
                     {
-                        await Task.WhenAny(pending.Values).WaitAsync(cancellationToken);
-                        ready = [.. pending.Where(static pair => pair.Value.IsCompleted).Select(static pair => pair.Key)];
+                        if (completeRound) ready = [.. pending.Keys];
+                        else
+                        {
+                            await Task.WhenAny(pending.Values).WaitAsync(cancellationToken);
+                            ready = [.. pending.Where(static pair => pair.Value.IsCompleted).Select(static pair => pair.Key)];
+                        }
+                        finished = await Task.WhenAll(ready.Select(owner => pending[owner])).WaitAsync(cancellationToken);
                     }
-                    finished = await Task.WhenAll(ready.Select(owner => pending[owner])).WaitAsync(cancellationToken);
-                }
-                catch (OperationCanceledException) when (linked.IsCancellationRequested && !cancellationToken.IsCancellationRequested) { stopped = true; }
-                if (stopped) yield break;
-                if (finished.Any(static present => !present)) yield break;
-                foreach (var owner in ready) pending.Remove(owner);
-                var values = new FieldReading[fields.Length];
-                for (var owner = 0; owner < groups.Length; owner++)
-                {
-                    var hasResult = ready.Contains(owner);
-                    var published = hasResult ? enumerators[owner].Current : ReadCurrent(groups[owner].Backend, expected[owner]);
-                    if (hasResult && published.Length != groups[owner].Fields.Length)
-                        throw new InvalidOperationException("Subscription owner omitted selected readings.");
-                    for (var index = 0; index < groups[owner].Fields.Length; index++)
+                    catch (OperationCanceledException) when (linked.IsCancellationRequested && !cancellationToken.IsCancellationRequested) { stopped = true; }
+                    if (stopped) yield break;
+                    if (finished.Any(static present => !present)) yield break;
+                    foreach (var owner in ready) pending.Remove(owner);
+                    var merged = new FieldReading[fields.Length];
+                    for (var owner = 0; owner < groups.Length; owner++)
                     {
-                        var original = expected[owner][index];
-                        if (hasResult && published[index].Field != original.Field)
-                            throw new InvalidOperationException("Subscription owner changed selected identities.");
-                        values[groups[owner].Positions[index]] = published[index];
+                        var hasResult = ready.Contains(owner);
+                        var published = hasResult ? enumerators[owner].Current : ReadCurrent(groups[owner].Backend, expected[owner]);
+                        if (hasResult && published.Length != groups[owner].Fields.Length)
+                            throw new InvalidOperationException("Subscription owner omitted selected readings.");
+                        for (var index = 0; index < groups[owner].Fields.Length; index++)
+                        {
+                            var original = expected[owner][index];
+                            if (hasResult && published[index].Field != original.Field)
+                                throw new InvalidOperationException("Subscription owner changed selected identities.");
+                            merged[groups[owner].Positions[index]] = published[index];
+                        }
                     }
+                    values = [.. merged];
                 }
-                yield return [.. values];
+                catch (Exception error) { failure = error; throw; }
+                yield return values;
                 foreach (var owner in ready)
                     pending.Add(owner, MoveNextOrStopAsync(enumerators[owner], linked));
             }
         }
         finally
         {
-            await linked.CancelAsync();
-            try { await Task.WhenAll(pending.Values); } catch (Exception) { /* Preserve the original stream result while settling cancellation. */ }
             List<Exception>? errors = null;
+            try { await linked.CancelAsync(); } catch (Exception error) { (errors ??= []).Add(error); }
+            try { await Task.WhenAll(pending.Values); } catch (Exception) { /* Preserve the original stream result while settling cancellation. */ }
             foreach (var enumerator in enumerators)
                 try { await enumerator.DisposeAsync(); } catch (Exception error) { (errors ??= []).Add(error); }
-            if (errors is not null) throw new AggregateException(errors);
+            if (errors is not null)
+            {
+                if (failure is not null) errors.Insert(0, failure);
+                throw new AggregateException(errors);
+            }
         }
     }
 

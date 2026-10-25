@@ -42,6 +42,7 @@ public sealed partial class HostManagerSmartCoordinator
             var saved = state;
             OpenGlCallbackPreparationResult? result = null;
             GpuWindowActionProcessCleanup? completedCleanup = null;
+            Exception? failure = null;
             try
             {
                 saved = await SaveOpenGlPreparationFactAsync(saved, key, policyRecord.RecordId,
@@ -50,18 +51,27 @@ public sealed partial class HostManagerSmartCoordinator
                     result = await execution.RunAsync(target.ProcessId, checked((long)target.ProcessStartKey), targetAdapter).ConfigureAwait(false);
                 if (execution.CleanupCompletion is { } completion)
                     completedCleanup = await completion.ConfigureAwait(false);
+                var preparationFailure = result as OpenGlCallbackPreparationResult.Failure;
+                saved = await SaveOpenGlPreparationFactAsync(saved, key, policyRecord.RecordId,
+                    new(target, targetAdapter, result is null ? "not-executed" : "completed", result?.Worker,
+                        preparationFailure?.AcquisitionError, preparationFailure?.NativeCleanupError,
+                        preparationFailure?.ExecutionError, completedCleanup)).ConfigureAwait(false);
             }
+            catch (Exception error) { failure = error; throw; }
             finally
             {
                 try { await execution.DisposeAsync().ConfigureAwait(false); release.SetResult(); }
-                catch (Exception error) { release.SetException(error); throw; }
+                catch (Exception error)
+                {
+                    // A structured preparation failure is already persisted before cleanup can throw.
+                    var primary = failure ?? (result is OpenGlCallbackPreparationResult.Failure preparationFailure
+                        ? new InvalidOperationException($"OpenGL preparation failed: acquisition={preparationFailure.AcquisitionError}, nativeCleanup={preparationFailure.NativeCleanupError}, execution={preparationFailure.ExecutionError}")
+                        : null);
+                    var combined = primary is null ? error : new AggregateException(primary, error);
+                    release.SetException(combined);
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(combined).Throw();
+                }
             }
-
-            var failure = result as OpenGlCallbackPreparationResult.Failure;
-            saved = await SaveOpenGlPreparationFactAsync(saved, key, policyRecord.RecordId,
-                new(target, targetAdapter, result is null ? "not-executed" : "completed", result?.Worker,
-                    failure?.AcquisitionError, failure?.NativeCleanupError, failure?.ExecutionError,
-                    completedCleanup)).ConfigureAwait(false);
             if (result is OpenGlCallbackPreparationResult.Success success
                 && completedCleanup is { Complete: true, ExitObserved: true, ExitCode: 0, TerminationRequested: false,
                     TerminationError: null, ObservationError: null }

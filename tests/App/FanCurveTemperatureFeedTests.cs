@@ -9,6 +9,25 @@ public sealed class FanCurveTemperatureFeedTests
     private static readonly DateTimeOffset Now = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void TemperatureRequestsAvoidThePerTickConstantArrayAllocation()
+    {
+        var snapshot = Snapshot(("cpu.temperature", 50d, Now), ("gpu.0.temperature", 60d, Now));
+        MetricSampleRequest PriorRequest() => MetricSampleRequest.ForIds(new[] { "cpu.temperature" }.Concat(
+            snapshot.Items.Keys.Where(id => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
+                && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase))));
+        for (var i = 0; i < 128; i++) { _ = PriorRequest(); _ = FanCurveTemperatureFeed.TemperatureRequest(snapshot); }
+        const int count = 256;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < count; i++) _ = PriorRequest();
+        var priorBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < count; i++) _ = FanCurveTemperatureFeed.TemperatureRequest(snapshot);
+        var currentBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(currentBytes <= priorBytes - count * 32,
+            $"Expected to remove a one-element reference array per tick: prior={priorBytes}, current={currentBytes}.");
+    }
+
+    [Fact]
     public void SubscriptionContainsEachGpuTemperatureAndNoOtherGpuMetrics()
     {
         var snapshot = Snapshot(("cpu.temperature", 50d, Now), ("gpu.0.temperature", 60d, Now), ("gpu.2.temperature", 70d, Now), ("gpu.0.usage", 99d, Now));

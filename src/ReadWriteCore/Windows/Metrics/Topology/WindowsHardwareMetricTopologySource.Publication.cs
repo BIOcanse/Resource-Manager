@@ -42,7 +42,8 @@ public sealed partial class WindowsHardwareMetricTopologySource
             && left.GpuAdapters.Count == right.GpuAdapters.Count
             && left.GpuAdapters.Zip(right.GpuAdapters).All(static pair =>
                 pair.First with { PhysicalPnpInstanceIds = pair.Second.PhysicalPnpInstanceIds } == pair.Second
-                && pair.First.PhysicalPnpInstanceIds.SequenceEqual(pair.Second.PhysicalPnpInstanceIds))
+                && pair.First.PhysicalPnpInstanceIds.Select(static id => id.ToUpperInvariant())
+                    .SequenceEqual(pair.Second.PhysicalPnpInstanceIds.Select(static id => id.ToUpperInvariant())))
             && SameOrdinals(left.StorageSensors, right.StorageSensors)
             && SameOrdinals(left.SystemFans, right.SystemFans)
             && left.AmdCcdIdentities.Count == right.AmdCcdIdentities.Count

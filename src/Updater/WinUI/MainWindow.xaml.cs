@@ -87,11 +87,15 @@ public sealed partial class MainWindow : Window
 
     private async void Browse_Click(object sender, RoutedEventArgs args)
     {
-        var picker = new FolderPicker();
-        picker.FileTypeFilter.Add("*");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder is not null) PackagePath.Text = folder.Path;
+        try
+        {
+            var picker = new FolderPicker();
+            picker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is not null) PackagePath.Text = folder.Path;
+        }
+        catch (Exception exception) { ShowResult(exception.Message, InfoBarSeverity.Error); }
     }
 
     private async void Update_Click(object sender, RoutedEventArgs args)
@@ -103,14 +107,17 @@ public sealed partial class MainWindow : Window
     private async void ImportData_Click(object sender, RoutedEventArgs args)
     {
         if (installRoot is null || busy) return;
-        var picker = new FileOpenPicker();
-        picker.FileTypeFilter.Add(".zip");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var archive = await picker.PickSingleFileAsync();
-        if (archive is null || !await ConfirmAsync(text.ImportUserData, text.ImportUserDataActions)) return;
-        var target = installRoot;
-        SetBusy(true);
-        try { ShowResult(await RunCommandAsync(["--import-user-data", archive.Path, target]), InfoBarSeverity.Success); }
+        try
+        {
+            var picker = new FileOpenPicker();
+            picker.FileTypeFilter.Add(".zip");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var archive = await picker.PickSingleFileAsync();
+            if (archive is null || !await ConfirmAsync(text.ImportUserData, text.ImportUserDataActions)) return;
+            var target = installRoot;
+            SetBusy(true);
+            ShowResult(await RunCommandAsync(["--import-user-data", archive.Path, target]), InfoBarSeverity.Success);
+        }
         catch (Exception exception) { ShowResult(exception.Message, InfoBarSeverity.Error); }
         finally { SetBusy(false); RefreshInstallation(); }
     }

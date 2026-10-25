@@ -5,6 +5,62 @@ namespace ResourceManager.Adapter.SharedMemory.Tests;
 public sealed class LocalResourceManagerTests
 {
     [Fact]
+    public async Task PumpTableAdmissionObservesCancellationBeforeCapacityGateOpens()
+    {
+        using var session = new NativeLocalResourceManagerSession(
+            LocalResourceManagerConfiguration.CreateDefault(4, 4) with { MaximumConcurrentTables = 1 });
+        var table = session.RegisterTable(new(new(9012), 1, LocalResourceDomain.Memory, 2));
+        using var pump = new LocalResourceManagerPump(session);
+        await session.WaitForTableExecutionAsync();
+        using var cancellation = new CancellationTokenSource();
+        var method = typeof(LocalResourceManagerPump).GetMethod("ExecuteCapacityTableBoundedAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var waiting = (Task)method.Invoke(pump,
+            [table, LocalResourceCapacityStrategy.Concentrated, false, Array.Empty<LocalResourceIntent>(), cancellation.Token])!;
+        cancellation.Cancel();
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            session.ReleaseTableExecution();
+            // Settle the counterfactual old implementation after releasing its gate,
+            // without replacing the admission assertion with a later execution error.
+            _ = await Record.ExceptionAsync(async () => await waiting);
+        }
+    }
+
+    [Fact]
+    public async Task PumpTableAdmissionObservesCancellationBeforeModeGateOpens()
+    {
+        using var session = new NativeLocalResourceManagerSession(
+            LocalResourceManagerConfiguration.CreateDefault(4, 4) with { MaximumConcurrentTables = 1 });
+        var table = session.RegisterTable(new(new(9013), 1, LocalResourceDomain.Memory, 2));
+        using var pump = new LocalResourceManagerPump(session);
+        await session.WaitForTableExecutionAsync();
+        using var cancellation = new CancellationTokenSource();
+        var method = typeof(LocalResourceManagerPump).GetMethod("ExecuteModeTableBoundedAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        // The two private set element types are existing pump implementation details.
+        var parameters = method.GetParameters();
+        object EmptySet(int index) => Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(
+            parameters[index].ParameterType.GetGenericArguments()))!;
+        var waiting = (Task)method.Invoke(pump,
+            [new LocalResourceModeRequest(table, LocalResourceCleanupMode.ReleaseAll, 1), EmptySet(1), EmptySet(2), null, cancellation.Token])!;
+        cancellation.Cancel();
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            session.ReleaseTableExecution();
+            _ = await Record.ExceptionAsync(async () => await waiting);
+        }
+    }
+
+    [Fact]
     public void LegacyLeaseDurationAndEndDoNotChangeActivityFacts()
     {
         using var session = CreateSession(4);

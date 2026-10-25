@@ -50,7 +50,8 @@ internal static class Program
                     args[1] == "keep",
                     new WindowsUninstallationRuntime(LegacyAiCredentialArchiveSanitizer.CreateCredentialFreeCopy));
                 if (archive is not null)
-                    _ = Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = true, ArgumentList = { plan.Root } });
+                    _ = Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
+                        { UseShellExecute = true, ArgumentList = { plan.Root } });
                 MessageBox.Show(archive is null ? text.UninstallCompleted : text.Format(text.UninstallArchiveCompletedFormat, archive),
                     text.UninstallerTitle, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;

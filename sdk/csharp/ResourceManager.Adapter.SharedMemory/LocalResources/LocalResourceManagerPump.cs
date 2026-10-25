@@ -127,7 +127,7 @@ public sealed class LocalResourceManagerPump : IDisposable
                             capacityStrategy,
                             capacityTablePlans[(first.TableId, first.TableIncarnation)].Emergency,
                             group.ToArray(),
-                            cancellationToken));
+                            cancellationToken), cancellationToken);
                 })
                 .ToArray();
             var capacityOutcomes = await Task.WhenAll(capacityTasks).ConfigureAwait(false);
@@ -183,7 +183,7 @@ public sealed class LocalResourceManagerPump : IDisposable
                         modeExcludedCapacityResources,
                         modeExcludedCapacityActions,
                         modeAdmission,
-                        cancellationToken))).ToArray();
+                        cancellationToken), cancellationToken)).ToArray();
                 modeOutcomes = await Task.WhenAll(modeTasks).ConfigureAwait(false);
             }
             var modeResults = modeOutcomes
@@ -340,7 +340,7 @@ public sealed class LocalResourceManagerPump : IDisposable
         IReadOnlyList<LocalResourceIntent> triggerSnapshot,
         CancellationToken cancellationToken)
     {
-        await _session.WaitForTableExecutionAsync().ConfigureAwait(false);
+        await _session.WaitForTableExecutionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             return await ExecuteCapacityTableAsync(
@@ -525,7 +525,7 @@ public sealed class LocalResourceManagerPump : IDisposable
         ILocalResourceModeAdmission? modeAdmission,
         CancellationToken cancellationToken)
     {
-        await _session.WaitForTableExecutionAsync().ConfigureAwait(false);
+        await _session.WaitForTableExecutionAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var table = request.Table;
@@ -1121,7 +1121,8 @@ public sealed class LocalResourceManagerPump : IDisposable
     private static async Task<TableRunOutcome> ObserveTableRunAsync(
         (LocalResourceId TableId, ulong TableIncarnation) identity,
         LocalResourceManagerTickPhase phase,
-        Task<TableRunResult> task)
+        Task<TableRunResult> task,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1135,6 +1136,13 @@ public sealed class LocalResourceManagerPump : IDisposable
                 result.Stopped,
                 result.UncertainExecutions,
                 null);
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested
+            && exception.CancellationToken == cancellationToken)
+        {
+            // Cancellation before table admission performed no actions and is a
+            // stopped table, not a table failure. Preserve the pump's partial-result contract.
+            return new(identity, phase, null, 0, 0, true, Array.Empty<LocalResourceUncertainExecution>(), null);
         }
         catch (TableRunPartialException exception)
         {

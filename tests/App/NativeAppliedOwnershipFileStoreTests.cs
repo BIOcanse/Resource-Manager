@@ -5,6 +5,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeAppliedOwnershipFileStoreTests
 {
     [Fact]
+    public async Task ManifestValidationFailureDisposesOpenedSessionBeforeReturning()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "ownership.bin");
+        var image = new byte[192];
+        await File.WriteAllBytesAsync(path, image);
+        await File.WriteAllBytesAsync(path + ".root.manifest", [1]);
+        var session = new FakeSession(image);
+        var factory = new RecordingFactory { OpenStatus = NativeAppliedOwnershipStatus.Ok, OpenSession = session };
+        var store = new NativeAppliedOwnershipFileStore(path);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => store.TryOpenAsync(
+            factory, CreateOpenConfiguration(), CancellationToken.None));
+        Assert.Equal(1, factory.OpenCount);
+        Assert.Equal(1, session.DisposeCount);
+    }
+
+    [Fact]
     public void ConstructorRequiresAbsolutePath()
     {
         Assert.Throws<ArgumentException>(
@@ -125,6 +143,7 @@ public sealed class NativeAppliedOwnershipFileStoreTests
 
     private sealed class FakeSession(byte[] image) : INativeAppliedOwnershipSession
     {
+        public int DisposeCount { get; private set; }
         private readonly byte[] image = image.ToArray();
 
         public NativeAppliedOwnershipCapacity Capacity { get; } = new()
@@ -181,6 +200,7 @@ public sealed class NativeAppliedOwnershipFileStoreTests
 
         public void Dispose()
         {
+            DisposeCount++;
         }
     }
 

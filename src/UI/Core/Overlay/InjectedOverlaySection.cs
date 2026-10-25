@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using ResourceManager.Shared.Overlay;
@@ -11,6 +12,7 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
     private readonly nint mapping;
     private readonly nint view;
     private readonly PerformanceOverlayHeader* header;
+    private readonly nuint mappedBytes;
     private bool disposed;
 
     public InjectedOverlaySection(OverlayTargetId id, nint targetWindow)
@@ -43,6 +45,25 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
         {
             CloseHandle(mapping);
             throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        if (VirtualQuery(view, out var information, (nuint)Marshal.SizeOf<MemoryBasicInformation>()) == 0)
+        {
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            UnmapViewOfFile(view);
+            CloseHandle(mapping);
+            Trace.TraceError("Overlay mapped-view size query failed: {0}", error);
+            throw error;
+        }
+        mappedBytes = information.RegionSize;
+        var requiredBytes = (nuint)PerformanceOverlaySharedMemory.HeaderBytes
+            + PerformanceOverlaySharedMemory.MaximumPixelBytes;
+        if (mappedBytes < requiredBytes)
+        {
+            UnmapViewOfFile(view);
+            CloseHandle(mapping);
+            var error = new InvalidDataException($"The overlay mapped view has {mappedBytes} bytes; its declared frame capacity requires {requiredBytes} bytes.");
+            Trace.TraceError("{0}", error.Message);
+            throw error;
         }
         header = (PerformanceOverlayHeader*)view;
         if (existing)
@@ -93,7 +114,8 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (image.Width <= 0 || image.Height <= 0 || image.Width > 8192 || image.Height > 8192
             || image.Pixels.Length != checked(image.Stride * image.Height)
-            || image.Pixels.Length > PerformanceOverlaySharedMemory.MaximumPixelBytes)
+            || image.Pixels.Length > PerformanceOverlaySharedMemory.MaximumPixelBytes
+            || (nuint)image.Pixels.Length > mappedBytes - (nuint)PerformanceOverlaySharedMemory.HeaderBytes)
             throw new ArgumentOutOfRangeException(nameof(image));
 
         var nextOdd = checked((Volatile.Read(ref header->Generation) & ~1L) + 1);
@@ -123,6 +145,15 @@ internal unsafe sealed class InjectedOverlaySection : IDisposable
 
     [StructLayout(LayoutKind.Sequential)] private struct SecurityAttributes
     { public int Length; public nint Descriptor; public int InheritHandle; }
+    [StructLayout(LayoutKind.Sequential)] private struct MemoryBasicInformation
+    {
+        public nint BaseAddress, AllocationBase;
+        public uint AllocationProtect;
+        public nuint RegionSize;
+        public uint State, Protect, Type;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern nuint VirtualQuery(
+        nint address, out MemoryBasicInformation information, nuint length);
     [DllImport("advapi32.dll", EntryPoint = "ConvertStringSecurityDescriptorToSecurityDescriptorW",
         CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(

@@ -15,6 +15,70 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task OpenGlPreparationOriginalOwnerKeepsFailureFactAndPrimaryErrorWhenDisposalFails()
+    {
+        var root = NewRoot("opengl-preparation-cleanup-failure");
+        var path = Path.Combine(root, "recovery.json");
+        var committer = new RejectOpenGlPhaseCommitter("never");
+        using var store = new JsonHostManagerRollbackStateStore(path, new FixedTime(), TimeSpan.FromHours(1),
+            committer, WindowsHostManagerDurableRootManifestCommitter.Instance);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            rollbackStateStoreOverride: store, automaticMemoryCleanupEnabled: false,
+            gpuCallbackRuntime: new WindowsGpuCallbackPreparationRuntime(Path.Combine(root, "absent-worker.exe")));
+        using var current = Process.GetCurrentProcess();
+        var target = new GpuPlacementProcessInstance(current.Id, checked((ulong)current.StartTime.ToFileTimeUtc()),
+            current.ProcessName, Environment.ProcessPath!);
+        var record = GpuShimPolicyRecord.Create("gl-cleanup", null, D3d11ProxyShimRuntime.CreateExactPolicyValue(123));
+        record = record with { Metadata = new Dictionary<string, string>(record.Metadata!)
+        {
+            ["processId"] = target.ProcessId.ToString(CultureInfo.InvariantCulture),
+            ["processStartKey"] = target.ProcessStartKey.ToString(CultureInfo.InvariantCulture)
+        } };
+        var state = (await store.ReserveNativeHostSessionIncarnationAsync(default)) with { AppliedPlacements = [Placement(record)] };
+        await store.SaveAsync(state, default);
+        const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+        WindowsOpenGlCallbackPreparation? execution = null;
+        object? process = null;
+        FieldInfo? completionField = null;
+        object? originalCompletion = null;
+        var pendingCleanup = new TaskCompletionSource<ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution.GpuWindowActionProcessCleanup>();
+        committer.BeforeCompletedCommit = () =>
+        {
+            execution = (WindowsOpenGlCallbackPreparation)typeof(HostManagerSmartCoordinator).GetField("gpuCallbackPreparation", fields)!.GetValue(fixture.Coordinator)!;
+            process = typeof(WindowsOpenGlCallbackPreparation).GetField("process", fields)!.GetValue(execution)!;
+            completionField = process.GetType().GetField("completion", fields)!;
+            originalCompletion = completionField.GetValue(process);
+            // Existing process state triggers its real "cleanup still owns handles" failure.
+            completionField.SetValue(process, pendingCleanup.Task);
+        };
+        try
+        {
+            var running = (Task<(HostManagerRollbackStateDocument State, PreparedOpenGlCallbacks? Source)>)typeof(HostManagerSmartCoordinator)
+                .GetMethod("ExecuteOwnedOpenGlPreparationAsync", fields)!.Invoke(fixture.Coordinator,
+                    [state, HostManagerPlacementReceiptKey.Create(state.AppliedPlacements[0]), target, 123UL,
+                        new CompiledGpuWindowExecutionLimits(1, 1000, 80, 4096, 590312),
+                        checked((ulong)Environment.TickCount64 + 5000), CancellationToken.None])!;
+            var failure = await Assert.ThrowsAsync<AggregateException>(() => running.WaitAsync(TimeSpan.FromSeconds(8)));
+            Assert.Contains("OpenGL preparation failed", failure.InnerExceptions[0].Message);
+            Assert.Contains("Cleanup completion still owns", failure.InnerExceptions[1].Message);
+            var release = (Task)typeof(HostManagerSmartCoordinator).GetField("gpuCallbackRelease", fields)!.GetValue(fixture.Coordinator)!;
+            Assert.Same(failure, await Assert.ThrowsAsync<AggregateException>(() => release));
+            using var fact = JsonDocument.Parse(ReadCanonical(path).AppliedPlacements[0].Records[0].Metadata!["openGlPreparation"]);
+            Assert.Equal("completed", fact.RootElement.GetProperty("Phase").GetString());
+            Assert.NotEmpty(fact.RootElement.GetProperty("ExecutionError").GetString()!);
+        }
+        finally
+        {
+            committer.BeforeCompletedCommit = null;
+            if (process is not null) completionField!.SetValue(process, originalCompletion);
+            if (execution is not null) await execution.DisposeAsync();
+            typeof(HostManagerSmartCoordinator).GetField("gpuCallbackRelease", fields)!.SetValue(fixture.Coordinator, Task.CompletedTask);
+            _ = await SettleWindowCheckpoint(fixture.Coordinator);
+            _ = await SettleWindowCheckpoint(fixture.Coordinator);
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -143,6 +207,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class RejectOpenGlPhaseCommitter(string phase) : IHostManagerRollbackStateFileCommitter
     {
+        internal Action? BeforeCompletedCommit;
         public void Commit(string temporaryPath, string canonicalPath, ReadOnlySpan<byte> expectedImage, bool replaceExisting)
         {
             var state = HostManagerRollbackStateEnvelopeCodec.Decode(expectedImage).State;
@@ -151,6 +216,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 if (record.Metadata?.GetValueOrDefault("openGlPreparation") is not { } text) continue;
                 using var fact = JsonDocument.Parse(text);
+                if (fact.RootElement.GetProperty("Phase").GetString() == "completed") BeforeCompletedCommit?.Invoke();
                 if (fact.RootElement.GetProperty("Phase").GetString() == phase)
                     throw new HostManagerRollbackStateCommitException(HostManagerRollbackStateCommitOutcome.NotCommitted,
                         new IOException("Explicit OpenGL preparation save failure fixture."));
