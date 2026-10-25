@@ -1,3 +1,5 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+
 export default async function r2RemediationJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const failures = [];
   page.on("pageerror", (error) => failures.push(String(error)));
@@ -45,14 +47,24 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
   const activeRow = page.locator(".resource-table-row[role='row'][tabindex='0']").first();
   await activeRow.waitFor({ state: "visible", timeout: 7000 });
   await activeRow.focus();
+  // 资源表由前端按资源事实排序：夹具 80 个软件的值相同，默认按影响排序打平后按名称的界面语言排序
+  // （zh-CN，区分重音、不区分大小写，不按数字大小），所以第 36 行不是编号 35。
+  const startRowId = await page.evaluate(() => document.activeElement?.getAttribute("data-resource-row-id"));
+  const nameOrder = new Intl.Collator("zh-CN", { sensitivity: "accent" });
+  const softwareRowIds = Array.from({ length: 80 }, (_, index) => ({
+    id: `software:frontend-harness.software${index === 0 ? "" : `.${index}`}`,
+    name: index === 0 ? "示例软件" : `示例软件 ${index}`
+  })).sort((left, right) => nameOrder.compare(left.name, right.name)).map(row => row.id);
+  assert(startRowId === softwareRowIds[0], `Keyboard focus did not start on the first software row: ${startRowId}`);
+  const expectedRowId = softwareRowIds[35];
   for (let index = 0; index < 35; index += 1) {
     await page.keyboard.press("ArrowDown");
   }
-  await page.waitForFunction(() => document.activeElement?.getAttribute("data-resource-row-id")
-    === "software:frontend-harness.software.35", null, { timeout: 5000 });
+  await page.waitForFunction(expected => document.activeElement?.getAttribute("data-resource-row-id")
+    === expected, expectedRowId, { timeout: 5000 });
   const focusedRowId = await page.evaluate(() => document.activeElement?.getAttribute("data-resource-row-id"));
-  assert(focusedRowId === "software:frontend-harness.software.35",
-    `Virtual row focus did not cross the mounted window: ${focusedRowId}`);
+  assert(focusedRowId === expectedRowId,
+    `Virtual row focus did not cross the mounted window: ${focusedRowId}, expected ${expectedRowId}`);
 
   const resourceTablePanel = page.locator(".resource-table-panel");
   const performanceMode = resourceTablePanel.getByRole("radio", { name: "性能", exact: true });
@@ -85,34 +97,40 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
       && query.includes("ids=cpu.usage")
       && query.includes("ids=memory.percent"));
   }, null, { timeout: 4000 });
-  await page.waitForFunction(() => {
-    const summary = document.querySelector("#resourcePerformanceSummary");
-    const text = summary?.textContent ?? "";
-    return text.includes("处理器")
-      && text.includes("12%")
-      && text.includes("内存占用")
-      && text.includes("25%");
-  }, null, { timeout: 2000 });
+  // 指标名称由前端按指标 ID 本地化，不用后端目录里的标签。
+  const metricLabel = (await loadAppCopy("zh-CN")).metricLabel;
+  const expectedSummary = [metricLabel["cpu.usage"], "12%", metricLabel["memory.percent"], "25%"];
+  await page.waitForFunction((expected) => {
+    const text = document.querySelector("#resourcePerformanceSummary")?.textContent ?? "";
+    return expected.every((part) => text.includes(part));
+  }, expectedSummary, { timeout: 2000 });
   const summaryText = await performanceSummary.innerText();
-  assert(summaryText.includes("处理器") && summaryText.includes("12%")
-    && summaryText.includes("内存占用") && summaryText.includes("25%"),
-  `Performance DOM summary does not match the metric snapshot: ${summaryText}`);
+  assert(expectedSummary.every((part) => summaryText.includes(part)),
+    `Performance DOM summary does not match the metric snapshot: ${summaryText}`);
   assert(await requestCount("/api/metrics/snapshot") === metricSnapshotRequestBaseline,
     "Performance mode used a metric snapshot request instead of the subscription push.");
 
-  await setScenario({ resourceTableVariant: "unavailable-actions" });
+  // 资源表来自资源事实：每个软件行都有软件标识，“转到详细信息”总是可用，
+  // 原来“无标识、无进程、全部禁用”的表格行在当前合同下不会出现。这里检查键盘打开的行菜单：
+  // Shift+F10 打开菜单并把焦点放进菜单，Escape 关闭后焦点回到打开它的行。
+  await setScenario({ resourceTableVariant: "normal" });
   await page.reload({ waitUntil: "domcontentloaded" });
   // 800×520 下资源表在折叠线以下；监视区按区域可见取数，先把它滚进视口。
   await page.locator('[data-frontend-visibility-surface="monitor.table"]').scrollIntoViewIfNeeded();
-  const unavailableRow = page.locator(".resource-table-row[data-resource-row-id='software:unavailable-actions']");
-  await unavailableRow.waitFor({ state: "visible", timeout: 7000 });
-  await unavailableRow.focus();
+  const menuRow = page.locator(".resource-table-row[data-resource-row-id='software:frontend-harness.software']");
+  await menuRow.waitFor({ state: "visible", timeout: 7000 });
+  await menuRow.focus();
   await page.keyboard.press("Shift+F10");
-  const unavailableToast = page.locator(".toast").filter({ hasText: "当前没有可执行的操作" });
-  await unavailableToast.waitFor({ state: "visible", timeout: 3000 });
-  assert(await page.getByRole("menu").count() === 0, "An all-disabled context menu was mounted.");
-  assert(await unavailableRow.evaluate((element) => document.activeElement === element),
-    "All-disabled context-menu handling did not preserve opener focus.");
+  const rowMenu = page.getByRole("menu");
+  await rowMenu.waitFor({ state: "visible", timeout: 3000 });
+  const contextMenuText = (await loadAppCopy("zh-CN")).contextMenu;
+  assert(await rowMenu.getByRole("menuitem", { name: contextMenuText.goToDetails, exact: true }).isEnabled(),
+    "A software row with a stable identity did not offer its details action.");
+  await page.waitForFunction(() => document.activeElement?.closest("[role='menu']") !== null, null, { timeout: 2000 });
+  await page.keyboard.press("Escape");
+  await rowMenu.waitFor({ state: "detached", timeout: 3000 });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("data-resource-row-id")
+    === "software:frontend-harness.software", null, { timeout: 2000 });
 
   assert(failures.length === 0, `R2 browser page errors: ${JSON.stringify(failures)}`);
   return {
@@ -121,6 +139,6 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
     boundedResourceInteractionDom: interactionBudget,
     virtualRowFocus: focusedRowId,
     performanceDomSummary: true,
-    disabledMenuRejected: true
+    keyboardRowMenuReturnsFocus: true
   };
 }

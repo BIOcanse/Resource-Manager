@@ -1634,41 +1634,6 @@ function resourceFacts(url, capturedAt = now()) {
     return { version: 2, capturedAt, software, processes, metrics, attributions };
 }
 
-function obsoleteResourceTableFixture(processMode, capturedAt = now()) {
-  const generation = Math.max(
-    0,
-    Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
-  const columns = [
-    { id: "name", label: "名称", unit: "", visible: true, sortable: true, width: 260 },
-    ...(processMode ? [{ id: "pid", label: "PID", unit: "", visible: true, sortable: true, width: 76 }] : []),
-    { id: "status", label: "状态", unit: "", visible: true, sortable: true, width: 92 },
-    { id: "cpu", label: "CPU", unit: "%", visible: true, sortable: true, width: 86 },
-    { id: "memory", label: "内存", unit: "MB", visible: true, sortable: true, width: 110 }
-  ];
-  const common = {
-    softwareName: "示例软件",
-    softwareId: "frontend-harness.software",
-    processCount: 1,
-    processIds: [4242],
-    processNames: ["example.exe"],
-    executablePaths: ["C:\\FrontendHarness\\example.exe"],
-    impactScore: 12,
-    status: "running",
-    values: {
-      cpu: { unit: "%", value: 12, percent: 12, heatPercent: 12 },
-      memory: { unit: "B", value: 536870912, sharedValue: 134217728, heatPercent: 10 }
-    }
-  };
-  const rows = resourceTableRows(processMode, common);
-  return {
-    capturedAt,
-    columns,
-    rows,
-    sort: { columnId: "cpu", direction: "desc" },
-    viewMode: processMode ? "process" : "software"
-  };
-}
-
 function fixtureDisplayEdid() {
   const type3 = scenario.displayEdid.startsWith("type3");
   const typex = scenario.displayEdid === "typex";
@@ -1741,62 +1706,6 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
     failureCode: null,
     informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
   };
-}
-
-function resourceTableRows(processMode, common) {
-  if (scenario.resourceTableVariant === "empty") {
-    return [];
-  }
-  if (scenario.resourceTableVariant === "unavailable-actions") {
-    return [{
-      ...common,
-      id: "software:unavailable-actions",
-      depth: 0,
-      kind: "software",
-      name: "无可用操作条目",
-      softwareId: null,
-      softwareName: null,
-      processIds: [],
-      processNames: [],
-      executablePaths: [],
-      processCount: 0,
-      values: common.values
-    }];
-  }
-
-  const rowCount = normalizeFixtureCount(
-    scenario.resourceTableRowCount,
-    scenario.resourceTableVariant === "many" ? 80 : 1,
-    1000);
-  return Array.from({ length: rowCount }, (_, index) => {
-    const suffix = index === 0 ? "" : `.${index}`;
-    const processId = 4242 + index;
-    const softwareId = `frontend-harness.software${suffix}`;
-    return processMode
-      ? {
-          ...common,
-          id: `process:${processId}`,
-          depth: 0,
-          kind: "process",
-          name: `example-${index}.exe`,
-          softwareId,
-          softwareName: `示例软件 ${index}`,
-          processId,
-          processStartKey: String(132000000000000000n + BigInt(processId)),
-          processIds: [processId],
-          values: { ...common.values, pid: { value: processId, unit: "" } }
-        }
-      : {
-          ...common,
-          id: `software:${softwareId}`,
-          depth: 0,
-          kind: "software",
-          name: index === 0 ? "示例软件" : `示例软件 ${index}`,
-          softwareId,
-          softwareName: index === 0 ? "示例软件" : `示例软件 ${index}`,
-          processIds: [processId]
-        };
-  });
 }
 
 function createResourceSoftwareRows(

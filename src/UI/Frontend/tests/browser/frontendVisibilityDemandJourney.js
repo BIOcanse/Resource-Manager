@@ -12,6 +12,7 @@ export default async function frontendVisibilityDemandJourney(page, baseUrl) {
   assert.equal(await page.locator('.monitor-work-region[data-frontend-visibility-surface]').count(), 3);
   await wait(t => t["/api/metrics/subscribe"]?.logicalInFlight === 1);
   await table.scrollIntoViewIfNeeded();
+  // 资源表的数据是 /api/resource-facts/subscribe 上的逐进程资源事实（资源条仍走 resource-monitor）。
   await wait(t => t["/api/metrics/subscribe"]?.logicalInFlight === 0
       && t["/api/resource-facts/subscribe"]?.logicalInFlight > 0);
   await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "性能", exact: true }).click();
@@ -25,6 +26,7 @@ export default async function frontendVisibilityDemandJourney(page, baseUrl) {
   const telemetry = await (await page.request.get(`${baseUrl}/__test/requests`)).json();
   assert.equal(telemetry["/api/metrics/snapshot"]?.started ?? 0, 0);
   assert.equal(telemetry["/api/resource-monitor/snapshot"]?.started ?? 0, 0);
+  assert.equal(telemetry["/api/resource-facts/snapshot"]?.started ?? 0, 0);
   assert.equal(telemetry["/api/adapters/resource-manager/visible-regions"]?.started ?? 0, 0);
   assert.deepEqual(errors, []);
   return { offscreenMetricsReleased: true, performanceTableReleased: true, visibleMetricsReacquired: true };
