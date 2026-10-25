@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 export default async function frontendAuditJourney(page, baseUrl) {
+  const channelProbe = await observeSubscriptionChannel(page);
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
   await patch({ operations: "mixed", runtimeEffectOwners: true, capabilities: "ready" });
@@ -30,18 +32,30 @@ export default async function frontendAuditJourney(page, baseUrl) {
   const after = await telemetry();
   assert.equal(after["/api/software"]?.started ?? 0, before["/api/software"]?.started ?? 0,
     "A component completion must not reread unrelated software");
-  await visible(false);
-  await wait(t => t["/api/operations/subscribe"]?.logicalInFlight === 0
-    && t["/api/subscriptions/stream"]?.physicalInFlight === 0);
+  const release = await channelProbe.assertReleasedAfter(() => visible(false));
+  // A request arriving while hidden must be read on resume, without keeping the
+  // global pending-access source subscribed just for its banner.
+  const requestName = "Audit request received while hidden";
+  await patch({ accessRequests: [{
+    requestId: "audit-hidden", name: requestName, requestedScopes: ["read"],
+    observedExecutablePath: "C:\\Tools\\audit.exe", observedProcessId: 4321,
+    submittedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300000).toISOString()
+  }] });
+  assert.equal(await page.locator(".trusted-access-notification").count(), 0,
+    "The hidden interface must not receive pending access publications");
   await visible(true);
   await wait(t => t["/api/operations/subscribe"]?.logicalInFlight === 1);
+  await page.locator(".trusted-access-notification").filter({ hasText: requestName }).waitFor();
+  await channelProbe.assertSinglePhysicalChannel();
   assert.deepEqual(errors, []);
-  return { componentFactsOnlyWire: true, localizedComponentFromFacts: true, componentCompletionRefreshesOnlyItsInventory: true, hiddenStreamReleased: true, visibleCurrentReadRestored: true };
+  return { componentFactsOnlyWire: true, localizedComponentFromFacts: true, componentCompletionRefreshesOnlyItsInventory: true, hiddenStreamReleased: true, hiddenStreamReleaseMs: release.releaseMs, hiddenAccessRequestReadOnResume: true, visibleCurrentReadRestored: true };
 
   async function visible(value) {
-    await page.evaluate(value => {
+    return page.evaluate(value => {
+      const changedAt = performance.now();
       Object.defineProperty(document, "visibilityState", { configurable: true, value: value ? "visible" : "hidden" });
       document.dispatchEvent(new Event("visibilitychange"));
+      return changedAt;
     }, value);
   }
   async function telemetry() {

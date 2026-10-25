@@ -20,6 +20,25 @@ export async function observeSubscriptionChannel(page) {
   session.on("Network.loadingFinished", finish);
   await session.send("Network.enable");
   return {
+    // action returns performance.now() (ms) at the visibility change. NavigationStart
+    // places it on the same Chromium monotonic clock as the network events.
+    async assertReleasedAfter(action, timeoutMs = 10000) {
+      await session.send("Performance.enable");
+      const before = await session.send("Performance.getMetrics");
+      const navigationStart = before.metrics.find(metric => metric.name === "NavigationStart")?.value;
+      assert.ok(Number.isFinite(navigationStart), "Chromium did not provide NavigationStart");
+      assert.ok(events.some(event => event.delta === 1), "No browser subscription was observed before hiding");
+      const hiddenAt = navigationStart + (await action()) / 1000;
+      while (true) {
+        await session.send("Runtime.evaluate", { expression: "0" });
+        const { metrics } = await session.send("Performance.getMetrics");
+        const now = metrics.find(metric => metric.name === "Timestamp")?.value;
+        assert.ok(Number.isFinite(now), "Chromium did not provide its monotonic timestamp");
+        if (requests.size === 0 || now >= hiddenAt + timeoutMs / 1000) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      return assertSubscriptionChannelReleased(events, hiddenAt, timeoutMs);
+    },
     async assertSinglePhysicalChannel() {
       // Flush the CDP session before consuming its already published events.
       await session.send("Runtime.evaluate", { expression: "0" });
@@ -39,4 +58,15 @@ export function subscriptionChannelConcurrency(events) {
     maxInFlight = Math.max(maxInFlight, inFlight);
   }
   return { inFlight, maxInFlight };
+}
+
+export function assertSubscriptionChannelReleased(events, hiddenAt, timeoutMs) {
+  assert.equal(subscriptionChannelConcurrency(events).inFlight, 0,
+    `Browser subscription channel is still active after hiding: ${JSON.stringify(events)}`);
+  const finishedAt = Math.max(...events.filter(event => event.delta === -1).map(event => event.timestamp));
+  assert.ok(Number.isFinite(finishedAt), "No browser subscription ended");
+  const releaseMs = Math.max(0, (finishedAt - hiddenAt) * 1000);
+  assert.ok(releaseMs <= timeoutMs,
+    `Browser subscription release took ${releaseMs} ms (limit ${timeoutMs} ms): ${JSON.stringify(events)}`);
+  return { releaseMs };
 }
