@@ -255,6 +255,10 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
     await slider.waitFor();
     await slider.scrollIntoViewIfNeeded();
     await waitFor(`${uiStyle} value`, thumb, "65");
+    // 截图前等实际读数到：它在滑条上画一条实际值刻度（40 处）。重新加载后读数异步到达，
+    // 没等它时，滑条和原生 range 两张截图之间刻度才出现，两张就差在这一条上（不是外观不同）。
+    await card.locator(".control-capability-actual").filter({ hasText: "40" }).waitFor();
+    await slider.locator("xpath=..").locator(".control-editor-actual-mark").waitFor();
     for (const state of ["enabled", "disabled"]) {
       const target = state === "enabled" ? slider : card.getByRole("slider", { name: "fan.duty-limit", exact: true });
       if (state === "disabled") assert.equal(await target.isDisabled(), true, "The unchecked capability's slider is greyed out");
