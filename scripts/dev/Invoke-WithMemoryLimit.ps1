@@ -51,6 +51,8 @@ public static class MemoryLimitJob
     static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
     [DllImport("kernel32.dll")]
     static extern IntPtr GetCurrentProcess();
+    [DllImport("kernel32.dll")]
+    public static extern uint SetErrorMode(uint mode);
 
     // The handle stays open for the life of this process; closing it at exit kills what is left in the job.
     public static IntPtr JoinNew(ulong limitBytes)
@@ -74,6 +76,10 @@ public static class MemoryLimitJob
     }
 }
 '@
+# A crashing diagnostic program must not open a modal Windows Error Reporting dialog on the user's desktop.
+# SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX is inherited by the program; its
+# crash still reaches the event log and the exit code.
+[void][MemoryLimitJob]::SetErrorMode(32771)
 
 $limitBytes = [uint64]($LimitGiB * 1GB)
 $job = [MemoryLimitJob]::JoinNew($limitBytes)
