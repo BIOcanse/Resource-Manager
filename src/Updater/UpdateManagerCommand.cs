@@ -65,6 +65,7 @@ public static class UpdateManagerCommand
             var target = UpdatePlan.RequireRegisteredTarget(args[1]);
             RequireInstalledManager(executablePath, target, text);
             using var operationLock = AcquireOperationLock(target, text);
+            ProvisionPackageUse(target);
             var recovered = await PackageSwitchTransaction.RecoverPendingAsync(target,
                 new WindowsUpdateRuntime(), cancellationToken);
             return recovered.Count == 0 ? text.NoRecovery : text.Format(text.RecoveredCountFormat, recovered.Count);
@@ -74,6 +75,7 @@ public static class UpdateManagerCommand
             var target = UpdatePlan.RequireRegisteredTarget(args[2]);
             RequireInstalledManager(executablePath, target, text);
             using var operationLock = AcquireOperationLock(target, text);
+            ProvisionPackageUse(target);
             if (PackageSwitchTransaction.ListPending(target).Count > 0) throw new InvalidOperationException(text.PendingTransaction);
             UserDataArchive.Verify(args[1]);
             var runtime = new WindowsUpdateRuntime();
@@ -100,6 +102,7 @@ public static class UpdateManagerCommand
         if (args[0] == "--plan-only") return text.Format(text.PreflightFormat, plan.Package.Version);
         RequireApplyManager(executablePath, plan, text);
         using var updateLock = AcquireOperationLock(plan.InstallRoot, text);
+        ProvisionPackageUse(plan.InstallRoot);
         var pending = PackageSwitchTransaction.ListPending(plan.InstallRoot);
         if (pending.Count > 0)
             throw new InvalidOperationException(text.PendingTransaction);
@@ -244,6 +247,11 @@ public static class UpdateManagerCommand
         ReleasePackageLayout.RejectReparse(expected);
         ReleasePackageLayout.RejectReparse(UpdateManagerPaths.InstalledDirectory(installRoot));
     }
+
+    // Installs from before the package use guard have none, and maintenance never creates one on its own.
+    // The elevated manager provisions it here, as the installer does for a new install; an existing guard is
+    // only verified. Clients of such an install predate the guard, so a new guard has no holders to wait for.
+    internal static void ProvisionPackageUse(string installRoot) => PackageUseGuard.Prepare(installRoot);
 
     internal static void RequireApplyManager(string executablePath, UpdatePlan plan, ToolText text)
     {

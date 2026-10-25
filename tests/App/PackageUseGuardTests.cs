@@ -19,6 +19,22 @@ public sealed class PackageUseGuardTests
     }
 
     [Fact]
+    public void UpdateManagerProvisionsTheGuardOfAnInstallThatPredatesIt()
+    {
+        // Candidate .20 over .19: the installed root had its Management directory but no guard, so the
+        // update's maintenance lease failed with FileNotFoundException and the update rolled back.
+        using var fixture = new Fixture();
+        Directory.CreateDirectory(UpdateManagerPaths.InstalledDirectory(fixture.Root));
+        Assert.Throws<FileNotFoundException>(() => PackageUseGuard.TryAcquireMaintenance(fixture.Root));
+        if (!fixture.Prepare(() => ResourceManager.Updater.UpdateManagerCommand.ProvisionPackageUse(fixture.Root))) return;
+        PackageUseGuard.Verify(fixture.Root);
+        using (var maintenance = PackageUseGuard.TryAcquireMaintenance(fixture.Root)) Assert.NotNull(maintenance);
+        using var client = PackageUseGuard.Acquire(fixture.Root);
+        ResourceManager.Updater.UpdateManagerCommand.ProvisionPackageUse(fixture.Root);
+        Assert.Null(PackageUseGuard.TryAcquireMaintenance(fixture.Root));
+    }
+
+    [Fact]
     public void BothClientsMustExitAndExclusiveMaintenanceRejectsNewClients()
     {
         using var fixture = new Fixture();
@@ -177,16 +193,18 @@ public sealed class PackageUseGuardTests
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "rm-package-guard-" + Guid.NewGuid().ToString("N"));
         public Fixture() => Directory.CreateDirectory(Root);
 
-        public bool Prepare()
+        public bool Prepare() => Prepare(() => PackageUseGuard.Prepare(Root));
+
+        public bool Prepare(Action provision)
         {
             using var identity = WindowsIdentity.GetCurrent();
             if (identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) != true
                 && !new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
             {
-                Assert.Throws<UnauthorizedAccessException>(() => PackageUseGuard.Prepare(Root));
+                Assert.Throws<UnauthorizedAccessException>(provision);
                 return false;
             }
-            PackageUseGuard.Prepare(Root);
+            provision();
             return true;
         }
 
