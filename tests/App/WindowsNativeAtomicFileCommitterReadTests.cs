@@ -34,17 +34,23 @@ public sealed class WindowsNativeAtomicFileCommitterReadTests
                     catch (IOException) { readFailures++; }
                 }
             });
-            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            for (var index = 1; index <= commits; index++)
+            try
             {
-                var temporary = Path.Combine(root, $"store.{index}.tmp");
-                var payload = new byte[4096];
-                Array.Fill(payload, (byte)index);
-                File.WriteAllBytes(temporary, payload);
-                WindowsNativeAtomicFileCommitter.CommitReplace(temporary, target);
+                await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                for (var index = 1; index <= commits; index++)
+                {
+                    var temporary = Path.Combine(root, $"store.{index}.tmp");
+                    var payload = new byte[4096];
+                    Array.Fill(payload, (byte)index);
+                    File.WriteAllBytes(temporary, payload);
+                    WindowsNativeAtomicFileCommitter.CommitReplace(temporary, target);
+                }
             }
-            await done.CancelAsync();
-            await reader;
+            finally
+            {
+                await done.CancelAsync();
+                await reader;
+            }
 
             Assert.True(reads > 0);
             Assert.Equal(0, readFailures);

@@ -21,6 +21,14 @@ internal static partial class WindowsNativeAtomicFileCommitter
     public static void CommitNew(string temporaryPath, string destinationPath)
         => Commit(temporaryPath, destinationPath, replaceExisting: false);
 
+    /// <summary>
+    /// Publishes the flushed prepared file by POSIX replacement, preserving whole versions for
+    /// readers that share read, write and delete. Only the rename's native STATUS_ACCESS_DENIED
+    /// is retried for observed transient antivirus scan contention: three calls, 10 ms apart,
+    /// using the same flushed source handle and rename buffer/flags. Retries and recovery or
+    /// exhaustion are traced. Readonly targets, all other statuses, source-open and flush failures
+    /// fail immediately; exhaustion throws IOException with the final native status.
+    /// </summary>
     public static void CommitReplace(string temporaryPath, string destinationPath)
         => Commit(temporaryPath, destinationPath, replaceExisting: true);
 

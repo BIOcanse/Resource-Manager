@@ -7,7 +7,14 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static partial class WindowsNativeAtomicFileCommitter
 {
-    private static void CommitReplaceWithOpenReaders(string temporaryPath, string destinationPath)
+    internal delegate int RenameCall(SafeFileHandle file, IntPtr information, uint size);
+
+    // Per-operation native boundary seam; production callers always use RenameNative.
+    internal static void CommitReplace(string temporaryPath, string destinationPath, RenameCall rename)
+        => CommitReplaceWithOpenReaders(temporaryPath, destinationPath, rename);
+
+    private static void CommitReplaceWithOpenReaders(string temporaryPath, string destinationPath,
+        RenameCall? rename = null)
     {
         var destination = ToExtendedLengthPath(destinationPath);
         using var file = OpenRenameSource(ToExtendedLengthPath(temporaryPath),
@@ -15,21 +22,42 @@ internal static partial class WindowsNativeAtomicFileCommitter
         if (file.IsInvalid) ThrowRenameError("Cannot open the prepared file for atomic replacement.");
         if (!FlushFileBuffers(file)) ThrowRenameError("Cannot flush the prepared replacement file.");
 
-        var name = Encoding.Unicode.GetBytes(destination);
+        var name = Encoding.Unicode.GetBytes(ToNtPath(destination));
         var offset = Marshal.OffsetOf<RenameInformation>(nameof(RenameInformation.FileName)).ToInt32();
         var size = checked(Marshal.SizeOf<RenameInformation>() + name.Length);
         var buffer = Marshal.AllocHGlobal(size);
         try
         {
-            // POSIX rename retains old open handles while atomically changing the pathname.
+            // POSIX rename retains old handles; every attempt uses this same flushed handle and buffer.
             Marshal.StructureToPtr(new RenameInformation { Flags = 3, FileNameLength = checked((uint)name.Length) }, buffer, false);
             Marshal.Copy(name, 0, buffer + offset, name.Length);
             Marshal.WriteInt16(buffer, offset + name.Length, 0);
-            if (!SetRenameInformation(file, 22, buffer, checked((uint)size)))
-                ThrowRenameError("The atomic file replacement failed.");
+            rename ??= RenameNative;
+            for (var attempt = 1; ; attempt++)
+            {
+                var status = rename(file, buffer, checked((uint)size));
+                if (status >= 0)
+                {
+                    if (attempt > 1) LogTransient("rename", status, destinationPath, attempt, "recovered", temporaryPath);
+                    return;
+                }
+
+                var attributes = status == StatusAccessDenied ? GetFileAttributes(destination) : uint.MaxValue;
+                var readOnly = attributes != uint.MaxValue && (attributes & (uint)FileAttributes.ReadOnly) != 0;
+                var retry = status == StatusAccessDenied && !readOnly && attempt < TransientAttemptLimit;
+                LogTransient("rename", status, destinationPath, attempt,
+                    retry ? "retry" : readOnly ? "readonly" : status == StatusAccessDenied ? "exhausted" : "failed", temporaryPath);
+                if (!retry)
+                    throw new IOException($"The atomic file replacement failed (NTSTATUS=0x{status:X8}).",
+                        new Win32Exception(unchecked((int)RtlNtStatusToDosError(status))));
+                Thread.Sleep(TransientRetryDelayMilliseconds);
+            }
         }
         finally { Marshal.FreeHGlobal(buffer); }
     }
+
+    internal static int RenameNative(SafeFileHandle file, IntPtr information, uint size)
+        => NtSetInformationFile(file, out _, information, size, 65); // FileRenameInformationEx
 
     private static void ThrowRenameError(string message) =>
         throw new IOException(message, new Win32Exception(Marshal.GetLastPInvokeError()));
@@ -51,7 +79,10 @@ internal static partial class WindowsNativeAtomicFileCommitter
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool FlushFileBuffers(SafeFileHandle file);
 
-    [LibraryImport("kernel32.dll", EntryPoint = "SetFileInformationByHandle", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetRenameInformation(SafeFileHandle file, int informationClass, IntPtr information, uint size);
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileAttributesW", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial uint GetFileAttributes(string path);
+
+    [LibraryImport("ntdll.dll")]
+    private static partial int NtSetInformationFile(SafeFileHandle file, out IoStatusBlock ioStatus,
+        IntPtr information, uint size, int informationClass);
 }
