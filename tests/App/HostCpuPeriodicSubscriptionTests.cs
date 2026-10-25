@@ -100,8 +100,7 @@ public sealed class HostCpuPeriodicSubscriptionTests
         Assert.True(fixture.Sampler.CaptureCount >= capturesBeforeWorker + 1);
 
         // Cancel while the next due capture is held in the controlled sampler, so the reset must survive a running capture.
-        var capturesBeforeNextDue = fixture.Sampler.CaptureCount;
-        await WaitUntilAsync(() => fixture.Sampler.CaptureCount > capturesBeforeNextDue);
+        await WaitUntilAsync(() => fixture.Sampler.CaptureCount >= capturesBeforeWorker + 2);
         var resetsBeforeCancel = fixture.Sampler.ResetCount;
         await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>

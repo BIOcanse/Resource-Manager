@@ -81,7 +81,10 @@ public sealed partial class MetricCatalogueSubscriptionTests
     [Fact]
     public async Task AlignedFreshSubscribersShareOneOriginalMetricQuery()
     {
-        using var harness = new RecordedHostMetricFieldHarness(() => Memory(1234));
+        // Only the first query returns 1234. Later periodic queries may run before the assertions under load;
+        // a second query for the same trigger would hand one subscriber 2345.
+        var queries = 0;
+        using var harness = new RecordedHostMetricFieldHarness(() => Memory(Interlocked.Increment(ref queries) == 1 ? 1234UL : 2345UL));
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         var fresh = new FieldSubscriptionOptions(FieldSubscriptionSamplingMode.FreshOnTrigger,
             AlignSameItemPhase: true);
@@ -102,8 +105,8 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.Equal(FieldObservationStatus.Current, firstReading.Status);
             Assert.Equal(1234d, firstReading.Value!.Number!.Value);
             Assert.Equal(firstReading, secondReading);
-            Assert.Equal(1, harness.MemoryReads);
-            Assert.Equal(harness.Core.ReadCached(harness.Field), firstReading);
+            Assert.True(harness.MemoryReads >= 1);
+            FieldReadingAssert.CurrentOrNewer(firstReading, harness.Core.ReadCached(harness.Field));
         }
         finally
         {

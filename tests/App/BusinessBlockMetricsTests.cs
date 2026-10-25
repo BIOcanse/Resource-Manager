@@ -30,6 +30,7 @@ public sealed class BusinessBlockMetricsTests
         using var stop = new ManualResetEventSlim();
         Exception? workerError = null;
         long nativeThreadId = 0;
+        long cpuBeforeRegistration = 0;
         long cpuAtRegistration = 0;
         long cpuAfterRegistration = 0;
 
@@ -37,6 +38,9 @@ public sealed class BusinessBlockMetricsTests
         {
             try
             {
+                // Thread times advance per clock tick, so the registration's own baseline is bracketed
+                // by a read before and a read after it.
+                cpuBeforeRegistration = NativeThreadTimes.GetCurrentThreadCpuTicks();
                 using (metrics.RegisterCurrentThread("busy-session"))
                 {
                     nativeThreadId = NativeThreadTimes.GetCurrentThreadId();
@@ -74,7 +78,7 @@ public sealed class BusinessBlockMetricsTests
             metrics.Sample(DateTimeOffset.UtcNow);
             var sample = metrics.Read();
             var activeThread = Assert.Single(sample.ActiveThreads);
-            var independentAfter = NativeThreadTimes.GetCpuTicks(threadHandle) - cpuAtRegistration;
+            var independentAfter = NativeThreadTimes.GetCpuTicks(threadHandle) - cpuBeforeRegistration;
 
             Assert.Equal(checked((uint)nativeThreadId), activeThread.NativeThreadId);
             Assert.Equal("BusinessBlockMetrics.Busy", activeThread.Name);
@@ -241,8 +245,16 @@ public sealed class BusinessBlockMetricsTests
             Assert.False(firstActiveRead.AllocationCoverageComplete);
             Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreadsAndSynchronousSegments, firstActiveRead.Coverage);
 
-            Thread.Sleep(100);
+            // A spinning thread gains CPU time only once it is scheduled and a clock tick passes; under load
+            // a fixed short sleep can observe no change, so wait for the growth with a deadline.
             var activeRead = metrics.Read();
+            var growthDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (activeRead.ActiveThreads.Single().CpuTime <= firstActiveRead.ActiveThreads.Single().CpuTime
+                && DateTime.UtcNow < growthDeadline)
+            {
+                Thread.Sleep(20);
+                activeRead = metrics.Read();
+            }
             Assert.Equal(activeSampleAt, activeRead.SampledAt);
             Assert.True(activeRead.TotalCpuTime > firstActiveRead.TotalCpuTime);
             Assert.True(activeRead.ActiveThreads.Single().CpuTime > firstActiveRead.ActiveThreads.Single().CpuTime);

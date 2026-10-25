@@ -50,6 +50,11 @@ public sealed class BusinessBlockHostingTests
         Assert.Equal(
             new[] { "dependency:start", "consumer:start", "consumer:stop", "dependency:stop" },
             events);
+        // The host waits for each StopAsync, not for the block's run tail that records the final state;
+        // under a synchronization context that tail continues on the thread pool.
+        var controller = host.Services.GetRequiredService<BusinessBlockController>();
+        await controller.GetCompletion(nameof(ConsumerService)).WaitAsync(TimeSpan.FromSeconds(5));
+        await controller.GetCompletion(nameof(DependencyService)).WaitAsync(TimeSpan.FromSeconds(5));
         var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>()
             .Read().Blocks.ToDictionary(static block => block.Id, StringComparer.Ordinal);
         Assert.Equal(BusinessBlockState.Stopped, blocks[nameof(DependencyService)].State);

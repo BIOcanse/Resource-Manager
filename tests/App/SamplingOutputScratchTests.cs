@@ -306,26 +306,33 @@ public sealed class SamplingOutputScratchTests
             Assert.Equal(RealLayout(1, 1, 1).StorageLength, Assert.Single(stores).Length);
             Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
             tracker.MarkSampled(first.Request!, Now);
-            tracker.Track(RealItems(64), Now.AddSeconds(2));
+            // The native session learns the interval from Track gaps but counts the next deadline from the
+            // completion, so fixed steps can land a few milliseconds before the deadline. Each phase runs at
+            // the native next wake instead.
+            var grownAt = NextWake(host);
+            tracker.Track(RealItems(64), grownAt);
             Assert.Equal(64U, Snapshot(host).MembershipCount);
-            var grown = tracker.CreatePlan(Now.AddSeconds(2));
+            var grown = tracker.CreatePlan(grownAt);
             Assert.Equal(2, stores.Count);
             Assert.Equal(64, grown.DueItemIds.Count);
             Assert.Equal(RealLayout(64, 1, 64).StorageLength, stores[1].Length);
-            tracker.MarkSampled(grown.Request!, Now.AddSeconds(2));
-            tracker.Track(RealItems(1), Now.AddSeconds(4));
+            tracker.MarkSampled(grown.Request!, grownAt);
+            var smallerAt = NextWake(host);
+            tracker.Track(RealItems(1), smallerAt);
             Assert.Equal(1U, Snapshot(host).MembershipCount);
-            var smaller = tracker.CreatePlan(Now.AddSeconds(4));
+            var smaller = tracker.CreatePlan(smallerAt);
             Assert.Equal(2, stores.Count);
             Assert.True(stores[0].Closed);
             Assert.Single(smaller.DueItemIds);
-            tracker.MarkSampled(smaller.Request!, Now.AddSeconds(4));
+            tracker.MarkSampled(smaller.Request!, smallerAt);
         }
         finally { tracker.CloseOutputScratch(); }
     }
 
     private static NativeSamplingSubscriptionSnapshotHeader Snapshot(HostManagerSamplingSubscriptionTestFixture host)
         => ReadSnapshot(host).Header;
+    private static DateTimeOffset NextWake(HostManagerSamplingSubscriptionTestFixture host)
+        => DateTimeOffset.FromUnixTimeMilliseconds(checked((long)Snapshot(host).NextWakeMilliseconds));
     private static NativeSamplingSubscriptionItemState ReadOnlyItem(HostManagerSamplingSubscriptionTestFixture host)
         => Assert.Single(ReadSnapshot(host).Items);
     private static (NativeSamplingSubscriptionSnapshotHeader Header, NativeSamplingSubscriptionItemState[] Items)
