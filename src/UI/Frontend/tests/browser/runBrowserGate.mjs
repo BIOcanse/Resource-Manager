@@ -72,6 +72,7 @@ import pageTabsConsistencyJourney from "./pageTabsConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
 import usabilityProbe from "./usabilityProbe.js";
 import localizationJourney from "./localizationJourney.js";
+import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
@@ -149,7 +150,8 @@ const allJourneys = [
   ["wheel-accumulation", async (...args) => (await import("./wheelAccumulationJourney.js")).default(...args)],
   ["reorder-interaction", reorderInteractionJourney],
   ["motion-feel", motionFeelJourney],
-  ["r2-remediation", r2RemediationJourney]
+  ["r2-remediation", r2RemediationJourney],
+  ["accessibility-semantics", accessibilitySemanticsJourney]
 ];
 const journeyFilter = process.env.RM_BROWSER_JOURNEY?.trim();
 const requestedJourneys = new Set(journeyFilter?.split(",").map(name => name.trim()).filter(Boolean));

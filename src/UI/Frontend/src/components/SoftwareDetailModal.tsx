@@ -52,6 +52,7 @@ import { TargetedRecordingControl } from "../features/targetedReport/TargetedRec
 import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
+import { moveRovingFocus } from "../ui/primitives/RovingFocus.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
 type DetailTabId = "overview" | "policy" | "processes" | "overlay";
@@ -923,13 +924,34 @@ function GpuPlacementProcessSection(props: {
       <Show when={!props.loading} fallback={<p class="software-detail-empty">{uiText.softwareDetail.process.loading}</p>}>
         <Show when={processes().length > 0} fallback={<p class="software-detail-empty">{uiText.softwareDetail.process.empty}</p>}>
           <div class="process-policy-layout">
-            <div class="process-policy-list" role="listbox" aria-label={uiText.softwareDetail.process.listLabel}>
+            <div
+              class="process-policy-list"
+              role="listbox"
+              aria-label={uiText.softwareDetail.process.listLabel}
+              // 单选列表：上下键、Home/End 在进程间移动焦点，选中跟着焦点走（选中只决定右边编辑哪个进程）。
+              onKeyDown={(event) => moveRovingFocus(event, {
+                selector: "[role='option']",
+                previousKeys: ["ArrowUp"],
+                nextKeys: ["ArrowDown"],
+                ensureVisible: (element) => element.scrollIntoView({ block: "nearest" }),
+                activate: (element) => {
+                  const processKey = element.dataset.processKey;
+                  if (processKey) {
+                    props.onSelectProcess(processKey);
+                  }
+                }
+              })}
+            >
               <For each={processes()}>
-                {(process) => (
+                {(process, index) => (
                   <button
                     type="button"
                     role="option"
+                    data-process-key={process.processKey}
                     aria-selected={props.selectedProcessKey === process.processKey}
+                    // 只有一个选项在 Tab 顺序里：选中的那个；没有选中时是第一个。
+                    tabIndex={props.selectedProcessKey === process.processKey
+                      || (selectedProcess() === null && index() === 0) ? 0 : -1}
                     classList={{ active: props.selectedProcessKey === process.processKey }}
                     onClick={() => props.onSelectProcess(process.processKey)}
                   >
