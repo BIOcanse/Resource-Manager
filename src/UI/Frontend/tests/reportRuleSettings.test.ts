@@ -1,4 +1,3 @@
-import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 import assert from "node:assert/strict";
 import type { AppReportSettings } from "../src/types.ts";
 import { reportRuleSettingsDecoder, decodeReportSettings } from "../src/data/appSettings/reportRuleSettingsDecoder.ts";
@@ -21,12 +20,12 @@ assert.throws(() => reportRuleSettingsDecoder.decode({ rules: [reportRules[0], r
 assert.throws(() => reportRuleSettingsDecoder.decode({ rules: null }), ResponseDecodeError);
 const entry = { ...emptyReportRuleValues, rule: "cpu_throttle_temperature", activationThreshold: 92 };
 assert.deepEqual(decodeReportSettings({ ruleOverrides: [entry] }, "$.reports"), { ruleOverrides: [entry] });
-assert.deepEqual(appSettingsResultDecoder.decode({ frontendRefreshIntervals, settings: { version: "1", reports: { ruleOverrides: [entry] } },
+assert.deepEqual(appSettingsResultDecoder.decode({ settings: { version: "1", reports: { ruleOverrides: [entry] } },
   revision: "1" }).settings.reports, { ruleOverrides: [entry] });
 for (const reports of [null, { ruleOverrides: null }, { ruleOverrides: [{ ...entry, activationThreshold: "92" }] },
   { ruleOverrides: [{ ...entry, executableNames: [3] }] }, { ruleOverrides: [{ rule: "incomplete" }] },
   { ruleOverrides: [{ ...entry, clearThreshold: Infinity }] }]) {
-  assert.throws(() => appSettingsResultDecoder.decode({ frontendRefreshIntervals, settings: { version: "1", reports }, revision: "1" }), ResponseDecodeError);
+  assert.throws(() => appSettingsResultDecoder.decode({ settings: { version: "1", reports }, revision: "1" }), ResponseDecodeError);
 }
 
 const above = reportRuleNumberField(reportRules[0], emptyReportRuleValues, "clearThreshold");

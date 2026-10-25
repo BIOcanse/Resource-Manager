@@ -21,8 +21,10 @@ import type {
   ByteUnitMode
 } from "../../../types";
 import { NumberField, SegmentedControl } from "./SettingsControls";
+import { pointPreferences } from "../../../preferences/frontendPreferences.ts";
 
 interface AppearanceSettingsSectionProps {
+  onResetPreferences: () => void;
   settings: AppSettings["appearance"] | undefined;
   text: SettingsTextBundle;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
@@ -38,15 +40,7 @@ interface AppearanceSettingsSectionProps {
 }
 
 export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps) {
-  const appearance = () => props.settings ?? {
-    uiStyle: "standard" as AppUiStyle,
-    theme: "system" as AppPalette,
-    animations: "auto" as AppAnimationMode,
-    barColorMode: "type" as AppBarColorMode,
-    byteUnitMode: "native" as ByteUnitMode,
-    fontSmoothing: "auto" as AppFontSmoothing,
-    language: "system" as AppLanguageMode
-  };
+  const appearance = () => props.settings ?? pointPreferences().appearance;
 
   // 配色只列当前风格提供的那几种，顺序按目录。
   const paletteOptions = () => uiStylePalettes(appearance().uiStyle)
@@ -54,6 +48,12 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
 
   return (
     <div class="settings-section-panel">
+      <div class="settings-row">
+        <p class="settings-description">{props.text.appearance.cacheDescription}</p>
+        <button type="button" class="secondary" onClick={props.onResetPreferences}>
+          {props.text.appearance.resetCache}
+        </button>
+      </div>
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.appearance.uiStyleTitle}</strong>
@@ -84,7 +84,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           <span>{props.text.appearance.animationDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().animations ?? "auto"}
+          value={appearance().animations ?? pointPreferences().appearance.animations!}
           options={props.text.animationOptions}
           ariaLabel={props.text.appearance.animationTitle}
           onChange={props.onAnimationsChange}
@@ -98,7 +98,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
         {/* 帧率输入只在自定义时显示，跟随屏幕时它不生效。 */}
         <div class="settings-frame-rate-control">
           <SegmentedControl
-            value={appearance().resourceBarFrameRateMode ?? "display"}
+            value={appearance().resourceBarFrameRateMode ?? pointPreferences().appearance.resourceBarFrameRateMode!}
             options={props.text.appearance.resourceBarFrameRateModeOptions}
             ariaLabel={props.text.appearance.resourceBarFrameRateTitle}
             onChange={props.onResourceBarFrameRateModeChange}
@@ -122,7 +122,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           <span>{props.text.appearance.barColorDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().barColorMode ?? "type"}
+          value={appearance().barColorMode ?? pointPreferences().appearance.barColorMode!}
           options={props.text.barColorOptions}
           ariaLabel={props.text.appearance.barColorTitle}
           onChange={props.onBarColorModeChange}
@@ -134,7 +134,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           <span>{props.text.appearance.byteUnitDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().byteUnitMode ?? "native"}
+          value={appearance().byteUnitMode ?? pointPreferences().appearance.byteUnitMode!}
           options={props.text.byteUnitOptions}
           ariaLabel={props.text.appearance.byteUnitTitle}
           onChange={props.onByteUnitModeChange}
@@ -146,7 +146,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           <span>{props.text.appearance.readingSourceDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().readingSourceMode ?? "preferred"}
+          value={appearance().readingSourceMode ?? pointPreferences().appearance.readingSourceMode!}
           options={props.text.appearance.readingSourceModeOptions}
           ariaLabel={props.text.appearance.readingSourceTitle}
           onChange={props.onReadingSourceModeChange}
@@ -158,7 +158,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           <span>{props.text.appearance.fontSmoothingDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().fontSmoothing ?? "auto"}
+          value={appearance().fontSmoothing ?? pointPreferences().appearance.fontSmoothing!}
           options={props.text.fontSmoothingOptions}
           ariaLabel={props.text.appearance.fontSmoothingTitle}
           onChange={props.onFontSmoothingChange}

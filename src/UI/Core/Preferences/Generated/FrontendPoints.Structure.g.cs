@@ -1,0 +1,81 @@
+#nullable enable
+using System.Collections.Immutable;
+namespace @ResourceManager.@NativeUi.@Preferences;
+public static class @FrontendPoints
+{
+    public readonly record struct __fpContractSlot(
+        string Kind, string? Unit, long? IntegerMinimum, long? IntegerMaximum, long? IntegerStep, string? IntegerMinimumPoint,
+        ulong? UnsignedMinimum, ulong? UnsignedMaximum, ulong? UnsignedStep, string? UnsignedMaximumPoint,
+        double? DecimalMinimum, double? DecimalMaximum, ImmutableArray<string> Options,
+        bool ChoiceOptionsUnresolved, int RequiredSelectionCount, int? IntegerBitWidth, __fpEnumContract? Enumeration);
+    public readonly record struct __fpEnumMember(string Name, string Literal);
+    public readonly record struct __fpEnumContract(bool IsUnsigned, int BitWidth, ImmutableArray<__fpEnumMember> Members);
+    public sealed class __fpContractDescriptor
+    {
+        public string? ComplexContract { get; }
+        public ImmutableArray<__fpContractSlot> Slots { get; }
+        public __fpContractDescriptor(string? complexContract, ImmutableArray<__fpContractSlot> slots)
+            => (ComplexContract, Slots) = (complexContract, slots);
+    }
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200240000UL)]
+    public const int @BarFrameRate = @FrontendPointsValues.@__fpValue_BarFrameRate;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250000UL)]
+    public static readonly string @UiStyle = @FrontendPointsValues.@__fpValue_UiStyle;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250001UL)]
+    public static readonly string @Theme = @FrontendPointsValues.@__fpValue_Theme;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250002UL)]
+    public static readonly string @AnimationMode = @FrontendPointsValues.@__fpValue_AnimationMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250003UL)]
+    public static readonly string @BarFrameRateMode = @FrontendPointsValues.@__fpValue_BarFrameRateMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250004UL)]
+    public static readonly string @BarColorMode = @FrontendPointsValues.@__fpValue_BarColorMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250005UL)]
+    public static readonly string @FontSmoothing = @FrontendPointsValues.@__fpValue_FontSmoothing;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250006UL)]
+    public static readonly string @Language = @FrontendPointsValues.@__fpValue_Language;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250007UL)]
+    public static readonly string @ByteUnitMode = @FrontendPointsValues.@__fpValue_ByteUnitMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200250008UL)]
+    public static readonly string @ReadingSourceMode = @FrontendPointsValues.@__fpValue_ReadingSourceMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290000UL)]
+    public static readonly string @SmartMonitoringMode = @FrontendPointsValues.@__fpValue_SmartMonitoringMode;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290001UL)]
+    public static readonly PointRefreshSetting @Monitor = @FrontendPointsValues.@__fpValue_Monitor;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290002UL)]
+    public static readonly PointRefreshSetting @ResourceTable = @FrontendPointsValues.@__fpValue_ResourceTable;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290003UL)]
+    public static readonly PointRefreshSetting @LocalSystem = @FrontendPointsValues.@__fpValue_LocalSystem;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290004UL)]
+    public static readonly PointRefreshPresets @MonitorPresets = @FrontendPointsValues.@__fpValue_MonitorPresets;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290005UL)]
+    public static readonly PointRefreshPresets @ResourceTablePresets = @FrontendPointsValues.@__fpValue_ResourceTablePresets;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290006UL)]
+    public static readonly PointRefreshPresets @LocalSystemPresets = @FrontendPointsValues.@__fpValue_LocalSystemPresets;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290007UL)]
+    public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200290008UL)]
+    public static readonly string @AutoBackgroundPreset = @FrontendPointsValues.@__fpValue_AutoBackgroundPreset;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002C0000UL)]
+    public const int @FontSizePx = @FrontendPointsValues.@__fpValue_FontSizePx;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002C0001UL)]
+    public const double @RegionWidthRatio = @FrontendPointsValues.@__fpValue_RegionWidthRatio;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002C0002UL)]
+    public const double @RegionHeightRatio = @FrontendPointsValues.@__fpValue_RegionHeightRatio;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002C0003UL)]
+    public const int @MarginPx = @FrontendPointsValues.@__fpValue_MarginPx;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002D0000UL)]
+    public static readonly string @SizeMode = @FrontendPointsValues.@__fpValue_SizeMode;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002D0001UL)]
+    public static readonly string @Anchor = @FrontendPointsValues.@__fpValue_Anchor;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002D0002UL)]
+    public static readonly ImmutableArray<string> @MetricOrder = @FrontendPointsValues.@__fpValue_MetricOrder;
+}
+public sealed class @FrontendPointsRuntime
+{
+    private @FrontendPointsRuntime()
+    {
+    }
+    public static @FrontendPointsRuntime Create() => new();
+}
+public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);
+public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);

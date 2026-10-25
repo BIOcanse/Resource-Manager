@@ -1,10 +1,10 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, savePerformanceOverlaySettings } from "../../api.ts";
+import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText.ts";
 import { MetricModal } from "../monitor/MetricModal.tsx";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
-import { uiText } from "../../text.ts";
+import { uiText, currentSettingsText } from "../../text.ts";
 import type { ManagedComponent, MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
 
 export function SoftwareOverlaySettings(props: { softwareId: string; active: boolean }) {
@@ -53,7 +53,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     setSaving(true);
     setError("");
     try {
-      const result = await savePerformanceOverlaySettings(current);
+      const result = await savePerformanceOverlaySettings(current, saved() ?? undefined);
       setSaved(result);
       setDraft({ ...result, metrics: [...result.metrics] });
     } catch (cause) {
@@ -61,6 +61,17 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     } finally {
       setSaving(false);
     }
+  };
+  const resetPresentation = async () => {
+    if (!draft() || saving()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const presentation = await resetPerformanceOverlayPresentation(props.softwareId);
+      setSaved(current => current && { ...current, ...presentation });
+      setDraft(current => current && { ...current, ...presentation });
+    } catch (cause) { setError(userFacingErrorMessage(cause, uiText.status.actionFailed)); }
+    finally { setSaving(false); }
   };
   const moveMetric = (index: number, direction: number) => {
     const current = draft();
@@ -74,6 +85,9 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     <section class="software-detail-section overlay-settings">
       <div class="software-policy-section-header">
         <h3>{uiText.performanceOverlay.tab}</h3>
+        <button type="button" class="secondary" disabled={!draft() || saving()} onClick={() => void resetPresentation()}>
+          {currentSettingsText().actions.restoreDefaults}
+        </button>
         <button type="button" disabled={!draft() || !dirty() || saving()} onClick={() => void save()}>
           {saving() ? uiText.softwareDetail.processing : uiText.softwareDetail.save}
         </button>

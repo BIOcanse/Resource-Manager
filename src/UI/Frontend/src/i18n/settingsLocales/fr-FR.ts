@@ -176,6 +176,8 @@ export default createSettingsLocale("fr-FR", {
     }
   },
   "appearance": {
+    "cacheDescription": "L\u2019apparence, les intervalles d\u2019actualisation et l\u2019apparence de la superposition sont mis en cache sur cet appareil. Effacer le cache r\u00E9tablit les valeurs par d\u00E9faut.",
+    "resetCache": "R\u00E9initialiser les pr\u00E9f\u00E9rences d\u2019interface",
     "uiStyleTitle": "Style de l'interface",
     "uiStyleDescription": "Modifie les coins, les lignes, les ombres et les polices des contrôles ; la disposition ne change pas. Chaque style a ses propres palettes.",
     "themeTitle": "Palette",

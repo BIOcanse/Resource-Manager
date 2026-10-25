@@ -176,6 +176,8 @@ export default createSettingsLocale("ko-KR", {
     }
   },
   "appearance": {
+    "cacheDescription": "\uBAA8\uC591, \uC0C8\uB85C \uACE0\uCE68 \uAC04\uACA9, \uC624\uBC84\uB808\uC774 \uBAA8\uC591\uC740 \uC774 \uAE30\uAE30\uC5D0 \uCE90\uC2DC\uB429\uB2C8\uB2E4. \uCE90\uC2DC\uB97C \uC9C0\uC6B0\uBA74 \uAE30\uBCF8\uAC12\uC73C\uB85C \uB3CC\uC544\uAC11\uB2C8\uB2E4.",
+    "resetCache": "\uD654\uBA74 \uD658\uACBD\uC124\uC815 \uCD08\uAE30\uD654",
     "uiStyleTitle": "인터페이스 스타일",
     "uiStyleDescription": "컨트롤의 모서리, 선, 그림자, 글꼴을 바꿉니다. 레이아웃은 그대로입니다. 스타일마다 고유한 색 구성이 있습니다.",
     "themeTitle": "색 구성",

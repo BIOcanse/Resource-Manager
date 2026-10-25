@@ -24,12 +24,6 @@ public sealed record PerformanceOverlaySettings
     public bool Enabled { get; init; }
     public string Mode { get; init; } = "external";
     public IReadOnlyList<string> Metrics { get; init; } = PerformanceOverlayMetricIds.Defaults;
-    public string SizeMode { get; init; } = "absolutePixels";
-    public int FontSizePx { get; init; } = 14;
-    public double RegionWidthRatio { get; init; } = 0.25;
-    public double RegionHeightRatio { get; init; } = 0.2;
-    public string Anchor { get; init; } = "topLeft";
-    public int MarginPx { get; init; } = 12;
 
     public static PerformanceOverlaySettings Default(string softwareId) =>
         new() { SoftwareId = softwareId };
@@ -59,26 +53,15 @@ public sealed record PerformanceOverlaySettings
             SoftwareId = id,
             Mode = settings.Mode?.Equals("injected", StringComparison.OrdinalIgnoreCase) == true
                 ? "injected" : "external",
-            Metrics = metrics,
-            SizeMode = settings.SizeMode?.Equals("windowRatio", StringComparison.OrdinalIgnoreCase) == true
-                ? "windowRatio" : "absolutePixels",
-            FontSizePx = Math.Clamp(settings.FontSizePx, 8, 72),
-            RegionWidthRatio = Ratio(settings.RegionWidthRatio, 0.25),
-            RegionHeightRatio = Ratio(settings.RegionHeightRatio, 0.2),
-            Anchor = new[] { "topLeft", "topRight", "bottomLeft", "bottomRight" }
-                .FirstOrDefault(anchor => anchor.Equals(settings.Anchor, StringComparison.OrdinalIgnoreCase))
-                ?? "topLeft",
-            MarginPx = Math.Clamp(settings.MarginPx, 0, 256)
+            Metrics = metrics
         };
     }
 
-    private static double Ratio(double value, double fallback) =>
-        double.IsFinite(value) ? Math.Clamp(value, 0.05, 1) : fallback;
 }
 
 public sealed record PerformanceOverlaySettingsDocument(
     int Version,
     IReadOnlyList<PerformanceOverlaySettings> Software)
 {
-    public static PerformanceOverlaySettingsDocument Empty { get; } = new(1, []);
+    public static PerformanceOverlaySettingsDocument Empty { get; } = new(2, []);
 }

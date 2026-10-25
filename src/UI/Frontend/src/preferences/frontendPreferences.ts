@@ -1,0 +1,162 @@
+import { ResourceManager } from "./generated/frontendPoints.values.ts";
+import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
+import type {
+  AppAppearanceSettings, AppPerformanceSettings, AppSettings, AppPresetNumericSetting,
+  FrontendRefreshIntervals, PerformanceOverlaySettings
+} from "../types.ts";
+
+const points = ResourceManager.FrontendPoints;
+export type FrontendRefresh = {
+  smartMonitoringMode: AppPerformanceSettings["smartMonitoringMode"];
+  monitor: AppPresetNumericSetting;
+  resourceTable: AppPresetNumericSetting;
+  localSystem: AppPresetNumericSetting;
+};
+export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "enabled" | "mode">;
+export interface FrontendPreferencesCache {
+  appearance: AppAppearanceSettings;
+  refresh: FrontendRefresh;
+  overlays: Record<string, OverlayPresentation>;
+}
+export interface FrontendPreferencesClient {
+  read(): Promise<FrontendPreferencesCache>;
+  save(value: FrontendPreferencesCache, scope?: "global" | { overlay: string }): Promise<FrontendPreferencesCache>;
+  reset(): Promise<FrontendPreferencesCache>;
+}
+
+export function cachedOverlay(preferences: FrontendPreferencesCache, softwareId: string): OverlayPresentation | undefined {
+  return Object.entries(preferences.overlays).find(([id]) => id.toLowerCase() === softwareId.toLowerCase())?.[1];
+}
+
+export function pointPreferences(): FrontendPreferencesCache {
+  return {
+    appearance: {
+      uiStyle: points.UiStyle, theme: points.Theme, animations: points.AnimationMode,
+      resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
+      barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
+      byteUnitMode: points.ByteUnitMode, readingSourceMode: points.ReadingSourceMode
+    },
+    refresh: {
+      smartMonitoringMode: points.SmartMonitoringMode, monitor: { ...points.Monitor },
+      resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem }
+    }, overlays: {}
+  };
+}
+
+export function pointOverlayPresentation(): OverlayPresentation {
+  return {
+    metrics: [...points.MetricOrder], fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
+    regionWidthRatio: points.RegionWidthRatio, regionHeightRatio: points.RegionHeightRatio,
+    anchor: points.Anchor, marginPx: points.MarginPx
+  };
+}
+
+export function resolveFrontendRefresh(refresh: FrontendRefresh): FrontendRefreshIntervals {
+  const presets = { monitor: points.MonitorPresets, resourceTable: points.ResourceTablePresets,
+    localSystem: points.LocalSystemPresets };
+  const resolve = (key: "monitor" | "resourceTable" | "localSystem", background: boolean) => {
+    const setting = refresh[key];
+    return setting.mode === "custom" ? setting.customValue : presets[key][setting.mode === "preset"
+      ? setting.preset : background ? points.AutoBackgroundPreset : points.AutoForegroundPreset];
+  };
+  return {
+    foreground: { monitor: resolve("monitor", false), resourceTable: resolve("resourceTable", false), localSystem: resolve("localSystem", false) },
+    backgroundOptimized: { monitor: resolve("monitor", true), resourceTable: resolve("resourceTable", true), localSystem: resolve("localSystem", true) },
+    presets,
+    defaults: { monitor: { ...points.Monitor }, resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem } }
+  };
+}
+
+export function applyFrontendPreferences(settings: Omit<AppSettings, "appearance" | "performance"> & { performance?: Partial<AppPerformanceSettings> }, preferences: FrontendPreferencesCache): AppSettings {
+  return {
+    ...settings, appearance: structuredClone(preferences.appearance),
+    performance: settings.performance ? { ...settings.performance,
+      smartMonitoringMode: preferences.refresh.smartMonitoringMode,
+      monitorRefreshIntervalMs: { ...preferences.refresh.monitor },
+      resourceTableRefreshIntervalMs: { ...preferences.refresh.resourceTable },
+      localSystemRefreshIntervalMs: { ...preferences.refresh.localSystem } } as AppPerformanceSettings : undefined
+  };
+}
+
+export function preferencesFromSettings(value: AppSettings, existing: FrontendPreferencesCache): FrontendPreferencesCache {
+  const performance = value.performance!;
+  return {
+    appearance: structuredClone(value.appearance!),
+    refresh: { smartMonitoringMode: performance.smartMonitoringMode,
+      monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
+      localSystem: { ...performance.localSystemRefreshIntervalMs } }, overlays: existing.overlays
+  };
+}
+
+/** Presentation fields never enter an app-settings request. */
+export function backendSettings(value: AppSettings): Record<string, unknown> {
+  const { appearance: _appearance, ...backend } = value;
+  if (!backend.performance) return backend;
+  const { smartMonitoringMode: _smart, monitorRefreshIntervalMs: _monitor,
+    resourceTableRefreshIntervalMs: _table, localSystemRefreshIntervalMs: _system, ...performance } = backend.performance;
+  return { ...backend, performance };
+}
+
+export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">): FrontendPreferencesClient {
+  const host = getHostMessageTransport();
+  // Native mode has exactly one owner. A failed native request never switches to browser storage.
+  if (host) {
+    const request = (type: string, value?: FrontendPreferencesCache, scope?: "global" | { overlay: string }) => new Promise<FrontendPreferencesCache>((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      let unsubscribe: (() => void) | null = null;
+      const timer = setTimeout(() => { unsubscribe?.(); reject(new Error("preferences-unavailable")); }, 10000);
+      unsubscribe = host.subscribeMessages(message => {
+        if (!message || typeof message !== "object") return;
+        const response = message as { type?: string; requestId?: string; value?: FrontendPreferencesCache; error?: string };
+        if (response.type !== "preferences.result" || response.requestId !== requestId) return;
+        clearTimeout(timer);
+        unsubscribe?.();
+        if (response.error || !response.value) reject(new Error(response.error ?? "preferences-unavailable"));
+        else resolve(response.value);
+      });
+      if (!unsubscribe) { clearTimeout(timer); reject(new Error("preferences-unavailable")); return; }
+      host.postMessage({ type, requestId, ...(value ? { value } : {}),
+        ...(scope === "global" ? { scope } : scope ? { scope: "overlay", softwareId: scope.overlay } : {}) });
+    });
+    return { read: () => request("preferences.get"), save: (value, scope) => request("preferences.save", value, scope), reset: () => request("preferences.reset") };
+  }
+  // Standalone browser frontend uses its own WebView/browser storage, never the API.
+  const key = "resource-manager:frontend-preferences:v1";
+  const browserStorage = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
+  const readCache = () => {
+    const text = browserStorage?.getItem(key);
+    if (text == null) return pointPreferences();
+    return JSON.parse(text) as FrontendPreferencesCache;
+  };
+  let writes = Promise.resolve();
+  const save = (value: FrontendPreferencesCache, scope?: "global" | { overlay: string }) => {
+    const write = writes.then(() => {
+      if (!browserStorage) throw new Error("preferences-unavailable");
+      const current = readCache();
+      let next = value;
+      if (scope === "global") next = { ...current, appearance: value.appearance, refresh: value.refresh };
+      else if (scope) {
+        const overlays = { ...current.overlays };
+        const presentation = cachedOverlay(value, scope.overlay);
+        for (const id of Object.keys(overlays)) if (id.toLowerCase() === scope.overlay.toLowerCase()) delete overlays[id];
+        if (presentation) overlays[scope.overlay] = presentation;
+        next = { ...current, overlays };
+      }
+      browserStorage.setItem(key, JSON.stringify(next));
+      return structuredClone(next);
+    });
+    writes = write.then(() => undefined, () => undefined);
+    return write;
+  };
+  return { read: async () => { await writes; return readCache(); }, save, reset: async () => {
+    await writes;
+    if (!browserStorage) throw new Error("preferences-unavailable");
+    browserStorage.removeItem(key);
+    return pointPreferences();
+  } };
+}
+
+let client: FrontendPreferencesClient | undefined;
+export function frontendPreferencesClient(): FrontendPreferencesClient {
+  return client ??= createFrontendPreferencesClient();
+}

@@ -33,7 +33,7 @@ test("software detail uses the shared metric picker as a multi select", () => {
   assert.match(detail, /<TabsPanel value="overlay"/);
   assert.match(overlay, /<MetricModal[^>]*multiSelect/s);
   assert.match(overlay, /performanceOverlay\.injectionWarning/);
-  assert.match(overlay, /savePerformanceOverlaySettings\(current\)/);
+  assert.match(overlay, /savePerformanceOverlaySettings\(current, saved\(\)/);
 });
 
 

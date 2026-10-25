@@ -24,7 +24,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         source["version"] = "1.0.28";
         source["performance"]!["gpuPerformanceUseCases"] = new JsonArray("ai");
         source["update"]!.AsObject().Remove("checkIntervalHours");
-        source["appearance"]!["language"] = "ja-JP";
+        source["appearance"] = new JsonObject { ["language"] = "ja-JP" };
         var path = Path.Combine(config, "app-settings.json");
         await File.WriteAllTextAsync(path, source.ToJsonString());
 
@@ -36,7 +36,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal(AppSettingsDefaults.CurrentVersion, written.RootElement.GetProperty("version").GetString());
         Assert.False(written.RootElement.GetProperty("performance").TryGetProperty("gpuPerformanceUseCases", out _));
         Assert.Equal(6, written.RootElement.GetProperty("update").GetProperty("checkIntervalHours").GetInt32());
-        Assert.Equal("ja-JP", written.RootElement.GetProperty("appearance").GetProperty("language").GetString());
+        Assert.False(written.RootElement.TryGetProperty("appearance", out _));
     }
 
     [Theory]
@@ -125,97 +125,14 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var defaults = (await store.LoadAsync(CancellationToken.None)).Settings;
         await store.SaveAsync(defaults with
         {
-            SystemIntegration = defaults.SystemIntegration with { AutoStartEnabled = true },
-            Appearance = defaults.Appearance with { Theme = "dark" }
+            SystemIntegration = defaults.SystemIntegration with { AutoStartEnabled = true }
         }, CancellationToken.None);
         var other = new JsonAppSettingsStore(environment);
         var loaded = (await other.LoadAsync(CancellationToken.None)).Settings;
         Assert.True(loaded.SystemIntegration.AutoStartEnabled);
-        Assert.Equal("dark", loaded.Appearance.Theme);
         await other.SaveAsync(loaded with { SystemIntegration = loaded.SystemIntegration with { AutoStartEnabled = false } }, CancellationToken.None);
         var disabled = (await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None)).Settings;
         Assert.False(disabled.SystemIntegration.AutoStartEnabled);
-        Assert.Equal("dark", disabled.Appearance.Theme);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WritesExplicitResourceBarFrameRateAndKeepsACustomChoice()
-    {
-        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
-        var configRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
-        var settingsPath = Path.Combine(configRoot, "app-settings.json");
-        var environment = new TestHostEnvironment(appRoot);
-        var source = JsonNode.Parse(JsonSerializer.Serialize(
-            AppSettingsDefaults.Create(),
-            JsonSerializerOptions.Web))!.AsObject();
-        var appearance = source["appearance"]!.AsObject();
-        appearance.Remove("resourceBarFrameRateMode");
-        appearance.Remove("resourceBarFrameRate");
-        appearance["theme"] = "dark";
-        await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
-
-        var store = new JsonAppSettingsStore(environment);
-        var loaded = await store.LoadAsync(CancellationToken.None);
-
-        Assert.True(loaded.Source.RewritePerformed);
-        Assert.Equal(AppResourceBarFrameRateModes.Display, loaded.Settings.Appearance.ResourceBarFrameRateMode);
-        Assert.Equal(60, loaded.Settings.Appearance.ResourceBarFrameRate);
-        Assert.Equal("dark", loaded.Settings.Appearance.Theme);
-        using (var rewritten = JsonDocument.Parse(await File.ReadAllBytesAsync(settingsPath)))
-        {
-            var persisted = rewritten.RootElement.GetProperty("appearance");
-            Assert.Equal("display", persisted.GetProperty("resourceBarFrameRateMode").GetString());
-            Assert.Equal(60, persisted.GetProperty("resourceBarFrameRate").GetInt32());
-        }
-
-        await store.SaveAsync(loaded.Settings with
-        {
-            Appearance = loaded.Settings.Appearance with
-            {
-                ResourceBarFrameRateMode = AppResourceBarFrameRateModes.Custom,
-                ResourceBarFrameRate = 75
-            }
-        }, CancellationToken.None);
-        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
-
-        Assert.False(reloaded.Source.RewritePerformed);
-        Assert.Equal(AppResourceBarFrameRateModes.Custom, reloaded.Settings.Appearance.ResourceBarFrameRateMode);
-        Assert.Equal(75, reloaded.Settings.Appearance.ResourceBarFrameRate);
-    }
-
-    [Fact]
-    public async Task LoadAsync_WritesExplicitReadingSourceModeAndKeepsShowingAllSources()
-    {
-        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
-        var configRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
-        var settingsPath = Path.Combine(configRoot, "app-settings.json");
-        var environment = new TestHostEnvironment(appRoot);
-        var source = JsonNode.Parse(JsonSerializer.Serialize(
-            AppSettingsDefaults.Create(),
-            JsonSerializerOptions.Web))!.AsObject();
-        source["appearance"]!.AsObject().Remove("readingSourceMode");
-        await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
-
-        var store = new JsonAppSettingsStore(environment);
-        var loaded = await store.LoadAsync(CancellationToken.None);
-
-        Assert.True(loaded.Source.RewritePerformed);
-        Assert.Equal(AppReadingSourceModes.Preferred, loaded.Settings.Appearance.ReadingSourceMode);
-        using (var rewritten = JsonDocument.Parse(await File.ReadAllBytesAsync(settingsPath)))
-        {
-            Assert.Equal(
-                "preferred",
-                rewritten.RootElement.GetProperty("appearance").GetProperty("readingSourceMode").GetString());
-        }
-
-        await store.SaveAsync(loaded.Settings with
-        {
-            Appearance = loaded.Settings.Appearance with { ReadingSourceMode = AppReadingSourceModes.All }
-        }, CancellationToken.None);
-        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
-
-        Assert.False(reloaded.Source.RewritePerformed);
-        Assert.Equal(AppReadingSourceModes.All, reloaded.Settings.Appearance.ReadingSourceMode);
     }
 
     [Fact]
@@ -296,10 +213,10 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var performance = source["performance"]!.AsObject();
         performance["samplingDispatchMode"] = "normal";
         performance["optimizationMode"] = AppOptimizationModes.Smart;
-        performance["monitorRefreshIntervalMs"]!["mode"] = AppPresetNumericSettingModes.Custom;
+        performance["monitorRefreshIntervalMs"] = new JsonObject { ["mode"] = "custom", ["preset"] = "balanced" };
         performance["monitorRefreshIntervalMs"]!["customValue"] = 4_321;
-        source["appearance"]!["theme"] = "dark";
-        source["appearance"]!["language"] = AppLanguageModes.English;
+        source["appearance"] = new JsonObject { ["theme"] = "dark" };
+        source["appearance"]!["language"] = "en-US";
         source["debug"]!["hostManagerSmartCoordinatorScoreOnlyEnabled"] = true;
         await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
 
@@ -311,12 +228,6 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.True(loaded.Source.RewritePerformed);
         Assert.Equal(AppSettingsDefaults.CurrentVersion, loaded.Settings.Version);
         Assert.Equal(AppOptimizationModes.Smart, loaded.Settings.Performance.OptimizationMode);
-        Assert.Equal(
-            AppPresetNumericSettingModes.Custom,
-            loaded.Settings.Performance.MonitorRefreshIntervalMs.Mode);
-        Assert.Equal(4_321, loaded.Settings.Performance.MonitorRefreshIntervalMs.CustomValue);
-        Assert.Equal("dark", loaded.Settings.Appearance.Theme);
-        Assert.Equal(AppLanguageModes.English, loaded.Settings.Appearance.Language);
         Assert.True(loaded.Settings.Debug.HostManagerSmartCoordinatorScoreOnlyEnabled);
 
         using var persisted = JsonDocument.Parse(await File.ReadAllBytesAsync(settingsPath));
@@ -327,12 +238,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
             persisted.RootElement
                 .GetProperty("performance")
                 .TryGetProperty("samplingDispatchMode", out _));
-        Assert.Equal(
-            "dark",
-            persisted.RootElement
-                .GetProperty("appearance")
-                .GetProperty("theme")
-                .GetString());
+        Assert.False(persisted.RootElement.TryGetProperty("appearance", out _));
     }
 
     [Fact]
@@ -369,10 +275,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
         var expected = AppSettingsDefaults.Create() with
         {
-            Appearance = AppSettingsDefaults.Create().Appearance with
-            {
-                Theme = "dark"
-            }
+            Debug = AppSettingsDefaults.Create().Debug with { DebugLogEnabled = true }
         };
         var saved = await store.SaveAsync(expected, CancellationToken.None);
         await File.WriteAllTextAsync(saved.StoragePath, "{");
@@ -385,7 +288,6 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal(AppSettingsSourceKind.RecoveredLastKnownGood, recovered.Source.Kind);
         Assert.Equal("readOnlyLastKnownGoodFallback", recovered.Source.RecoveryDisposition);
         Assert.Null(recovered.Source.RecoveryArtifactPath);
-        Assert.Equal("dark", recovered.Settings.Appearance.Theme);
         AssertFileTreeUnchanged(before, configRoot);
     }
 
@@ -451,10 +353,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var originalStore = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
         var expected = AppSettingsDefaults.Create() with
         {
-            Appearance = AppSettingsDefaults.Create().Appearance with
-            {
-                Theme = "dark"
-            }
+            Debug = AppSettingsDefaults.Create().Debug with { DebugLogEnabled = true }
         };
         var saved = await originalStore.SaveAsync(expected, CancellationToken.None);
         var lastKnownGoodPath = Path.Combine(
@@ -470,7 +369,6 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal("recoveredLastKnownGood", recovered.Source.RecoveryDisposition);
         Assert.NotNull(recovered.Source.RecoveryArtifactPath);
         Assert.True(File.Exists(recovered.Source.RecoveryArtifactPath));
-        Assert.Equal("dark", recovered.Settings.Appearance.Theme);
         Assert.Equal(
             JsonSerializer.Serialize(expected),
             JsonSerializer.Serialize(

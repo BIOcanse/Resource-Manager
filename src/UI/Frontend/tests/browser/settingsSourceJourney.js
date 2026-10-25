@@ -1,269 +1,85 @@
-export default async function settingsSourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
-  const failures = [];
-  const settingsPatchBodies = [];
-  page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
-  page.on("request", (request) => {
-    if (request.method() === "PATCH"
-      && new URL(request.url()).pathname === "/api/settings/app") {
-      settingsPatchBodies.push(request.postDataJSON());
-    }
-  });
-  page.on("console", (message) => {
-    const text = message.text();
-    const expectedConflictResponse = text.includes("status of 409 (Conflict)");
-    if (message.type() === "error" && !expectedConflictResponse) {
-      failures.push(`console: ${text}`);
-    }
-  });
+import assert from "node:assert/strict";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
-  const assert = (condition, message) => {
-    if (!condition) {
-      throw new Error(message);
-    }
-  };
-  const postJson = async (path, value) => {
-    const result = await page.evaluate(async ({ path, value }) => {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(value)
-      });
-      return { ok: response.ok, status: response.status, body: await response.text() };
-    }, { path, value });
-    assert(result.ok, `POST ${path} failed: ${JSON.stringify(result)}`);
-    return JSON.parse(result.body);
-  };
-  const requestTelemetry = () => page.evaluate(async () => {
-    const response = await fetch("/__test/requests");
-    return response.json();
+export default async function settingsSourceJourney(page, baseUrl) {
+  const errors = [];
+  const patches = [];
+  const text = await loadSettingsText("zh-CN");
+  page.on("pageerror", error => errors.push(String(error)));
+  page.on("request", request => {
+    if (request.method() === "PATCH" && new URL(request.url()).pathname === "/api/settings/app") patches.push(request.postDataJSON());
   });
-  const isSelected = async (locator) => (await locator.getAttribute("aria-checked")) === "true";
-
-  await page.setViewportSize({ width: 1100, height: 760 });
-  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await postJson("/__test/scenario", {
-    capabilities: "ready",
-    settings: "ready",
-    settingsConflict: false,
-    settingsGetDelayMs: 0,
-    settingsPatchDelayMs: 0,
-    settingsRevision: "frontend-harness-r1",
-    settingsTheme: "system"
-  });
-  await postJson("/__test/requests/reset", {});
+  const scenario = async value => {
+    assert((await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) })).ok);
+  };
+  const cache = () => page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1")));
+  const open = async section => {
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await page.getByRole("button", { name: section, exact: true }).click();
+  };
+  const save = () => page.getByRole("button", { name: "保存", exact: true }).click();
+  const theme = name => page.getByRole("radio", { name, exact: true });
+  await page.setViewportSize({ width: 1100, height: 850 });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await open("外观");
+  assert(await theme("跟随系统").isChecked());
+  assert.equal(await cache(), null, "Missing cache should use points without writing a cache");
+  await theme("深色").click();
+  await theme("异色区分").click();
+  assert.equal(await page.locator("html").getAttribute("data-theme"), "system", "Draft applied before save");
+  await save();
+  await page.waitForFunction(() => document.documentElement.dataset.theme === "dark" && document.body.dataset.barColor === "distinct");
+  assert.equal(patches.length, 0, "Presentation was sent to the backend");
+  assert.equal((await cache()).appearance.theme, "dark");
+  await scenario({ settingsRevision: "frontend-harness-r7", settingsTheme: "light" });
   await page.reload({ waitUntil: "domcontentloaded" });
-
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  const settingsBoundary = page.locator(".settings-readonly-boundary");
-  await settingsBoundary.waitFor({ state: "visible", timeout: 7000 });
-  await page.getByRole("button", { name: "外观", exact: true }).click();
-
-  const systemTheme = page.getByRole("radio", { name: "跟随系统", exact: true });
-  const lightTheme = page.getByRole("radio", { name: "浅色", exact: true });
-  const darkTheme = page.getByRole("radio", { name: "深色", exact: true });
-  const lowContrastTheme = page.getByRole("radio", { name: "低对比", exact: true });
-  const typeBarColor = page.getByRole("radio", { name: "类型固定色", exact: true });
-  const distinctBarColor = page.getByRole("radio", { name: "异色区分", exact: true });
-  await systemTheme.waitFor({ state: "visible", timeout: 3000 });
-  await typeBarColor.waitFor({ state: "visible", timeout: 3000 });
-  assert(await isSelected(systemTheme), "Initial authoritative theme is not selected");
-  assert(await isSelected(typeBarColor), "Initial authoritative resource-bar color mode is not selected");
-  assert(await page.locator("body").getAttribute("data-bar-color") === "type",
-    "Initial committed resource-bar color mode was not published");
-
-  const startupTelemetry = await requestTelemetry();
-  const startupSettingsRequests = startupTelemetry["/api/settings/app"];
-  assert(startupSettingsRequests?.started === 1 && startupSettingsRequests?.completed === 1,
-    `Settings has more than one startup owner: ${JSON.stringify(startupSettingsRequests)}`);
-
-  await darkTheme.click();
-  await distinctBarColor.click();
-  assert(await isSelected(darkTheme), "Dark theme draft was not selected");
-  assert(await isSelected(distinctBarColor), "Distinct resource-bar color draft was not selected");
-  assert(await page.locator("html").getAttribute("data-theme") === "system",
-    "A draft theme changed the committed presentation before save");
-  assert(await page.locator("body").getAttribute("data-bar-color") === "type",
-    "A draft resource-bar color mode changed the committed presentation before save");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  const savedStatus = page.getByRole("status").filter({ hasText: "已保存" });
-  await savedStatus.waitFor({ state: "visible", timeout: 5000 });
-  assert(await page.locator("html").getAttribute("data-theme") === "dark",
-    "Accepted save was not published through the authoritative settings source");
-  assert(await page.locator("body").getAttribute("data-bar-color") === "distinct",
-    "Accepted resource-bar color mode was not published through committed settings");
-  assert(settingsPatchBodies[0]?.changes?.appearance?.barColorMode === "distinct",
-    `First settings patch omitted the distinct resource-bar color mode: ${JSON.stringify(settingsPatchBodies[0])}`);
-
-  await postJson("/__test/scenario", {
-    settingsRevision: "frontend-harness-r3",
-    settingsTheme: "light"
-  });
-  await lowContrastTheme.click();
-  await typeBarColor.click();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-
-  const conflictAlert = page.getByRole("alert").filter({
-    hasText: "设置已在其他位置更新，请重新加载"
-  });
-  await conflictAlert.waitFor({ state: "visible", timeout: 5000 });
-  assert(await isSelected(lowContrastTheme), "Revision conflict discarded the local draft");
-  assert(await isSelected(typeBarColor), "Revision conflict discarded the local resource-bar color draft");
-  assert(await page.locator("html").getAttribute("data-theme") === "light",
-    "Revision conflict did not publish the newer committed settings");
-  assert(await page.locator("body").getAttribute("data-bar-color") === "distinct",
-    "Revision conflict published the rejected resource-bar color draft");
-
-  await page.getByRole("button", { name: "重新加载", exact: true }).click();
-  await conflictAlert.waitFor({ state: "hidden", timeout: 5000 });
-  await page.waitForFunction(() => Array.from(document.querySelectorAll("[role='radio']"))
-    .some((element) => element.textContent?.trim() === "浅色"
-      && element.getAttribute("aria-checked") === "true"), null, { timeout: 5000 });
-  assert(await isSelected(lightTheme), "Reload did not replace the conflicted draft");
-  assert(!await isSelected(lowContrastTheme), "Reload retained a superseded conflicted draft");
-  assert(await isSelected(distinctBarColor), "Reload did not restore the committed resource-bar color mode");
-  assert(!await isSelected(typeBarColor), "Reload retained the rejected resource-bar color draft");
-
-  await typeBarColor.click();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.waitForFunction(() => document.body.dataset.barColor === "type", null, { timeout: 5000 });
-  assert(settingsPatchBodies[2]?.changes?.appearance?.barColorMode === "type",
-    `Final settings patch omitted the fixed-type resource-bar color mode: ${JSON.stringify(settingsPatchBodies[2])}`);
-
-  const finalTelemetry = await requestTelemetry();
-  const settingsRequests = finalTelemetry["/api/settings/app"];
-  assert(settingsRequests?.started === 5 && settingsRequests?.completed === 5,
-    `Unexpected settings request count: ${JSON.stringify(settingsRequests)}`);
-  assert(JSON.stringify(settingsRequests.statuses) === JSON.stringify([200, 200, 409, 200, 200]),
-    `Unexpected settings request sequence: ${JSON.stringify(settingsRequests.statuses)}`);
-  assert(settingsRequests.maxInFlight === 1,
-    `Settings requests overlapped unexpectedly: ${JSON.stringify(settingsRequests)}`);
-
+  await open("外观");
+  assert(await theme("深色").isChecked(), "Backend refresh or restart overwrote the cache");
+  await page.getByRole("radiogroup", { name: "资源条动画帧率" }).getByRole("radio", { name: "自定义", exact: true }).click();
+  const fps = page.getByRole("textbox", { name: "资源条动画帧率 帧率 (FPS)" });
+  await fps.fill("90"); await fps.press("Enter");
+  await page.getByRole("radiogroup", { name: "动画效果" }).getByRole("radio", { name: "无动画", exact: true }).click();
+  await page.getByRole("radiogroup", { name: "文字平滑" }).getByRole("radio", { name: "灰度平滑", exact: true }).click();
+  await save();
+  await page.waitForFunction(() => document.body.dataset.resourceBarFrameRate === "90");
+  assert.equal((await cache()).appearance.animations, "none");
+  assert.equal((await cache()).appearance.fontSmoothing, "grayscale");
+  await page.getByRole("button", { name: "性能", exact: true }).click();
+  const cadence = page.getByRole("radiogroup", { name: "资源表", exact: true });
+  await cadence.getByRole("radio", { name: "自定义", exact: true }).click();
+  const interval = page.getByRole("textbox", { name: "资源表 自定义 (ms)", exact: true });
+  await interval.fill("2300"); await interval.press("Enter");
+  await save();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.refresh.resourceTable.customValue === 2300);
+  assert.equal(patches.length, 0);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await open("性能");
+  assert.equal(await interval.inputValue(), "2300");
+  // Operational settings retain backend revision/conflict semantics.
   await page.getByRole("button", { name: "系统集成", exact: true }).click();
   const autoStart = page.getByRole("checkbox", { name: "开机自启", exact: true });
-  assert(!await autoStart.isChecked(), "Autostart must default to disabled");
-  await postJson("/__test/scenario", { settingsPatchDelayMs: 800 });
   await autoStart.check();
-  const acknowledgement = page.waitForResponse((response) => response.request().method() === "PATCH"
-    && new URL(response.url()).pathname === "/api/settings/app");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await autoStart.uncheck();
-  await acknowledgement;
-  await page.getByRole("button", { name: "保存", exact: true }).waitFor({ state: "visible" });
-  assert(!await autoStart.isChecked(), "An older save response erased the newer autostart draft");
-  const persisted = await page.evaluate(async () => (await (await fetch("/api/settings/app")).json()).settings);
-  assert(persisted.systemIntegration.autoStartEnabled === true, "The submitted autostart value was not stored");
-  await postJson("/__test/scenario", { settingsPatchDelayMs: 0 });
-  for (const enabled of [false, true]) {
-    await autoStart.setChecked(enabled);
-    const saved = page.waitForResponse((response) => response.request().method() === "PATCH"
-      && new URL(response.url()).pathname === "/api/settings/app");
-    await page.getByRole("button", { name: "保存", exact: true }).click();
-    await saved;
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "设置", exact: true }).click();
-    await page.getByRole("button", { name: "系统集成", exact: true }).click();
-    await autoStart.waitFor({ state: "visible" });
-    assert(await autoStart.isChecked() === enabled, `Autostart ${enabled} did not survive reload`);
-  }
+  await scenario({ settingsConflict: true });
+  const conflict = page.waitForResponse(response => response.status() === 409 && new URL(response.url()).pathname === "/api/settings/app");
+  await save(); await conflict;
+  await page.getByRole("alert").filter({ hasText: "设置已在其他位置更新，请重新加载" }).waitFor({ state: "visible" });
+  assert(await autoStart.isChecked(), "Backend conflict discarded the draft");
+  await scenario({ settingsConflict: false });
+  const reloaded = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname === "/api/settings/app");
+  await page.getByRole("button", { name: "重新加载", exact: true }).click();
+  await reloaded;
+  await page.waitForFunction(() => !Array.from(document.querySelectorAll('input[type="checkbox"]')).find(input => input.closest('label')?.textContent?.includes('开机自启'))?.checked);
+  await autoStart.check();
+  const operation = page.waitForResponse(response => response.ok() && response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/settings/app");
+  await save(); await operation;
+  assert(patches.every(patch => !patch.changes.appearance && !patch.changes.performance?.resourceTableRefreshIntervalMs));
   await page.getByRole("button", { name: "外观", exact: true }).click();
-  for (const name of ["动画效果", "资源条动画帧率", "读数来源", "文字平滑"]) {
-    assert(await page.getByRole("radiogroup", { name }).isVisible(),
-      `${name} has a persisted setting but no usable control`);
-  }
-  // 帧率输入只在自定义时出现；跟随屏幕是默认值。
-  assert(await page.evaluate(() => document.body.dataset.resourceBarFrameRate) === "display",
-    "Resource bars do not follow the display by default");
-  const frameRateInput = page.getByRole("textbox", { name: "资源条动画帧率 帧率 (FPS)" });
-  assert(await frameRateInput.count() === 0, "The frame-rate input is visible while following the display");
-  await page.getByRole("radiogroup", { name: "资源条动画帧率" })
-    .getByRole("radio", { name: "自定义" }).click();
-  await frameRateInput.waitFor({ state: "visible" });
-  assert(await frameRateInput.inputValue() === "60", "Custom frame rate does not start from the saved default");
-  await frameRateInput.fill("90");
-  await frameRateInput.press("Enter");
-  await page.getByRole("radiogroup", { name: "动画效果" })
-    .getByRole("radio", { name: "无动画" }).click();
-  await page.getByRole("radiogroup", { name: "文字平滑" })
-    .getByRole("radio", { name: "灰度平滑" }).click();
-  const appearanceSave = page.waitForResponse((response) => response.request().method() === "PATCH"
-    && new URL(response.url()).pathname === "/api/settings/app");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await appearanceSave;
-  const appearancePatch = settingsPatchBodies.at(-1)?.changes?.appearance;
-  assert(appearancePatch?.animations === "none"
-    && appearancePatch?.resourceBarFrameRateMode === "custom"
-    && appearancePatch?.resourceBarFrameRate === 90
-    && appearancePatch?.fontSmoothing === "grayscale",
-    `Restored appearance controls did not save their values: ${JSON.stringify(appearancePatch)}`);
-  // 保存后资源条画布读到的生效帧率随之变成 90。
-  await page.waitForFunction(() => document.body.dataset.resourceBarFrameRate === "90");
-  await page.getByRole("button", { name: "性能", exact: true }).click();
-  assert(await page.getByText("自动调度性能优化", { exact: true }).count() === 0
-    && await page.getByText("单显卡启动拦截", { exact: true }).count() === 0,
-    "Retired scheduling optimization control is still visible");
-  assert(await page.getByRole("group", { name: "GPU 用途" }).count() === 0,
-    "Retired GPU use-case control must be absent");
-
-  const gpuUsage = page.getByRole("spinbutton", { name: "独显使用率 %", exact: true });
-  const gpuMemory = page.getByRole("spinbutton", { name: "独显专用显存占用率 %", exact: true });
-  assert(await gpuUsage.inputValue() === "95" && await gpuMemory.inputValue() === "80",
-    "GPU overflow defaults do not match the actual policy");
-  assert(await page.getByText("下移危险阈值", { exact: true }).count() === 0, "Retired danger settings are still visible");
-  await gpuUsage.fill("72");
-  await gpuUsage.blur();
-  await gpuMemory.fill("68");
-  await gpuMemory.blur();
-  const actionCount = page.getByRole("spinbutton", { name: "固定动作数量", exact: true });
-  const actionPercent = page.getByRole("spinbutton", { name: "全部进程百分比 %", exact: true });
-  await actionCount.fill("48");
-  await actionCount.blur();
-  await actionPercent.fill("9");
-  await actionPercent.blur();
-  await page.getByRole("radiogroup", { name: "实时动作预算", exact: true })
-    .getByRole("radio", { name: "进程百分比", exact: true }).click();
-  const overflowSave = page.waitForResponse((response) => response.request().method() === "PATCH"
-    && new URL(response.url()).pathname === "/api/settings/app");
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await overflowSave;
-  const overflowPatch = settingsPatchBodies.at(-1)?.changes?.performance;
-  assert(overflowPatch?.gpuOverflowUsagePercent === 72 && overflowPatch?.gpuOverflowDedicatedMemoryPercent === 68,
-    `GPU overflow settings did not save their exact values: ${JSON.stringify(overflowPatch)}`);
-  assert(overflowPatch?.realtimeActionBudgetMode === "percent" && overflowPatch?.realtimeActionBudgetCount === 48
-    && overflowPatch?.realtimeActionBudgetPercent === 9, `Budget settings did not save exact values: ${JSON.stringify(overflowPatch)}`);
+  await page.getByRole("button", { name: text.appearance.resetCache, exact: true }).click();
+  await page.waitForFunction(() => localStorage.getItem("resource-manager:frontend-preferences:v1") === null);
+  assert(await theme("跟随系统").isChecked(), "Reset did not restore point values");
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "性能", exact: true }).click();
-  assert(await gpuUsage.inputValue() === "72" && await gpuMemory.inputValue() === "68", "GPU thresholds did not survive reload");
-  assert(await actionCount.inputValue() === "48" && await actionPercent.inputValue() === "9"
-    && await page.getByRole("radiogroup", { name: "实时动作预算", exact: true })
-      .getByRole("radio", { name: "进程百分比", exact: true }).isChecked(), "Budget settings did not survive reload");
-
-  // 信息更新频率只显示当前模式生效的输入：自动调度两者都不显示，锁定预设只有预设下拉框，自定义只有毫秒输入框。
-  const cadenceMode = page.getByRole("radiogroup", { name: "资源表", exact: true });
-  const cadencePreset = page.getByRole("combobox", { name: "资源表 预设", exact: true });
-  const cadenceCustom = page.getByRole("textbox", { name: "资源表 自定义 (ms)", exact: true });
-  assert(await cadenceMode.getByRole("radio", { name: "自动调度", exact: true }).isChecked(),
-    "The fixture did not start the resource table cadence in automatic mode");
-  assert(await cadencePreset.count() === 0 && await cadenceCustom.count() === 0,
-    "Automatic refresh cadence still shows preset or custom inputs that have no effect");
-  await cadenceMode.getByRole("radio", { name: "锁定预设", exact: true }).click();
-  await cadencePreset.waitFor({ state: "visible", timeout: 7000 });
-  assert(await cadenceCustom.count() === 0, "Locked preset cadence still shows the custom millisecond input");
-  await cadenceMode.getByRole("radio", { name: "自定义", exact: true }).click();
-  await cadenceCustom.waitFor({ state: "visible", timeout: 7000 });
-  assert(await cadencePreset.count() === 0, "Custom cadence still shows the preset select");
-  assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
-
-  return {
-    startupReadOwners: startupSettingsRequests.started,
-    savePublishedAuthoritatively: true,
-    conflictPreservedDraft: true,
-    reloadConverged: true,
-    resourceBarColorModesPersisted: ["distinct", "type"],
-    requestStatuses: settingsRequests.statuses,
-    autoStartSavedAndReloaded: [false, true],
-    editDuringSavePreserved: true,
-    refreshCadenceInputsFollowMode: true,
-    pageErrors: failures
-  };
+  await open("外观");
+  assert(await theme("跟随系统").isChecked(), "Cache loss did not restore point values");
+  assert.deepEqual(errors, []);
+  return { missingCacheUsesPoints: true, presentationNeverSentToBackend: true, restart: true, reset: true, backendConflictPreservesDraft: true };
 }

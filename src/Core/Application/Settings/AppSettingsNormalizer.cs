@@ -1,6 +1,4 @@
 using ResourceManager.App.Domain.Settings;
-using ResourceManager.App.Domain.Units;
-using ResourceManager.Shared.Appearance;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -16,7 +14,6 @@ public static class AppSettingsNormalizer
         return new AppSettings(
             AppSettingsDefaults.CurrentVersion,
             NormalizePerformance(settings.Performance),
-            NormalizeAppearance(settings.Appearance),
             NormalizeSystemIntegration(settings.SystemIntegration),
             NormalizeDebug(settings.Debug),
             NormalizePublicService(settings.PublicService),
@@ -39,19 +36,6 @@ public static class AppSettingsNormalizer
             NormalizeDangerPercent(performance?.VirtualMemoryAutomaticCleanupPercent, AppSettingsDefaults.VirtualMemoryAutomaticCleanupPercent),
             NormalizeTargetUsagePercent(performance?.PhysicalMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.PhysicalMemoryOptimizationTargetUsagePercent),
             NormalizeTargetUsagePercent(performance?.VirtualMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.VirtualMemoryOptimizationTargetUsagePercent),
-            NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
-            NormalizeLogicRefreshInterval(
-                performance?.MonitorRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Responsive,
-                AppSettingsDefaults.MonitorRefreshResponsiveIntervalMs),
-            NormalizeLogicRefreshInterval(
-                performance?.ResourceTableRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Responsive,
-                AppSettingsDefaults.ResourceTableRefreshResponsiveIntervalMs),
-            NormalizeLogicRefreshInterval(
-                performance?.LocalSystemRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Balanced,
-                AppSettingsDefaults.LocalSystemRefreshBalancedIntervalMs),
             AppRealtimeActionBudgetModes.Normalize(performance?.RealtimeActionBudgetMode),
             Math.Clamp(
                 performance?.RealtimeActionBudgetCount ?? AppSettingsDefaults.RealtimeActionBudgetCount,
@@ -61,22 +45,6 @@ public static class AppSettingsNormalizer
                 performance?.RealtimeActionBudgetPercent ?? AppSettingsDefaults.RealtimeActionBudgetPercent,
                 AppSettingsDefaults.MinRealtimeActionBudgetPercent,
                 AppSettingsDefaults.MaxRealtimeActionBudgetPercent));
-    }
-
-    private static AppAppearanceSettings NormalizeAppearance(AppAppearanceSettings? appearance)
-    {
-        var choice = UiStyleCatalog.Normalize(appearance?.UiStyle, appearance?.Theme);
-        return new AppAppearanceSettings(
-            choice.UiStyle,
-            choice.Theme,
-            NormalizeAnimations(appearance?.Animations),
-            NormalizeResourceBarFrameRateMode(appearance?.ResourceBarFrameRateMode),
-            NormalizeResourceBarFrameRate(appearance?.ResourceBarFrameRate),
-            NormalizeBarColorMode(appearance?.BarColorMode),
-            NormalizeFontSmoothing(appearance?.FontSmoothing),
-            NormalizeLanguage(appearance?.Language),
-            AppByteUnitModes.Normalize(appearance?.ByteUnitMode),
-            NormalizeReadingSourceMode(appearance?.ReadingSourceMode));
     }
 
     private static AppSystemIntegrationSettings NormalizeSystemIntegration(AppSystemIntegrationSettings? systemIntegration)
@@ -202,96 +170,6 @@ public static class AppSettingsNormalizer
         }
 
         return result;
-    }
-
-    private static string NormalizeAnimations(string? animations)
-    {
-        return animations switch
-        {
-            AppAnimationModes.Auto => AppAnimationModes.Auto,
-            AppAnimationModes.None => AppAnimationModes.None,
-            AppAnimationModes.Ultra => AppAnimationModes.Ultra,
-            _ => AppAnimationModes.Normal
-        };
-    }
-
-    public static string NormalizeAdaptiveBooleanMode(string? mode)
-    {
-        return mode switch
-        {
-            AppAdaptiveBooleanModes.Enabled => AppAdaptiveBooleanModes.Enabled,
-            AppAdaptiveBooleanModes.Disabled => AppAdaptiveBooleanModes.Disabled,
-            _ => AppAdaptiveBooleanModes.Enabled
-        };
-    }
-
-    public static AppPresetNumericSetting NormalizeLogicRefreshInterval(
-        AppPresetNumericSetting? setting,
-        string fallbackPreset,
-        int fallbackCustomValue)
-        => AppFrontendRefreshIntervalPolicy.Normalize(
-            setting,
-            fallbackPreset,
-            fallbackCustomValue);
-
-    public static string NormalizePresetNumericMode(string? mode)
-        => AppFrontendRefreshIntervalPolicy.NormalizePresetNumericMode(mode);
-
-    public static string NormalizeLogicRefreshIntervalPreset(string? preset, string fallbackPreset)
-        => AppFrontendRefreshIntervalPolicy.NormalizeLogicRefreshIntervalPreset(
-            preset,
-            fallbackPreset);
-
-    private static string NormalizeResourceBarFrameRateMode(string? mode)
-    {
-        return mode == AppResourceBarFrameRateModes.Custom
-            ? AppResourceBarFrameRateModes.Custom
-            : AppResourceBarFrameRateModes.Display;
-    }
-
-    private static int NormalizeResourceBarFrameRate(int? framesPerSecond)
-    {
-        return Math.Clamp(
-            framesPerSecond ?? AppSettingsDefaults.ResourceBarFrameRate,
-            AppSettingsDefaults.MinResourceBarFrameRate,
-            AppSettingsDefaults.MaxResourceBarFrameRate);
-    }
-
-    private static string NormalizeReadingSourceMode(string? mode)
-    {
-        return mode == AppReadingSourceModes.All
-            ? AppReadingSourceModes.All
-            : AppReadingSourceModes.Preferred;
-    }
-
-    private static string NormalizeBarColorMode(string? barColorMode)
-    {
-        return barColorMode == AppBarColorModes.Distinct ? AppBarColorModes.Distinct : AppBarColorModes.Type;
-    }
-
-    private static string NormalizeFontSmoothing(string? fontSmoothing)
-    {
-        return fontSmoothing switch
-        {
-            AppFontSmoothingModes.Auto => AppFontSmoothingModes.Auto,
-            AppFontSmoothingModes.Grayscale => AppFontSmoothingModes.Grayscale,
-            AppFontSmoothingModes.Disabled => AppFontSmoothingModes.Disabled,
-            AppFontSmoothingModes.System => AppFontSmoothingModes.System,
-            _ => AppFontSmoothingModes.Auto
-        };
-    }
-
-    private static string NormalizeLanguage(string? language)
-    {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return AppLanguageModes.System;
-        }
-
-        var normalized = language.Trim();
-        return AppLanguageModes.Supported.Contains(normalized)
-            ? normalized
-            : AppLanguageModes.System;
     }
 
     private static AppDebugSettings NormalizeDebug(AppDebugSettings? debug)

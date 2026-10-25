@@ -74,6 +74,11 @@ public sealed partial class MainForm
 
         switch (typeProperty.GetString())
         {
+            case "preferences.get":
+            case "preferences.save":
+            case "preferences.reset":
+                HandlePreferencesRequest(message, typeProperty.GetString()!);
+                break;
             case "host.backend-session.request":
                 PublishBackendSessionProjection();
                 break;

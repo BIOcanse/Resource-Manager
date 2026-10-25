@@ -1,3 +1,11 @@
+import { createFrontendPreferencesClient, backendSettings, pointPreferences } from "../src/preferences/frontendPreferences.ts";
+function createSettingsStore(options: Parameters<typeof createActualSettingsStore>[0]) {
+  const values = new Map<string, string>();
+  return createActualSettingsStore({ ...options, preferences: createFrontendPreferencesClient({
+    getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); },
+    removeItem: key => { values.delete(key); }
+  }) });
+}
 import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 import { resolveSelfCpuRuntimePlan } from "../src/app/selfScheduling/resolveSelfCpuRuntimePlan.ts";
 import { updateReportRuleField } from "../src/features/settings/reportRuleSettingsModel.ts";
@@ -12,7 +20,7 @@ import type {
 } from "../src/frontendRuntime/source/SourceDescriptor.ts";
 import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 import {
-  createSettingsStore,
+  createSettingsStore as createActualSettingsStore,
   defaultAppSettings,
   logicRefreshIntervalKeys,
   normalizeAppSettings
@@ -21,13 +29,42 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.31", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.32", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
 assert.equal(canonicalDefaults.publicService?.databaseServiceEnabled, false);
 assert.equal(canonicalDefaults.publicService?.aiModelCatalogEnabled, false);
 assert.equal(canonicalDefaults.aiModelService?.autoStartEnabled, false);
+
+async function verifyCacheAcknowledgementPreservesNewerDraft() {
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      let finishWrite: (() => void) | undefined;
+      let committed = pointPreferences();
+      const store = createActualSettingsStore({ source, preferences: {
+        read: async () => committed,
+        save: value => new Promise(complete => { finishWrite = () => { committed = value; complete(value); }; }),
+        reset: async () => pointPreferences()
+      }, requestClient: { request: async () => { throw new Error("Frontend-only save requested the backend"); } } });
+      await new Promise<void>(complete => setImmediate(complete));
+      source.publishReady(result("cache-race", "normal", "system"));
+      store.updateTheme("dark");
+      const saving = store.saveDraft();
+      store.updateTheme("light");
+      assert.ok(finishWrite);
+      finishWrite(); await saving;
+      assert.equal(committed.appearance.theme, "dark");
+      assert.equal(store.settings().appearance?.theme, "dark");
+      assert.equal(store.draftSettings().appearance?.theme, "light", "Cache acknowledgement erased a newer draft");
+      assert.equal(store.isDirty(), true);
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});
+}
 
 assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 });
 assert.deepEqual(normalizeAppSettings({ control: { reassertionIntervalSeconds: 0 } }).control,
@@ -85,7 +122,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.31", `${label}: version`);
+    assert.equal(settings.version, "1.0.32", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -233,11 +270,13 @@ await new Promise<void>((resolve, reject) => {
         }
       });
 
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("1", "limited", "system"));
       assert.equal(store.loadState(), "ready");
       assert.equal(store.isDirty(), false);
       assert.deepEqual(readyOptimizationModes, ["limited"]);
 
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("2", "smart", "system"));
       assert.equal(store.settings().performance?.optimizationMode, "smart");
       assert.equal(store.draftSettings().performance?.optimizationMode, "smart");
@@ -246,17 +285,14 @@ await new Promise<void>((resolve, reject) => {
       store.updateTheme("dark");
       assert.equal(store.isDirty(), true);
       const updated = result("3", "limited", "light");
-      updated.settings.appearance!.barColorMode = "distinct";
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(updated);
-      assert.equal(store.settings().appearance?.theme, "light");
+      assert.equal(store.settings().appearance?.theme, "system");
       assert.equal(store.draftSettings().appearance?.theme, "dark");
       assert.equal(store.draftSettings().performance?.optimizationMode, "limited");
       assert.equal(store.isDirty(), true);
       await store.saveDraft();
-      assert.deepEqual(requests.pop(), {
-        expectedRevision: "3",
-        changes: { appearance: { theme: "dark" } }
-      }, "Saving an edited theme must preserve the newly committed, unedited bar color");
+      assert.equal(requests.length, 0, "A theme change must never request a backend commit");
 
       const explicitReload = store.refresh();
       assert.equal(store.loadState(), "refreshing");
@@ -264,12 +300,13 @@ await new Promise<void>((resolve, reject) => {
       source.finishRefresh(result("4", "normal", "system"));
       await explicitReload;
       assert.equal(store.loadState(), "ready");
-      assert.equal(store.draftSettings().appearance?.theme, "system");
+      assert.equal(store.draftSettings().appearance?.theme, "dark");
       assert.equal(store.isDirty(), false);
 
       const debugSettings = result("5", "normal", "system");
       debugSettings.settings.debug!.debugLogEnabled = true;
       debugSettings.settings.debug!.hostManagerSmartCoordinatorPerformanceLogEnabled = true;
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(debugSettings);
       store.updateDebugLog(false);
       await store.saveDraft();
@@ -280,32 +317,25 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(normalizeAppSettings(store.draftSettings()).debug!
         .hostManagerSmartCoordinatorPerformanceLogEnabled, true);
 
-      store.updateTheme("dark");
+      store.updateTheme("light");
       assert.equal(store.isDirty(), true);
       store.discardDraftChanges();
-      assert.equal(store.draftSettings().appearance?.theme, "system");
+      assert.equal(store.draftSettings().appearance?.theme, "dark");
       assert.equal(store.isDirty(), false);
 
       // 读数来源：默认只列首选；改成显示所有可用来源后只 PATCH 这一项，提交后读回；认不出的值回到只列首选。
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("6", "normal", "system"));
       assert.equal(store.settings().appearance?.readingSourceMode, "preferred");
       store.updateReadingSourceMode("all");
       await store.saveDraft();
-      assert.deepEqual(requests.pop(), {
-        expectedRevision: "6",
-        changes: { appearance: { readingSourceMode: "all" } }
-      }, "Showing all reading sources must patch only that choice");
+      assert.equal(requests.length, 0, "Reading-source presentation belongs only to the frontend cache");
       store.discardDraftChanges();
       const readingSources = result("7", "normal", "system");
-      readingSources.settings.appearance!.readingSourceMode = "all";
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(readingSources);
       assert.equal(store.settings().appearance?.readingSourceMode, "all");
       assert.equal(store.draftSettings().appearance?.readingSourceMode, "all");
-      const unknownReadingSources = result("8", "normal", "system");
-      (unknownReadingSources.settings.appearance as { readingSourceMode?: string }).readingSourceMode = "everything";
-      source.publishReady(unknownReadingSources);
-      assert.equal(store.settings().appearance?.readingSourceMode, "preferred", "Unknown values list only the preferred source");
-
       dispose();
       resolve();
     })().catch((error) => {
@@ -323,6 +353,7 @@ await new Promise<void>((resolve, reject) => {
       const store = createSettingsStore({ source, requestClient: {
         request: <T>() => new Promise<T>((complete) => pending.push((value) => complete(value as T)))
       } });
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("s1", "normal", "system"));
       store.updateAutoStart(true);
       const saved = store.saveDraft();
@@ -373,6 +404,7 @@ await new Promise<void>((resolve, reject) => {
           } as T;
         }
       } as never });
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady({ settings: committed, revision: "m1", runtimeApplicationDisposition: "notRequested" });
 
       store.updateGpuOverflowThresholds(25, 80);
@@ -404,10 +436,7 @@ await new Promise<void>((resolve, reject) => {
 
       store.updateSmartMonitoringMode("disabled");
       await store.saveDraft();
-      assert.deepEqual(patches.pop(), {
-        expectedRevision: "m4",
-        changes: { performance: { smartMonitoringMode: "disabled" } }
-      }, "Turning on-demand monitoring off must patch only that choice");
+      assert.equal(patches.length, 0, "Frontend cadence choices must never be patched to the backend");
       assert.equal(store.settings().performance!.smartMonitoringMode, "disabled");
       assert.equal(store.isDirty(), false);
 
@@ -432,6 +461,7 @@ await new Promise<void>((resolve, reject) => {
           return { settings: committed, revision: `b${++revision}`, runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
         }
       } as never });
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady({ settings: committed, revision: "b1", runtimeApplicationDisposition: "notRequested" });
       for (const [mode, count, percent, expected] of [
         ["fixed", 64, 12, { realtimeActionBudgetCount: 64, realtimeActionBudgetPercent: 12 }],
@@ -468,9 +498,8 @@ function result(
   settings.performance!.optimizationMode = optimizationMode;
   settings.appearance!.theme = theme;
   return {
-    settings,
+    settings: backendSettings(settings) as CommittedAppSettingsResult["settings"],
     revision,
-    frontendRefreshIntervals,
     runtimeApplicationDisposition: "notRequested"
   };
 }
@@ -515,6 +544,7 @@ await new Promise<void>((resolve, reject) => {
             runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
         }
       } as never });
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("r1", "normal", "system"));
       assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
       store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "activationThreshold", 92));
@@ -552,17 +582,19 @@ await new Promise<void>((resolve, reject) => {
     void (async () => {
       const source = new FakeSettingsSource();
       const store = createSettingsStore({ source, requestClient: { request: async () => { throw new Error("No write expected"); } } });
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(result("intervals-a", "normal", "system"));
-      await Promise.resolve();
+      await new Promise<void>(resolve => setImmediate(resolve));
       assert.deepEqual(store.frontendRefreshIntervals(), frontendRefreshIntervals);
       store.updateLogicRefreshInterval("monitor", { mode: "custom", preset: "balanced", customValue: 1750 });
       const next = { ...result("intervals-b", "normal", "system"), frontendRefreshIntervals: { ...frontendRefreshIntervals,
         foreground: { monitor: 2345, resourceTable: 3456, localSystem: 4567 },
         backgroundOptimized: { monitor: 5678, resourceTable: 6789, localSystem: 7890 } } };
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady(next);
-      await Promise.resolve();
-      assert.equal(store.frontendRefreshIntervals()!.foreground.monitor, 2345);
-      assert.equal(resolveSelfCpuRuntimePlan(store.frontendRefreshIntervals(), "optimize", false)!.monitor, 5678);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.equal(store.frontendRefreshIntervals()!.foreground.monitor, frontendRefreshIntervals.foreground.monitor);
+      assert.equal(resolveSelfCpuRuntimePlan(store.frontendRefreshIntervals(), "optimize", false)!.monitor, frontendRefreshIntervals.backgroundOptimized.monitor);
       assert.equal(store.draftSettings().performance!.monitorRefreshIntervalMs.customValue, 1750);
       assert.equal(store.isDirty(), true);
       store.resetDraftToDefaults();
@@ -581,6 +613,7 @@ await new Promise<void>((resolve, reject) => {
       for (const disposition of ["committedWithDeliveryFailures", "savedNotApplied", "committedWithCapabilityConstraints"] as const) {
         const current = { ...result(disposition, "normal", "system"), runtimeApplicationDisposition: disposition,
           runtimeFailureCode: "delivery-unavailable", runtimeCapabilityConstrainedPaths: ["performance.preciseGpuPlacementEnabled"] };
+        await new Promise<void>(resolve => setImmediate(resolve));
         source.publishReady(current);
         const expected = disposition === "committedWithCapabilityConstraints" ? "constrained" : "partial";
         assert.equal(store.saveState(), expected);
@@ -589,6 +622,7 @@ await new Promise<void>((resolve, reject) => {
         assert.equal(store.runtimeFailureCode(), "delivery-unavailable");
         assert.deepEqual(store.runtimeCapabilityConstrainedPaths(), ["performance.preciseGpuPlacementEnabled"]);
       }
+      await new Promise<void>(resolve => setImmediate(resolve));
       source.publishReady({ ...result("applied", "normal", "system"), runtimeApplicationDisposition: "committedAndApplied" });
       assert.equal(store.saveState(), "idle");
       assert.equal(store.runtimeFailureCode(), null);
@@ -600,3 +634,4 @@ await new Promise<void>((resolve, reject) => {
     })().catch(error => { dispose(); reject(error); });
   });
 });
+await verifyCacheAcknowledgementPreservesNewerDraft();

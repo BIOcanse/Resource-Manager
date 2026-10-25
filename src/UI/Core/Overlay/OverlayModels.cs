@@ -6,10 +6,7 @@ internal sealed record OverlayTarget(
     string SoftwareId, int ProcessId, ulong ProcessStartKey,
     OverlaySettings Settings, IReadOnlyList<OverlayMetric> Metrics);
 
-internal sealed record OverlaySettings(
-    string SoftwareId, bool Enabled, string Mode, IReadOnlyList<string> Metrics,
-    string SizeMode, int FontSizePx, double RegionWidthRatio,
-    double RegionHeightRatio, string Anchor, int MarginPx);
+internal sealed record OverlaySettings(string SoftwareId, bool Enabled, string Mode);
 
 internal sealed record OverlayMetric(
     string MetricId, double? Value, string Unit, string State, string? Reason);

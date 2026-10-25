@@ -14,7 +14,7 @@ public sealed class ReleaseDefaultSettingsTests
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(defaults, JsonSerializerOptions.Web));
         var performance = document.RootElement.GetProperty("performance");
 
-        Assert.Equal("1.0.31", document.RootElement.GetProperty("version").GetString());
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, document.RootElement.GetProperty("version").GetString());
         Assert.Equal(AppRealtimeActionBudgetModes.Fixed, performance.GetProperty("realtimeActionBudgetMode").GetString());
         Assert.Equal(32, performance.GetProperty("realtimeActionBudgetCount").GetInt32());
         Assert.Equal(5, performance.GetProperty("realtimeActionBudgetPercent").GetInt32());
@@ -38,7 +38,7 @@ public sealed class ReleaseDefaultSettingsTests
         performance["frontendHiddenRefreshMode"] = "continueWhenHidden";
         foreach (var key in new[] { "managementRefreshIntervalMs", "discoveryRefreshIntervalMs", "optimizationRefreshIntervalMs" })
             performance[key] = new JsonObject { ["mode"] = "custom", ["customValue"] = 9999 };
-        root["appearance"]!["resourceBarHardwareAccelerationEnabled"] = false;
+        root["appearance"] = new JsonObject { ["resourceBarHardwareAccelerationEnabled"] = false };
         root["appearance"]!["resourceBarHardwareAccelerationMode"] = "disabled";
         performance["preciseGpuPlacementEnabled"] = true;
         performance["gpuOverflowUsagePercent"] = 23;
@@ -46,7 +46,7 @@ public sealed class ReleaseDefaultSettingsTests
         using var document = JsonDocument.Parse(root.ToJsonString());
 
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
-        Assert.Equal(expected, migrated.Performance.SmartMonitoringMode);
+        Assert.False(JsonSerializer.SerializeToElement(migrated.Performance, JsonSerializerOptions.Web).TryGetProperty("smartMonitoringMode", out _));
         Assert.True(migrated.Performance.PreciseGpuPlacementEnabled);
         Assert.Equal(23, migrated.Performance.GpuOverflowUsagePercent);
         Assert.Equal(31, migrated.Performance.GpuOverflowDedicatedMemoryPercent);
@@ -55,8 +55,6 @@ public sealed class ReleaseDefaultSettingsTests
         foreach (var key in new[] { "smartMonitoringEnabled", "monitoringIdleSeconds", "pauseFrontendRefreshWhenHiddenInNormalMode",
                      "frontendHiddenRefreshMode", "managementRefreshIntervalMs", "discoveryRefreshIntervalMs", "optimizationRefreshIntervalMs" })
             Assert.False(output["performance"]!.AsObject().ContainsKey(key));
-        Assert.False(output["appearance"]!.AsObject().ContainsKey("resourceBarHardwareAccelerationEnabled"));
-        Assert.False(output["appearance"]!.AsObject().ContainsKey("resourceBarHardwareAccelerationMode"));
         using var current = JsonDocument.Parse(output.ToJsonString());
         Assert.False(AppSettingsMigrator.RequiresRewrite(current.RootElement));
     }

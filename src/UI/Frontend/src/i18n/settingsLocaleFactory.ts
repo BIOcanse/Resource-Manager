@@ -87,6 +87,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     }
   },
   appearance: {
+    cacheDescription: "\u5916\u89C2\u3001\u5237\u65B0\u95F4\u9694\u548C\u6D6E\u7A97\u5916\u89C2\u7F13\u5B58\u5728\u6B64\u8BBE\u5907\u4E0A\uFF1B\u6E05\u7A7A\u7F13\u5B58\u540E\u6062\u590D\u9ED8\u8BA4\u503C\u3002",
+    resetCache: "\u6062\u590D\u754C\u9762\u504F\u597D\u9ED8\u8BA4\u503C",
     uiStyleTitle: "界面风格",
     uiStyleDescription: "改变控件的圆角、线条、阴影和字体，布局不变。每种风格有自己的配色。",
     themeTitle: "配色",
@@ -403,6 +405,8 @@ const enSettingsCopy: SettingsCopy = {
     }
   },
   appearance: {
+    cacheDescription: "Appearance, refresh timing and overlay appearance are cached on this device. Clearing the cache restores defaults.",
+    resetCache: "Reset interface preferences",
     uiStyleTitle: "Interface style",
     uiStyleDescription: "Changes the corners, lines, shadows and fonts of controls; the layout stays the same. Each style has its own palettes.",
     themeTitle: "Palette",

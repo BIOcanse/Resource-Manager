@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "RM dev.41 Core/SourceTracking and Ledger dev.2 build-time dev.39 Core/Generators only",
+  "scope": "RM dev.45 Core/Generators/SourceTracking/Compilation and Ledger dev.2 build-time dev.39 Core/Generators",
   "firstPartyLicenseId": "Apache-2.0",
   "firstPartyCopyrightOwner": "BIOcanse",
   "firstPartyPublicLicensePending": false,
@@ -59,62 +59,59 @@
       "bundledRoslyn": []
     },
     {
-      "id": "FreedomPoint.Core",
-      "version": "0.1.0-dev.41",
-      "fileName": "FreedomPoint.Core.0.1.0-dev.41.nupkg",
-      "bytes": 66136,
-      "sha256": "F45BCB8D7E6504FA6A63C0E4D4E3DEC17863AC48BB791CB64B60F0CAF4412477",
-      "use": "Resource Manager product",
-      "nuspecSha256": "059A8264666AD864254D45EF3173D5FDA7E3F253EAA5F4C9670CA9CAF2771AAA",
-      "oldNuspecContainsLicense": false,
-      "dependencies": [],
-      "assemblyReferences": [
-        "System.Runtime",
-        "System.Collections.Immutable",
-        "System.Linq",
-        "System.Collections",
-        "System.Text.Json",
-        "System.Runtime.Loader",
-        "System.Text.Encoding.Extensions",
-        "System.Memory",
-        "System.Security.Cryptography",
-        "System.Threading"
-      ],
-      "bundledRoslyn": []
-    },
-    {
-      "id": "FreedomPoint.SourceTracking",
-      "version": "0.1.0-dev.41",
-      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.41.nupkg",
-      "bytes": 12163693,
-      "sha256": "C682C0DD3EA68074CC32D51DCBEFA19942572D7B60CD5EC9432FC7305CF633C7",
-      "use": "Resource Manager development-only source checker",
-      "nuspecSha256": "819842D1E4BFEAD4A83E7001B60E5442D5F1EE6C3B6D472F7BFC18CD83ACC216",
-      "oldNuspecContainsLicense": false,
+      "authors": "BIOcanse",
+      "nuspecContainsLicense": true,
+      "fileName": "FreedomPoint.Compilation.0.1.0-dev.45.nupkg",
+      "nuspecSha256": "BFBD66F4A0165996E7F34C15E0015A5C6435F3A528BCAEB18E5CE785EB302C0F",
+      "bytes": 11932056,
+      "id": "FreedomPoint.Compilation",
+      "license": "Apache-2.0",
+      "version": "0.1.0-dev.45",
+      "use": "Frontend generation/source-check and formal CLI tool only",
+      "sha256": "8A1D3E842E81707919494ED7A2F839A297CE6B14B4FC7EF4B4AF783E0F1E7E4F",
       "dependencies": [
         {
-          "id": "FreedomPoint.Core",
-          "version": "0.1.0-dev.41",
-          "exclude": "Build,Analyzers"
+          "version": "0.1.0-dev.45",
+          "id": "FreedomPoint.Core"
         }
-      ],
-      "assemblyReferences": [
-        "System.Runtime",
-        "System.Collections.Immutable",
-        "Microsoft.CodeAnalysis.CSharp",
-        "Microsoft.CodeAnalysis",
-        "FreedomPoint.Core",
-        "System.Collections",
-        "System.Security.Cryptography",
-        "System.Text.Json",
-        "System.Text.Encoding.Extensions",
-        "System.Diagnostics.Process",
-        "Microsoft.Win32.Primitives",
-        "System.Linq",
-        "System.Memory",
-        "System.Threading",
-        "System.Runtime.InteropServices"
-      ],
+      ]
+    },
+    {
+      "authors": "BIOcanse",
+      "nuspecContainsLicense": true,
+      "fileName": "FreedomPoint.Core.0.1.0-dev.45.nupkg",
+      "nuspecSha256": "2336C72FB165EE4DA512B297B88F6C05F031DB37478C35AE6EDBC52128ED943C",
+      "bytes": 85581,
+      "id": "FreedomPoint.Core",
+      "license": "Apache-2.0",
+      "version": "0.1.0-dev.45",
+      "use": "Backend and native frontend; build tooling",
+      "sha256": "1FC7FF3BDD6651F7E6F23544859BA5CFF4323777B351928B1B4F2F262456919C",
+      "dependencies": []
+    },
+    {
+      "authors": "BIOcanse",
+      "nuspecContainsLicense": true,
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.45.nupkg",
+      "nuspecSha256": "C3B146FEBA3B63E43A766897003F7545B37EAD22B93FD06F392D725BBCB3D96A",
+      "bytes": 39972,
+      "id": "FreedomPoint.Generators",
+      "license": "Apache-2.0",
+      "version": "0.1.0-dev.45",
+      "use": "Frontend generation/source-check and formal CLI tool only",
+      "sha256": "0181B5473AC2F605498150F87204B5E836453F265A6AAF1DE1DB37790B0225D0",
+      "dependencies": [
+        {
+          "version": "0.1.0-dev.45",
+          "id": "FreedomPoint.Core"
+        }
+      ]
+    },
+    {
+      "authors": "BIOcanse",
+      "nuspecContainsLicense": true,
+      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.45.nupkg",
+      "nuspecSha256": "015F8E08A1183899A92185BB452DFBB83FF58FE6C69F2B065C3BF11E7F088B1C",
       "bundledRoslyn": [
         {
           "entry": "lib/net10.0/Microsoft.CodeAnalysis.CSharp.dll",
@@ -130,21 +127,22 @@
           "actualProductVersion": "5.6.0-2.26230.102+caa81fa4971f74880cdab61990cb1b11420939ec",
           "matchesOriginalWindowsSdk": true
         }
+      ],
+      "bytes": 12179503,
+      "id": "FreedomPoint.SourceTracking",
+      "license": "Apache-2.0",
+      "version": "0.1.0-dev.45",
+      "use": "Frontend generation/source-check and formal CLI tool only",
+      "sha256": "A86C85883ACDB16810F74CFE7636332F55DAF4F2958864781201FE899837EEF5",
+      "dependencies": [
+        {
+          "version": "0.1.0-dev.45",
+          "id": "FreedomPoint.Core"
+        }
       ]
     }
   ],
-  "excludedPackages": [
-    {
-      "id": "FreedomPoint.Compilation",
-      "version": "0.1.0-dev.41",
-      "reason": "Not a SourceTracking NuSpec dependency or assembly reference"
-    },
-    {
-      "id": "FreedomPoint.Generators",
-      "version": "0.1.0-dev.41",
-      "reason": "No actual RM reference and no SourceTracking dependency"
-    }
-  ],
+  "excludedPackages": [],
   "files": [
     {
       "path": "LICENSE",
@@ -158,8 +156,8 @@
     },
     {
       "path": "authorization.json",
-      "bytes": 1835,
-      "sha256": "65BD1F4CD13CCCF47173B665E1935F9BC251EC71AB1AEEDC7C4BA000456F5D62"
+      "bytes": 2289,
+      "sha256": "A8684E8C53FBF7E87F1B116EB993AC88E42B3EDA3E3AD825C96E9095D05B3286"
     },
     {
       "path": "third-party/dotnet/LICENSE.txt",
@@ -183,13 +181,21 @@
     },
     {
       "path": "third-party/provenance.json",
-      "bytes": 1767,
-      "sha256": "71D6173BB3A4573A5DF0018DF3B6E46A955E72481988AC2798A69AD469000329"
+      "bytes": 1798,
+      "sha256": "F75C85015E07A957764245516F3C44264F9A642A673B063154BD34A2C2FEED19"
     }
   ],
   "packageBytesChanged": false,
   "newVersionPublished": false,
-  "consumerPinsChanged": false,
-  "repositoryFeedIntegrationVerified": false,
-  "mixedBundleRedistributionReassessed": false
+  "consumerPinsChanged": true,
+  "repositoryFeedIntegrationVerified": true,
+  "mixedBundleRedistributionReassessed": false,
+  "deliveryReceipt": {
+    "sha256": "1CA03322CE668497D8D5ECDDDBCD0E1951CF9B47285332F3F6F1122FEA384FD6",
+    "path": "D:/Code/FreedomPoint/artifacts/receipts/sdk45/delivery.json"
+  },
+  "tool": {
+    "sha256": "88A34E51D6EBB7E87698B6942EB7BA9F8EC27DD02813BF7A57355DA6FBFA2926",
+    "path": "tools/sdk45/FreedomPoint.BuildCheckTool.dll"
+  }
 }

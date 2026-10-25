@@ -55,8 +55,7 @@ import type {
 import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
 import {
   normalizeResourceBarFrameRate,
-  normalizeResourceBarFrameRateMode,
-  resourceBarFrameRateDefault
+  normalizeResourceBarFrameRateMode
 } from "../presentation/resourceBarFrameRate.ts";
 import { postShellMessage } from "../utils.ts";
 import { normalizeEditableHotkeys } from "../features/settings/editableHotkeys.ts";
@@ -65,17 +64,21 @@ import { applySettingsPatch, createSettingsPatch } from "../features/settings/se
 import { uiText } from "../text.ts";
 import { normalizeReportSettings } from "../features/settings/reportRuleSettingsModel.ts";
 import { RequestProblem } from "../frontendRuntime/request/RequestProblem.ts";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
+import {
+  applyFrontendPreferences, backendSettings, frontendPreferencesClient, pointPreferences,
+  preferencesFromSettings, resolveFrontendRefresh, type FrontendPreferencesClient
+} from "../preferences/frontendPreferences.ts";
 
-const prebootAppearanceStorageKey = "resource-manager:appearance";
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
   "monitor",
   "resourceTable",
   "localSystem"
 ];
 const defaultLogicRefreshIntervalPreset: Record<AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset> = {
-  monitor: "responsive",
-  resourceTable: "responsive",
-  localSystem: "balanced"
+  monitor: ResourceManager.FrontendPoints.Monitor.preset,
+  resourceTable: ResourceManager.FrontendPoints.ResourceTable.preset,
+  localSystem: ResourceManager.FrontendPoints.LocalSystem.preset
 };
 const minLogicRefreshIntervalMs = 500;
 const maxLogicRefreshIntervalMs = 300000;
@@ -97,6 +100,7 @@ export interface SettingsStore {
   reapply: () => Promise<void>;
   discardDraftChanges: () => void;
   resetDraftToDefaults: () => void;
+  resetFrontendPreferences: () => Promise<void>;
   updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
@@ -137,11 +141,15 @@ export interface SettingsStore {
 interface SettingsStoreOptions {
   readonly source: SourceHandle<CommittedAppSettingsResult>;
   readonly requestClient: Pick<RequestClient, "request">;
+  readonly preferences?: FrontendPreferencesClient;
 }
 
 type SourceProjectionMode = "replace-draft" | "preserve-draft";
 
 export function createSettingsStore(options: SettingsStoreOptions): SettingsStore {
+  const preferenceOwner = options.preferences ?? frontendPreferencesClient();
+  let preferences = pointPreferences();
+  let preferencesReady = false;
   const [settings, setSettings] = createSignal<AppSettings>(defaultAppSettings());
   const [draftSettings, setDraftSettings] = createSignal<AppSettings>(defaultAppSettings());
   const [frontendRefreshIntervals, setFrontendRefreshIntervals] = createSignal<FrontendRefreshIntervals | null>(null);
@@ -158,6 +166,12 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   let lastProjectedSourceRevision = -1;
   let nextProjectionMode: SourceProjectionMode | null = null;
   const unsubscribeSource = source.subscribe((snapshot) => projectSource(snapshot));
+  void preferenceOwner.read().then(value => {
+    preferences = value;
+    preferencesReady = true;
+    setFrontendRefreshIntervals(resolveFrontendRefresh(value.refresh));
+    projectSource(source.snapshot);
+  }).catch(() => setLoadState("error"));
   source.setDemand({ active: true, refreshIntervalMs: null });
   projectSource(source.snapshot);
   onCleanup(() => {
@@ -199,15 +213,29 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       normalizeAppSettings(submittedDraft),
       settings());
     const changes = createSettingsPatch(
-      settings() as unknown as Record<string, unknown>,
-      next as unknown as Record<string, unknown>);
-    if (Object.keys(changes).length === 0) {
+      backendSettings(settings()), backendSettings(next));
+    const desiredPreferences = preferencesFromSettings(next, preferences);
+    const preferenceChanges = JSON.stringify(preferences) !== JSON.stringify(desiredPreferences);
+    if (Object.keys(changes).length === 0 && !preferenceChanges) {
       setSaveState("idle");
       return;
     }
     setSaveState("saving");
     setRuntimeCapabilityConstrainedPaths([]);
     try {
+      if (Object.keys(changes).length === 0) {
+        preferences = await preferenceOwner.save(desiredPreferences, "global");
+        const newerEdits = createSettingsPatch(
+          submittedDraft as unknown as Record<string, unknown>,
+          draftSettings() as unknown as Record<string, unknown>);
+        batch(() => {
+          setSettings(applyFrontendPreferences(settings(), preferences));
+          setDraftSettings(applySettingsPatch(settings(), newerEdits));
+          setFrontendRefreshIntervals(resolveFrontendRefresh(preferences.refresh));
+        });
+        setSaveState(isDirty() ? "idle" : "saved");
+        return;
+      }
       const result = await saveAppSettingsPatch(
         options.requestClient,
         expectedRevision,
@@ -217,6 +245,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         setRuntimeFailureCode(result.runtimeFailureCode ?? null);
         throw new Error(uiText.misc.settingsNotCommitted);
       }
+      if (preferenceChanges) preferences = await preferenceOwner.save(desiredPreferences, "global");
       const newerEdits = createSettingsPatch(
         submittedDraft as unknown as Record<string, unknown>,
         draftSettings() as unknown as Record<string, unknown>);
@@ -290,6 +319,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     snapshot: SourceSnapshot<CommittedAppSettingsResult>,
     requestedMode?: SourceProjectionMode
   ): void {
+    if (!preferencesReady) { setLoadState("loading"); return; }
     const nextLoadState = (() => {
       switch (snapshot.status) {
       case "ready":
@@ -309,7 +339,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     if (snapshot.status !== "ready"
       || !snapshot.data
       || snapshot.revision === lastProjectedSourceRevision) {
-      if (!snapshot.data) setFrontendRefreshIntervals(null);
       setLoadState(nextLoadState);
       return;
     }
@@ -319,17 +348,16 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       ?? (areSettingsEqual(settings(), draftSettings())
         ? "replace-draft"
         : "preserve-draft");
-    const loaded = normalizeAppSettings(snapshot.data.settings);
+    const loaded = normalizeAppSettings(applyFrontendPreferences(snapshot.data.settings, preferences));
     const nextDraft = mode === "replace-draft"
       ? loaded
       : alignRuntimeOwnedSettings(applySettingsPatch(loaded, createSettingsPatch(
           settings() as unknown as Record<string, unknown>,
           draftSettings() as unknown as Record<string, unknown>)), loaded);
-    setFrontendRefreshIntervals(snapshot.data.frontendRefreshIntervals);
+    setFrontendRefreshIntervals(resolveFrontendRefresh(preferences.refresh));
     setSettings(loaded);
     setDraftSettings(nextDraft);
     setRevision(snapshot.data.revision);
-    syncPrebootAppearance(loaded);
     syncShellSettings(loaded);
     lastProjectedSourceRevision = snapshot.revision;
     nextProjectionMode = null;
@@ -356,6 +384,20 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
     setRuntimeFailureCode(null);
+  }
+
+  async function resetFrontendPreferences() {
+    if (saveState() === "saving") return;
+    setSaveState("saving");
+    try {
+      preferences = await preferenceOwner.reset();
+      batch(() => {
+        setSettings(applyFrontendPreferences(settings(), preferences));
+        setDraftSettings(applyFrontendPreferences(draftSettings(), preferences));
+        setFrontendRefreshIntervals(resolveFrontendRefresh(preferences.refresh));
+      });
+      setSaveState(isDirty() ? "idle" : "saved");
+    } catch { setSaveState("error"); }
   }
 
   function discardDraftChanges() {
@@ -407,6 +449,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
   return {
     settings,
+    resetFrontendPreferences,
     frontendRefreshIntervals,
     draftSettings,
     isDirty,
@@ -640,7 +683,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.31",
+    version: "1.0.32",
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -655,22 +698,12 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
       virtualMemoryOptimizationTargetUsagePercent: 70,
-      smartMonitoringMode: "enabled",
+      smartMonitoringMode: ResourceManager.FrontendPoints.SmartMonitoringMode,
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
     },
-    appearance: {
-      uiStyle: "standard",
-      theme: "system",
-      animations: "auto",
-      resourceBarFrameRateMode: "display",
-      resourceBarFrameRate: resourceBarFrameRateDefault,
-      barColorMode: "type",
-      fontSmoothing: "auto",
-      language: "system",
-      readingSourceMode: "preferred"
-    },
+    appearance: pointPreferences().appearance,
     systemIntegration: {
       restartAfterCrashEnabled: true,
       crashRestartDelaySeconds: 10,
@@ -703,7 +736,7 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.31",
+    version: "1.0.32",
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
@@ -767,12 +800,7 @@ function normalizeLmStudioEndpoint(endpoint?: string | null): string {
 }
 
 export function defaultLogicRefreshIntervalSetting(key: AppLogicRefreshIntervalKey): AppPresetNumericSetting {
-  const preset = defaultLogicRefreshIntervalPreset[key];
-  return {
-    mode: "aotu",
-    preset,
-    customValue: 0 // Unloaded editable placeholder; never used as a read interval.
-  };
+  return { ...pointPreferences().refresh[key] };
 }
 
 export function normalizeLogicRefreshIntervalSetting(
@@ -861,12 +889,12 @@ export function normalizeAnimationMode(animations?: string | null): AppAnimation
     return "ultra";
   }
 
-  return "normal";
+  return animations === "normal" ? "normal" : ResourceManager.FrontendPoints.AnimationMode;
 }
 
-// 只有显式 disabled 是关；旧值 auto、缺省和认不出的值都读成开（与后端归一化一致）。
+// 无用户值时采用前端点，后端不参与这项选择。
 export function normalizeAdaptiveBooleanMode(mode?: string | null): AppAdaptiveBooleanMode {
-  return mode === "disabled" ? "disabled" : "enabled";
+  return mode === "disabled" || mode === "enabled" ? mode : ResourceManager.FrontendPoints.SmartMonitoringMode;
 }
 
 export function resolveEffectiveAnimationMode(
@@ -883,15 +911,15 @@ export function resolveEffectiveAnimationMode(
 }
 
 export function normalizeBarColorMode(barColorMode?: string | null): AppBarColorMode {
-  return barColorMode === "distinct" ? "distinct" : "type";
+  return barColorMode === "distinct" || barColorMode === "type" ? barColorMode : ResourceManager.FrontendPoints.BarColorMode;
 }
 
 export function normalizeFontSmoothing(fontSmoothing?: string | null): AppFontSmoothing {
-  if (fontSmoothing === "system" || fontSmoothing === "grayscale" || fontSmoothing === "disabled") {
+  if (fontSmoothing === "auto" || fontSmoothing === "system" || fontSmoothing === "grayscale" || fontSmoothing === "disabled") {
     return fontSmoothing;
   }
 
-  return "auto";
+  return ResourceManager.FrontendPoints.FontSmoothing;
 }
 
 export function resolveEffectiveFontSmoothing(
@@ -967,13 +995,4 @@ function alignRuntimeOwnedSettings(
       optimizationMode: normalizedRuntimeSource.performance!.optimizationMode
     }
   };
-}
-
-function syncPrebootAppearance(settings: AppSettings) {
-  try {
-    localStorage.setItem(prebootAppearanceStorageKey, JSON.stringify(
-      normalizeUiAppearance(settings.appearance?.uiStyle, settings.appearance?.theme)));
-  } catch {
-    // Preboot theming is a visual fallback only; settings still live in the backend.
-  }
 }

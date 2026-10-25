@@ -2,6 +2,7 @@ using System.Text.Json;
 using ResourceManager.App.Application.Overlay;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.Settings;
 
 namespace ResourceManager.App.Infrastructure.Overlay;
 
@@ -46,7 +47,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
         try
         {
             var document = await LoadCoreAsync(cancellationToken);
-            var next = new PerformanceOverlaySettingsDocument(1, document.Software
+            var next = new PerformanceOverlaySettingsDocument(2, document.Software
                 .Where(item => !item.SoftwareId.Equals(normalized.SoftwareId, StringComparison.OrdinalIgnoreCase))
                 .Append(normalized)
                 .OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase)
@@ -67,7 +68,7 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
             return cached = PerformanceOverlaySettingsDocument.Empty;
         }
         var value = await ReadCoreAsync(cancellationToken);
-        cachedVersion = version;
+        cachedVersion = OptionalFileVersion.Read(storagePath);
         return cached = value;
     }
 
@@ -75,9 +76,15 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
     {
         try
         {
-            await using var stream = NativeCore.WindowsNativeAtomicFileCommitter.OpenCommittedRead(storagePath);
-            return Normalize(await JsonSerializer.DeserializeAsync<PerformanceOverlaySettingsDocument>(
-                stream, JsonOptions, cancellationToken));
+            var bytes = await NativeCore.WindowsNativeAtomicFileCommitter.ReadCommittedBytesAsync(storagePath, cancellationToken);
+            using var image = JsonDocument.Parse(bytes);
+            var document = Normalize(JsonSerializer.Deserialize<PerformanceOverlaySettingsDocument>(bytes, JsonOptions));
+            if (PresentationPreferenceRemoval.HasOverlayLayoutFields(image.RootElement))
+            {
+                PresentationPreferenceRemoval.PreserveLegacyImage(storagePath, bytes, PresentationPreferenceRemoval.HasOverlayFields);
+                await SaveCoreAsync(document, cancellationToken);
+            }
+            return document;
         }
         catch (FileNotFoundException) { return PerformanceOverlaySettingsDocument.Empty; }
         catch (DirectoryNotFoundException) { return PerformanceOverlaySettingsDocument.Empty; }
@@ -108,6 +115,6 @@ public sealed class JsonPerformanceOverlaySettingsStore(IHostEnvironment environ
             .Select(static group => group.Last())
             .OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        return new PerformanceOverlaySettingsDocument(1, software);
+        return new PerformanceOverlaySettingsDocument(2, software);
     }
 }

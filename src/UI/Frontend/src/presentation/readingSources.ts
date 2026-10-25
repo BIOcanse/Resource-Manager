@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import type { MetricFieldReading } from "../data/metricFields/metricFieldSource.ts";
 import type { AppReadingSourceMode, ReadingSourceDisplay } from "../types.ts";
 
@@ -22,7 +23,7 @@ import type { AppReadingSourceMode, ReadingSourceDisplay } from "../types.ts";
  */
 
 // 当前模式的唯一运行时所有者：设置里的选择是唯一来源，由 App 应用到这里（和 byteUnits 同一做法）。
-const [activeMode, setActiveMode] = createSignal<AppReadingSourceMode>("preferred");
+const [activeMode, setActiveMode] = createSignal<AppReadingSourceMode>(ResourceManager.FrontendPoints.ReadingSourceMode);
 
 export function currentReadingSourceMode(): AppReadingSourceMode {
   return activeMode();
@@ -33,7 +34,7 @@ export function applyReadingSourceMode(mode?: string | null) {
 }
 
 export function normalizeReadingSourceMode(value: unknown): AppReadingSourceMode {
-  return value === "all" ? "all" : "preferred";
+  return value === "all" ? "all" : ResourceManager.FrontendPoints.ReadingSourceMode;
 }
 
 export type { ReadingSourceDisplay };

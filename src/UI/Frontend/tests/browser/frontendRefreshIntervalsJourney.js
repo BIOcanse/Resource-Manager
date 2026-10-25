@@ -38,21 +38,16 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
     const input = page.getByRole("textbox", { name: `${label} ${text.performance.refreshCadenceCustomLabel}`, exact: true });
     await input.fill(String(value)); await input.press("Enter");
   }
-  const saved = page.waitForResponse(response => response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/settings/app");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  const result = await (await saved).json();
-  assert.equal(result.frontendRefreshIntervals.foreground.monitor, 1700);
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.refresh.monitor.customValue === 1700);
   await wait(telemetry => activeAt(telemetry["/api/adapters/resource-manager/scheduling/subscribe"], 1700));
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
   for (const foreground of [false, true]) {
     await page.evaluate(value => window.dispatchEvent(new Event(value ? "focus" : "blur")), foreground);
     await wait(telemetry => activeAt(telemetry["/api/metrics/subscribe"], 1700)
       && activeAt(telemetry["/api/local-system/status/subscribe"], 4100)
-      && Object.entries(telemetry["/api/resource-monitor/subscribe"]?.inFlightByQuery ?? {}).filter(([, count]) => count > 0).length === 2
-      && Object.entries(telemetry["/api/resource-monitor/subscribe"].inFlightByQuery).filter(([, count]) => count > 0).every(([query]) => {
-        const params = new URLSearchParams(query.slice(1));
-        return params.get("intervalMs") === (params.get("scope") === "table" ? "2300" : "1700");
-      }));
+      && activeAt(telemetry["/api/resource-monitor/subscribe"], 1700)
+      && activeAt(telemetry["/api/resource-facts/subscribe"], 2300));
   }
   checks.push("committed-custom-change");
   assert.deepEqual(controlWrites, [], "Interval changes never apply control drafts or write hardware");

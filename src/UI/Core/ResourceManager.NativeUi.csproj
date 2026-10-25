@@ -14,7 +14,15 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.45" />
   </ItemGroup>
+  <Target Name="GenerateFrontendPreferenceValues" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-FrontendPreferences.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -GeneratorPath &quot;$(ResourceManagerFrontendGeneratorPath)&quot;" />
+    <ItemGroup>
+      <Compile Remove="@(Compile)" Condition="'%(Compile.Filename)%(Compile.Extension)' == 'FrontendPoints.Values.g.cs'" />
+      <Compile Include="$(MSBuildProjectDirectory)\Preferences\Generated\FrontendPoints.Values.g.cs" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <EmbeddedResource Include="Overlay\metric-labels.json"
                       LogicalName="ResourceManager.NativeUi.Overlay.metric-labels.json" />

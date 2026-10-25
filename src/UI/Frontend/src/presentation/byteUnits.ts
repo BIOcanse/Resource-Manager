@@ -10,11 +10,12 @@
  * 别处不要再写 `/ 1024`。要显示字节就用这里的函数。
  */
 import { createSignal } from "solid-js";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import type { ByteUnitMode } from "../types";
 
 // 当前进制模式的唯一运行时所有者：设置里的选择是唯一来源，由 App 应用到这里，
 // 各处的换算函数在调用时读取它，所以切换模式后所有数字一起变，不用重建任何缓存。
-const [activeMode, setActiveMode] = createSignal<ByteUnitMode>("native");
+const [activeMode, setActiveMode] = createSignal<ByteUnitMode>(ResourceManager.FrontendPoints.ByteUnitMode);
 
 export function currentByteUnitMode() {
   return activeMode();
@@ -37,7 +38,7 @@ const decimalUnits = ["B", "kB", "MB", "GB", "TB", "PB"] as const;
 export const byteUnitModes = ["native", "binary", "decimal"] as const;
 
 export function normalizeByteUnitMode(value: unknown): ByteUnitMode {
-  return value === "binary" || value === "decimal" ? value : "native";
+  return value === "native" || value === "binary" || value === "decimal" ? value : ResourceManager.FrontendPoints.ByteUnitMode;
 }
 
 /** 这一类量在当前模式下是不是二进制的。 */

@@ -1,6 +1,5 @@
 import type {
-  AppSettings,
-  FrontendRefreshIntervals,
+  BackendAppSettings,
   AppSettingsResult
 } from "../../types.ts";
 import {
@@ -26,7 +25,7 @@ export type AppSettingsApplicationDisposition = NonNullable<
 
 export type CommittedAppSettingsResult = Readonly<
   AppSettingsResult
-  & Required<Pick<AppSettingsResult, "settings" | "revision" | "frontendRefreshIntervals">>
+  & Required<Pick<AppSettingsResult, "settings" | "revision">>
 >;
 
 const applicationDispositions = [
@@ -42,7 +41,6 @@ const applicationDispositions = [
 const settingsSectionKeys = [
   "control",
   "performance",
-  "appearance",
   "systemIntegration",
   "debug",
   "publicService",
@@ -55,6 +53,15 @@ export const appSettingsResultDecoder =
     (value) => {
       const record = requireRecord(value);
       const settingsRecord = requireRecord(record.settings, "$.settings");
+      if ("appearance" in settingsRecord || "frontendRefreshIntervals" in record) {
+        throw new ResponseDecodeError("$.settings", "Backend settings must not contain frontend preferences");
+      }
+      const performance = settingsRecord.performance;
+      if (performance && typeof performance === "object"
+          && ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
+            .some(key => key in performance)) {
+        throw new ResponseDecodeError("$.settings.performance", "Backend settings must not contain frontend refresh preferences");
+      }
       requireNonEmptyString(settingsRecord.version, "$.settings.version");
       for (const key of settingsSectionKeys) {
         if (settingsRecord[key] !== undefined) {
@@ -76,8 +83,7 @@ export const appSettingsResultDecoder =
 
       const result: AppSettingsResult = {
         serviceRecovery: record.serviceRecovery === undefined ? undefined : decodeServiceRecovery(record.serviceRecovery),
-        settings: deepFreezeClone(settingsRecord) as AppSettings,
-        frontendRefreshIntervals: decodeFrontendRefreshIntervals(record.frontendRefreshIntervals),
+        settings: deepFreezeClone(settingsRecord) as BackendAppSettings,
         revision: requireNonEmptyString(record.revision, "$.revision"),
         storagePath: optional(record.storagePath, "$.storagePath", requireString),
         source: decodeSource(record.source),
@@ -195,41 +201,4 @@ export function readSettingsFailureDisposition(
     }
     throw error;
   }
-}
-
-function decodeFrontendRefreshIntervals(value: unknown): FrontendRefreshIntervals {
-  const path = "$.frontendRefreshIntervals";
-  const record = requireRecord(value, path);
-  const keys = ["monitor", "resourceTable", "localSystem"] as const;
-  const presets = ["responsive", "balanced", "lowPower", "quiet"] as const;
-  const decodeInterval = (value: unknown, path: string) => {
-    const interval = requireSafeInteger(value, path);
-    if (interval < 1) throw new ResponseDecodeError(path, "Expected a positive interval");
-    return interval;
-  };
-  const profile = (name: "foreground" | "backgroundOptimized") => {
-    const item = requireRecord(record[name], `${path}.${name}`);
-    return Object.freeze(Object.fromEntries(keys.map(key => [key, decodeInterval(item[key], `${path}.${name}.${key}`)])));
-  };
-  const catalogue = requireRecord(record.presets, `${path}.presets`);
-  const defaults = requireRecord(record.defaults, `${path}.defaults`);
-  const result = {
-    foreground: profile("foreground"),
-    backgroundOptimized: profile("backgroundOptimized"),
-    presets: Object.fromEntries(keys.map(key => {
-      const item = requireRecord(catalogue[key], `${path}.presets.${key}`);
-      return [key, Object.freeze(Object.fromEntries(presets.map(preset => [preset,
-        decodeInterval(item[preset], `${path}.presets.${key}.${preset}`)])))];
-    })),
-    defaults: Object.fromEntries(keys.map(key => {
-      const itemPath = `${path}.defaults.${key}`;
-      const item = requireRecord(defaults[key], itemPath);
-      return [key, Object.freeze({
-        mode: requireOneOf(item.mode, `${itemPath}.mode`, ["aotu", "preset", "custom"]),
-        preset: requireOneOf(item.preset, `${itemPath}.preset`, presets),
-        customValue: decodeInterval(item.customValue, `${itemPath}.customValue`)
-      })];
-    }))
-  };
-  return deepFreezeClone(result) as FrontendRefreshIntervals;
 }

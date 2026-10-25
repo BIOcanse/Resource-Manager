@@ -1,0 +1,30 @@
+{
+  "points": [
+    {"group":0,"name":"appearance-ui_style","symbol":"UiStyle","type":"choice","options":["standard","soft","outline","terminal"],"value":"standard"},
+    {"group":0,"name":"appearance-theme","symbol":"Theme","type":"choice","options":["system","light","dark","lowContrast","paper","graphite","blueprint","phosphor","amber","ice"],"value":"system"},
+    {"group":0,"name":"appearance-animation_mode","symbol":"AnimationMode","type":"choice","options":["auto","none","normal","ultra"],"value":"auto"},
+    {"group":0,"name":"appearance-bar_frame_rate_mode","symbol":"BarFrameRateMode","type":"choice","options":["display","custom"],"value":"display"},
+    {"group":0,"name":"appearance-bar_frame_rate","symbol":"BarFrameRate","type":"integer","min":10,"max":240,"value":60},
+    {"group":0,"name":"appearance-bar_color_mode","symbol":"BarColorMode","type":"choice","options":["type","distinct"],"value":"type"},
+    {"group":0,"name":"appearance-font_smoothing","symbol":"FontSmoothing","type":"choice","options":["auto","system","grayscale","disabled"],"value":"auto"},
+    {"group":0,"name":"appearance-language","symbol":"Language","type":"choice","options":["system","zh-CN","zh-TW","en-US","ja-JP","ko-KR","fr-FR","de-DE","es-ES","es-MX","pt-BR","pt-PT","ru-RU","uk-UA","pl-PL","tr-TR","it-IT","nl-NL","sv-SE","fi-FI","da-DK","nb-NO","cs-CZ","hu-HU","ro-RO","el-GR","he-IL","ar-SA","hi-IN","id-ID","vi-VN","th-TH"],"value":"system"},
+    {"group":0,"name":"appearance-byte_unit_mode","symbol":"ByteUnitMode","type":"choice","options":["native","binary","decimal"],"value":"native"},
+    {"group":0,"name":"appearance-reading_source_mode","symbol":"ReadingSourceMode","type":"choice","options":["preferred","all"],"value":"preferred"},
+    {"group":1,"name":"refresh-smart_monitoring_mode","symbol":"SmartMonitoringMode","type":"choice","options":["enabled","disabled"],"value":"enabled"},
+    {"group":1,"name":"refresh-monitor","symbol":"Monitor","type":"refresh","value":{"mode":"aotu","preset":"responsive","customValue":1000}},
+    {"group":1,"name":"refresh-resource_table","symbol":"ResourceTable","type":"refresh","value":{"mode":"aotu","preset":"responsive","customValue":1000}},
+    {"group":1,"name":"refresh-local_system","symbol":"LocalSystem","type":"refresh","value":{"mode":"aotu","preset":"balanced","customValue":60000}},
+    {"group":1,"name":"refresh-monitor_presets","symbol":"MonitorPresets","type":"presets","value":{"responsive":1000,"balanced":2000,"lowPower":3000,"quiet":5000}},
+    {"group":1,"name":"refresh-resource_table_presets","symbol":"ResourceTablePresets","type":"presets","value":{"responsive":1000,"balanced":2000,"lowPower":3000,"quiet":5000}},
+    {"group":1,"name":"refresh-local_system_presets","symbol":"LocalSystemPresets","type":"presets","value":{"responsive":30000,"balanced":60000,"lowPower":120000,"quiet":300000}},
+    {"group":1,"name":"refresh-auto_foreground_preset","symbol":"AutoForegroundPreset","type":"choice","options":["responsive","balanced","lowPower","quiet"],"value":"responsive"},
+    {"group":1,"name":"refresh-auto_background_preset","symbol":"AutoBackgroundPreset","type":"choice","options":["responsive","balanced","lowPower","quiet"],"value":"lowPower"},
+    {"group":2,"name":"overlay-font_size_px","symbol":"FontSizePx","type":"integer","min":8,"max":72,"value":14},
+    {"group":2,"name":"overlay-region_width_ratio","symbol":"RegionWidthRatio","type":"decimal","min":0.05,"max":1,"value":0.25},
+    {"group":2,"name":"overlay-region_height_ratio","symbol":"RegionHeightRatio","type":"decimal","min":0.05,"max":1,"value":0.2},
+    {"group":2,"name":"overlay-size_mode","symbol":"SizeMode","type":"choice","options":["absolutePixels","windowRatio"],"value":"absolutePixels"},
+    {"group":2,"name":"overlay-anchor","symbol":"Anchor","type":"choice","options":["topLeft","topRight","bottomLeft","bottomRight"],"value":"topLeft"},
+    {"group":2,"name":"overlay-margin_px","symbol":"MarginPx","type":"integer","min":0,"max":256,"value":12},
+    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["target.fps","target.onePercentLow","target.frameTime","target.cpu","target.gpu"]}
+  ]
+}

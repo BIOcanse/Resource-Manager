@@ -5,6 +5,7 @@ using System.Drawing.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using ResourceManager.NativeUi.Localization;
+using ResourceManager.NativeUi.Preferences;
 using ResourceManager.Shared.Overlay;
 
 namespace ResourceManager.NativeUi.Overlay;
@@ -16,7 +17,7 @@ internal sealed record OverlayImage(int Width, int Height, byte[] Pixels)
 
 internal static class OverlayBitmapRenderer
 {
-    public static OverlayImage? Render(OverlayTarget target, Size targetSize)
+    public static OverlayImage? Render(OverlayTarget target, Size targetSize, FrontendOverlayPresentation presentation)
     {
         if (targetSize.Width <= 0 || targetSize.Height <= 0
             || targetSize.Width > 8192 || targetSize.Height > 8192
@@ -24,7 +25,10 @@ internal static class OverlayBitmapRenderer
             return null;
 
         var language = NativeUiText.Language;
-        var lines = target.Metrics.Select(metric => FormatLine(metric, language)).ToArray();
+        var lines = presentation.Metrics.Select(id => target.Metrics.FirstOrDefault(metric =>
+                metric.MetricId.Equals(id, StringComparison.OrdinalIgnoreCase)))
+            .Where(static metric => metric is not null)
+            .Select(metric => FormatLine(metric!, language)).ToArray();
         if (lines.Length == 0) return null;
         using var bitmap = new Bitmap(targetSize.Width, targetSize.Height, PixelFormat.Format32bppPArgb);
         using var graphics = Graphics.FromImage(bitmap);
@@ -38,7 +42,7 @@ internal static class OverlayBitmapRenderer
             using var font = new Font("Segoe UI", size, FontStyle.Regular, GraphicsUnit.Pixel);
             return graphics.MeasureString(line, font, int.MaxValue, format);
         }
-        var layout = OverlayLayout.Calculate(targetSize, target.Settings, lines, Measure);
+        var layout = OverlayLayout.Calculate(targetSize, presentation, lines, Measure);
         if (layout.FontSizePx <= 0) return null;
         using var background = new SolidBrush(Color.FromArgb(168, 0, 0, 0));
         using var foreground = new SolidBrush(Color.White);

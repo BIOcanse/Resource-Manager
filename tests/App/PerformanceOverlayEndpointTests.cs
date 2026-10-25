@@ -53,7 +53,9 @@ public sealed class PerformanceOverlayEndpointTests
         Assert.NotNull(defaults);
         Assert.Equal("game", defaults.SoftwareId);
         Assert.Equal("external", defaults.Mode);
-        Assert.Equal(14, defaults.FontSizePx);
+        using var wire = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync("/api/performance-overlay/default?softwareId=game"));
+        foreach (var key in new[] { "fontSizePx", "sizeMode", "regionWidthRatio", "regionHeightRatio", "anchor", "marginPx" })
+            Assert.False(wire.RootElement.TryGetProperty(key, out _));
 
         var catalog = await client.GetFromJsonAsync<System.Text.Json.JsonElement>(
             "/api/performance-overlay/metrics/catalog");

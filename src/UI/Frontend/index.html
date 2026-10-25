@@ -5,28 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>资源管理器</title>
     <link rel="icon" href="data:,">
-    <script>
-      (() => {
-        let uiStyle = "standard";
-        let theme = "system";
-        try {
-          const raw = localStorage.getItem("resource-manager:appearance");
-          const appearance = raw ? JSON.parse(raw) : null;
-          // 缓存由设置存储按目录归一化后写入；这里只挡掉损坏的值，设置载入后会再发布一次。
-          const valid = (value) => typeof value === "string" && /^[A-Za-z]+$/.test(value);
-          if (appearance && valid(appearance.uiStyle)) {
-            uiStyle = appearance.uiStyle;
-          }
-          if (appearance && valid(appearance.theme)) {
-            theme = appearance.theme;
-          }
-        } catch {
-          // The backend remains authoritative; an invalid cache uses the default style and palette.
-        }
-        document.documentElement.dataset.uiStyle = uiStyle;
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <script type="module" src="/src/preferences/preboot.ts"></script>
     <style>
       :root {
         color-scheme: light;

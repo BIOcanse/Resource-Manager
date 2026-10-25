@@ -1,4 +1,5 @@
 import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
+import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
 import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
 import type {
   BackendMessage,
@@ -82,9 +83,14 @@ export async function getMetricCatalog() {
   return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
-export async function getPerformanceOverlaySettings(softwareId: string) {
-  return getJson<PerformanceOverlaySettings>(
-    `/api/performance-overlay/software/${encodeURIComponent(softwareId)}`);
+export async function getPerformanceOverlaySettings(softwareId: string): Promise<PerformanceOverlaySettings> {
+  const [operation, preferences] = await Promise.all([
+    getJson<import("./types.ts").BackendPerformanceOverlaySettings>(`/api/performance-overlay/software/${encodeURIComponent(softwareId)}`),
+    frontendPreferencesClient().read()
+  ]);
+  const presentation = cachedOverlay(preferences, softwareId) ?? pointOverlayPresentation();
+  return { softwareId: operation.softwareId, enabled: operation.enabled, mode: operation.mode,
+    ...presentation, metrics: [...presentation.metrics] };
 }
 
 export async function getPerformanceOverlayMetricCatalog() {
@@ -92,11 +98,26 @@ export async function getPerformanceOverlayMetricCatalog() {
     .filter(metricOfferedInPicker);
 }
 
-export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings) {
-  return putJson<PerformanceOverlaySettings>(
-    `/api/performance-overlay/software/${encodeURIComponent(settings.softwareId)}`,
-    settings,
-    uiText.apiError.saveGpuSoftwarePolicyFailed);
+export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings,
+    previous?: import("./types.ts").BackendPerformanceOverlaySettings): Promise<PerformanceOverlaySettings> {
+  const { softwareId, enabled, mode, ...presentation } = settings;
+  const operation = previous?.enabled === enabled && previous.mode === mode ? { softwareId, enabled, mode }
+    : await putJson<import("./types.ts").BackendPerformanceOverlaySettings>(
+      `/api/performance-overlay/software/${encodeURIComponent(softwareId)}`, { softwareId, enabled, mode },
+      uiText.apiError.saveGpuSoftwarePolicyFailed);
+  const owner = frontendPreferencesClient();
+  const preferences = await owner.read();
+  await owner.save({ ...preferences, overlays: { ...preferences.overlays, [softwareId]: presentation } }, { overlay: softwareId });
+  return { ...operation, ...presentation, metrics: [...presentation.metrics] };
+}
+
+export async function resetPerformanceOverlayPresentation(softwareId: string) {
+  const owner = frontendPreferencesClient();
+  const preferences = await owner.read();
+  const overlays = { ...preferences.overlays };
+  for (const id of Object.keys(overlays)) if (id.toLowerCase() === softwareId.toLowerCase()) delete overlays[id];
+  await owner.save({ ...preferences, overlays }, { overlay: softwareId });
+  return pointOverlayPresentation();
 }
 
 export async function getDashboardSettings() {

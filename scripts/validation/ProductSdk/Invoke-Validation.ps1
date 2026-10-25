@@ -205,7 +205,7 @@ if([IO.File]::Exists((Join-Path $taskRoot 'package-prerequisites.json'))){
     $taskInputs+=@($taskPrerequisites.nativeAssets|ForEach-Object path)
 }
 $taskInputs+=@('artifacts/sdk/manifest.0.1.0-dev.2.json','artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.2.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Build.0.1.0-dev.2.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Configuration.0.1.0-dev.2.nupkg','artifacts/sdk/native/0.1.0-dev.2/ResourceManager.Ledger.NativeSources.0.1.0-dev.2.zip','artifacts/sdk/tools/0.1.0-dev.2/.config/dotnet-tools.json')
-$taskInputs+=@(Get-ChildItem (Join-Path $taskRepo 'sdk/freedom-point/packages') -File -Filter '*0.1.0-dev.41.nupkg'|ForEach-Object FullName)
+$taskInputs+=@(Get-ChildItem (Join-Path $taskRepo 'sdk/freedom-point/packages') -File -Filter '*0.1.0-dev.45.nupkg'|ForEach-Object FullName)
 if($Stage -in @('Sources','Pack','Consumers')) {
     $taskCompileBuildContext=Get-Content -LiteralPath (Join-Path $taskRoot 'build-context.json') -Raw|ConvertFrom-Json
     $taskCompileArtifacts=[IO.Path]::GetFullPath([string]$taskCompileBuildContext.artifacts)

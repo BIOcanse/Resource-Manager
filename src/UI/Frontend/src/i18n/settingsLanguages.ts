@@ -1,8 +1,9 @@
 import type { AppLanguageMode } from "../types.ts";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import type { ConcreteAppLanguageMode, LanguageOption } from "./settingsTypes.ts";
 
 // 当前开放的界面语言。包的字段齐全不代表所有文案已经翻译；覆盖进度见多语言审查文档。
-// `AppLanguageMode` 保留与后端一致的全部 31 个持久化 id；这里仅列出已开放语言。
+// `AppLanguageMode` 保留前端合同的全部 31 个持久化 id；这里仅列出已开放语言。
 // 其余语言完成后，在这里添加选项并在 copy/appCopyLoader.ts 注册。
 export const languageOptions: LanguageOption[] = [
   { id: "system", label: "System language", nativeLabel: "跟随系统 / System" },
@@ -22,7 +23,7 @@ const canonicalLanguageIds = new Map(languageOptions.map((option) => [option.id.
 
 export function normalizeLanguageMode(language?: string | null): AppLanguageMode {
   const value = (language ?? "").trim().replaceAll("_", "-").toLowerCase();
-  return canonicalLanguageIds.get(value) ?? "system";
+  return canonicalLanguageIds.get(value) ?? ResourceManager.FrontendPoints.Language;
 }
 
 export function resolveLanguageMode(language?: string | null, candidates: readonly string[] = getBrowserLanguages()): ConcreteAppLanguageMode {

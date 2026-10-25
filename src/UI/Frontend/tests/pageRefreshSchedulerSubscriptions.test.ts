@@ -72,6 +72,10 @@ const scheduler = createRoot(stop => {
 const flush = async () => {
   await new Promise(resolve => setTimeout(resolve, 10));
 };
+const waitForStreams = async (count: number) => {
+  const deadline = Date.now() + 1000;
+  while (streams.length !== count && Date.now() < deadline) await flush();
+};
 try {
   await flush();
   assert.equal(streams.length, 1);
@@ -91,7 +95,7 @@ try {
   const changed = structuredClone(frontendRefreshIntervals);
   (changed.foreground as { monitor: number }).monitor += 1000;
   setSettings(changed);
-  await flush();
+  await waitForStreams(2);
   assert.equal(streams.length, 2, "a real cadence change must replace the binding");
   assert.equal(streams[0].signal.aborted, true);
   assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "normal" }, "Cadence change retains the same entry current value");
@@ -101,7 +105,7 @@ try {
   assert.equal(inFlight, 0, "hidden window must release all subscriptions immediately");
   assert.equal(scheduler.systemUptime(), "01:00:00");
   setVisible(true);
-  await flush();
+  await waitForStreams(3);
   assert.equal(streams.length, 3);
   assert.deepEqual(scheduler.selfScheduling(), { cpuGrade: "normal" });
   assert.equal(scheduler.systemUptime(), "01:00:00", "Reactivation synchronously displays the current value");

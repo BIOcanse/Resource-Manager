@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Net.Http;
 using System.Text.Json;
 using ResourceManager.NativeUi.Localization;
+using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Overlay;
 
@@ -136,10 +137,12 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
 
     private void RenderIfNeeded(DisplayTarget target, Size size, Rectangle bounds, bool injected)
     {
-        var signature = $"{target.ContentSignature}|{NativeUiText.Language}|{size.Width}x{size.Height}";
+        var preferences = FrontendPreferencesOwner.Current;
+        var presentation = preferences.Overlay(target.Target.SoftwareId);
+        var signature = $"{target.ContentSignature}|{NativeUiText.Language}|{size.Width}x{size.Height}|{preferences.Revision}";
         if (signature != target.RenderSignature)
         {
-            var image = OverlayBitmapRenderer.Render(target.Target, size);
+            var image = OverlayBitmapRenderer.Render(target.Target, size, presentation);
             if (image is null)
             {
                 target.External?.Hide();

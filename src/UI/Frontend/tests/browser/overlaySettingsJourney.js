@@ -1,4 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { pointOverlayPresentation } from "../../src/preferences/frontendPreferences.ts";
 
 export default async function overlaySettingsJourney(page, baseUrl) {
   const copy = await loadAppCopy("zh-CN");
@@ -41,6 +43,7 @@ export default async function overlaySettingsJourney(page, baseUrl) {
     && response.url().includes("/api/performance-overlay/software/"));
   await save.click();
   const request = await sent;
+  assert(JSON.stringify(Object.keys(request.postDataJSON()).sort()) === JSON.stringify(["enabled", "mode", "softwareId"]), "Presentation entered the backend overlay request");
   for (const control of await editor.locator("input, button").all()) {
     assert(await control.isDisabled(), "An overlay control remained editable during save");
   }
@@ -57,16 +60,27 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   assert(JSON.stringify(await editor.locator(".overlay-settings-metrics li span").allTextContents()) === JSON.stringify(ordered), "Reopening lost metric order");
   await patch({ overlaySaveDelayMs: 0, overlaySaveFailure: true });
   await font.fill("27");
+  await editor.getByRole("checkbox").uncheck();
   await save.click();
   await editor.getByRole("alert").waitFor({ state: "visible" });
   assert(await font.inputValue() === "27", "Failed save lost the draft");
   assert(await save.isEnabled(), "Failed save cannot be retried");
   const persisted = await page.evaluate(async url => (await fetch(url)).json(), request.url());
-  assert(persisted.fontSizePx === 21, "Failed save changed persisted settings");
+  assert(!("fontSizePx" in persisted) && persisted.enabled === true, "Backend overlay retained presentation or failed operation changed settings");
+  const cached = await page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1")));
+  assert(Object.values(cached.overlays).some(value => value.fontSizePx === 21), "Failed operation changed the frontend cache");
   await patch({ overlaySaveFailure: false });
   await save.click();
   await editor.getByRole("alert").waitFor({ state: "hidden" });
-  await page.waitForFunction(() => document.querySelector(".overlay-settings > .software-policy-section-header button")?.disabled);
+  await page.waitForFunction(() => !document.querySelector('.overlay-settings input[type="number"]')?.disabled);
+  assert(await save.isDisabled(), "Successful retry left the editor dirty");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "组件与软件", exact: true }).click();
+  await page.getByRole("navigation", { name: "组件和软件分类" }).getByRole("button", { name: /一般应用/ }).click();
+  await open();
+  assert(await font.inputValue() === "27", "Frontend overlay cache did not survive page restart");
+  await editor.getByRole("button", { name: (await loadSettingsText("zh-CN")).actions.restoreDefaults, exact: true }).click();
+  await page.waitForFunction(fontPx => document.querySelector('.overlay-settings input[type="number"]')?.value === String(fontPx), pointOverlayPresentation().fontSizePx);
   assert(errors.length === 0, errors.join("\n"));
   return { persistence: true, metricOrdering: true, pendingControlsLocked: true, failureRetainsDraft: true, retry: true };
 }

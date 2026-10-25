@@ -176,6 +176,8 @@ export default createSettingsLocale("ja-JP", {
     }
   },
   "appearance": {
+    "cacheDescription": "\u5916\u89B3\u3001\u66F4\u65B0\u9593\u9694\u3001\u30AA\u30FC\u30D0\u30FC\u30EC\u30A4\u306E\u5916\u89B3\u306F\u3053\u306E\u7AEF\u672B\u306B\u30AD\u30E3\u30C3\u30B7\u30E5\u3055\u308C\u307E\u3059\u3002\u30AD\u30E3\u30C3\u30B7\u30E5\u3092\u6D88\u53BB\u3059\u308B\u3068\u65E2\u5B9A\u5024\u306B\u623B\u308A\u307E\u3059\u3002",
+    "resetCache": "\u753B\u9762\u8A2D\u5B9A\u3092\u65E2\u5B9A\u5024\u306B\u623B\u3059",
     "uiStyleTitle": "インターフェイス スタイル",
     "uiStyleDescription": "コントロールの角丸、線、影、フォントを変えます。レイアウトは変わりません。スタイルごとに配色があります。",
     "themeTitle": "配色",

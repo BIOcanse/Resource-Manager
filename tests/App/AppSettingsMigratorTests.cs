@@ -23,7 +23,7 @@ public sealed class AppSettingsMigratorTests
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-        Assert.Equal("1.0.31", migrated.Version);
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, migrated.Version);
         Assert.Equal(AppOptimizationModes.Smart, migrated.Performance.OptimizationMode);
         Assert.Equal(AppRealtimeActionBudgetModes.Fixed, migrated.Performance.RealtimeActionBudgetMode);
         Assert.Equal(32, migrated.Performance.RealtimeActionBudgetCount);
@@ -155,7 +155,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.29", true)]
     [InlineData("1.0.30", true)]
     [InlineData("1.0.31", true)]
-    [InlineData("1.0.32", false)]
+    [InlineData("1.0.32", true)]
+    [InlineData("1.0.33", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -185,8 +186,6 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
         Assert.Equal(AppSettingsDefaults.CurrentVersion, settings.Version);
-        Assert.Equal(AppAdaptiveBooleanModes.Enabled, settings.Performance.SmartMonitoringMode);
-        Assert.Equal("system", settings.Appearance.Theme);
         Assert.False(settings.SystemIntegration.TaskManagerShortcutReplacementEnabled);
         Assert.False(settings.SystemIntegration.Hotkeys.Single().Enabled);
         Assert.False(settings.Debug.DebugModeEnabled);
@@ -222,7 +221,6 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
         var serialized = JsonSerializer.Serialize(settings);
 
-        Assert.Equal("system", settings.Appearance.Theme);
         Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
         Assert.DoesNotContain("samplingDispatchMode", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
@@ -308,27 +306,12 @@ public sealed class AppSettingsMigratorTests
     }
 
     [Fact]
-    public void MigrateForRead_PreservesCurrentLogicRefreshCadenceShape()
-    {
-        using var document = JsonDocument.Parse(CurrentShapeJson);
-
-        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
-
-        Assert.Equal(AppPresetNumericSettingModes.Aotu, settings.Performance.MonitorRefreshIntervalMs.Mode);
-        Assert.Equal(AppLogicRefreshIntervalPresets.Responsive, settings.Performance.MonitorRefreshIntervalMs.Preset);
-        Assert.Equal(1000, settings.Performance.MonitorRefreshIntervalMs.CustomValue);
-        Assert.Equal(AppLogicRefreshIntervalPresets.Balanced, settings.Performance.LocalSystemRefreshIntervalMs.Preset);
-        Assert.Equal(60000, settings.Performance.LocalSystemRefreshIntervalMs.CustomValue);
-    }
-
-    [Fact]
     public void MigrateForRead_AddsDisabledEditableHotkeyWithoutResettingCurrentSettings()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson);
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        Assert.Equal("system", settings.Appearance.Theme);
         var hotkey = Assert.Single(settings.SystemIntegration.Hotkeys);
         Assert.Equal(AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground, hotkey.ActionId);
         Assert.False(hotkey.Enabled);
@@ -338,70 +321,6 @@ public sealed class AppSettingsMigratorTests
         Assert.True(settings.PublicService.DatabaseServiceEnabled);
         Assert.True(settings.PublicService.AiModelCatalogEnabled);
         Assert.True(settings.AiModelService.AutoStartEnabled);
-    }
-
-    [Theory]
-    [InlineData("type")]
-    [InlineData("distinct")]
-    public void MigrateForRead_PreservesBothResourceBarColorModes(string barColorMode)
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["version"] = "1.0.22";
-        root["appearance"]!["barColorMode"] = barColorMode;
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
-
-        Assert.Equal(barColorMode, settings.Appearance.BarColorMode);
-        Assert.Equal("system", settings.Appearance.Theme);
-        Assert.True(settings.PublicService.Enabled);
-    }
-
-    [Fact]
-    public void MigrateForRead_DropsRetiredDisplayOutputSettingsWithoutResettingOtherSettings()
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["version"] = "1.0.20";
-        var appearance = root["appearance"]!.AsObject();
-        appearance["sceneReferenceWhiteLog2Q16"] = 524_288;
-        appearance["outputDisplayProfiles"] = new JsonArray
-        {
-            new JsonObject
-            {
-                ["displayId"] = "*",
-                ["minimumLuminanceMilliNits"] = 8_000,
-                ["maximumLuminanceMilliNits"] = 400_000,
-                ["colorGamut"] = "srgb",
-                ["toneMappingCurve"] = "linear"
-            }
-        };
-        appearance["outputMinimumNits"] = 0;
-        appearance["outputMaximumNits"] = 972;
-        appearance["outputColorGamut"] = "dciP3";
-        appearance["outputToneMappingCurve"] = "highlightCompression";
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
-        var serialized = JsonSerializer.Serialize(settings, JsonSerializerOptions.Web);
-
-        Assert.Equal("system", settings.Appearance.Theme);
-        Assert.DoesNotContain("sceneReferenceWhite", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outputDisplayProfiles", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outputMinimumNits", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outputMaximumNits", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outputColorGamut", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("outputToneMappingCurve", serialized, StringComparison.OrdinalIgnoreCase);
-        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-    }
-
-    [Fact]
-    public void RequiresRewrite_RejectsRetiredDisplayOutputSettingsInCurrentShape()
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["appearance"]!["outputDisplayProfiles"] = new JsonArray();
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
     }
 
     [Fact]
@@ -567,153 +486,18 @@ public sealed class AppSettingsMigratorTests
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
     }
 
-    [Fact]
-    public void RequiresRewrite_AddsMissingUiStyleToCurrentShape()
-    {
-        using var document = JsonDocument.Parse(CurrentShapeJson.Replace(
-            "\"uiStyle\": \"standard\",", string.Empty, StringComparison.Ordinal));
-
-        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-        Assert.Equal("standard", AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.UiStyle);
-    }
-
-    [Theory]
-    [InlineData("terminal", "amber", "terminal", "amber")]
-    [InlineData("terminal", "system", "terminal", "phosphor")]
-    [InlineData("soft", "lowContrast", "soft", "system")]
-    [InlineData("unknown", "dark", "standard", "dark")]
-    [InlineData("outline", "blueprint", "outline", "blueprint")]
-    public void MigrateForRead_NormalizesThePaletteWithinTheStyle(
-        string uiStyle,
-        string theme,
-        string expectedUiStyle,
-        string expectedTheme)
-    {
-        using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"uiStyle\": \"standard\"", $"\"uiStyle\": \"{uiStyle}\"", StringComparison.Ordinal)
-            .Replace("\"theme\": \"system\"", $"\"theme\": \"{theme}\"", StringComparison.Ordinal));
-
-        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
-
-        Assert.Equal(expectedUiStyle, appearance.UiStyle);
-        Assert.Equal(expectedTheme, appearance.Theme);
-    }
-
-    [Fact]
-    public void Defaults_FollowTheDisplayWithSixtyFramesForCustom()
-    {
-        var appearance = AppSettingsDefaults.Create().Appearance;
-
-        Assert.Equal(AppResourceBarFrameRateModes.Display, appearance.ResourceBarFrameRateMode);
-        Assert.Equal(60, appearance.ResourceBarFrameRate);
-    }
-
-    [Theory]
-    [InlineData("resourceBarFrameRateMode")]
-    [InlineData("resourceBarFrameRate")]
-    public void RequiresRewrite_AddsMissingResourceBarFrameRateToCurrentShape(string field)
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["appearance"]!.AsObject().Remove(field);
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
-
-        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-        Assert.Equal(AppResourceBarFrameRateModes.Display, appearance.ResourceBarFrameRateMode);
-        Assert.Equal(60, appearance.ResourceBarFrameRate);
-    }
-
-    [Theory]
-    [InlineData("\"custom\"", "144", AppResourceBarFrameRateModes.Custom, 144)]
-    [InlineData("\"custom\"", "10", AppResourceBarFrameRateModes.Custom, 10)]
-    [InlineData("\"custom\"", "240", AppResourceBarFrameRateModes.Custom, 240)]
-    [InlineData("\"custom\"", "5", AppResourceBarFrameRateModes.Custom, 10)]
-    [InlineData("\"custom\"", "1000", AppResourceBarFrameRateModes.Custom, 240)]
-    [InlineData("\"custom\"", "59.5", AppResourceBarFrameRateModes.Custom, 60)]
-    [InlineData("\"custom\"", "\"90\"", AppResourceBarFrameRateModes.Custom, 60)]
-    [InlineData("\"display\"", "30", AppResourceBarFrameRateModes.Display, 30)]
-    [InlineData("\"unknown\"", "30", AppResourceBarFrameRateModes.Display, 30)]
-    [InlineData("7", "30", AppResourceBarFrameRateModes.Display, 30)]
-    public void MigrateForRead_NormalizesTheResourceBarFrameRate(
-        string modeJson,
-        string frameRateJson,
-        string expectedMode,
-        int expectedFrameRate)
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["appearance"]!["resourceBarFrameRateMode"] = JsonNode.Parse(modeJson);
-        root["appearance"]!["resourceBarFrameRate"] = JsonNode.Parse(frameRateJson);
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
-
-        Assert.Equal(expectedMode, appearance.ResourceBarFrameRateMode);
-        Assert.Equal(expectedFrameRate, appearance.ResourceBarFrameRate);
-    }
-
-    [Fact]
-    public void Defaults_ListOnlyThePreferredReadingSource()
-    {
-        Assert.Equal(AppReadingSourceModes.Preferred, AppSettingsDefaults.Create().Appearance.ReadingSourceMode);
-    }
-
-    [Fact]
-    public void RequiresRewrite_AddsMissingReadingSourceModeToCurrentShape()
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["appearance"]!.AsObject().Remove("readingSourceMode");
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
-        Assert.Equal(
-            AppReadingSourceModes.Preferred,
-            AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.ReadingSourceMode);
-    }
-
-    [Theory]
-    [InlineData("\"preferred\"", AppReadingSourceModes.Preferred)]
-    [InlineData("\"all\"", AppReadingSourceModes.All)]
-    [InlineData("\"All\"", AppReadingSourceModes.Preferred)]
-    [InlineData("\"unknown\"", AppReadingSourceModes.Preferred)]
-    [InlineData("true", AppReadingSourceModes.Preferred)]
-    [InlineData("null", AppReadingSourceModes.Preferred)]
-    public void MigrateForRead_NormalizesTheReadingSourceMode(string modeJson, string expectedMode)
-    {
-        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
-        root["appearance"]!["readingSourceMode"] = JsonNode.Parse(modeJson);
-        using var document = JsonDocument.Parse(root.ToJsonString());
-
-        Assert.Equal(expectedMode, AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.ReadingSourceMode);
-    }
-
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.31",
+          "version": "1.0.32",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
             "gpuOverflowUsagePercent": 95,
             "gpuOverflowDedicatedMemoryPercent": 80,
-            "smartMonitoringMode": "enabled",
-            "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
-            "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
-            "localSystemRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 60000 },
             "realtimeActionBudgetMode": "fixed",
             "realtimeActionBudgetCount": 32,
             "realtimeActionBudgetPercent": 5
-          },
-          "appearance": {
-            "uiStyle": "standard",
-            "theme": "system",
-            "animations": "auto",
-            "resourceBarFrameRateMode": "display",
-            "resourceBarFrameRate": 60,
-            "barColorMode": "type",
-            "fontSmoothing": "system",
-            "language": "system",
-            "readingSourceMode": "preferred"
           },
           "systemIntegration": {
             "restartAfterCrashEnabled": true,

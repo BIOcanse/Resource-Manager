@@ -18,29 +18,16 @@ public sealed class PerformanceOverlaySettingsTests : IDisposable
         var initial = await store.GetSoftwareAsync(" game ", CancellationToken.None);
         Assert.False(initial.Enabled);
         Assert.Equal("external", initial.Mode);
-        Assert.Equal(14, initial.FontSizePx);
         Assert.Equal(PerformanceOverlayMetricIds.Defaults, initial.Metrics);
 
         var saved = await store.SaveSoftwareAsync(initial with
         {
             Enabled = true,
             Mode = "INJECTED",
-            Metrics = ["target.FPS", "target.fps", "cpu.usage"],
-            SizeMode = "windowratio",
-            FontSizePx = 999,
-            RegionWidthRatio = 0.001,
-            RegionHeightRatio = double.NaN,
-            Anchor = "bottomright",
-            MarginPx = -5
+            Metrics = ["target.FPS", "target.fps", "cpu.usage"]
         }, CancellationToken.None);
         Assert.Equal("injected", saved.Mode);
         Assert.Equal([PerformanceOverlayMetricIds.Fps, "cpu.usage"], saved.Metrics);
-        Assert.Equal("windowRatio", saved.SizeMode);
-        Assert.Equal(72, saved.FontSizePx);
-        Assert.Equal(0.05, saved.RegionWidthRatio);
-        Assert.Equal(0.2, saved.RegionHeightRatio);
-        Assert.Equal("bottomRight", saved.Anchor);
-        Assert.Equal(0, saved.MarginPx);
 
         var reloaded = await CreateStore().GetSoftwareAsync("GAME", CancellationToken.None);
         Assert.Equal(JsonSerializer.Serialize(saved), JsonSerializer.Serialize(reloaded));
@@ -63,8 +50,7 @@ public sealed class PerformanceOverlaySettingsTests : IDisposable
         Assert.Equal("GAME", setting.SoftwareId);
         Assert.False(setting.Enabled);
         Assert.Equal("external", setting.Mode);
-        Assert.Equal("topRight", setting.Anchor);
-        Assert.Equal(1, document.Version);
+        Assert.Equal(2, document.Version);
     }
 
     [Fact]

@@ -39,7 +39,7 @@ public sealed partial class MainForm : Form
         frontendHost = new WebView2FrontendHost(
             new WebView2HostConfiguration(
                 NativeUiPaths.WebViewUserDataFolder,
-                NativeUiPaths.AppSettingsPath,
+                NativeUiPaths.FrontendPreferencesPath,
                 AppUrl,
                 ApiRequestFilter,
                 AccessTokenHeaderName,

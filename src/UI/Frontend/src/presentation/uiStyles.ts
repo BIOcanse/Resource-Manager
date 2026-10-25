@@ -2,6 +2,7 @@
 // tests/uiStyleCatalogContract.test.ts 校验两边一致。规则见 docs/ui_styles.md。
 
 import type { AppPalette, AppUiStyle } from "../types.ts";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 
 export interface UiStyleDefinition {
   id: AppUiStyle;
@@ -9,7 +10,7 @@ export interface UiStyleDefinition {
   palettes: readonly AppPalette[];
 }
 
-// 第一个是默认风格。
+// 目录顺序用于列出选项；默认风格由前端点声明。
 export const uiStyles: readonly UiStyleDefinition[] = [
   { id: "standard", palettes: ["system", "light", "dark", "lowContrast"] },
   { id: "soft", palettes: ["system", "light", "dark"] },
@@ -22,10 +23,10 @@ export interface UiAppearanceChoice {
   theme: AppPalette;
 }
 
-// 和后端归一化同一条规则：风格不认识就用默认风格；配色不在该风格里就用该风格的默认配色。
+// 缺省风格/配色来自点；切换风格时，不适用的配色取该风格目录的首项。
 export function normalizeUiAppearance(uiStyle?: string | null, theme?: string | null): UiAppearanceChoice {
   const style = findUiStyle(uiStyle);
-  const palette = style.palettes.find((candidate) => candidate === theme) ?? style.palettes[0];
+  const palette = style.palettes.find((candidate) => candidate === (theme ?? ResourceManager.FrontendPoints.Theme)) ?? style.palettes[0];
   return { uiStyle: style.id, theme: palette };
 }
 
@@ -34,5 +35,7 @@ export function uiStylePalettes(uiStyle: AppUiStyle): readonly AppPalette[] {
 }
 
 function findUiStyle(uiStyle?: string | null): UiStyleDefinition {
-  return uiStyles.find((candidate) => candidate.id === uiStyle) ?? uiStyles[0];
+  const declaredDefault = uiStyles.find(candidate => candidate.id === ResourceManager.FrontendPoints.UiStyle);
+  if (!declaredDefault) throw new Error("Invalid frontend style point");
+  return uiStyles.find((candidate) => candidate.id === uiStyle) ?? declaredDefault;
 }

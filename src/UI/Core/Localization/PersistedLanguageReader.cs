@@ -1,10 +1,11 @@
-using ResourceManager.Shared.Localization;
+using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Localization;
 
-/// <summary>The shell reads the existing appearance.language preference and never writes it.</summary>
+/// <summary>The shell reads the same frontend cache as the WebView.</summary>
 internal static class PersistedLanguageReader
 {
     public static string Read(string? settingsPath = null) =>
-        AppLanguage.ReadPreference(settingsPath ?? NativeUiPaths.AppSettingsPath);
+        (settingsPath is null ? FrontendPreferencesOwner.Current : FrontendPreferencesOwner.ForCache(settingsPath))
+            .Read().Appearance.Language;
 }

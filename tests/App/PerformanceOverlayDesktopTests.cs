@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using ResourceManager.NativeUi.Overlay;
+using ResourceManager.NativeUi.Preferences;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -23,7 +24,7 @@ public sealed class PerformanceOverlayDesktopTests
                 using var overlay = new ExternalOverlayWindow();
                 var target = Target(id, "external");
                 var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(
-                    target, before.ClientBounds.Size));
+                    target, before.ClientBounds.Size, Presentation()));
                 overlay.Update(image, before.ClientBounds);
                 Assert.Equal(before.ClientBounds, WindowBounds(overlay.Handle));
                 Assert.Equal(0x080800A8L, GetWindowLongPtr(overlay.Handle, -20).ToInt64() & 0x080800A8L);
@@ -40,7 +41,7 @@ public sealed class PerformanceOverlayDesktopTests
                     return after.ClientBounds.Width != before.ClientBounds.Width;
                 });
                 var resized = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(
-                    target, after.ClientBounds.Size));
+                    target, after.ClientBounds.Size, Presentation()));
                 overlay.Update(resized, after.ClientBounds);
                 Assert.Equal(after.ClientBounds, WindowBounds(overlay.Handle));
             }
@@ -63,7 +64,7 @@ public sealed class PerformanceOverlayDesktopTests
                 WaitUntil(() => producer.SwapChainSize.Width > 0
                     && producer.SwapChainSize.Height > 0);
                 var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(
-                    Target(id, "injected"), producer.SwapChainSize));
+                    Target(id, "injected"), producer.SwapChainSize, Presentation()));
                 producer.Publish(image);
                 var generation = producer.Generation;
                 WaitUntil(() => producer.ConsumedGeneration >= generation
@@ -110,11 +111,13 @@ public sealed class PerformanceOverlayDesktopTests
 
     private static OverlayTarget Target(OverlayTargetId id, string mode)
     {
-        var settings = new OverlaySettings("test", true, mode, ["target.fps"],
-            "windowRatio", 14, 0.25, 0.2, "bottomRight", 12);
+        var settings = new OverlaySettings("test", true, mode);
         return new OverlayTarget("test", id.ProcessId, id.ProcessStartKey,
             settings, [PerformanceOverlayNativeUiTests.Metric()]);
     }
+
+    private static FrontendOverlayPresentation Presentation() =>
+        new() { Metrics = ["target.fps"], SizeMode = "windowRatio", Anchor = "bottomRight" };
 
     private static void WaitUntil(Func<bool> condition)
     {

@@ -1,0 +1,93 @@
+{
+  "version": "1.0.31",
+  "performance": {
+    "optimizationMode": "normal",
+    "preciseGpuPlacementEnabled": false,
+    "gpuOverflowUsagePercent": 95,
+    "gpuOverflowDedicatedMemoryPercent": 80,
+    "physicalMemoryAutomaticCleanupPercent": 6,
+    "virtualMemoryAutomaticCleanupPercent": 8,
+    "physicalMemoryOptimizationTargetUsagePercent": 70,
+    "virtualMemoryOptimizationTargetUsagePercent": 70,
+    "smartMonitoringMode": "enabled",
+    "monitorRefreshIntervalMs": {
+      "mode": "aotu",
+      "preset": "responsive",
+      "customValue": 1000
+    },
+    "resourceTableRefreshIntervalMs": {
+      "mode": "aotu",
+      "preset": "responsive",
+      "customValue": 1000
+    },
+    "localSystemRefreshIntervalMs": {
+      "mode": "aotu",
+      "preset": "balanced",
+      "customValue": 60000
+    },
+    "realtimeActionBudgetMode": "fixed",
+    "realtimeActionBudgetCount": 32,
+    "realtimeActionBudgetPercent": 5
+  },
+  "appearance": {
+    "uiStyle": "standard",
+    "theme": "system",
+    "animations": "auto",
+    "resourceBarFrameRateMode": "display",
+    "resourceBarFrameRate": 60,
+    "barColorMode": "type",
+    "fontSmoothing": "auto",
+    "language": "system",
+    "byteUnitMode": "native",
+    "readingSourceMode": "preferred"
+  },
+  "systemIntegration": {
+    "taskManagerShortcutReplacementEnabled": false,
+    "hotkeys": [
+      {
+        "actionId": "force-terminate-unresponsive-and-foreground",
+        "enabled": false,
+        "encoding": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "autoStartEnabled": false,
+    "restartAfterCrashEnabled": true,
+    "crashRestartDelaySeconds": 10,
+    "crashRestartCount": 3
+  },
+  "debug": {
+    "debugModeEnabled": false,
+    "debugLogEnabled": false,
+    "hostManagerSmartCoordinatorScoreOnlyEnabled": false,
+    "hostManagerSmartCoordinatorPerformanceLogEnabled": false
+  },
+  "publicService": {
+    "enabled": false,
+    "fileIndexEnabled": false,
+    "databaseServiceEnabled": false,
+    "aiModelCatalogEnabled": false
+  },
+  "aiModelService": {
+    "provider": "lm-studio",
+    "endpoint": "http://127.0.0.1:1234",
+    "autoStartEnabled": false
+  },
+  "update": {
+    "autoUpdateEnabled": false,
+    "checkIntervalHours": 6
+  },
+  "control": {
+    "reassertionIntervalSeconds": 120
+  },
+  "reports": {
+    "ruleOverrides": []
+  }
+}

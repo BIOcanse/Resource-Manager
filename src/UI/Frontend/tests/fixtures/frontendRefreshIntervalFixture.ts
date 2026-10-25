@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
+import { pointPreferences, resolveFrontendRefresh } from "../../src/preferences/frontendPreferences.ts";
 import type { AppPerformanceSettings, FrontendRefreshIntervals } from "../../src/types.ts";
 
-// Produced by AppFrontendRefreshIntervalsTests from the production settings DTO.
-export const frontendRefreshIntervals = JSON.parse(readFileSync(
-  new URL("./frontendRefreshIntervals.json", import.meta.url), "utf8")) as FrontendRefreshIntervals;
+// The frontend projection is the sole default source. No backend cadence DTO exists.
+export const frontendRefreshIntervals = resolveFrontendRefresh(pointPreferences().refresh);
 
 // Mock settings commits keep the producer fixture's catalogue and project each
 // explicit choice. This helper belongs to the HTTP fixture, never product code.

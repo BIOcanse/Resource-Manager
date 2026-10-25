@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "FreedomPoint first-party content in only the four listed original Resource Manager packages; excludes all third-party content",
+  "scope": "FreedomPoint first-party Apache-2.0 content in the listed original packages; third-party content retains its own terms",
   "licenseId": "Apache-2.0",
   "copyrightOwner": "BIOcanse",
   "ownerConfirmationDate": "2026-10-21",
@@ -30,18 +30,32 @@
       "sha256": "5B48217611A902F877E4CC3DCF7F8DC5642F4BD6C91A242D4B595012599296C1"
     },
     {
-      "id": "FreedomPoint.Core",
-      "version": "0.1.0-dev.41",
-      "fileName": "FreedomPoint.Core.0.1.0-dev.41.nupkg",
-      "bytes": 66136,
-      "sha256": "F45BCB8D7E6504FA6A63C0E4D4E3DEC17863AC48BB791CB64B60F0CAF4412477"
+      "version": "0.1.0-dev.45",
+      "fileName": "FreedomPoint.Compilation.0.1.0-dev.45.nupkg",
+      "bytes": 11932056,
+      "id": "FreedomPoint.Compilation",
+      "sha256": "8A1D3E842E81707919494ED7A2F839A297CE6B14B4FC7EF4B4AF783E0F1E7E4F"
     },
     {
+      "version": "0.1.0-dev.45",
+      "fileName": "FreedomPoint.Core.0.1.0-dev.45.nupkg",
+      "bytes": 85581,
+      "id": "FreedomPoint.Core",
+      "sha256": "1FC7FF3BDD6651F7E6F23544859BA5CFF4323777B351928B1B4F2F262456919C"
+    },
+    {
+      "version": "0.1.0-dev.45",
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.45.nupkg",
+      "bytes": 39972,
+      "id": "FreedomPoint.Generators",
+      "sha256": "0181B5473AC2F605498150F87204B5E836453F265A6AAF1DE1DB37790B0225D0"
+    },
+    {
+      "version": "0.1.0-dev.45",
+      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.45.nupkg",
+      "bytes": 12179503,
       "id": "FreedomPoint.SourceTracking",
-      "version": "0.1.0-dev.41",
-      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.41.nupkg",
-      "bytes": 12163693,
-      "sha256": "C682C0DD3EA68074CC32D51DCBEFA19942572D7B60CD5EC9432FC7305CF633C7"
+      "sha256": "A86C85883ACDB16810F74CFE7636332F55DAF4F2958864781201FE899837EEF5"
     }
   ],
   "firstPartyPublicLicensePending": false,

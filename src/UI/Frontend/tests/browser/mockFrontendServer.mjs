@@ -1,4 +1,3 @@
-import { mockFrontendRefreshIntervals } from "../fixtures/frontendRefreshIntervalFixture.ts";
 import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import { createServer } from "node:http";
@@ -134,7 +133,7 @@ let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
-  version: "1.0.30",
+  version: "1.0.32",
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
   appearance: {
@@ -158,35 +157,11 @@ let resourceSlotCapturedAt = now();
 
 const overlaySettings = new Map();
 function overlayDefaults(softwareId) {
-  return { softwareId, enabled: false, mode: "external",
-    metrics: ["target.fps", "target.onePercentLow", "target.frameTime", "target.cpu", "target.gpu"],
-    sizeMode: "absolutePixels", fontSizePx: 14, regionWidthRatio: 0.25,
-    regionHeightRatio: 0.2, anchor: "topLeft", marginPx: 12 };
+  return { softwareId, enabled: false, mode: "external" };
 }
 function normalizeOverlay(settings, softwareId) {
-  const defaults = overlayDefaults(softwareId);
-  const ratio = (value, fallback) => Number.isFinite(value) ? Math.max(0.05, Math.min(1, value)) : fallback;
-  const known = ["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow",
-    "target.cpu", "target.gpu", "target.memory", "target.vram"];
-  const metrics = [];
-  const seen = new Set();
-  for (const item of settings.metrics ?? defaults.metrics) {
-    if (typeof item !== "string" || !item.trim() || item.trim().length > 128) continue;
-    const id = known.find(id => id.toLowerCase() === item.trim().toLowerCase()) ?? item.trim();
-    if (seen.has(id.toLowerCase())) continue;
-    seen.add(id.toLowerCase());
-    metrics.push(id);
-    if (metrics.length === 64) break;
-  }
-  return { ...defaults, ...settings, softwareId, metrics,
-    mode: settings.mode?.toLowerCase() === "injected" ? "injected" : "external",
-    sizeMode: settings.sizeMode?.toLowerCase() === "windowratio" ? "windowRatio" : "absolutePixels",
-    fontSizePx: Math.max(8, Math.min(72, settings.fontSizePx ?? defaults.fontSizePx)),
-    marginPx: Math.max(0, Math.min(256, settings.marginPx ?? defaults.marginPx)),
-    regionWidthRatio: ratio(settings.regionWidthRatio, defaults.regionWidthRatio),
-    regionHeightRatio: ratio(settings.regionHeightRatio, defaults.regionHeightRatio),
-    anchor: ["topLeft", "topRight", "bottomLeft", "bottomRight"]
-      .find(value => value.toLowerCase() === settings.anchor?.toLowerCase()) ?? "topLeft" };
+  return { softwareId, enabled: settings.enabled === true,
+    mode: settings.mode?.toLowerCase() === "injected" ? "injected" : "external" };
 }
 const metricCatalog = [
   metric("cpu.usage", "处理器", "CPU", "%"),
@@ -197,13 +172,16 @@ const metricCatalog = [
 ];
 const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => {
   const settings = structuredClone(appSettings);
+  delete settings.appearance;
+  for (const key of ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]) {
+    delete settings.performance?.[key];
+  }
   if (scenario.gpuOverflowThresholdsMissing) {
     delete settings.performance?.gpuOverflowUsagePercent;
     delete settings.performance?.gpuOverflowDedicatedMemoryPercent;
   }
   return {
     settings,
-    frontendRefreshIntervals: mockFrontendRefreshIntervals(settings.performance),
     revision: scenario.settingsRevision,
     runtimeApplicationDisposition
   };
@@ -415,7 +393,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, smartCoordinatorStatus());
   }
   if (path === "/api/performance-overlay/metrics/catalog" && request.method === "GET") {
-    return json(response, 200, [...overlayDefaults("").metrics, "target.memory", "target.vram", "target.pointOnePercentLow"]
+    return json(response, 200, ["target.fps", "target.frameTime", "target.onePercentLow", "target.pointOnePercentLow", "target.cpu", "target.gpu", "target.memory", "target.vram"]
       .map(id => metric(id, id, "Target", id === "target.frameTime" ? "ms" : id.endsWith("cpu") || id.endsWith("gpu") ? "%" : "FPS")));
   }
   if (path === "/api/performance-overlay/default" && request.method === "GET") {
@@ -428,6 +406,9 @@ async function handleApi(request, response, url) {
     if (request.method === "GET") return json(response, 200, overlaySettings.get(id) ?? overlayDefaults(id));
     if (request.method === "PUT") {
       const settings = JSON.parse(await readBody(request));
+      if (Object.keys(settings).some(key => !["softwareId", "enabled", "mode"].includes(key))) {
+        return json(response, 400, { error: "Presentation does not belong to the backend." });
+      }
       await delay(normalizeDelay(scenario.overlaySaveDelayMs));
       if (scenario.overlaySaveFailure) return json(response, 503, { error: "fixture overlay save failure" });
       const saved = normalizeOverlay(settings, id);
@@ -574,6 +555,10 @@ async function handleApi(request, response, url) {
     }
     if (request.method === "PATCH") {
       const patch = JSON.parse(await readBody(request));
+      if (patch.changes?.appearance || ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
+        .some(key => key in (patch.changes?.performance ?? {}))) {
+        return json(response, 400, { error: "Presentation does not belong to the backend." });
+      }
       await delay(normalizeDelay(scenario.settingsPatchDelayMs));
       if (scenario.settingsConflict === true
         || patch.expectedRevision !== scenario.settingsRevision) {

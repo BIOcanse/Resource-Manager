@@ -144,7 +144,7 @@ try {
 
   for (const [name, journey] of journeys) {
     await resetFixture(baseUrl);
-    const context = await browser.newContext();
+    const context = await browser.newContext({ locale: "zh-CN" });
     const page = await context.newPage();
     try {
       const result = await journey(page, baseUrl);

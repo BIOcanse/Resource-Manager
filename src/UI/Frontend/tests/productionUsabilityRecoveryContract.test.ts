@@ -84,7 +84,7 @@ for (const control of [
 }
 assert.match(settingsWorkspace, /onBarColorModeChange=\{settings\.updateBarColorMode\}/);
 assert.match(settingsPage, /onBarColorModeChange=\{props\.onBarColorModeChange\}/);
-assert.match(appearanceSettings, /value=\{appearance\(\)\.barColorMode \?\? "type"\}/);
+assert.match(appearanceSettings, /value=\{appearance\(\)\.barColorMode \?\? pointPreferences\(\)\.appearance\.barColorMode!\}/);
 assert.match(appearanceSettings, /options=\{props\.text\.barColorOptions\}/);
 assert.match(appearanceSettings, /onChange=\{props\.onBarColorModeChange\}/);
 assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(settings\.settings\(\)\.appearance\?\.barColorMode\)/);

@@ -176,6 +176,8 @@ export default createSettingsLocale("de-DE", {
     }
   },
   "appearance": {
+    "cacheDescription": "Darstellung, Aktualisierungsintervalle und Overlay-Darstellung werden auf diesem Ger\u00E4t zwischengespeichert. Beim Leeren des Caches gelten wieder die Standardwerte.",
+    "resetCache": "Oberfl\u00E4cheneinstellungen zur\u00FCcksetzen",
     "uiStyleTitle": "Oberflächenstil",
     "uiStyleDescription": "Ändert Ecken, Linien, Schatten und Schriften der Bedienelemente; das Layout bleibt gleich. Jeder Stil hat eigene Farbschemata.",
     "themeTitle": "Farbschema",

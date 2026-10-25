@@ -1,4 +1,5 @@
 import type { AppResourceBarFrameRateMode } from "../types.ts";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 
 // 资源条动画帧率。设置里两项：resourceBarFrameRateMode（display = 跟随屏幕，custom = 自选）
 // 和 resourceBarFrameRate（custom 时的帧/秒）。范围和默认值与后端 AppSettingsDefaults 一致。
@@ -6,7 +7,7 @@ import type { AppResourceBarFrameRateMode } from "../types.ts";
 // 资源条画布读它决定过渡中哪些帧要画。只在资源条有过渡（正常动画）时起作用。
 export const resourceBarFrameRateMin = 10;
 export const resourceBarFrameRateMax = 240;
-export const resourceBarFrameRateDefault = 60;
+export const resourceBarFrameRateDefault = ResourceManager.FrontendPoints.BarFrameRate;
 
 /** 生效的帧率：display = 每个动画帧都画；数字 = 每秒最多画这么多帧。 */
 export type ResourceBarFrameRate = "display" | number;
@@ -15,7 +16,7 @@ export type ResourceBarFrameRate = "display" | number;
 const frameIntervalToleranceMs = 1;
 
 export function normalizeResourceBarFrameRateMode(mode?: string | null): AppResourceBarFrameRateMode {
-  return mode === "custom" ? "custom" : "display";
+  return mode === "custom" ? "custom" : ResourceManager.FrontendPoints.BarFrameRateMode;
 }
 
 /** 不是整数时用默认值，整数夹到 10–240。 */

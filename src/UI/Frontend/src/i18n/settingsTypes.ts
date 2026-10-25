@@ -100,6 +100,8 @@ export interface SettingsCopy {
     refreshCadenceItems: Record<AppLogicRefreshIntervalKey, { label: string; description: string }>;
   };
   appearance: {
+    cacheDescription: string;
+    resetCache: string;
     uiStyleTitle: string;
     uiStyleDescription: string;
     themeTitle: string;

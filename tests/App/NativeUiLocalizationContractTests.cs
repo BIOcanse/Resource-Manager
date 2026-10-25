@@ -130,11 +130,12 @@ public sealed class NativeUiLocalizationContractTests
             Assert.Equal(NativeLanguage.System, PersistedLanguageReader.Read(path));
 
             File.WriteAllText(path, "{ not json");
-            Assert.Equal(NativeLanguage.System, PersistedLanguageReader.Read(path));
+            Assert.Throws<JsonException>(() => PersistedLanguageReader.Read(path));
         }
         finally
         {
             File.Delete(path);
+            File.Delete(path + ".imported-v1");
         }
     }
 

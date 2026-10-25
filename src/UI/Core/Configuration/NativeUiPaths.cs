@@ -13,6 +13,9 @@ internal static class NativeUiPaths
 
     public static string WebViewUserRoot => Path.Combine(PackageRoot, "Config", "WebView2", CurrentUserSid);
 
+    public static string FrontendPreferencesPath =>
+        Path.Combine(WebViewUserRoot, "frontend-preferences.cache.json");
+
     private static string CurrentUserSid
     {
         get { using var identity = WindowsIdentity.GetCurrent(); return identity.User?.Value

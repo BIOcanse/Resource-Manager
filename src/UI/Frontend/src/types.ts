@@ -413,10 +413,13 @@ export interface ServiceRecoveryDiagnostics {
   readError: string | null;
 }
 
+export type BackendAppPerformanceSettings = Omit<AppPerformanceSettings,
+  "smartMonitoringMode" | "monitorRefreshIntervalMs" | "resourceTableRefreshIntervalMs" | "localSystemRefreshIntervalMs">;
+export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance"> & { performance?: BackendAppPerformanceSettings };
+
 export interface AppSettingsResult {
   serviceRecovery?: ServiceRecoveryDiagnostics;
-  frontendRefreshIntervals?: FrontendRefreshIntervals;
-  settings?: AppSettings;
+  settings?: BackendAppSettings;
   revision?: string;
   storagePath?: string;
   source?: {
@@ -914,6 +917,8 @@ export interface PerformanceOverlaySettings {
   anchor: "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
   marginPx: number;
 }
+
+export type BackendPerformanceOverlaySettings = Pick<PerformanceOverlaySettings, "softwareId" | "enabled" | "mode">;
 
 export interface GpuPlacementObservedProcessInput {
   processName: string;

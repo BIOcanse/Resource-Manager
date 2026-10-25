@@ -176,6 +176,8 @@ export default createSettingsLocale("es-ES", {
     }
   },
   "appearance": {
+    "cacheDescription": "La apariencia, los intervalos de actualizaci\u00F3n y la apariencia de la superposici\u00F3n se guardan en la cach\u00E9 de este dispositivo. Al borrar la cach\u00E9, se restablecen los valores predeterminados.",
+    "resetCache": "Restablecer preferencias de interfaz",
     "uiStyleTitle": "Estilo de la interfaz",
     "uiStyleDescription": "Cambia las esquinas, líneas, sombras y fuentes de los controles; el diseño no cambia. Cada estilo tiene sus propias paletas.",
     "themeTitle": "Paleta",

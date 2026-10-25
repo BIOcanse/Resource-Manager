@@ -13,7 +13,10 @@ assertHtmlShell(sourceHtml, "source");
 assertHtmlShell(managedHtml, "managed");
 
 const sourceModules = moduleScriptSources(sourceHtml);
-assert.deepEqual(sourceModules, ["/src/main.tsx"]);
+assert.deepEqual(sourceModules, ["/src/preferences/preboot.ts", "/src/main.tsx"]);
+const preboot = readFileSync(new URL("../src/preferences/preboot.ts", import.meta.url), "utf8");
+assert.match(preboot, /frontendPreferencesClient\(\)\.read\(\)/);
+assert.match(preboot, /document\.documentElement\.dataset\.theme\s*=\s*value\.appearance\.theme/);
 
 const managedModules = moduleScriptSources(managedHtml);
 assert.equal(managedModules.length, 1);
@@ -48,6 +51,7 @@ assert.doesNotMatch(
   /GPU0.{0,160}GPU1.{0,160}GPU2.{0,160}GPU3/s,
   "Built UI must not contain the former static exact-GPU option inventory.");
 assert.match(managedJavaScript, /processCapabilities/);
+assert.match(managedJavaScript, /\.dataset\.theme\s*=/, "Built frontend must publish cached/point appearance through the root theme owner.");
 assert.match(managedJavaScript, /targetInventory/);
 assert.match(managedJavaScript, /D3D11/);
 assert.match(
@@ -105,8 +109,6 @@ function assertHtmlShell(html: string, label: string) {
   assert.match(html, /<div\b[^>]*\bid=["']root["'][^>]*>\s*<\/div>/i);
   assert.equal((html.match(/<body\b/gi) ?? []).length, 1);
   assert.equal((html.match(/<\/body>/gi) ?? []).length, 1);
-  assert.match(html, /document\.documentElement\.dataset\.theme\s*=\s*theme/,
-    `${label} HTML must publish its preboot palette through the root theme owner.`);
   assert.doesNotMatch(html, /prebootTheme|data-preboot-theme/,
     `${label} HTML must not retain a second preboot theme attribute.`);
 }

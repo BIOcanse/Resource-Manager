@@ -65,33 +65,9 @@ public static class AppSettingsMigrator
                 ReadByte(root, "performance", "virtualMemoryAutomaticCleanupPercent", defaults.Performance.VirtualMemoryAutomaticCleanupPercent),
                 ReadByte(root, "performance", "physicalMemoryOptimizationTargetUsagePercent", defaults.Performance.PhysicalMemoryOptimizationTargetUsagePercent),
                 ReadByte(root, "performance", "virtualMemoryOptimizationTargetUsagePercent", defaults.Performance.VirtualMemoryOptimizationTargetUsagePercent),
-                ReadString(root, "performance", "smartMonitoringMode", defaults.Performance.SmartMonitoringMode),
-                ReadLogicRefreshInterval(
-                    root,
-                    "monitorRefreshIntervalMs",
-                    defaults.Performance.MonitorRefreshIntervalMs),
-                ReadLogicRefreshInterval(
-                    root,
-                    "resourceTableRefreshIntervalMs",
-                    defaults.Performance.ResourceTableRefreshIntervalMs),
-                ReadLogicRefreshInterval(
-                    root,
-                    "localSystemRefreshIntervalMs",
-                    defaults.Performance.LocalSystemRefreshIntervalMs),
                 ReadString(root, "performance", "realtimeActionBudgetMode", defaults.Performance.RealtimeActionBudgetMode),
                 ReadInt32(root, "performance", "realtimeActionBudgetCount", defaults.Performance.RealtimeActionBudgetCount),
                 ReadInt32(root, "performance", "realtimeActionBudgetPercent", defaults.Performance.RealtimeActionBudgetPercent)),
-            new AppAppearanceSettings(
-                ReadString(root, "appearance", "uiStyle", defaults.Appearance.UiStyle),
-                ReadString(root, "appearance", "theme", defaults.Appearance.Theme),
-                ReadString(root, "appearance", "animations", defaults.Appearance.Animations),
-                ReadString(root, "appearance", "resourceBarFrameRateMode", defaults.Appearance.ResourceBarFrameRateMode),
-                ReadInt32(root, "appearance", "resourceBarFrameRate", defaults.Appearance.ResourceBarFrameRate),
-                ReadString(root, "appearance", "barColorMode", defaults.Appearance.BarColorMode),
-                ReadString(root, "appearance", "fontSmoothing", defaults.Appearance.FontSmoothing),
-                ReadString(root, "appearance", "language", defaults.Appearance.Language),
-                ReadString(root, "appearance", "byteUnitMode", defaults.Appearance.ByteUnitMode),
-                ReadString(root, "appearance", "readingSourceMode", defaults.Appearance.ReadingSourceMode)),
             new AppSystemIntegrationSettings(
                 ReadBoolean(root, "systemIntegration", "taskManagerShortcutReplacementEnabled", defaults.SystemIntegration.TaskManagerShortcutReplacementEnabled),
                 ReadEditableHotkeys(root, defaults.SystemIntegration.Hotkeys),
@@ -153,26 +129,7 @@ public static class AppSettingsMigrator
         if (!root.TryGetProperty("version", out var version)
             || version.ValueKind != JsonValueKind.String
             || !string.Equals(version.GetString(), AppSettingsDefaults.CurrentVersion, StringComparison.Ordinal)
-            || !root.TryGetProperty("appearance", out var appearance)
-            || appearance.ValueKind != JsonValueKind.Object
-            || !appearance.TryGetProperty("uiStyle", out _)
-            || !appearance.TryGetProperty("animations", out _)
-            || appearance.TryGetProperty("resourceBarHardwareAccelerationEnabled", out _)
-            || appearance.TryGetProperty("resourceBarHardwareAccelerationMode", out _)
-            || !appearance.TryGetProperty("resourceBarFrameRateMode", out _)
-            || !appearance.TryGetProperty("resourceBarFrameRate", out _)
-            || !appearance.TryGetProperty("barColorMode", out _)
-            || !appearance.TryGetProperty("fontSmoothing", out _)
-            || !appearance.TryGetProperty("language", out var language)
-            || !appearance.TryGetProperty("readingSourceMode", out _)
-            || appearance.TryGetProperty("sceneReferenceWhiteLog2Q16", out _)
-            || appearance.TryGetProperty("outputDisplayProfiles", out _)
-            || appearance.TryGetProperty("outputMinimumNits", out _)
-            || appearance.TryGetProperty("outputMaximumNits", out _)
-            || appearance.TryGetProperty("outputColorGamut", out _)
-            || appearance.TryGetProperty("outputToneMappingCurve", out _)
-            || appearance.TryGetProperty("outputBackendId", out _)
-            || appearance.TryGetProperty("outputFormatId", out _)
+            || root.TryGetProperty("appearance", out _)
             || !root.TryGetProperty("systemIntegration", out var systemIntegration)
             || systemIntegration.ValueKind != JsonValueKind.Object
             || !systemIntegration.TryGetProperty("taskManagerShortcutReplacementEnabled", out _)
@@ -194,11 +151,6 @@ public static class AppSettingsMigrator
             return true;
         }
 
-        if (!IsSupportedLanguage(language))
-        {
-            return true;
-        }
-
         if (performance.TryGetProperty("smartMonitoringEnabled", out _)
             || performance.TryGetProperty("monitoringIdleSeconds", out _)
             || !performance.TryGetProperty("optimizationMode", out var optimizationMode)
@@ -209,14 +161,14 @@ public static class AppSettingsMigrator
             || !performance.TryGetProperty("gpuOverflowDedicatedMemoryPercent", out var gpuMemoryPercent)
             || performance.TryGetProperty("gpuPerformanceUseCases", out _)
             || performance.TryGetProperty("gpuPerformanceProfile", out _)
-            || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
+            || performance.TryGetProperty("smartMonitoringMode", out _)
             || performance.TryGetProperty("frontendHiddenRefreshMode", out _)
-            || !performance.TryGetProperty("monitorRefreshIntervalMs", out var monitorRefreshIntervalMs)
-            || !performance.TryGetProperty("resourceTableRefreshIntervalMs", out var resourceTableRefreshIntervalMs)
+            || performance.TryGetProperty("monitorRefreshIntervalMs", out _)
+            || performance.TryGetProperty("resourceTableRefreshIntervalMs", out _)
             || performance.TryGetProperty("managementRefreshIntervalMs", out _)
             || performance.TryGetProperty("discoveryRefreshIntervalMs", out _)
             || performance.TryGetProperty("optimizationRefreshIntervalMs", out _)
-            || !performance.TryGetProperty("localSystemRefreshIntervalMs", out var localSystemRefreshIntervalMs)
+            || performance.TryGetProperty("localSystemRefreshIntervalMs", out _)
             || !performance.TryGetProperty("realtimeActionBudgetMode", out var realtimeActionBudgetMode)
             || !performance.TryGetProperty("realtimeActionBudgetCount", out var realtimeActionBudgetCount)
             || !performance.TryGetProperty("realtimeActionBudgetPercent", out var realtimeActionBudgetPercent))
@@ -241,10 +193,6 @@ public static class AppSettingsMigrator
         return !IsSupportedOptimizationMode(optimizationMode)
             || !IsSupportedGpuOverflowPercent(gpuUsagePercent)
             || !IsSupportedGpuOverflowPercent(gpuMemoryPercent)
-            || !IsSupportedAdaptiveBooleanMode(smartMonitoringMode)
-            || !IsSupportedLogicRefreshInterval(monitorRefreshIntervalMs)
-            || !IsSupportedLogicRefreshInterval(resourceTableRefreshIntervalMs)
-            || !IsSupportedLogicRefreshInterval(localSystemRefreshIntervalMs)
             || realtimeActionBudgetMode.ValueKind != JsonValueKind.String
             || !AppRealtimeActionBudgetModes.IsSupported(realtimeActionBudgetMode.GetString())
             || !IsSupportedRealtimeActionBudgetCount(realtimeActionBudgetCount)
@@ -272,16 +220,6 @@ public static class AppSettingsMigrator
             && percent >= AppSettingsDefaults.MinRealtimeActionBudgetPercent
             && percent <= AppSettingsDefaults.MaxRealtimeActionBudgetPercent;
 
-    private static bool IsSupportedLanguage(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        return AppLanguageModes.Supported.Contains(value.GetString() ?? string.Empty);
-    }
-
     private static bool IsSupportedOptimizationMode(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.String)
@@ -292,90 +230,8 @@ public static class AppSettingsMigrator
         return AppOptimizationModes.IsSupported(value.GetString());
     }
 
-    private static bool IsSupportedAdaptiveBooleanMode(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        return value.GetString() is AppAdaptiveBooleanModes.Enabled
-            or AppAdaptiveBooleanModes.Disabled;
-    }
-
-    private static bool IsSupportedLogicRefreshInterval(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object
-            || !value.TryGetProperty("mode", out var mode)
-            || !value.TryGetProperty("preset", out var preset)
-            || !value.TryGetProperty("customValue", out var customValue))
-        {
-            return false;
-        }
-
-        return IsSupportedPresetNumericMode(mode)
-            && IsSupportedLogicRefreshIntervalPreset(preset)
-            && IsSupportedLogicRefreshIntervalMs(customValue);
-    }
-
-    private static bool IsSupportedPresetNumericMode(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        return value.GetString() is AppPresetNumericSettingModes.Aotu
-            or AppPresetNumericSettingModes.Preset
-            or AppPresetNumericSettingModes.Custom;
-    }
-
-    private static bool IsSupportedLogicRefreshIntervalPreset(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        return value.GetString() is AppLogicRefreshIntervalPresets.Responsive
-            or AppLogicRefreshIntervalPresets.Balanced
-            or AppLogicRefreshIntervalPresets.LowPower
-            or AppLogicRefreshIntervalPresets.Quiet;
-    }
-
-    private static bool IsSupportedLogicRefreshIntervalMs(JsonElement value)
-    {
-        return value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt32(out var milliseconds)
-            && milliseconds >= AppSettingsDefaults.MinLogicRefreshIntervalMs
-            && milliseconds <= AppSettingsDefaults.MaxLogicRefreshIntervalMs;
-    }
-
     private static bool IsSupportedGpuOverflowPercent(JsonElement value)
         => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var percent) && percent is >= 1 and <= 100;
-
-    private static AppPresetNumericSetting ReadLogicRefreshInterval(
-        JsonElement root,
-        string propertyName,
-        AppPresetNumericSetting fallback)
-    {
-        if (!root.TryGetProperty("performance", out var performance)
-            || performance.ValueKind != JsonValueKind.Object
-            || !performance.TryGetProperty(propertyName, out var value)
-            || value.ValueKind != JsonValueKind.Object)
-        {
-            return fallback;
-        }
-
-        var setting = new AppPresetNumericSetting(
-            ReadString(value, "mode", fallback.Mode),
-            ReadString(value, "preset", fallback.Preset),
-            ReadInt32(value, "customValue", fallback.CustomValue));
-        return AppSettingsNormalizer.NormalizeLogicRefreshInterval(
-            setting,
-            fallback.Preset,
-            fallback.CustomValue);
-    }
 
     private static IReadOnlyList<AppEditableHotkeySettings> ReadEditableHotkeys(
         JsonElement root,

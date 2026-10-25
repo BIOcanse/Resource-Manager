@@ -1,0 +1,111 @@
+using ResourceManager.Shared.Appearance;
+
+namespace ResourceManager.NativeUi.Preferences;
+
+// These are frontend cache data, not backend settings or new points per software.
+internal sealed record FrontendAppearance
+{
+    public string UiStyle { get; init; } = FrontendPoints.UiStyle;
+    public string Theme { get; init; } = FrontendPoints.Theme;
+    public string Animations { get; init; } = FrontendPoints.AnimationMode;
+    public string ResourceBarFrameRateMode { get; init; } = FrontendPoints.BarFrameRateMode;
+    public int ResourceBarFrameRate { get; init; } = FrontendPoints.BarFrameRate;
+    public string BarColorMode { get; init; } = FrontendPoints.BarColorMode;
+    public string FontSmoothing { get; init; } = FrontendPoints.FontSmoothing;
+    public string Language { get; init; } = FrontendPoints.Language;
+    public string ByteUnitMode { get; init; } = FrontendPoints.ByteUnitMode;
+    public string ReadingSourceMode { get; init; } = FrontendPoints.ReadingSourceMode;
+
+    internal void Validate()
+    {
+        var style = UiStyleCatalog.Normalize(UiStyle, Theme);
+        if (style.UiStyle != UiStyle || style.Theme != Theme
+            || Animations is not ("auto" or "none" or "normal" or "ultra")
+            || ResourceBarFrameRateMode is not ("display" or "custom")
+            || ResourceBarFrameRate is < 10 or > 240
+            || BarColorMode is not ("type" or "distinct")
+            || FontSmoothing is not ("auto" or "system" or "grayscale" or "disabled")
+            || string.IsNullOrWhiteSpace(Language) || Language.Length > 32
+            || ByteUnitMode is not ("native" or "binary" or "decimal")
+            || ReadingSourceMode is not ("preferred" or "all"))
+            throw new InvalidDataException("Invalid frontend appearance cache.");
+    }
+}
+
+internal sealed record FrontendRefreshSetting(string Mode, string Preset, int CustomValue)
+{
+    internal void Validate()
+    {
+        if (Mode is not ("aotu" or "preset" or "custom")
+            || Preset is not ("responsive" or "balanced" or "lowPower" or "quiet")
+            || CustomValue is < 500 or > 300000)
+            throw new InvalidDataException("Invalid frontend refresh cache.");
+    }
+}
+
+internal sealed record FrontendRefresh
+{
+    public string SmartMonitoringMode { get; init; } = FrontendPoints.SmartMonitoringMode;
+    public FrontendRefreshSetting Monitor { get; init; } = new(
+        FrontendPoints.Monitor.Mode, FrontendPoints.Monitor.Preset, FrontendPoints.Monitor.CustomValue);
+    public FrontendRefreshSetting ResourceTable { get; init; } = new(
+        FrontendPoints.ResourceTable.Mode, FrontendPoints.ResourceTable.Preset, FrontendPoints.ResourceTable.CustomValue);
+    public FrontendRefreshSetting LocalSystem { get; init; } = new(
+        FrontendPoints.LocalSystem.Mode, FrontendPoints.LocalSystem.Preset, FrontendPoints.LocalSystem.CustomValue);
+
+    internal void Validate()
+    {
+        if (SmartMonitoringMode is not ("enabled" or "disabled")
+            || Monitor is null || ResourceTable is null || LocalSystem is null)
+            throw new InvalidDataException("Invalid frontend refresh cache.");
+        Monitor.Validate();
+        ResourceTable.Validate();
+        LocalSystem.Validate();
+    }
+}
+
+internal sealed record FrontendOverlayPresentation
+{
+    public IReadOnlyList<string> Metrics { get; init; } = FrontendPoints.MetricOrder;
+    public string SizeMode { get; init; } = FrontendPoints.SizeMode;
+    public int FontSizePx { get; init; } = FrontendPoints.FontSizePx;
+    public double RegionWidthRatio { get; init; } = FrontendPoints.RegionWidthRatio;
+    public double RegionHeightRatio { get; init; } = FrontendPoints.RegionHeightRatio;
+    public string Anchor { get; init; } = FrontendPoints.Anchor;
+    public int MarginPx { get; init; } = FrontendPoints.MarginPx;
+
+    internal void Validate()
+    {
+        if (Metrics is null || Metrics.Count > 64
+            || Metrics.Any(static id => string.IsNullOrWhiteSpace(id) || id.Length > 128)
+            || Metrics.Distinct(StringComparer.OrdinalIgnoreCase).Count() != Metrics.Count
+            || SizeMode is not ("absolutePixels" or "windowRatio")
+            || FontSizePx is < 8 or > 72 || MarginPx is < 0 or > 256
+            || !double.IsFinite(RegionWidthRatio) || RegionWidthRatio is < 0.05 or > 1
+            || !double.IsFinite(RegionHeightRatio) || RegionHeightRatio is < 0.05 or > 1
+            || Anchor is not ("topLeft" or "topRight" or "bottomLeft" or "bottomRight"))
+            throw new InvalidDataException("Invalid frontend overlay cache.");
+    }
+}
+
+internal sealed record FrontendPreferences
+{
+    public FrontendAppearance Appearance { get; init; } = new();
+    public FrontendRefresh Refresh { get; init; } = new();
+    public IReadOnlyDictionary<string, FrontendOverlayPresentation> Overlays { get; init; } =
+        new Dictionary<string, FrontendOverlayPresentation>(StringComparer.OrdinalIgnoreCase);
+
+    internal void Validate()
+    {
+        if (Appearance is null || Refresh is null || Overlays is null)
+            throw new InvalidDataException("Invalid frontend preferences cache.");
+        Appearance.Validate();
+        Refresh.Validate();
+        foreach (var (id, overlay) in Overlays)
+        {
+            if (string.IsNullOrWhiteSpace(id) || overlay is null)
+                throw new InvalidDataException("Invalid frontend overlay cache key.");
+            overlay.Validate();
+        }
+    }
+}

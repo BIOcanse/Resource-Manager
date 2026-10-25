@@ -46,6 +46,7 @@ interface SettingsPageProps {
   onReapply: () => void;
   onSave: () => void;
   onRestoreDefaults: () => void;
+  onResetFrontendPreferences: () => void;
   onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
@@ -265,6 +266,7 @@ export function SettingsPage(props: SettingsPageProps) {
           </Show>
           <Show when={props.activeSection === "appearance"}>
             <AppearanceSettingsSection
+              onResetPreferences={props.onResetFrontendPreferences}
               settings={props.settings.appearance}
               text={text()}
               onUiStyleChange={props.onUiStyleChange}

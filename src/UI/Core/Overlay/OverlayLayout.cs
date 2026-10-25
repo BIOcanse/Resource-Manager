@@ -1,4 +1,5 @@
 using System.Drawing;
+using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Overlay;
 
@@ -11,7 +12,7 @@ internal static class OverlayLayout
     private const int Padding = 6;
 
     public static OverlayLayoutResult Calculate(
-        Size target, OverlaySettings settings, IReadOnlyList<string> lines,
+        Size target, FrontendOverlayPresentation settings, IReadOnlyList<string> lines,
         Func<string, int, SizeF> measure)
     {
         if (target.Width <= 0 || target.Height <= 0 || lines.Count == 0)

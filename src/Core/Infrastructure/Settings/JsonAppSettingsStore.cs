@@ -192,6 +192,8 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
 
         if (image.RequiresRewrite)
         {
+            PresentationPreferenceRemoval.PreserveLegacyImage(
+                settingsPath, sourceBytes, PresentationPreferenceRemoval.HasAppFields);
             _ = await SaveCoreAsync(
                 image.Settings,
                 validateBeforeCommit: null,

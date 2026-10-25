@@ -175,6 +175,8 @@ export default createSettingsLocale("zh-TW", {
     }
   },
   "appearance": {
+    "cacheDescription": "\u5916\u89C0\u3001\u91CD\u65B0\u6574\u7406\u9593\u9694\u8207\u6D6E\u7A97\u5916\u89C0\u5FEB\u53D6\u65BC\u6B64\u88DD\u7F6E\uFF1B\u6E05\u9664\u5FEB\u53D6\u5F8C\u6703\u6062\u5FA9\u9810\u8A2D\u503C\u3002",
+    "resetCache": "\u91CD\u8A2D\u4ECB\u9762\u504F\u597D",
     "uiStyleTitle": "介面風格",
     "uiStyleDescription": "改變控制項的圓角、線條、陰影和字型，版面不變。每種風格有自己的配色。",
     "themeTitle": "配色",

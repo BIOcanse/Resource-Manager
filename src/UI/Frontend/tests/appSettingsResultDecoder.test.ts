@@ -1,4 +1,3 @@
-import { frontendRefreshIntervals } from "./fixtures/frontendRefreshIntervalFixture.ts";
 import assert from "node:assert/strict";
 import {
   appSettingsResultDecoder
@@ -8,11 +7,10 @@ import {
 } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 
 const source = {
-  frontendRefreshIntervals,
   settings: {
     version: "1.0.23",
-    appearance: {
-      theme: "system",
+    debug: {
+      debugLogEnabled: false,
       futureNestedValue: { enabled: true }
     },
     futureSection: { retained: true }
@@ -35,14 +33,14 @@ assert.deepEqual(
   { retained: true });
 assert.equal(Object.isFrozen(decoded), true);
 assert.equal(Object.isFrozen(decoded.settings), true);
-assert.equal(Object.isFrozen(decoded.settings.appearance), true);
+assert.equal(Object.isFrozen(decoded.settings.debug), true);
 assert.equal(Object.isFrozen(decoded.runtimeCapabilityConstrainedPaths), true);
 
 for (const [value, expectedPath] of [
   [{ ...source, settings: null }, "$.settings"],
   [{ ...source, settings: { ...source.settings, version: "" } }, "$.settings.version"],
   [{ ...source, revision: "" }, "$.revision"],
-  [{ ...source, settings: { ...source.settings, appearance: [] } }, "$.settings.appearance"],
+  [{ ...source, settings: { ...source.settings, appearance: [] } }, "$.settings"],
   [{ ...source, runtimeApplicationDisposition: "maybe" }, "$.runtimeApplicationDisposition"],
   [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 0 } } }, "$.settings.control.reassertionIntervalSeconds"],
   [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 86401 } } }, "$.settings.control.reassertionIntervalSeconds"],
@@ -58,10 +56,9 @@ assert.deepEqual(appSettingsResultDecoder.decode({ ...source, settings: { ...sou
   control: { reassertionIntervalSeconds: 337 } } }).settings.control,
   { reassertionIntervalSeconds: 337 });
 
-assert.deepEqual(decoded.frontendRefreshIntervals, frontendRefreshIntervals);
-assert.equal(Object.isFrozen(decoded.frontendRefreshIntervals.foreground), true);
-for (const [value, path] of [
-  [{ ...source, frontendRefreshIntervals: undefined }, "$.frontendRefreshIntervals"],
-  [{ ...source, frontendRefreshIntervals: { ...frontendRefreshIntervals, foreground: { ...frontendRefreshIntervals.foreground, monitor: 0 } } }, "$.frontendRefreshIntervals.foreground.monitor"]
-] as const) assert.throws(() => appSettingsResultDecoder.decode(value),
-  (error: unknown) => error instanceof ResponseDecodeError && error.path === path);
+assert.equal("frontendRefreshIntervals" in decoded, false);
+for (const value of [
+  { ...source, frontendRefreshIntervals: {} },
+  { ...source, settings: { ...source.settings, appearance: { theme: "dark" } } },
+  { ...source, settings: { ...source.settings, performance: { smartMonitoringMode: "enabled" } } }
+]) assert.throws(() => appSettingsResultDecoder.decode(value), ResponseDecodeError);

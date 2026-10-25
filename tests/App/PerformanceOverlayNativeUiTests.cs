@@ -4,14 +4,13 @@ using System.Windows.Forms;
 using System.Text.Json;
 using ResourceManager.Shared.Localization;
 using ResourceManager.NativeUi.Overlay;
+using ResourceManager.NativeUi.Preferences;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class PerformanceOverlayNativeUiTests
 {
-    private static readonly OverlaySettings Absolute = new(
-        "test", true, "external", ["target.fps"], "absolutePixels",
-        16, 0.25, 0.2, "topLeft", 12);
+    private static readonly FrontendOverlayPresentation Absolute = new() { FontSizePx = 16, Metrics = ["target.fps"] };
 
     private static SizeF Measure(string line, int fontSize) =>
         new(line.Length * fontSize * 0.55f, fontSize * 1.3f);
@@ -64,8 +63,8 @@ public sealed class PerformanceOverlayNativeUiTests
     [Fact]
     public void RendererOutputsGrayscalePremultipliedBgra()
     {
-        var target = new OverlayTarget("test", 42, 1337, Absolute, [Metric()]);
-        var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(target, new Size(300, 120)));
+        var target = new OverlayTarget("test", 42, 1337, new("test", true, "external"), [Metric()]);
+        var image = Assert.IsType<OverlayImage>(OverlayBitmapRenderer.Render(target, new Size(300, 120), Absolute));
         Assert.Equal(300 * 120 * 4, image.Pixels.Length);
         var translucent = false;
         for (var offset = 0; offset < image.Pixels.Length; offset += 4)
@@ -111,7 +110,7 @@ public sealed class PerformanceOverlayNativeUiTests
         using var process = Process.GetCurrentProcess();
         var id = checked((ulong)process.StartTime.ToFileTimeUtc());
         var target = new OverlayTarget("test", process.Id, id,
-            Absolute, [Metric()]);
+            new("test", true, "external"), [Metric()]);
         using var dispatcher = new Control();
         using var coordinator = new PerformanceOverlayCoordinator(dispatcher);
         coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
@@ -140,9 +139,7 @@ public sealed class PerformanceOverlayNativeUiTests
         const string json = """
             {"version":2,"targets":[{"softwareId":"test",
               "processId":42,"processStartKey":1337,
-              "settings":{"softwareId":"test","enabled":true,"mode":"external",
-                "metrics":["target.fps"],"sizeMode":"absolutePixels","fontSizePx":14,
-                "regionWidthRatio":0.25,"regionHeightRatio":0.2,"anchor":"topLeft","marginPx":12},
+              "settings":{"softwareId":"test","enabled":true,"mode":"external"},
               "metrics":[{"metricId":"target.fps","value":100,"unit":"FPS",
                 "state":"current","reason":null}]}]}
             """;

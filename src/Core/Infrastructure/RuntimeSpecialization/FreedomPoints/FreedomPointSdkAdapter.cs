@@ -70,8 +70,9 @@ internal sealed class FreedomPointSdkAdapter
         byAddress = paths.ToFrozenDictionary(StringComparer.Ordinal);
         try
         {
-            Registry = new(byPath.Values.Select(point => ToDeclaration(point,
-                point.Status == "pending" ? [] : (generationTargets ?? HostTargets)(point))));
+            Registry = PointRegistry.Declare(byPath.Values.Select(point => ToDeclaration(point,
+                point.Status == "pending" ? [] : (generationTargets ?? HostTargets)(point))),
+                new DeclarationIdentity("resource-manager", [new DeclarationModule("backend", 1, 1)]));
         }
         catch (FreedomPointException error) { throw new InvalidDataException(error.Message, error); }
         Declarations = Declarations with { SdkContractFingerprint = Registry.ContractFingerprint };

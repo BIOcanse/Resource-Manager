@@ -4,6 +4,7 @@ param(
     [string]$RetentionRoot,
     [string[]]$References = @(),
     [string[]]$ReferenceRoots = @(),
+    [string[]]$AdditionalBuildProperties = @(),
     [switch]$CreatePartition,
     [switch]$RefreshPartitionContract
 )
@@ -48,8 +49,8 @@ try {
         '-p:SkipAdlxBridgeBuild=true','-p:SkipNativeCoreBuild=true',
         '-p:SkipGpuWindowActionNativeBuild=true','-p:SkipGpuPlacementExternalNativeBuild=true',
         '-p:SkipClientAppBuild=true',('-p:ArtifactsPath='+$taskArtifacts),
-        ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $PSScriptRoot 'FreedomPointCompilerCapture.targets')))
-    & dotnet build $taskProject @taskBuildProperties --verbosity minimal
+        ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $PSScriptRoot 'FreedomPointCompilerCapture.targets'))) + $AdditionalBuildProperties
+    & dotnet build $taskProject @taskBuildProperties --disable-build-servers --verbosity minimal
     if ($LASTEXITCODE -ne 0) {
         [IO.File]::WriteAllText($taskStatusFile, '{"passed":false,"error":"consumer_build_failed"}', [Text.UTF8Encoding]::new($false))
         $taskExitCode = $LASTEXITCODE

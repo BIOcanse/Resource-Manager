@@ -1,0 +1,18 @@
+{"version":1,"software":[{
+  "softwareId": "legacy-game",
+  "enabled": false,
+  "mode": "external",
+  "metrics": [
+    "target.fps",
+    "target.onePercentLow",
+    "target.frameTime",
+    "target.cpu",
+    "target.gpu"
+  ],
+  "sizeMode": "absolutePixels",
+  "fontSizePx": 14,
+  "regionWidthRatio": 0.25,
+  "regionHeightRatio": 0.2,
+  "anchor": "topLeft",
+  "marginPx": 12
+}]}

@@ -100,6 +100,8 @@ export const loadingSettingsText: SettingsTextBundle = {
     }
   },
   appearance: {
+    cacheDescription: "",
+    resetCache: "",
     uiStyleTitle: "",
     uiStyleDescription: "",
     themeTitle: "",

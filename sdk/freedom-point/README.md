@@ -2,22 +2,24 @@
 
 ## 适用包
 
-本目录的许可附件仅对应下列四个原始包。`materials.json` 记录包长度、SHA-256、原 NuSpec、依赖和第三方 DLL 摘要；接入仓库内 feed 时逐项核对，不重新打包。
+本目录消费下列正式包，原始字节不重打包。`materials.json` 记录长度、SHA-256、原 NuSpec 摘要、依赖及交付回执；旧 dev.41 原包保留为历史输入，当前 RM pin 为 dev.45。
 
 | 版本 | 包 | 实际用途 |
 |---|---|---|
-| 0.1.0-dev.41 | FreedomPoint.Core | Resource Manager 产品依赖 |
-| 0.1.0-dev.41 | FreedomPoint.SourceTracking | `src/Development/FreedomPointCheck` 开发期检查 |
+| 0.1.0-dev.45 | FreedomPoint.Core | 后端与 native 前端产品依赖 |
+| 0.1.0-dev.45 | FreedomPoint.SourceTracking | 后端、前端开发期源码检查 |
+| 0.1.0-dev.45 | FreedomPoint.Generators | 前端 TS 与 C# 正式投影 |
+| 0.1.0-dev.45 | FreedomPoint.Compilation | SDK BuildCheckTool 的正式依赖 |
 | 0.1.0-dev.39 | FreedomPoint.Core | Ledger dev.2 构建时依赖 |
 | 0.1.0-dev.39 | FreedomPoint.Generators | Ledger dev.2 构建时生成器；依赖同版 Core |
 
-已核对 SourceTracking dev.41 的真实 NuSpec 和程序集引用：它依赖同版 Core，**不依赖 Compilation 或 Generators dev.41**，因此这两包不属于本次接入范围。SourceTracking 自带两份 Roslyn DLL，需连同第三方文本保留；该检查工具的编译器库不因此进入 Resource Manager 产品运行依赖。
+工具闭包在 `tools/sdk45`；主 DLL SHA-256 为 `88A34E51D6EBB7E87698B6942EB7BA9F8EC27DD02813BF7A57355DA6FBFA2926`。SourceTracking 的 Roslyn 与工具依赖不进入产品运行图。Ledger 自身的 dev.39 pin 不变。
 
-包进入仓库 feed 及构建路径调整由 RM 主线程负责；此许可材料交付不表示全新克隆构建已经验证。包字节、版本与现用 pin 不变，提交由仓库维护者处理。
+后端适配器独立 `Declare`，前端构建工具调用 `CreateExtensionLayout` / `Extend`，不插入后端先序遍历。后端源码检查不携带前端声明。前端的唯一默认值来源是 `src/UI/Frontend/preferences.points.json`；`scripts/build/Generate-FrontendPreferences.ps1` 用 SDK 正式投影生成 TS/native C#。构建前设置 `RM_LEDGER_WORK_ROOT` 为经维护入口登记且仍 running 的工作目录；native 构建使用同一 `ResourceManagerLedgerWorkRoot`。值文件不入库；structure 文件保留稳定身份。
 
 ## 第一方许可
 
-权利人 BIOcanse 于 2026-10-21 确认 FreedomPoint 第一方代码采用 **Apache-2.0**。本目录 `LICENSE` 是完整文本，`NOTICE` 是归属告示，`authorization.json` 将授权绑定到上述四个包。分发原包时同时提供这些附件。
+权利人 BIOcanse 确认 FreedomPoint 第一方代码采用 **Apache-2.0**。dev.45 的真实 NuSpec 也声明 Apache-2.0 与 BIOcanse；本目录 `LICENSE`、`NOTICE` 和包内原始许可文本一并保留。`authorization.json` 绑定实际包摘要。
 
 旧包 NuSpec 没有许可字段这一事实保持；补充附件不改写旧包、不重发版本。Apache-2.0 只适用于 FreedomPoint 第一方内容，不将 Roslyn 或其他第三方内容重新许可。
 
@@ -32,3 +34,5 @@ Roslyn ProductVersion 为 `5.6.0-2.26230.102+caa81fa4971f74880cdab61990cb1b11420
 ## 开发期检查
 
 `scripts/validation/Test-FreedomPointSources.ps1` 从真实托管消费端取得编译上下文，导出视图和源码绑定；缺少生产消费或生成位置失效应返回错误。自定义分组保存在 `backend.groups.json`，SDK 身份、绑定和分组引用使用 PointPath。既有编译器地址字符串在原消费方替换前继续作为宿主别名。
+
+扩展检查入口为 `scripts/validation/Test-FrontendPreferenceSources.ps1 -WorkRoot <已登记运行目录> -LedgerWorkRoot <账本工作根>`。它先生成，再编译实际 native-shell，捕获实际 TypeScript 程序（含 node_modules junction 的物理依赖），调用 SDK 的源码分析与合同检查，要求 26 个自有点均有真实读取且零问题。可用 `-BuildProperties` 明确指定现有 NuGet 缓存；离线不另造依赖声明。

@@ -77,23 +77,6 @@ public sealed class AppSettingsNormalizerTests
     }
 
     [Fact]
-    public void FontSmoothingDisabled_IsPreserved()
-    {
-        var defaults = AppSettingsDefaults.Create();
-        var settings = defaults with
-        {
-            Appearance = defaults.Appearance with
-            {
-                FontSmoothing = AppFontSmoothingModes.Disabled
-            }
-        };
-
-        var normalized = AppSettingsNormalizer.Normalize(settings);
-
-        Assert.Equal(AppFontSmoothingModes.Disabled, normalized.Appearance.FontSmoothing);
-    }
-
-    [Fact]
     public void AutomaticCleanupLines_AreNormalizedIndependentlyFromGpuOverflow()
     {
         var defaults = AppSettingsDefaults.Create();

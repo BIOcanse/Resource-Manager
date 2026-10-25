@@ -36,9 +36,9 @@
   },
   {
     "name": "FreedomPoint.Core",
-    "version": "0.1.0-dev.41",
-    "license": "Not declared in package metadata",
-    "authors": "FreedomPoint.Core",
+    "version": "0.1.0-dev.45",
+    "license": "Apache-2.0",
+    "authors": "BIOcanse",
     "kind": "managed dependency"
   },
   {
