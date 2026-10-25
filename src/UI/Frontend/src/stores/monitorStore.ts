@@ -309,8 +309,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
     intervalMs: options.resourceTableIntervalMs()
   }));
-  const snapshot = createMemo(() => metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
-    ? metricSourceSnapshot()?.source.data ?? null : null);
+  // 指标查询只含可见卡片的读数，滚动、换页重挂载时会随可见性变化；换了查询不清掉已接受的读数，
+  // 卡片按指标 ID 取值，沿用到新查询的帧到来为止（与下方表格事实同一口径）。
+  const snapshot = createMemo((previous: MetricSnapshot | null) =>
+    metricSourceSnapshot()?.source.data ?? previous, null);
   const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);

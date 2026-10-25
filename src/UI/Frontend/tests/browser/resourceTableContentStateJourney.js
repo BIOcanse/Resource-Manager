@@ -48,7 +48,10 @@ export default async function resourceTableContentStateJourney(
       background: getComputedStyle(cell).backgroundImage,
       title: cell.title
     })));
-  if (heat.length !== 2 || heat.some((cell) => cell.width !== "100%")) {
+  // 默认软件列来自前端布局点（preferences.points.json 的 softwareColumns）：无 GPU 时数值列为 CPU、内存、磁盘、网络。
+  const numericTexts = ["12.0%", "512 MiB", "12 B/s", "12.0 bps"];
+  if (heat.length !== numericTexts.length || heat.some((cell) => cell.width !== "100%")
+      || heat.some((cell, index) => !(index === 1 ? /^512 (?:MB|MiB)$/.test(cell.text) : cell.text === numericTexts[index]))) {
     throw new Error(`Single-row numeric columns must each fill their column: ${JSON.stringify(heat)}`);
   }
   const memory = heat.find(cell => cell.title.includes("共享分摊"));
@@ -56,7 +59,8 @@ export default async function resourceTableContentStateJourney(
       !/^512 (?:MB|MiB)$/.test(memory.text) || !/共享分摊 128(?:\.0)? (?:MB|MiB)/.test(memory.title))
     throw new Error(`Shared bytes must be a yellow quarter with exact tooltip: ${JSON.stringify(heat)}`);
   const summary = await page.locator('.resource-table-row.summary-row[aria-hidden="false"] .value-cell').allTextContents();
-  if (summary.length !== 2 || !summary[0].includes("12.0%") || !/^512 (?:MB|MiB)$/.test(summary[1])) {
+  if (summary.length !== numericTexts.length || !summary[0].includes("12.0%") || !/^512 (?:MB|MiB)$/.test(summary[1])
+      || summary[2] !== numericTexts[2] || summary[3] !== numericTexts[3]) {
     throw new Error(`Frontend summary did not retain authoritative totals: ${JSON.stringify(summary)}`);
   }
   await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
