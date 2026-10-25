@@ -671,7 +671,8 @@ function VirtualResourceTable(props: {
   return (
     <div
       class="resource-table-frame"
-      role="table"
+      // 软件行可以展开出进程行，所以是树形表格：行带层级和展开状态，焦点按行移动（方向键、Home/End、左右展开收起）。
+      role="treegrid"
       aria-label={uiText.resourceTable.panel}
       aria-rowcount={rows().length + 1}
       aria-colcount={columns().length}
@@ -875,6 +876,7 @@ function ResourceTableRowSlot(props: {
       data-resource-row-id={row()?.id}
       aria-rowindex={props.rowIndex() + 2}
       aria-label={rowName(row())}
+      aria-level={hasRow() ? (row()?.depth ?? 0) + 1 : undefined}
       aria-expanded={isExpandable()
         ? props.expandedSoftwareIds()[row()?.softwareId ?? ""] === true
           ? "true"
@@ -1119,7 +1121,7 @@ function ResourceTableCell(props: {
       <div
         class="resource-table-cell name-cell"
         classList={{ indented: row()?.depth === 1 }}
-        role="cell"
+        role="gridcell"
         aria-colindex={props.columnIndex + 1}
       >
         <Show
@@ -1168,7 +1170,7 @@ function ResourceTableCell(props: {
   if (props.column.id === "status") {
     const status = () => rowStatus(row());
     return (
-      <div class="resource-table-cell status-cell" role="cell" aria-colindex={props.columnIndex + 1} title={status()}>
+      <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={status()}>
         {status()}
       </div>
     );
@@ -1176,7 +1178,7 @@ function ResourceTableCell(props: {
 
   if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
     return (
-      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={resourceTableCellText(value(), props.column.id)}>
+      <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={resourceTableCellText(value(), props.column.id)}>
         {resourceTableCellText(value(), props.column.id)}
       </div>
     );
@@ -1185,7 +1187,7 @@ function ResourceTableCell(props: {
   return (
     <div
       class="resource-table-cell value-cell"
-      role="cell"
+      role="gridcell"
       aria-colindex={props.columnIndex + 1}
       classList={{ unavailable: value()?.availability === "Unavailable" }}
       style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}

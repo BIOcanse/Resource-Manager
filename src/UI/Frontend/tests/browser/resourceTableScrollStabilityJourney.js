@@ -107,6 +107,36 @@ export default async function resourceTableScrollStabilityJourney(
   }
   await page.locator('.resource-table-row.software-row[aria-hidden="false"] .resource-row-expander').first().click();
   await page.locator('.resource-table-row.process-row[aria-hidden="false"]').first().waitFor({ state: "visible" });
+  // 可展开的软件行意味着树形表格：表格是 treegrid，软件行第 1 层带展开状态，展开出的进程行第 2 层，单元格是 gridcell。
+  const treeSemantics = await page.evaluate(() => {
+    const frame = document.querySelector(".resource-table-frame");
+    const expanded = document.querySelector('.resource-table-row.software-row[aria-hidden="false"][aria-expanded="true"]');
+    const process = document.querySelector('.resource-table-row.process-row[aria-hidden="false"]');
+    return {
+      role: frame?.getAttribute("role"),
+      softwareLevel: expanded?.getAttribute("aria-level"),
+      processLevel: process?.getAttribute("aria-level"),
+      processExpanded: process?.hasAttribute("aria-expanded"),
+      plainCells: frame?.querySelectorAll("[role='cell']").length,
+      gridCells: expanded?.querySelectorAll("[role='gridcell']").length
+    };
+  });
+  if (treeSemantics.role !== "treegrid" || treeSemantics.softwareLevel !== "1" || treeSemantics.processLevel !== "2"
+    || treeSemantics.processExpanded || treeSemantics.plainCells !== 0 || !(treeSemantics.gridCells > 0)) {
+    throw new Error(`Resource table tree semantics: ${JSON.stringify(treeSemantics)}`);
+  }
+  // 键盘行为不变：左键收起、右键展开当前软件行。
+  const expandedName = await page.evaluate(() => {
+    const row = document.querySelector('.resource-table-row.software-row[aria-hidden="false"][aria-expanded="true"]');
+    row?.focus();
+    return row?.getAttribute("aria-label");
+  });
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForFunction(name => [...document.querySelectorAll(".resource-table-row.software-row")]
+    .some(row => row.getAttribute("aria-label") === name && row.getAttribute("aria-expanded") === "false"), expandedName);
+  await page.keyboard.press("ArrowRight");
+  await page.waitForFunction(name => [...document.querySelectorAll(".resource-table-row.software-row")]
+    .some(row => row.getAttribute("aria-label") === name && row.getAttribute("aria-expanded") === "true"), expandedName);
   assertSameFactsLease("Expanding a software group");
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" }).fill("no-such-resource");
   await page.locator(".resource-table-panel .content-state").waitFor({ state: "visible" });

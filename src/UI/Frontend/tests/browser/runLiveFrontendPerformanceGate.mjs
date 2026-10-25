@@ -658,11 +658,11 @@ async function activateResourceMonitor(page) {
   await bars.scrollIntoViewIfNeeded();
   await bars.waitFor({ state: "visible", timeout: 15_000 });
 
-  const list = page.locator(".resource-table-frame[role='table']");
+  const list = page.locator(".resource-table-frame[role='treegrid']");
   await list.scrollIntoViewIfNeeded();
   await list.waitFor({ state: "visible", timeout: 15_000 });
   await page.waitForFunction(() => document.querySelectorAll(
-    ".resource-table-frame[role='table'] .resource-table-row:not(.summary-row)").length > 0,
+    ".resource-table-frame[role='treegrid'] .resource-table-row:not(.summary-row)").length > 0,
   null, { timeout: 15_000 });
 }
 

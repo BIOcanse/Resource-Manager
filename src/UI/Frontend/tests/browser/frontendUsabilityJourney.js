@@ -70,7 +70,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await rowAction.evaluate((element) => {
     window.__resourceManagerOriginalMenuNodes = {
       opener: element,
-      cell: element.closest("[role='cell']"),
+      cell: element.closest("[role='gridcell']"),
       row: element.closest("[role='row']"),
       frame: element.closest(".resource-table-frame"),
       panel: element.closest(".resource-table-panel"),
@@ -316,7 +316,7 @@ async function collectFocusRestoreDiagnostic(page, focusKey) {
                 const current = name === "opener"
                   ? opener
                   : opener.closest(name === "cell"
-                    ? "[role='cell']"
+                    ? "[role='gridcell']"
                     : name === "row"
                       ? "[role='row']"
                       : name === "frame"

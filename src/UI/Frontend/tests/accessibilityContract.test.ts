@@ -99,11 +99,13 @@ assert.match(layout, /\.app-shell\s*\{[\s\S]*?overflow-x:\s*hidden;/);
 assert.match(layout, /\.app-shell\s*>\s*\*\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
 
 for (const semanticMarker of [
-  'role="table"',
+  'role="treegrid"',
   'role="rowgroup"',
   'role="row"',
   'role="columnheader"',
-  'role="cell"',
+  'role="gridcell"',
+  "aria-level=",
+  "aria-expanded=",
   "aria-rowcount=",
   "aria-rowindex=",
   "aria-colcount=",
@@ -112,7 +114,8 @@ for (const semanticMarker of [
 ]) {
   assert.ok(resourceTable.includes(semanticMarker), `Missing resource table marker: ${semanticMarker}`);
 }
-assert.doesNotMatch(resourceTable, /role="grid"|role="gridcell"/);
+// 行可以展开（软件行下挂进程行），table 的行不允许 aria-expanded / aria-level，所以整张表是 treegrid。
+assert.doesNotMatch(resourceTable, /role="table"|role="cell"|role="grid"(?!cell)/);
 assert.match(resourceTable, /tabIndex=\{hasRow\(\) && row\(\)\?\.id === props\.activeRowId\(\) \? 0 : -1\}/);
 assert.match(resourceTable, /event\.key === "ArrowUp"/);
 assert.match(resourceTable, /event\.key === "ArrowDown"/);

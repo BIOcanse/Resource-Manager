@@ -3,7 +3,7 @@ export default async function usabilityProbe(page) {
     const pageId = document.body.dataset.page ?? "unknown";
     const shell = document.querySelector(".app-shell");
     const activePage = document.querySelector(".active-page");
-    const table = document.querySelector(".resource-table-frame[role='table']");
+    const table = document.querySelector(".resource-table-frame[role='treegrid']");
     const resourcePerformancePanel = document.querySelector(".resource-performance-panel");
     const resourceListRegion = document.querySelector(
       '.monitor-work-region[aria-label="资源列表"]');
@@ -106,7 +106,7 @@ export default async function usabilityProbe(page) {
         rows: table.querySelectorAll("[role='row']:not([aria-hidden='true'])").length,
         columnHeaders: table.querySelectorAll("[role='columnheader']").length,
         cells: table.querySelectorAll(
-          "[role='row']:not([aria-hidden='true']) [role='cell']").length
+          "[role='row']:not([aria-hidden='true']) [role='gridcell']").length
       },
       resourceListContentState: resourceListRegion && {
         hasTable: Boolean(table),

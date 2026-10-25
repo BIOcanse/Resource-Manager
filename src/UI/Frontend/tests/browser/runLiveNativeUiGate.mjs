@@ -269,11 +269,11 @@ async function activateResourceMonitor(page, diagnosticsState) {
   await bars.scrollIntoViewIfNeeded();
   await bars.waitFor({ state: "visible", timeout: 10_000 });
 
-  const list = page.locator(".resource-table-frame[role='table']");
+  const list = page.locator(".resource-table-frame[role='treegrid']");
   await list.scrollIntoViewIfNeeded();
   await list.waitFor({ state: "visible", timeout: 10_000 });
   await page.waitForFunction(() => document.querySelectorAll(
-    ".resource-table-frame[role='table'] .resource-table-row:not(.summary-row)").length > 0);
+    ".resource-table-frame[role='treegrid'] .resource-table-row:not(.summary-row)").length > 0);
   await page.waitForTimeout(1_000);
 
   const openedResourceSubscription = (
@@ -285,7 +285,7 @@ async function activateResourceMonitor(page, diagnosticsState) {
 
   return page.evaluate(() => {
     const barsPanel = document.querySelector(".resource-breakdown-panel");
-    const table = document.querySelector(".resource-table-frame[role='table']");
+    const table = document.querySelector(".resource-table-frame[role='treegrid']");
     const statusText = document.querySelector("#resourceTableStatus")?.textContent?.trim() ?? "";
     return {
       barsReady: Boolean(barsPanel),
