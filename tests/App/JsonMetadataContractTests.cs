@@ -65,7 +65,6 @@ public sealed class JsonMetadataContractTests
         foreach (var (assembly, name, field) in new[]
         {
             (App, "ResourceManager.App.Infrastructure.Settings.JsonAppSettingsStore", "JsonOptions"),
-            (App, "ResourceManager.App.Infrastructure.Settings.JsonDashboardSettingsStore", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Software.JsonManualSoftwareRegistry", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Control.JsonControlInstanceRegistry", "JsonOptions"),
             (App, "ResourceManager.App.Infrastructure.Optimization.JsonOptimizationProtectionStore", "JsonOptions"),
@@ -176,7 +175,6 @@ public sealed class JsonMetadataContractTests
         }
         if (owner.EndsWith("HostManagerRollbackStateEnvelopeCodec", StringComparison.Ordinal)) options.MaxDepth = 32;
         if (owner.EndsWith("JsonAppSettingsStore", StringComparison.Ordinal)
-            || owner.EndsWith("JsonDashboardSettingsStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonOptimizationProtectionStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonGpuPlacementProcessHistoryStore", StringComparison.Ordinal)
             || owner.EndsWith("JsonManualSoftwareRegistry", StringComparison.Ordinal)

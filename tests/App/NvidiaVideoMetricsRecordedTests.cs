@@ -149,7 +149,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
 
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
         {
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));

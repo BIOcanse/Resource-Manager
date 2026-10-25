@@ -167,7 +167,6 @@ assert.match(
 assert.match(monitorRegionSource, /useFrontendVisibilityDemand/);
 assert.match(monitorRegionSource, /aria-label=\{props\.label\}/);
 for (const relativePath of [
-  "features/monitor/Dashboard.tsx",
   "features/resourceBreakdown/ResourceBreakdown.tsx",
   "features/resourceTable/ResourceTable.tsx"
 ]) {
@@ -176,6 +175,14 @@ for (const relativePath of [
     /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
     `${relativePath} must not duplicate its enclosing visibility owner`);
 }
+
+const dashboardSource = readSource("features/monitor/Dashboard.tsx");
+assert.match(dashboardSource, /frontendVisibilityDemandId\("monitor\.card",/,
+  "each dashboard card must declare its own visible demand");
+assert.match(dashboardSource, /useFrontendVisibilityDemand/);
+assert.match(dashboardSource, /frontendVisibilitySurface/);
+assert.doesNotMatch(dashboardSource, /setInterval|IntersectionObserver/,
+  "cards must use the existing visibility controller");
 
 assert.doesNotMatch(
   readSource("features/settings/SettingsPage.tsx"),

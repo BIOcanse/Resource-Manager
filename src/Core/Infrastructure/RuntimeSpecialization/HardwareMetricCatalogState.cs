@@ -5,7 +5,7 @@ using ResourceManager.ReadWrite.Fields;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
-public sealed class DashboardMonitoringCatalogState
+public sealed class HardwareMetricCatalogState
 {
     private readonly object gate = new();
     private HardwareMetricCatalog? current;

@@ -4,7 +4,7 @@ import { buildResourceMonitorSubscriptionUrl, normalizeResourceMonitorQuery } fr
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 
 const raw = {
-  version: 1, capturedAt: "2026-10-24T12:00:00Z",
+  version: 2, capturedAt: "2026-10-24T12:00:00Z", attributions: [],
   software: [{ softwareId: "a", name: "App A", kind: "other", attributionKind: "other" }, { softwareId: "b", name: "App B", kind: "other", attributionKind: "other" }],
   processes: [{ processId: 42, processStartKey: "9223372036854775807", name: "worker.exe", executablePath: "C:/worker.exe", userName: null, architecture: "x64", attributionKind: "process" },
     { processId: 43, processStartKey: "9223372036854775806", name: "second.exe", executablePath: null, userName: "user", architecture: null, attributionKind: "process" }],
@@ -36,7 +36,7 @@ assert.equal(resized.rows.length, 5);
 assert.equal(resized.rows[1].name, "App A");
 assert.equal(resized.rows[1].impactScore, ascending.rows[1].impactScore);
 assert.equal(resized.rows[1].values.memory, undefined);
-const empty = projectResourceFacts(decodeResourceFacts({ version: 1, capturedAt: null, software: [], processes: [], metrics: [] }).facts!, columns, "software", "impact", "desc");
+const empty = projectResourceFacts(decodeResourceFacts({ version: 2, capturedAt: null, software: [], processes: [], metrics: [], attributions: [] }).facts!, columns, "software", "impact", "desc");
 assert.equal(empty.rows[0].status, "empty");
 assert.equal(empty.rows[0].values.memory, undefined);
 assert.throws(() => decodeResourceFacts({ ...raw, processes: [{ ...raw.processes[0], processStartKey: 9223372036854775807 }] }), ResponseDecodeError);
@@ -50,3 +50,10 @@ assert.deepEqual(url.searchParams.getAll("items"), ["memory.usage"]);
 assert.equal(url.searchParams.get("intervalMs"), "1700");
 for (const key of ["columns", "sort", "mode", "scope", "includeProcesses", "expanded", "modes"]) assert.equal(url.searchParams.has(key), false);
 console.log("resource facts decode, identity, grouping, sorting, columns and neutral subscription passed");
+
+const namesOnly = projectResourceFacts(decodeResourceFacts({ ...raw, metrics: [],
+  attributions: [{ processIndex: 0, softwareId: "a", baseScore: 0 }, { processIndex: 1, softwareId: "b", baseScore: 0 }] }).facts!,
+  [{ id: "name", visible: true, width: 260 }], "software", "name", "asc");
+assert.equal(namesOnly.rows.length, 5, "Identity rows do not need an unshown performance metric");
+assert.equal(namesOnly.rows[1].values.memory, undefined);
+assert.equal(namesOnly.rows[0].values.memory, undefined);

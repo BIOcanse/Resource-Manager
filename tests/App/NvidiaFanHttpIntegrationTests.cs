@@ -47,7 +47,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             new TestEnvironment(Path.Combine(Path.GetTempPath(), $"fan-http-{Guid.NewGuid():N}")),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(timeout.Token);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
 
@@ -260,7 +260,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
     }
 
     private static async Task<WebApplication> StartHttpAsync(WindowsHardwareMetricSampler sampler,
-        DashboardMonitoringCatalogState dashboard, RuntimePlanProvider provider, ReadWriteCore core,
+        HardwareMetricCatalogState dashboard, RuntimePlanProvider provider, ReadWriteCore core,
         TaskCompletionSource<bool> channelEnded, CancellationToken token)
     {
         var builder = WebApplication.CreateBuilder();

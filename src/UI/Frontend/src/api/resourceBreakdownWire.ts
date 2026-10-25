@@ -106,7 +106,7 @@ export function decodeResourceMonitorWireSnapshot(
   value: unknown
 ): ResourceMonitorSnapshot {
   const snapshot = requireRecord(value);
-  if (snapshot.version === 1) return decodeResourceFacts(value);
+  if (snapshot.version === 2) return decodeResourceFacts(value);
   if (requireSafeInteger(snapshot.version, "$.version") !== 10) {
     throw new ResponseDecodeError("$.version", "resource monitor wire version 10");
   }

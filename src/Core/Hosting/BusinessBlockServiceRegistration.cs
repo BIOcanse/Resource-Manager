@@ -73,7 +73,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 "WindowsHardwareMetricSampler" or "GpuTelemetryWorkerSupervisor" or "CpuTopologySnapshotProvider" or "DeviceTopologySnapshotProvider"
                     => ["HostManagerSamplingSubscriptionOwner"],
                 "WindowsResourceBreakdownSampler" => ["WindowsHardwareMetricSampler", "HostManagerSamplingSubscriptionOwner", "KernelEtwSessionBroker"],
-                "DashboardMonitoringPlanSynchronizer" => ["WindowsHardwareMetricSampler"],
                 "PortableSoftwareDiscoveryService" => ["KernelEtwSessionBroker", "SqlitePortableSoftwareRegistry"],
                 "EtwCpuCoreResidencyReader" or "EtwSystemInterruptSnapshotSource" => ["KernelEtwSessionBroker", "HostManagerSamplingSubscriptionOwner"],
                 "EtwPhysicalDiskIoAttributionReader" or "EtwNetworkTcpIpAttributionReader" => ["KernelEtwSessionBroker"],

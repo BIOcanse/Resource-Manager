@@ -3,6 +3,7 @@
  * NPU／AMD NPU 两节，以及监视控制台上的设备字段卡片。同一份设备值供单语言旅程和九语旅程共用。
  */
 
+import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
 const fixtureDeviceId = "DISPLAY\\FIXTURE_HDMI_1";
 const field = (name, unit, valueKind, extra) => ({
   name, unit, valueKind, numericValue: null, integerValue: null, status: 1,
@@ -125,8 +126,8 @@ export const npuBusyCardId = "npu_all_engine_busy_percent@npu|fixture";
 const absentCardId = "npu_all_engine_busy_percent@npu|removed";
 
 /** 已保存的卡片设置里放一张设备字段卡片：主指标的设备在，明细指标的设备不在。页面加载前调用。 */
-export async function seedFieldCards(baseUrl) {
-  await setDashboardSettings(baseUrl, [
+export async function seedFieldCards(page) {
+  await setDashboardSettings(page, [
     { id: "fields", main: npuBusyCardId, mainBinding: { scopeKind: "device-field", scopeKey: "npu|fixture" },
       small: [absentCardId], smallBindings: [{ scopeKind: "device-field", scopeKey: "npu|removed" }] }
   ]);
@@ -147,23 +148,27 @@ export async function checkFieldCardDisplay(page, app, language) {
   return { language, device, absent: app.dashboard.deviceAbsent };
 }
 
-export async function setDashboardSettings(baseUrl, cards) {
+export async function setDashboardSettings(page, cards) {
   const tableColumns = [
     { id: "name", visible: true, width: 260 },
     { id: "cpu", visible: true, width: 110 },
     { id: "memory", visible: true, width: 120 }
   ];
-  const response = await fetch(`${baseUrl}/__test/scenario`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dashboardSettings: {
-      version: 16, cards, resourceBars: [], resourceTableColumns: tableColumns, resourceTableProcessColumns: tableColumns
-    } })
-  });
-  if (!response.ok) throw new Error("Unable to set dashboard settings");
+  const value = { ...pointPreferences(), dashboard: {
+    version: 16, cards, resourceBars: [], resourceTableColumns: tableColumns, resourceTableProcessColumns: tableColumns
+  } };
+  const marker = `field-card-seed:${Date.now()}:${Math.random()}`;
+  const seed = ({ value, marker }) => {
+    if (sessionStorage.getItem(marker)) return;
+    const key = "resource-manager:frontend-preferences:v1";
+    const current = JSON.parse(localStorage.getItem(key) ?? "null") ?? value;
+    localStorage.setItem(key, JSON.stringify({ ...current, dashboard: value.dashboard }));
+    sessionStorage.setItem(marker, "yes");
+  };
+  await page.addInitScript(seed, { value, marker });
+  if (page.url().startsWith("http")) await page.evaluate(seed, { value, marker });
 }
 
-export async function readScenario(baseUrl) {
-  const response = await fetch(`${baseUrl}/__test/scenario`);
-  if (!response.ok) throw new Error("Unable to read the scenario");
-  return await response.json();
+export async function readDashboardCache(page) {
+  return await page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.dashboard);
 }

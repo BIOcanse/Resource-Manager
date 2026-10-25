@@ -198,7 +198,7 @@ export interface ResourceBarSettings {
 
 export interface DashboardSettings {
   version: number;
-  /** 只读：还是后端按本机目录展开的出厂布局。后端在用户保存时清掉它，前端保存不发这一项。 */
+  /** 前端根据本次构建的点模板和真实目录产生的布局；只读，不写入缓存。 */
   usesFactoryDefaults?: boolean;
   cards: DashboardCardSettings[];
   resourceBars: ResourceBarSettings[];
@@ -213,20 +213,11 @@ export interface ResourceTableColumnSettings {
   binding?: DashboardMetricBinding | null;
 }
 
+/** Frontend cache/source result. Never an API wire contract. */
 export interface DashboardSettingsResult {
   settings: DashboardSettings;
   updatedAt: string;
-  storagePath: string;
-  source: {
-    kind: number | string;
-    sourceVersion: number;
-    inputSha256: string;
-    effectiveSha256: string;
-    rewritePerformed: boolean;
-    recoveryDisposition: string;
-    recoveryArtifactPath?: string | null;
-    lastKnownGoodPath?: string | null;
-  };
+  source: { kind: "frontendCache" | "pointValues"; sourceVersion: number };
 }
 
 export interface AppSettings {

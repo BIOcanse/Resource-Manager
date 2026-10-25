@@ -130,7 +130,7 @@ public sealed class OperatingSystemUptimeOwnerTests
             NullLogger<DeviceTopologySnapshotProvider>.Instance, acpi, operatingSystemInventory: os);
         await using var cpu = new CpuTopologyProviderTestFixture();
         var api = new ProcessBasicFieldCollectorTests.Api(); using var process = ProcessBasicFieldCollectorTests.Fixture(api);
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var fields = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!), provider,
             cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         Assert.Empty(fields.Reads.Catalog.Fields); Assert.Equal(0, reads);

@@ -38,7 +38,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapMetricFieldEndpoints();
         app.MapGet("/api/metrics/catalog", async (
-            DashboardMonitoringCatalogState catalogState,
+            HardwareMetricCatalogState catalogState,
             IComponentManager componentManager,
             CancellationToken cancellationToken) =>
         {
@@ -54,14 +54,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpRequest request,
             HttpResponse response,
             IMetricSampler sampler,
-            IRuntimePlanProvider runtimePlanProvider,
-            DashboardMonitoringCatalogState catalogState,
+            HardwareMetricCatalogState catalogState,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
             var snapshotRequest = request.Query.TryGetValue("ids", out var ids)
                 ? MetricSampleRequest.ForIds(ids)
-                : runtimePlanProvider.Current.Monitoring.DashboardMetricRequest;
+                : MetricSampleRequest.ForIds([]);
             var snapshot = await sampler.GetSnapshotAsync(snapshotRequest, cancellationToken);
             return Results.Ok(MetricSnapshotWireSnapshot.From(snapshot, snapshotRequest, catalogState.Revision));
         }).AllowAnonymous();
@@ -92,13 +91,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/metrics/fields/capabilities", ([Microsoft.AspNetCore.Mvc.FromServices] ResourceManager.ReadWrite.ReadWriteCore core)
             => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
 
-        app.MapGet("/api/metrics/fields/catalog", (DashboardMonitoringCatalogState catalogState, HttpContext context)
+        app.MapGet("/api/metrics/fields/catalog", (HardwareMetricCatalogState catalogState, HttpContext context)
             => catalogState.Current is { } snapshot
                 ? Results.Ok(ReadMetricFieldCatalog(snapshot, context.RequestServices))
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
 
         app.MapGet("/api/metrics/fields/snapshot", async (
-            HttpRequest request, HttpResponse response, DashboardMonitoringCatalogState catalogState,
+            HttpRequest request, HttpResponse response, HardwareMetricCatalogState catalogState,
             IMetricSampler sampler, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);

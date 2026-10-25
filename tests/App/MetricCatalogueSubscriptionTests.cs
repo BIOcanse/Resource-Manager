@@ -129,7 +129,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     public async Task CatalogueReadsDoNotAcquireSampleGateOrNativeWorkspace()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         using var sampler = Sampler(slots, catalog, null!);
         var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
         await gate.WaitAsync();
@@ -264,7 +264,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     public void CatalogueRefreshKeepsLegacyRequestsSubscribableBeforeFirstSample()
     {
         var snapshot = StorageMetricSnapshotTestData.CommittedSnapshot();
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricReadingValue>() });
         var selected = state.SelectSubscribable(MetricSampleRequest.ForIds(["disk.7.wearPercent"]));
         Assert.Equal(["disk.7.wearPercent"], selected.Ids);
@@ -273,7 +273,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     }
 
     private static WindowsHardwareMetricSampler Sampler(HostManagerSamplingSubscriptionTestFixture slots,
-        DashboardMonitoringCatalogState catalog, HostManagerMetricSnapshotOwner owner)
+        HardwareMetricCatalogState catalog, HostManagerMetricSnapshotOwner owner)
         => new(new WindowsCpuMonitoringZone(), new WindowsMemoryMonitoringZone(), null!, null!, null!, null!,
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, catalog,
             new MonitoringSourceZoneRegistry([]), slots.Owner, slots.Provider,

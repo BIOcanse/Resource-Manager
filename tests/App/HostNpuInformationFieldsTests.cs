@@ -41,7 +41,7 @@ public sealed class HostNpuInformationFieldsTests
             NullLogger<DeviceTopologySnapshotProvider>.Instance, new Acpi());
         await using var cpu = new CpuTopologyProviderTestFixture();
         using var process = ProcessBasicFieldCollectorTests.Fixture(new ProcessBasicFieldCollectorTests.Api());
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var host = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             devices, cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         Assert.Equal(0, topology.Reads);

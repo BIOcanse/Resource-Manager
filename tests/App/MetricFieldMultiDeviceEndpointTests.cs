@@ -388,7 +388,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
 
     private static async Task<WebApplication> StartAsync(Source source, bool ready = true, Topology? topology = null)
     {
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         if (ready) catalog.PublishCatalogProbe(source.Current);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");

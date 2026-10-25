@@ -16,7 +16,7 @@ public sealed class ControlPlane(
     IControlDesiredStateStore store,
     IControlWriteLayer writeLayer,
     StartupCapabilitySet? capabilities = null,
-    DashboardMonitoringCatalogState? catalog = null) : IControlPlane
+    HardwareMetricCatalogState? catalog = null) : IControlPlane
 {
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);

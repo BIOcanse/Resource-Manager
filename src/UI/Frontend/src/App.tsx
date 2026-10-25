@@ -116,7 +116,8 @@ export default function App() {
   const resourceTableIntervalMs = createMemo(() =>
     pageRefresh.cpuRuntimePlan()?.resourceTable ?? null);
   const monitor: MonitorStore = createMonitorStore({
-    smartMonitoringEnabled: () => settings.settings().performance?.smartMonitoringMode === "enabled",
+    visibleDashboardCardIds: () => frontendWork.activeVisibilityDemandIds().filter(id => id.startsWith("monitor.card."))
+      .map(id => decodeURIComponent(id.slice("monitor.card.".length))),
     onMetricDependenciesRequested: () => void management.refreshComponents(),
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
     dashboardSettingsSource: frontendRuntime.sources.dashboardSettings,

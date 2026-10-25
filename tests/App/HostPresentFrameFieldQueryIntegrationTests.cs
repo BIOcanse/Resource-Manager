@@ -42,7 +42,7 @@ public sealed class HostPresentFrameFieldQueryIntegrationTests
         await using var cpu = new CpuTopologyProviderTestFixture();
         var processApi = new ProcessBasicFieldCollectorTests.Api();
         using var process = ProcessBasicFieldCollectorTests.Fixture(processApi);
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var host = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             devices, cpu.Reader, new HostProcessFieldBackend(process.Sampler), presentFrameQueries: queries);
         Assert.Same(queries, host.PresentFrameQueries);

@@ -18,6 +18,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     private readonly IRuntimePlanProvider planProvider;
     private readonly IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry;
     private readonly ILogger<RuntimeSpecializationCoordinator> logger;
+    private readonly LegacyDashboardFileMigration? legacySettingsMigration;
     private CancellationTokenSource? changedWorkerCancellation;
     private Task? changedWorker;
     private long changedSequence;
@@ -40,7 +41,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         ICpuCorePerformanceOverrideStore cpuOverrides,
         IRuntimePlanProvider planProvider,
         IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
-        ILogger<RuntimeSpecializationCoordinator> logger)
+        ILogger<RuntimeSpecializationCoordinator> logger,
+        LegacyDashboardFileMigration? legacySettingsMigration = null)
     {
         this.compiler = compiler;
         this.settingsStore = settingsStore;
@@ -48,6 +50,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         this.planProvider = planProvider;
         this.monitoringSourceZoneRegistry = monitoringSourceZoneRegistry;
         this.logger = logger;
+        this.legacySettingsMigration = legacySettingsMigration;
     }
 
     public async Task<AppSettingsUpdateResult> ApplyAppSettingsAsync(
@@ -250,6 +253,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         await gate.WaitAsync(cancellationToken);
         try
         {
+            if (legacySettingsMigration is not null) await legacySettingsMigration.RunAsync(cancellationToken);
             await CompileAndPublishAsync("startup", cancellationToken);
         }
         catch

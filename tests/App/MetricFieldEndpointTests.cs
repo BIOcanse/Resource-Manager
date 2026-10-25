@@ -52,7 +52,7 @@ public sealed class MetricFieldEndpointTests
     public async Task NetworkCountersAndActualRateWindowReachCachedHttpAndUnifiedPush()
     {
         var snapshot=NetworkCounterInformationCollectorTests.CommittedSnapshot();
-        var source=new Source(snapshot);var catalog=new DashboardMonitoringCatalogState();catalog.PublishCatalogProbe(snapshot);
+        var source=new Source(snapshot);var catalog=new HardwareMetricCatalogState();catalog.PublishCatalogProbe(snapshot);
         await using var app=await StartAsync(source,catalog);using var client=CreateClient(app);
         var device=snapshot.FieldBindings.Values.First(binding=>binding.Field.Name=="network_all_rx_errors_actual").DeviceIdentity;
         var query="?device="+Uri.EscapeDataString(device)+"&fields=network_all_rx_errors_actual,network_all_rx_bytes_per_second_actual";
@@ -84,7 +84,7 @@ public sealed class MetricFieldEndpointTests
     {
         var snapshot = IntelMsrThermalCollectorTests.CommittedStatusSnapshot(flag);
         var binding = Assert.Single(snapshot.FieldBindings.Values, static binding => binding.Field.Name == "cpu_intel_core_thermal_throttling_active");
-        var source = new Source(snapshot); var catalog = new DashboardMonitoringCatalogState(); catalog.PublishCatalogProbe(snapshot);
+        var source = new Source(snapshot); var catalog = new HardwareMetricCatalogState(); catalog.PublishCatalogProbe(snapshot);
         await using var app = await StartAsync(source, catalog); using var client = CreateClient(app);
         var query = "?device=" + Uri.EscapeDataString(binding.DeviceIdentity) + "&fields=" + binding.Field.Name;
         using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query));
@@ -117,7 +117,7 @@ public sealed class MetricFieldEndpointTests
     {
         var snapshot = AtaSmartInformationCollectorTests.CommittedSnapshot();
         var source = new Source(snapshot);
-        var catalog = new DashboardMonitoringCatalogState(); catalog.PublishCatalogProbe(snapshot);
+        var catalog = new HardwareMetricCatalogState(); catalog.PublishCatalogProbe(snapshot);
         await using var app = await StartAsync(source, catalog);
         using var client = CreateClient(app);
         var query = "?device=" + Uri.EscapeDataString(AtaSmartInformationCollectorTests.Device)
@@ -179,7 +179,7 @@ public sealed class MetricFieldEndpointTests
     public async Task StorageFieldsReachCachedHttpAndUnifiedPushWithExactIntegerAndSource()
     {
         var source = new Source(StorageInformationCollectorTests.CommittedSnapshot());
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(source.Current);
         await using var app = await StartAsync(source, catalog);
         using var client = CreateClient(app);
@@ -233,7 +233,7 @@ public sealed class MetricFieldEndpointTests
     public async Task GetReadsCachedValueAndValidatesDeviceAndFields()
     {
         var source = new Source();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(source.Current);
         await using var app = await StartAsync(source, catalog);
         using var client = CreateClient(app);
@@ -261,7 +261,7 @@ public sealed class MetricFieldEndpointTests
     public async Task PushUsesSameBoundRequestAndReportsUnavailableThenRecovery()
     {
         var source = new Source();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(source.Current);
         await using var app = await StartAsync(source, catalog);
         using var client = CreateClient(app);
@@ -311,7 +311,7 @@ public sealed class MetricFieldEndpointTests
     public async Task MalformedFieldPushCannotFallBackToLegacyDefault(string query)
     {
         var source = new Source();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(source.Current);
         await using var app = await StartAsync(source,catalog);
         using var client = CreateClient(app);
@@ -326,7 +326,7 @@ public sealed class MetricFieldEndpointTests
     private static readonly object ChannelRequest = new { version = 1, subscriptions = new[]
         { new { id = "fields", path = "/api/metrics/subscribe?device=memory&fields=memory_all_physical_available_bytes" } } };
 
-    private static async Task<WebApplication> StartAsync(Source source, DashboardMonitoringCatalogState catalog)
+    private static async Task<WebApplication> StartAsync(Source source, HardwareMetricCatalogState catalog)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");

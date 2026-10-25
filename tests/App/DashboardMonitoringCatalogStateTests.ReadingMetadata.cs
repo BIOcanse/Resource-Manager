@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed partial class DashboardMonitoringCatalogStateTests
+public sealed partial class HardwareMetricCatalogStateTests
 {
     [Theory]
     [InlineData(false, false)]
@@ -98,7 +98,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
             "sibling", "memory.temperature", "unverified", preferred: false);
         var initial = CreateSnapshot(1, "gpu", []) with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
             { ["target"] = target, ["sibling"] = sibling } };
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(initial);
         var revision = state.Revision;
         Assert.Equal(BackendMessageCodes.Metric.NeedsComponent,
@@ -153,7 +153,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
         var binding = new MetricDeviceFieldBinding("opaque-gpu", definition, "raw-field", "amd.smu");
         var initial = CreateSnapshot(1, "opaque-gpu", "gpu.0.usage") with
         { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { ["raw-field"] = binding, ["offline"] = binding with { RequestAddress = "offline" } } };
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         var changes = 0;
         state.Changed += () => changes++;
         state.PublishCatalogProbe(initial);

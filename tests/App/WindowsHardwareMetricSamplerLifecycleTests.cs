@@ -89,7 +89,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
                 Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
             }
         };
-        using var sampler = CreateSampler(subscriptions, new DashboardMonitoringCatalogState(), fixture.Owner);
+        using var sampler = CreateSampler(subscriptions, new HardwareMetricCatalogState(), fixture.Owner);
         var delayed = Task.Run(() => provider.Publish(older));
         try
         {
@@ -123,7 +123,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     public async Task SubscribeAsync_WaitsForBackendPublicationBeforeFirstValue()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(CreateCatalogSnapshot());
         using var sampler = CreateSampler(subscriptions, catalog);
         using var cancellation = new CancellationTokenSource();
@@ -147,7 +147,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     public void InventoryDemandSurvivesCatalogFilteringAndDueCaptureWithoutNumericProbe()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         var gpuItem = new MetricReadingValue(Id: "gpu.0.usage", NumericValue: 0, Unit: "%", Percent: null);
         catalog.PublishCatalogProbe(CreateCatalogSnapshot() with
         { Items = new Dictionary<string, MetricReadingValue> { [gpuItem.Id] = gpuItem } });
@@ -168,7 +168,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var sampler = CreateSampler(
             subscriptions,
-            new DashboardMonitoringCatalogState());
+            new HardwareMetricCatalogState());
 
         var publicationIds = sampler.GetPublicationItemIds(
                 MetricSampleRequest.ForIds(["gpu.0.power"]))
@@ -211,7 +211,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         {
             using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
             var subscriptions = fixture.Slots;
-            var catalog = new DashboardMonitoringCatalogState();
+            var catalog = new HardwareMetricCatalogState();
             catalog.PublishCatalogProbe(frame);
             using var sampler = CreateSampler(subscriptions, catalog, fixture.Owner);
             var owner = Assert.IsType<LastSuccessfulHardwareMetricSnapshot>(typeof(WindowsHardwareMetricSampler)
@@ -279,7 +279,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     public async Task FreshProjectedEngineUsesInternalQueryReceiptAndPublicDeliveryItem()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
-        using var sampler = CreateSampler(subscriptions, new DashboardMonitoringCatalogState());
+        using var sampler = CreateSampler(subscriptions, new HardwareMetricCatalogState());
         var backend = new FieldSubscriptionSamplingModeRecordedBorrow();
         var field = backend.QueryA;
         const string publicAddress = "gpu-engine/recorded/0/1/busyPercent";
@@ -309,7 +309,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
 
     private static WindowsHardwareMetricSampler CreateSampler(
         HostManagerSamplingSubscriptionTestFixture subscriptions,
-        DashboardMonitoringCatalogState catalog,
+        HardwareMetricCatalogState catalog,
         HostManagerMetricSnapshotOwner? owner = null,
         WindowsMemoryMonitoringZone? memory = null)
         => new(
@@ -327,7 +327,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(),
             platformSensorReader: null!,
             metricSnapshotOwner: owner!,
-            dashboardMonitoringCatalog: catalog,
+            metricCatalog: catalog,
             monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry(memory is null ? []
                 : MonitoringSourceZoneCatalog.SourceIds.Select(id => id == memory.DisplayName ? memory : new MonitoringSourceZone(id))),
             samplingSubscriptionOwner: subscriptions.Owner,

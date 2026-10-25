@@ -31,7 +31,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<HostManagerDeploymentState>();
         services.AddSingleton<IHostManagerDeploymentState>(static provider =>
             provider.GetRequiredService<HostManagerDeploymentState>());
-        services.AddSingleton<DashboardMonitoringCatalogState>();
+        services.AddSingleton<HardwareMetricCatalogState>();
         services.AddSingleton(CpuBaselineRatioCatalog.LoadEmbedded());
         services.AddSingleton<RuntimePlanCompiler>();
         services.AddSingleton<RuntimePlanProvider>();

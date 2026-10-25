@@ -25,6 +25,51 @@
     {"group":2,"name":"overlay-size_mode","symbol":"SizeMode","type":"choice","options":["absolutePixels","windowRatio"],"value":"absolutePixels"},
     {"group":2,"name":"overlay-anchor","symbol":"Anchor","type":"choice","options":["topLeft","topRight","bottomLeft","bottomRight"],"value":"topLeft"},
     {"group":2,"name":"overlay-margin_px","symbol":"MarginPx","type":"integer","min":0,"max":256,"value":12},
-    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["target.fps","target.onePercentLow","target.frameTime","target.cpu","target.gpu"]}
+    {"group":2,"name":"overlay-metric_order","symbol":"MetricOrder","type":"metricOrder","value":["target.fps","target.onePercentLow","target.frameTime","target.cpu","target.gpu"]},
+    {"group":3,"name":"dashboard-layout_defaults","symbol":"DashboardLayoutDefaults","type":"dashboardDefaults","value":{
+      "builtInMetricIds":["cpu.usage","cpu.frequency","cpu.frequencyPercent","memory.usage","memory.percent","virtualMemory.usage","virtualMemory.percent","disk.total.activePercent","disk.total.readBytesPerSec","disk.total.writeBytesPerSec","disk.total.queueLength","network.total.receiveBytesPerSec","network.total.sendBytesPerSec","network.total.utilizationPercent"],
+      "cards":[
+        {"id":"cpu","main":"cpu.usage","small":["cpu.frequency","cpu.temperature","cpu.actualPower","cpu.frequencyPercent"],"scope":"system","required":true},
+        {"id":"memory","main":"memory.usage","small":["memory.percent","memory.temperature","virtualMemory.usage","virtualMemory.percent"],"scope":"system","required":true},
+        {"id":"gpu{index}","main":"gpu.{index}.usage","small":["gpu.{index}.graphicsClock","gpu.{index}.power","gpu.{index}.temperature","gpu.{index}.memoryClock","gpu.{index}.graphicsClockPercent"],"scope":"gpu","required":false},
+        {"id":"vram{index}","main":"gpu.{index}.vram","small":["gpu.{index}.vramPercent","gpu.{index}.memoryClock","gpu.{index}.graphicsClockPercent"],"scope":"gpu","required":false},
+        {"id":"cpu-sensors","main":"cpu.fanRpm","small":["cpu.coreVoltage","cpu.packageCurrent","cpu.fanPercent"],"scope":"system","required":false},
+        {"id":"gpu{index}-sensors","main":"gpu.{index}.fanRpm","small":["gpu.{index}.coreVoltage","gpu.{index}.current","gpu.{index}.fanPercent","gpu.{index}.hotspotTemperature"],"scope":"gpu","required":false},
+        {"id":"disk-network","main":"disk.total.activePercent","small":["disk.total.readBytesPerSec","network.total.receiveBytesPerSec","network.total.sendBytesPerSec"],"scope":"system","required":false}
+      ],
+      "resourceBars":[
+        {"id":"resource-cpu","metricId":"cpu.usage","scaleMode":"capacity","scope":"system","required":true},
+        {"id":"resource-memory","metricId":"memory.usage","scaleMode":"capacity","scope":"system","required":true},
+        {"id":"resource-virtual-memory","metricId":"virtualMemory.usage","scaleMode":"capacity","scope":"system","required":false},
+        {"id":"resource-gpu{index}","metricId":"gpu.{index}.usage","scaleMode":"capacity","scope":"gpu","required":false},
+        {"id":"resource-vram{index}","metricId":"gpu.{index}.vram","scaleMode":"capacity","scope":"gpu","required":false},
+        {"id":"resource-disk","metricId":"disk.io","scaleMode":"active","scope":"system","required":true},
+        {"id":"resource-network","metricId":"network.traffic","scaleMode":"active","scope":"system","required":true}
+      ],
+      "softwareColumns":[
+        {"id":"name","visible":true,"width":260,"scope":"system"},
+        {"id":"status","visible":true,"width":92,"scope":"system"},
+        {"id":"cpu","visible":true,"width":86,"scope":"system"},
+        {"id":"memory","visible":true,"width":110,"scope":"system"},
+        {"id":"gpu.{index}.usage","visible":true,"width":108,"scope":"gpu"},
+        {"id":"gpu.{index}.vram","visible":true,"width":132,"scope":"gpu"},
+        {"id":"disk","visible":true,"width":112,"scope":"system"},
+        {"id":"network","visible":true,"width":106,"scope":"system"}
+      ],
+      "processColumns":[
+        {"id":"name","visible":true,"width":260,"scope":"system"},
+        {"id":"pid","visible":true,"width":76,"scope":"system"},
+        {"id":"status","visible":true,"width":92,"scope":"system"},
+        {"id":"user","visible":true,"width":150,"scope":"system"},
+        {"id":"architecture","visible":true,"width":76,"scope":"system"},
+        {"id":"cpu","visible":true,"width":86,"scope":"system"},
+        {"id":"memory","visible":true,"width":110,"scope":"system"},
+        {"id":"gpu.{index}.usage","visible":true,"width":108,"scope":"gpu"},
+        {"id":"gpu.{index}.vram","visible":true,"width":132,"scope":"gpu"},
+        {"id":"disk","visible":true,"width":112,"scope":"system"},
+        {"id":"network","visible":true,"width":106,"scope":"system"}
+      ]
+    }},
+    {"group":3,"name":"dashboard-layout_limits","symbol":"DashboardLayoutLimits","type":"dashboardLimits","value":{"smallMetricLimit":6,"minimumColumnWidth":56,"maximumColumnWidth":520,"defaultColumnWidth":100}}
   ]
 }

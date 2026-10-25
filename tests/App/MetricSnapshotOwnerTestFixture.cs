@@ -45,7 +45,7 @@ internal static class MetricSnapshotOwnerTestFixture
         public NativeMetricSnapshotCatalogTopologySnapshot Topology { set => Volatile.Write(ref topology, value); }
         public Exception? TopologyFailure { get; set; }
         public int TopologyReads => Volatile.Read(ref topologyReads);
-        public DashboardMonitoringCatalogState Catalog { get; } = new();
+        public HardwareMetricCatalogState Catalog { get; } = new();
         public HostManagerSamplingSubscriptionTestFixture Slots { get; }
         public HostManagerMetricSnapshotOwner Owner { get; }
         public void Dispose()

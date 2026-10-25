@@ -76,7 +76,7 @@ export default createSettingsLocale("zh-TW", {
   },
   "performance": {
     "smartMonitoringTitle": "按需監控",
-    "smartMonitoringDescription": "開啟時只採樣介面正在顯示或訂閱的讀數；關閉時按讀數目錄全量採樣，開銷更大。",
+    "smartMonitoringDescription": "目前一律依可見需求取樣。舊開關已停用，後續用途尚待決定。",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

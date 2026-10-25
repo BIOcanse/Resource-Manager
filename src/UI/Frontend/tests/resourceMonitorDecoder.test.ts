@@ -31,7 +31,7 @@ import {
 {
   // The neutral facts frame carries identity and readings, never table cells.
   const wire = {
-    version: 1, capturedAt,
+    version: 2, capturedAt, attributions: [],
     software: [{ softwareId: "software:test", name: "Test App", kind: "other", attributionKind: "other" }],
     processes: [{ processId: 4242, processStartKey: "134325768300000000", name: "worker.exe",
       executablePath: "C:/Apps/worker.exe", userName: "TEST-PC\\user", architecture: "x64", attributionKind: "process" }],

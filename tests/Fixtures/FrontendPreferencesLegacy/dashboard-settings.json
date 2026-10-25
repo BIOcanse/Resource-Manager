@@ -1,0 +1,119 @@
+{
+  "version": 16,
+  "cards": [
+    {
+      "id": "custom-memory",
+      "main": "memory.usage",
+      "small": [
+        "cpu.frequency"
+      ],
+      "mainBinding": null,
+      "smallBindings": [
+        null
+      ]
+    }
+  ],
+  "resourceBars": [
+    {
+      "id": "custom-network",
+      "metricId": "network.send",
+      "scaleMode": "active",
+      "binding": null
+    }
+  ],
+  "resourceTableColumns": [
+    {
+      "id": "name",
+      "visible": true,
+      "width": 311,
+      "binding": null
+    },
+    {
+      "id": "memory",
+      "visible": false,
+      "width": 177,
+      "binding": null
+    },
+    {
+      "id": "status",
+      "visible": true,
+      "width": 92,
+      "binding": null
+    },
+    {
+      "id": "cpu",
+      "visible": true,
+      "width": 86,
+      "binding": null
+    },
+    {
+      "id": "disk",
+      "visible": true,
+      "width": 112,
+      "binding": null
+    },
+    {
+      "id": "network",
+      "visible": true,
+      "width": 106,
+      "binding": null
+    }
+  ],
+  "resourceTableProcessColumns": [
+    {
+      "id": "name",
+      "visible": true,
+      "width": 321,
+      "binding": null
+    },
+    {
+      "id": "pid",
+      "visible": false,
+      "width": 99,
+      "binding": null
+    },
+    {
+      "id": "status",
+      "visible": true,
+      "width": 92,
+      "binding": null
+    },
+    {
+      "id": "user",
+      "visible": true,
+      "width": 150,
+      "binding": null
+    },
+    {
+      "id": "architecture",
+      "visible": true,
+      "width": 76,
+      "binding": null
+    },
+    {
+      "id": "cpu",
+      "visible": true,
+      "width": 86,
+      "binding": null
+    },
+    {
+      "id": "memory",
+      "visible": true,
+      "width": 110,
+      "binding": null
+    },
+    {
+      "id": "disk",
+      "visible": true,
+      "width": 112,
+      "binding": null
+    },
+    {
+      "id": "network",
+      "visible": true,
+      "width": 106,
+      "binding": null
+    }
+  ],
+  "usesFactoryDefaults": false
+}

@@ -50,7 +50,7 @@ public sealed partial class IntelGpuInformationCollectorTests
                 NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new TestEnvironment(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => binding.Field.Vendor == MetricVendor.Intel && IntelGclReader.IsRawTelemetryField(binding.Field.Code)).ToArray();
@@ -141,7 +141,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         using var json = JsonDocument.Parse(line);
         CheckIntelWire(json.RootElement.GetProperty("value")[0].GetProperty("fields"));
     }
-    private static async Task<WebApplication> StartIntelHttpAsync(WindowsHardwareMetricSampler sampler, DashboardMonitoringCatalogState catalog)
+    private static async Task<WebApplication> StartIntelHttpAsync(WindowsHardwareMetricSampler sampler, HardwareMetricCatalogState catalog)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddSingleton(catalog); builder.Services.AddSingleton<IMetricSampler>(sampler); builder.Services.AddSingleton<IMetricSnapshotPushSource>(sampler);

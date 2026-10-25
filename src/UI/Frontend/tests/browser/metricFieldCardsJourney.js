@@ -7,7 +7,7 @@ import {
   npuBusyCardId,
   readingSourceDevices,
   readingSourceIds,
-  readScenario,
+  readDashboardCache,
   seedFieldCards,
   setDashboardSettings
 } from "./metricFieldsProbe.js";
@@ -47,7 +47,7 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   await page.getByRole("button", { name: app.monitorPage.saveLayoutLabel, exact: true }).click();
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).waitFor();
 
-  const saved = (await readScenario(baseUrl)).dashboardSettings;
+  const saved = await readDashboardCache(page);
   const memory = saved?.cards?.find((card) => card.id === "memory");
   if (memory?.small?.[1] !== npuBusyCardId
     || memory.smallBindings?.[1]?.scopeKind !== "device-field"
@@ -82,13 +82,13 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   });
   if (!response.ok) throw new Error("Unable to remove the NPU fixture");
   await row().locator(".metric-value").filter({ hasText: app.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
-  if ((await readScenario(baseUrl)).dashboardSettings?.cards?.find((card) => card.id === "memory")?.small?.[1] !== npuBusyCardId) {
+  if ((await readDashboardCache(page))?.cards?.find((card) => card.id === "memory")?.small?.[1] !== npuBusyCardId) {
     throw new Error("the absent device's card setting was dropped");
   }
 
   // 恢复完整设备值后再放一张「一在一不在」的卡片。
   await enableMetricFields(baseUrl);
-  await seedFieldCards(baseUrl);
+  await seedFieldCards(page);
   await page.reload({ waitUntil: "domcontentloaded" });
   const display = await checkFieldCardDisplay(page, app, "zh-CN");
   const readingSources = await checkReadingSources(page, baseUrl, app);
@@ -107,7 +107,7 @@ async function checkReadingSources(page, baseUrl, app) {
   });
   if (!response.ok) throw new Error("Unable to enable the reading-source fixture");
   const binding = (id) => ({ scopeKind: "device-field", scopeKey: id.slice(id.indexOf("@") + 1) });
-  await setDashboardSettings(baseUrl, [{
+  await setDashboardSettings(page, [{
     id: "sources", main: readingSourceIds.preferred, mainBinding: binding(readingSourceIds.preferred),
     small: [readingSourceIds.alternate, readingSourceIds.pending],
     smallBindings: [binding(readingSourceIds.alternate), binding(readingSourceIds.pending)]
@@ -171,13 +171,8 @@ async function checkReadingSources(page, baseUrl, app) {
     throw new Error("Reading sources do not default to the most accurate source only");
   }
   await choice.getByRole("radio", { name: "所有可用" }).click();
-  const saved = page.waitForResponse((answer) => answer.request().method() === "PATCH"
-    && new URL(answer.url()).pathname === "/api/settings/app");
   await page.getByRole("button", { name: "保存", exact: true }).click();
-  const patch = JSON.parse((await saved).request().postData() ?? "{}");
-  if (patch.changes?.appearance?.readingSourceMode !== "all") {
-    throw new Error(`The reading-source choice was not saved: ${JSON.stringify(patch)}`);
-  }
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.appearance?.readingSourceMode === "all");
 
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   await expectCard({ main: [marks.preferred], alternate: [], pending: [marks.pending] }, "all");

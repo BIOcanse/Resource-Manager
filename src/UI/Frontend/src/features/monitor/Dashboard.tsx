@@ -8,6 +8,10 @@ import { dashboardSmallMetricLimit } from "../../stores/monitorConfig";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilityDemandId, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { dashboardMetricAvailable } from "../../preferences/dashboardPreferences.ts";
+import type { DashboardMetricBinding } from "../../types";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -48,8 +52,11 @@ export function Dashboard(props: DashboardProps) {
     <section class="dashboard" aria-label={uiText.dashboard.panel}>
       <For each={props.cards}>
         {(card, cardIndex) => {
+          const demandId = frontendVisibilityDemandId("monitor.card", card.id);
+          useFrontendVisibilityDemand(demandId, ["monitor.metrics"]);
           return (
           <article
+            {...frontendVisibilitySurface(demandId, [demandId])}
             class="metric-card"
             classList={{
               editing: props.editMode,
@@ -204,7 +211,8 @@ function MetricSlot(props: {
             </button>
           }
         >
-          <MetricView metricId={props.metricId} isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot} />
+          <MetricView metricId={props.metricId} binding={props.slot === "main" ? props.card.mainBinding : props.card.smallBindings?.[props.index]}
+            isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot} />
           {/* 槽内操作：悬停或聚焦这一槽时显示。 */}
           <span class="slot-actions">
             <button
@@ -236,12 +244,14 @@ function MetricSlot(props: {
 }
 
 function MetricView(props: {
+  binding?: DashboardMetricBinding | null;
   metricId: string | null;
   isMain: boolean;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
 }) {
-  const metric = () => props.metricId ? props.snapshot?.items?.[props.metricId] : null;
+  const absent = () => props.metricId && props.catalog.length > 0 && !dashboardMetricAvailable(props.metricId, props.binding, props.catalog);
+  const metric = () => props.metricId && !absent() ? props.snapshot?.items?.[props.metricId] : null;
   const definition = () => props.catalog.find((item) => item.id === props.metricId);
   const snapshotLabel = () => {
     const label = metric()?.label?.trim();
@@ -271,7 +281,7 @@ function MetricView(props: {
       : [resourceMetricBasis(props.metricId)];
     return [label(), ...extra].filter(Boolean).join("\n");
   };
-  const reading = () => props.metricId
+  const reading = () => absent() ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint } : props.metricId
     ? metricCardReading(definition(), metric())
     : { value: "--", gap: "", unit: "", missing: true, title: undefined };
   return (

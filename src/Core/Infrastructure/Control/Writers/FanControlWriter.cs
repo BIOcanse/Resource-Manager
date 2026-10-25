@@ -18,7 +18,7 @@ public sealed class FanControlWriter(
     FanControlCoreClient core,
     ILogger<FanControlWriter>? logger = null,
     IMetricSampler? sampler = null,
-    DashboardMonitoringCatalogState? catalog = null) : IControlWriter
+    HardwareMetricCatalogState? catalog = null) : IControlWriter
 {
     internal const string LockMaximumCapabilityId = "fan.lock-maximum";
     internal const string CurveCapabilityId = "fan.curve";

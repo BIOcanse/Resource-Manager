@@ -242,7 +242,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         await using var fixture = await Fixture.StartAsync(deadline.Token);
         await using var cpu = new CpuTopologyProviderTestFixture();
         using var process = ProcessBasicFieldCollectorTests.Fixture(new ProcessBasicFieldCollectorTests.Api());
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var host = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             fixture.Provider, cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         using var read = await fixture.PostAsync("read", Request(), deadline.Token);

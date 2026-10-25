@@ -20,7 +20,7 @@ public sealed partial class FanCurveReceiptTests
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software);
         var metrics = new TemperatureSubscriptions();
-        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new DashboardMonitoringCatalogState());
+        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
         await feed.StartAsync(default);
         var unseeded = await new FanControlWriter(helper.Client).WriteAsync(Target, capability, setting, default);
         Assert.Equal(ControlApplyStatuses.Failed, unseeded.Status);
@@ -89,7 +89,7 @@ public sealed partial class FanCurveReceiptTests
     {
         await using var helper = new CurveHelper(SoftwareReceipt, SoftwareReceipt, AutomaticReceipt);
         var metrics = new TemperatureSubscriptions();
-        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new DashboardMonitoringCatalogState());
+        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
         await feed.StartAsync(default);
         Assert.True(helper.Client.Describe().All(fan => fan.SupportsSoftwareCurve));
         Assert.False(helper.Client.NeedsTemperatures());
@@ -126,7 +126,7 @@ public sealed partial class FanCurveReceiptTests
         await using var helper = new CurveHelper(SoftwareReceipt,
             $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}", AutomaticReceipt);
         var metrics = new TemperatureSubscriptions();
-        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new DashboardMonitoringCatalogState());
+        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
         await feed.StartAsync(default);
         var writer = new FanControlWriter(helper.Client);
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
@@ -166,7 +166,7 @@ public sealed partial class FanCurveReceiptTests
     {
         await using var helper = new CurveHelper(SoftwareReceipt);
         var metrics = new TemperatureSubscriptions();
-        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new DashboardMonitoringCatalogState());
+        using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
         await feed.StartAsync(default);
         Assert.Equal(ControlApplyStatuses.Applied, (await new FanControlWriter(helper.Client).WriteAsync(Target,
             new("fan.curve", ControlValueKinds.Curve, true),

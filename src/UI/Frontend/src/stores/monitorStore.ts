@@ -1,3 +1,5 @@
+import { dashboardMetricAvailable } from "../preferences/dashboardPreferences.ts";
+import { subscribeFrontendPreferencesReset } from "../preferences/frontendPreferences.ts";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import { saveDashboardSettings } from "../api";
@@ -62,11 +64,9 @@ import {
   fieldCardValues
 } from "../features/monitor/fieldCards.ts";
 import {
-  allCatalogMetricIds,
   clampResourceTableColumnWidth,
   dashboardSettingsVersion,
   dashboardSmallMetricLimit,
-  defaultResourceTableColumns,
   isProcessDetailResourceTableColumn,
   normalizeCards,
   normalizeResourceBars,
@@ -90,7 +90,6 @@ export interface OpenMetricModalTarget extends MetricModalTarget {
 }
 
 export interface MonitorStoreOptions {
-  smartMonitoringEnabled: Accessor<boolean>;
   onMetricDependenciesRequested: () => void;
   metricCatalogSource: SourceHandle<MetricDefinition[]>;
   dashboardSettingsSource: SourceHandle<DashboardSettingsResult>;
@@ -105,6 +104,7 @@ export interface MonitorStoreOptions {
   >;
   resourceProcessDetailsSource: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   metricSnapshotActive: Accessor<boolean>;
+  visibleDashboardCardIds: Accessor<readonly string[]>;
   resourceBarsActive: Accessor<boolean>;
   resourceTableActive: Accessor<boolean>;
   metricSnapshotIntervalMs: Accessor<number | null>;
@@ -112,11 +112,10 @@ export interface MonitorStoreOptions {
   resourceTableIntervalMs: Accessor<number | null>;
 }
 
-export type DashboardSettingsLoadState = "loading" | "ready" | "recovered" | "error";
+export type DashboardSettingsLoadState = "loading" | "ready" | "error";
 
 export interface MonitorStore {
   dashboardSettingsState: Accessor<DashboardSettingsLoadState>;
-  dashboardSettingsSource: Accessor<DashboardSettingsResult["source"] | null>;
   dashboardSaveState: Accessor<"idle" | "saving" | "error">;
   resourceBarSaveState: Accessor<"idle" | "saving" | "error">;
   resourceTableSaveState: Accessor<"idle" | "saving" | "error">;
@@ -188,7 +187,6 @@ interface MonitorSourceBinding<T> {
 
 export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [dashboardSettingsState, setDashboardSettingsState] = createSignal<DashboardSettingsLoadState>("loading");
-  const [dashboardSettingsSource, setDashboardSettingsSource] = createSignal<DashboardSettingsResult["source"] | null>(null);
   const [dashboardSaveState, setDashboardSaveState] = createSignal<"idle" | "saving" | "error">("idle");
   const [resourceBarSaveState, setResourceBarSaveState] = createSignal<"idle" | "saving" | "error">("idle");
   const [resourceTableSaveState, setResourceTableSaveState] = createSignal<"idle" | "saving" | "error">("idle");
@@ -197,11 +195,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [catalogObservation, setCatalogObservation] =
     createSignal<ObservationState>(loadingObservation());
   const [metricSourceSnapshot, setMetricSourceSnapshot] = createSignal<MonitorSourceBinding<MetricSnapshot> | null>(null);
-  // 看板布局由后端按本机目录生成，设置到达前不画卡片，免得先闪一版和后端不一样的占位卡。
+  // 布局由前端缓存或本次构建的点值产生；加载前不制造第二份占位默认值。
   const [cards, setCards] = createSignal<DashboardCardSettings[]>([]);
   const [resourceBars, setResourceBars] = createSignal<ResourceBarSettings[]>([]);
-  const [resourceTableColumns, setResourceTableColumns] = createSignal<ResourceTableColumnSettings[]>(defaultResourceTableColumns([], "software"));
-  const [resourceTableProcessColumns, setResourceTableProcessColumns] = createSignal<ResourceTableColumnSettings[]>(defaultResourceTableColumns([], "process"));
+  const [resourceTableColumns, setResourceTableColumns] = createSignal<ResourceTableColumnSettings[]>([]);
+  const [resourceTableProcessColumns, setResourceTableProcessColumns] = createSignal<ResourceTableColumnSettings[]>([]);
   const [resourceTableMode, setResourceTableMode] = createSignal<ResourceTableViewMode>("software");
   const [resourceTableEditMode, setResourceTableEditMode] = createSignal(false);
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
@@ -220,6 +218,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     active: true,
     refreshIntervalMs: null
   });
+  const unsubscribePreferenceReset = subscribeFrontendPreferencesReset(() => { void refreshSettings(); });
   let dashboardRollbackSnapshot: DashboardCardSettings[] | null = null;
   let resourceBarRollbackSnapshot: ResourceBarSettings[] | null = null;
   let resourceTableRollbackSnapshot: {
@@ -244,20 +243,21 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const processMode = resourceTableMode() === "process";
     return processMode ? resourceTableProcessColumns() : resourceTableColumns();
   });
+  const visibleCards = createMemo(() => activeCards().filter(card => options.visibleDashboardCardIds().includes(card.id)));
   const currentMetricIds = createMemo(() => {
     const ids = new Set<string>();
-    for (const card of activeCards()) {
+    for (const card of options.metricSnapshotActive() ? visibleCards() : []) {
       // 设备字段走按字段订阅，不进原有指标订阅。
-      if (card.main && !fieldCardSlot(card.main, card.mainBinding)) {
+      if (card.main && !fieldCardSlot(card.main, card.mainBinding) && dashboardMetricAvailable(card.main, card.mainBinding, catalog())) {
         ids.add(card.main);
       }
       (card.small ?? []).forEach((metricId, index) => {
-        if (metricId && !fieldCardSlot(metricId, card.smallBindings?.[index])) {
+        if (metricId && !fieldCardSlot(metricId, card.smallBindings?.[index]) && dashboardMetricAvailable(metricId, card.smallBindings?.[index], catalog())) {
           ids.add(metricId);
         }
       });
     }
-    if (resourceTableMode() === "performance") {
+    if (options.resourceTableActive() && resourceTableMode() === "performance") {
       for (const metricId of defaultPerformanceMetricIds(catalog())) {
         ids.add(metricId);
       }
@@ -265,13 +265,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
     return [...ids];
   });
-  const snapshotMetricIds = createMemo(() => {
-    if (options.smartMonitoringEnabled()) {
-      return currentMetricIds();
-    }
-    const catalogIds = allCatalogMetricIds(catalog());
-    return catalogIds.length > 0 ? catalogIds : currentMetricIds();
-  });
+  const snapshotMetricIds = currentMetricIds;
   const resourceBreakdownProcessDetailSoftwareIds = createMemo(() => {
     const ids = new Set(
       Object.values(expandedResourceSegments())
@@ -291,17 +285,18 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   applyMetricCatalogSourceSnapshot(metricCatalogLease.snapshot);
   applyDashboardSettingsSourceSnapshot(dashboardSettingsLease.snapshot);
 
-  const metricSnapshotNeeded = createMemo(() => options.metricSnapshotActive()
-    || (options.resourceTableActive() && resourceTableMode() === "performance"));
-  const resourceTableNeeded = createMemo(() => options.resourceTableActive()
+  const layoutReady = () => dashboardSettingsState() === "ready";
+  const metricSnapshotNeeded = createMemo(() => layoutReady() && (options.metricSnapshotActive()
+    || (options.resourceTableActive() && resourceTableMode() === "performance")));
+  const resourceTableNeeded = createMemo(() => layoutReady() && options.resourceTableActive()
     && resourceTableMode() !== "performance");
   const metricSubscriptionKey = createMemo(() => JSON.stringify({
-    active: metricSnapshotNeeded(),
+    active: metricSnapshotNeeded() && snapshotMetricIds().length > 0,
     query: normalizeMetricSnapshotQuery(createMetricSnapshotQuery()),
     intervalMs: options.metricSnapshotIntervalMs()
   }));
   const breakdownBindings = createResourceBreakdownBindings({
-    active: options.resourceBarsActive,
+    active: () => layoutReady() && options.resourceBarsActive() && requestedResourceBars().length > 0,
     intervalMs: options.resourceBarsIntervalMs,
     bars: requestedResourceBars,
     detailSoftwareIds: resourceBreakdownProcessDetailSoftwareIds,
@@ -310,25 +305,30 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     onBars: value => pruneResourceSelection(value.breakdown.bars ?? [])
   });
   const resourceTableSubscriptionKey = createMemo(() => JSON.stringify({
-    active: resourceTableNeeded(),
+    active: resourceTableNeeded() && (createResourceTableQuery().sampleMetricIds?.length ?? 0) > 0,
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
     intervalMs: options.resourceTableIntervalMs()
   }));
   const snapshot = createMemo(() => metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? metricSourceSnapshot()?.source.data ?? null : null);
-  const snapshotObservation = createMemo(() => metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
+  const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
     ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
-  const resourceTableQueryKey = createMemo(() => JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery())));
-  const resourceTableFacts = createMemo(() => tableSourceSnapshot()?.queryKey === resourceTableQueryKey()
-    ? tableSourceSnapshot()?.source.data?.facts ?? null : null);
+  // A changed demand (for example basic -> full identity details) does not erase
+  // accepted facts. Local columns/mode project that value until the next frame;
+  // a received empty frame still replaces it immediately.
+  const resourceTableFacts = createMemo((previous: NonNullable<ResourceMonitorSnapshot["facts"]> | null) =>
+    tableSourceSnapshot()?.source.data?.facts ?? previous, null);
   const resourceTableSnapshot = createResourceFactsProjection(resourceTableFacts,
     activeResourceTableColumns, resourceTableMode, resourceTableSort);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
-  const resourceTableObservation = createMemo(() => tableSourceSnapshot()?.queryKey === JSON.stringify(normalizeResourceMonitorQuery(createResourceTableQuery()))
-    ? pushObservation(tableSourceSnapshot()?.source ?? null) : loadingObservation());
+  const resourceTableObservation = createMemo(() => {
+    const observation = pushObservation(tableSourceSnapshot()?.source ?? null);
+    return observation.status === "loading" && resourceTableFacts()
+      ? readyObservation(resourceTableFacts()?.capturedAt ?? undefined) : observation;
+  });
   const orderedSnapshotBars = createMemo(() => {
     const bars = resourceBreakdownSnapshot()?.bars ?? [];
     const order = new Map(activeResourceBars().map((bar, index) => [bar.metricId, index]));
@@ -339,7 +339,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldCatalogDevice[]> | null>(null);
   const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<MonitorSourceBinding<readonly MetricFieldDevice[]> | null>(null);
   const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data ?? null, null, { equals: sameMetricFieldCatalog });
-  const fieldSlots = createMemo(() => fieldCardSlots(activeCards()));
+  const fieldSlots = createMemo(() => fieldCardSlots(visibleCards()));
   const fieldQuery = createMemo(() => ({
     fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort()
   }));
@@ -452,37 +452,24 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     unsubscribeDashboardSettings();
     metricCatalogLease.release();
     dashboardSettingsLease.release();
+    unsubscribePreferenceReset();
   });
 
   function createMetricSnapshotQuery(): MetricSnapshotQuery {
-    const useCompiledPlan = (
-      options.smartMonitoringEnabled()
-      && !editMode()
-      && resourceTableMode() !== "performance"
-    );
-    if (useCompiledPlan) {
-      return { ids: null };
-    }
-    const ids = snapshotMetricIds();
-    return { ids: ids.length === 0 ? null : ids };
+    return { ids: snapshotMetricIds() };
   }
 
-  function requestedResourceBars(): ResourceBreakdownQuery["bars"] {
-    const useCompiledBars = options.smartMonitoringEnabled()
-      && !resourceBarEditing();
-    return useCompiledBars ? null : activeResourceBars().map((bar) => ({
-      metricId: bar.metricId,
-      scaleMode: bar.scaleMode
-    }));
+  function requestedResourceBars(): NonNullable<ResourceBreakdownQuery["bars"]> {
+    return activeResourceBars().filter(bar => dashboardMetricAvailable(bar.metricId, bar.binding, catalog())).map(bar => ({ metricId: bar.metricId, scaleMode: bar.scaleMode }));
   }
-
   function createResourceTableQuery(): ResourceMonitorQuery {
     return {
       scope: "table",
       bars: [],
-      // Configured facts keep identities and impact stable when a column is hidden.
-      sampleMetricIds: [...new Set(normalizeResourceTableColumns(activeResourceTableColumns(), catalog(), resourceTableMode())
-        .map(column => resourceTableMetricId(column.id)).filter((id): id is string => id !== null))],
+      // Identity/attribution are explicit facts; hidden numeric columns have no demand.
+      sampleMetricIds: [...new Set([...(activeResourceTableColumns().some(column => column.visible) ? ["process.inventory", "process.attribution"] : []), ...normalizeResourceTableColumns(activeResourceTableColumns(), catalog(), resourceTableMode())
+        .filter(column => column.visible && dashboardMetricAvailable(column.id, column.binding, catalog())).map(column => resourceTableMetricId(column.id)).filter((id): id is string => id !== null)])],
+      processDetailLevel: activeResourceTableColumns().some(column => column.visible && ["user", "architecture"].includes(column.id)) ? "full" : "basic",
       visibleColumnIds: [],
       sortColumnId: "",
       sortDirection: "desc",
@@ -552,14 +539,9 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
         setResourceTableColumns(structuredClone(settings.resourceTableColumns));
         setResourceTableProcessColumns(structuredClone(settings.resourceTableProcessColumns));
       }
-      setDashboardSettingsSource(result.source);
       lastDashboardSettingsRevision = source.revision;
     }
-    setDashboardSettingsState(
-      result.source.recoveryDisposition === "recoveredLastKnownGood"
-        || result.source.recoveryDisposition === "recoveredDefaultsAfterCorruption"
-        ? "recovered"
-        : "ready");
+    setDashboardSettingsState("ready");
   }
 
   async function refreshCatalog() {
@@ -1086,7 +1068,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   return {
     dashboardSettingsState,
-    dashboardSettingsSource,
     dashboardSaveState,
     resourceBarSaveState,
     resourceTableSaveState,

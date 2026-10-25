@@ -35,7 +35,7 @@ public sealed class PerformanceOverlayEndpointTests
             new EmptyGpuPolicyStore(), store, new SingleSoftwareRegistryView(executablePath),
             registry, new UnavailableGpuScheduling(),
             NullLogger<GpuLaunchInterceptionReconciler>.Instance));
-        builder.Services.AddSingleton<DashboardMonitoringCatalogState>();
+        builder.Services.AddSingleton<HardwareMetricCatalogState>();
         builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         await using var app = builder.Build();
         typeof(ResourceManagerEndpointRouteBuilderExtensions)

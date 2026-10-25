@@ -77,7 +77,7 @@ export default createSettingsLocale("ja-JP", {
   },
   "performance": {
     "smartMonitoringTitle": "必要時のみ監視",
-    "smartMonitoringDescription": "オンのときは画面に表示中または購読中の読み取り値だけを取得します。オフのときはカタログ内のすべての読み取り値を取得するため、負荷が増えます。",
+    "smartMonitoringDescription": "現在は表示中の需要に応じて常にサンプリングします。この旧スイッチは、今後の用途が決まるまで無効です。",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

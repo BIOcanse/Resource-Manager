@@ -11,7 +11,6 @@ import {
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
   BackendMessage,
-  DashboardSettingsResult,
   MetricDefinition,
   MetricSnapshot,
   MetricValue
@@ -45,11 +44,6 @@ export const metricSnapshotDecoder = defineResponseDecoder<MetricSnapshot>(
       items
     };
   });
-
-export const dashboardSettingsDecoder =
-  defineResponseDecoder<DashboardSettingsResult>(
-    "monitor.dashboard-settings.v1",
-    (value) => value as DashboardSettingsResult);
 
 function decodeMetricDefinition(value: unknown, path: string): MetricDefinition {
   const record = requireRecord(value, path);

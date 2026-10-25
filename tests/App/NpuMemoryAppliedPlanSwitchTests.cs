@@ -37,7 +37,7 @@ public sealed class NpuMemoryAppliedPlanSwitchTests
             new RecordedEnvironment(Path.Combine(AppContext.BaseDirectory, "npu-plan-switch", Guid.NewGuid().ToString("N"))),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(timeout.Token);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, null!, null!, null!, null!, null!,
             null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, dashboard, registry,

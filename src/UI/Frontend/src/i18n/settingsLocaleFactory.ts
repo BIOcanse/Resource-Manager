@@ -37,7 +37,7 @@ const zhCnSettingsCopy: SettingsCopy = {
   },
   performance: {
     smartMonitoringTitle: "按需监控",
-    smartMonitoringDescription: "开启时只采样界面正在显示或订阅的读数；关闭时按读数目录全量采样，开销更大。",
+    smartMonitoringDescription: "目前始终按可见需求采样。旧开关已停用，其后续用途待定。",
     adaptiveBooleanModeOptions: [
       { id: "enabled", label: "开启" },
       { id: "disabled", label: "关闭" }
@@ -355,7 +355,7 @@ const enSettingsCopy: SettingsCopy = {
   },
   performance: {
     smartMonitoringTitle: "On-demand monitoring",
-    smartMonitoringDescription: "When on, only the readings the interface is showing or subscribed to are sampled. When off, every reading in the catalog is sampled, which costs more.",
+    smartMonitoringDescription: "Sampling now always follows visible demand. This old switch is disabled while its future use is undecided.",
     adaptiveBooleanModeOptions: [
       { id: "enabled", label: "On" },
       { id: "disabled", label: "Off" }

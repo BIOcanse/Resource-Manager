@@ -84,7 +84,7 @@ public sealed class HardwareControlBehaviorTests
     public async Task StartupWaitsForExistingCatalogReadinessAndCancelsCleanly()
     {
         var writes = new Layer();
-        var plane = new ControlPlane(new Store(Desired("good")), writes, catalog: new DashboardMonitoringCatalogState());
+        var plane = new ControlPlane(new Store(Desired("good")), writes, catalog: new HardwareMetricCatalogState());
         using var cancellation = new CancellationTokenSource();
         var starting = plane.InitializeAsync(cancellation.Token);
         Assert.False(starting.IsCompleted);
@@ -97,7 +97,7 @@ public sealed class HardwareControlBehaviorTests
     [Fact]
     public async Task CatalogPublicationAppliesAllSavedObjectsEvenAfterAnEarlyExplicitEdit()
     {
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         var store = new Store(new([new("other", [new("saved", Number: 42)])]));
         var writes = new Layer();
         var plane = new ControlPlane(store, writes, catalog: catalog);

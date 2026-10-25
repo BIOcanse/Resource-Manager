@@ -23,7 +23,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }).AllowAnonymous();
 
         app.MapGet("/api/performance-overlay/metrics/catalog", async (
-            DashboardMonitoringCatalogState catalog,
+            HardwareMetricCatalogState catalog,
             IComponentManager componentManager,
             CancellationToken cancellationToken) =>
             Results.Ok(MetricCatalog.WithInstalledComponents(

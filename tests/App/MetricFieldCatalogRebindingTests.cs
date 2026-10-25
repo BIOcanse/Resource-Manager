@@ -41,7 +41,7 @@ public sealed class MetricFieldCatalogRebindingTests
                 [returnedBinding.RequestAddress] = original.Datasets[binding.RequestAddress] with { DatasetId = returnedBinding.RequestAddress }
             }
         };
-        var catalog = new DashboardMonitoringCatalogState();
+        var catalog = new HardwareMetricCatalogState();
         catalog.PublishCatalogProbe(initiallyEmpty ? empty : first);
         var source = new Source(catalog, initiallyEmpty ? empty : first);
         void Publish(HardwareMetricSnapshot snapshot)
@@ -105,7 +105,7 @@ public sealed class MetricFieldCatalogRebindingTests
     }
 
     // The managed sampler boundary only publishes a value if that concrete address was acquired.
-    private sealed class Source(DashboardMonitoringCatalogState catalog, HardwareMetricSnapshot initial) : IMetricSnapshotPushSource
+    private sealed class Source(HardwareMetricCatalogState catalog, HardwareMetricSnapshot initial) : IMetricSnapshotPushSource
     {
         public HardwareMetricSnapshot Current { get; set; } = initial;
         public List<MetricSampleRequest> Requests { get; } = [];

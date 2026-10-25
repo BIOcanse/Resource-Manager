@@ -1,4 +1,5 @@
 using ResourceManager.Shared.Appearance;
+using System.Text.Json;
 
 namespace ResourceManager.NativeUi.Preferences;
 
@@ -92,6 +93,7 @@ internal sealed record FrontendPreferences
 {
     public FrontendAppearance Appearance { get; init; } = new();
     public FrontendRefresh Refresh { get; init; } = new();
+    public JsonElement? Dashboard { get; init; }
     public IReadOnlyDictionary<string, FrontendOverlayPresentation> Overlays { get; init; } =
         new Dictionary<string, FrontendOverlayPresentation>(StringComparer.OrdinalIgnoreCase);
 
@@ -101,6 +103,7 @@ internal sealed record FrontendPreferences
             throw new InvalidDataException("Invalid frontend preferences cache.");
         Appearance.Validate();
         Refresh.Validate();
+        FrontendDashboardCache.Validate(Dashboard);
         foreach (var (id, overlay) in Overlays)
         {
             if (string.IsNullOrWhiteSpace(id) || overlay is null)

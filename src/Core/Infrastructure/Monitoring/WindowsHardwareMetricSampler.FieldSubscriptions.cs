@@ -21,7 +21,7 @@ public sealed partial class WindowsHardwareMetricSampler
         ValidateFieldSubscription(fields, selections, options);
         subscriptions.ValidatePeriod(interval);
 
-        var request = dashboardMonitoringCatalog.SelectSubscribable(Request(selections));
+        var request = metricCatalog.SelectSubscribable(Request(selections));
         if (request.IsEmpty) return EmptyObservationSubscription.Instance;
 
         lock (lifecycleGate)
@@ -44,7 +44,7 @@ public sealed partial class WindowsHardwareMetricSampler
         ValidateFieldSubscription(fields, selections, options);
         subscriptions.ValidatePeriod(interval);
 
-        var request = dashboardMonitoringCatalog.SelectSubscribable(Request(selections));
+        var request = metricCatalog.SelectSubscribable(Request(selections));
         if (request.IsEmpty) yield break;
 
         var bindings = CreateFieldCollectionBindings(fields, selections);

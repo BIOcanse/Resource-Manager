@@ -1,0 +1,17 @@
+{
+  "files": [
+    {
+      "sha256": "D22DBAD5BCAA84CEAF32E09232C76D8D3264DD3D265DD72F89394C8671073FBE",
+      "path": "dashboard-settings.json",
+      "bytes": 2089
+    },
+    {
+      "sha256": "E722DD028BF9DB6E2A78B4C45F6DFBBBA22A598C8C565843DB8090CE98FFAD54",
+      "path": "dashboard-default-cases.json",
+      "bytes": 19255
+    }
+  ],
+  "source": "Real HEAD DashboardSettingsDefaults.Create and JsonDashboardSettingsStore.SaveAsync, Web/Indented writer; no substitute serializer",
+  "head": "d7264dbbd0c792a5b1e9bf1616d2d4628eba3def",
+  "backendAssemblySha256": "CCD88913D21835B7A0A0357E646D19CC942FFEFB1DFB47DC2A103CC899201B7F"
+}

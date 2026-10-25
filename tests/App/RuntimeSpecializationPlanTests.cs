@@ -300,18 +300,13 @@ public sealed class RuntimeSpecializationPlanTests
     }
 
     [Fact]
-    public void MonitoringPlan_ResolvesColumnsByViewMode()
+    public void MonitoringPlanContainsOnlyBackendProviderConfiguration()
     {
-        var plan = CompiledMonitoringPlan.Default with
-        {
-            SoftwareTableColumnIds = ["name", "cpu"],
-            ProcessTableColumnIds = ["name", "pid", "cpu"]
-        };
-
-        Assert.Equal(["name", "cpu"], plan.ResolveTableColumnIds("software"));
-        Assert.Equal(["name", "pid", "cpu"], plan.ResolveTableColumnIds("process"));
+        Assert.Equal(new[] { "FirmwareProviders", "RegisteredSourceZoneIds" },
+            typeof(CompiledMonitoringPlan).GetProperties().Where(property => property.GetMethod?.IsStatic == false)
+                .Select(property => property.Name).Order());
+        Assert.NotNull(CompiledMonitoringPlan.Default.FirmwareProviders);
     }
-
     [Fact]
     public void MonitoringSourceZoneRegistry_CanRegisterAndUnregisterRuntimeZones()
     {

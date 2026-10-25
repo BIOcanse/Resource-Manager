@@ -90,7 +90,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         this IServiceCollection services,
         StartupCapabilitySet startupCapabilities)
     {
-        services.AddSingleton<IDashboardSettingsStore, JsonDashboardSettingsStore>();
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
+            services.AddSingleton<LegacyDashboardFileMigration>();
         services.AddSingleton<IAppSettingsStore, JsonAppSettingsStore>();
         // 控制面的持久化与写回路。放在这里而不是监控注册里：
         // 期望状态的存储要 IHostEnvironment，而只读服务图里没有它 ——
@@ -142,7 +143,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             // 订阅端照样能问，只是问到的是"还没采过"。
             services.AddSingleton<IControlActualStateOwner, EmptyControlActualStateOwner>();
         }
-        services.AddSingleton<DashboardSettingsMigrator>();
         return services;
     }
 }

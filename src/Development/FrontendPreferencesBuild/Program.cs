@@ -54,13 +54,13 @@ internal static class Program
         var declarationPath = Path.Combine(root, "src/UI/Frontend/preferences.points.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(declarationPath));
         var definitions = document.RootElement.GetProperty("points").EnumerateArray().Select(value => value.Clone()).ToArray();
-        if (definitions.Length != 26) throw new InvalidDataException("Expected 26 frontend points.");
+        if (definitions.Length != 28) throw new InvalidDataException("Expected 28 frontend points.");
         var style = definitions.Single(item => item.GetProperty("symbol").GetString() == "UiStyle").GetProperty("value").GetString()!;
         var theme = definitions.Single(item => item.GetProperty("symbol").GetString() == "Theme").GetProperty("value").GetString()!;
         var appearance = UiStyleCatalog.Normalize(style, theme);
         if (appearance.UiStyle != style || appearance.Theme != theme)
             throw new InvalidDataException("Frontend appearance points must select a palette supported by their style.");
-        var layout = basis.CreateExtensionLayout("resource-manager-backend", "frontend", 3);
+        var layout = basis.CreateExtensionLayout("resource-manager-backend", "frontend", 4);
         var points = ImmutableArray.CreateBuilder<PointDeclaration>();
         var counts = new Dictionary<(ushort Group, PointKind Kind), ushort>();
         var values = new Dictionary<PointPath, PointValueSet>();
@@ -160,6 +160,12 @@ internal static class Program
             "metricOrder" => value.ValueKind == JsonValueKind.Array && value.GetArrayLength() <= 64
                 && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 and <= 128 })
                 && value.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == value.GetArrayLength(),
+            "dashboardDefaults" => ValidateDashboardDefaults(value),
+            "dashboardLimits" => value.GetProperty("smallMetricLimit").GetInt32() is >= 0 and <= 64
+                && value.GetProperty("minimumColumnWidth").GetInt32() > 0
+                && value.GetProperty("maximumColumnWidth").GetInt32() >= value.GetProperty("minimumColumnWidth").GetInt32()
+                && value.GetProperty("defaultColumnWidth").GetInt32() >= value.GetProperty("minimumColumnWidth").GetInt32()
+                && value.GetProperty("defaultColumnWidth").GetInt32() <= value.GetProperty("maximumColumnWidth").GetInt32(),
             _ => false
         };
         if (!valid) throw new InvalidDataException("Invalid frontend point contract: " + definition.GetProperty("symbol").GetString());
@@ -171,6 +177,8 @@ internal static class Program
         "refresh" => new("PointRefreshSetting", "void", "public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);", ""),
         "presets" => new("PointRefreshPresets", "void", "public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);", ""),
         "metricOrder" => new("ImmutableArray<string>", "void", "", ""),
+        "dashboardDefaults" => new("global::System.Text.Json.JsonElement", "void", "", ""),
+        "dashboardLimits" => new("PointDashboardLayoutLimits", "void", "public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);", ""),
         _ => throw new InvalidDataException(type)
     };
     private static string CSharpValue(string type, JsonElement value) => type switch
@@ -180,6 +188,8 @@ internal static class Program
             JsonSerializer.Serialize(value.GetProperty("preset").GetString()), value.GetProperty("customValue").GetRawText()) + ")",
         "presets" => "new(" + string.Join(",", new[] { "responsive", "balanced", "lowPower", "quiet" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
         "metricOrder" => "ImmutableArray.Create<string>(" + string.Join(",", value.EnumerateArray().Select(item => JsonSerializer.Serialize(item.GetString()))) + ")",
+        "dashboardDefaults" => "global::System.Text.Json.JsonSerializer.Deserialize<global::System.Text.Json.JsonElement>(" + JsonSerializer.Serialize(value.GetRawText()) + ")",
+        "dashboardLimits" => "new(" + string.Join(",", new[] { "smallMetricLimit", "minimumColumnWidth", "maximumColumnWidth", "defaultColumnWidth" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
         _ => throw new InvalidDataException(type)
     };
     private static string TypeScriptType(string type, JsonElement definition) => type switch
@@ -188,6 +198,34 @@ internal static class Program
         "refresh" => "{ readonly mode: \"aotu\" | \"preset\" | \"custom\"; readonly preset: \"responsive\" | \"balanced\" | \"lowPower\" | \"quiet\"; readonly customValue: number }",
         "presets" => "{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }",
         "metricOrder" => "readonly string[]",
+        "dashboardDefaults" => "{ readonly builtInMetricIds: readonly string[]; readonly cards: readonly { readonly id: string; readonly main: string; readonly small: readonly string[]; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly resourceBars: readonly { readonly id: string; readonly metricId: string; readonly scaleMode: \"capacity\" | \"active\"; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly softwareColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[]; readonly processColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[] }",
+        "dashboardLimits" => "{ readonly smallMetricLimit: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }",
         _ => throw new InvalidDataException(type)
     };
+
+    private static bool ValidateDashboardDefaults(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object) return false;
+        foreach (var name in new[] { "builtInMetricIds", "cards", "resourceBars", "softwareColumns", "processColumns" })
+            if (!value.TryGetProperty(name, out var array) || array.ValueKind != JsonValueKind.Array || array.GetArrayLength() > 10000) return false;
+        if (value.GetProperty("builtInMetricIds").EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(item.GetString()))) return false;
+        foreach (var name in new[] { "cards", "resourceBars", "softwareColumns", "processColumns" })
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var item in value.GetProperty(name).EnumerateArray())
+            {
+                if (item.GetProperty("id").GetString() is not { Length: > 0 } id || !ids.Add(id)
+                    || item.GetProperty("scope").GetString() is not ("system" or "gpu")) return false;
+                if (name == "cards" && (item.GetProperty("main").GetString() is not { Length: > 0 }
+                    || item.GetProperty("small").ValueKind != JsonValueKind.Array
+                    || item.GetProperty("small").EnumerateArray().Any(metric => metric.GetString() is not { Length: > 0 }))) return false;
+                if (name == "resourceBars" && (item.GetProperty("metricId").GetString() is not { Length: > 0 }
+                    || item.GetProperty("scaleMode").GetString() is not ("active" or "capacity"))) return false;
+                if (name is "softwareColumns" or "processColumns" && (!item.GetProperty("width").TryGetDouble(out var width)
+                    || !double.IsFinite(width) || width <= 0)) return false;
+                _ = name is "cards" or "resourceBars" ? item.GetProperty("required").GetBoolean() : item.GetProperty("visible").GetBoolean();
+            }
+        }
+        return true;
+    }
 }

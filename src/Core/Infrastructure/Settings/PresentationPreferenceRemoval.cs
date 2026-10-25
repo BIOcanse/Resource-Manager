@@ -3,14 +3,20 @@ using System.Text.Json;
 namespace ResourceManager.App.Infrastructure.Settings;
 
 /// <summary>
-/// One-time file migration frontend-preferences-v1. Delete after the minimum
-/// supported settings schema is newer than 1.0.31 and legacy overlay v1/v2 are retired.
+/// One-time file migrations frontend-preferences-v1 and frontend-dashboard-v1.
+/// Retire each removal/import pair once supported upgrades no longer begin at
+/// app schema 1.0.31 or earlier, overlay v1/v2, or dashboard schema 16 or earlier.
 /// The backend never reads the frontend cache or its import marker. Keep the raw
 /// backup until the supported frontend upgrade paths no longer need the importer.
 /// </summary>
 internal static class PresentationPreferenceRemoval
 {
     internal const string BackupSuffix = ".frontend-preferences-v1.bak";
+    internal const string DashboardBackupSuffix = ".frontend-dashboard-v1.bak";
+    internal static readonly string[] DashboardFields =
+        ["cards", "resourceBars", "resourceTableColumns", "resourceTableProcessColumns", "usesFactoryDefaults"];
+    internal static bool HasDashboardFields(JsonElement root) => root.ValueKind == JsonValueKind.Object
+        && DashboardFields.Any(field => root.TryGetProperty(field, out _));
     internal static readonly string[] AppPerformanceFields =
         ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"];
     internal static readonly string[] OverlayFields =
@@ -26,11 +32,12 @@ internal static class PresentationPreferenceRemoval
         && software.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.Object
             && OverlayFields.Any(field => item.TryGetProperty(field, out _)));
 
-    internal static void PreserveLegacyImage(string path, byte[] bytes, Func<JsonElement, bool> containsLegacy)
+    internal static void PreserveLegacyImage(string path, byte[] bytes, Func<JsonElement, bool> containsLegacy,
+        string suffix = BackupSuffix)
     {
         using var document = JsonDocument.Parse(bytes);
         if (!containsLegacy(document.RootElement)) return;
-        var backup = path + BackupSuffix;
+        var backup = path + suffix;
         if (File.Exists(backup)) return;
         var temporary = backup + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

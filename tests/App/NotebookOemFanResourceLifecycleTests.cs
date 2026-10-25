@@ -198,7 +198,7 @@ public sealed class NotebookOemFanResourceLifecycleTests
         => new(cpuZone: null!, memoryZone: null!, virtualMemoryZone: null!, gpuAdapterOrderZone: null!, cpuFrequencyZone: null!,
             gpuEngineZone: null!, systemIoZone: null!, nvidiaZone: null!, nvidiaNvapiZone: null!, amdAdlxZone: null!, amdSmuZone: null!,
             integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(), platformSensorReader: new(null!, null!, zone),
-            metricSnapshotOwner: null!, dashboardMonitoringCatalog: new DashboardMonitoringCatalogState(),
+            metricSnapshotOwner: null!, metricCatalog: new HardwareMetricCatalogState(),
             monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry([]), samplingSubscriptionOwner: subscriptions.Owner,
             runtimePlanProvider: subscriptions.Provider, logger: NullLogger<WindowsHardwareMetricSampler>.Instance);
 

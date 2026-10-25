@@ -39,7 +39,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             new TestEnvironment(Path.Combine(AppContext.BaseDirectory, "intel-fan-http", Guid.NewGuid().ToString("N"))),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(timeout.Token);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
 

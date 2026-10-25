@@ -359,7 +359,7 @@ public sealed class MetricDeviceFieldAddressTests
             MetricSampleRequest.CatalogProbe, null, read);
         var engineBinding = Assert.Single(catalog.FieldBindings.Values);
         Assert.DoesNotContain("gpu.trigger", catalog.FieldBindings.Keys);
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(catalog);
 
         foreach (var device in new string?[] { null, engineBinding.DeviceIdentity })

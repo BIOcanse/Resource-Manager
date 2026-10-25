@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import {
-  dashboardSettingsDecoder,
   metricCatalogDecoder,
   metricSnapshotDecoder
 } from "../src/data/monitor/monitorSourceDecoders.ts";
@@ -52,32 +51,6 @@ assert.throws(() => metricSnapshotDecoder.decode({
   ...snapshot,
   items: { "cpu.usage": { id: "cpu.usage", unit: "%", status: 1 } }
 }), /numericValue/);
-
-const settingsPayload = {
-  settings: {
-    version: 14,
-    cards: [{
-      id: "cpu",
-      main: "cpu.usage",
-      small: ["cpu.frequency"],
-      mainBinding: null,
-      smallBindings: null
-    }],
-    resourceBars: [{ id: "cpu", metricId: "cpu.usage", scaleMode: "capacity" }],
-    resourceTableColumns: [{ id: "name", visible: true }],
-    resourceTableProcessColumns: [{ id: "name", visible: true }]
-  },
-  updatedAt: "2026-08-22T12:00:00.000Z",
-  source: {
-    kind: "Persisted",
-    sourceVersion: 14,
-    recoveryDisposition: "none"
-  }
-};
-const settings = dashboardSettingsDecoder.decode(settingsPayload);
-assert.equal(settings, settingsPayload);
-assert.equal(settings.settings?.cards?.[0].id, "cpu");
-assert.deepEqual(settings.settings?.cards?.[0].smallBindings, null);
 
 assert.deepEqual(normalizeMetricSnapshotQuery({
   ids: [" memory.usage ", "cpu.usage", "cpu.usage", ""]

@@ -28,8 +28,7 @@ export function MonitorPage(props: MonitorPageProps) {
   let dashboardEditButton: HTMLButtonElement | undefined;
   let dashboardAddButton: HTMLButtonElement | undefined;
   let dashboardEditorRegion: HTMLDivElement | undefined;
-  const dashboardAvailable = () => monitor.dashboardSettingsState() === "ready"
-    || monitor.dashboardSettingsState() === "recovered";
+  const dashboardAvailable = () => monitor.dashboardSettingsState() === "ready";
   const activeResourceTableObservation = () => monitor.resourceTableMode() === "performance"
     ? monitor.snapshotObservation()
     : monitor.resourceTableObservation();
@@ -89,13 +88,6 @@ export function MonitorPage(props: MonitorPageProps) {
           </button>
         </div>
       </div>
-      <Show when={monitor.editMode() && monitor.dashboardSettingsState() === "recovered"}>
-        <div class="monitor-settings-state warning" role="status">
-          {monitor.dashboardSettingsSource()?.recoveryDisposition === "recoveredDefaultsAfterCorruption"
-            ? uiText.monitorPage.dashboardQuarantined
-            : uiText.monitorPage.dashboardRecovered}
-        </div>
-      </Show>
       <ObservationStateNotice
         state={monitor.catalogObservation()}
         label={uiText.monitorPage.metricCatalog}

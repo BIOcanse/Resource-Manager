@@ -24,7 +24,7 @@ export default async function localizationJourney(page, baseUrl) {
   });
   if (!scenario.ok) throw new Error("Unable to enable the mock runtime controls");
   await enableMetricFields(baseUrl);
-  await seedFieldCards(baseUrl);
+  await seedFieldCards(page);
   const metricFieldChecks = [];
   const fieldCardChecks = [];
   let verificationFails = false;

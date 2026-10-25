@@ -13,15 +13,12 @@ export default async function frontendVisibilityDemandJourney(page, baseUrl) {
   await wait(t => t["/api/metrics/subscribe"]?.logicalInFlight === 1);
   await table.scrollIntoViewIfNeeded();
   await wait(t => t["/api/metrics/subscribe"]?.logicalInFlight === 0
-      && Object.entries(t["/api/resource-monitor/subscribe"]?.inFlightByQuery ?? {})
-        .some(([query, count]) => count > 0 && query.includes("scope=table")));
+      && t["/api/resource-facts/subscribe"]?.logicalInFlight > 0);
   await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "性能", exact: true }).click();
   await wait(t => {
-    const resource = t["/api/resource-monitor/subscribe"];
     return t["/api/metrics/subscribe"]?.logicalInFlight === 1
       && t["/api/metrics/fields/catalog/subscribe"]?.logicalInFlight === 0
-      && Object.entries(resource?.inFlightByQuery ?? {}).every(([query, count]) =>
-        count === 0 || !query.includes("scope=table"));
+      && t["/api/resource-facts/subscribe"]?.logicalInFlight === 0;
   });
   await dashboard.scrollIntoViewIfNeeded();
   await wait(t => t["/api/metrics/subscribe"]?.logicalInFlight === 1);

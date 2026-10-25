@@ -119,6 +119,8 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           value={performance().smartMonitoringMode}
           options={props.text.performance.adaptiveBooleanModeOptions}
           ariaLabel={props.text.performance.smartMonitoringTitle}
+          disabled={true}
+          disabledTitle={props.text.performance.smartMonitoringDescription}
           onChange={props.onSmartMonitoringModeChange}
         />
       </div>

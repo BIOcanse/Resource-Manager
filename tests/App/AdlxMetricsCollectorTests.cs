@@ -234,7 +234,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
                 RecordedGpuIdentities(Inventory()),
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,[],NativeMetricSnapshotCatalogTopologyStatus.Complete,[])),
             new Environment(root),NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(CancellationToken.None); var dashboard=new DashboardMonitoringCatalogState();
+        await owner.StartAsync(CancellationToken.None); var dashboard=new HardwareMetricCatalogState();
         using(var lease=owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var device=dashboard.Current!.FieldBindings.Values.Single(binding=>binding.Field.Code==MetricFieldCode.AdlxActivity && binding.DeviceIdentity == RecordedGpuIdentities(Inventory()).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
@@ -298,7 +298,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         Assert.Equal("%",values[Names[3]].GetProperty("unit").GetString()); Assert.Equal("MHz",values[Names[4]].GetProperty("unit").GetString());
         if(!empty) { Assert.Equal(0,values[Names[0]].GetProperty("numericValue").GetDouble()); Assert.Equal(1.25,values[Names[1]].GetProperty("numericValue").GetDouble()); }
     }
-    private static async Task<WebApplication> StartHttpAsync(WindowsHardwareMetricSampler sampler,DashboardMonitoringCatalogState catalog,
+    private static async Task<WebApplication> StartHttpAsync(WindowsHardwareMetricSampler sampler,HardwareMetricCatalogState catalog,
         TaskCompletionSource? streamCompleted = null)
     {
         var builder=WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();

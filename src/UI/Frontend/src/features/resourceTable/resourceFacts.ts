@@ -1,9 +1,14 @@
-import type { ResourceBreakdownBar, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
+import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
+import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
 import { requireArray, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
 import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
 
+type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
+type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes"> & { processes: IdentityProcess[] };
+
 export interface ResourceFacts {
+  identities?: IdentitySoftware[];
   capturedAt?: string;
   metrics: ResourceBreakdownBar[];
 }
@@ -11,7 +16,7 @@ export interface ResourceFacts {
 /** Decode the neutral attribution catalogs; all table identities are created below. */
 export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
   const frame = requireRecord(value);
-  if (requireSafeInteger(frame.version, "$.version") !== 1) throw new ResponseDecodeError("$.version", "resource facts version 1");
+  if (requireSafeInteger(frame.version, "$.version") !== 2) throw new ResponseDecodeError("$.version", "resource facts version 2");
   const capturedAt = requireNullable(frame.capturedAt, "$.capturedAt", requireString) ?? undefined;
   const software = new Map(requireArray(frame.software, "$.software").map((value, index) => {
     const path = `$.software[${index}]`;
@@ -55,7 +60,20 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
           }) };
       }) };
   });
-  const facts = { capturedAt, metrics };
+  const groups = new Map<string, IdentitySoftware>();
+  for (const [index, value] of requireArray(frame.attributions, "$.attributions").entries()) {
+    const path = `$.attributions[${index}]`;
+    const item = requireRecord(value, path);
+    const id = requireNonEmptyString(item.softwareId, `${path}.softwareId`);
+    const owner = software.get(id);
+    const process = processes[requireSafeInteger(item.processIndex, `${path}.processIndex`)];
+    if (!owner || !process) throw new ResponseDecodeError(path, "known software and process identity");
+    let group = groups.get(id);
+    if (!group) { group = { ...owner, processCount: 0, processes: [] }; groups.set(id, group); }
+    group.processes.push({ ...process, baseScore: requireFiniteNumber(item.baseScore, `${path}.baseScore`) });
+    group.processCount = group.processes.length;
+  }
+  const facts = { capturedAt, metrics, identities: [...groups.values()] };
   return { capturedAt, facts, breakdown: { capturedAt, bars: [] }, table: { capturedAt, columns: [], rows: [], sort: { columnId: "impact", direction: "desc" } } };
 }
 
@@ -66,13 +84,64 @@ export function resourceTableMetricId(columnId: string): string | null {
 
 export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", locale?: string): ResourceTableSnapshot {
   const options = settings;
-  const columns = options.filter(column => column.visible).map(column => ({ ...column, unit: facts.metrics.find(metric => resourceTableMetricId(column.id) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? 100 }));
+  const columns = options.filter(column => column.visible).map(column => ({ ...column, unit: facts.metrics.find(metric => resourceTableMetricId(column.id) === metric.metricId)?.unit ?? "", sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth }));
   const softwareRows = new Map<string, ResourceTableRow>();
   const processRows = new Map<string, ResourceTableRow>();
   const children = new Map<string, ResourceTableRow[]>();
   const metadata = new Map<string, { ids: Set<number>; names: Set<string>; paths: Set<string> }>();
   const summary = row("summary:total", "summary", "", facts.metrics.length > 0 ? "ready" : "empty");
   const cell = (value: number | null, percent: number | null, unit: string, sharedValue?: number | null): ResourceTableValue => ({ value, percent, unit, displayValue: "", sharedValue });
+  function ensureSoftware(software: IdentitySoftware) {
+    let group = softwareRows.get(software.softwareId);
+    if (!group) {
+      group = { ...row(`software:${software.softwareId}`, "software", software.name, software.displayKind), softwareId: software.softwareId, processIds: [], processNames: [], executablePaths: [] };
+      softwareRows.set(software.softwareId, group);
+      metadata.set(software.softwareId, { ids: new Set(), names: new Set(), paths: new Set() });
+    }
+    group.processCount = Math.max(group.processCount, software.processCount);
+    return group;
+  }
+  // Residual rows are named from the metric that carries them; identity-only rows have no metric.
+  function ensureProcess(software: IdentitySoftware, process: IdentityProcess, metricId = "") {
+    const group = ensureSoftware(software);
+    const identity = process.processStartKey ? `${process.processId}:${process.processStartKey}` : `${process.attributionKind}:${process.processId}:${process.name}`;
+    const key = `${software.softwareId}:${identity}`;
+    let child = processRows.get(key);
+    if (!child) {
+      const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
+      const displayName = resourceProcessDisplayName(process, metricId);
+      child = { ...row(`process:${key}`, "process", displayName, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
+        softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
+        processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
+      child.values.pid = { value: processId, displayValue: processId?.toString() ?? "--", unit: "", attributionKind: process.attributionKind };
+      child.values.user = { displayValue: process.userName || "--", unit: "" };
+      child.values.architecture = { displayValue: process.architecture || "--", unit: "" };
+      processRows.set(key, child);
+      const siblings = children.get(software.softwareId) ?? [];
+      siblings.push(child);
+      children.set(software.softwareId, siblings);
+      const seen = metadata.get(software.softwareId)!;
+      if (processId && !seen.ids.has(processId)) {
+        seen.ids.add(processId);
+        group.processIds!.push(processId);
+      }
+      const processName = process.name.toLowerCase();
+      if (process.name.trim() && !seen.names.has(processName)) {
+        seen.names.add(processName);
+        group.processNames!.push(process.name);
+      }
+      const processPath = process.executablePath?.toLowerCase();
+      if (process.executablePath?.trim() && processPath && !seen.paths.has(processPath)) {
+        seen.paths.add(processPath);
+        group.executablePaths!.push(process.executablePath);
+      }
+    }
+    return child;
+  }
+  for (const software of facts.identities ?? []) {
+    ensureSoftware(software);
+    for (const process of software.processes) ensureProcess(software, process);
+  }
   for (const metric of facts.metrics) {
     const columnId = ({ "cpu.usage": "cpu", "memory.usage": "memory", "disk.io": "disk", "network.traffic": "network" } as Record<string, string>)[metric.metricId]
       ?? (/^gpu\.\d+\.(usage|vram)$/.test(metric.metricId) ? metric.metricId : null);
@@ -80,47 +149,10 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
       ? cell(metric.totalValue, metric.totalSystemPercent, metric.unit, metric.sharedValue)
       : { ...cell(null, null, metric.unit), availability: "Unavailable" };
     for (const software of metric.software) {
-      let group = softwareRows.get(software.softwareId);
-      if (!group) {
-        group = { ...row(`software:${software.softwareId}`, "software", software.name, software.displayKind), softwareId: software.softwareId, processIds: [], processNames: [], executablePaths: [] };
-        softwareRows.set(software.softwareId, group);
-        metadata.set(software.softwareId, { ids: new Set(), names: new Set(), paths: new Set() });
-      }
-      group.processCount = Math.max(group.processCount, software.processCount);
+      const group = ensureSoftware(software);
       if (columnId) group.values[columnId] = cell(software.value, software.systemPercent, metric.unit, software.sharedValue);
       for (const process of software.processes) {
-        const identity = process.processStartKey ? `${process.processId}:${process.processStartKey}` : `${process.attributionKind}:${process.processId}:${process.name}`;
-        const key = `${software.softwareId}:${identity}`;
-        let child = processRows.get(key);
-        if (!child) {
-          const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
-          const displayName = resourceProcessDisplayName(process, metric.metricId);
-          child = { ...row(`process:${key}`, "process", displayName, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
-            softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
-            processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
-          child.values.pid = { value: processId, displayValue: processId?.toString() ?? "--", unit: "", attributionKind: process.attributionKind };
-          child.values.user = { displayValue: process.userName || "--", unit: "" };
-          child.values.architecture = { displayValue: process.architecture || "--", unit: "" };
-          processRows.set(key, child);
-          const siblings = children.get(software.softwareId) ?? [];
-          siblings.push(child);
-          children.set(software.softwareId, siblings);
-          const seen = metadata.get(software.softwareId)!;
-          if (processId && !seen.ids.has(processId)) {
-            seen.ids.add(processId);
-            group.processIds!.push(processId);
-          }
-          const processName = process.name.toLowerCase();
-          if (process.name.trim() && !seen.names.has(processName)) {
-            seen.names.add(processName);
-            group.processNames!.push(process.name);
-          }
-          const processPath = process.executablePath?.toLowerCase();
-          if (process.executablePath?.trim() && processPath && !seen.paths.has(processPath)) {
-            seen.paths.add(processPath);
-            group.executablePaths!.push(process.executablePath);
-          }
-        }
+        const child = ensureProcess(software, process, metric.metricId);
         if (columnId) child.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
       }
     }

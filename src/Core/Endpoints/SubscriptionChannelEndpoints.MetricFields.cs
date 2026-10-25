@@ -10,7 +10,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static async Task RunMetricFieldSubscriptionAsync(
         string id,
         IMetricSnapshotPushSource source,
-        DashboardMonitoringCatalogState catalog,
+        HardwareMetricCatalogState catalog,
         string? device,
         IReadOnlySet<string> fields,
         TimeSpan interval,

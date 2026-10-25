@@ -37,17 +37,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     }
 
     static IReadOnlyDictionary<string, string> ParseResourceScaleModes(
-        HttpRequest request,
-        CompiledMonitoringPlan? monitoringPlan = null)
-        => ParseResourceScaleModes(request.Query, monitoringPlan);
+        HttpRequest request)
+        => ParseResourceScaleModes(request.Query);
 
     static IReadOnlyDictionary<string, string> ParseResourceScaleModes(
-        IQueryCollection query,
-        CompiledMonitoringPlan? monitoringPlan = null)
+        IQueryCollection query)
     {
         if (!query.TryGetValue("modes", out var modes))
         {
-            return monitoringPlan?.ResourceBarScaleModes ?? new Dictionary<string, string>();
+            return new Dictionary<string, string>();
         }
 
         return modes
@@ -56,11 +54,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 var separator = value.LastIndexOf(':');
                 return separator > 0
-                    ? new DashboardMetricScalePayload(value[..separator], value[(separator + 1)..])
+                    ? new MetricScalePayload(value[..separator], value[(separator + 1)..])
                     : null;
             })
             .Where(static item => item is not null
-                && DashboardSettingsDefaults.IsResourceBarMetricSupported(item.MetricId))
+                && ResourceBreakdownMetricIds.IsSupported(item.MetricId))
             .ToDictionary(
                 static item => item!.MetricId,
                 static item => ResourceBreakdownScaleModes.Normalize(item!.MetricId, item.ScaleMode),
@@ -68,18 +66,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     }
 
     static IReadOnlyList<string> ParseResourceMetricIds(
-        HttpRequest request,
-        CompiledMonitoringPlan? monitoringPlan = null)
-        => ParseResourceMetricIds(request.Query, monitoringPlan);
+        HttpRequest request)
+        => ParseResourceMetricIds(request.Query);
 
     static IReadOnlyList<string> ParseResourceMetricIds(
-        IQueryCollection query,
-        CompiledMonitoringPlan? monitoringPlan = null)
+        IQueryCollection query)
     {
         return ParseResourceMetricIdsFromQuery(
             query,
             "ids",
-            monitoringPlan?.ResourceBarMetricIds);
+            null);
     }
 
     static IReadOnlyList<string> ParseResourceSampleMetricIds(HttpRequest request)
@@ -132,7 +128,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     }
 
     private static bool IsResourceSampleMetricSupported(string metricId)
-        => DashboardSettingsDefaults.IsResourceBarMetricSupported(metricId)
+        => ResourceBreakdownMetricIds.IsSupported(metricId)
             || ProcessMetricFieldRegistry.Find(metricId) is not null;
 
 }

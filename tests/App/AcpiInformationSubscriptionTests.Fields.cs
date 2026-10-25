@@ -91,7 +91,7 @@ public sealed partial class AcpiInformationSubscriptionTests
         using var process = ProcessBasicFieldCollectorTests.Fixture(processApi);
         var processes = new ResourceManager.App.Infrastructure.ReadWrite.HostProcessFieldBackend(process.Sampler);
         var metrics = new ResourceManager.App.Infrastructure.ReadWrite.HostReadWriteBackend(null!, null!,
-            new ResourceManager.App.Infrastructure.RuntimeSpecialization.DashboardMonitoringCatalogState(), null!, null!);
+            new ResourceManager.App.Infrastructure.RuntimeSpecialization.HardwareMetricCatalogState(), null!, null!);
         var composed = new ResourceManager.App.Infrastructure.ReadWrite.HostFieldBackends(metrics,
             new ResourceManager.App.Infrastructure.ReadWrite.HostFieldSubscriptionBackend(metrics, null!, null!), devices.Provider, cpu.Reader, processes);
         await devices.Provider.CaptureInformationAsync(default);

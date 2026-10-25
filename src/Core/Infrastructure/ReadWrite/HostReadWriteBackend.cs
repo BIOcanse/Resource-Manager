@@ -21,7 +21,7 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
     private readonly WindowsHardwareMetricSampler? controlSampler;
 
     public HostReadWriteBackend(IMetricSampler sampler, IMetricSnapshotObservationSource observations,
-        DashboardMonitoringCatalogState catalogState, IControlObjectCatalog controlCatalog, IControlWriteLayer writeLayer)
+        HardwareMetricCatalogState catalogState, IControlObjectCatalog controlCatalog, IControlWriteLayer writeLayer)
     {
         controlSampler = sampler as WindowsHardwareMetricSampler;
         this.controlCatalog = controlCatalog;

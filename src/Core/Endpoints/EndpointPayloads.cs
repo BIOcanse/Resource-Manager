@@ -82,7 +82,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         global::System.Collections.Generic.IReadOnlyList<object>? Dump,
         global::ResourceManager.ReadWrite.Vendors.Nvidia.NvidiaPowerLimitWatts? PowerLimit);
 
-    private sealed record DashboardMetricScalePayload(
+    private sealed record MetricScalePayload(
         string MetricId,
         string ScaleMode);
 

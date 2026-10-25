@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace ResourceManager.NativeUi.Preferences;
 
 /// <summary>One native frontend owner shared by the WebView, startup appearance and overlay.</summary>
-internal sealed class FrontendPreferencesOwner
+internal sealed partial class FrontendPreferencesOwner
 {
     internal const string LegacyBackupSuffix = ".frontend-preferences-v1.bak";
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -17,7 +17,8 @@ internal sealed class FrontendPreferencesOwner
     private static readonly Lazy<FrontendPreferencesOwner> Instance = new(() => new(
         NativeUiPaths.FrontendPreferencesPath,
         NativeUiPaths.AppSettingsPath,
-        Path.Combine(NativeUiPaths.PackageRoot, "UserData", "SoftwareProfiles", "performance-overlay.local.json")));
+        Path.Combine(NativeUiPaths.PackageRoot, "UserData", "SoftwareProfiles", "performance-overlay.local.json"),
+        Path.Combine(NativeUiPaths.PackageRoot, "Config", "dashboard-settings.json")));
 
     internal static FrontendPreferencesOwner Current => Instance.Value;
     internal static FrontendPreferencesOwner ForCache(string path) =>
@@ -35,12 +36,15 @@ internal sealed class FrontendPreferencesOwner
     private FrontendPreferences? cached;
     private (long Ticks, long Length)? version;
 
-    internal FrontendPreferencesOwner(string cachePath, string? legacyAppPath = null, string? legacyOverlayPath = null)
+    internal FrontendPreferencesOwner(string cachePath, string? legacyAppPath = null, string? legacyOverlayPath = null,
+        string? legacyDashboardPath = null)
     {
         this.cachePath = Path.GetFullPath(cachePath);
         importMarkerPath = this.cachePath + ".imported-v1";
         this.legacyAppPath = legacyAppPath;
         this.legacyOverlayPath = legacyOverlayPath;
+        this.legacyDashboardPath = legacyDashboardPath;
+        dashboardImportMarkerPath = this.cachePath + ".dashboard-imported-v1";
     }
 
     internal FrontendPreferences Read()
@@ -48,6 +52,7 @@ internal sealed class FrontendPreferencesOwner
         lock (gate)
         {
             InitializeImport();
+            InitializeDashboardImport();
             var file = new FileInfo(cachePath);
             if (!file.Exists)
             {
@@ -78,6 +83,7 @@ internal sealed class FrontendPreferencesOwner
             // Initialization must never import over an explicit user update.
             WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(value, Json));
             WriteImportMarker();
+            WriteDashboardImportMarker();
             initialized = true;
             cached = value;
             var file = new FileInfo(cachePath);
@@ -115,6 +121,7 @@ internal sealed class FrontendPreferencesOwner
         lock (gate)
         {
             WriteImportMarker();
+            WriteDashboardImportMarker();
             File.Delete(cachePath);
             initialized = true;
             cached = pointValues;

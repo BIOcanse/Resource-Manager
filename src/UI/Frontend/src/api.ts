@@ -1,3 +1,4 @@
+import { readDashboardPreferences, saveDashboardPreferences } from "./preferences/dashboardPreferences.ts";
 import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
 import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
 import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
@@ -13,7 +14,6 @@ import type {
   CpuCoreResidencySnapshot,
   CpuTopologySnapshot,
   DashboardSettings,
-  DashboardSettingsResult,
   GpuPlacementProcessObservationRequest,
   GpuPlacementProcessPolicy,
   RuntimePolicySaveResult,
@@ -121,18 +121,12 @@ export async function resetPerformanceOverlayPresentation(softwareId: string) {
 }
 
 export async function getDashboardSettings() {
-  return getJson<DashboardSettingsResult>("/api/settings/dashboard");
+  return readDashboardPreferences(await getMetricCatalog());
 }
 
 export async function saveDashboardSettings(settings: DashboardSettings) {
-  return requestJson<DashboardSettingsResult>("/api/settings/dashboard", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings),
-    fallbackError: uiText.apiError.saveSettingsFailed
-  });
+  return saveDashboardPreferences(settings);
 }
-
 export async function getAiGatewayCredentials() {
   return getJson<AiGatewayCredentialView[]>("/api/ai-gateway/credentials");
 }

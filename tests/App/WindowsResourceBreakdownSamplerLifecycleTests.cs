@@ -239,8 +239,10 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(1, catalogProvider.CaptureCount);
     }
 
-    [Fact]
-    public async Task FoundationOnlySubscriptionPublishesIdentitiesWithoutHardwareOrPerformanceDemand()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FoundationOnlySubscriptionPublishesIdentitiesWithoutHardwareOrPerformanceDemand(bool push)
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalog = new VersionedProcessAttributionCatalogProvider();
@@ -260,8 +262,11 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await sampler.StartAsync(default);
         try
         {
-            using var lease = sampler.AcquireSubscription("overlay-foundation-test", request, TimeSpan.FromMilliseconds(100));
             using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var lease = push ? null : sampler.AcquireSubscription("foundation-test", request, TimeSpan.FromMilliseconds(100));
+            await using var stream = sampler.SubscribeAsync("foundation-push-test", request,
+                TimeSpan.FromMilliseconds(100), stop.Token).GetAsyncEnumerator();
+            if (push) Assert.True(await stream.MoveNextAsync());
             SchedulingProcessFactSnapshot? current;
             while ((current = sampler.ReadLatest(read)) is null) await Task.Delay(20, stop.Token);
             Assert.NotEmpty(current.InventoryProcesses);

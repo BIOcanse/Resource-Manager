@@ -153,9 +153,9 @@ public sealed partial class IntelGpuInformationCollectorTests
                 NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new TestEnvironment(Path.Combine(Path.GetTempPath(), $"igcl-clock-worker-{Guid.NewGuid():N}")), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
 
-    private static DashboardMonitoringCatalogState PublishClockCatalog(HostManagerMetricSnapshotOwner owner)
+    private static HardwareMetricCatalogState PublishClockCatalog(HostManagerMetricSnapshotOwner owner)
     {
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using var lease = owner.Acquire();
         dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         return dashboard;

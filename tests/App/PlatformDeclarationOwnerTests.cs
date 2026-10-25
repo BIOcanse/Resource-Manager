@@ -107,7 +107,7 @@ public sealed class PlatformDeclarationOwnerTests
             NullLogger<DeviceTopologySnapshotProvider>.Instance, new Acpi(), operatingSystemInventory: os);
         await using var cpu = new CpuTopologyProviderTestFixture();
         var api = new ProcessBasicFieldCollectorTests.Api(); using var process = ProcessBasicFieldCollectorTests.Fixture(api);
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var host = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!), provider, cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         await provider.CaptureOperatingSystemInformationAsync(default);
         var field = host.Reads.Catalog.Fields.Single(item => item.Field.FieldName == "startup_all_entry_configured").Field;

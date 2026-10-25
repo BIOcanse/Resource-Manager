@@ -69,6 +69,10 @@ public static class @FrontendPoints
     public static readonly string @Anchor = @FrontendPointsValues.@__fpValue_Anchor;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002D0002UL)]
     public static readonly ImmutableArray<string> @MetricOrder = @FrontendPointsValues.@__fpValue_MetricOrder;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200310000UL)]
+    public static readonly global::System.Text.Json.JsonElement @DashboardLayoutDefaults = @FrontendPointsValues.@__fpValue_DashboardLayoutDefaults;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200310001UL)]
+    public static readonly PointDashboardLayoutLimits @DashboardLayoutLimits = @FrontendPointsValues.@__fpValue_DashboardLayoutLimits;
 }
 public sealed class @FrontendPointsRuntime
 {
@@ -77,5 +81,6 @@ public sealed class @FrontendPointsRuntime
     }
     public static @FrontendPointsRuntime Create() => new();
 }
+public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);
 public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);
 public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);

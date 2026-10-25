@@ -60,6 +60,8 @@ import localizationJourney from "./localizationJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
+  ["monitoring-switch-copy", async (...args) => (await import("./monitoringSwitchCopyJourney.js")).default(...args)],
+  ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],
   ["language-load-failure", async (...args) => (await import("./languageLoadFailureJourney.js")).default(...args)],

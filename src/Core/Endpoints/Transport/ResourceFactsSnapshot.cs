@@ -1,4 +1,5 @@
 using System.Globalization;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 
@@ -10,11 +11,13 @@ internal sealed record ResourceFactsSnapshot(
     DateTimeOffset? CapturedAt,
     IReadOnlyList<ResourceSoftwareIdentity> Software,
     IReadOnlyList<ResourceProcessIdentity> Processes,
-    IReadOnlyList<ResourceMetricFacts> Metrics)
+    IReadOnlyList<ResourceMetricFacts> Metrics,
+    IReadOnlyList<ResourceProcessAttribution> Attributions)
 {
-    internal static ResourceFactsSnapshot Empty { get; } = new(1, null, [], [], []);
+    internal static ResourceFactsSnapshot Empty { get; } = new(2, null, [], [], [], []);
 
-    internal static ResourceFactsSnapshot Create(ResourceBreakdownSnapshot source, IReadOnlyList<string> items)
+    internal static ResourceFactsSnapshot Create(ResourceBreakdownSnapshot source, IReadOnlyList<string> items,
+        SchedulingProcessFactSnapshot? foundations = null)
     {
         var requested = items.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var current = source.Datasets.Where(static dataset =>
@@ -47,8 +50,37 @@ internal sealed record ResourceFactsSnapshot(
                         ProcessIndex(process), process.Value, process.SystemPercent,
                         process.SoftwarePercent, process.BaseScore, process.SharedValue)).ToArray())).ToArray()))
             .ToArray();
-        return new ResourceFactsSnapshot(1, metrics.Select(metric =>
-            current[SamplingDatasetIds.ForProcessMetric(metric.MetricId)].CapturedAt).DefaultIfEmpty(null).Max(), software, processes, metrics);
+        var attributions = new List<ResourceProcessAttribution>();
+        if (foundations is { InventoryStatus: SamplingObservationStatus.Current, HasSeparateFoundationPayloads: true })
+        {
+            var inventory = foundations.InventoryProcesses.ToDictionary(static process => (process.ProcessId, process.ProcessStartKey));
+            var softwareById = software.ToDictionary(static item => item.SoftwareId, StringComparer.Ordinal);
+            var processIndexes = processes.Select((process, index) => (process, index))
+                .Where(static item => item.process.ProcessId > 0 && item.process.ProcessStartKey is not null)
+                .GroupBy(static item => (item.process.ProcessId, item.process.ProcessStartKey))
+                .ToDictionary(static group => group.Key, static group => group.First().index);
+            foreach (var fact in foundations.AttributionProcesses)
+            {
+                if (!inventory.TryGetValue((fact.ProcessId, fact.ProcessStartKey), out var process)
+                    || process.ProcessId <= 0 || process.ProcessStartKey == 0 || string.IsNullOrWhiteSpace(fact.SoftwareId)) continue;
+                softwareById.TryAdd(fact.SoftwareId, new(fact.SoftwareId, fact.SoftwareName, fact.SoftwareKind, fact.SoftwareDisplayKind));
+                var startKey = process.ProcessStartKey.ToString(CultureInfo.InvariantCulture);
+                if (!processIndexes.TryGetValue((process.ProcessId, startKey), out var processIndex))
+                {
+                    processIndex = processes.Count;
+                    processIndexes.Add((process.ProcessId, startKey), processIndex);
+                    processes.Add(new(process.ProcessId, startKey,
+                        process.ProcessName, process.ExecutablePath, process.UserName, process.Architecture, fact.SoftwareDisplayKind));
+                }
+                attributions.Add(new(processIndex, fact.SoftwareId, fact.BaseScore));
+            }
+            software = softwareById.Values.ToArray();
+        }
+        var capturedAt = metrics.Select(metric => current[SamplingDatasetIds.ForProcessMetric(metric.MetricId)].CapturedAt)
+            .DefaultIfEmpty(null).Max();
+        if (foundations is { ObservedAtUtcTicks: > 0 } && attributions.Count > 0)
+            capturedAt = new DateTimeOffset(foundations.ObservedAtUtcTicks, TimeSpan.Zero);
+        return new ResourceFactsSnapshot(2, capturedAt, software, processes, metrics, attributions);
     }
 }
 
@@ -62,3 +94,4 @@ internal sealed record ResourceSoftwareFacts(string SoftwareId,
     IReadOnlyList<ResourceProcessFacts> Processes);
 internal sealed record ResourceProcessFacts(int ProcessIndex,
     double Value, double SystemPercent, double SoftwarePercent, double BaseScore, double? SharedValue);
+internal sealed record ResourceProcessAttribution(int ProcessIndex, string SoftwareId, double BaseScore);

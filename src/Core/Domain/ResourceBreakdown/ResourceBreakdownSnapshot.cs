@@ -4,6 +4,17 @@ namespace ResourceManager.App.Domain.ResourceBreakdown;
 
 public static class ResourceBreakdownMetricIds
 {
+    public static bool IsSupported(string? metricId)
+    {
+        if (string.IsNullOrWhiteSpace(metricId)) return false;
+        var id = metricId.Trim().ToLowerInvariant();
+        if (id is CpuUsage or MemoryUsage or VirtualMemoryUsage or DiskIo or DiskRead or DiskWrite
+            or NetworkTraffic or NetworkReceive or NetworkSend or NetworkRawTraffic or NetworkRawReceive or NetworkRawSend) return true;
+        var parts = id.Split('.');
+        return parts.Length == 3 && parts[0] == "gpu" && int.TryParse(parts[1], out var index)
+            && index >= 0 && parts[2] is "usage" or "vram";
+    }
+
     public const string CpuUsage = "cpu.usage";
     public const string MemoryUsage = "memory.usage";
     public const string VirtualMemoryUsage = "virtualMemory.usage";

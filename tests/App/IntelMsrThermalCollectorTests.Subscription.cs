@@ -37,7 +37,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => Topology([target])), new IntelEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var access = new Access { FeedbackFlags = 1, ThermalFlags = 0 }; var hardware = new Hardware(access);
@@ -117,7 +117,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => Topology([core, other, package, thread, die])), new IntelEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var access = new Access { FeedbackFlags = 1, Signature = target.Signature }; var hardware = new Hardware(access);

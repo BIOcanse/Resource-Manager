@@ -35,7 +35,7 @@ public sealed class SoftwareInformationSubscriptionTests
         await using var cpu = new CpuTopologyProviderTestFixture();
         var processApi = new ProcessBasicFieldCollectorTests.Api();
         using var process = ProcessBasicFieldCollectorTests.Fixture(processApi);
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var composed = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             fixture.Provider, cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         await fixture.Provider.CaptureServiceInformationAsync(default);
@@ -215,7 +215,7 @@ public sealed class SoftwareInformationSubscriptionTests
         await using var cpu = new CpuTopologyProviderTestFixture();
         var processApi = new ProcessBasicFieldCollectorTests.Api();
         using var process = ProcessBasicFieldCollectorTests.Fixture(processApi);
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var composed = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             fixture.Provider, cpu.Reader, new HostProcessFieldBackend(process.Sampler));
         Assert.Empty(composed.Reads.Catalog.Fields); Assert.Equal(0, fixture.Scans);

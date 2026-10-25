@@ -1,0 +1,833 @@
+[
+  {
+    "name": "before-discovery",
+    "ids": null,
+    "identities": null,
+    "settings": {
+      "version": 16,
+      "cards": [
+        {
+          "id": "cpu",
+          "main": "cpu.usage",
+          "small": [
+            "cpu.frequency",
+            "cpu.frequencyPercent"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "memory",
+          "main": "memory.usage",
+          "small": [
+            "memory.percent",
+            "virtualMemory.usage",
+            "virtualMemory.percent"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "disk-network",
+          "main": "disk.total.activePercent",
+          "small": [
+            "disk.total.readBytesPerSec",
+            "network.total.receiveBytesPerSec",
+            "network.total.sendBytesPerSec"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        }
+      ],
+      "resourceBars": [
+        {
+          "id": "resource-cpu",
+          "metricId": "cpu.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-memory",
+          "metricId": "memory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-virtual-memory",
+          "metricId": "virtualMemory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-disk",
+          "metricId": "disk.io",
+          "scaleMode": "active",
+          "binding": null
+        },
+        {
+          "id": "resource-network",
+          "metricId": "network.traffic",
+          "scaleMode": "active",
+          "binding": null
+        }
+      ],
+      "resourceTableColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "resourceTableProcessColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "pid",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "user",
+          "visible": true,
+          "width": 150,
+          "binding": null
+        },
+        {
+          "id": "architecture",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "usesFactoryDefaults": false
+    }
+  },
+  {
+    "name": "empty-catalog",
+    "ids": [],
+    "identities": null,
+    "settings": {
+      "version": 16,
+      "cards": [
+        {
+          "id": "cpu",
+          "main": "cpu.usage",
+          "small": [],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "memory",
+          "main": "memory.usage",
+          "small": [],
+          "mainBinding": null,
+          "smallBindings": null
+        }
+      ],
+      "resourceBars": [
+        {
+          "id": "resource-cpu",
+          "metricId": "cpu.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-memory",
+          "metricId": "memory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-disk",
+          "metricId": "disk.io",
+          "scaleMode": "active",
+          "binding": null
+        },
+        {
+          "id": "resource-network",
+          "metricId": "network.traffic",
+          "scaleMode": "active",
+          "binding": null
+        }
+      ],
+      "resourceTableColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "resourceTableProcessColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "pid",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "user",
+          "visible": true,
+          "width": 150,
+          "binding": null
+        },
+        {
+          "id": "architecture",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "usesFactoryDefaults": false
+    }
+  },
+  {
+    "name": "cpu-memory",
+    "ids": [
+      "cpu.usage",
+      "cpu.frequency",
+      "cpu.frequencyPercent",
+      "memory.usage",
+      "memory.percent",
+      "virtualMemory.usage",
+      "virtualMemory.percent",
+      "disk.total.activePercent",
+      "disk.total.readBytesPerSec",
+      "network.total.receiveBytesPerSec",
+      "network.total.sendBytesPerSec"
+    ],
+    "identities": null,
+    "settings": {
+      "version": 16,
+      "cards": [
+        {
+          "id": "cpu",
+          "main": "cpu.usage",
+          "small": [
+            "cpu.frequency",
+            "cpu.frequencyPercent"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "memory",
+          "main": "memory.usage",
+          "small": [
+            "memory.percent",
+            "virtualMemory.usage",
+            "virtualMemory.percent"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "disk-network",
+          "main": "disk.total.activePercent",
+          "small": [
+            "disk.total.readBytesPerSec",
+            "network.total.receiveBytesPerSec",
+            "network.total.sendBytesPerSec"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        }
+      ],
+      "resourceBars": [
+        {
+          "id": "resource-cpu",
+          "metricId": "cpu.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-memory",
+          "metricId": "memory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-virtual-memory",
+          "metricId": "virtualMemory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-disk",
+          "metricId": "disk.io",
+          "scaleMode": "active",
+          "binding": null
+        },
+        {
+          "id": "resource-network",
+          "metricId": "network.traffic",
+          "scaleMode": "active",
+          "binding": null
+        }
+      ],
+      "resourceTableColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "resourceTableProcessColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "pid",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "user",
+          "visible": true,
+          "width": 150,
+          "binding": null
+        },
+        {
+          "id": "architecture",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "usesFactoryDefaults": false
+    }
+  },
+  {
+    "name": "two-gpus-independent-capabilities",
+    "ids": [
+      "cpu.usage",
+      "cpu.fanRpm",
+      "cpu.coreVoltage",
+      "memory.usage",
+      "gpu.0.usage",
+      "gpu.0.graphicsClock",
+      "gpu.0.vram",
+      "gpu.0.vramPercent",
+      "gpu.0.fanRpm",
+      "gpu.0.current",
+      "gpu.1.usage",
+      "gpu.1.power",
+      "gpu.1.fanRpm",
+      "gpu.1.temperature"
+    ],
+    "identities": {
+      "0": "gpu-a",
+      "1": "gpu-b"
+    },
+    "settings": {
+      "version": 16,
+      "cards": [
+        {
+          "id": "cpu",
+          "main": "cpu.usage",
+          "small": [],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "memory",
+          "main": "memory.usage",
+          "small": [],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "gpu0",
+          "main": "gpu.0.usage",
+          "small": [
+            "gpu.0.graphicsClock"
+          ],
+          "mainBinding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          },
+          "smallBindings": [
+            {
+              "scopeKind": "gpu",
+              "scopeKey": "gpu-a"
+            }
+          ]
+        },
+        {
+          "id": "gpu1",
+          "main": "gpu.1.usage",
+          "small": [
+            "gpu.1.power",
+            "gpu.1.temperature"
+          ],
+          "mainBinding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-b"
+          },
+          "smallBindings": [
+            {
+              "scopeKind": "gpu",
+              "scopeKey": "gpu-b"
+            },
+            {
+              "scopeKind": "gpu",
+              "scopeKey": "gpu-b"
+            }
+          ]
+        },
+        {
+          "id": "vram0",
+          "main": "gpu.0.vram",
+          "small": [
+            "gpu.0.vramPercent"
+          ],
+          "mainBinding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          },
+          "smallBindings": [
+            {
+              "scopeKind": "gpu",
+              "scopeKey": "gpu-a"
+            }
+          ]
+        },
+        {
+          "id": "cpu-sensors",
+          "main": "cpu.fanRpm",
+          "small": [
+            "cpu.coreVoltage"
+          ],
+          "mainBinding": null,
+          "smallBindings": null
+        },
+        {
+          "id": "gpu0-sensors",
+          "main": "gpu.0.fanRpm",
+          "small": [
+            "gpu.0.current"
+          ],
+          "mainBinding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          },
+          "smallBindings": [
+            {
+              "scopeKind": "gpu",
+              "scopeKey": "gpu-a"
+            }
+          ]
+        },
+        {
+          "id": "gpu1-sensors",
+          "main": "gpu.1.fanRpm",
+          "small": [],
+          "mainBinding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-b"
+          },
+          "smallBindings": []
+        }
+      ],
+      "resourceBars": [
+        {
+          "id": "resource-cpu",
+          "metricId": "cpu.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-memory",
+          "metricId": "memory.usage",
+          "scaleMode": "capacity",
+          "binding": null
+        },
+        {
+          "id": "resource-gpu0",
+          "metricId": "gpu.0.usage",
+          "scaleMode": "capacity",
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "resource-vram0",
+          "metricId": "gpu.0.vram",
+          "scaleMode": "capacity",
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "resource-gpu1",
+          "metricId": "gpu.1.usage",
+          "scaleMode": "capacity",
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-b"
+          }
+        },
+        {
+          "id": "resource-disk",
+          "metricId": "disk.io",
+          "scaleMode": "active",
+          "binding": null
+        },
+        {
+          "id": "resource-network",
+          "metricId": "network.traffic",
+          "scaleMode": "active",
+          "binding": null
+        }
+      ],
+      "resourceTableColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "gpu.0.usage",
+          "visible": true,
+          "width": 108,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "gpu.0.vram",
+          "visible": true,
+          "width": 132,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "gpu.1.usage",
+          "visible": true,
+          "width": 108,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-b"
+          }
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "resourceTableProcessColumns": [
+        {
+          "id": "name",
+          "visible": true,
+          "width": 260,
+          "binding": null
+        },
+        {
+          "id": "pid",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "status",
+          "visible": true,
+          "width": 92,
+          "binding": null
+        },
+        {
+          "id": "user",
+          "visible": true,
+          "width": 150,
+          "binding": null
+        },
+        {
+          "id": "architecture",
+          "visible": true,
+          "width": 76,
+          "binding": null
+        },
+        {
+          "id": "cpu",
+          "visible": true,
+          "width": 86,
+          "binding": null
+        },
+        {
+          "id": "memory",
+          "visible": true,
+          "width": 110,
+          "binding": null
+        },
+        {
+          "id": "gpu.0.usage",
+          "visible": true,
+          "width": 108,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "gpu.0.vram",
+          "visible": true,
+          "width": 132,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-a"
+          }
+        },
+        {
+          "id": "gpu.1.usage",
+          "visible": true,
+          "width": 108,
+          "binding": {
+            "scopeKind": "gpu",
+            "scopeKey": "gpu-b"
+          }
+        },
+        {
+          "id": "disk",
+          "visible": true,
+          "width": 112,
+          "binding": null
+        },
+        {
+          "id": "network",
+          "visible": true,
+          "width": 106,
+          "binding": null
+        }
+      ],
+      "usesFactoryDefaults": false
+    }
+  }
+]

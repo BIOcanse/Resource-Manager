@@ -27,6 +27,7 @@ export interface ResourceBreakdownQuery {
 }
 
 export interface ResourceMonitorQuery extends ResourceBreakdownQuery {
+  readonly processDetailLevel?: "basic" | "full";
   readonly scope?: "bars" | "table" | "combined";
   readonly sampleMetricIds: readonly string[] | null;
   readonly visibleColumnIds: readonly string[] | null;
@@ -122,7 +123,7 @@ function buildResourceMonitorParams(query: ResourceMonitorQuery): URLSearchParam
   const params = new URLSearchParams();
   if (query.scope === "table") {
     appendValues(params, "items", query.sampleMetricIds);
-    params.set("processDetailLevel", "full");
+    params.set("processDetailLevel", query.processDetailLevel ?? "basic");
     return params;
   }
   appendBars(params, query.bars);
@@ -139,7 +140,7 @@ export function normalizeResourceMonitorQuery(
 ): ResourceMonitorQuery {
   const breakdown = normalizeResourceBreakdownQuery(query);
   if (query.scope === "table") {
-    return Object.freeze({ bars: [], scope: "table", sampleMetricIds: normalizeSet(query.sampleMetricIds),
+    return Object.freeze({ bars: [], scope: "table", processDetailLevel: query.processDetailLevel ?? "basic", sampleMetricIds: normalizeSet(query.sampleMetricIds),
       visibleColumnIds: [], sortColumnId: "", sortDirection: "desc", processDetailSoftwareIds: [], tableMode: "software" });
   }
   return Object.freeze({

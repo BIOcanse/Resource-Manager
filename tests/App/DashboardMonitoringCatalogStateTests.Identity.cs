@@ -4,7 +4,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed partial class DashboardMonitoringCatalogStateTests
+public sealed partial class HardwareMetricCatalogStateTests
 {
     [Theory]
     [InlineData("workspace")]
@@ -57,7 +57,7 @@ public sealed partial class DashboardMonitoringCatalogStateTests
                         } } }
                 } } }
         };
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(original);
         var revision = state.Revision;
         state.PublishCatalogProbe(next);
@@ -67,11 +67,11 @@ public sealed partial class DashboardMonitoringCatalogStateTests
     [Fact]
     public void EqualHashStillRequiresStructuralIdentityEquality()
     {
-        var first = new DashboardMonitoringCatalogState();
+        var first = new HardwareMetricCatalogState();
         first.PublishCatalogProbe(CreateSnapshot(1, "gpu-a", "gpu.0.usage"));
-        var second = new DashboardMonitoringCatalogState();
+        var second = new HardwareMetricCatalogState();
         second.PublishCatalogProbe(CreateSnapshot(1, "gpu-b", "gpu.0.usage"));
-        var identityField = typeof(DashboardMonitoringCatalogState).GetField("identity", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var identityField = typeof(HardwareMetricCatalogState).GetField("identity", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var firstIdentity = identityField.GetValue(first)!;
         var secondIdentity = identityField.GetValue(second)!;
         var hashField = firstIdentity.GetType().GetField("hash", BindingFlags.Instance | BindingFlags.NonPublic)!;

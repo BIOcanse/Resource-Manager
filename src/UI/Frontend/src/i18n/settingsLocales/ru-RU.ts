@@ -77,7 +77,7 @@ export default createSettingsLocale("ru-RU", {
   },
   "performance": {
     "smartMonitoringTitle": "Мониторинг по запросу",
-    "smartMonitoringDescription": "Вкл.: опрашиваются только показания, которые интерфейс показывает или на которые подписан. Выкл.: опрашиваются все показания из каталога, что увеличивает нагрузку.",
+    "smartMonitoringDescription": "Сбор данных теперь всегда определяется видимыми элементами. Этот прежний переключатель отключён, пока не решено, как использовать его в дальнейшем.",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

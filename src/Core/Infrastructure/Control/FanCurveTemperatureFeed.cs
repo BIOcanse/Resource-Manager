@@ -28,7 +28,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class FanCurveTemperatureFeed(
     IMetricSnapshotObservationSource metrics,
     FanControlCoreClient core,
-    DashboardMonitoringCatalogState catalog,
+    HardwareMetricCatalogState catalog,
     ILogger<FanCurveTemperatureFeed>? logger = null) : BackgroundService
 {
     /// <summary>

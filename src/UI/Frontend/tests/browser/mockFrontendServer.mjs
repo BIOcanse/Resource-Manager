@@ -187,23 +187,6 @@ const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied"
     runtimeApplicationDisposition
   };
 };
-const dashboardSettingsResult = {
-  settings: {
-    version: 14,
-    cards: [
-      { id: "cpu", main: "cpu.usage", small: ["cpu.frequency", "cpu.frequencyPercent"] },
-      { id: "memory", main: "memory.usage", small: ["memory.percent"] }
-    ],
-    resourceBars: [
-      { id: "resource-cpu-usage", metricId: "cpu.usage", scaleMode: "capacity" },
-      { id: "resource-memory-usage", metricId: "memory.usage", scaleMode: "capacity" }
-    ],
-    resourceTableColumns: tableColumnSettings(),
-    resourceTableProcessColumns: tableColumnSettings(true)
-  },
-  updatedAt: now(),
-  source: { kind: "Persisted", sourceVersion: 14, recoveryDisposition: "none" }
-};
 const mockSoftware = {
   id: "frontend-harness.software",
   name: "示例软件",
@@ -577,14 +560,6 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/settings/app/reapply") {
     return json(response, 200, appSettingsResult());
-  }
-  if (path === "/api/settings/dashboard") {
-    if (request.method === "PUT") {
-      scenario.dashboardSettings = JSON.parse(await readBody(request));
-    }
-    return json(response, 200, scenario.dashboardSettings
-      ? { ...dashboardSettingsResult, settings: scenario.dashboardSettings, updatedAt: now() }
-      : dashboardSettingsResult);
   }
   if (path === "/api/targeted-recordings" && request.method === "GET") {
     return json(response, 200, [...targetedRecordings.values()].map((entry) => entry.header));
@@ -1340,16 +1315,6 @@ function metric(id, label, group, unit) {
   return { id, unit, selectable: true };
 }
 
-function tableColumnSettings(process = false) {
-  return [
-    { id: "name", visible: true, width: 260 },
-    ...(process ? [{ id: "pid", visible: true, width: 76 }] : []),
-    { id: "status", visible: true, width: 92 },
-    { id: "cpu", visible: true, width: 86 },
-    { id: "memory", visible: true, width: 110 }
-  ];
-}
-
 function metricSnapshot(requestedIds) {
   const allItems = {
     "cpu.usage": { id: "cpu.usage", unit: "%", status: 1, numericValue: 12, percent: 12 },
@@ -1655,7 +1620,7 @@ function resourceFacts(url, capturedAt = now()) {
   const processes = software.map((_, index) => ({ processId: 4242 + index, processStartKey: String(132000000000000000n + BigInt(4242 + index)),
     name: `example-${index}.exe`, executablePath: "C:\\FrontendHarness\\example.exe", userName: "测试用户", architecture: "x64", attributionKind: "process" }));
   const items = new Set(url.searchParams.getAll("items"));
-  const metrics = [...items].map(metricId => {
+    const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution").map(metricId => {
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
     const sharedValue = memory ? 134217728 : null;
@@ -1665,7 +1630,8 @@ function resourceFacts(url, capturedAt = now()) {
         baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
         processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };
   });
-  return { version: 1, capturedAt, software, processes, metrics };
+    const attributions = items.has("process.attribution") ? software.map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : [];
+    return { version: 2, capturedAt, software, processes, metrics, attributions };
 }
 
 function obsoleteResourceTableFixture(processMode, capturedAt = now()) {

@@ -36,18 +36,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpRequest request,
             HttpResponse response,
             IResourceBreakdownSampler sampler,
-            IRuntimePlanProvider runtimePlanProvider,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var monitoringPlan = runtimePlanProvider.Current.Monitoring;
             var metricIds = request.Query.TryGetValue("ids", out var ids)
                 ? ids.SelectMany(static value => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
                     .Where(IsResourceSampleMetricSupported)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray()
-                : monitoringPlan.ResourceBarMetricIds;
-            var scaleModes = ParseResourceScaleModes(request, monitoringPlan);
+                : [];
+            var scaleModes = ParseResourceScaleModes(request);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
             var snapshot = await sampler.GetSnapshotAsync(metricIds, scaleModes, cancellationToken);
             return Results.Ok(ResourceBreakdownWireSnapshot.Create(
@@ -60,14 +58,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpRequest request,
             HttpResponse response,
             IResourceBreakdownSampler breakdownSampler,
-            IRuntimePlanProvider runtimePlanProvider,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var monitoringPlan = runtimePlanProvider.Current.Monitoring;
             var scope = ParseResourceMonitorScope(request);
-            var metricIds = ParseResourceMetricIds(request, monitoringPlan);
-            var scaleModes = ParseResourceScaleModes(request, monitoringPlan);
+            var metricIds = ParseResourceMetricIds(request);
+            var scaleModes = ParseResourceScaleModes(request);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
             if (scope == ResourceMonitorScope.Details)
             {
@@ -115,14 +111,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 return Results.BadRequest(new EndpointErrorPayload(error.Message));
             }
-            if (sampleRequest.MetricIds.Count == 0)
+            if (sampleRequest.MetricIds.Count == 0 && sampleRequest.PublicationDatasetIds.Count == 0)
             {
                 return Results.Ok(ResourceFactsSnapshot.Empty);
             }
             var breakdown = await breakdownSampler.GetSnapshotAsync(
                 sampleRequest,
                 cancellationToken);
-            return Results.Ok(ResourceFactsSnapshot.Create(breakdown, sampleRequest.MetricIds));
+            return Results.Ok(ResourceFactsSnapshot.Create(breakdown, sampleRequest.MetricIds,
+                ReadResourceFoundations(sampleRequest, request.HttpContext.RequestServices)));
         }).AllowAnonymous();
 
         return app;
@@ -135,19 +132,28 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray()
             : [];
-        foreach (var item in items)
+        var foundations = items.Where(static item => item is Domain.Monitoring.SamplingDatasetIds.ProcessInventory
+            or Domain.Monitoring.SamplingDatasetIds.ProcessAttribution).ToArray();
+        var metrics = items.Except(foundations).ToArray();
+        foreach (var item in metrics)
         {
             if (!IsResourceFactsItemSupported(item))
             {
                 throw new ArgumentException($"Resource facts item '{item}' is unsupported.");
             }
         }
-        return new(items,
+        return new(metrics,
             new Dictionary<string, string>(),
             query.TryGetValue("processDetailLevel", out var detail)
                 ? ParseProcessSampleDetailLevel(detail.ToString()) ?? ProcessSampleDetailLevel.ResourceTableBasic
-                : ProcessSampleDetailLevel.ResourceTableBasic);
+                : ProcessSampleDetailLevel.ResourceTableBasic) { PublicationDatasetIds = foundations };
     }
+
+    private static SchedulingProcessFactSnapshot? ReadResourceFoundations(ResourceBreakdownSampleRequest request, IServiceProvider services)
+        => request.PublicationDatasetIds.Count == 0 ? null
+            : services.GetRequiredService<ISchedulingProcessFactObservationSource>().ReadLatest(new(
+                SchedulingProcessMetricMask.None, new SchedulingGpuInventorySnapshot(
+                    SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
 
     private static bool IsResourceFactsItemSupported(string item)
         => ResourceBreakdownScaleModes.SupportsCapacity(item)

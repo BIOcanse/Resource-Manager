@@ -14,7 +14,6 @@ using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
-using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -24,9 +23,6 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed class RuntimePlanCompiler(
     IAppSettingsStore settingsStore,
-    IDashboardSettingsStore dashboardSettingsStore,
-    DashboardSettingsMigrator dashboardSettingsMigrator,
-    DashboardMonitoringCatalogState dashboardMonitoringCatalog,
     IGpuPlacementPolicyStore gpuPlacementPolicyStore,
     IAdapterSoftwareRegistry adapterSoftwareRegistry,
     IGpuPerformanceScoreOverrideStore gpuPerformanceScoreOverrideStore,
@@ -81,27 +77,6 @@ public sealed class RuntimePlanCompiler(
             cpuScoring);
         var gpuPolicyDocument = await gpuPlacementPolicyStore.GetAsync(cancellationToken);
         var adapterRegistrations = await adapterSoftwareRegistry.GetAllAsync(cancellationToken);
-        var dashboardSettingsLoad = persistenceCapabilities.MutablePersistenceEnabled
-                ? await dashboardSettingsStore.LoadAsync(cancellationToken)
-                : await dashboardSettingsStore.LoadReadOnlyAsync(cancellationToken);
-        var catalogSnapshot = dashboardMonitoringCatalog.Current;
-        var dashboardSettings = dashboardSettingsMigrator.ResolveForRead(
-            dashboardSettingsLoad,
-            catalogSnapshot);
-        if (persistenceCapabilities.MutablePersistenceEnabled
-            && catalogSnapshot is not null
-            && !dashboardSettingsMigrator.AreEquivalent(
-                dashboardSettingsLoad.Settings,
-                dashboardSettings))
-        {
-            _ = await dashboardSettingsStore.SaveAsync(
-                dashboardSettings,
-                cancellationToken);
-        }
-        if (catalogSnapshot is null)
-        {
-            dashboardSettings = WithoutUnverifiedGpuMonitoring(dashboardSettings);
-        }
         var registeredSourceZoneIds = monitoringSourceZoneRegistry.GetSourceIds();
         var firmwareProviderPlan = firmwareProviderPlanCompiler.Compile();
         var hardwareScores = CompileHardwareScores(
@@ -125,11 +100,7 @@ public sealed class RuntimePlanCompiler(
             hardwareScores,
             CompiledOptimizationModePlan.Compile(settings.Performance.OptimizationMode),
             CompileDiagnosticsPlan(settings.Debug),
-            CompileMonitoringPlan(
-                dashboardSettings,
-                registeredSourceZoneIds,
-                firmwareProviderPlan,
-                catalogSnapshot))
+            CompileMonitoringPlan(registeredSourceZoneIds, firmwareProviderPlan))
         {
             RuntimeCapabilityConstrainedPaths = runtimeProjection.ConstrainedPaths,
             AutoStartEnabled = settings.SystemIntegration.AutoStartEnabled,
@@ -337,91 +308,10 @@ public sealed class RuntimePlanCompiler(
     }
 
     private static CompiledMonitoringPlan CompileMonitoringPlan(
-        DashboardSettings dashboardSettings,
         IReadOnlyList<string> registeredSourceZoneIds,
-        CompiledFirmwareProviderPlan firmwareProviderPlan,
-        HardwareMetricSnapshot? catalogSnapshot)
-    {
-        var dashboardMetricIds = dashboardSettings.Cards
-            .SelectMany(static card => new[] { card.Main }.Concat(card.Small ?? []))
-            .Where(static id => !string.IsNullOrWhiteSpace(id))
-            .Select(static id => id!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var resourceBars = dashboardSettings.ResourceBars
-            .Where(static bar => DashboardSettingsDefaults.IsResourceBarMetricSupported(bar.MetricId))
-            .GroupBy(static bar => bar.MetricId, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group.First())
-            .ToArray();
-        var resourceBarMetricIds = resourceBars
-            .Select(static bar => bar.MetricId.Trim())
-            .ToArray();
-        var resourceBarScaleModes = resourceBars.ToDictionary(
-            static bar => bar.MetricId.Trim(),
-            static bar => ResourceBreakdownScaleModes.Normalize(bar.MetricId, bar.ScaleMode),
-            StringComparer.OrdinalIgnoreCase);
-        var requestedMetricIds = dashboardSettings.UsesFactoryDefaults
-            ? dashboardMetricIds.Concat(DashboardSettingsDefaults.FactoryCandidateMetricIds(catalogSnapshot))
-                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
-            : dashboardMetricIds;
-
-        return new CompiledMonitoringPlan(
-            dashboardMetricIds.Length > 0 ? dashboardMetricIds : CompiledMonitoringPlan.Default.DashboardMetricIds,
-            requestedMetricIds.Length > 0 ? MetricSampleRequest.ForIds(requestedMetricIds) : CompiledMonitoringPlan.Default.DashboardMetricRequest,
-            resourceBarMetricIds.Length > 0 ? resourceBarMetricIds : CompiledMonitoringPlan.Default.ResourceBarMetricIds,
-            resourceBarScaleModes.Count > 0 ? resourceBarScaleModes : CompiledMonitoringPlan.Default.ResourceBarScaleModes,
-            CompileTableColumns(dashboardSettings.ResourceTableColumns, ResourceTableViewModes.Software),
-            CompileTableColumns(dashboardSettings.ResourceTableProcessColumns, ResourceTableViewModes.Process),
-            registeredSourceZoneIds
-                .Where(static id => !string.IsNullOrWhiteSpace(id))
-                .Select(static id => id.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(static id => id, StringComparer.OrdinalIgnoreCase)
-                .ToArray(),
+        CompiledFirmwareProviderPlan firmwareProviderPlan) => new(
+            registeredSourceZoneIds.Where(static id => !string.IsNullOrWhiteSpace(id))
+                .Select(static id => id.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase).ToArray(),
             firmwareProviderPlan);
-    }
-
-    private static DashboardSettings WithoutUnverifiedGpuMonitoring(
-        DashboardSettings settings)
-    {
-        return settings with
-        {
-            ResourceBars = settings.ResourceBars
-                .Where(static bar => DashboardSettingsDefaults.ParseGpuIndex(bar.MetricId) is null)
-                .ToArray(),
-            ResourceTableColumns = settings.ResourceTableColumns
-                .Where(static column => !ResourceTableColumnCatalog.IsGpuColumnId(column.Id))
-                .ToArray(),
-            ResourceTableProcessColumns = (settings.ResourceTableProcessColumns ?? [])
-                .Where(static column => !ResourceTableColumnCatalog.IsGpuColumnId(column.Id))
-                .ToArray()
-        };
-    }
-
-    private static IReadOnlyList<string> CompileTableColumns(
-        IReadOnlyList<ResourceTableColumnSettings>? columns,
-        string viewMode)
-    {
-        var normalizedViewMode = viewMode.Equals(ResourceTableViewModes.Process, StringComparison.OrdinalIgnoreCase)
-            ? ResourceTableViewModes.Process
-            : ResourceTableViewModes.Software;
-        var visible = columns?
-            .Where(static column => column.Visible)
-            .Select(static column => column.Id?.Trim())
-            .Where(static id => !string.IsNullOrWhiteSpace(id) && ResourceTableColumnCatalog.IsKnownColumnId(id))
-            .Where(id => normalizedViewMode.Equals(ResourceTableViewModes.Process, StringComparison.OrdinalIgnoreCase)
-                || !DashboardSettingsDefaults.IsProcessDetailColumn(id!))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(static id => id!)
-            .ToArray() ?? [];
-
-        if (visible.Length > 0)
-        {
-            return visible;
-        }
-
-        return normalizedViewMode.Equals(ResourceTableViewModes.Process, StringComparison.OrdinalIgnoreCase)
-            ? CompiledMonitoringPlan.Default.ProcessTableColumnIds
-            : CompiledMonitoringPlan.Default.SoftwareTableColumnIds;
-    }
 }

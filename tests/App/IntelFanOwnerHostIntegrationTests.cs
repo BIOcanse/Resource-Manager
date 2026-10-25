@@ -163,7 +163,7 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
         var fixture = new NativeRecording();
         using var owner = fixture.Host(slots);
         await owner.StartAsync(default);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         IntelGclFanIdentity fan;
         using (var lease = owner.Acquire())
         {

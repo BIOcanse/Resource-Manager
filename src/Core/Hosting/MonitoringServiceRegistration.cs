@@ -103,7 +103,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<AmdIntegratedGpuSensorRoute>(),
             provider.GetRequiredService<WindowsPlatformSensorReader>(),
             provider.GetRequiredService<HostManagerMetricSnapshotOwner>(),
-            provider.GetRequiredService<DashboardMonitoringCatalogState>(),
+            provider.GetRequiredService<HardwareMetricCatalogState>(),
             provider.GetRequiredService<IMonitoringSourceZoneRegistry>(),
             provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
             provider.GetRequiredService<RuntimePlanProvider>(),
@@ -151,8 +151,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Subscriptions);
         services.AddSingleton<ResourceManager.Subscription.FieldSubscriptionCore>();
         services.AddHostedServiceAlias<WindowsHardwareMetricSampler>();
-        services.AddSingleton<DashboardMonitoringPlanSynchronizer>();
-        services.AddHostedServiceAlias<DashboardMonitoringPlanSynchronizer>();
         services.AddSingleton<ICpuCorePerformanceOverrideStore, JsonCpuCorePerformanceOverrideStore>();
         services.AddSingleton<ICpuTopologySampler, WindowsCpuTopologyReader>();
         services.AddSingleton<CpuTopologySnapshotProvider>(static provider => new(

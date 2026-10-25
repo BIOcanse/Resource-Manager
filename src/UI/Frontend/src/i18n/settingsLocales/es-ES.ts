@@ -77,7 +77,7 @@ export default createSettingsLocale("es-ES", {
   },
   "performance": {
     "smartMonitoringTitle": "Supervisión bajo demanda",
-    "smartMonitoringDescription": "Activado: solo se muestrean las lecturas que la interfaz muestra o tiene suscritas. Desactivado: se muestrean todas las lecturas del catálogo, lo que cuesta más.",
+    "smartMonitoringDescription": "El muestreo siempre sigue ahora la demanda visible. Este antiguo interruptor está desactivado mientras se decide su uso futuro.",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

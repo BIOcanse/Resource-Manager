@@ -360,12 +360,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var device = useFields ? ParseMetricFieldDevice(subscription.Query) : null;
         var fields = ParseMetricFieldNames(subscription.Query);
         var snapshotRequest = useFields
-            ? MetricDeviceFields.CreateRequest(services.GetRequiredService<DashboardMonitoringCatalogState>().Current, device, fields)
+            ? MetricDeviceFields.CreateRequest(services.GetRequiredService<HardwareMetricCatalogState>().Current, device, fields)
             : subscription.Query.TryGetValue("ids", out var ids)
             ? MetricSampleRequest.ForIds(ids)
-            : services.GetRequiredService<IRuntimePlanProvider>().Current.Monitoring.DashboardMetricRequest;
+            : MetricSampleRequest.ForIds([]);
         var source = services.GetRequiredService<IMetricSnapshotPushSource>();
-        var catalogState = services.GetRequiredService<DashboardMonitoringCatalogState>();
+        var catalogState = services.GetRequiredService<HardwareMetricCatalogState>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             if (useFields)
@@ -422,13 +422,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         IServiceProvider services,
         TimeSpan interval)
     {
-        var monitoringPlan = services.GetRequiredService<IRuntimePlanProvider>()
-            .Current.Monitoring;
         var scope = ParseResourceMonitorScope(subscription.Query);
-        var metricIds = ParseResourceMetricIds(subscription.Query, monitoringPlan);
-        var scaleModes = ParseResourceScaleModes(
-            subscription.Query,
-            monitoringPlan);
+        var metricIds = ParseResourceMetricIds(subscription.Query);
+        var scaleModes = ParseResourceScaleModes(subscription.Query);
         var processDetailSoftwareIds =
             ParseResourceBreakdownProcessDetailSoftwareIds(subscription.Query);
         var source = services.GetRequiredService<IResourceBreakdownPushSource>();
@@ -488,7 +484,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
     {
         var request = ParseResourceFactsRequest(subscription.Query);
-        if (request.MetricIds.Count == 0)
+        if (request.MetricIds.Count == 0 && request.PublicationDatasetIds.Count == 0)
         {
             return subscription.Compile(async (writer, cancellationToken) =>
                 await writer.WriteAsync(subscription.Id, ResourceFactsSnapshot.Empty, cancellationToken));
@@ -500,7 +496,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 $"resource-facts:{subscription.Id}", request, interval, cancellationToken))
             {
                 await writer.WriteAsync(subscription.Id,
-                    ResourceFactsSnapshot.Create(current, request.MetricIds), cancellationToken);
+                    ResourceFactsSnapshot.Create(current, request.MetricIds, ReadResourceFoundations(request, services)), cancellationToken);
             }
         });
     }

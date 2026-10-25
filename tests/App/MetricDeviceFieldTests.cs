@@ -128,7 +128,7 @@ public sealed class MetricDeviceFieldTests
     {
         var snapshot = CreateSnapshot(SamplingObservationStatus.Current);
         var binding = Assert.Single(snapshot.FieldBindings).Value;
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(snapshot with { Items = new Dictionary<string, MetricReadingValue>() });
         var request = MetricDeviceFields.CreateRequest(state.Current, binding.DeviceIdentity, [binding.Field.Name]);
         Assert.Equal(request.Ids, state.SelectSubscribable(request).Ids);

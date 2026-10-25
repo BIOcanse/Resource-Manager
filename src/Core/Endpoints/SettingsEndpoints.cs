@@ -145,57 +145,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : Results.Ok(result);
         });
 
-        app.MapGet("/api/settings/dashboard", async (
-            IDashboardSettingsStore settingsStore,
-            DashboardSettingsMigrator settingsMigrator,
-            IMetricSampler sampler,
-            CancellationToken cancellationToken) =>
-        {
-            var result = await settingsStore.LoadReadOnlyAsync(cancellationToken);
-            var snapshot = await TryGetDashboardMetricSnapshotAsync(sampler, cancellationToken);
-            var settings = settingsMigrator.ResolveForRead(result, snapshot);
-
-            return Results.Ok(result with { Settings = settings });
-        }).AllowAnonymous();
-
-        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
-        app.MapPut("/api/settings/dashboard", async (
-            DashboardSettings settings,
-            IDashboardSettingsStore settingsStore,
-            DashboardSettingsMigrator settingsMigrator,
-            IMetricSampler sampler,
-            IRuntimeSpecializationCoordinator runtimeSpecialization,
-            CancellationToken cancellationToken) =>
-        {
-            var snapshot = await TryGetDashboardMetricSnapshotAsync(sampler, cancellationToken);
-            var sanitized = snapshot is not null
-                ? settingsMigrator.SanitizeForSave(settings, snapshot)
-                : settingsMigrator.SanitizeForSave(settings);
-            var result = await settingsStore.SaveAsync(sanitized, cancellationToken);
-            await runtimeSpecialization.RebuildAsync("dashboard-settings-saved", CancellationToken.None);
-            return Results.Ok(result);
-        });
-
         return app;
     }
 
-    private static async Task<HardwareMetricSnapshot?> TryGetDashboardMetricSnapshotAsync(
-        IMetricSampler sampler,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await sampler.GetSnapshotAsync(
-                MetricSampleRequest.CatalogProbe,
-                cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return null;
-        }
-    }
 }

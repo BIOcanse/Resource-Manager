@@ -22,7 +22,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// 目录说能调，写下去却报不支持。
 /// </summary>
 public sealed class WindowsControlObjectCatalog(
-    DashboardMonitoringCatalogState catalogState,
+    HardwareMetricCatalogState catalogState,
     IEnumerable<IControlWriter> writers,
     IControlAccessLevel accessLevel,
     FanControlCoreClient fanCore,

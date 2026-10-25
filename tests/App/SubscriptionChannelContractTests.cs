@@ -193,7 +193,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         using var client = Client(app);
         using var direct = JsonDocument.Parse(await client.GetStringAsync(
             "/api/resource-facts/snapshot" + query));
-        Assert.Equal(1, direct.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(2, direct.RootElement.GetProperty("version").GetInt32());
         Assert.Equal(JsonValueKind.Null, direct.RootElement.GetProperty("capturedAt").ValueKind);
         foreach (var property in new[] { "software", "processes", "metrics" })
         {
@@ -269,7 +269,7 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         using var client = Client(app);
         using var direct = JsonDocument.Parse(await client.GetStringAsync(
             "/api/resource-facts/snapshot?items=memory.usage&processDetailLevel=full"));
-        Assert.Equal(1, direct.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(2, direct.RootElement.GetProperty("version").GetInt32());
         Assert.Equal(2, direct.RootElement.GetProperty("processes").GetArrayLength());
         Assert.False(direct.RootElement.TryGetProperty("rows", out _));
         var currentRequest = Assert.Single(source.SnapshotRequests);

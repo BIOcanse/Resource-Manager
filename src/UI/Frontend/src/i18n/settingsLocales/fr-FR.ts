@@ -77,7 +77,7 @@ export default createSettingsLocale("fr-FR", {
   },
   "performance": {
     "smartMonitoringTitle": "Surveillance à la demande",
-    "smartMonitoringDescription": "Activé : seules les mesures affichées par l’interface ou auxquelles elle est abonnée sont échantillonnées. Désactivé : toutes les mesures du catalogue sont échantillonnées, ce qui coûte davantage.",
+    "smartMonitoringDescription": "L’échantillonnage suit désormais toujours les besoins visibles. Cet ancien commutateur est désactivé en attendant de décider de son usage futur.",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

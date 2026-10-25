@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dashboardMetricAvailable, dashboardPointValues, readDashboardPreferences, resetDashboardPreferences, resolveDashboardBindings, saveDashboardPreferences } from "../src/preferences/dashboardPreferences.ts";
+import { createFrontendPreferencesClient, pointPreferences } from "../src/preferences/frontendPreferences.ts";
+import type { DashboardSettings, MetricDefinition } from "../src/types.ts";
+
+type Case = { name: string; ids: string[] | null; identities?: Record<string, string> | null; settings: DashboardSettings };
+const cases = JSON.parse(readFileSync(new URL("../../../../tests/Fixtures/FrontendPreferencesLegacy/dashboard-default-cases.json", import.meta.url), "utf8")) as Case[];
+const catalog = (item: Case): MetricDefinition[] | undefined => item.ids?.map(id => {
+  const index = /^gpu\.(\d+)\./.exec(id)?.[1];
+  return { id, label: id, group: "", unit: "", selectable: true,
+    ...(index && item.identities?.[index] ? { scopeKind: "gpu", scopeKey: item.identities[index] } : {}) };
+}) ?? undefined;
+for (const item of cases) {
+  const actual = dashboardPointValues(catalog(item));
+  assert.deepEqual({ ...actual, usesFactoryDefaults: false }, item.settings, item.name);
+}
+
+const contents = new Map<string, string>();
+const storage = { getItem: (key: string) => contents.get(key) ?? null,
+  setItem: (key: string, value: string) => { contents.set(key, value); }, removeItem: (key: string) => { contents.delete(key); } };
+let client = createFrontendPreferencesClient(storage);
+const initial = await readDashboardPreferences(undefined, client);
+assert.deepEqual(initial.settings, dashboardPointValues());
+assert.equal(initial.source.kind, "pointValues");
+assert.equal(contents.size, 0, "Reading factory values must not commit a layout cache");
+const custom = { ...initial.settings, cards: [], resourceBars: [], resourceTableColumns: [{ id: "name", visible: true, width: 311 }], resourceTableProcessColumns: [] };
+await saveDashboardPreferences(custom, client);
+client = createFrontendPreferencesClient(storage);
+assert.deepEqual((await readDashboardPreferences([], client)).settings.cards, [], "Explicit empty cards survive restart");
+assert.deepEqual((await readDashboardPreferences([], client)).settings.resourceBars, []);
+const saved = await client.read();
+await client.save({ ...saved, appearance: { ...saved.appearance, language: "ja-JP" }, dashboard: null }, "global");
+assert.equal((await client.read()).dashboard?.resourceTableColumns[0].width, 311, "Global saves cannot overwrite the dashboard scope");
+await resetDashboardPreferences(client);
+assert.equal((await client.read()).appearance.language, "ja-JP");
+assert.deepEqual((await readDashboardPreferences(undefined, client)).settings, dashboardPointValues());
+
+// Existing Phase A browser caches have no dashboard entry.
+const phaseA = pointPreferences(); delete phaseA.dashboard;
+await client.save(phaseA);
+assert.deepEqual((await readDashboardPreferences(undefined, client)).settings, dashboardPointValues());
+const gpu = cases.find(item => item.identities)!;
+const bound = dashboardPointValues(catalog(gpu));
+const moved = catalog(gpu)!.map(metric => ({ ...metric, id: metric.id.replace(/^gpu\.0\./, "gpu.4.") }));
+const resolved = resolveDashboardBindings(bound, moved);
+assert.equal(resolved.cards.find(card => card.id === "gpu0")?.main, "gpu.4.usage");
+assert.equal(bound.cards.find(card => card.id === "gpu0")?.main, "gpu.0.usage", "Resolution cannot mutate cached choices");
+assert.equal(dashboardMetricAvailable("gpu.0.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), false);
+assert.equal(dashboardMetricAvailable("gpu.4.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), true);
+console.log("Dashboard HEAD defaults, cache loss/restart/reset/scopes and stable bindings passed");

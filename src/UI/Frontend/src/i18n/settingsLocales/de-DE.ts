@@ -77,7 +77,7 @@ export default createSettingsLocale("de-DE", {
   },
   "performance": {
     "smartMonitoringTitle": "Überwachung nach Bedarf",
-    "smartMonitoringDescription": "Ein: Nur Messwerte, die die Oberfläche gerade anzeigt oder abonniert hat, werden erfasst. Aus: Alle Messwerte des Katalogs werden erfasst, was mehr Last verursacht.",
+    "smartMonitoringDescription": "Die Abtastung folgt jetzt immer dem sichtbaren Bedarf. Dieser bisherige Schalter ist deaktiviert, bis seine künftige Verwendung feststeht.",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

@@ -1,3 +1,6 @@
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
+import { dashboardPointValues } from "../preferences/dashboardPreferences.ts";
+export { dashboardSettingsVersion } from "../preferences/dashboardPreferences.ts";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import type {
   DashboardCardSettings,
@@ -11,16 +14,9 @@ import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/res
 import { deviceFieldScopeKind, fieldCardSlot } from "../features/monitor/fieldCards.ts";
 import { textOrEmpty } from "../utils";
 
-export const dashboardSettingsVersion = 16;
-
-/** 一张卡片最多几个小指标。前端各处只读这一个数；后端 normalizer 的上限需与它一致。 */
-export const dashboardSmallMetricLimit = 6;
-
-export const defaultCards: DashboardCardSettings[] = [
-  { id: "cpu", main: "cpu.usage", small: ["cpu.frequency", "cpu.frequencyPercent"] },
-  { id: "memory", main: "memory.usage", small: ["memory.percent"] }
-];
-
+const limits = ResourceManager.FrontendPoints.DashboardLayoutLimits;
+export const dashboardSmallMetricLimit = limits.smallMetricLimit;
+export const defaultCards: DashboardCardSettings[] = dashboardPointValues().cards;
 export function readDashboardSlot(card: DashboardCardSettings, slot: DashboardSlotRef) {
   if (slot.slot === "main") {
     return card.main ?? null;
@@ -91,7 +87,7 @@ export function normalizeCards(candidateCards?: DashboardCardSettings[] | null):
     })
     .filter((card) => Boolean(card.main) || card.small.length > 0);
 
-  return normalized.length > 0 ? normalized : structuredClone(defaultCards);
+  return normalized;
 }
 
 export function metricBindingForDefinition(
@@ -130,7 +126,7 @@ export function normalizeResourceBars(candidateBars?: ResourceBarSettings[] | nu
       binding: normalizeMetricBinding(bar.metricId, bar.binding)
     }));
 
-  return normalized.length > 0 ? normalized : defaultResourceBars([]);
+  return normalized;
 }
 
 export function normalizeResourceTableColumns(
@@ -139,78 +135,27 @@ export function normalizeResourceTableColumns(
   mode: ResourceTableViewMode = "software")
 : ResourceTableColumnSettings[] {
   const known = defaultResourceTableColumns(metricCatalog, mode);
+  if (candidateColumns == null) return known;
   const byId = new Map(known.map((column) => [column.id, column]));
   const normalized = (candidateColumns ?? [])
-    .filter((column) => byId.has(textOrEmpty(column.id)))
+    .filter((column) => textOrEmpty(column.id))
     .map((column) => ({
       id: column.id.trim(),
-      visible: column.id.trim() === "name" ? true : Boolean(column.visible),
-      width: clampResourceTableColumnWidth(column.width ?? byId.get(column.id.trim())?.width ?? 100),
+      visible: Boolean(column.visible),
+      width: clampResourceTableColumnWidth(column.width ?? byId.get(column.id.trim())?.width ?? limits.defaultColumnWidth),
       binding: normalizeMetricBinding(column.id, column.binding)
     }));
-  const seen = new Set(normalized.map((column) => column.id));
-  for (const column of known) {
-    if (!seen.has(column.id)) {
-      normalized.push({
-        id: column.id,
-        visible: column.visible,
-        width: clampResourceTableColumnWidth(column.width ?? 100),
-        binding: column.binding ?? null
-      });
-    }
-  }
-
   return normalized;
 }
 
 export function defaultResourceBars(catalog: MetricDefinition[]): ResourceBarSettings[] {
-  const ids = new Set(catalog.map((metric) => metric.id));
-  const preferred = [
-    "cpu.usage",
-    "memory.usage",
-    "virtualMemory.usage",
-    ...catalog
-      .map((metric) => metric.id)
-      .filter((id) => /^gpu\.\d+\.(usage|vram)$/i.test(id))
-      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
-  ];
-  return preferred
-    .filter((id) => ids.size === 0 || ids.has(id))
-    .map((metricId) => ({
-      id: `resource-${metricId.replaceAll(".", "-")}`,
-      metricId,
-      scaleMode: "capacity" as const,
-      binding: metricBindingForDefinition(catalog.find((metric) => metric.id === metricId))
-    }));
+  return dashboardPointValues(catalog).resourceBars;
 }
 
-export function defaultResourceTableColumns(metricCatalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumnSettings[] {
-  const processMode = mode === "process";
-  return [
-    { id: "name", visible: true, width: 260 },
-    ...(processMode ? [{ id: "pid", visible: true, width: 76 }] : []),
-    { id: "status", visible: true, width: 92 },
-    ...(processMode ? [
-      { id: "user", visible: true, width: 150 },
-      { id: "architecture", visible: true, width: 76 }
-    ] : []),
-    { id: "cpu", visible: true, width: 86 },
-    { id: "memory", visible: true, width: 110 },
-    ...metricCatalog
-      .map((metric) => metric.id)
-      .filter((id) => /^gpu\.\d+\.(usage|vram)$/i.test(id))
-      .sort((left, right) => resourceTableGpuColumnOrder(left) - resourceTableGpuColumnOrder(right))
-      .map((id) => ({
-        id,
-        visible: true,
-        width: id.endsWith(".vram") ? 132 : 108,
-        binding: metricBindingForDefinition(metricCatalog.find((metric) => metric.id === id))
-      })),
-    { id: "disk", visible: true, width: 106 },
-    { id: "network", visible: true, width: 106 }
-  ];
+export function defaultResourceTableColumns(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumnSettings[] {
+  const settings = dashboardPointValues(catalog);
+  return mode === "process" ? settings.resourceTableProcessColumns : settings.resourceTableColumns;
 }
-
 export function allCatalogMetricIds(metricCatalog: MetricDefinition[]) {
   return metricCatalog.map((metric) => metric.id).filter(Boolean);
 }
@@ -241,14 +186,9 @@ export function allResourceSampleMetricIds(metricCatalog: MetricDefinition[]) {
 
 export function clampResourceTableColumnWidth(width: unknown) {
   const numeric = Number(width);
-  return Math.round(Math.min(520, Math.max(56, Number.isFinite(numeric) ? numeric : 100)));
+  return Math.round(Math.min(limits.maximumColumnWidth, Math.max(limits.minimumColumnWidth, Number.isFinite(numeric) ? numeric : limits.defaultColumnWidth)));
 }
 
 export function isProcessDetailResourceTableColumn(columnId: string) {
   return columnId === "pid" || columnId === "user" || columnId === "architecture";
-}
-
-function resourceTableGpuColumnOrder(metricId: string) {
-  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(metricId);
-  return match ? Number(match[1]) * 2 + (match[2].toLowerCase() === "vram" ? 1 : 0) : 999;
 }

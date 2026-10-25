@@ -42,7 +42,7 @@ public sealed class HostMftInformationFieldsTests
             sampling.Owner, NullLogger<DeviceTopologySnapshotProvider>.Instance, acpi);
         await using var cpu = new CpuTopologyProviderTestFixture();
         using var process = ProcessBasicFieldCollectorTests.Fixture(new ProcessBasicFieldCollectorTests.Api());
-        var metrics = new HostReadWriteBackend(null!, null!, new DashboardMonitoringCatalogState(), null!, null!);
+        var metrics = new HostReadWriteBackend(null!, null!, new HardwareMetricCatalogState(), null!, null!);
         var host = new HostFieldBackends(metrics, new HostFieldSubscriptionBackend(metrics, null!, null!),
             devices, cpu.Reader, new HostProcessFieldBackend(process.Sampler), store);
         var field = host.Reads.Catalog.Fields.Single(item => item.Field.FieldName == "directory_all_logical_size_aggregated").Field;

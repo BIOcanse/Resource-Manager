@@ -1,11 +1,17 @@
 import { ResourceManager } from "./generated/frontendPoints.values.ts";
 import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
 import type {
-  AppAppearanceSettings, AppPerformanceSettings, AppSettings, AppPresetNumericSetting,
+  AppAppearanceSettings, AppPerformanceSettings, AppSettings, AppPresetNumericSetting, DashboardSettings,
   FrontendRefreshIntervals, PerformanceOverlaySettings
 } from "../types.ts";
 
 const points = ResourceManager.FrontendPoints;
+const resetListeners = new Set<() => void>();
+export function subscribeFrontendPreferencesReset(listener: () => void): () => void {
+  resetListeners.add(listener);
+  return () => { resetListeners.delete(listener); };
+}
+function notifyReset() { for (const listener of resetListeners) listener(); }
 export type FrontendRefresh = {
   smartMonitoringMode: AppPerformanceSettings["smartMonitoringMode"];
   monitor: AppPresetNumericSetting;
@@ -17,10 +23,11 @@ export interface FrontendPreferencesCache {
   appearance: AppAppearanceSettings;
   refresh: FrontendRefresh;
   overlays: Record<string, OverlayPresentation>;
+  dashboard?: DashboardSettings | null;
 }
 export interface FrontendPreferencesClient {
   read(): Promise<FrontendPreferencesCache>;
-  save(value: FrontendPreferencesCache, scope?: "global" | { overlay: string }): Promise<FrontendPreferencesCache>;
+  save(value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }): Promise<FrontendPreferencesCache>;
   reset(): Promise<FrontendPreferencesCache>;
 }
 
@@ -39,7 +46,7 @@ export function pointPreferences(): FrontendPreferencesCache {
     refresh: {
       smartMonitoringMode: points.SmartMonitoringMode, monitor: { ...points.Monitor },
       resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem }
-    }, overlays: {}
+    }, overlays: {}, dashboard: null
   };
 }
 
@@ -84,7 +91,7 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
     appearance: structuredClone(value.appearance!),
     refresh: { smartMonitoringMode: performance.smartMonitoringMode,
       monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
-      localSystem: { ...performance.localSystemRefreshIntervalMs } }, overlays: existing.overlays
+      localSystem: { ...performance.localSystemRefreshIntervalMs } }, overlays: existing.overlays, dashboard: existing.dashboard
   };
 }
 
@@ -101,7 +108,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
   const host = getHostMessageTransport();
   // Native mode has exactly one owner. A failed native request never switches to browser storage.
   if (host) {
-    const request = (type: string, value?: FrontendPreferencesCache, scope?: "global" | { overlay: string }) => new Promise<FrontendPreferencesCache>((resolve, reject) => {
+    const request = (type: string, value?: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => new Promise<FrontendPreferencesCache>((resolve, reject) => {
       const requestId = crypto.randomUUID();
       let unsubscribe: (() => void) | null = null;
       const timer = setTimeout(() => { unsubscribe?.(); reject(new Error("preferences-unavailable")); }, 10000);
@@ -116,9 +123,13 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
       });
       if (!unsubscribe) { clearTimeout(timer); reject(new Error("preferences-unavailable")); return; }
       host.postMessage({ type, requestId, ...(value ? { value } : {}),
-        ...(scope === "global" ? { scope } : scope ? { scope: "overlay", softwareId: scope.overlay } : {}) });
+        ...(typeof scope === "string" ? { scope } : scope ? { scope: "overlay", softwareId: scope.overlay } : {}) });
     });
-    return { read: () => request("preferences.get"), save: (value, scope) => request("preferences.save", value, scope), reset: () => request("preferences.reset") };
+    return { read: () => request("preferences.get"), save: async (value, scope) => {
+      const result = await request("preferences.save", value, scope);
+      if (scope === "dashboard" && value.dashboard == null) notifyReset();
+      return result;
+    }, reset: async () => { const result = await request("preferences.reset"); notifyReset(); return result; } };
   }
   // Standalone browser frontend uses its own WebView/browser storage, never the API.
   const key = "resource-manager:frontend-preferences:v1";
@@ -129,12 +140,13 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     return JSON.parse(text) as FrontendPreferencesCache;
   };
   let writes = Promise.resolve();
-  const save = (value: FrontendPreferencesCache, scope?: "global" | { overlay: string }) => {
+  const save = (value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => {
     const write = writes.then(() => {
       if (!browserStorage) throw new Error("preferences-unavailable");
       const current = readCache();
       let next = value;
       if (scope === "global") next = { ...current, appearance: value.appearance, refresh: value.refresh };
+      else if (scope === "dashboard") next = { ...current, dashboard: value.dashboard ?? null };
       else if (scope) {
         const overlays = { ...current.overlays };
         const presentation = cachedOverlay(value, scope.overlay);
@@ -143,6 +155,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
         next = { ...current, overlays };
       }
       browserStorage.setItem(key, JSON.stringify(next));
+      if (scope === "dashboard" && value.dashboard == null) notifyReset();
       return structuredClone(next);
     });
     writes = write.then(() => undefined, () => undefined);
@@ -152,6 +165,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     await writes;
     if (!browserStorage) throw new Error("preferences-unavailable");
     browserStorage.removeItem(key);
+    notifyReset();
     return pointPreferences();
   } };
 }

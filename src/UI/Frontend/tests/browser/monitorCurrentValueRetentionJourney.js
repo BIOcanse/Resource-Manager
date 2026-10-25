@@ -61,6 +61,8 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   }
   await patch({ pausedSubscriptionPaths: [] });
   await waitForValues();
+  await page.locator('.monitor-work-region[aria-label="资源列表"]').scrollIntoViewIfNeeded();
+  await page.waitForFunction(async () => (await (await fetch("/__test/requests")).json())["/api/resource-facts/subscribe"]?.logicalInFlight > 0);
   await patch({ resourceTableVariant: "empty" });
   await page.waitForFunction(() => document.querySelectorAll(".resource-table-retained-surface:not([hidden]) .resource-table-row[data-resource-row-id]").length === 0);
   await page.locator(".resource-table-panel .content-state.empty").getByText("当前没有可显示的资源", { exact: true }).waitFor();
@@ -69,9 +71,10 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   return { firstTableValue, before, after, releasedValuesRetained: true, localProjectionsRetainFacts: true, callbacksResumed: true, actualEmptyValueApplied: true };
 
   async function waitForValues() {
+    // Offscreen cards hold no demand. Their visible-return behavior is checked
+    // by monitorDemandRetentionProbe, independently of the table publication.
     await page.waitForFunction(() =>
-      document.querySelector(".metric-main .metric-value")?.textContent?.includes("%")
-      && document.querySelectorAll(".resource-breakdown-item").length > 0
+      document.querySelectorAll(".resource-breakdown-item").length > 0
       && document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
   }
   async function values() {

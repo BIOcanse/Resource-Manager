@@ -1,3 +1,4 @@
+import { readDashboardPreferences } from "../../preferences/dashboardPreferences.ts";
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import type {
   DashboardSettingsResult,
@@ -5,7 +6,6 @@ import type {
   MetricSnapshot
 } from "../../types.ts";
 import {
-  dashboardSettingsDecoder,
   metricCatalogDecoder,
   metricSnapshotDecoder
 } from "./monitorSourceDecoders.ts";
@@ -47,14 +47,7 @@ export function getDashboardSettingsSource(
   requestClient: MonitorRequestClient,
   signal?: AbortSignal
 ): Promise<DashboardSettingsResult> {
-  return requestClient.request({
-    key: "monitor.dashboard-settings",
-    url: "/api/settings/dashboard",
-    fallbackError: uiText.misc.dashboardSettingsReadFailed,
-    decoder: dashboardSettingsDecoder,
-    signal,
-    request: { method: "GET" }
-  });
+  return getMetricCatalogSource(requestClient, signal).then(catalog => readDashboardPreferences(catalog));
 }
 
 export function getMetricSnapshotSource(

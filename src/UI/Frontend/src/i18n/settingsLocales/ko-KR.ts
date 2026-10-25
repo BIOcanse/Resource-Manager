@@ -77,7 +77,7 @@ export default createSettingsLocale("ko-KR", {
   },
   "performance": {
     "smartMonitoringTitle": "필요할 때 모니터링",
-    "smartMonitoringDescription": "켜짐이면 화면에 표시 중이거나 구독 중인 측정값만 수집합니다. 꺼짐이면 카탈로그의 모든 측정값을 수집하므로 부하가 더 큽니다.",
+    "smartMonitoringDescription": "이제 항상 화면에 표시되는 항목의 요구에 따라 샘플링합니다. 이 이전 스위치는 향후 용도가 결정될 때까지 비활성화됩니다.",
     "adaptiveBooleanModeOptions": [
       {
         "id": "enabled",

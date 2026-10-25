@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Endpoints.Transport;
@@ -8,6 +9,25 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ResourceFactsPublicationTests
 {
+    [Fact]
+    public void IdentityAndAttributionFactsNeedNoHiddenNumericMetricAndExcludeExitedInstances()
+    {
+        var time = DateTimeOffset.UtcNow;
+        var process = new SchedulingProcessFact(42, 100, "example.exe", "C:/example.exe", "example", "Example", "other", "other",
+            0, SchedulingProcessMetricMask.None, 0, 0, 1, []) { UserName = "user", Architecture = "x64" };
+        var foundations = new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, time.UtcTicks, 1, 0, 0, 0,
+            SchedulingProcessMetricMask.None, SchedulingProcessMetricMask.None, [])
+        { HasSeparateFoundationPayloads = true, InventoryProcesses = [process], AttributionProcesses = [process] };
+        var facts = ResourceFactsSnapshot.Create(new(time, []), [], foundations);
+        Assert.Equal(2, facts.Version);
+        Assert.Empty(facts.Metrics);
+        Assert.Equal("Example", Assert.Single(facts.Software).Name);
+        Assert.Equal("user", Assert.Single(facts.Processes).UserName);
+        Assert.Equal("x64", Assert.Single(facts.Processes).Architecture);
+        Assert.Equal("example", Assert.Single(facts.Attributions).SoftwareId);
+        var expired = ResourceFactsSnapshot.Create(new(time, []), [], foundations with { InventoryProcesses = [] });
+        Assert.Empty(expired.Attributions); Assert.Empty(expired.Processes); Assert.Empty(expired.Software);
+    }
     [Fact]
     public void EmptyFactsMatchProjectionOfAnEmptySelectionUsingProductionJsonContext()
     {
@@ -34,7 +54,7 @@ public sealed class ResourceFactsPublicationTests
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var json = JsonSerializer.Serialize(facts, options);
         using var parsed = JsonDocument.Parse(json);
-        Assert.Equal(1, parsed.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(2, parsed.RootElement.GetProperty("version").GetInt32());
         foreach (var name in new[] { "columns", "width", "visible", "sortable", "rows", "sort", "sortKeys", "viewMode", "displayValue", "label", "scaleMode", "failureCode", "datasets" })
             Assert.DoesNotContain($"\"{name}\"", json);
         Assert.Equal(1, json.Split("example.exe").Length - 1);

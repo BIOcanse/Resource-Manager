@@ -43,6 +43,7 @@ public sealed partial class MainForm
         return scope switch
         {
             "global" => owner.SaveGlobal(value),
+            "dashboard" => owner.SaveDashboard(value),
             "overlay" => owner.SaveOverlay(message.GetProperty("softwareId").GetString()!, value),
             null => owner.Save(value),
             _ => throw new InvalidDataException("Invalid frontend cache update scope.")

@@ -43,7 +43,7 @@ public sealed class NvidiaFanHostIntegrationTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => topology.Capture()),
             new TestEnvironment(Path.Combine(Path.GetTempPath(), $"nvml-fan-host-{Guid.NewGuid():N}")), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
-        var dashboard = new DashboardMonitoringCatalogState();
+        var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var fan = new NvidiaNvmlFanIdentity(NvidiaFanFixture.ParentA, 1);

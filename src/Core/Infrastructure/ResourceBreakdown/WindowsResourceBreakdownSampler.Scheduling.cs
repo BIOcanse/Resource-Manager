@@ -161,7 +161,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 0,
                 0,
                 generation,
-                []);
+                []) { UserName = sample.UserName, Architecture = sample.Architecture };
             inventoryFacts.Add(inventoryFact);
 
             var software = attribution?.AttributionByProcessId.GetValueOrDefault(

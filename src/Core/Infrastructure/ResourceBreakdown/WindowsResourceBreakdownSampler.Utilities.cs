@@ -127,6 +127,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         result.UnionWith(
             SamplingDatasetIds.ForSchedulingMetrics(
                 request.SchedulingMetricMask));
+        result.UnionWith(request.PublicationDatasetIds.Where(static id =>
+            id is SamplingDatasetIds.ProcessInventory or SamplingDatasetIds.ProcessAttribution));
         return result;
     }
 

@@ -265,7 +265,7 @@ public sealed class ReadWriteCoreIntegrationTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton(fixture.Core);
-        var state = new DashboardMonitoringCatalogState();
+        var state = new HardwareMetricCatalogState();
         state.PublishCatalogProbe(fixture.Source.Current);
         builder.Services.AddSingleton(state);
         builder.Services.AddSingleton<IMetricSampler>(fixture.Source);
@@ -320,7 +320,7 @@ public sealed class ReadWriteCoreIntegrationTests
         internal Fixture(HardwareMetricSnapshot snapshot)
         {
             Source = new(snapshot);
-            var state = new DashboardMonitoringCatalogState();
+            var state = new HardwareMetricCatalogState();
             state.PublishCatalogProbe(snapshot);
             CoreBackend = new HostReadWriteBackend(Source, Source, state, Controls,
                 new ControlWriteLayer(Controls, [Writer], new Access()));
