@@ -269,8 +269,8 @@ async function measureTableCardinalities(page, session, baseUrl) {
       resourceBreakdownGeneration: ++generation
     });
     await page.waitForFunction((expected) =>
-      document.querySelector(".resource-table-frame")?.getAttribute("aria-rowcount") === String(expected + 1),
-    rowCount, { timeout: 20_000 });
+      document.querySelector(".resource-table-frame")?.getAttribute("aria-rowcount") === String(expected),
+    tableAriaRowCount(rowCount), { timeout: 20_000 });
     const after = await captureCdpMetrics(session);
     const dom = await readResourceDom(page);
     const snapshot = await readRuntimeSnapshot(page);
@@ -280,6 +280,12 @@ async function measureTableCardinalities(page, session, baseUrl) {
   return { measurements, runtime };
 }
 
+// 资源表由前端从资源事实构建（f1eb3e57 起），第一行固定是“总占用”汇总行：
+// aria-rowcount = 表头 1 + 汇总 1 + 夹具的软件行数（未展开进程）。
+function tableAriaRowCount(softwareRowCount) {
+  return softwareRowCount + 2;
+}
+
 async function measureStableMonitor(page, session, baseUrl) {
   await setScenario(baseUrl, {
     resourceSegmentCount: 333,
@@ -287,9 +293,9 @@ async function measureStableMonitor(page, session, baseUrl) {
     resourceBreakdownGeneration: 200
   });
   await waitForSegmentCount(page, 333);
-  await page.waitForFunction(() =>
-    document.querySelector(".resource-table-frame")?.getAttribute("aria-rowcount") === "1001",
-  null, { timeout: 20_000 });
+  await page.waitForFunction((expected) =>
+    document.querySelector(".resource-table-frame")?.getAttribute("aria-rowcount") === String(expected),
+  tableAriaRowCount(1000), { timeout: 20_000 });
   await resetRuntimeSnapshot(page);
   await page.evaluate(() => globalThis.__rmFrontendPerformanceProbe?.startFrames());
   const before = await captureCdpMetrics(session);

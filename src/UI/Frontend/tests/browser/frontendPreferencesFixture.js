@@ -34,6 +34,8 @@ export async function seedFrontendPreferences(target, change) {
   const value = pointPreferences();
   change(value);
   await target.addInitScript(([key, text]) => {
+    // 上下文级脚本也在新页的初始 about:blank 上运行，那里没有可用的 localStorage（读取即抛 SecurityError）。
+    if (location.origin === "null") return;
     if (localStorage.getItem(key) === null) localStorage.setItem(key, text);
   }, [frontendPreferencesKey, JSON.stringify(value)]);
   return value;
