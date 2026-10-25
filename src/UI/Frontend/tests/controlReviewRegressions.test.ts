@@ -12,7 +12,11 @@ const capability: ControlCapability = {
 };
 const wire = (item = capability) => ({ readAt: "2026-10-02T00:00:00Z", objects: [{
   id: "fan:0", kind: "fan", reportedName: null, ordinal: 0, platform: { operatingSystem: "windows", vendor: "OEM" },
-  capabilities: [item], isControllable: false
+  softwareTakeoverCoversAllFans: false, fanManagementModes: [
+    { id: "firmware-management", available: true, unavailableKind: null, unavailableReason: null, items: [] },
+    { id: "firmware-write", available: false, unavailableKind: "platform", unavailableReason: { code: "fan-firmware-curve-unsupported" }, items: [{ capabilityId: "fan.curve", curveExecution: "firmware" }] },
+    { id: "software-management", available: false, unavailableKind: "platform", unavailableReason: { code: "fan-software-management-unsupported" }, items: [{ capabilityId: "fan.duty", curveExecution: null }] }
+  ], capabilities: [item], isControllable: false
 }] });
 assert.equal(controlObjectsDecoder.decode(wire()).objects[0].capabilities[0].range?.maximum, 0);
 assert.throws(() => controlObjectsDecoder.decode(wire({ ...capability, range: { ...capability.range!, minimum: 2 } })));

@@ -100,7 +100,15 @@ export interface ControlCapability {
   curvePointLimit: number | null;
 }
 
+export interface ControlFanManagementItem { capabilityId: string; curveExecution: string | null; }
+export interface ControlFanManagementMode {
+  id: string; available: boolean; unavailableKind: ControlUnavailableKind | null;
+  unavailableReason: ControlApplyReason | null; items: readonly ControlFanManagementItem[];
+}
 export interface ControlObject {
+  fanManagementModes?: readonly ControlFanManagementMode[] | null;
+  softwareTakeoverCoversAllFans?: boolean;
+  firmwareCurveKind?: string | null;
   id: string;
   kind: string;
   reportedName: string | null;

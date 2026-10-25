@@ -72,6 +72,12 @@ public sealed class ControlWriteLayer(
                 continue;
             }
 
+            if (controlObject.Kind == ControlObjectKinds.Fan && Writers.FanControlWriter.IsMixed(target.Settings))
+            {
+                outcomes.AddRange(target.Settings.Select(setting => Outcome(controlObject, setting,
+                    ControlApplyStatuses.Failed, Writers.FanControlWriter.MixedManagementModes)));
+                continue;
+            }
             var rejected = writers.SelectMany(writer => writer.ValidateSettings(controlObject, target.Settings))
                 .GroupBy(entry => entry.Key, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().Value, StringComparer.Ordinal);
             var ordered = writers.Aggregate(target.Settings, (settings, writer) => writer.OrderSettings(controlObject, settings));
@@ -121,7 +127,10 @@ public sealed class ControlWriteLayer(
                     {
                         restored = await backend.Writer.RestoreAsync(target,
                             capability with { Range = backend.Availability.Range ?? capability.Range },
-                            retained, cancellationToken, setting).ConfigureAwait(false);
+                            target.Kind == ControlObjectKinds.Fan &&
+                                (setting.CurveExecution == ControlFanCurveExecutions.Firmware) !=
+                                (remaining.ForObject(target.Id)?.Settings.Any(item => item.CurveExecution == ControlFanCurveExecutions.Firmware) == true)
+                                ? new HashSet<string>() : retained, cancellationToken, setting).ConfigureAwait(false);
                     }
                 }
                 catch (Exception error) when (error is not OperationCanceledException)

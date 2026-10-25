@@ -1,3 +1,4 @@
+import { fanModeFacts } from "./fanModeFacts.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -13,9 +14,9 @@ export default async function controlCardJourney(page, baseUrl) {
   const state = () => ({ desired: { objects }, lastApply: { outcomes: [], appliedAt: new Date().toISOString() } });
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B"].map(id => ({
-      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
-      platform: { operatingSystem: "windows", vendor: "test" },
-      terms: ["curve-firmware", "curve-software"],
+      id, ...fanModeFacts(["fan.curve", "fan.duty"]), kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
+      platform: { operatingSystem: "windows", vendor: "oem" },
+      terms: [],
       capabilities: [{ id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }))
   } }));
@@ -44,8 +45,8 @@ export default async function controlCardJourney(page, baseUrl) {
     await card.locator(".fan-curve-chart").waitFor();
   }
   assert.equal(await a.locator(".fan-curve-grid").count(), 22);
-  assert.equal(await a.locator(".control-curve-execution .settings-segment").count(), 2);
-  assert.equal(await a.locator(".control-curve-execution [aria-checked=true]").count(), 1);
+  assert.equal(await a.locator(".control-curve-execution").count(), 0);
+  assert.equal(await a.locator(".control-ownership-choice [aria-checked=true]").count(), 1);
   const highPoint = b.getByRole("slider", { name: "100 °C", exact: true });
   const highX = await highPoint.locator(".fan-curve-point").getAttribute("cx");
   assert.ok(Number(highX) >= 10 && Number(highX) <= 95, "A loaded 120°C tail maps to the visible 100°C grid endpoint");
@@ -58,7 +59,7 @@ export default async function controlCardJourney(page, baseUrl) {
   assert.deepEqual(writes[0].settings[0].curve.at(-1), { temperatureCelsius: 100, percent: 100 }, "A loaded 95°C tail maps to the 100°C grid endpoint on Apply");
   assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), true);
   await b.getByRole("button", { name: "撤销改动", exact: true }).click();
-  assert.equal(await b.getByRole("radio", { name: "固件自动管理", exact: true }).getAttribute("aria-checked"), "true");
+  assert.equal(await b.getByRole("radio", { name: "固件管理", exact: true }).getAttribute("aria-checked"), "true");
   assert.equal(await a.getByRole("checkbox", { name: "转速曲线", exact: true }).isChecked(), true);
   const slider = a.getByRole("slider", { name: "60 °C", exact: true });
   await slider.press("ArrowUp");
@@ -91,7 +92,7 @@ export default async function controlCardJourney(page, baseUrl) {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const box = await chart.boundingBox();
-    const selector = await a.locator('.control-curve-execution').boundingBox();
+    const selector = await a.locator('.control-ownership-choice').boundingBox();
     assert.ok(selector.y + selector.height <= box.y, "Selector stays above chart");
     assert.ok(box.width > 100 && box.width <= width);
     const overflow = await chart.evaluate(el => el.getBoundingClientRect().right > document.documentElement.clientWidth);
@@ -105,7 +106,7 @@ export default async function controlCardJourney(page, baseUrl) {
   await highPoint.press("ArrowDown");
   await b.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => !document.querySelector(".control-workspace")?.hasAttribute("aria-busy"));
-  assert.deepEqual(writes.at(-1), { id: "B", settings: [{ capabilityId: "fan.curve", curveExecution: "firmware",
+  assert.deepEqual(writes.at(-1), { id: "B", settings: [{ capabilityId: "fan.curve", curveExecution: "software",
     curve: [
       { temperatureCelsius: 30, percent: 10 }, { temperatureCelsius: 35, percent: 10 },
       { temperatureCelsius: 40, percent: 10 }, { temperatureCelsius: 45, percent: 20 },
@@ -115,7 +116,7 @@ export default async function controlCardJourney(page, baseUrl) {
       { temperatureCelsius: 80, percent: 90 }, { temperatureCelsius: 85, percent: 100 },
       { temperatureCelsius: 90, percent: 100 }, { temperatureCelsius: 95, percent: 100 },
       { temperatureCelsius: 100, percent: 99 }
-    ] }] }, "The loaded curve is resampled to the firmware grid and the visible 100°C endpoint reaches Apply");
+    ] }] }, "The loaded curve is resampled to the software grid and the visible 100°C endpoint reaches Apply");
   return { cardScopedWrites: writes.length, retainedConcurrentEdit: true, gridLines: 22,
     highTemperaturePoint: 100, viewports: [1440, 390] };
 }

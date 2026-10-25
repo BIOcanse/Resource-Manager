@@ -1,3 +1,4 @@
+import { fanModeFacts } from "./fanModeFacts.js";
 import assert from "node:assert/strict";
 
 export default async function controlAuditJourney(page, baseUrl) {
@@ -7,14 +8,14 @@ export default async function controlAuditJourney(page, baseUrl) {
   const writes = [];
   let objects = [{ objectId: "A", settings: [
     { capabilityId: "fan.duty", number: 42, unit: "%" },
-    { capabilityId: "fan.curve", curveExecution: "firmware", curve: [
+    { capabilityId: "fan.curve", curveExecution: "software", curve: [
       { temperatureCelsius: 40, percent: 30 }, { temperatureCelsius: 80, percent: 80 }
     ] }
   ] }];
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B"].map(id => ({
-      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
-      platform: { operatingSystem: "windows", vendor: "test" }, terms: ["curve-firmware"],
+      id, ...fanModeFacts(["fan.curve", "fan.duty"]), kind: "fan", reportedName: `Fan ${id}`, isControllable: true,
+      platform: { operatingSystem: "windows", vendor: "oem" }, terms: [],
       capabilities: [
         { id: "fan.duty", valueKind: "number", supported: true, requiredAccessLevel: "normal",
           range: { minimum: 0, maximum: 100, step: 1, unit: "%" } },

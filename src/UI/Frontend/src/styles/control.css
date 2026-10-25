@@ -879,3 +879,20 @@
   font-variant-numeric: tabular-nums;
   color: var(--color-text-muted);
 }
+
+/* Fan ownership is one three-way choice at every card width. */
+.settings-segmented-control.control-fan-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: fit-content;
+  max-width: 100%;
+}
+.control-fan-modes .settings-segment {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: normal;
+  padding: 6px 10px;
+}

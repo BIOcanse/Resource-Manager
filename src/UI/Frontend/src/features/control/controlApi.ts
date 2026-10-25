@@ -120,6 +120,24 @@ function readObject(value: unknown, path: string): ControlObject {
         `${path}.platform.operatingSystem`),
       vendor: requireNonEmptyString(platform.vendor, `${path}.platform.vendor`)
     },
+    fanManagementModes: record.kind === "fan" ? requireArray(record.fanManagementModes, path + ".fanManagementModes").map((value, index) => {
+      const at = path + ".fanManagementModes[" + index + "]";
+      const mode = requireRecord(value, at);
+      const available = requireBoolean(mode.available, at + ".available");
+      const unavailableReason = readControlReason(mode.unavailableReason, at + ".unavailableReason");
+      const unavailableKind = available ? null : requireOneOf(mode.unavailableKind, at + ".unavailableKind", controlUnavailableKinds);
+      if (!available && !unavailableReason) throw new ResponseDecodeError(at, "an unavailable mode with a reason");
+      return { id: requireOneOf(mode.id, at + ".id", ["firmware-management", "firmware-write", "software-management"] as const),
+        available, unavailableReason, unavailableKind,
+        items: requireArray(mode.items, at + ".items").map((value, itemIndex) => {
+          const itemPath = at + ".items[" + itemIndex + "]";
+          const item = requireRecord(value, itemPath);
+          return { capabilityId: requireNonEmptyString(item.capabilityId, itemPath + ".capabilityId"),
+            curveExecution: optionalString(item.curveExecution, itemPath + ".curveExecution") };
+        }) };
+    }) : null,
+    softwareTakeoverCoversAllFans: record.kind === "fan" ? requireBoolean(record.softwareTakeoverCoversAllFans, path + ".softwareTakeoverCoversAllFans") : false,
+    firmwareCurveKind: optionalString(record.firmwareCurveKind, path + ".firmwareCurveKind"),
     capabilities: requireArray(record.capabilities, `${path}.capabilities`)
       .map((row, index) => readCapability(row, `${path}.capabilities[${index}]`)),
     detail: optionalString(record.detail, `${path}.detail`),

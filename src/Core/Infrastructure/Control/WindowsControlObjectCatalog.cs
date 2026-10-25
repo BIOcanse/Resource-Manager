@@ -73,14 +73,23 @@ public sealed class WindowsControlObjectCatalog(
     ///
     /// 第一个认领这一项的写入器说了算。没人认领就保持目录里那句"还没接"。
     /// </summary>
-    private ControlObject ResolveAvailability(ControlObject candidate)
+    internal ControlObject ResolveAvailability(ControlObject candidate)
     {
         var resolved = new List<ControlCapability>(candidate.Capabilities.Count);
         foreach (var capability in candidate.Capabilities)
         {
             resolved.Add(ResolveCapability(candidate, capability));
         }
-        return candidate with { Capabilities = resolved };
+        var result = candidate with { Capabilities = resolved };
+        if (candidate.Kind != ControlObjectKinds.Fan) return result;
+        var fan = candidate.Id.StartsWith(FanControlWriter.ObjectIdPrefix, StringComparison.Ordinal)
+            ? fanCore.Describe().FirstOrDefault(entry => candidate.Id == $"{FanControlWriter.ObjectIdPrefix}{entry.Index}") : null;
+        return result with
+        {
+            FanManagementModes = FanControlWriter.ManagementModes(resolved, fan),
+            SoftwareTakeoverCoversAllFans = fan?.SoftwareTakeoverCoversAllFans == true,
+            FirmwareCurveKind = fan?.FirmwareCurve
+        };
     }
 
     internal ControlCapability ResolveCapability(
@@ -829,44 +838,6 @@ public sealed class WindowsControlObjectCatalog(
         if (!string.Equals(fan.Role, ControlFanRoles.Unknown, StringComparison.Ordinal))
         {
             terms.Add(fan.Role);
-        }
-        /*
-         * 曲线**能交给谁执行**。两条路都有的机器会同时挂两个词条 ——
-         * 那正是用户需要看到的：他有得选。
-         *
-         * 一条都没有的（只能切模式、或者只读）不挂：那不是一种曲线，
-         * 写上去反而像是某种曲线模式。为什么没有，由那一项自己的原因说。
-         */
-        if (fan.FirmwareCurve is not null)
-        {
-            terms.Add("curve-firmware");
-            /*
-             * 固件表里**只有转速档可写，温度断点是固件定死的**（联想 Legion 那种
-             * 10 档表就是）。单挂一条词条标出来，界面据此说明"这里只调每一档的转速"。
-             *
-             * 不标的话，曲线图看起来和能任意拖点的那种一模一样 ——
-             * 用户拖了温度却不生效，比不给更糟。
-             */
-            if (string.Equals(
-                fan.FirmwareCurve,
-                ControlFanFirmwareCurveKinds.Table,
-                StringComparison.Ordinal))
-            {
-                terms.Add("curve-fixed-steps");
-            }
-        }
-        if (fan.SupportsSoftwareCurve)
-        {
-            terms.Add("curve-software");
-            /*
-             * 软件接管是整机一个开关的平台，单挂一条词条标出来 ——
-             * 界面据此在用户**选之前**提醒他这会波及别的风扇。
-             * 事后才发现另一把风扇不转了，那就晚了。
-             */
-            if (fan.SoftwareTakeoverCoversAllFans)
-            {
-                terms.Add("takeover-all-fans");
-            }
         }
         return terms;
     }

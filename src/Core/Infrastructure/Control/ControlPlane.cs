@@ -148,21 +148,42 @@ public sealed class ControlPlane(
         CancellationToken cancellationToken,
         string? objectId = null)
     {
+        var invalid = InvalidFanModes(next, objectId);
+        if (invalid.Length > 0) return new(current, RejectFanModes(invalid, objectId));
         var pending = current.PendingReleases.Concat(current.Objects)
             .GroupBy(target => target.ObjectId, StringComparer.Ordinal)
             .Select(group => new ControlObjectDesiredState(group.Key, group.SelectMany(target => target.Settings)
                 .DistinctBy(setting => setting.CapabilityId)
                 .Where(setting => !next.Objects.Any(target => target.ObjectId == group.Key
-                    && target.Settings.Any(kept => kept.CapabilityId == setting.CapabilityId))).ToArray()))
+                    && target.Settings.Any(kept => SameOwnership(kept, setting)))).ToArray()))
             .Where(target => target.Settings.Count > 0).ToArray();
         next = next with { PendingReleases = pending };
         await store.SaveAsync(next, cancellationToken).ConfigureAwait(false);
         return await ApplyStoredAsync(next, cancellationToken, objectId).ConfigureAwait(false);
     }
 
+    private static ControlObjectDesiredState[] InvalidFanModes(ControlDesiredState state, string? objectId)
+        => state.Objects.Where(target => (objectId is null || target.ObjectId == objectId)
+            && target.ObjectId.StartsWith("fan:", StringComparison.Ordinal)
+            && Writers.FanControlWriter.IsMixed(target.Settings)).ToArray();
+
+    private ControlApplyReport RejectFanModes(ControlObjectDesiredState[] invalid, string? objectId)
+    {
+        var report = Rejected(new(invalid), Writers.FanControlWriter.MixedManagementModes);
+        if (objectId is not null) report = report with { Outcomes = ReadLastApply().Outcomes
+            .Where(outcome => outcome.ObjectId != objectId).Concat(report.Outcomes).ToArray() };
+        WriteLastApply(report);
+        return report;
+    }
+
+    private static bool SameOwnership(ControlSetting left, ControlSetting right)
+        => left.CapabilityId == right.CapabilityId && left.CurveExecution == right.CurveExecution;
+
     private async Task<ControlStateView> ApplyStoredAsync(
         ControlDesiredState next, CancellationToken cancellationToken, string? objectId = null, bool retryOnly = false)
     {
+        var invalid = InvalidFanModes(next, objectId);
+        if (invalid.Length > 0) return new(next, RejectFanModes(invalid, objectId));
         var releases = next.PendingReleases.Where(target => objectId is null || target.ObjectId == objectId).ToArray();
         var releaseReport = releases.Length == 0
             ? ControlApplyReport.Empty
@@ -179,6 +200,9 @@ public sealed class ControlPlane(
         }
         var selected = objectId is null ? next : new ControlDesiredState(
             next.Objects.Where(target => target.ObjectId == objectId).ToArray());
+        var blocked = selected.Objects.Where(target => pending.Any(release => release.ObjectId == target.ObjectId)).ToArray();
+        selected = selected with { Objects = selected.Objects.Where(target =>
+            !pending.Any(release => release.ObjectId == target.ObjectId)).ToArray() };
         if (retryOnly)
         {
             var failed = ReadLastApply().Outcomes.Where(outcome => outcome.ObjectId == objectId
@@ -194,7 +218,9 @@ public sealed class ControlPlane(
         var retained = ReadLastApply().Outcomes.Where(outcome => retryOnly
             ? !replaced.Contains((outcome.ObjectId, outcome.CapabilityId))
             : objectId is not null && outcome.ObjectId != objectId);
-        var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).ToArray(), DateTimeOffset.UtcNow);
+        var blockedOutcomes = blocked.SelectMany(target => target.Settings.Select(setting =>
+            new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Failed, "control-release-failed")));
+        var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).Concat(blockedOutcomes).ToArray(), DateTimeOffset.UtcNow);
         WriteLastApply(report);
         return new ControlStateView(next, report);
     }

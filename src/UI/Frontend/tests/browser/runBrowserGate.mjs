@@ -1,3 +1,4 @@
+import fanManagementModesJourney from "./fanManagementModesJourney.js";
 import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.js";
 import productUpdatesJourney from "./productUpdatesJourney.js";
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
@@ -83,6 +84,7 @@ const allJourneys = [
   ["resource-bar-color-modes", resourceBarColorModesJourney],
   ["resource-bar-proportion", resourceBarProportionJourney],
   ["control-readings", controlReadingsJourney],
+  ["fan-management-modes", fanManagementModesJourney],
   ["control-card", controlCardJourney],
   ["control-audit", controlAuditJourney],
   ["control-number-initial", controlNumberInitialJourney],

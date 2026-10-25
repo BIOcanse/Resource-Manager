@@ -162,6 +162,42 @@ public sealed class FanControlWriter(
         return ControlWriteAvailability.Yes(capability.Range);
     }
 
+    public const string MixedManagementModes = "fan-management-modes-mixed";
+
+    public static bool IsMixed(IReadOnlyList<ControlSetting> settings)
+        => settings.Any(setting => setting.CapabilityId == CurveCapabilityId
+                && setting.CurveExecution == ControlFanCurveExecutions.Firmware)
+            && settings.Any(setting => setting.CapabilityId != CurveCapabilityId
+                || setting.CapabilityId == CurveCapabilityId && setting.CurveExecution == ControlFanCurveExecutions.Software);
+
+    internal static IReadOnlyList<ControlFanManagementMode> ManagementModes(
+        IReadOnlyList<ControlCapability> capabilities, FanCoreFan? fan)
+    {
+        var firmwareItems = new ControlFanManagementItem[] { new(CurveCapabilityId, ControlFanCurveExecutions.Firmware) };
+        var softwareItems = capabilities.Where(capability => capability.Id != RpmCapabilityId
+            && (capability.Id != CurveCapabilityId || fan?.SupportsSoftwareCurve == true || fan is null))
+            .Select(capability => new ControlFanManagementItem(capability.Id,
+                capability.Id == CurveCapabilityId ? ControlFanCurveExecutions.Software : null)).ToArray();
+        ControlFanManagementMode Mode(string id, IReadOnlyList<ControlFanManagementItem> items,
+            string? reason = null, string? kind = null)
+        {
+            var members = capabilities.Where(capability => items.Any(item => item.CapabilityId == capability.Id)).ToArray();
+            var available = reason is null && members.Any(capability => capability.Supported);
+            var blocked = members.FirstOrDefault();
+            return new(id, available, available ? null : kind ?? blocked?.UnavailableKind ?? ControlUnavailableKinds.Platform,
+                available ? null : reason is not null ? new(reason)
+                    : blocked?.UnavailableReason ?? new("fan-software-management-unsupported"), items);
+        }
+        var firmwareReason = fan?.FirmwareCurve is null ? "fan-firmware-curve-unsupported"
+            : !fan.SupportsFirmwareCurveReset ? RestoreProtocolRequired
+            : fan.FirmwareCurveRequires is not null ? "fan-firmware-prerequisite" : null;
+        return [new("firmware-management", true, null, null, []),
+            Mode("firmware-write", firmwareItems, firmwareReason,
+                firmwareReason is RestoreProtocolRequired or "fan-firmware-prerequisite" ? ControlUnavailableKinds.Prerequisite
+                    : firmwareReason is not null ? ControlUnavailableKinds.Platform : null),
+            Mode("software-management", softwareItems)];
+    }
+
     public async Task<bool> RestoreAsync(
         ControlObject target,
         ControlCapability capability,

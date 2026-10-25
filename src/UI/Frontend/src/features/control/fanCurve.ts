@@ -38,7 +38,8 @@ export const curveStops: readonly number[] =
  */
 export function curveTemperatures(fixedSteps: boolean, pointLimit: number | null): readonly number[] {
   if (fixedSteps) {
-    return curveStops;
+    const count = pointLimit ?? curveStops.length;
+    return Array.from({ length: count }, (_, index) => curveStops[0] + index * curveStepCelsius);
   }
   const count = Math.max(1, Math.min(curveGridPoints, pointLimit ?? curveGridPoints));
   return Array.from({ length: count },

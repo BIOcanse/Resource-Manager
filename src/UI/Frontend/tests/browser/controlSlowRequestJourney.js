@@ -1,3 +1,4 @@
+import { fanModeFacts } from "./fanModeFacts.js";
 import assert from "node:assert/strict";
 
 export default async function controlSlowRequestJourney(page, baseUrl) {
@@ -7,8 +8,8 @@ export default async function controlSlowRequestJourney(page, baseUrl) {
   const state = () => ({ desired: { objects }, lastApply: { outcomes: [], appliedAt: new Date().toISOString() } });
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: [{
-      id: "slow", kind: "fan", reportedName: "Slow Fan", isControllable: true,
-      platform: { operatingSystem: "windows", vendor: "test" }, terms: ["curve-firmware"],
+      id: "slow", ...fanModeFacts(["fan.curve"]), kind: "fan", reportedName: "Slow Fan", isControllable: true,
+      platform: { operatingSystem: "windows", vendor: "oem" }, terms: [],
       capabilities: [{ id: "fan.curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }]
   } }));

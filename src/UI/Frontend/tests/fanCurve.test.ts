@@ -113,3 +113,5 @@ assert.equal(placed.find(point => point.temperatureCelsius === 85)!.percent, 100
 assert.equal(placed.find(point => point.temperatureCelsius === 100)!.percent, 100, "最高断点之上保持端点值");
 assert.equal(placed.find(point => point.temperatureCelsius === 30)!.percent, 19, "30 度在 0 与 48 度之间插值");
 assert.deepEqual(curveOnTemperatures(placed, grid), placed, "已经在网格上的曲线再落一次不变");
+
+assert.equal(curveTemperatures(true, 6).length, 6, "Firmware fixed-step curves respect the published point limit");

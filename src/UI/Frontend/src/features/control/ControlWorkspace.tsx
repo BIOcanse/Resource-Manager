@@ -38,6 +38,7 @@ import {
 } from "./controlStateMachine.ts";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { RadioGroupRoot, RadioGroupItem } from "../../ui/primitives/RadioGroup";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { uiText } from "../../text.ts";
 import { controlAccessLevelAllows } from "./controlTypes.ts";
@@ -114,6 +115,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
    */
   const [draft, setDraft] = createSignal<readonly ControlObjectDesiredState[] | null>(null);
   // Unsaved ownership choice belongs to the page draft, not a refreshed device card.
+  const [fanModes, setFanModes] = createSignal<ReadonlyMap<string, string>>(new Map());
+  const chooseFanMode = (id: string, mode: string | null) => setFanModes(current => {
+    const next = new Map(current); if (mode === null) next.delete(id); else next.set(id, mode); return next;
+  });
   const [takingOver, setTakingOver] = createSignal<ReadonlySet<string>>(new Set());
   const chooseOwnership = (objectId: string, enabled: boolean) => setTakingOver(current => {
     const next = new Set(current);
@@ -147,6 +152,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     const saved = savedObjects().find(entry => entry.objectId === objectId);
     setDraft([...edited().filter(entry => entry.objectId !== objectId), ...(saved ? [saved] : [])]);
     chooseOwnership(objectId, false);
+    chooseFanMode(objectId, null);
   };
 
   /**
@@ -389,6 +395,8 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                   {(object) => (
                     <ControlObjectCard
                       object={object}
+                      fanModeChoice={fanModes().get(object.id)}
+                      onFanModeChoice={(mode) => chooseFanMode(object.id, mode)}
                       takingOver={takingOver().has(object.id)}
                       onTakeOver={(enabled) => chooseOwnership(object.id, enabled)}
                       /*
@@ -444,7 +452,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
 /**
  * 选了软件接管会被一起接管的**其他**风扇的名字。
  *
- * 只有在这把风扇挂着 `takeover-all-fans` 词条时才有值 —— 那说明这个平台上
+ * 只有在目录声明这把风扇的软件接管覆盖同通道全部风扇时才有值 —— 那说明这个平台上
  * "交给软件管"是整机一个开关，不是每把风扇一个。那时没挂曲线的风扇会停在
  * 当时那个转速上不再自动调，**得在用户选之前点名告诉他是哪几把**。
  *
@@ -455,7 +463,7 @@ function siblingFansTakenOverWith(
   object: ControlObject,
   all: readonly ControlObject[]
 ): readonly string[] {
-  if (!object.terms.includes("takeover-all-fans")) {
+  if (!object.softwareTakeoverCoversAllFans) {
     return [];
   }
   return all
@@ -468,6 +476,8 @@ function siblingFansTakenOverWith(
 
 function ControlObjectCard(props: {
   object: ControlObject;
+  fanModeChoice?: string;
+  onFanModeChoice: (mode: string | null) => void;
   takingOver: boolean;
   onTakeOver: (enabled: boolean) => void;
   /** 选了软件接管会被一起接管的其他风扇。不会连带就是空的。 */
@@ -503,7 +513,20 @@ function ControlObjectCard(props: {
    * 下面这个信号只管一件事：用户已经切到本程序控制、但还没来得及设任何一项 ——
    * 那一小段时间里没法从期望状态看出他的选择。
    */
-  const firmwareOwned = () => props.edited.length === 0 && !props.takingOver;
+  const isFan = () => props.object.kind === "fan";
+  const modes = () => props.object.fanManagementModes ?? [];
+  const storedMode = () => props.edited.length === 0 ? "firmware-management"
+    : modes().find(mode => mode.items.length > 0 && props.edited.every(setting => mode.items.some(item =>
+        item.capabilityId === setting.capabilityId && item.curveExecution === (setting.curveExecution ?? null))))?.id ?? null;
+  const selectedMode = () => props.edited.length > 0 ? storedMode() : props.fanModeChoice ?? storedMode();
+  const mode = () => modes().find(mode => mode.id === selectedMode());
+  const mixed = () => isFan() && selectedMode() === null;
+  const firmwareOwned = () => isFan() ? selectedMode() === "firmware-management"
+    : props.edited.length === 0 && !props.takingOver;
+  const editSetting = (capabilityId: string, setting: ControlSetting | null) => {
+    const item = mode()?.items.find(item => item.capabilityId === capabilityId);
+    props.onEdit(capabilityId, setting && isFan() ? { ...setting, curveExecution: item?.curveExecution ?? null } : setting);
+  };
   const outcomes = () => props.state?.lastApply.outcomes
     .filter((entry) => entry.objectId === props.object.id) ?? [];
 
@@ -534,7 +557,7 @@ function ControlObjectCard(props: {
 
   /** 这一行动不动得了。归固件管、档位够不着、这台机器上没有，都动不了。 */
   const locked = (capability: ControlCapability) =>
-    firmwareOwned() || outOfReach(capability) || !capability.supported;
+    firmwareOwned() || mixed() || (isFan() && !mode()?.available) || outOfReach(capability) || !capability.supported;
 
   /**
    * 动不了属于哪一类。
@@ -595,7 +618,8 @@ function ControlObjectCard(props: {
   /** 可调的那些 —— 也就是剩下的。只读的已经在上面单独列过了。 */
   const adjustable = () => {
     const shown = new Set(readOnly().map((entry) => entry.capability.id));
-    return props.object.capabilities.filter((capability) => !shown.has(capability.id));
+    return props.object.capabilities.filter((capability) => !shown.has(capability.id)
+      && (!isFan() || mode()?.items.some(item => item.capabilityId === capability.id)));
   };
 
   const itemView = (capabilityId: string) => controlItemStatusOf(
@@ -615,16 +639,16 @@ function ControlObjectCard(props: {
         <strong>{controlObjectName(props.object)}</strong>
         <span class="control-object-platform">
           {/* 每个对象自带自己的情况，不是全局的：一台机器上 A 卡和 N 卡各是一种。 */}
-          {props.object.platform.operatingSystem}
+          {uiText.control.term[props.object.platform.operatingSystem]}
           {" · "}
-          {props.object.platform.vendor}
+          {uiText.control.term[props.object.platform.vendor]}
           {/* 核显能调的比独显少，所以要标出来。 */}
           <Show when={props.object.gpuAttachment}>
             {(attachment) => <>
               {" · "}
               {uiText.control.attachment[
                 attachment() as keyof typeof uiText.control.attachment
-              ] ?? attachment()}
+              ]}
             </>}
           </Show>
           {/*
@@ -632,9 +656,9 @@ function ControlObjectCard(props: {
             它们是同一件事，只是维度不同。名字在上面那一行，这里只放分类。
           */}
           <For each={props.object.terms}>
-            {(term) => <>{" · "}{uiText.control.term[term] ?? term}</>}
+            {(term) => <>{" · "}{uiText.control.term[term]}</>}
           </For>
-          <Show when={props.object.detail}>{(detail) => <> · {detail()}</>}</Show>
+          <Show when={props.object.detail && uiText.control.term[props.object.detail]}>{(detail) => <> · {detail()}</>}</Show>
         </span>
       </header>
 
@@ -674,6 +698,34 @@ function ControlObjectCard(props: {
         控制归属。切回固件是**一直保留的出路** —— 任何时候都能把这块硬件还给它
         自己的固件，而不是只能靠一项项撤销设定。
       */}
+      <Show when={isFan()}>
+        <Show when={props.object.softwareTakeoverCoversAllFans}>
+          <p class="control-curve-note" role="note">{uiText.control.term["takeover-all-fans"]}
+            <Show when={props.takenOverWith.length > 0}> {uiText.control.takeoverCoversOthers(props.takenOverWith.join("、"))}</Show>
+          </p>
+        </Show>
+        <RadioGroupRoot class="settings-segmented-control control-ownership-choice control-fan-modes"
+          ariaLabel={uiText.control.ownership.label} value={selectedMode() ?? ""} onChange={id => {
+            if (selectedMode() === id) return;
+            props.onReplaceSettings([]);
+            props.onFanModeChoice(id);
+          }}>
+          <For each={modes()}>{entry =>
+            <RadioGroupItem value={entry.id} class="settings-segment" disabled={!entry.available}
+              title={entry.unavailableReason ? controlReasonText(entry.unavailableReason) : undefined}>
+              <Show when={!entry.available}>
+                <Show when={entry.unavailableKind === "platform"} fallback={<Lock size={13} />}><X size={13} /></Show>
+              </Show>
+              {uiText.control.term[entry.id]}
+            </RadioGroupItem>
+          }</For>
+        </RadioGroupRoot>
+        <For each={modes().filter(mode => !mode.available)}>{entry =>
+          <p class="control-capability-reason">{uiText.control.term[entry.id]}: {controlReasonText(entry.unavailableReason)}</p>
+        }</For>
+        <Show when={mixed()}><p role="alert">{controlReasonText({code: "fan-management-modes-mixed"})}</p></Show>
+      </Show>
+      <Show when={!isFan()}>
       <div class="control-ownership">
         <SegmentedControl
           value={firmwareOwned() ? "firmware" : "app"}
@@ -699,6 +751,7 @@ function ControlObjectCard(props: {
 
       </div>
 
+      </Show>
       {/*
         为这个实例存过的配置。**点一份只是把它载入草稿**，要落到硬件还得点应用 ——
         应用只有一条路，不给配置开后门。
@@ -716,6 +769,7 @@ function ControlObjectCard(props: {
                 class="secondary"
                 type="button"
                 onClick={() => {
+                  props.onFanModeChoice(null);
                   props.onTakeOver(preset.settings.length > 0);
                   props.onReplaceSettings(preset.settings);
                 }}
@@ -877,7 +931,7 @@ function ControlObjectCard(props: {
                       checked={props.edited.some(
                         (entry) => entry.capabilityId === capability.id)}
                       aria-label={controlCapabilityLabel(capability)}
-                      onChange={(event) => props.onEdit(
+                      onChange={(event) => editSetting(
                         capability.id,
                         event.currentTarget.checked ? initialSettingFor(capability, actualOf(capability.id)?.number) : null)}
                     />
@@ -979,13 +1033,14 @@ function ControlObjectCard(props: {
               <ControlCapabilityEditor
                 capability={capability}
                 objectId={props.object.id}
-                terms={props.object.terms}
+                firmwareCurveKind={props.object.firmwareCurveKind ?? null}
+                curveExecution={mode()?.items.find(item => item.capabilityId === capability.id)?.curveExecution ?? null}
                 takenOverWith={props.takenOverWith}
                 setting={edited().find((entry) => entry.capabilityId === capability.id)}
                 actual={actualOf(capability.id)?.number ?? null}
                 // 归固件管的时候这些设定不生效，所以不给动。
-                held={firmwareOwned()}
-                onChange={(next) => props.onEdit(capability.id, next)}
+                held={locked(capability)}
+                onChange={(next) => editSetting(capability.id, next)}
               />
             </li>
           )}
@@ -993,10 +1048,10 @@ function ControlObjectCard(props: {
       </ul>
       <div class="control-object-actions">
         <button class="secondary" type="button"
-          disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !props.takingOver)}
+          disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !props.takingOver && !props.fanModeChoice)}
           onClick={props.onDiscard}>{uiText.control.discard}</button>
         <button type="button"
-          disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !canRetryControlObject(props.state, props.object.id))
+          disabled={props.saving || mixed() || (!hasPendingChanges(edited(), saved()) && !canRetryControlObject(props.state, props.object.id))
             || edited().some(setting => {
               const kind = props.object.capabilities.find(c => c.id === setting.capabilityId)?.valueKind;
               return kind === "number" ? typeof setting.number !== "number" || !Number.isFinite(setting.number)

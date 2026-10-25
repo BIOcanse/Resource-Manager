@@ -348,6 +348,13 @@ public sealed record ControlObject(
     [System.Text.Json.Serialization.JsonIgnore]
     public string? ExpectedPhysicalPnp { get; init; }
 
+    /// <summary>风扇管理方式、可用性和成员，由目录与写入器发布；非风扇为 null。</summary>
+    public IReadOnlyList<ControlFanManagementMode>? FanManagementModes { get; init; }
+    /// <summary>软件管理是否连带同通道上的其他风扇，供选择前提示。</summary>
+    public bool SoftwareTakeoverCoversAllFans { get; init; }
+    /// <summary>固件表形状，供曲线编辑器显示固定档位说明；无固件曲线为 null。</summary>
+    public string? FirmwareCurveKind { get; init; }
+
     /// <summary>这个对象现在一项都控不了。界面据此整体标灰。</summary>
     public bool IsControllable => Capabilities.Any(static capability => capability.Supported);
 }
@@ -356,3 +363,9 @@ public sealed record ControlObject(
 public sealed record ControlObjectCatalog(
     IReadOnlyList<ControlObject> Objects,
     DateTimeOffset ReadAt);
+
+/// <summary>Writer-owned mode membership; the UI never reconstructs it from capability IDs.</summary>
+public sealed record ControlFanManagementItem(string CapabilityId, string? CurveExecution = null);
+public sealed record ControlFanManagementMode(string Id, bool Available,
+    string? UnavailableKind, ControlApplyReason? UnavailableReason,
+    IReadOnlyList<ControlFanManagementItem> Items);

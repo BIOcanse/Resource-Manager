@@ -3,7 +3,6 @@ import { uiText } from "../../text.ts";
 import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
 import {
   curveFromStops,
-  curveOnTemperatures,
   curveTemperatures,
   stopsFromCurve
 } from "./fanCurve.ts";
@@ -57,8 +56,9 @@ export function ControlCapabilityEditor(props: {
   capability: ControlCapability;
   /** 这一项属于哪个对象。曲线要靠它去读固件现在跑的那条。 */
   objectId: string;
-  /** 这个对象的词条。曲线要靠它判断能交给谁执行。 */
-  terms: readonly string[];
+  /** 所选管理方式决定执行方式；固件形状决定固定档位说明。 */
+  firmwareCurveKind: string | null;
+  curveExecution: string | null;
   /**
    * 选了软件接管会被一起接管的**其他**风扇的名字。
    *
@@ -118,7 +118,8 @@ export function ControlCapabilityEditor(props: {
         <CurveEditor
           capability={props.capability}
           objectId={props.objectId}
-          terms={props.terms}
+          firmwareCurveKind={props.firmwareCurveKind}
+          curveExecution={props.curveExecution}
           takenOverWith={props.takenOverWith}
           setting={props.setting}
           disabled={disabled()}
@@ -343,11 +344,9 @@ function CurveEditor(props: {
   capability: ControlCapability;
   /** 这条曲线属于哪个对象。读固件当前曲线要用它。 */
   objectId: string;
-  /**
-   * 这个对象的词条。曲线能交给谁执行是从这里读的
-   * （`curve-firmware` / `curve-software`，两条都有就两个都在）。
-   */
-  terms: readonly string[];
+  /** 直接消费目录的固件表形状与所选方式的执行值。 */
+  firmwareCurveKind: string | null;
+  curveExecution: string | null;
   /** 选了软件接管会被一起接管的其他风扇。没有就不提。 */
   takenOverWith?: readonly string[];
   setting: ControlSetting | undefined;
@@ -362,16 +361,7 @@ function CurveEditor(props: {
 
   const configured = () => (props.setting?.curve?.length ?? 0) > 0;
 
-  /*
-   * 这条曲线能交给谁执行。两条都有的机器上用户可以选。
-   *
-   * **默认选固件。** 固件那条写一次就一直有效，本程序关了、重启了都还在；
-   * 软件那条得我们一直跑着，程序不在就没了 —— 前者是更好的默认。
-   */
-  const canFirmware = () => props.terms.includes("curve-firmware");
-  const canSoftware = () => props.terms.includes("curve-software");
-  const execution = () =>
-    props.setting?.curveExecution ?? (canFirmware() ? "firmware" : "software");
+  const execution = () => props.curveExecution!;
 
   /*
    * 这台机器的固件表**只让改每一档的转速**，温度断点是固件定死的
@@ -382,14 +372,14 @@ function CurveEditor(props: {
    * 只在交给固件执行时才提：交给软件跑的时候，温度是我们自己在判，那就是真的。
    */
   const fixedSteps = () =>
-    props.terms.includes("curve-fixed-steps") && execution() === "firmware";
+    props.firmwareCurveKind === "table" && execution() === "firmware";
 
   /*
    * 横轴的温度点：每 5 度一个，固定不动，用户只调转速。
    * 交给固件时点数受固件表限制（见 curvePointLimit），交给软件时不受。
    */
-  const temperaturesFor = (mode: string) => curveTemperatures(
-    props.terms.includes("curve-fixed-steps") && mode === "firmware",
+  const temperaturesFor = (mode: string | null) => curveTemperatures(
+    props.firmwareCurveKind === "table" && mode === "firmware",
     mode === "firmware" ? props.capability.curvePointLimit : null);
   const temperatures = createMemo(() => temperaturesFor(execution()));
   const stops = createMemo(() => stopsFromCurve(props.setting?.curve, temperatures()));
@@ -452,53 +442,6 @@ function CurveEditor(props: {
   return (
     <div class="control-curve">
       <Show when={readFailed()}><p class="control-curve-note" role="alert">{uiText.control.curveUnavailable}</p></Show>
-      {/*
-        交给谁执行。**只在两条都有的时候才摆这个选择** ——
-        只有一条路的机器上摆一个选不动的开关，纯粹是噪音；
-        那时它走哪条由对象的词条说明，不必在这里再说一遍。
-      */}
-      <Show when={configured() && canFirmware() && canSoftware()}>
-        <SegmentedControl
-          class="settings-segmented-control control-curve-execution"
-          itemClass="settings-segment"
-          ariaLabel={uiText.control.curveExecutionLabel}
-          value={execution()}
-          disabled={props.disabled}
-          options={[
-            {
-              id: "firmware",
-              label: uiText.control.curveExecutionFirmware,
-              description: uiText.control.curveExecutionFirmwareHint
-            },
-            {
-              id: "software",
-              label: uiText.control.curveExecutionSoftware,
-              description: uiText.control.curveExecutionSoftwareHint
-            }
-          ]}
-          onChange={(mode) => props.onChange({
-            ...props.setting!,
-            curve: props.setting?.curve == null
-              ? null
-              : curveOnTemperatures(props.setting.curve, temperaturesFor(mode)),
-            curveExecution: mode
-          })}
-        />
-      </Show>
-      {/*
-        软件接管会连带别的风扇时，**在他选之前就说，而且点名说是哪几把**。
-        只写一句"可能影响其他风扇"等于没说 —— 用户要能对着机器数得出来。
-        不会连带的平台上一个字都不显示。
-      */}
-      <Show when={execution() === "software"
-        && (props.takenOverWith?.length ?? 0) > 0
-        && props.takenOverWith}>
-        {(others) => (
-          <p class="control-curve-note" role="note">
-            {uiText.control.takeoverCoversOthers(others().join("、"))}
-          </p>
-        )}
-      </Show>
       {/*
         固件表是固定档位的：横轴那几个温度是我们的刻度，不是固件真正的断点。
         说出来，用户才不会以为拖动横轴能改断点。

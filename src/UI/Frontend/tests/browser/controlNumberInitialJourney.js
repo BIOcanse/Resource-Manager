@@ -1,3 +1,4 @@
+import { fanModeFacts } from "./fanModeFacts.js";
 import assert from "node:assert/strict";
 
 export default async function controlNumberInitialJourney(page, baseUrl) {
@@ -6,7 +7,7 @@ export default async function controlNumberInitialJourney(page, baseUrl) {
   const writes = [];
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
     readAt: new Date().toISOString(), objects: ["A", "B", "Fixed"].map(id => ({
-      id, kind: "fan", reportedName: `Fan ${id}`, isControllable: id !== "Fixed",
+      id, ...fanModeFacts(["fan.duty"], {firmware: false, software: id !== "Fixed"}), kind: "fan", reportedName: `Fan ${id}`, isControllable: id !== "Fixed",
       platform: { operatingSystem: "windows", vendor: "test" },
       capabilities: [{ id: "fan.duty", valueKind: "number", supported: id !== "Fixed",
         unavailableReason: id === "Fixed" ? { code: "control-range-fixed" } : null,
@@ -28,12 +29,12 @@ export default async function controlNumberInitialJourney(page, baseUrl) {
   await fixed.waitFor();
   assert.equal(await page.locator(".control-object").count(), 3,
     "An unsupported fixed (0,0) range must not reject the entire catalog");
-  await fixed.getByRole("radio", { name: "软件管理", exact: true }).click();
+  assert.equal(await fixed.getByRole("radio", { name: "软件管理", exact: true }).isDisabled(), true);
   assert.equal(await fixed.getByRole("checkbox", { name: "固定转速", exact: true }).count(), 0,
     "An unsupported capability remains read-only when software ownership is selected");
-  await a.locator(".control-capability-actual").filter({ hasText: "47" }).waitFor();
   for (const card of [a, b]) {
     await card.getByRole("radio", { name: "软件管理", exact: true }).click();
+    if (card === a) await a.locator(".control-capability-actual").filter({ hasText: "47" }).waitFor();
     await card.getByRole("checkbox", { name: "固定转速", exact: true }).check();
   }
   assert.equal(await a.getByRole("spinbutton").inputValue(), "47");
