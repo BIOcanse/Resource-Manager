@@ -49,10 +49,10 @@ export default async function motionFeelJourney(page, baseUrl) {
     };
   });
 
-  /** 在“更新”分区按空格切换“自动更新”，量从按下到滑块停在另一端（±0.5 px）的毫秒数；再切回来，草稿不变。 */
+  /** 在“更新”分区按空格切换“间隔检查”，量从按下到滑块停在另一端（±0.5 px）的毫秒数；再切回来，草稿不变。 */
   const knobTravel = async () => {
     await openSection("updates");
-    const box = page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true });
+    const box = page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true });
     await box.waitFor();
     const knob = box.locator("xpath=..").locator(".settings-switch-knob");
     const travels = [];
@@ -109,7 +109,7 @@ export default async function motionFeelJourney(page, baseUrl) {
     }
     await page.waitForFunction((id) => document.documentElement.dataset.motionFeel === id, feel, { timeout: 5000 });
     await openSection("updates");
-    await page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true }).waitFor();
     const durations = await readDurations();
     if (durations.animations !== "normal" || durations.medium !== ms || durations.modal !== ms
       || !durations.track?.every((value) => value === 0)) {
@@ -133,7 +133,7 @@ export default async function motionFeelJourney(page, baseUrl) {
   await save();
   await page.waitForFunction(() => document.body.dataset.animations === "none", undefined, { timeout: 5000 });
   await openSection("updates");
-  await page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true }).waitFor();
   const still = await readDurations();
   if (still.feel !== "crisp" || still.medium !== 120 || still.modal !== 0 || !still.track?.every((value) => value === 0)) {
     throw new Error(`No motion still animates or lost the feel: ${JSON.stringify(still)}`);

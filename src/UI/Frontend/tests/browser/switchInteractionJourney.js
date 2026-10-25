@@ -5,7 +5,7 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
  * 设置开关的滑块走交互协议的运行时（ui/primitives/Switch.tsx），真实鼠标事件，简体中文：
  * 点一下切换一次，滑块随后到另一端；按住滑块拖到另一端松手切换一次，拖完的那次 click 不会再切换回来；
  * 拖一点再拖回原处松手不改值；拖到一半时轨道颜色已经在关、开两色之间（颜色按开度跟着滑块走，不等松手）；
- * 空格键照常切换。用“自动更新”开关（只改设置草稿，不保存）。
+ * 空格键照常切换。用“间隔检查”开关（只改设置草稿，不保存）。
  */
 export default async function switchInteractionJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
@@ -14,7 +14,7 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
   await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
-  const box = page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true });
+  const box = page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true });
   await box.waitFor();
   const root = box.locator("xpath=..");
   const knob = root.locator(".settings-switch-knob");
