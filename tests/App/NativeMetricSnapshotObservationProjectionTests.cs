@@ -19,17 +19,27 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
 
         _ = NativeMetricSnapshotCommittedProjection.Create(frame: bitmaskFrame, workspaceIdentity: workspaceIdentity);
         _ = NativeMetricSnapshotCommittedProjection.Create(frame: formattedFrame, workspaceIdentity: workspaceIdentity);
+        // A single measurement can include a one-off runtime allocation: under the full parallel
+        // suite one run measured 136 bytes more for one loop of 32 projections, and the test passes
+        // alone. A value built per projection would appear in every round, so the minimum over
+        // rounds still exposes it.
+        const int rounds = 3;
         var bitmaskSnapshots = new HardwareMetricSnapshot[iterations];
-        var beforeBitmask = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < bitmaskSnapshots.Length; i++)
-            bitmaskSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: bitmaskFrame, workspaceIdentity: workspaceIdentity);
-        var bitmaskAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeBitmask;
-
         var formattedSnapshots = new HardwareMetricSnapshot[iterations];
-        var beforeFormatted = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < formattedSnapshots.Length; i++)
-            formattedSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: formattedFrame, workspaceIdentity: workspaceIdentity);
-        var formattedAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeFormatted;
+        var bitmaskAllocated = long.MaxValue;
+        var formattedAllocated = long.MaxValue;
+        for (var round = 0; round < rounds; round++)
+        {
+            var beforeBitmask = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < bitmaskSnapshots.Length; i++)
+                bitmaskSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: bitmaskFrame, workspaceIdentity: workspaceIdentity);
+            bitmaskAllocated = Math.Min(bitmaskAllocated, GC.GetAllocatedBytesForCurrentThread() - beforeBitmask);
+
+            var beforeFormatted = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < formattedSnapshots.Length; i++)
+                formattedSnapshots[i] = NativeMetricSnapshotCommittedProjection.Create(frame: formattedFrame, workspaceIdentity: workspaceIdentity);
+            formattedAllocated = Math.Min(formattedAllocated, GC.GetAllocatedBytesForCurrentThread() - beforeFormatted);
+        }
 
         var first = bitmaskSnapshots[0];
         var last = bitmaskSnapshots[^1];
