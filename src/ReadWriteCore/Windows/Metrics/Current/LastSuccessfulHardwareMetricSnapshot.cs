@@ -254,7 +254,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
 
             if (requested.Count != 0)
             {
-                var composed = Compose(datasets);
+                var composed = Compose(datasets, snapshot);
                 WriteState(new PublicationState(datasets, composed));
                 _ = PublishHistory(composed, datasets, requested);
             }
@@ -463,7 +463,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
 
             if (changed)
             {
-                var composed = Compose(datasets);
+                // No native frame completed, so no catalog was published by this
+                // failure. Keep the admitted publication's catalog identity.
+                var composed = Compose(datasets, state.Snapshot ?? attemptSnapshot);
                 WriteState(new PublicationState(datasets, composed));
                 _ = PublishHistory(composed, datasets, requested);
             }
@@ -621,12 +623,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             snapshot.FieldBindings.Values);
 
     private HardwareMetricSnapshot Compose(
-        IReadOnlyDictionary<string, DatasetPublication> datasets)
+        IReadOnlyDictionary<string, DatasetPublication> datasets,
+        HardwareMetricSnapshot catalogPublication)
     {
-        var latest = datasets.Values
-            .OrderByDescending(static publication => publication.LastAttemptAt)
-            .ThenByDescending(static publication => publication.Observation.CommittedGeneration)
-            .First();
         var latestSuccessAtUtcTicks = datasets.Values
             .Where(static publication => publication.PayloadSnapshot is not null)
             .Select(static publication =>
@@ -656,7 +655,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             }
         }
 
-        var cpu = ComposeCpu(datasets, latest.AttemptSnapshot);
+        var cpu = ComposeCpu(datasets, catalogPublication);
         var memory = TryGetPublication(
             datasets,
             MetricDatasetIds.SystemMemoryUsage,
@@ -687,7 +686,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                     ? SamplingObservationStatus.NotRequested
                     : SamplingObservationStatus.Unavailable
             };
-        var gpus = ComposeGpus(datasets);
+        var gpus = ComposeGpus(datasets, catalogPublication);
         var inventory = ComposeGpuInventory(datasets, gpus);
         var observations = datasets.ToDictionary(
             static pair => pair.Key,
@@ -706,17 +705,17 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             items)
         {
             Datasets = observations,
-            WorkspaceIdentity = latest.Observation.WorkspaceIdentity,
-            ConfigurationGeneration = latest.Observation.ConfigurationGeneration,
-            CatalogGeneration = latest.Observation.CatalogGeneration,
-            CommittedGeneration = latest.Observation.CommittedGeneration,
-            FieldBindings = latest.AttemptSnapshot.FieldBindings
+            WorkspaceIdentity = catalogPublication.WorkspaceIdentity,
+            ConfigurationGeneration = catalogPublication.ConfigurationGeneration,
+            CatalogGeneration = catalogPublication.CatalogGeneration,
+            CommittedGeneration = catalogPublication.CommittedGeneration,
+            FieldBindings = catalogPublication.FieldBindings
         };
     }
 
     private CpuMetrics ComposeCpu(
         IReadOnlyDictionary<string, DatasetPublication> datasets,
-        HardwareMetricSnapshot latest)
+        HardwareMetricSnapshot catalogPublication)
     {
         var usageId = MetricDatasetIds.SystemCpuUsage;
         var frequencyId = MetricDatasetIds.ForSystemMetric("cpu.frequency");
@@ -748,11 +747,10 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             CpuSensor(datasets, "cpu.igpuVoltage", static value => value.ApuVoltageVolts),
             CpuSensor(datasets, "cpu.igpuTemperature", static value => value.ApuTemperatureCelsius),
             CpuSensor(datasets, "cpu.smuFrequency", static value => value.SmuFrequencyMhz));
-        var source = hasUsage ? usage : latest;
         var usageCurrent = hasUsage
             && datasets[usageId].Observation.Status == SamplingObservationStatus.Current;
         return new CpuMetrics(
-            source.Cpu.Name,
+            catalogPublication.Cpu.Name,
             hasUsage ? usage.Cpu.UsagePercent : 0,
             usageCurrent && usage.Cpu.IsUsageAvailable,
             usageCurrent
@@ -768,9 +766,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             // 参考频率是这台机器的**固有属性**，不是一次采样的结果 ——
             // 没人在采频率的时候它也还是那个数。先前这里没采到就归零，
             // 于是目录里的说明写成"参考 0 MHz"。
-            hasFrequency ? frequency.Cpu.MaxFrequencyMhz : latest.Cpu.MaxFrequencyMhz,
+            hasFrequency ? frequency.Cpu.MaxFrequencyMhz : catalogPublication.Cpu.MaxFrequencyMhz,
             hasFrequencyPercent ? frequencyPercent.Cpu.FrequencyPercent : 0,
-            hasFrequency ? frequency.Cpu.FrequencySource : latest.Cpu.FrequencySource,
+            hasFrequency ? frequency.Cpu.FrequencySource : catalogPublication.Cpu.FrequencySource,
             sensors);
     }
 
@@ -786,25 +784,13 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             : null;
 
     private IReadOnlyList<GpuMetrics> ComposeGpus(
-        IReadOnlyDictionary<string, DatasetPublication> datasets)
+        IReadOnlyDictionary<string, DatasetPublication> datasets,
+        HardwareMetricSnapshot catalogPublication)
     {
-        var indexes = datasets.Values
-            .Where(static publication => publication.PayloadSnapshot is not null)
-            .SelectMany(static publication => publication.PayloadSnapshot!.Gpus)
-            .Select(static gpu => gpu.Index)
-            .Distinct()
-            .Order()
-            .ToArray();
-        var result = new List<GpuMetrics>(indexes.Length);
-        foreach (var index in indexes)
+        var result = new List<GpuMetrics>(catalogPublication.Gpus.Count);
+        foreach (var descriptor in catalogPublication.Gpus.OrderBy(static gpu => gpu.Index))
         {
-            var latest = datasets.Values
-                .Where(static publication => publication.PayloadSnapshot is not null)
-                .OrderBy(static publication => publication.LastAttemptAt)
-                .Select(publication => publication.PayloadSnapshot!.Gpus
-                    .FirstOrDefault(gpu => gpu.Index == index))
-                .Where(static gpu => gpu is not null)
-                .Last()!;
+            var index = descriptor.Index;
             var usage = GpuSnapshot(datasets, index, "usage");
             var vram = GpuSnapshot(datasets, index, "vram");
             var graphicsClock = GpuSnapshot(datasets, index, "graphicsClock");
@@ -812,7 +798,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             var memoryClock = GpuSnapshot(datasets, index, "memoryClock");
             result.Add(new GpuMetrics(
                 index,
-                latest.Name,
+                descriptor.Name,
                 usage?.UsagePercent ?? 0,
                 graphicsClock?.GraphicsFrequencyMhz ?? 0,
                 graphicsClock?.StandardGraphicsFrequencyMhz ?? 0,
@@ -828,7 +814,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         datasets,
                         MetricDatasetIds.ForSystemMetric(
                             $"gpu.{index}.usage")),
-                latest.IdentityKey));
+                descriptor.IdentityKey));
         }
         return result;
     }

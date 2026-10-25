@@ -28,6 +28,14 @@ public sealed partial class MetricCatalogueSubscriptionTests
 {
     [Fact]
     public async Task CanonicalControlUsesOriginalHostCurrentAndPermissionLayerWithoutQueryProbe()
+        => await VerifyCanonicalControlUsesOriginalHostCurrentAndPermissionLayerWithoutQueryProbe(false);
+
+    [Fact]
+    public async Task CanonicalControlKeepsCatalogGenerationWhenFailedNativeAttemptIsLaterThanManagedControl()
+        => await VerifyCanonicalControlUsesOriginalHostCurrentAndPermissionLayerWithoutQueryProbe(true);
+
+    private static async Task VerifyCanonicalControlUsesOriginalHostCurrentAndPermissionLayerWithoutQueryProbe(
+        bool publishLaterNativeFailure)
     {
         using var fixture = new Fixture(Topology([]));
         var directory = Path.Combine(Path.GetTempPath(), "host-canonical-" + Guid.NewGuid().ToString("N"));
@@ -87,8 +95,12 @@ public sealed partial class MetricCatalogueSubscriptionTests
             await sampler.CaptureSnapshotAsync(MetricSampleRequest.All, default);
             Assert.Equal(probeChecks, hardware.ProbeChecks);
             var address = fixture.Catalog.Current!.FieldBindings.Values.Single(binding => binding.Field.Name == field.FieldName).RequestAddress;
+            if (publishLaterNativeFailure)
+                PublishCanonicalNativeFailureAfterManagedControl(fixture, sampler, address);
+            var declaration = fixture.Catalog.Current!.FieldBindings[address];
             await sampler.CaptureSnapshotAsync(MetricSampleRequest.ForIds([address]).WithCatalog(), default);
             Assert.Equal(probeChecks, hardware.ProbeChecks);
+            Assert.Same(declaration, fixture.Catalog.Current!.FieldBindings[address]);
             Assert.Equal(45, backend.ReadCached(field).Value!.Number);
             Assert.Equal(0, hardware.PowerWrites);
             Assert.Equal("unsupported", (await backend.WriteAsync(field, new(Number: 50), default)).Status);
@@ -118,6 +130,63 @@ public sealed partial class MetricCatalogueSubscriptionTests
             await sampler.StopAsync(CancellationToken.None);
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
         }
+    }
+
+    private static void PublishCanonicalNativeFailureAfterManagedControl(
+        Fixture fixture, WindowsHardwareMetricSampler sampler, string address)
+    {
+        // The worker is drained and All has republished the real workspace. Force
+        // the native failure to be latest without depending on millisecond timing.
+        var publisher = (LastSuccessfulHardwareMetricSnapshot)typeof(WindowsHardwareMetricSampler)
+            .GetField("publishedSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        var current = publisher.Read()!;
+        using var lease = fixture.Owner.Acquire();
+        var frame = lease.Workspace.ReadCommitted();
+        var native = NativeMetricSnapshotCommittedProjection.Create(frame, lease.WorkspaceIdentity);
+        const string failedId = MetricDatasetIds.SystemCpuUsage;
+        var controlAt = new DateTimeOffset(current.Datasets.Values.Max(item => item.LastAttemptAtUtcTicks), TimeSpan.Zero)
+            .AddMinutes(1);
+        var failedAt = controlAt.AddHours(1);
+        var control = current.Datasets[address] with
+        {
+            ObservedAtUtcTicks = controlAt.UtcTicks,
+            LastAttemptAtUtcTicks = controlAt.UtcTicks,
+            LastSuccessAtUtcTicks = controlAt.UtcTicks
+        };
+        Assert.Equal(SamplingObservationStatus.Current, control.Status);
+        var failure = native.Datasets[failedId] with
+        {
+            Status = SamplingObservationStatus.Unavailable,
+            ObservedAtUtcTicks = 0,
+            LastAttemptAtUtcTicks = failedAt.UtcTicks,
+            LastSuccessAtUtcTicks = 0,
+            FailureCode = "recorded-native-failure"
+        };
+        var publication = publisher.Publish(native with
+        {
+            CapturedAt = failedAt,
+            FieldBindings = current.FieldBindings,
+            Items = current.Items,
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
+            {
+                [address] = control,
+                [failedId] = failure
+            }
+        }, MetricSampleRequest.ForIds([address, failedId]));
+        Assert.Contains(failedId, publication.RejectedDatasetIds);
+        var composed = publisher.Read()!;
+        fixture.Catalog.PublishCatalogProbe(composed);
+        Assert.Equal(failedAt.UtcTicks, composed.Datasets[failedId].LastAttemptAtUtcTicks);
+        Assert.True(composed.Datasets[failedId].LastAttemptAtUtcTicks > composed.Datasets[address].LastAttemptAtUtcTicks);
+        Assert.Equal(SamplingObservationStatus.Unavailable, composed.Datasets[failedId].Status);
+        Assert.Equal(0, composed.Datasets[failedId].LastSuccessAtUtcTicks);
+        Assert.DoesNotContain(failedId, composed.Items.Keys);
+        Assert.False(composed.Cpu.IsUsageAvailable);
+        Assert.Equal(0, composed.Cpu.UsagePercent);
+        Assert.Equal(45, composed.Items[address].NumericValue);
+        Assert.NotEqual(0UL, frame.Header.CatalogGeneration);
+        Assert.Equal(frame.Header.CatalogGeneration, composed.CatalogGeneration);
+        Assert.Equal(frame.Header.CatalogGeneration, fixture.Catalog.Catalog!.CatalogGeneration);
     }
 
     [Fact]

@@ -100,11 +100,17 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
             : currentSession.ReadCurrent(SelectedDatasetCells(request));
         var datasets = new Dictionary<string, DatasetPublication>(StringComparer.OrdinalIgnoreCase);
         HardwareMetricSnapshot? direct = null;
+        HardwareMetricSnapshot? publication = null;
         foreach (var group in frame.Values.GroupBy(static value => value.DatasetHandle))
         {
             var id = catalog.DatasetIds[checked((int)group.Key - 1)];
             var reader = new CellReader(group.ToDictionary(static value => value.CellHandle), frame.Bytes, catalog);
             var snapshot = ReadDataset(reader, id, catalog.FieldBindings);
+            if (id == PublicationDataset)
+            {
+                publication = snapshot;
+                continue;
+            }
             if (id == DirectDataset)
             {
                 direct = snapshot with { Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(), History = historyView };
@@ -115,15 +121,20 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
                 reader.Flag(1) ? snapshot : null, snapshot,
                 new DateTimeOffset(reader.Signed(2), TimeSpan.Zero)));
         }
-        return new(datasets, direct ?? (datasets.Count == 0 ? null : Compose(datasets) with { History = historyView }));
+        return new(datasets, direct ?? (datasets.Count == 0 ? null : Compose(datasets,
+            publication ?? throw new InvalidDataException("Native current has no publication catalog identity.")) with { History = historyView }));
     }
 
     private const string DirectDataset = "__direct";
+    // This native row owns the publication context. Slot observations describe
+    // their own samples and cannot elect the catalog by their timestamps.
+    private const string PublicationDataset = "__publication";
 
     private NativeMetricCurrentKey[] SelectedDatasetCells(MetricSampleRequest request)
     {
         var keys = new List<NativeMetricCurrentKey>();
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Add(PublicationDataset);
         foreach (var id in request.Ids)
             Add(id);
         if (request.IncludesCatalog)
@@ -159,11 +170,14 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
                 new HardwareMetricDatasetObservation(DirectDataset, SamplingObservationStatus.Current, 0,
                     direct.CapturedAt.UtcTicks, direct.WorkspaceIdentity, direct.ConfigurationGeneration,
                     direct.CatalogGeneration, direct.CommittedGeneration), direct.CapturedAt)];
-        var latest = snapshots.OrderByDescending(static value => value.LastAttemptAt).FirstOrDefault();
-        nextCatalog.FieldBindings = latest.AttemptSnapshot?.FieldBindings
-            ?? new Dictionary<string, MetricDeviceFieldBinding>();
-        nextCatalog.Gpus = latest.AttemptSnapshot?.Gpus.Select(static gpu => new HardwareMetricGpuDescriptor(
-            gpu.Index, gpu.Name, gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)).ToArray() ?? [];
+        var publication = next.Snapshot ?? throw new InvalidOperationException("A current publication needs its catalog context.");
+        snapshots = [.. snapshots, (PublicationDataset, publication, false,
+            new HardwareMetricDatasetObservation(PublicationDataset, SamplingObservationStatus.Current, 0, 0,
+                publication.WorkspaceIdentity, publication.ConfigurationGeneration,
+                publication.CatalogGeneration, publication.CommittedGeneration), publication.CapturedAt)];
+        nextCatalog.FieldBindings = publication.FieldBindings;
+        nextCatalog.Gpus = publication.Gpus.Select(static gpu => new HardwareMetricGpuDescriptor(
+            gpu.Index, gpu.Name, gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)).ToArray();
         foreach (var entry in snapshots)
         {
             nextCatalog.DatasetIds.Add(entry.DatasetId);

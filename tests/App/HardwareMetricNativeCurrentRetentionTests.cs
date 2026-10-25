@@ -18,6 +18,50 @@ public sealed class HardwareMetricNativeCurrentRetentionTests
     private static readonly string[] DatasetIds = ["cpu.usage", "memory.usage", "gpu.0.usage", "gpu.0.vram"];
 
     [Fact]
+    public void FailedLatestSlotAndSelectedReadsUseThePublicationCatalogIdentity()
+    {
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
+        var frame = Frame(1) with { CatalogGeneration = 17, CommittedGeneration = 19 };
+        var late = frame.CapturedAt.AddHours(1);
+        frame = frame with { Datasets = frame.Datasets.ToDictionary(static pair => pair.Key, pair =>
+            pair.Value with { CatalogGeneration = 17, CommittedGeneration = 19,
+                Status = pair.Key == "cpu.usage" ? SamplingObservationStatus.Unavailable : pair.Value.Status,
+                LastAttemptAtUtcTicks = pair.Key == "cpu.usage" ? late.UtcTicks : frame.CapturedAt.UtcTicks }) };
+        owner.Publish(frame, MetricSampleRequest.All);
+        var current = owner.Read()!;
+        Assert.Equal(17UL, current.CatalogGeneration);
+        Assert.Equal(19UL, current.CommittedGeneration);
+        Assert.DoesNotContain("cpu.usage", current.Items.Keys);
+        Assert.Equal(late.UtcTicks, current.Datasets["cpu.usage"].LastAttemptAtUtcTicks);
+        Assert.Equal(17UL, owner.Read(MetricSampleRequest.ForIds(["memory.usage"]))!.CatalogGeneration);
+        owner.RecordFailure(MetricSampleRequest.ForIds(["memory.usage"]), late.AddHours(1), "recorded-failure");
+        Assert.Equal(17UL, owner.Read()!.CatalogGeneration);
+        Assert.Equal(19UL, owner.Read()!.CommittedGeneration);
+    }
+
+    [Fact]
+    public void ANewCatalogComesFromItsPublicationEvenWhenAnUnrequestedSlotHasALaterTime()
+    {
+        using var owner = new LastSuccessfulHardwareMetricSnapshot();
+        var first = Frame(1) with { CatalogGeneration = 17, CommittedGeneration = 19 };
+        first = first with { Datasets = first.Datasets.ToDictionary(static pair => pair.Key, pair =>
+            pair.Value with { CatalogGeneration = 17, CommittedGeneration = 19,
+                LastAttemptAtUtcTicks = first.CapturedAt.AddHours(1).UtcTicks }) };
+        owner.Publish(first, MetricSampleRequest.All);
+        var prior = owner.Read()!.Items["gpu.0.usage"];
+        var second = Frame(2) with { CatalogGeneration = 18, CommittedGeneration = 20 };
+        second = second with { Datasets = second.Datasets.ToDictionary(static pair => pair.Key, pair =>
+            pair.Value with { CatalogGeneration = 18, CommittedGeneration = 20 }) };
+        owner.Publish(second, MetricSampleRequest.ForIds(["cpu.usage"]));
+        var current = owner.Read()!;
+        Assert.Equal(18UL, current.CatalogGeneration);
+        Assert.Equal(20UL, current.CommittedGeneration);
+        Assert.Equal(prior, current.Items["gpu.0.usage"]);
+        Assert.Equal(17UL, current.Datasets["gpu.0.usage"].CatalogGeneration);
+        Assert.Equal(18UL, owner.Read(MetricSampleRequest.ForIds(["gpu.0.usage"]))!.CatalogGeneration);
+    }
+
+    [Fact]
     public void RealLedgerLoanRemainsAccountedAcrossRepeatedNativeCommitsAndClosesOnDispose()
     {
         using var ledger = new ResourceManagerLedgerOwner();
