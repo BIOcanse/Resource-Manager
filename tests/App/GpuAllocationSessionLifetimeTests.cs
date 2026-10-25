@@ -1,6 +1,3 @@
-using Microsoft.Diagnostics.Tracing;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
@@ -8,161 +5,89 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuAllocationSessionLifetimeTests
 {
     [Fact]
-    public void FailedStartupRetriesOnRequestedReadWithBoundedBackoff()
+    public async Task FailedStartupRetriesOnlyAtNextDueCaptureNeverOnRead()
     {
-        var factory = new Factory { Failures = 1 };
-        var clock = new Clock();
-        using var collector = Collector(factory, clock);
-        using var lease = collector.AcquireSubscription();
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        var factory = new GpuAllocationTestSessionFactory { Failures = 1 };
+        using var collector = factory.Collector();
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        Assert.Equal(0, factory.Attempts);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        for (var i = 0; i < 10; i++) Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Equal(1, factory.Attempts);
-        clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Equal(2, factory.Attempts);
-        Assert.True(Assert.Single(factory.Sessions).IsProcessing);
+        Assert.Empty(factory.Current.Enabled);
     }
 
     [Fact]
-    public void UnexpectedExitReleasesOldRuntimeBeforeReplacementAndRejectsLateCallbacks()
+    public async Task UnexpectedExitReleasesOldRuntimeBeforeReplacementAndIgnoresLateCallbacks()
     {
-        var factory = new Factory();
-        var clock = new Clock();
-        using var collector = Collector(factory, clock);
-        using var lease = collector.AcquireSubscription();
-        collector.BeginRescan(1, 0); collector.CompleteRescan(1, 0);
-        var first = collector.ReadCurrent(new Dictionary<int, long>())!;
-        var old = Assert.Single(factory.Sessions);
-        old.End(null);
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector();
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var old = factory.Current;
+        var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        old.End();
+        Assert.Same(prior, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Equal(1, factory.Attempts);
-        clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        Assert.Equal(new[] { "create:1", "stop:1", "create:2" }, factory.Lifecycle);
-        collector.BeginRescan(2, 0); collector.CompleteRescan(2, 0);
-        var replacement = collector.ReadCurrent(new Dictionary<int, long>())!;
-        Assert.True(replacement.Generation > first.Generation);
-        old.End(new IOException("late old callback"));
-        Assert.Equal(replacement.Generation, collector.ReadCurrent(new Dictionary<int, long>())!.Generation);
-    }
-
-    [Fact]
-    public void ReadDuringRestartBackoffDoesNotQueryAnEndedNativeSession()
-    {
-        var factory = new Factory();
-        var clock = new Clock();
-        using var collector = Collector(factory, clock);
-        using var lease = collector.AcquireSubscription();
-        var old = Assert.Single(factory.Sessions);
-        old.RejectEndedSessionQueries = true;
-        old.End(null);
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        Assert.Equal(1, factory.Attempts);
-        clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.Equal(1, old.Stops);
         Assert.Equal(2, factory.Attempts);
-        Assert.Equal(1, old.StopCalls);
+        var replacement = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        old.End(new IOException("late callback"));
+        Assert.Same(replacement, collector.ReadCurrent(GpuAllocationTestSession.Processes));
     }
 
     [Fact]
-    public void UnconfirmedReleaseKeepsOwnershipAndCannotCreateASecondRuntime()
+    public async Task UnconfirmedReleaseCannotCreateSecondRuntime()
     {
-        var factory = new Factory();
-        var clock = new Clock();
-        var collector = Collector(factory, clock);
-        var lease = collector.AcquireSubscription();
-        var old = Assert.Single(factory.Sessions);
-        old.StopResult = new(true, false, true, ["fake disposal failure"]);
-        old.End(new IOException("fake stream exit"));
-        clock.Advance(TimeSpan.FromSeconds(5));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        clock.Advance(TimeSpan.FromMinutes(2));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        Assert.Equal(1, factory.Attempts);
-        Assert.Equal(1, old.StopCalls);
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector();
+        var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        factory.Current.StopResult = new(true, false, true, ["fake disposal failure"]);
+        factory.Current.End();
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         lease.Dispose();
-        using var nextLease = collector.AcquireSubscription();
+        using var next = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Equal(1, factory.Attempts);
-        collector.Dispose();
+        Assert.Equal(1, factory.Current.Stops);
+        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
     }
 
     [Fact]
-    public void PartialFactoryCleanupFailureAlsoBlocksReplacementAfterLeaseRelease()
+    public async Task PartialFactoryCleanupFailureBlocksReplacement()
     {
-        var factory = new Factory { PartialCleanupFailure = true };
-        var clock = new Clock();
-        using var collector = Collector(factory, clock);
-        var lease = collector.AcquireSubscription();
-        lease.Dispose();
-        using var nextLease = collector.AcquireSubscription();
-        clock.Advance(TimeSpan.FromMinutes(2));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        var factory = new GpuAllocationTestSessionFactory { PartialCleanupFailure = true };
+        using var collector = factory.Collector();
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Equal(1, factory.Attempts);
     }
 
     [Fact]
-    public void OnlyLastLeaseReleasesAndReadsAfterDisposalCannotRestart()
+    public async Task LastLeaseStopsPendingCaptureAndDisposeCannotRestart()
     {
-        var factory = new Factory();
-        var clock = new Clock();
-        var collector = Collector(factory, clock);
-        var first = collector.AcquireSubscription();
-        var second = collector.AcquireSubscription();
+        var factory = new GpuAllocationTestSessionFactory { Configure = session => session.HoldEnd = true };
+        using var collector = factory.Collector();
+        var first = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        var last = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         first.Dispose();
-        Assert.Equal(0, factory.Sessions[0].StopCalls);
-        second.Dispose();
-        Assert.Equal(1, factory.Sessions[0].StopCalls);
-        clock.Advance(TimeSpan.FromMinutes(2));
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        Assert.Equal(0, factory.Current.Stops);
+        last.Dispose();
+        await capture.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, factory.Current.Stops);
+        Assert.Empty(factory.Current.Enabled);
+        factory.Current.DeliverEnd();
+        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         collector.Dispose();
-        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
-        Assert.Throws<ObjectDisposedException>(() => collector.AcquireSubscription());
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Equal(1, factory.Attempts);
-    }
-
-    private static GpuAllocationCollector Collector(Factory factory, Clock clock)
-        => new(NullLogger<GpuAllocationCollector>.Instance, new ConfigurationBuilder().Build(), factory, clock);
-    private sealed class Clock : TimeProvider
-    {
-        private long tick;
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-        public override long GetTimestamp() => tick;
-        internal void Advance(TimeSpan interval) => tick += interval.Ticks;
-    }
-    private sealed class Factory : IGpuAllocationSessionFactory
-    {
-        internal int Attempts;
-        internal int Failures;
-        internal bool PartialCleanupFailure;
-        internal List<Session> Sessions { get; } = [];
-        internal List<string> Lifecycle { get; } = [];
-        public IGpuAllocationSession Create(string name)
-        {
-            Attempts++;
-            if (PartialCleanupFailure) throw new KernelEtwSessionCreationCleanupException(
-                new IOException("fake creation failure"), new IOException("fake unconfirmed cleanup"));
-            if (Failures-- > 0) throw new IOException("fake startup failure");
-            var session = new Session(Attempts, Lifecycle);
-            Sessions.Add(session); Lifecycle.Add("create:" + Attempts);
-            return session;
-        }
-    }
-    private sealed class Session(int id, List<string> lifecycle) : IGpuAllocationSession
-    {
-        private Action<Exception?>? completed;
-        public bool IsProcessing { get; private set; }
-        internal bool RejectEndedSessionQueries;
-        public int EventsLost => RejectEndedSessionQueries && !IsProcessing
-            ? throw new System.Runtime.InteropServices.COMException("Owned ended ETW session is no longer queryable.")
-            : 0;
-        internal int StopCalls;
-        internal KernelEtwSessionStopResult StopResult = KernelEtwSessionStopResult.Released;
-        public void Bind(Action<TraceEvent> handler) { }
-        public void StartProcessing(Action<Exception?> completed) { this.completed = completed; IsProcessing = true; }
-        public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null) { }
-        public void CaptureState(Guid provider, ulong keywords) { }
-        public void Flush() { }
-        internal void End(Exception? failure) { IsProcessing = false; completed?.Invoke(failure); }
-        public KernelEtwSessionStopResult Stop(TimeSpan timeout)
-        { StopCalls++; lifecycle.Add("stop:" + id); IsProcessing = false; return StopResult; }
+        Assert.Throws<ObjectDisposedException>(() => collector.AcquireSubscription(TimeSpan.FromSeconds(1)));
     }
 }

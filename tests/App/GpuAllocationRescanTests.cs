@@ -1,56 +1,73 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Infrastructure.Telemetry.Etw;
-
 namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuAllocationRescanTests
 {
-    private static readonly DateTime At = new(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
-    private static readonly IReadOnlyDictionary<int, long> Processes = new Dictionary<int, long> { [41] = At.AddMinutes(-1).ToFileTimeUtc() };
-
     [Fact]
-    public void HistoricalEventLossDoesNotPermanentlyRejectACompleteRescan()
+    public async Task CompleteSnapshotReplacesAtomicallyAndEventsOutsideBoundariesCannotChangeIt()
     {
-        using var collector = NewCollector(); // Does not acquire an ETW subscription or touch hardware.
-        collector.BeginRescan(1, 0); Populate(collector, 1024); collector.CompleteRescan(1, 0);
-        Assert.Equal(1024, collector.ReadVerifiedCurrent(Processes, 0)!.Adapters[23][41].PrivateBytes);
-        Assert.Null(collector.ReadVerifiedCurrent(Processes, 1));
-        collector.BeginRescan(2, 1); Populate(collector, 2048); collector.CompleteRescan(2, 1);
-        Assert.Equal(2048, collector.ReadVerifiedCurrent(Processes, 1)!.Adapters[23][41].PrivateBytes);
-        Assert.Equal(2, collector.CompletedRescans);
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector();
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var old = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
+        Assert.Equal(1024, old.Adapters[23][41].PrivateBytes);
+        Assert.Empty(factory.Current.Enabled);
+        factory.Current.Emit(34, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL));
+        Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        factory.Current.Bytes = 2048;
+        factory.Current.HoldEnd = true;
+        var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.False(capture.IsCompleted);
+        Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        factory.Current.DeliverEnd();
+        await capture;
+        var next = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
+        Assert.Equal(2048, next.Adapters[23][41].PrivateBytes);
+        Assert.Equal(1024, old.Adapters[23][41].PrivateBytes);
+        Assert.Empty(factory.Current.Enabled);
+        Assert.Equal(2, factory.Current.Captures);
+    }
+
+    [Theory]
+    [InlineData("loss")]
+    [InlineData("capture")]
+    [InlineData("malformed")]
+    [InlineData("incomplete")]
+    [InlineData("timeout")]
+    [InlineData("disable")]
+    public async Task FailedDuePublishesEmptyAndNextDueRecovers(string failure)
+    {
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector(TimeSpan.FromMilliseconds(40));
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var session = factory.Current;
+        session.LoseEvents = failure == "loss";
+        session.FailCapture = failure == "capture";
+        session.Malformed = failure == "malformed";
+        session.Incomplete = failure == "incomplete";
+        session.HoldEnd = failure == "timeout";
+        session.FailDisable = failure == "disable";
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Empty(session.Enabled);
+        Assert.Equal(2, session.Captures);
+        session.DeliverEnd(); // A late end cannot publish or complete the next capture.
+        session.LoseEvents = session.FailCapture = session.Malformed = session.Incomplete = session.HoldEnd = session.FailDisable = false;
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Empty(factory.Current.Enabled);
     }
 
     [Fact]
-    public void LossDuringRescanOrBadEventsCannotPublishPartialValues()
+    public async Task ReusedPidCannotReceiveThePublishedOwnersMemory()
     {
-        using var collector = NewCollector();
-        collector.BeginRescan(1, 0); Populate(collector, 1024); collector.CompleteRescan(1, 1);
-        Assert.Null(collector.ReadVerifiedCurrent(Processes, 1));
-        collector.BeginRescan(2, 1);
-        collector.ObserveAllocation(33, _ => throw new InvalidDataException("owned malformed event"), At);
-        collector.CompleteRescan(2, 1);
-        Assert.Null(collector.ReadVerifiedCurrent(Processes, 1));
-        Assert.Equal(0, collector.CompletedRescans);
-        collector.BeginRescan(3, 1); Populate(collector, 4096);
-        collector.CompleteRescan(2, 1); Assert.Null(collector.ReadVerifiedCurrent(Processes, 1));
-        collector.CompleteRescan(3, 1);
-        Assert.Equal(4096, collector.ReadVerifiedCurrent(Processes, 1)!.Adapters[23][41].PrivateBytes);
-    }
-
-    private static GpuAllocationCollector NewCollector()
-        => new(NullLogger<GpuAllocationCollector>.Instance, new ConfigurationBuilder().Build());
-    private static void Populate(GpuAllocationCollector collector, ulong bytes)
-    {
-        Event(110, ("pDxgAdapter", 1UL), ("AdapterLuid", 23UL));
-        Event(78, ("pDxgAdapter", 1UL), ("ulSegmentId", 2U), ("Flags", 0U));
-        Event(33, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL), ("allocSize", bytes), ("PageTableOrDirectory", false));
-        Event(36, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL), ("hVidMmAlloc", 11UL), ("hProcessId", 41U));
-        Event(391, ("hGlobalAllocationHandle", 2UL), ("ulSegmentId", 2U), ("SegmentOffset", 0UL));
-        void Event(int id, params (string Key, object Value)[] data)
-        {
-            var payload = data.ToDictionary(item => item.Key, item => item.Value);
-            collector.ObserveAllocation(id, key => payload[key], At);
-        }
+        var factory = new GpuAllocationTestSessionFactory();
+        using var collector = factory.Collector();
+        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var reused = collector.ReadCurrent(new Dictionary<int, long> { [41] = 101 })!;
+        Assert.Empty(reused.Adapters[23]);
+        Assert.Equal(1024, collector.ReadCurrent(GpuAllocationTestSession.Processes)!.Adapters[23][41].PrivateBytes);
     }
 }

@@ -1,156 +1,140 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using Microsoft.Diagnostics.Tracing.Session;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using ResourceManager.App.Infrastructure.Telemetry.Etw;
-using Xunit.Abstractions;
+using ResourceManager.App.Application.ResourceBreakdown;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace Resource_Manager_APP.Tests;
 
-[Collection("Owned Windows kernel ETW")]
-public sealed class GpuAllocationNativeConsumerTests(ITestOutputHelper output)
+// These are ordinary hosted-consumer tests. All allocation events come from the
+// injected fake; none of these tests can create an ETW session.
+public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 {
-    [EnvironmentVariableFact("RESOURCE_MANAGER_GPU_ALLOCATION_NATIVE_TEST", "1")]
-    public async Task RealAllocationEventsPublishACompleteRescanAndReleaseTheirSession()
+    [Fact]
+    public async Task SmartDedicatedMemoryPublicationWaitsForTheCompleteDueRundown()
     {
-        Assert.True(TraceEventSession.IsElevated());
-        var factory = new OwnedFactory();
-        var logger = new CollectorLog();
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalog = new VersionedProcessAttributionCatalogProvider();
+        var factory = new GpuAllocationTestSessionFactory
         {
-            ["Monitoring:GpuAllocationRescanSeconds"] = "2"
-        }).Build();
-        using var collector = new GpuAllocationCollector(logger, configuration, factory, TimeProvider.System);
-        var processes = CaptureProcessIdentities();
-        var lease = collector.AcquireSubscription();
-        try
+            Configure = session => { session.Pid = Environment.ProcessId; session.HoldEnd = true; }
+        };
+        using var collector = factory.Collector();
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        var hardware = CreateMemorySnapshot() with
         {
-            var deadline = Stopwatch.GetTimestamp() + 20 * Stopwatch.Frequency;
-            GpuAllocationReading? reading = null;
-            while (Stopwatch.GetTimestamp() < deadline)
+            GpuInventory = new SchedulingGpuInventorySnapshot(SamplingObservationStatus.Current, 1, now,
+                1, 0, 0, 1,
+                [new SchedulingGpuAdapterObservation(0, 23, SchedulingGpuCapabilityMask.DedicatedMemory,
+                    SchedulingGpuMetricMask.TotalDedicatedMemory | SchedulingGpuMetricMask.UsedDedicatedMemory,
+                    SamplingObservationStatus.NotRequested, SamplingObservationStatus.Current, 0, 0, 8192, 1, now)])
+        };
+        using var sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(hardware), catalog,
+            new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
+            new PdhProcessGpuReader(), new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]),
+            gpuAllocations: collector);
+        await sampler.StartAsync(default);
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var request = new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
+            ProcessSampleDetailLevel.SmartSchedulingLite, SchedulingProcessMetricMask.GpuDedicatedMemory);
+        await using var output = sampler.SubscribeAsync("smart.gpu", request,
+            TimeSpan.FromSeconds(30), stop.Token).GetAsyncEnumerator();
+        var round = output.MoveNextAsync().AsTask();
+        await AwaitGpuAsync(() => factory.Sessions.Count > 0 && factory.Current.Captures == 1);
+        Assert.False(round.IsCompleted);
+        Assert.Null(collector.ReadCurrent(new Dictionary<int, long>()));
+        factory.Current.DeliverEnd();
+        Assert.True(await round.WaitAsync(stop.Token));
+        Assert.Empty(factory.Current.Enabled);
+        var facts = sampler.ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
+        var fact = Assert.Single(facts!.Processes, process => process.ProcessId == Environment.ProcessId);
+        Assert.Equal(1024, Assert.Single(fact.Gpus).ResidentMemoryBytes);
+        Assert.Equal(1, factory.Current.Captures);
+        await sampler.StopAsync(default);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VramDatasetAndMetricUseHighestSubscribedFrequency(bool dataset)
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalog = new VersionedProcessAttributionCatalogProvider();
+        var factory = new GpuAllocationTestSessionFactory { Configure = session => session.Pid = Environment.ProcessId };
+        using var collector = factory.Collector();
+        using var sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(CreateAllocationHardware()), catalog,
+            new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
+            new PdhProcessGpuReader(), new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]),
+            gpuAllocations: collector, gpuAdapterInventory: AllocationAdapterInventory);
+        var request = dataset
+            // The UI selects a metric; its compiled native plan carries ProcessGpuVram.
+            ? new ResourceBreakdownSampleRequest(["gpu.0.vram"], new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableBasic)
+                { PublicationDatasetIds = [SamplingDatasetIds.ProcessGpuVram] }
+            : ResourceBreakdownSampleRequest.ForResourceTable(["gpu.0.vram"], new Dictionary<string, string>());
+        using var smart = sampler.AcquireSubscription("smart", SchedulingProcessMetricMask.GpuDedicatedMemory, TimeSpan.FromSeconds(30));
+        using var ui = sampler.AcquireSubscription("ui", request, TimeSpan.FromSeconds(1));
+        await sampler.StartAsync(default);
+        await AwaitGpuAsync(() => factory.Sessions.Count > 0 && factory.Current.Captures >= 1);
+        // Multiple coalesced subscribers produce one capture for the first due time.
+        await Task.Delay(200);
+        Assert.Equal(1, factory.Current.Captures);
+        Assert.Contains(ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationCollector.Provider, factory.Current.Enabled);
+        var initial = sampler.ReadLatest(request with { MetricIds = ["gpu.0.vram"] });
+        Assert.Contains(initial.Datasets, observation => observation.DatasetId == SamplingDatasetIds.ProcessGpuVram
+            && observation.Status == ResourceBreakdownSamplingStatuses.Ready);
+        var process = Assert.Single(Assert.Single(initial.Bars).Software.SelectMany(item => item.Processes),
+            item => item.ProcessId == Environment.ProcessId);
+        Assert.Equal(1024, process.Value);
+        using var identity = Process.GetCurrentProcess();
+        var identities = new Dictionary<int, long> { [identity.Id] = identity.StartTime.ToUniversalTime().ToFileTimeUtc() };
+        await AwaitGpuAsync(() => collector.ReadCurrent(identities)?.Generation >= 3);
+        Assert.Equal(1, factory.Current.Captures);
+        Assert.Contains(ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationCollector.Provider, factory.Current.Enabled);
+        ui.Dispose();
+        var afterRelease = factory.Current.Captures;
+        await Task.Delay(1200);
+        Assert.Equal(afterRelease, factory.Current.Captures);
+        smart.Dispose();
+        Assert.Equal(1, factory.Current.Stops);
+        Assert.Empty(factory.Current.Enabled);
+        await sampler.StopAsync(default);
+    }
+
+    private static async Task AwaitGpuAsync(Func<bool> condition)
+    {
+        var deadline = Stopwatch.GetTimestamp() + 8 * Stopwatch.Frequency;
+        while (!condition() && Stopwatch.GetTimestamp() < deadline) await Task.Delay(10);
+        Assert.True(condition(), "GPU allocation hosted capture did not complete within the test budget.");
+    }
+
+    private static WindowsGpuAdapterInventoryRead AllocationAdapterInventory()
+        => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 1, 0, 0, 1,
+            [new WindowsGpuAdapter(0, "recorded GPU", 0x10de, 1, 0,
+                new AdapterLuid { LowPart = 23 }, false, 8192,
+                WindowsGpuAdapterKind.Dedicated)]);
+
+    private static HardwareMetricSnapshot CreateAllocationHardware()
+    {
+        var memory = CreateMemorySnapshot();
+        var now = memory.CapturedAt.UtcTicks;
+        var metric = "gpu.0.vram";
+        var dataset = SamplingDatasetIds.ForSystemMetric(metric);
+        return memory with
+        {
+            Gpus = [new GpuMetrics(0, "recorded GPU", 0, 0, 0, 0, 0, 2048, 8192, 25, null!)],
+            GpuInventory = new(SamplingObservationStatus.Current, 1, now, 1, 0, 0, 1,
+                [new SchedulingGpuAdapterObservation(0, 23, SchedulingGpuCapabilityMask.DedicatedMemory,
+                    SchedulingGpuMetricMask.TotalDedicatedMemory | SchedulingGpuMetricMask.UsedDedicatedMemory,
+                    SamplingObservationStatus.NotRequested, SamplingObservationStatus.Current, 0, 0, 8192, 1, now)]),
+            Items = new Dictionary<string, MetricReadingValue>(memory.Items)
             {
-                reading = collector.ReadCurrent(processes);
-                if (collector.CompletedRescans > 0 && reading is not null) break;
-                await Task.Delay(100);
+                [metric] = new(metric, 2048, "B", 25, 8192) { SourceId = "recording" }
+            },
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(memory.Datasets)
+            {
+                [dataset] = new(dataset, SamplingObservationStatus.Current, 1, now, 1, 1, 1, 1)
             }
-            foreach (var entry in factory.Events.OrderBy(item => item.Key))
-                output.WriteLine($"Event {entry.Key}: {entry.Value}");
-            foreach (var error in logger.Errors) output.WriteLine(error);
-            Assert.True(factory.Events.Count > 0, "No actual DxgKrnl allocation events were observed.");
-            Assert.True(collector.CompletedRescans > 0 && reading is not null,
-                "The production collector did not publish a complete native rescan. " + string.Join(" | ", logger.Errors.Take(10)));
-            Assert.Contains(reading!.Adapters.Values.SelectMany(adapter => adapter.Values), amount => amount.TotalBytes > 0);
-            Assert.Equal(0, factory.Session!.EventsLost);
-            lease.Dispose();
-            Assert.DoesNotContain(factory.Name!, TraceEventSession.GetActiveSessionNames());
-            Assert.False(factory.Session.IsProcessing);
-            Assert.Null(collector.ReadCurrent(processes));
-        }
-        finally { lease.Dispose(); }
-    }
-
-    [EnvironmentVariableFact("RESOURCE_MANAGER_GPU_ALLOCATION_NATIVE_TEST", "1")]
-    public async Task RequestedReaderRecoversAfterItsOwnedNativeEventStreamEnds()
-    {
-        Assert.True(TraceEventSession.IsElevated());
-        var factory = new OwnedFactory();
-        var logger = new CollectorLog();
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Monitoring:GpuAllocationRescanSeconds"] = "2"
-        }).Build();
-        using var collector = new GpuAllocationCollector(logger, configuration, factory, TimeProvider.System);
-        using var lease = collector.AcquireSubscription();
-        var processes = CaptureProcessIdentities();
-        var first = await AwaitCompleteReadingAsync(collector, processes, 0, logger);
-        var previousRescans = collector.CompletedRescans;
-        var old = factory.Session!;
-        var stop = old.Stop(TimeSpan.FromSeconds(3));
-        Assert.True(stop.IsReleased, string.Join(" | ", stop.Failures));
-        Assert.False(old.IsProcessing);
-        Assert.DoesNotContain(factory.Name!, TraceEventSession.GetActiveSessionNames());
-        var recovered = await AwaitCompleteReadingAsync(collector, processes, first.Generation, logger, previousRescans);
-        Assert.NotSame(old, factory.Session);
-        Assert.False(old.IsProcessing);
-        Assert.Equal(2, factory.Created);
-        Assert.True(recovered.Generation > first.Generation);
-        Assert.Equal(0, factory.Session!.EventsLost);
-        lease.Dispose();
-        Assert.False(factory.Session.IsProcessing);
-        Assert.DoesNotContain(factory.Name!, TraceEventSession.GetActiveSessionNames());
-    }
-
-    private static async Task<GpuAllocationReading> AwaitCompleteReadingAsync(GpuAllocationCollector collector,
-        IReadOnlyDictionary<int, long> processes, ulong previousGeneration, CollectorLog logger, long previousRescans = 0)
-    {
-        var deadline = Stopwatch.GetTimestamp() + 20 * Stopwatch.Frequency;
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            var reading = collector.ReadCurrent(processes);
-            if (collector.CompletedRescans > previousRescans && reading is not null && reading.Generation > previousGeneration
-                && reading.Adapters.Values.SelectMany(adapter => adapter.Values).Any(amount => amount.TotalBytes > 0))
-                return reading;
-            await Task.Delay(100);
-        }
-        throw new Xunit.Sdk.XunitException("The native allocation stream did not recover a complete positive reading. "
-            + string.Join(" | ", logger.Errors.Take(10)));
-    }
-
-    private static IReadOnlyDictionary<int, long> CaptureProcessIdentities()
-    {
-        var identities = new Dictionary<int, long>();
-        foreach (var process in Process.GetProcesses())
-        {
-            using (process)
-            {
-                try { identities[process.Id] = process.StartTime.ToUniversalTime().ToFileTimeUtc(); }
-                catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            }
-        }
-        return identities;
-    }
-
-    private sealed class OwnedFactory : IGpuAllocationSessionFactory
-    {
-        private static readonly Guid Provider = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
-        public ConcurrentDictionary<int, string> Events { get; } = new();
-        public string? Name { get; private set; }
-        public IGpuAllocationSession? Session { get; private set; }
-        public int Created { get; private set; }
-        public IGpuAllocationSession Create(string name)
-        {
-            Assert.True(Session is null || !Session.IsProcessing, "A second runtime cannot overlap the old stream.");
-            Assert.DoesNotContain(name, TraceEventSession.GetActiveSessionNames());
-            var session = new TraceEventSession(name, TraceEventSessionOptions.Create)
-            {
-                StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000
-            };
-            try
-            {
-                session.Source.Dynamic.All += data =>
-                {
-                    if (data.ProviderGuid == Provider)
-                        Events.TryAdd((int)data.ID, string.Join(",", data.PayloadNames));
-                };
-                Name = name;
-                Created++;
-                return Session = new TraceEventGpuAllocationSession(session);
-            }
-            catch { session.Dispose(); throw; }
-        }
-    }
-
-    private sealed class CollectorLog : ILogger<GpuAllocationCollector>
-    {
-        public ConcurrentQueue<string> Errors { get; } = new();
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            if (IsEnabled(logLevel) && Errors.Count < 32)
-                Errors.Enqueue(formatter(state, exception) + ": " + exception);
-        }
+        };
     }
 }

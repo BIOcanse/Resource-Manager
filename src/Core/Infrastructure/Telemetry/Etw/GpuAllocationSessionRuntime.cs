@@ -12,9 +12,12 @@ internal interface IGpuAllocationSession
 {
     bool IsProcessing { get; }
     int EventsLost { get; }
-    void Bind(Action<TraceEvent> handler);
+    void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler);
     void StartProcessing(Action<Exception?> completed);
     void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null);
+    void DisableProvider(Guid provider);
+    void BeginScan(string sessionName, long scan, long eventsLost);
+    void EndScan(string sessionName, long scan);
     void CaptureState(Guid provider, ulong keywords);
     void Flush();
     KernelEtwSessionStopResult Stop(TimeSpan timeout);
@@ -53,7 +56,15 @@ internal sealed class TraceEventGpuAllocationSession(TraceEventSession session) 
     private readonly TraceEventSessionProcessingRuntime processing = new(session);
     public bool IsProcessing => processing.IsProcessing;
     public int EventsLost => processing.EventsLost;
-    public void Bind(Action<TraceEvent> handler) => session.Source.Dynamic.All += handler;
+    public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler)
+    {
+        var payload = new GpuAllocationIndexedPayload();
+        session.Source.Dynamic.All += data =>
+        {
+            payload.SetEvent(data);
+            handler(data.ProviderGuid, (int)data.ID, payload, data.TimeStamp.ToUniversalTime());
+        };
+    }
     public void StartProcessing(Action<Exception?> completed) => processing.StartProcessing(completed);
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
     {
@@ -62,6 +73,10 @@ internal sealed class TraceEventGpuAllocationSession(TraceEventSession session) 
             new TraceEventProviderOptions { EventIDsToEnable = eventIds });
     }
     public void CaptureState(Guid provider, ulong keywords) => session.CaptureState(provider, keywords);
+    public void DisableProvider(Guid provider) => session.DisableProvider(provider);
+    public void BeginScan(string sessionName, long scan, long eventsLost)
+        => GpuAllocationBoundary.Instance.BeginScan(sessionName, scan, eventsLost);
+    public void EndScan(string sessionName, long scan) => GpuAllocationBoundary.Instance.EndScan(sessionName, scan);
     public void Flush() => session.Flush();
     public KernelEtwSessionStopResult Stop(TimeSpan timeout) => processing.Stop(timeout);
 }

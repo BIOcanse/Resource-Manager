@@ -1,0 +1,11 @@
+{
+  "liveStartUtc": "2026-09-20T04:50:40.049841Z",
+  "liveEvents": 807,
+  "rundownEvents": 50003,
+  "captureStatus": "capture-v3/status.json: lost=0, truncated=false, captureKeyword=1, captureMilliseconds=64.0571",
+  "sourceSha256": "894629eb990d07746e44b3acbde11dc65f6afc2ffbe6aa19e69f52c7c5df2446",
+  "selection": "Rundown IDs 110/35/38/78/80/227/391; one second of live decoder IDs starting one second after the first recorded timestamp. Original payloads and timestamps are retained.",
+  "source": "D:\\Code\\Resource-Manager-Public\\.codex\\local-runs\\gpu-resident-20260920\\capture-v3\\events.jsonl",
+  "liveEndExclusiveUtc": "2026-09-20T04:50:41.049841Z",
+  "scope": "Payload lookup plus production ledger decoder; excludes TraceEvent dynamic parser, ETW delivery and native CaptureState latency."
+}

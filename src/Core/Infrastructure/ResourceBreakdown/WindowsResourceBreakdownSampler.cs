@@ -98,7 +98,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
         => new(owner, SamplingRoleId,
             static request => $"resource-breakdown:{request.CacheKey}", GetSubscriptionDatasetIds,
             CreateResourceBreakdownSampleRequest, coalesceItemsIntoLatestCapture: true, createOutputScratch);
-    private readonly WindowsGpuAdapterOrderReader gpuAdapterReader = new();
+    private readonly Func<WindowsGpuAdapterInventoryRead> gpuAdapterInventory = new WindowsGpuAdapterOrderReader().ReadInventory;
     private readonly WindowsShellProcessIdentityReader shellIdentityReader = new();
     private readonly ConcurrentDictionary<string, ProcessFileMetadata> fileMetadataCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ProcessInstanceCache<CachedProcessIdentity> processIdentityCache = new();
@@ -151,7 +151,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
         PdhProcessGpuReader processGpuReader,
         IWindowsProcessInventoryReader processInventoryReader,
         WindowsProcessBasicMetricReader? processBasicMetricReader = null,
-        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch = null)
+        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch = null,
+        GpuAllocationCollector? gpuAllocations = null,
+        Func<WindowsGpuAdapterInventoryRead>? gpuAdapterInventory = null)
         : this(
             metricSampler,
             processAttributionCatalogProvider,
@@ -160,12 +162,14 @@ public sealed partial class WindowsResourceBreakdownSampler(
             networkAttributionReader,
             runtimePlanProvider,
             samplingSubscriptionOwner,
-            processGpuReader)
+            processGpuReader,
+            gpuAllocations: gpuAllocations)
     {
         if (createOutputScratch is not null)
             subscriptions = CreateSubscriptions(samplingSubscriptionOwner, createOutputScratch);
         this.processInventoryReader = processInventoryReader
             ?? throw new ArgumentNullException(nameof(processInventoryReader));
+        if (gpuAdapterInventory is not null) this.gpuAdapterInventory = gpuAdapterInventory;
         if (processBasicMetricReader is not null) this.processBasicMetricReader = processBasicMetricReader;
     }
 
@@ -763,7 +767,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 SamplingDatasetIds.ProcessGpuVram)
             || cleanMetricIds.Any(IsGpuMetric);
         IReadOnlyList<WindowsGpuAdapter> adapters = capturesGpuDataset
-            ? gpuAdapterReader.ReadInventory().Adapters
+            ? gpuAdapterInventory().Adapters
                 .Where(static adapter => !adapter.IsSoftware)
                 .ToArray()
             : [];
@@ -872,6 +876,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
             queriedPublicationKeys.Add(ProcessMetricDatasetIds.ObservedPhysicalDiskIo);
 
         var bars = new List<ResourceBreakdownBar>();
+        if (requireHostedHardwareObservation && NeedsGpuAllocations(request) && gpuAllocations is not null)
+            await gpuAllocations.CaptureAsync(GpuAllocationProcesses(processSamples), cancellationToken);
         var allocationReading = NeedsGpuAllocations(request)
             ? ReadGpuAllocations(processSamples)
             : null;

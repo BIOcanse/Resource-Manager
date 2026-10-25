@@ -15,8 +15,11 @@ public sealed partial class WindowsResourceBreakdownSampler
             || request.MetricIds.Any(static id => TryParseGpuMetric(id, out _, out var kind) && kind == "vram");
 
     private GpuAllocationReading? ReadGpuAllocations(IReadOnlyList<ProcessResourceSample> samples)
-        => gpuAllocations?.ReadCurrent(samples.Where(static p => p.StartKey is > 0)
-            .ToDictionary(static p => p.ProcessId, static p => p.StartKey!.Value));
+        => gpuAllocations?.ReadCurrent(GpuAllocationProcesses(samples));
+
+    private static IReadOnlyDictionary<int, long> GpuAllocationProcesses(IReadOnlyList<ProcessResourceSample> samples)
+        => samples.Where(static p => p.StartKey is > 0)
+            .ToDictionary(static p => p.ProcessId, static p => p.StartKey!.Value);
 
     internal static ResourceBreakdownBar CreateUnattributedMemoryUsageBar(
         string metricId, string label, string scaleMode, double? usedBytes, double? capacityBytes)

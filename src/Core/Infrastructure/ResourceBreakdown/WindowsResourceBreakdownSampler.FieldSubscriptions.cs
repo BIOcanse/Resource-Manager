@@ -149,7 +149,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     $"resource-breakdown:{sourceKey}", hardwareRequest, interval);
             }
             if (NeedsGpuAllocations(request))
-                allocationLease = gpuAllocations?.AcquireSubscription();
+                allocationLease = gpuAllocations?.AcquireSubscription(interval);
             subscriptions.TrackPersistent(sourceKey, request, DateTimeOffset.UtcNow, interval, flags);
             SignalDemand();
             return new ObservationSubscriptionLease(this, sourceKey, hardwareLease, allocationLease,
