@@ -317,10 +317,13 @@ export default function App() {
     settings.setActiveSection("systemIntegration");
     selectPage("settings");
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      document.getElementById("trustedAccessManager")?.scrollIntoView({
+      // 横幅会随跳转卸载：焦点交给可信访问区的标题，滚动方式跟随动画设置。
+      const title = document.getElementById("trustedAccessManagerTitle");
+      title?.scrollIntoView({
         block: "start",
-        behavior: "smooth"
+        behavior: gpuRuntimePlan().animations === "normal" ? "smooth" : "auto"
       });
+      title?.focus({ preventScroll: true });
     }));
   }
 

@@ -897,8 +897,12 @@ export interface GpuPlacementSoftwareSettingsSnapshot {
   processCapabilities?: GpuPlacementProcessCapabilities[] | null;
 }
 
+/** 后端为该软件登记的叠加层注入模块：都没有、只有一部分、全部。只读，来自后端的启动模块选择。 */
+export type OverlayInjectionModules = "none" | "partial" | "complete";
+
 export interface PerformanceOverlaySettings {
   softwareId: string;
+  injectionModules: OverlayInjectionModules;
   enabled: boolean;
   mode: "external" | "injected";
   metrics: string[];

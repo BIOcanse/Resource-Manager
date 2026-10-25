@@ -167,8 +167,63 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   await reenabled;
   await page.waitForFunction(() => !document.querySelector('.overlay-settings input[type="number"]')?.disabled);
   assert(await editor.getByRole("checkbox").isChecked(), "Enabling once did not restore the missing module selection");
+  // 后端登记与这里的选择不一致时必须可见，并允许保存来对齐（外部管理员改过、只登记了一部分）。
+  const adminModules = async moduleIds => {
+    const result = await (await fetch(`${baseUrl}/__test/elevated-backend-request`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "backend.elevatedRequest", requestId: `admin-${moduleIds.length}`, method: "PUT", path: modulePath,
+        body: JSON.stringify({ softwareId: "frontend-harness.software", moduleIds }) }) })).json();
+    assert(result.statusCode === 200, "External admin module-selection fixture failed");
+  };
+  const closeDetail = () => page.getByRole("dialog", { name: "示例软件", exact: true }).getByRole("button", { name: "关闭", exact: true }).first().click();
+  const lastBridgeSelection = async () => JSON.parse((await page.evaluate(() => window.__elevatedBackendRequests.at(-1))).body).moduleIds;
+  const saveAndSettle = async () => {
+    const done = page.waitForResponse(response => response.url().endsWith("/__test/elevated-backend-request"));
+    await save.click();
+    await done;
+    await page.waitForFunction(() => !document.querySelector('.overlay-settings input[type="number"]')?.disabled);
+  };
+  await adminModules(["performance-overlay-preload"]);
+  await closeDetail();
+  await open();
+  await editor.getByRole("status").filter({ hasText: copy.performanceOverlay.injectedModulesPartial }).waitFor();
+  assert(!await editor.getByRole("checkbox").isChecked(), "Partially registered injection was shown as enabled");
+  assert(await save.isEnabled(), "A module mismatch cannot be saved to align the backend");
+  await saveAndSettle();
+  assert(JSON.stringify(await lastBridgeSelection()) === "[]", "Saving a partial registration did not align it to the disabled choice");
+  assert(await editor.getByRole("status").filter({ hasText: copy.performanceOverlay.injectedModulesPartial }).count() === 0, "Partial notice stayed after alignment");
+  await editor.getByRole("combobox", { name: copy.performanceOverlay.mode, exact: true }).click();
+  await page.getByRole("option", { name: copy.performanceOverlay.external, exact: true }).click();
+  await save.click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.overlays["frontend-harness.software"]?.mode === "external");
+  await adminModules(["performance-overlay-preload", "performance-overlay-vulkan"]);
+  await closeDetail();
+  await open();
+  await editor.getByRole("status").filter({ hasText: copy.performanceOverlay.externalModeModulesPresent }).waitFor();
+  assert(await save.isEnabled(), "External mode with registered modules cannot be saved to align the backend");
+  await saveAndSettle();
+  assert(JSON.stringify(await lastBridgeSelection()) === "[]", "External mode left the injection modules registered");
+  assert(await editor.getByRole("status").filter({ hasText: copy.performanceOverlay.externalModeModulesPresent }).count() === 0, "External-mode notice stayed after alignment");
+  // 启动模块已写入但偏好没有保存：明确告诉用户后端已更新、偏好未保存。
+  await editor.getByRole("checkbox").check();
+  await editor.getByRole("combobox", { name: copy.performanceOverlay.mode, exact: true }).click();
+  await page.getByRole("option", { name: copy.performanceOverlay.injected, exact: true }).click();
+  await page.evaluate(() => {
+    window.__originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "resource-manager:frontend-preferences:v1") throw new Error("fixture quota exceeded");
+      return window.__originalSetItem.call(this, key, value);
+    };
+  });
+  await save.click();
+  await editor.getByRole("alert").filter({ hasText: copy.performanceOverlay.modulesSavedPreferencesFailed }).waitFor();
+  await page.evaluate(() => { Storage.prototype.setItem = window.__originalSetItem; });
+  assert(JSON.stringify(await lastBridgeSelection()) === JSON.stringify(["performance-overlay-preload", "performance-overlay-vulkan"]), "Modules were not written before the failed preference save");
+  assert(await save.isEnabled(), "A failed preference save cannot be retried");
+  await save.click();
+  await editor.getByRole("alert").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.overlays["frontend-harness.software"]?.mode === "injected");
   assert(backendOverlayRequests.every(({ path }) => path.startsWith("/api/startup-modules/") || path === "/api/performance-overlay/metrics/catalog"), "Renderer requested a removed backend overlay settings route");
   assert(backendOverlayRequests.filter(({ method }) => method === "PUT").length === 1, "Product tried to write modules with the default web key");
   assert(errors.length === 0, errors.join("\n"));
-  return { persistence: true, metricOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, explicitNativeElevation: true, ordinaryWriteDenied: true, canceledElevationRetainsDraft: true, failedBridgeRetainsDraft: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true };
+  return { persistence: true, metricOrdering: true, pendingControlsLocked: true, appearanceSaveStaysLocal: true, genericModulePayload: true, explicitNativeElevation: true, ordinaryWriteDenied: true, canceledElevationRetainsDraft: true, failedBridgeRetainsDraft: true, actualInjectedModuleJoin: true, failureRetainsDraft: true, retry: true, moduleMismatchVisible: true, preferenceFailureAfterModulesVisible: true };
 }

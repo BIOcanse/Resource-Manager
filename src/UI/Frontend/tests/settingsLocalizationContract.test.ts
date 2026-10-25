@@ -42,7 +42,7 @@ assert.match(trustedAccessManager, /useAccessRequestSnapshot\(\)/);
 assert.match(trustedAccessBanner, /useAccessRequestSnapshot\(\)/);
 assert.match(trustedAccessBanner, /reviewRequests/);
 assert.doesNotMatch(trustedAccessManager, /runtime\.sources\.accessRequests/);
-assert.match(trustedAccessManager, /For each=\{request\.requestedScopes\}/);
+assert.match(trustedAccessManager, /For each=\{request\(\)\.requestedScopes\}/);
 assert.match(trustedAccessManager, /observedCallerIsInformational/);
 assert.match(trustedAccessManager, /defaultSecretLocalOnly/);
 assert.match(trustedAccessManager, /<strong>\{props\.copy\.defaultKeyName\}<\/strong>/);

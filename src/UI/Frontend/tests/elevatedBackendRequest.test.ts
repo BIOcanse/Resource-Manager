@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { putElevatedBackendJson } from "../src/api/elevatedBackendRequest.ts";
+import { sendElevatedBackendJson } from "../src/api/elevatedBackendRequest.ts";
 import { ApiRequestError } from "../src/api/httpTransport.ts";
 import { uiText, applyLanguage } from "../src/text.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
@@ -36,7 +36,7 @@ try {
     await Promise.resolve();
     const call = async (value: Record<string, unknown>) => {
       reply = value;
-      try { return await putElevatedBackendJson(path, selection, uiText.apiError.saveGpuSoftwarePolicyFailed); }
+      try { return await sendElevatedBackendJson("PUT", path, selection, uiText.apiError.saveGpuSoftwarePolicyFailed); }
       finally { assert.equal(listeners.size, 0, `${option.id}: listener cleanup`); }
     };
     assert.deepEqual(await call({ statusCode: 200, body: JSON.stringify(selection), error: null }), selection);
@@ -45,6 +45,15 @@ try {
       type: "backend.elevatedRequest", requestId: "correlated", method: "PUT", path, body: JSON.stringify(selection)
     });
     assert.equal(Object.keys(request).some(key => /key|token|secret|authorization/i.test(key)), false);
+    // 同一条显式提升通道也承载 POST（重新启用默认密钥），方法原样交给原生壳。
+    reply = { statusCode: 200, body: JSON.stringify({ defaultEnabled: true, defaultKeyId: "default-2" }), error: null };
+    assert.deepEqual(await sendElevatedBackendJson("POST", "/api/access-keys/default", { enabled: true, rotate: false }, "fallback"),
+      { defaultEnabled: true, defaultKeyId: "default-2" });
+    assert.deepEqual({ ...sent.at(-1)!, requestId: "correlated" }, {
+      type: "backend.elevatedRequest", requestId: "correlated", method: "POST", path: "/api/access-keys/default",
+      body: JSON.stringify({ enabled: true, rotate: false })
+    });
+    assert.equal(listeners.size, 0, `${option.id}: POST listener cleanup`);
     await assert.rejects(call({ statusCode: null, body: null, error: "canceled" }), (error: unknown) => error instanceof ApiRequestError
       && error.kind === "aborted" && error.userMessage === copy.misc.transportCanceled && !error.retryable);
     for (const invalid of [
@@ -67,14 +76,14 @@ try {
     }
   }
   const count = sent.length;
-  await assert.rejects(putElevatedBackendJson(path, { huge: "x".repeat(128 * 1024) }, "fallback"), ApiRequestError);
+  await assert.rejects(sendElevatedBackendJson("PUT", path, { huge: "x".repeat(128 * 1024) }, "fallback"), ApiRequestError);
   assert.equal(sent.length, count);
   throwPost = true;
-  await assert.rejects(putElevatedBackendJson(path, selection, "fallback"),
+  await assert.rejects(sendElevatedBackendJson("PUT", path, selection, "fallback"),
     (error: unknown) => error instanceof ApiRequestError && error.kind === "network" && error.userMessage === "fallback");
   assert.equal(listeners.size, 0);
   Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
-  await assert.rejects(putElevatedBackendJson(path, selection, "fallback"),
+  await assert.rejects(sendElevatedBackendJson("PUT", path, selection, "fallback"),
     (error: unknown) => error instanceof ApiRequestError && error.kind === "invalid-response" && error.userMessage === uiText.shellBridge.desktopOnly);
 } finally {
   globalThis.fetch = oldFetch;

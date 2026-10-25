@@ -1141,6 +1141,26 @@
 .trusted-access-scope-option input {
   flex: 0 0 auto;
   margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.trusted-access-scope-option input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.trusted-access-scope-option input:disabled,
+.trusted-access-scope-option input:disabled + span {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.trusted-access-deny-reason.settings-select {
+  min-width: min(220px, 100%);
+}
+
+.trusted-access-load-failure {
+  flex-wrap: wrap;
 }
 
 .trusted-access-one-time {

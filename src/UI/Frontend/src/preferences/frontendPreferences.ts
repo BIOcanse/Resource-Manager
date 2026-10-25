@@ -17,7 +17,7 @@ export type FrontendRefresh = {
   resourceTable: AppPresetNumericSetting;
   localSystem: AppPresetNumericSetting;
 };
-export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId">;
+export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "injectionModules">;
 export interface FrontendPreferencesCache {
   overlaySelectionVersion?: 1;
   appearance: AppAppearanceSettings;

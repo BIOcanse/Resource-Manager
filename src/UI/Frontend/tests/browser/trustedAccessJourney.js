@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import decisions from "../fixtures/trustedAccessDecisions.json" with { type: "json" };
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 const defaultScopes = [
   "read", "metrics.read", "processes.read", "session", "adapters.register.self",
@@ -48,6 +49,20 @@ export default async function trustedAccessJourney(page, baseUrl) {
 
   const settings = await loadSettingsText("zh-CN");
   const copy = settings.systemIntegration.trustedAccess;
+  const feedback = (await loadAppCopy("zh-CN")).feedback;
+  const activeElement = () => page.evaluate(() => ({
+    id: document.activeElement?.id ?? "",
+    text: document.activeElement?.textContent?.trim() ?? "",
+    label: document.activeElement?.getAttribute("aria-label") ?? "",
+    keyAction: document.activeElement?.getAttribute("data-key-action") ?? ""
+  }));
+  // 破坏性操作先弹出确认；confirm=false 时取消，确认框关闭且不发请求。
+  const answerConfirmation = async (title, confirmLabel, confirm = true) => {
+    const dialog = page.getByRole("dialog", { name: title, exact: true });
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: confirm ? confirmLabel : feedback.cancel, exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+  };
   page.on("pageerror", error => errors.push(String(error)));
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -160,11 +175,13 @@ export default async function trustedAccessJourney(page, baseUrl) {
   await banner.getByRole("button", { name: copy.reviewRequests, exact: true }).click();
   await page.waitForFunction(() => document.body.dataset.page === "settings");
   await page.locator(".trusted-access-notification").waitFor({ state: "detached" });
+  await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManagerTitle");
   const panel = page.getByRole("region", { name: copy.title, exact: true });
   await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
   await panel.getByText(copy.defaultKeyName, { exact: true }).waitFor();
   await panel.getByText(copy.defaultAccessLossWarning, { exact: true }).waitFor();
-  await panel.getByText("UserData/Security/default-key", { exact: true }).waitFor();
+  await panel.getByText(copy.defaultFileLocation, { exact: true }).waitFor();
+  assert.doesNotMatch(await panel.innerText(), /UserData\/Security/, "the file location uses Windows separators");
   assert.doesNotMatch(await panel.innerText(), new RegExp(defaultSecret));
   assert.ok(await panel.getByText("Telemetry helper", { exact: true }).count() > 0);
   assert.ok(await panel.getByText("C:\\Tools\\telemetry.exe", { exact: true }).count() > 0);
@@ -175,7 +192,8 @@ export default async function trustedAccessJourney(page, baseUrl) {
   await requestScopeGroup.getByLabel(copy.scopeLabels["metrics.read"]).uncheck();
   await firstRequest.getByRole("button", { name: copy.approve, exact: true }).click();
   await panel.locator(".trusted-access-outcome.approved")
-    .filter({ hasText: copy.requestApproved }).waitFor();
+    .filter({ hasText: copy.requestOutcome("Telemetry helper", copy.requestApproved) }).waitFor();
+  assert.equal((await activeElement()).id, "trustedAccessRequestsTitle", "focus moves to the request section after a decision");
   const approvedKeyRow = panel.locator(".trusted-access-key-row").filter({ hasText: "Telemetry helper" });
   await approvedKeyRow.waitFor();
   assert.equal(await approvedKeyRow.getByText(copy.scopeLabels["read"], { exact: true }).count(), 1,
@@ -193,11 +211,14 @@ export default async function trustedAccessJourney(page, baseUrl) {
   await publishPendingRequests(pendingRequests);
   const deniedRequest = panel.locator(".trusted-access-request").filter({ hasText: "Unsupported helper" });
   await deniedRequest.waitFor();
-  await deniedRequest.getByLabel(copy.denyReasonLabel).selectOption("unsupported");
+  assert.equal(await deniedRequest.locator("select").count(), 0, "the denial reason uses the shared select");
+  await deniedRequest.getByRole("combobox", { name: copy.denyReasonLabel, exact: true }).click();
+  await page.getByRole("option", { name: copy.denialReasons.unsupported, exact: true }).click();
   await deniedRequest.getByRole("button", { name: copy.deny, exact: true }).click();
   const deniedOutcome = panel.locator(".trusted-access-outcome.denied");
-  await deniedOutcome.filter({ hasText: copy.requestDenied }).waitFor();
-  await deniedOutcome.filter({ hasText: copy.denialReasons.unsupported }).waitFor();
+  await deniedOutcome.filter({
+    hasText: copy.requestOutcome("Unsupported helper", copy.requestDeniedWithReason(copy.denialReasons.unsupported))
+  }).waitFor();
   await panel.getByText(copy.requestsEmpty, { exact: true }).waitFor();
   if (process.env.RM_TRUSTED_ACCESS_MANAGER_SCREENSHOT) {
     await page.screenshot({ path: process.env.RM_TRUSTED_ACCESS_MANAGER_SCREENSHOT, fullPage: true });
@@ -213,25 +234,48 @@ export default async function trustedAccessJourney(page, baseUrl) {
   }
   await createPanel.getByRole("button", { name: copy.create, exact: true }).click();
   await panel.getByText(independentSecret, { exact: true }).waitFor();
+  assert.equal((await activeElement()).text, copy.copy, "focus moves to the copy button of the one-time key");
+  assert.equal(await page.locator('[role="status"], [aria-live]').filter({ hasText: independentSecret }).count(), 0,
+    "the one-time key is never inside a live region");
+  assert.equal(await panel.locator('[role="status"]').filter({ hasText: copy.oneTimeAnnouncement }).count(), 1,
+    "screen readers hear only that a key was generated");
   await panel.getByRole("button", { name: copy.copy, exact: true }).click();
   await page.waitForFunction(value => globalThis.__trustedAccessClipboard === value, independentSecret);
   const createCall = calls.find(call => call.path === "/api/access-keys" && call.method === "POST");
   assert.deepEqual(createCall?.body, { name: "Read-only report", purpose: "control", scopes: ["read"] });
 
+  // 按钮按层级渲染：破坏性和次要操作都是 secondary，不再使用未定义的 secondary-button。
+  assert.equal(await panel.locator(".secondary-button").count(), 0);
+  for (const name of [copy.disableDefault, copy.regenerateDefault, copy.rotateKeyLabel("Local report script"), copy.copied]) {
+    assert.equal(await panel.getByRole("button", { name, exact: true })
+      .evaluate(node => node.classList.contains("secondary")), true, name);
+  }
+
   const rotateRow = panel.locator(".trusted-access-key-row").filter({ hasText: "Local report script" });
-  await rotateRow.getByRole("button", { name: `${copy.rotate} · Local report script`, exact: true }).click();
+  await rotateRow.getByRole("button", { name: copy.rotateKeyLabel("Local report script"), exact: true }).click();
+  await answerConfirmation(copy.confirmRotateTitle("Local report script"), copy.rotate);
   await panel.getByText(rotatedSecret, { exact: true }).waitFor();
 
   const revokeRow = panel.locator(".trusted-access-key-row").filter({ hasText: "Temporary helper" });
-  await revokeRow.getByRole("button", { name: `${copy.revoke} · Temporary helper`, exact: true }).click();
+  const revokeButton = revokeRow.getByRole("button", { name: copy.revokeKeyLabel("Temporary helper"), exact: true });
+  await revokeButton.click();
+  await answerConfirmation(copy.confirmRevokeTitle("Temporary helper"), copy.revoke, false);
+  assert.equal(calls.some(call => call.method === "DELETE"), false, "a canceled revoke sends nothing");
+  await revokeButton.click();
+  await answerConfirmation(copy.confirmRevokeTitle("Temporary helper"), copy.revoke);
   await revokeRow.waitFor({ state: "detached" });
+  const afterRevoke = await activeElement();
+  assert.ok(afterRevoke.keyAction === "rotate" || afterRevoke.id === "trustedAccessKeysTitle",
+    `focus stays in the key list after a revoke (${JSON.stringify(afterRevoke)})`);
 
-  await panel.getByRole("button", { name: copy.disableDefault, exact: true }).click();
-  await panel.getByText(copy.defaultDisabled, { exact: true }).waitFor();
-  await panel.getByRole("button", { name: copy.enableDefault, exact: true }).click();
-  await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
+  // 关闭默认密钥以及之后的恢复在 trusted-access-recovery 里按后端拒绝请求的行为验证；这里验证重新生成。
+  const defaultCallsBefore = calls.filter(call => call.path === "/api/access-keys/default").length;
   await panel.getByRole("button", { name: copy.regenerateDefault, exact: true }).click();
+  await answerConfirmation(copy.confirmRegenerateTitle, copy.regenerateDefault);
   await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
+  await page.waitForFunction(() => !document.querySelector(".trusted-access-default button[disabled]"));
+  assert.deepEqual(calls.filter(call => call.path === "/api/access-keys/default").map(call => call.body).slice(defaultCallsBefore),
+    [{ enabled: true, rotate: true }]);
   assert.doesNotMatch(await panel.innerText(), new RegExp(defaultSecret));
   assert.equal(await page.locator("#root").evaluate((node, secret) => node.innerHTML.includes(secret), defaultSecret), false,
     "the default file secret never appears in rendered frontend content");
@@ -240,7 +284,8 @@ export default async function trustedAccessJourney(page, baseUrl) {
   assert.deepEqual(errors, []);
   return {
     requests: ["approved-subset", "expired", "denied"],
-    keyActions: ["create-one-time", "rotate", "revoke", "disable-default", "enable-default", "regenerate-default"],
+    keyActions: ["create-one-time", "rotate-confirmed", "revoke-canceled", "revoke-confirmed", "regenerate-default-confirmed"],
+    focus: ["banner-to-title", "decision-to-requests", "create-to-copy", "revoke-to-list"],
     approvalScopes: createCall?.body.scopes,
     defaultSecretRendered: false
   };

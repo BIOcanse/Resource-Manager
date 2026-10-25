@@ -82,8 +82,16 @@ const defaultScenario = {
   gpuPressureFixture: false,
   gpuOverflowThresholdsMissing: false,
   accessRequests: [],
+  // 可信访问密钥的后端状态：ready 正常；read-failure 读取密钥列表返回 503；
+  // default-key-off 默认密钥已关闭，界面的每个 /api 请求都返回 401（后端不再接受界面的密钥）。
+  trustedAccess: "ready",
   pausedSubscriptionPaths: []
 };
+const trustedAccessScenarios = new Set(["ready", "read-failure", "default-key-off"]);
+const trustedAccessDefaultScopes = ["read", "metrics.read", "processes.read", "session", "adapters.register.self",
+  "desktop.publish", "gpu.resolve", "gpu.report", "keys.manage"];
+const trustedAccessAvailableScopes = [...trustedAccessDefaultScopes, "machine.write", "injection.configure"];
+let trustedAccessDefaultSerial = 1;
 const scenario = structuredClone(defaultScenario);
 const emptyDiskUsageLayout = Buffer.alloc(64);
 emptyDiskUsageLayout.writeUInt32LE(0x55444d52, 0);
@@ -122,6 +130,7 @@ const requestTelemetry = Object.create(null);
 const ndjsonPublishers = new Map();
 const operationSubscribers = new Set();
 const managementInventoryRevisionSubscribers = new Set();
+const subscriptionChannelResponses = new Set();
 let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
@@ -247,13 +256,20 @@ const server = createServer(async (request, response) => {
       const command = JSON.parse(await readBody(request));
       const result = { type: "backend.elevatedRequest.result", requestId: command.requestId, statusCode: null, body: null, error: null };
       const match = typeof command.path === "string" && /^\/api\/startup-modules\/software\/([^/?#\\]+)$/.exec(command.path);
+      const defaultKey = command.method === "POST" && command.path === "/api/access-keys/default";
       if (command.type !== "backend.elevatedRequest" || typeof command.requestId !== "string" || !command.requestId
-        || command.method !== "PUT" || !match || typeof command.body !== "string" || Buffer.byteLength(command.body) > 128 * 1024) {
+        || !((command.method === "PUT" && match) || defaultKey)
+        || typeof command.body !== "string" || Buffer.byteLength(command.body) > 128 * 1024) {
         return json(response, 200, { ...result, error: "unavailable" });
       }
       if (scenario.overlayElevationOutcome) return json(response, 200, { ...result, error: scenario.overlayElevationOutcome });
       let settings;
       try { settings = JSON.parse(command.body); } catch { return json(response, 200, { ...result, error: "unavailable" }); }
+      if (defaultKey) {
+        // 管理员身份的后端客户端没有密钥，后端按管理员授权它修改默认密钥。
+        const saved = setTrustedAccessDefault(settings);
+        return json(response, 200, { ...result, statusCode: saved.statusCode, body: JSON.stringify(saved.body) });
+      }
       const saved = await saveStartupModuleSelection(decodeURIComponent(match[1]), settings);
       return json(response, 200, { ...result, statusCode: saved.statusCode, body: saved.body === null ? "" : JSON.stringify(saved.body) });
     }
@@ -289,13 +305,16 @@ server.listen(port, "127.0.0.1", () => {
 
 async function handleApi(request, response, url) {
   const path = url.pathname;
+  if (scenario.trustedAccess === "default-key-off") {
+    return json(response, 401, { error: "access-key-invalid" });
+  }
   if (path === "/api/access-keys" && request.method === "GET") {
-    return json(response, 200, {
-      keys: [],
-      defaultEnabled: false,
-      defaultKeyId: null,
-      availableScopes: []
-    });
+    if (scenario.trustedAccess === "read-failure") return json(response, 503, { error: "fixture-access-key-read-failure" });
+    return json(response, 200, trustedAccessSnapshot());
+  }
+  if (path === "/api/access-keys/default" && request.method === "POST") {
+    const saved = setTrustedAccessDefault(JSON.parse(await readBody(request)));
+    return json(response, saved.statusCode, saved.body);
   }
   if (path === "/api/control/objects") {
     return json(response, 200, { readAt: now(), objects: [{
@@ -1172,6 +1191,36 @@ function normalizeDelay(value) {
     : 0;
 }
 
+function trustedAccessSnapshot() {
+  const defaultKeyId = `default-${trustedAccessDefaultSerial}`;
+  return {
+    keys: [{
+      id: defaultKeyId, name: "Native default", purpose: "control", scopes: trustedAccessDefaultScopes,
+      createdAt: "2026-10-25T08:00:00.000Z", isDefault: true
+    }],
+    defaultEnabled: true,
+    defaultKeyId,
+    availableScopes: trustedAccessAvailableScopes
+  };
+}
+
+// 和后端 POST /api/access-keys/default 一样：关闭时撤销默认密钥，之后界面的请求被拒绝，
+// 已打开的订阅流随之结束；启用或轮换时生成新的默认密钥。
+function setTrustedAccessDefault(body) {
+  if (!body || typeof body.enabled !== "boolean" || typeof body.rotate !== "boolean"
+    || Object.keys(body).some(key => key !== "enabled" && key !== "rotate") || (!body.enabled && body.rotate)) {
+    return { statusCode: 400, body: { error: "default-key-request-invalid" } };
+  }
+  if (!body.enabled) {
+    scenario.trustedAccess = "default-key-off";
+    for (const stream of [...subscriptionChannelResponses]) stream.end();
+    return { statusCode: 200, body: { defaultEnabled: false, defaultKeyId: null } };
+  }
+  if (scenario.trustedAccess === "default-key-off" || body.rotate) trustedAccessDefaultSerial += 1;
+  scenario.trustedAccess = "ready";
+  return { statusCode: 200, body: { defaultEnabled: true, defaultKeyId: `default-${trustedAccessDefaultSerial}` } };
+}
+
 function delay(milliseconds) {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
@@ -1183,6 +1232,9 @@ const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "ani
 function applyScenarioPatch(patch) {
   const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
   if (presentation.length > 0) throw new Error(`Frontend preferences are not backend scenario values: ${presentation.join(", ")}`);
+  if (Object.hasOwn(patch, "trustedAccess") && !trustedAccessScenarios.has(patch.trustedAccess)) {
+    throw new Error(`Unknown trustedAccess scenario: ${JSON.stringify(patch.trustedAccess)}`);
+  }
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
@@ -1209,6 +1261,7 @@ function applyScenarioPatch(patch) {
 
 function resetScenario() {
   startupModuleSelections.clear();
+  trustedAccessDefaultSerial = 1;
   if (diskScanCompletionTimer) clearTimeout(diskScanCompletionTimer);
   if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
   diskScanCompletionTimer = null;
@@ -1856,6 +1909,8 @@ async function subscriptionChannelStream(request, response) {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff"
   });
+  subscriptionChannelResponses.add(response);
+  response.once("close", () => subscriptionChannelResponses.delete(response));
   const releases = [];
   for (const subscription of subscriptions) {
     const releaseTelemetry = trackLogicalSubscription(subscription.requestUrl);

@@ -17,7 +17,8 @@ import {
   getAccessKeySnapshot,
   revokeAccessKey,
   rotateAccessKey,
-  setDefaultAccessKey
+  setDefaultAccessKey,
+  TrustedAccessRequestError
 } from "../src/features/trustedAccess/trustedAccessApi.ts";
 import type { AccessKeySummary } from "../src/features/trustedAccess/trustedAccessTypes.ts";
 
@@ -123,6 +124,7 @@ assert.throws(() => accessRequestDecisionDecoder.decode({
 }), (error) => error instanceof ResponseDecodeError && error.path === "$.key");
 
 const originalFetch = globalThis.fetch;
+let failure: { status: number; body: unknown } | null = null;
 const calls: Array<{ path: string; method: string; body: unknown }> = [];
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = new URL(String(input), "http://frontend.test");
@@ -130,6 +132,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
   calls.push({ path: url.pathname, method, body });
 
+  if (url.pathname === "/api/access-keys" && method === "GET" && failure) {
+    return json(failure.body, failure.status);
+  }
   if (url.pathname === "/api/access-keys" && method === "GET") {
     return json({
       keys: [defaultKey, independentKey],
@@ -175,7 +180,7 @@ try {
   const rotated = await rotateAccessKey("script-1", "rotate failed");
   assert.equal(rotated.apiKey, "rotated-one-time-secret");
 
-  const defaultState = await setDefaultAccessKey(true, true, "default key update failed");
+  const defaultState = await setDefaultAccessKey("rotate", "default key update failed");
   assert.deepEqual(defaultState, { defaultEnabled: true, defaultKeyId: "default-2" });
   assert.deepEqual(calls.find((call) => call.path === "/api/access-keys/default")?.body,
     { enabled: true, rotate: true });
@@ -201,6 +206,27 @@ try {
   ]);
   assert.equal(calls.some((call) => call.path.includes("acquire-default")), false,
     "the frontend never requests the native-only default secret");
+
+  // 失败在 API 边界按后端状态码和错误码归类，界面据此显示对应原因。
+  for (const [status, body, reason] of [
+    [401, { error: "access-key-invalid" }, "unauthorized"],
+    [403, { error: "access-key-required" }, "unauthorized"],
+    [403, { error: "access-scope-required" }, "scope-required"],
+    [403, { error: "access-key-management-scope-exceeded" }, "scope-required"],
+    [403, { error: "default-key-scope-escalation-denied" }, "default-scope-denied"],
+    [503, { error: "access-service-unavailable" }, "failed"]
+  ] as const) {
+    failure = { status, body };
+    await assert.rejects(getAccessKeySnapshot("key list failed"),
+      (error: unknown) => error instanceof TrustedAccessRequestError && error.reason === reason,
+      `${status} ${body.error} is classified as ${reason}`);
+  }
+  failure = null;
+  failure = { status: 200, body: { keys: "not-a-list" } };
+  await assert.rejects(getAccessKeySnapshot("key list failed"),
+    (error: unknown) => error instanceof TrustedAccessRequestError && error.reason === "failed"
+      && error.cause instanceof ResponseDecodeError, "a malformed snapshot is a visible read failure");
+  failure = null;
 } finally {
   globalThis.fetch = originalFetch;
 }

@@ -19,6 +19,7 @@ export default async function loginStartupJourney(page, baseUrl) {
     const listeners = new Set();
     window.__loginStartupEnabled = false;
     window.__loginStartupError = null;
+    window.__loginStartupSetError = null;
     window.__loginStartupRequests = [];
     window.unboundWebView = {
       addEventListener(type, listener) { if (type === "message") listeners.add(listener); },
@@ -26,12 +27,14 @@ export default async function loginStartupJourney(page, baseUrl) {
       postMessage(request) {
         if (!["shell.loginStartup.get", "shell.loginStartup.set"].includes(request.type)) return;
         window.__loginStartupRequests.push(request);
-        if (request.type === "shell.loginStartup.set" && !window.__loginStartupError) window.__loginStartupEnabled = request.enabled;
+        const error = window.__loginStartupError
+          ?? (request.type === "shell.loginStartup.set" ? window.__loginStartupSetError : null);
+        if (request.type === "shell.loginStartup.set" && !error) window.__loginStartupEnabled = request.enabled;
         queueMicrotask(() => {
           for (const listener of [...listeners]) listener({ data: {
             type: "shell.loginStartup.result", requestId: request.requestId,
-            enabled: window.__loginStartupError ? null : window.__loginStartupEnabled,
-            error: window.__loginStartupError
+            enabled: error ? null : window.__loginStartupEnabled,
+            error
           } });
         });
       }
@@ -65,16 +68,34 @@ export default async function loginStartupJourney(page, baseUrl) {
     await page.getByRole("button", { name: text.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: text.sections.systemIntegration, exact: true }).click();
     await page.waitForFunction(label => document.querySelector(`input[aria-label="${CSS.escape(label)}"]`)?.checked === true, copy.loginStartTitle);
+    // 写入失败：开关回到重新读取的实际状态（仍为开），显示失败原因和重试入口，并且确实重新读取了一次。
+    await page.evaluate(() => { window.__loginStartupSetError = "fixture-registry-write-failed"; });
+    const before = await page.evaluate(() => window.__loginStartupRequests.length);
+    await login.click();
+    await page.getByRole("status").filter({ hasText: copy.loginStartWriteFailed }).waitFor();
+    await page.waitForFunction(label => {
+      const input = document.querySelector(`input[aria-label="${CSS.escape(label)}"]`);
+      return input?.checked === true && !input.disabled;
+    }, copy.loginStartTitle);
+    assert.deepEqual(await page.evaluate(count => window.__loginStartupRequests.slice(count).map(item => item.type), before),
+      ["shell.loginStartup.set", "shell.loginStartup.get"], `${option.id}: a failed write is followed by one read`);
+    await page.evaluate(() => { window.__loginStartupSetError = null; });
+    await page.getByRole("button", { name: copy.loginStartRetry, exact: true }).click();
+    await page.waitForFunction(label => document.querySelector(`input[aria-label="${CSS.escape(label)}"]`)?.checked === false, copy.loginStartTitle);
+    assert.equal(await page.getByRole("status").filter({ hasText: copy.loginStartWriteFailed }).count(), 0);
+    await login.check();
+    await page.waitForFunction(label => document.querySelector(`input[aria-label="${CSS.escape(label)}"]`)?.checked === true, copy.loginStartTitle);
     await page.evaluate(() => { window.__loginStartupError = "fixture-registry-unavailable"; });
     await page.getByRole("button", { name: text.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: text.sections.systemIntegration, exact: true }).click();
     await page.getByRole("status").filter({ hasText: copy.loginStartUnavailable }).waitFor();
     assert.equal(await login.isDisabled(), true, `${option.id}: failed registry read stays unavailable`);
+    await page.getByRole("button", { name: copy.loginStartRetry, exact: true }).waitFor();
     checked.push(option.id);
     previous = option.id;
   }
   assert.equal(checked.length, 9);
   assert.deepEqual(backendWrites, [], "Login startup and frontend language changes must not mutate backend settings");
   assert.deepEqual(errors, []);
-  return { languages: checked, nativeReadWriteAndReload: true, nativeFailureRendered: true, backendSettingsUntouched: true };
+  return { languages: checked, nativeReadWriteAndReload: true, nativeFailureRendered: true, writeFailureRereadAndRetry: true, backendSettingsUntouched: true };
 }

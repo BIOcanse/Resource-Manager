@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
-import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
+import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
+import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText.ts";
 import { MetricModal } from "../monitor/MetricModal.tsx";
@@ -19,6 +20,18 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const [error, setError] = createSignal("");
   let requestId = 0;
   const dirty = createMemo(() => JSON.stringify(saved()) !== JSON.stringify(draft()));
+  // 后端登记的注入模块和这里的选择不一致（外部改过，或上次只保存了一半）：显示提示，并允许保存来对齐。
+  const modulesMismatch = () => {
+    const current = saved();
+    return current !== null && current.injectionModules !== expectedOverlayInjectionModules(current);
+  };
+  const modulesNotice = () => {
+    const current = saved();
+    if (!current || !modulesMismatch()) return null;
+    return current.injectionModules === "partial" ? uiText.performanceOverlay.injectedModulesPartial
+      : current.injectionModules === "complete" ? uiText.performanceOverlay.externalModeModulesPresent
+        : null;
+  };
 
   createEffect(() => {
     if (!props.active || !props.softwareId) return;
@@ -57,7 +70,9 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
       setSaved(result);
       setDraft({ ...result, metrics: [...result.metrics] });
     } catch (cause) {
-      setError(userFacingErrorMessage(cause, uiText.status.actionFailed));
+      setError(cause instanceof OverlayPreferencesSaveError
+        ? uiText.performanceOverlay.modulesSavedPreferencesFailed
+        : userFacingErrorMessage(cause, uiText.status.actionFailed));
     } finally {
       setSaving(false);
     }
@@ -88,7 +103,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
         <button type="button" class="secondary" disabled={!draft() || saving()} onClick={() => void resetPresentation()}>
           {currentSettingsText().actions.restoreDefaults}
         </button>
-        <button type="button" disabled={!draft() || !dirty() || saving()} onClick={() => void save()}>
+        <button type="button" disabled={!draft() || !(dirty() || modulesMismatch()) || saving()} onClick={() => void save()}>
           {saving() ? uiText.softwareDetail.processing : uiText.softwareDetail.save}
         </button>
       </div>
@@ -108,6 +123,9 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
             onChange={(mode) => update({ mode })} />
           <Show when={current().mode === "injected"}>
             <p class="software-detail-hint" role="note">{uiText.performanceOverlay.injectionWarning}</p>
+          </Show>
+          <Show when={modulesNotice()}>
+            {(notice) => <p class="software-detail-hint overlay-modules-notice" role="status">{notice()}</p>}
           </Show>
           <div class="software-policy-section-header">
             <h4>{uiText.performanceOverlay.metrics}</h4>

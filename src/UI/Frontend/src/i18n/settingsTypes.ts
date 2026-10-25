@@ -1,3 +1,4 @@
+import type { KnownAccessScope } from "../features/trustedAccess/trustedAccessTypes.ts";
 import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
@@ -152,6 +153,9 @@ export interface SettingsCopy {
     loginStartTitle: string;
     loginStartDescription: string;
     loginStartUnavailable: string;
+    loginStartLoading: string;
+    loginStartWriteFailed: string;
+    loginStartRetry: string;
     taskManagerTitle: string;
     taskManagerDescription: string;
     forceTerminateTitle: string;
@@ -299,18 +303,31 @@ export interface TrustedAccessCopy {
   loadFailed: string;
   actionFailed: string;
   retry: string;
+  /** API 边界归类出的失败原因；其他失败显示 loadFailed / actionFailed 等通用文案。 */
+  failureReasons: Record<"unauthorized" | "scope-required" | "default-scope-denied", string>;
   defaultTitle: string;
   defaultDescription: string;
   defaultEnabled: string;
   defaultDisabled: string;
   defaultKeyName: string;
   defaultFilePath: string;
+  /** 默认密钥文件的位置（相对安装目录，Windows 分隔符）。 */
+  defaultFileLocation: string;
   defaultSecretLocalOnly: string;
   defaultAccessLossWarning: string;
-  enableDefault: string;
+  /** 默认密钥关闭后显示的恢复说明。 */
+  defaultDisabledRecovery: string;
+  enableDefaultElevated: string;
   disableDefault: string;
   regenerateDefault: string;
-  reloadMetadata: string;
+  confirmDisableTitle: string;
+  confirmDisableMessage: string;
+  confirmRegenerateTitle: string;
+  confirmRegenerateMessage: string;
+  confirmRotateTitle: (name: string) => string;
+  confirmRotateMessage: string;
+  confirmRevokeTitle: (name: string) => string;
+  confirmRevokeMessage: string;
   createTitle: string;
   createDescription: string;
   nameLabel: string;
@@ -321,6 +338,8 @@ export interface TrustedAccessCopy {
   working: string;
   oneTimeTitle: string;
   oneTimeDescription: string;
+  /** 一次性密钥出现时读屏播报的句子；密钥本身不进实时区域。 */
+  oneTimeAnnouncement: string;
   apiKeyLabel: string;
   copy: string;
   copied: string;
@@ -331,13 +350,18 @@ export interface TrustedAccessCopy {
   keysEmpty: string;
   revoke: string;
   rotate: string;
+  rotateKeyLabel: (name: string) => string;
+  revokeKeyLabel: (name: string) => string;
   requestsTitle: string;
   requestsDescription: string;
   reviewRequests: string;
   requestsLoading: string;
+  requestsUnavailable: string;
   requestsLoadFailed: string;
+  requestsStale: string;
   requestsEmpty: string;
-  requestName: string;
+  requestNamed: (name: string) => string;
+  requestCount: (count: number) => string;
   expiresAt: string;
   observedExecutable: string;
   observedProcess: string;
@@ -351,9 +375,13 @@ export interface TrustedAccessCopy {
   requestActionFailed: string;
   requestApproved: string;
   requestDenied: string;
+  requestDeniedWithReason: (reason: string) => string;
   requestExpired: string;
+  /** 一条决定结果：请求名称和结果句子。 */
+  requestOutcome: (name: string, result: string) => string;
   denialReasons: Record<"not-approved" | "unsupported" | "duplicate" | "not-needed", string>;
-  scopeLabels: Record<string, string>;
+  scopeLabels: Record<KnownAccessScope, string>;
+  unknownScope: string;
 }
 
 export interface UpdatesCopy {

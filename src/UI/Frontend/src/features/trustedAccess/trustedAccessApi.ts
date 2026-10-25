@@ -1,4 +1,5 @@
 import { ApiRequestError, requestJson, requestNoContent } from "../../api/httpTransport.ts";
+import { sendElevatedBackendJson } from "../../api/elevatedBackendRequest.ts";
 import type { ResponseDecoder } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import {
   accessKeyCreatedDecoder,
@@ -11,8 +12,45 @@ import type {
   AccessKeySnapshot,
   AccessRequestDecisionResult,
   AccessRequestDenialReason,
-  DefaultAccessKeyState
+  DefaultAccessKeyState,
+  TrustedAccessFailureReason
 } from "./trustedAccessTypes.ts";
+
+/**
+ * 可信访问请求在 API 边界归类后的失败。`reason` 决定界面显示哪条本地化原因；
+ * `failed` 时界面按 `cause`（原始错误）和调用方的通用文案显示。
+ */
+export class TrustedAccessRequestError extends Error {
+  readonly reason: TrustedAccessFailureReason;
+
+  constructor(reason: TrustedAccessFailureReason, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "TrustedAccessRequestError";
+    this.reason = reason;
+  }
+}
+
+/** 按后端的状态码和错误码归类失败；其余错误原样作为 failed 的原因。 */
+export function classifyTrustedAccessFailure(error: unknown): TrustedAccessFailureReason {
+  if (!(error instanceof ApiRequestError) || error.kind !== "http") return "failed";
+  const code = typeof error.payload === "object" && error.payload !== null && "error" in error.payload
+    ? (error.payload as { error: unknown }).error
+    : null;
+  if (error.status === 401 || (error.status === 403 && code === "access-key-required")) return "unauthorized";
+  if (error.status === 403 && (code === "access-scope-required" || code === "access-key-management-scope-exceeded")) {
+    return "scope-required";
+  }
+  if (error.status === 403 && code === "default-key-scope-escalation-denied") return "default-scope-denied";
+  return "failed";
+}
+
+async function classified<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    throw new TrustedAccessRequestError(classifyTrustedAccessFailure(error), error);
+  }
+}
 
 export function buildAccessRequestPendingSubscriptionUrl(): string {
   return "/api/access-requests/subscribe";
@@ -22,11 +60,11 @@ export async function getAccessKeySnapshot(
   fallbackError: string,
   signal?: AbortSignal
 ): Promise<AccessKeySnapshot> {
-  return decode(accessKeySnapshotDecoder, await requestJson<unknown>("/api/access-keys", {
+  return classified(async () => decode(accessKeySnapshotDecoder, await requestJson<unknown>("/api/access-keys", {
     cache: "no-store",
     fallbackError,
     signal
-  }));
+  })));
 }
 
 export async function createAccessKey(
@@ -34,34 +72,48 @@ export async function createAccessKey(
   scopes: readonly string[],
   fallbackError: string
 ): Promise<AccessKeyCreated> {
-  return post("/api/access-keys", { name, purpose: "control", scopes }, accessKeyCreatedDecoder, fallbackError);
+  return classified(() => post("/api/access-keys", { name, purpose: "control", scopes }, accessKeyCreatedDecoder, fallbackError));
 }
 
 export async function rotateAccessKey(
   id: string,
   fallbackError: string
 ): Promise<AccessKeyCreated> {
-  return post(`/api/access-keys/${encodeURIComponent(id)}/rotate`, {}, accessKeyCreatedDecoder, fallbackError);
+  return classified(() => post(`/api/access-keys/${encodeURIComponent(id)}/rotate`, {}, accessKeyCreatedDecoder, fallbackError));
 }
 
 export async function revokeAccessKey(id: string, fallbackError: string): Promise<void> {
-  await requestNoContent(`/api/access-keys/${encodeURIComponent(id)}`, {
+  await classified(() => requestNoContent(`/api/access-keys/${encodeURIComponent(id)}`, {
     method: "DELETE",
     cache: "no-store",
     fallbackError
-  });
+  }));
 }
 
+/** 关闭默认密钥，或轮换已启用的默认密钥。走界面自己的密钥。 */
 export async function setDefaultAccessKey(
-  enabled: boolean,
-  rotate: boolean,
+  change: "disable" | "rotate",
   fallbackError: string
 ): Promise<DefaultAccessKeyState> {
-  const result = await post(
+  const enabled = change === "rotate";
+  return classified(async () => requireDefaultState(await post(
     "/api/access-keys/default",
-    { enabled, rotate },
+    { enabled, rotate: enabled },
     defaultAccessKeyStateDecoder,
-    fallbackError);
+    fallbackError), enabled));
+}
+
+/**
+ * 重新启用默认密钥。默认密钥关闭后界面已没有可用的密钥，所以只走原生壳的显式提升通道
+ * （管理员身份的后端客户端），由 Windows 请求用户授权。
+ */
+export async function enableDefaultAccessKeyElevated(fallbackError: string): Promise<DefaultAccessKeyState> {
+  return classified(async () => requireDefaultState(decode(defaultAccessKeyStateDecoder,
+    await sendElevatedBackendJson<unknown>("POST", "/api/access-keys/default", { enabled: true, rotate: false }, fallbackError)),
+  true));
+}
+
+function requireDefaultState(result: DefaultAccessKeyState, enabled: boolean): DefaultAccessKeyState {
   if (result.defaultEnabled !== enabled) {
     throw new TypeError("The backend returned a different default access-key state.");
   }
@@ -73,8 +125,8 @@ export async function approveAccessRequest(
   scopes: readonly string[],
   fallbackError: string
 ): Promise<AccessRequestDecisionResult> {
-  return decide(`/api/access-requests/${encodeURIComponent(requestId)}/approve`,
-    requestId, { scopes }, fallbackError);
+  return classified(() => decide(`/api/access-requests/${encodeURIComponent(requestId)}/approve`,
+    requestId, { scopes }, fallbackError));
 }
 
 export async function denyAccessRequest(
@@ -82,8 +134,8 @@ export async function denyAccessRequest(
   reasonCode: AccessRequestDenialReason,
   fallbackError: string
 ): Promise<AccessRequestDecisionResult> {
-  return decide(`/api/access-requests/${encodeURIComponent(requestId)}/deny`,
-    requestId, { reasonCode }, fallbackError);
+  return classified(() => decide(`/api/access-requests/${encodeURIComponent(requestId)}/deny`,
+    requestId, { reasonCode }, fallbackError));
 }
 
 async function decide(

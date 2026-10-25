@@ -1,5 +1,12 @@
 import { readDashboardPreferences, saveDashboardPreferences } from "./preferences/dashboardPreferences.ts";
-import { putElevatedBackendJson } from "./api/elevatedBackendRequest.ts";
+import { sendElevatedBackendJson } from "./api/elevatedBackendRequest.ts";
+import {
+  expectedOverlayInjectionModules,
+  overlayInjectionModules,
+  overlayStartupModuleIds,
+  startupModuleSelectionDecoder,
+  type StartupModuleSelection
+} from "./features/overlay/startupModuleSelection.ts";
 import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
 import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
 import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
@@ -84,17 +91,31 @@ export async function getMetricCatalog() {
   return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
-const overlayStartupModuleIds = ["performance-overlay-preload", "performance-overlay-vulkan"];
-type StartupModuleSelection = { softwareId: string; moduleIds: string[] };
-
+/** 叠加层设置：显示方式和外观归前端偏好；是否注入看后端登记的启动模块，读取时总是一并读出。 */
 export async function getPerformanceOverlaySettings(softwareId: string): Promise<PerformanceOverlaySettings> {
   const preferences = await frontendPreferencesClient().read();
   const presentation = { ...pointOverlayPresentation(), ...cachedOverlay(preferences, softwareId) };
+  const injectionModules = overlayInjectionModules(await getStartupModuleSelection(softwareId));
   if (presentation.mode === "injected") {
-    const operation = await getJson<StartupModuleSelection>(`/api/startup-modules/software/${encodeURIComponent(softwareId)}`);
-    presentation.enabled = overlayStartupModuleIds.every(id => operation.moduleIds.includes(id));
+    presentation.enabled = injectionModules === "complete";
   }
-  return { softwareId, ...presentation, metrics: [...presentation.metrics] };
+  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics] };
+}
+
+function startupModuleSelectionPath(softwareId: string) {
+  return `/api/startup-modules/software/${encodeURIComponent(softwareId)}`;
+}
+
+async function getStartupModuleSelection(softwareId: string): Promise<StartupModuleSelection> {
+  return startupModuleSelectionDecoder.decode(await getJson<unknown>(startupModuleSelectionPath(softwareId)));
+}
+
+/** 启动模块已经在后端改好，但叠加层偏好没有保存成功。界面据此提示“后端已更新、偏好未保存”。 */
+export class OverlayPreferencesSaveError extends Error {
+  constructor(cause: unknown) {
+    super("The startup modules were saved, but the overlay preferences were not.", { cause });
+    this.name = "OverlayPreferencesSaveError";
+  }
 }
 
 export async function getPerformanceOverlayMetricCatalog() {
@@ -104,19 +125,31 @@ export async function getPerformanceOverlayMetricCatalog() {
 
 export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings,
     previous?: Pick<PerformanceOverlaySettings, "enabled" | "mode">): Promise<PerformanceOverlaySettings> {
-  const { softwareId, ...presentation } = settings;
-  if (!previous || previous.enabled !== settings.enabled || previous.mode !== settings.mode) {
-    const path = `/api/startup-modules/software/${encodeURIComponent(softwareId)}`;
-    const current = await getJson<StartupModuleSelection>(path);
-    const unrelated = current.moduleIds.filter(id => !overlayStartupModuleIds.includes(id));
-    const moduleIds = [...unrelated, ...(settings.enabled && settings.mode === "injected" ? overlayStartupModuleIds : [])];
-    if (JSON.stringify([...current.moduleIds].sort()) !== JSON.stringify([...moduleIds].sort()))
-      await putElevatedBackendJson<StartupModuleSelection>(path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
+  const { softwareId, injectionModules: readModules, ...presentation } = settings;
+  const expected = expectedOverlayInjectionModules(settings);
+  let injectionModules = readModules;
+  let modulesChanged = false;
+  // 开关或方式改变，或后端登记与这里的选择不一致时，按这里的选择更新后端登记。
+  if (!previous || previous.enabled !== settings.enabled || previous.mode !== settings.mode || readModules !== expected) {
+    const path = startupModuleSelectionPath(softwareId);
+    const current = await getStartupModuleSelection(softwareId);
+    const overlayIds: readonly string[] = overlayStartupModuleIds;
+    const unrelated = current.moduleIds.filter(id => !overlayIds.includes(id));
+    const moduleIds = [...unrelated, ...(expected === "complete" ? overlayStartupModuleIds : [])];
+    if (JSON.stringify([...current.moduleIds].sort()) !== JSON.stringify([...moduleIds].sort())) {
+      await sendElevatedBackendJson<StartupModuleSelection>("PUT", path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
+      modulesChanged = true;
+    }
+    injectionModules = expected;
   }
   const owner = frontendPreferencesClient();
-  const preferences = await owner.read();
-  await owner.save({ ...preferences, overlays: { ...preferences.overlays, [softwareId]: presentation } }, { overlay: softwareId });
-  return { softwareId, ...presentation, metrics: [...presentation.metrics] };
+  try {
+    const preferences = await owner.read();
+    await owner.save({ ...preferences, overlays: { ...preferences.overlays, [softwareId]: presentation } }, { overlay: softwareId });
+  } catch (error) {
+    throw modulesChanged ? new OverlayPreferencesSaveError(error) : error;
+  }
+  return { softwareId, injectionModules, ...presentation, metrics: [...presentation.metrics] };
 }
 
 export async function resetPerformanceOverlayPresentation(softwareId: string) {

@@ -2,8 +2,15 @@ import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
 import { ApiRequestError } from "./httpTransport.ts";
 import { uiText } from "../text.ts";
 
+export type ElevatedBackendMethod = "PUT" | "POST";
+
 /** Explicit machine mutation through the native host's pinned, elevated backend client. */
-export async function putElevatedBackendJson<T>(path: string, body: unknown, fallbackMessage: string): Promise<T> {
+export async function sendElevatedBackendJson<T>(
+  method: ElevatedBackendMethod,
+  path: string,
+  body: unknown,
+  fallbackMessage: string
+): Promise<T> {
   const transport = getHostMessageTransport();
   if (!transport?.canSubscribeMessages) {
     throw new ApiRequestError(uiText.shellBridge.desktopOnly, { kind: "invalid-response", retryable: false });
@@ -57,7 +64,7 @@ export async function putElevatedBackendJson<T>(path: string, body: unknown, fal
       reject(new ApiRequestError(uiText.shellBridge.desktopOnly, { kind: "invalid-response", retryable: false }));
       return;
     }
-    try { transport.postMessage({ type: "backend.elevatedRequest", requestId, method: "PUT", path, body: serialized }); }
+    try { transport.postMessage({ type: "backend.elevatedRequest", requestId, method, path, body: serialized }); }
     catch {
       globalThis.clearTimeout(timer);
       unsubscribe();

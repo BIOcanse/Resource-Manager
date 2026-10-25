@@ -11,6 +11,7 @@ import loginStartupJourney from "./loginStartupJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
 import trustedAccessJourney from "./trustedAccessJourney.js";
+import trustedAccessRecoveryJourney from "./trustedAccessRecoveryJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
 import { spawn } from "node:child_process";
@@ -84,6 +85,7 @@ const allJourneys = [
   ["frontend-audit", frontendAuditJourney],
   ["report-rule-settings", reportRuleSettingsJourney],
   ["trusted-access", trustedAccessJourney],
+  ["trusted-access-recovery", trustedAccessRecoveryJourney],
   ["localization", localizationJourney],
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],
