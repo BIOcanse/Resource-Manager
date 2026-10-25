@@ -438,6 +438,54 @@ try {
     Assert-True ($nestedOwnerCheck.CaseOwnerPath -eq $nestedBatch -and $nestedOwnerCheck.SiblingOwnerPath -eq $outerTask) 'indexed ownership is case-insensitive and does not confuse a sibling path prefix with the nested workspace.'
     Assert-True ($nestedOwnerCheck.Closure.ReferencedKeys.Contains($nestedOwnerCheck.InnerPath.ToUpperInvariant()) -and -not $nestedOwnerCheck.Closure.ReferencedKeys.Contains($nestedOwnerCheck.ParentPath.ToUpperInvariant())) 'nested file references protect the inner batch workspace without marking its parent as owner.'
 
+    # A completed workspace that holds a running batch registered by a nested root is not reclaimed
+    # (a sibling task's retention once deleted a completed ledger together with its running child batch).
+    $holderRoot = Join-Path $tempBase 'nested-running-root'
+    [System.IO.Directory]::CreateDirectory($holderRoot) | Out-Null
+    $holderPolicyRecent = $script:Policy.defaults.maxRecentCompleted
+    $holderPolicyBytes = $script:Policy.defaults.maxBytes
+    $script:Policy.defaults.maxBytes = [long]::MaxValue
+    $script:Policy.enabled = $false
+    $script:Policy.roots = @($script:Policy.roots) + @([pscustomobject]@{ id = 'nested-running'; path = $holderRoot; excludedNames = @() })
+    $oldHolder = New-TestWorkspace -RootPath $holderRoot -Name 'old-ledger'
+    Complete-TestWorkspace -RootPath $holderRoot -WorkspacePath $oldHolder
+    $script:Policy.roots = @($script:Policy.roots) + @([pscustomobject]@{ id = 'nested-running-inner'; path = $oldHolder; excludedNames = @() })
+    $runningChild = New-TestWorkspace -RootPath $oldHolder -Name 'fix2'
+    Write-FixtureBytes -Path (Join-Path $runningChild 'payload.bin') -Count 8
+    foreach ($name in 'newer-one', 'newer-two') {
+        Start-Sleep -Milliseconds 30
+        $newer = New-TestWorkspace -RootPath $holderRoot -Name $name
+        Complete-TestWorkspace -RootPath $holderRoot -WorkspacePath $newer
+    }
+    $script:Policy.enabled = $true
+    $script:Policy.defaults.maxRecentCompleted = 1
+    # As in the incident, the sibling's retention does not know the nested root.
+    $holderResult = Invoke-GeneratedWorkspaceRetention -RootPath $holderRoot -Policy $script:Policy -ReferenceRoots @($holderRoot) -Apply
+    Assert-True ((Test-Path -LiteralPath $runningChild) -and @($holderResult.deleted | Where-Object { $_.path -eq $oldHolder }).Count -eq 0) 'a completed workspace holding a running nested batch is not deleted.'
+    Assert-True (@($holderResult.retained | Where-Object { $_.path -eq $oldHolder -and $_.reason -like '*nested workspace that is running*' }).Count -eq 1) 'the retained holder reports the running nested batch as its reason.'
+    $script:Policy.enabled = $false
+    Complete-TestWorkspace -RootPath $oldHolder -WorkspacePath $runningChild
+    $script:Policy.enabled = $true
+    $holderAfter = Invoke-GeneratedWorkspaceRetention -RootPath $holderRoot -Policy $script:Policy -ReferenceRoots @($holderRoot) -Apply
+    Assert-True (-not (Test-Path -LiteralPath $oldHolder) -and @($holderAfter.deleted | Where-Object { $_.path -eq $oldHolder }).Count -eq 1) 'once its nested batch is completed, the old holder follows the normal count policy.'
+
+    # Only the root that registered a workspace reclaims it, even when another root names the same directory.
+    $sharedRoot = Join-Path $tempBase 'shared-path-root'
+    [System.IO.Directory]::CreateDirectory($sharedRoot) | Out-Null
+    $script:Policy.enabled = $false
+    $script:Policy.roots = @($script:Policy.roots) + @([pscustomobject]@{ id = 'shared-owner'; path = $sharedRoot; excludedNames = @() })
+    $foreignOwned = New-TestWorkspace -RootPath $sharedRoot -Name 'owned-elsewhere'
+    Complete-TestWorkspace -RootPath $sharedRoot -WorkspacePath $foreignOwned
+    $otherPolicy = $script:Policy | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    foreach ($root in $otherPolicy.roots) { if ($root.path -eq $sharedRoot) { $root.id = 'shared-intruder' } }
+    $otherPolicy.enabled = $true
+    $otherPolicy.defaults.maxRecentCompleted = 0
+    $foreignResult = Invoke-GeneratedWorkspaceRetention -RootPath $sharedRoot -Policy $otherPolicy -ReferenceRoots @($sharedRoot) -Apply
+    Assert-True ((Test-Path -LiteralPath $foreignOwned) -and @($foreignResult.retained | Where-Object { $_.path -eq $foreignOwned -and $_.reason -like "*Registered under managed root 'shared-owner'*" }).Count -eq 1) 'a workspace registered by another root id is retained with that reason.'
+    $script:Policy.enabled = $true
+    $script:Policy.defaults.maxRecentCompleted = $holderPolicyRecent
+    $script:Policy.defaults.maxBytes = $holderPolicyBytes
+
     # File locks are checked before any workspace content is removed.
     $lockedRoot = $rootPaths[3]
     $locked = New-TestWorkspace -RootPath $lockedRoot -Name 'locked'

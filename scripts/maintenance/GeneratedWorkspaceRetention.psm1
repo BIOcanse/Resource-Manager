@@ -932,6 +932,18 @@ function Add-GWScanNode {
     }
 }
 
+function Test-GWNestedMarkerReclaimable {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][long]$Length)
+
+    if ($Length -le 0 -or $Length -gt $script:GeneratedWorkspaceMarkerMaxBytes) { return $false }
+    try {
+        $state = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+        return [string]::Equals([string](Get-GWProperty $state 'state' ''), 'completed', [System.StringComparison]::Ordinal) -and
+            -not [bool](Get-GWProperty $state 'keep' $false)
+    }
+    catch { return $false }
+}
+
 function Get-GWTreeSnapshot {
     param(
         [Parameter(Mandatory)][string]$WorkspacePath,
@@ -948,6 +960,10 @@ function Get-GWTreeSnapshot {
         $reparsePaths = [System.Collections.Generic.List[string]]::new()
     }
     $reparseCount = 0
+    # A nested workspace registered by its own root is protected while it is running, kept or unreadable;
+    # deleting this tree would delete it with it. Completed nested batches follow their own root's retention.
+    $nestedOwnerPath = $null
+    $topMarker = [System.IO.Path]::Combine($WorkspacePath, $script:GeneratedWorkspaceMarkerName)
     $complete = $true
     $errorMessage = $null
     if ($CaptureDeletionSnapshot) {
@@ -976,6 +992,12 @@ function Get-GWTreeSnapshot {
                 else {
                     $file = [System.IO.FileInfo]$entry
                     if (-not $file.Exists) { throw "File changed during tree scan: $($entry.FullName)" }
+                    if ($null -eq $nestedOwnerPath -and
+                        [string]::Equals($file.Name, $script:GeneratedWorkspaceMarkerName, [System.StringComparison]::OrdinalIgnoreCase) -and
+                        -not [string]::Equals($file.FullName, $topMarker, [System.StringComparison]::OrdinalIgnoreCase) -and
+                        -not (Test-GWNestedMarkerReclaimable -Path $file.FullName -Length ([long]$file.Length))) {
+                        $nestedOwnerPath = $file.FullName
+                    }
                     $bytes += [long]$file.Length
                     if ($CaptureDeletionSnapshot) {
                         $stamp = [System.Tuple[long, long]]::new([long]$file.Length, [long]$file.LastWriteTimeUtc.Ticks)
@@ -1004,10 +1026,30 @@ function Get-GWTreeSnapshot {
         Directories = $directoryValues
         ReparsePaths = $reparseValues
         ReparseCount = $reparseCount
+        NestedOwnerPath = $nestedOwnerPath
         DeletionSnapshotCaptured = [bool]$CaptureDeletionSnapshot
         Complete = $complete
         Error = $errorMessage
     }
+}
+
+# The reasons a tree snapshot makes a workspace ineligible: it could not be fully inspected, it holds a
+# reparse point, or it holds a nested workspace that is running, kept or unreadable.
+function Add-GWSnapshotBlockedReason {
+    param([Parameter(Mandatory)][object]$Item, [Parameter(Mandatory)][object]$Snapshot)
+
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace([string]$Item.BlockedReason)) { $reasons.Add([string]$Item.BlockedReason) }
+    if (-not $Snapshot.Complete) {
+        $reasons.Add($(if ($reasons.Count -gt 0) { [string]$Snapshot.Error } else { 'Workspace could not be fully inspected: ' + $Snapshot.Error }))
+    }
+    if ([int]$Snapshot.ReparseCount -gt 0) {
+        $reasons.Add($(if ($reasons.Count -gt 0) { 'reparse point found in workspace.' } else { 'Reparse point found in workspace.' }))
+    }
+    if ($null -ne $Snapshot.NestedOwnerPath) {
+        $reasons.Add('Contains a nested workspace that is running, kept or unreadable: ' + $Snapshot.NestedOwnerPath)
+    }
+    if ($reasons.Count -gt 0) { $Item.BlockedReason = $reasons -join '; ' }
 }
 
 function Test-GWFilesUnoccupied {
@@ -1093,6 +1135,11 @@ function Get-GWRootCatalog {
                 $item.StateRecord = $marker.State
                 $item.CompletedUtc = $marker.State.completedUtc
                 $item.Outcome = $marker.State.outcome
+                $recordRootId = [string](Get-GWProperty $marker.State 'rootId' '')
+                if ($null -ne $rootConfig -and -not [string]::Equals($recordRootId, $rootId, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    # Only the root that registered a workspace may reclaim it.
+                    $item.BlockedReason = "Registered under managed root '$recordRootId', not '$rootId'."
+                }
                 if ($item.State -eq 'completed') {
                     try { $item.CompletionTicks = ([DateTimeOffset]::Parse([string]$item.CompletedUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)).UtcDateTime.Ticks }
                     catch { $item.BlockedReason = 'Completed timestamp is invalid.' }
@@ -1127,13 +1174,8 @@ function Get-GWRootCatalog {
             $item.Snapshot = $snapshot
             $item.Bytes = [long]$snapshot.Bytes
             $item.SizeKnown = [bool]$snapshot.Complete -and [int]$snapshot.ReparseCount -eq 0
-            if (-not $snapshot.Complete) {
-                $item.BlockedReason = if ($item.BlockedReason) { $item.BlockedReason + '; ' + $snapshot.Error } else { 'Workspace could not be fully inspected: ' + $snapshot.Error }
-                if ($budget.Exceeded) { $catalogComplete = $false }
-            }
-            if ([int]$snapshot.ReparseCount -gt 0) {
-                $item.BlockedReason = if ($item.BlockedReason) { $item.BlockedReason + '; reparse point found in workspace.' } else { 'Reparse point found in workspace.' }
-            }
+            Add-GWSnapshotBlockedReason -Item $item -Snapshot $snapshot
+            if (-not $snapshot.Complete -and $budget.Exceeded) { $catalogComplete = $false }
             if ($item.Registered -and $item.State -eq 'completed' -and -not $item.Keep -and $null -eq $item.BlockedReason -and $item.SizeKnown) {
                 $occupancy = Test-GWFilesUnoccupied -FilePaths @($snapshot.Files) -RootPath $entry.FullName -Limits $limits
                 if (-not $occupancy.Unoccupied) { $item.BlockedReason = 'Workspace is locked or a file cannot be checked: ' + $occupancy.Path + ' (' + $occupancy.Reason + ')' }
@@ -1572,13 +1614,8 @@ function Expand-GWTargetCatalog {
         $item.Snapshot = $snapshot
         $item.Bytes = [long]$snapshot.Bytes
         $item.SizeKnown = [bool]$snapshot.Complete -and [int]$snapshot.ReparseCount -eq 0
-        if (-not $snapshot.Complete) {
-            $item.BlockedReason = if ($item.BlockedReason) { $item.BlockedReason + '; ' + $snapshot.Error } else { 'Workspace could not be fully inspected: ' + $snapshot.Error }
-            if ($budget.Exceeded) { $complete = $false }
-        }
-        if ([int]$snapshot.ReparseCount -gt 0) {
-            $item.BlockedReason = if ($item.BlockedReason) { $item.BlockedReason + '; reparse point found in workspace.' } else { 'Reparse point found in workspace.' }
-        }
+        Add-GWSnapshotBlockedReason -Item $item -Snapshot $snapshot
+        if (-not $snapshot.Complete -and $budget.Exceeded) { $complete = $false }
         if ($capture -and $null -eq $item.BlockedReason -and $item.SizeKnown) {
             $occupancy = Test-GWFilesUnoccupied -FilePaths @($snapshot.Files) -RootPath $item.Path -Limits $MetadataCatalog.Limits
             if (-not $occupancy.Unoccupied) { $item.BlockedReason = 'Workspace is locked or a file cannot be checked: ' + $occupancy.Path + ' (' + $occupancy.Reason + ')' }
