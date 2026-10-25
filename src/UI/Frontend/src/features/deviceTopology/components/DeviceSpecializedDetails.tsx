@@ -1,5 +1,5 @@
 import { mountStateLabel } from "../deviceVocabulary.ts";
-import { For, Match, Show, Switch } from "solid-js";
+import { For, Index, Match, Show, Switch } from "solid-js";
 import type {
   AudioDeviceModel,
   CameraDeviceModel,
@@ -168,30 +168,30 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel; information:
       ])} />
       <Show when={props.model.partitions.length > 0}>
         <div class="device-storage-partitions" aria-label={uiText.deviceSpecialized.partitionsAndVolumes}>
-          <For each={props.model.partitions}>
+          <Index each={props.model.partitions}>
             {(partition) => (
               <div class="device-storage-partition">
                 <header>
-                  <strong>{uiText.deviceSpecialized.partition(String(partition.partitionNumber ?? "--"))}</strong>
-                  <span>{formatBytes(partition.capacityBytes)} · {partition.type ?? uiText.deviceSpecialized.formatNotReported}</span>
+                  <strong>{uiText.deviceSpecialized.partition(String(partition().partitionNumber ?? "--"))}</strong>
+                  <span>{formatBytes(partition().capacityBytes)} · {partition().type ?? uiText.deviceSpecialized.formatNotReported}</span>
                 </header>
-                <Show when={partition.volumes.length > 0} fallback={<small>{uiText.deviceSpecialized.noMountedVolume}</small>}>
-                  <For each={partition.volumes}>
+                <Show when={partition().volumes.length > 0} fallback={<small>{uiText.deviceSpecialized.noMountedVolume}</small>}>
+                  <Index each={partition().volumes}>
                     {(volume) => (
                       <div class="device-storage-volume">
                         <div>
-                          <strong>{volume.driveLetter ?? volume.label ?? uiText.deviceSpecialized.volumeWithoutLetter}</strong>
-                          <span>{volume.fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeMountState(volume.mountState)}</span>
+                          <strong>{volume().driveLetter ?? volume().label ?? uiText.deviceSpecialized.volumeWithoutLetter}</strong>
+                          <span>{volume().fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeMountState(volume().mountState)}</span>
                         </div>
-                        <small>{formatVolumeCapacity(volume.capacityBytes, currentVolumeFreeBytes(props.information, volume.driveLetter))}</small>
-                        <VolumeUsage capacity={volume.capacityBytes} free={currentVolumeFreeBytes(props.information, volume.driveLetter)} />
+                        <small>{formatVolumeCapacity(volume().capacityBytes, currentVolumeFreeBytes(props.information, volume().driveLetter))}</small>
+                        <VolumeUsage capacity={volume().capacityBytes} free={currentVolumeFreeBytes(props.information, volume().driveLetter)} />
                       </div>
                     )}
-                  </For>
+                  </Index>
                 </Show>
               </div>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
     </>
@@ -247,11 +247,11 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
       </Show>
       <Show when={props.model.nativeModes.length > 0}>
         <div class="device-camera-modes" aria-label={uiText.deviceSpecialized.cameraNativeModes}>
-          <For each={props.model.nativeModes}>
+          <Index each={props.model.nativeModes}>
             {(mode) => (
-              <span>{mode.width} x {mode.height} @ {mode.maximumFrameRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} fps · {mode.pixelFormat}</span>
+              <span>{mode().width} x {mode().height} @ {mode().maximumFrameRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} fps · {mode().pixelFormat}</span>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
       <Show when={props.model.interfaceProtocols.length > 0}>
@@ -283,14 +283,14 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
       ]} />
       <Show when={props.model.storages.length > 0}>
         <div class="device-smart-storage">
-          <For each={props.model.storages}>
+          <Index each={props.model.storages}>
             {(storage) => (
               <div>
-                <strong>{storage.name}</strong>
-                <span>{storage.fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeCapacity(storage.capacityBytes, storage.freeBytes)}</span>
+                <strong>{storage().name}</strong>
+                <span>{storage().fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeCapacity(storage().capacityBytes, storage().freeBytes)}</span>
               </div>
             )}
-          </For>
+          </Index>
         </div>
       </Show>
     </>
@@ -353,9 +353,9 @@ function hasInputMetrics(model: KeyboardDeviceModel | MouseDeviceModel, vendorMe
 function FactRows(props: { fields: Array<[string, string]> }) {
   return (
     <div class="device-specialized-facts">
-      <For each={props.fields}>
-        {([label, value]) => <><span>{label}</span><strong>{value}</strong></>}
-      </For>
+      <Index each={props.fields}>
+        {(field) => <><span>{field()[0]}</span><strong>{field()[1]}</strong></>}
+      </Index>
     </div>
   );
 }
@@ -367,14 +367,14 @@ function reportedFacts(fields: Array<[string, string]>) {
 function StatusStrip(props: { values: Array<[string, boolean]> }) {
   return (
     <div class="device-capability-status">
-      <For each={props.values}>
-        {([label, active]) => (
-          <div classList={{ active }}>
-            <span>{label}</span>
-            <strong>{active ? uiText.deviceSpecialized.supported : uiText.deviceSpecialized.notReported}</strong>
+      <Index each={props.values}>
+        {(status) => (
+          <div classList={{ active: status()[1] }}>
+            <span>{status()[0]}</span>
+            <strong>{status()[1] ? uiText.deviceSpecialized.supported : uiText.deviceSpecialized.notReported}</strong>
           </div>
         )}
-      </For>
+      </Index>
     </div>
   );
 }

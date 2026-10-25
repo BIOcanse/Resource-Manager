@@ -1,4 +1,4 @@
-import { For, Show, createUniqueId, type JSX } from "solid-js";
+import { Index, Show, createUniqueId, type JSX } from "solid-js";
 import { uiText } from "../text.ts";
 import type { UserDetailSection } from "../presentation/userDetails";
 import {
@@ -40,23 +40,24 @@ export function UserDetailsDialog(props: {
         <Show when={props.summary}>
           {(summary) => <p class="user-details-summary">{summary()}</p>}
         </Show>
-        <For each={props.sections ?? []}>
+        {/* 详情随实时数据每次推送重建；按位置复用行，只更新文字，阅读和选中复制时内容不被整块替换。 */}
+        <Index each={props.sections ?? []}>
           {(section) => (
             <section class="user-details-section">
-              <Show when={section.title}>{(title) => <h3>{title()}</h3>}</Show>
+              <Show when={section().title}>{(title) => <h3>{title()}</h3>}</Show>
               <dl>
-                <For each={section.items}>
+                <Index each={section().items}>
                   {(item) => (
                     <div class="user-details-row">
-                      <dt>{item.label}</dt>
-                      <dd>{item.value}</dd>
+                      <dt>{item().label}</dt>
+                      <dd>{item().value}</dd>
                     </div>
                   )}
-                </For>
+                </Index>
               </dl>
             </section>
           )}
-        </For>
+        </Index>
         {props.children}
       </DialogBody>
       <DialogActions>

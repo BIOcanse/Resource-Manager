@@ -46,6 +46,7 @@ const defaultScenario = {
   deviceTopologyInvalid: false,
   invalidMetricFields: false,
   deviceTopologyNullProtocol: false,
+  deviceTopologyPortCount: null,
   displayEdid: "off",
   animations: "normal",
   gpuGrade: "normal",
@@ -923,6 +924,16 @@ function fixtureManyOperations() {
   }));
 }
 
+// 一长串接口，让设备清单需要滚动。
+function fixtureManyHdmiPorts(count) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...fixtureHdmiPort(),
+    id: `fixture-hdmi-many-${index + 1}`,
+    deviceId: `DISPLAY\\FIXTURE_HDMI_MANY_${index + 1}`,
+    topologyPath: { domain: 5, code: 64, args: [`root/fixture-hdmi-many-${index + 1}`] }
+  }));
+}
+
 function fixtureHdmiPort() {
   return {
     id: "fixture-hdmi-1",
@@ -1749,7 +1760,8 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
         baseBoardManufacturer: null,
         baseBoardProduct: null
       },
-      ports: scenario.deviceTopologyNullProtocol ? [fixtureHdmiPort(), {
+      ports: Number.isSafeInteger(scenario.deviceTopologyPortCount) ? fixtureManyHdmiPorts(scenario.deviceTopologyPortCount)
+        : scenario.deviceTopologyNullProtocol ? [fixtureHdmiPort(), {
         ...fixtureHdmiPort(), id: "fixture-null-protocol", deviceId: "DISPLAY\\FIXTURE_NULL_PROTOCOL", protocol: null
       }] : scenario.displayEdid === "identity" ? [fixtureHdmiPort(), { ...fixtureHdmiPort(), id: "fixture-hdmi-2", deviceId: "DISPLAY\\FIXTURE_HDMI_2",
         display: { ...fixtureDisplayEdid(), monitorDevicePath: "different-monitor-path", modeCapabilityDeclared: null } }] : [fixtureHdmiPort()],

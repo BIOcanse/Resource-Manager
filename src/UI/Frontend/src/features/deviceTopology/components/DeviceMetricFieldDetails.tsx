@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Index, Show } from "solid-js";
 import type { MetricFieldDevice } from "../../../data/metricFields/metricFieldSource.ts";
 import { deviceMetricSections } from "../deviceMetricFields.ts";
 import { ReadingSourceMark } from "../../../components/ReadingSourceMark.tsx";
@@ -9,25 +9,25 @@ import { ReadingSourceMark } from "../../../components/ReadingSourceMark.tsx";
  */
 export function DeviceMetricFieldDetails(props: { devices: readonly MetricFieldDevice[] | null; deviceId: string }) {
   return (
-    <For each={deviceMetricSections(props.devices, props.deviceId)}>
+    <Index each={deviceMetricSections(props.devices, props.deviceId)}>
       {(section) => (
         <section class="user-details-section">
-          <h3 title={section.hint ?? undefined}>{section.title}</h3>
-          <Show when={section.hint}>
+          <h3 title={section().hint ?? undefined}>{section().title}</h3>
+          <Show when={section().hint}>
             {(hint) => <p class="user-details-note">{hint()}</p>}
           </Show>
           <dl>
-            <For each={section.rows}>
+            <Index each={section().rows}>
               {(row) => (
                 <div class="user-details-row">
-                  <dt title={row.hint ?? undefined}>{row.label}<ReadingSourceMark mark={row.mark} /></dt>
-                  <dd>{row.value}</dd>
+                  <dt title={row().hint ?? undefined}>{row().label}<ReadingSourceMark mark={row().mark} /></dt>
+                  <dd>{row().value}</dd>
                 </div>
               )}
-            </For>
+            </Index>
           </dl>
         </section>
       )}
-    </For>
+    </Index>
   );
 }

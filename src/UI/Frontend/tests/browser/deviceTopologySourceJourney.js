@@ -207,6 +207,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   assert((await protocolRow.locator("dd").textContent()) === app.deviceTopology.deviceCategory.unknown, "Only the nullable port protocol shows localized unknown");
   await page.keyboard.press("Escape");
   await protocolDialog.waitFor({ state: "hidden" });
+  const scrolledSelection = await checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath);
   await setScenario(page, { deviceTopologyInvalid: true });
   await topology.locator(".observation-state.error").waitFor();
   assert(await topology.locator(".device-port-item").count() === 0, "Decode failure clears the current topology");
@@ -217,7 +218,10 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await waitForTelemetry(page, subscriptionPath, value => value.logicalInFlight === 0);
-  assert(await topology.locator(".device-port-item").count() === 0, "Hidden topology drops its current data");
+  // 需求撤销只停止采样，不清除已接受的值（用户 2026-10-24：「应该保持在最晚接受到的数据的状态」）。
+  const hiddenItems = await topology.locator(".device-port-item").count();
+  assert(hiddenItems > 0 && await topology.locator(".observation-state.error").count() === 0,
+    `Hidden topology must keep its last accepted value: ${hiddenItems}`);
   await setScenario(page, { deviceTopologyInvalid: true });
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
@@ -258,7 +262,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     dom,
     nullableProtocolAccepted: true,
     metricFailureClearsOnlyItsOwnData: true,
-    failedAndHiddenCurrentCleared: true,
+    failureClearsHiddenRetains: true,
     edidDetails,
     type3Details,
     typeXDetails,
@@ -266,6 +270,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     detachedDetails,
     longTextPresentation,
     constrainedList,
+    scrolledSelection,
     firstActivation,
     firstChannel,
     active,
@@ -298,6 +303,65 @@ async function checkDetachedDisplayDialog(page, app) {
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
   return details;
+}
+
+// 清单滚到下面点选一项后，后续推送不能让清单跳回顶部，也不能把条目和详情行整块重建
+// （每次推送节点对象都是新的，按对象做键时整张清单被删掉重建，带焦点的按钮一删清单就回到顶部）。
+async function checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath) {
+  const portCount = 24;
+  const rootCount = await topology.locator(".device-port-item:not(.nested)").count();
+  await setScenario(page, { deviceTopologyPortCount: portCount, displayEdid: "off" });
+  await page.waitForFunction((count) =>
+    document.querySelectorAll(".device-topology-panel .device-port-item").length === count, portCount);
+  const list = topology.locator(".device-port-list");
+  await list.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const target = topology.locator(".device-port-item").nth(portCount - 2);
+  await target.click();
+  const before = await list.evaluate((element, index) => {
+    const button = element.querySelectorAll(".device-port-item")[index];
+    button.dataset.scrollProbe = "selected";
+    return { scrollTop: element.scrollTop, maxScroll: element.scrollHeight - element.clientHeight };
+  }, portCount - 2);
+  assert(before.maxScroll > 200 && before.scrollTop > 200,
+    `The fixture list does not scroll far enough to observe a jump: ${JSON.stringify(before)}`);
+  const published = (await readTelemetry(page, subscriptionPath)).publications;
+  await waitForTelemetry(page, subscriptionPath, value => value.publications >= published + 2);
+  await page.waitForTimeout(100);
+  const after = await list.evaluate((element) => {
+    const probe = element.querySelector('[data-scroll-probe="selected"]');
+    return {
+      scrollTop: element.scrollTop,
+      probeConnected: probe !== null,
+      probeFocused: probe !== null && document.activeElement === probe,
+      probePressed: probe?.getAttribute("aria-pressed") ?? null
+    };
+  });
+  assert(Math.abs(after.scrollTop - before.scrollTop) <= 1
+    && after.probeConnected && after.probeFocused && after.probePressed === "true",
+  `Selecting a scrolled device lost its place after a publication: ${JSON.stringify({ before, after })}`);
+
+  await topology.locator(".device-details-button").click();
+  const dialog = page.locator(".user-details-modal:visible");
+  await dialog.waitFor();
+  const rowCount = await dialog.evaluate((element) => {
+    const rows = element.querySelectorAll(".user-details-row");
+    rows.forEach((row) => { row.dataset.publicationProbe = "kept"; });
+    return rows.length;
+  });
+  const dialogPublished = (await readTelemetry(page, subscriptionPath)).publications;
+  await waitForTelemetry(page, subscriptionPath, value => value.publications >= dialogPublished + 2);
+  await page.waitForTimeout(100);
+  const keptRows = await dialog.evaluate((element) =>
+    element.querySelectorAll('.user-details-row[data-publication-probe="kept"]').length);
+  assert(rowCount > 0 && keptRows === rowCount,
+    `Device details rows were rebuilt by a publication: ${JSON.stringify({ rowCount, keptRows })}`);
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+
+  await setScenario(page, { deviceTopologyPortCount: null, displayEdid: "ready" });
+  await page.waitForFunction((count) =>
+    document.querySelectorAll(".device-topology-panel .device-port-item:not(.nested)").length === count, rootCount);
+  return { before, after, rowCount, keptRows };
 }
 
 async function setScenario(page, patch) {

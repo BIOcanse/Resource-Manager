@@ -1,5 +1,5 @@
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import {
   Bluetooth,
   BatteryCharging,
@@ -100,6 +100,10 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       ? filterExternalInterfaceTree(externalTree().nodes, query)
       : filterInternalInterfaceTree(internalTree().nodes, query);
   });
+  // 每次推送都会重建节点对象；清单按节点 id 渲染，同一节点的按钮在推送之间保持不变，
+  // 否则整张清单每次都被删除重建，带焦点的按钮被删掉时清单会跳回顶部。
+  const visibleNodeIds = createMemo(() => visibleNodes().map((node) => node.id));
+  const visibleNodeById = createMemo(() => new Map(visibleNodes().map((node) => [node.id, node])));
   const selectedNode = createMemo(() => {
     const selected = selectedNodeId();
     return visibleNodes().find((node) => node.id === selected) ?? visibleNodes()[0] ?? null;
@@ -235,38 +239,41 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                   when={visibleNodes().length > 0}
                   fallback={<p class="device-topology-empty">{sectionNodes().length > 0 ? uiText.deviceTopology.noMatch : uiText.deviceTopology.noneFound(scopeTitle())}</p>}
                 >
-                  <For each={visibleNodes()}>
-                    {(node) => (
+                  <For each={visibleNodeIds()}>
+                    {(nodeId) => {
+                      const node = () => visibleNodeById().get(nodeId)!;
+                      return (
                         <button
                           type="button"
                           class="device-port-item"
                           classList={{
-                            active: selectedNode()?.id === node.id,
-                            disconnected: node.connectionState === "disconnected",
-                            nested: node.depth > 0,
-                            "device-node": isDeviceRole(node.role)
+                            active: selectedNode()?.id === nodeId,
+                            disconnected: node().connectionState === "disconnected",
+                            nested: node().depth > 0,
+                            "device-node": isDeviceRole(node().role)
                           }}
-                          aria-pressed={selectedNode()?.id === node.id}
-                          style={`--device-tree-depth:${Math.min(node.depth, 8)}`}
-                          onClick={() => setSelectedNodeId(node.id)}
-                          title={node.path?.join(" → ") ?? (node.subtitle ? `${node.title} · ${node.subtitle}` : node.title)}
+                          aria-pressed={selectedNode()?.id === nodeId}
+                          style={`--device-tree-depth:${Math.min(node().depth, 8)}`}
+                          onClick={() => setSelectedNodeId(nodeId)}
+                          title={node().path?.join(" → ") ?? (node().subtitle ? `${node().title} · ${node().subtitle}` : node().title)}
                         >
-                          <DeviceConnectorIcon kind={node.iconKind ?? node.connectorKind} />
+                          <DeviceConnectorIcon kind={node().iconKind ?? node().connectorKind} />
                           <span class="device-port-main">
-                            <strong>{node.title}</strong>
-                            <small>{node.subtitle}</small>
+                            <strong>{node().title}</strong>
+                            <small>{node().subtitle}</small>
                           </span>
                           <span
                             class="device-port-protocol"
                             classList={{
-                              connected: node.connectionState === "connected",
-                              disconnected: node.connectionState === "disconnected"
+                              connected: node().connectionState === "connected",
+                              disconnected: node().connectionState === "disconnected"
                             }}
                           >
-                            {node.badge}
+                            {node().badge}
                           </span>
                         </button>
-                    )}
+                      );
+                    }}
                   </For>
                 </Show>
               </aside>
@@ -318,14 +325,14 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         when={selectedNode()?.specializedDevice}
                         fallback={
                           <div class="device-detail-summary" aria-label={uiText.deviceTopology.keyFacts}>
-                            <For each={selectedPortSummary()}>
+                            <Index each={selectedPortSummary()}>
                               {(field) => (
                                 <div class="device-detail-summary-item">
-                                  <span>{field.label}</span>
-                                  <strong>{field.value}</strong>
+                                  <span>{field().label}</span>
+                                  <strong>{field().value}</strong>
                                 </div>
                               )}
-                            </For>
+                            </Index>
                           </div>
                         }
                       >
