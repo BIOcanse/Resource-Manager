@@ -174,7 +174,7 @@ try {
       ["consumer.resourceMetricBasis(disk)", resourceMetricBasis("disk.read"), "实际完成的物理磁盘读写；缓存命中和网络文件读写不计入。未识别属主的传输留在未归属部分，写缓存回写可能归到系统进程。"],
       ["consumer.userFacingMessage(disk-window)", userFacingMessage("ETW DiskIO 采样窗口不完整。", uiText.status.state.warming), "ETW DiskIO 采样窗口不完整。"],
       ["consumer.resourceMetricBasis(memory-bar)", resourceMetricBasis("memory.usage"), "整机：物理内存实际用量 / 物理容量。进程分项：私有驻留字节；共享页和系统用量留在未归属部分。读取不可用时不编造进程分项。"],
-      ["consumer.resourceMetricBasis(memory-table)", resourceMetricBasis("memory", "table"), "整机：物理内存实际用量 / 物理容量。进程：驻留工作集，含共享页；跨进程求和可能重复计算共享页。"],
+      ["consumer.resourceMetricBasis(memory-table)", resourceMetricBasis("memory", "table"), "整机：物理内存实际用量 / 物理容量。进程：私有工作集，只算该进程独占的驻留页，不含共享页；共享页和系统用量留在未归属部分，所以各进程之和小于整机用量。"],
       ["consumer.userFacingMessage(uninstaller)", userFacingMessage("已向用户桌面请求启动 Windows 注册表提供的卸载器；需要提升时由 Windows 提示。完成后请刷新软件清单。", "fallback"), "已向用户桌面请求启动卸载器；需要提升时由 Windows 提示。完成后请刷新软件清单。"],
       ["consumer.userFacingMessage(uninstaller-session)", userFacingMessage("The requesting user session is no longer available.", "fallback"), "用户会话已退出或改变，未启动卸载器。"],
       ["consumer.systemProcessResultSummary", systemProcessResultSummary({ action: "Terminate", items: [{ processId: 1, processName: "owned", state: "Succeeded", outcome: "Terminated" }, { processId: 2, processName: "owned", state: "Skipped", outcome: "ProcessExited" }] }).message, "已结束 1 / 2 个进程。"],

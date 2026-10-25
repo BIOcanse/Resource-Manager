@@ -347,6 +347,80 @@ body.pointer-reordering * {
   padding: 12px;
 }
 
+/* 选中项有多个来源时，列表下面多一行“来源”。 */
+.metric-picker.with-source {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.metric-picker-source {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.metric-picker-source-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.metric-picker-source-heading strong {
+  font-size: 13px;
+}
+
+.metric-picker-source-heading small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.metric-source-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 4px;
+  max-height: 132px;
+  overflow: auto;
+}
+
+.metric-source-choice {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+
+.metric-source-choice:hover {
+  background: var(--surface-strong);
+}
+
+.metric-source-choice.active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+}
+
+.metric-source-choice-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-source-choice-mark {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* 窄窗口下改为上下排列的规则在 responsive.css，需保持单类优先级。 */
 .metric-picker-toolbar {
   display: flex;

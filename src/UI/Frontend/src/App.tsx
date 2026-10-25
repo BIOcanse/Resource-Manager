@@ -354,6 +354,7 @@ export default function App() {
       <MetricModal
         open={Boolean(monitor.metricModalTarget())}
         catalog={monitor.pickerCatalog()}
+        sourceCatalog={monitor.cardCatalog()}
         components={management.components()}
         selectedMetricId={monitor.selectedMetricId()}
         onSelect={monitor.setSelectedMetricId}

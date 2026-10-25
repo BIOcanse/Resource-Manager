@@ -111,7 +111,8 @@ export function fieldCardDefinitions(catalog: readonly MetricFieldCatalogDevice[
         selectable: true,
         scopeKind: deviceFieldScopeKind,
         scopeKey: device.deviceIdentity,
-        readingSource: readingSource(field.reading)
+        readingSource: readingSource(field.reading),
+        reading: field.reading
       }));
   });
 }

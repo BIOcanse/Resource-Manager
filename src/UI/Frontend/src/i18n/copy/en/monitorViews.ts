@@ -86,6 +86,10 @@ export const enMonitorViewsCopy: Pick<
     listLabel: "Monitoring items",
     empty: "No matching monitoring item",
     needsInstall: (name: string) => `Needs installing: ${name}`,
+    sourceLabel: "Source",
+    sourceAutomatic: (current: string | null) => current ? `Automatic (now ${current})` : "Automatic",
+    sourcePreferred: "Preferred here",
+    sourceHint: "Automatic lets the app pick the most accurate source for this PC. A specific source is read on its own and shows as unavailable when it cannot be read.",
     deviceFields: "Device fields",
     cancel: "Cancel",
     confirm: "Confirm"

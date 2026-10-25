@@ -81,6 +81,10 @@ export const zhMonitorViewsCopy = {
     listLabel: "监控项",
     empty: "没有匹配的监控项",
     needsInstall: (name: string) => `需要安装：${name}`,
+    sourceLabel: "来源",
+    sourceAutomatic: (current: string | null) => current ? `自动选择（现在是 ${current}）` : "自动选择",
+    sourcePreferred: "本机首选",
+    sourceHint: "自动选择由程序按这台机器挑最准的来源；选了具体来源就只读它，读不到时显示不可用。",
     deviceFields: "设备字段",
     cancel: "取消",
     confirm: "确定"

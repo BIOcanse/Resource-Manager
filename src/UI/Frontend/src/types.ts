@@ -1,3 +1,5 @@
+import type { MetricFieldReading } from "./data/metricFields/metricFieldSource.ts";
+
 export type PageId =
   | "monitor"
   | "components"
@@ -112,6 +114,8 @@ export interface MetricDefinition {
   valueKind?: string | null;
   /** 设备字段在当前读数来源设置下是否列进选择器、带什么标记；不是设备字段时没有。 */
   readingSource?: ReadingSourceDisplay;
+  /** 设备字段的读取项（后端原样）；同一 id 的字段是同一物理量的不同来源。不是设备字段或没有读取项时没有。 */
+  reading?: MetricFieldReading | null;
 }
 
 export interface MetricValue {

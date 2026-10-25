@@ -1,6 +1,6 @@
 import { localizedMetricLabel, metricUnitLabel } from "../../presentation/metricLabels";
 import { PackagePlus, Search, X } from "lucide-solid";
-import { createEffect, createMemo, createSelector, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSelector, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
@@ -25,6 +25,8 @@ import { isComponentInstalled, textOrEmpty } from "../../utils";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
+import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import { metricSourceChoices, type MetricSourceChoice } from "./metricSources.ts";
 
 interface MetricModalProps {
   open: boolean;
@@ -33,6 +35,11 @@ interface MetricModalProps {
   selectedMetricId: string | null;
   selectedMetricIds?: readonly string[];
   multiSelect?: boolean;
+  /**
+   * 卡片目录（部件地址加全部设备字段，不按读数来源设置筛）。给了它，单选时在列表下面摆“来源”：
+   * 选中的这一项有不止一个来源时，可以留“自动选择”，也可以指定一个。
+   */
+  sourceCatalog?: readonly MetricDefinition[];
   onSelect: (metricId: string) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -130,6 +137,19 @@ export function MetricModal(props: MetricModalProps) {
       || metric.id.toLocaleLowerCase().includes(filter)
       || userFacingMetricGroup(metric.group).toLocaleLowerCase().includes(filter));
   });
+  // 先选项目、再选来源：选中项所在读数的全部来源；选了其中一个来源，列表里同一读数的项目也标为选中。
+  const sourceChoices = createMemo<readonly MetricSourceChoice[]>(() =>
+    props.open && !props.multiSelect && props.sourceCatalog
+      ? metricSourceChoices(props.selectedMetricId, props.sourceCatalog) : []);
+  const sourceChoiceIds = createMemo(() => new Set(sourceChoices().map((choice) => choice.metricId)));
+  const sourceValue = () => {
+    const index = sourceChoices().findIndex((choice) => choice.metricId === props.selectedMetricId);
+    return index < 0 ? "" : `source-${index}`;
+  };
+  const sourceName = (source: MetricDefinition) => `${localizedMetricLabel(source.id, source.label)} · ${source.group}`;
+  const sourceLabel = (choice: MetricSourceChoice) => choice.automatic
+    ? uiText.metricPicker.sourceAutomatic(choice.source ? sourceName(choice.source) : null)
+    : sourceName(choice.source!);
   const enabledMetricIds = createMemo(() => filteredMetrics()
     .filter((metric) => !metricUnavailable(metric))
     .map((metric) => metric.id));
@@ -269,7 +289,7 @@ export function MetricModal(props: MetricModalProps) {
         titleId="metricModalTitle"
         onDismiss={props.onClose}
       />
-      <DialogBody class="metric-picker">
+      <DialogBody class={sourceChoices().length > 0 ? "metric-picker with-source" : "metric-picker"}>
         <div class="metric-picker-toolbar">
           <label class="metric-picker-search">
             <Search size={16} aria-hidden="true" />
@@ -353,7 +373,7 @@ export function MetricModal(props: MetricModalProps) {
                             class="metric-option"
                             classList={{
                               active: isActiveMetric(metric.id),
-                              selected: isSelected(metric.id),
+                              selected: isSelected(metric.id) || sourceChoiceIds().has(metric.id),
                               "requires-dependency": (dependency()?.missing ?? false) && !unavailable(),
                               unavailable: unavailable()
                             }}
@@ -401,6 +421,30 @@ export function MetricModal(props: MetricModalProps) {
             }}
           </For>
         </div>
+        <Show when={sourceChoices().length > 0}>
+          <div class="metric-picker-source">
+            <div class="metric-picker-source-heading">
+              <strong>{uiText.metricPicker.sourceLabel}</strong>
+              <small>{uiText.metricPicker.sourceHint}</small>
+            </div>
+            <RadioGroupRoot class="metric-source-choices" orientation="vertical" ariaLabel={uiText.metricPicker.sourceLabel}
+              value={sourceValue()} onChange={(value) => {
+                const choice = sourceChoices()[Number(value.slice("source-".length))];
+                if (choice) props.onSelect(choice.metricId);
+              }}>
+              <Index each={sourceChoices()}>
+                {(choice, index) => (
+                  <RadioGroupItem value={`source-${index}`} class="metric-source-choice" title={sourceLabel(choice())}>
+                    <span class="metric-source-choice-label">{sourceLabel(choice())}</span>
+                    <Show when={choice().preferred}>
+                      <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
+                    </Show>
+                  </RadioGroupItem>
+                )}
+              </Index>
+            </RadioGroupRoot>
+          </div>
+        </Show>
       </DialogBody>
       <DialogActions>
         <button class="secondary" type="button" onClick={props.onClose}>{uiText.metricPicker.cancel}</button>

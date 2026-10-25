@@ -89,6 +89,7 @@ const allJourneys = [
   ["control-toggle-choice", controlToggleChoiceJourney],
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
+  ["metric-source-choice", async (...args) => (await import("./metricSourceChoiceJourney.js")).default(...args)],
   ["metric-picker-gpu-names", metricPickerGpuNamesJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
   ["gpu-committed-thresholds", gpuCommittedThresholdsJourney],
