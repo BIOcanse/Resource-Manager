@@ -7,7 +7,8 @@ import { useRuntimeReadContext } from "./app/useRuntimeReadContext";
 import { useShellResizeBinding } from "./app/useShellResizeBinding";
 import { useManagementInventory } from "./features/management/useManagementInventory";
 import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
-import { setInteractionAnimationMode } from "./interactions/solid/lodestone.ts";
+import { createAnimationModeSelection } from "./app/selfScheduling/createAnimationModeSelection";
+import { setInteractionAnimationMode, subscribeInteractionInput } from "./interactions/solid/lodestone.ts";
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
@@ -30,6 +31,7 @@ import { createMonitorStore, type MonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
+  normalizeAnimationMode,
   normalizeBarColorMode
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
@@ -239,10 +241,16 @@ export default function App() {
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
   const systemUptime = readContext.systemUptime;
   const currentSelfScheduling = readContext.selfScheduling;
+  const animationSelection = createAnimationModeSelection({
+    mode: () => normalizeAnimationMode(settings.settings().appearance?.animations),
+    foreground: readContext.foregroundInteractive,
+    gpuGrade: () => currentSelfScheduling()?.gpuGrade ?? "normal",
+    now: () => performance.now()
+  });
+  onCleanup(subscribeInteractionInput(animationSelection.recordInput));
   const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(
     settings.settings().appearance,
-    currentSelfScheduling()?.gpuGrade ?? "normal",
-    readContext.foregroundInteractive()));
+    animationSelection.effectiveMode()));
 
   createEffect(() => {
     const page = activePage();
@@ -281,8 +289,9 @@ export default function App() {
   });
 
   createEffect(() => {
-    document.body.dataset.animations = gpuRuntimePlan().animations;
-    setInteractionAnimationMode(gpuRuntimePlan().animations);
+    const animations = animationSelection.effectiveMode();
+    document.body.dataset.animations = animations;
+    setInteractionAnimationMode(animations);
   });
 
   createEffect(() => {

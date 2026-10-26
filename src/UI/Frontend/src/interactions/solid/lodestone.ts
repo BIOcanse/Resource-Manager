@@ -22,6 +22,13 @@ let runtime: Runtime | null = null;
 let frameRequested = false;
 const [interactionAnimationMode, setAnimationMode] = createSignal<AnimationMode>("normal");
 export { interactionAnimationMode };
+const inputObservers = new Set<() => void>();
+
+/** Observe the existing input stream without installing another set of DOM listeners. */
+export function subscribeInteractionInput(observer: () => void): () => void {
+  inputObservers.add(observer);
+  return () => { inputObservers.delete(observer); };
+}
 
 type Rect = { left: number; top: number; right: number; bottom: number };
 
@@ -69,7 +76,12 @@ export function interactionRuntime(): Runtime {
   if (runtime === null) {
     const created = new Runtime(null, new Trace(), platform, { mode: "optimized" });
     // 认领的松开之后紧随的 click 由引擎的事件接入拦掉（0.2.2，协议第 4.4 节）。
-    attachDom(window, (raw) => created.feed(raw));
+    attachDom(window, (raw) => {
+      if (raw.type === "pointer" || raw.type === "key" || raw.type === "wheel") {
+        for (const observer of inputObservers) observer();
+      }
+      created.feed(raw);
+    });
     runtime = created;
   }
   return runtime;

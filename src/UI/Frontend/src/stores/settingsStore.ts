@@ -40,7 +40,6 @@ import type {
   AppOptimizationMode,
   AppPerformanceSettings,
   AppPresetNumericSetting,
-  ResourceManagerSelfGpuGrade,
   AppPresetNumericSettingMode,
   AppSettings,
   AppSystemIntegrationSettings,
@@ -955,19 +954,6 @@ export function normalizeAnimationMode(animations?: string | null): AppAnimation
   return animations === "normal" ? "normal" : ResourceManager.FrontendPoints.AnimationMode;
 }
 
-
-export function resolveEffectiveAnimationMode(
-  animations?: string | null,
-  selfGpuGrade?: ResourceManagerSelfGpuGrade | null,
-  frontendFocused = true
-): Exclude<AppAnimationMode, "auto"> {
-  const mode = normalizeAnimationMode(animations);
-  if (mode !== "auto") {
-    return mode;
-  }
-
-  return selfGpuGrade === "optimize" && !frontendFocused ? "ultra" : "normal";
-}
 
 export function normalizeBarColorMode(barColorMode?: string | null): AppBarColorMode {
   return barColorMode === "distinct" || barColorMode === "type" ? barColorMode : ResourceManager.FrontendPoints.BarColorMode;
