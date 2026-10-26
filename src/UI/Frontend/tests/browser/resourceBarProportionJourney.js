@@ -53,7 +53,7 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
       }
       return { sharedStart: yellow[0], sharedEnd: yellow.at(-1) + 1, width: canvas.width };
     }));
-    const output = resolve("../../../.codex/local-runs/numeric-audit-20260920/screenshots");
+    const output = resolve(process.env.RM_BROWSER_ARTIFACT_DIR ?? "tests/browser/artifacts");
     mkdirSync(output, { recursive: true });
     await page.screenshot({ path: resolve(output, `shared-${width}.png`) });
   }
