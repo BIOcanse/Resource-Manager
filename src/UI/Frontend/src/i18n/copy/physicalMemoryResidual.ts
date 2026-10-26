@@ -53,17 +53,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "测得的各类别之和超过系统/驱动保留量，本次不作拆分。",
       "capture-output-missing": "本次采集没有产出页帧明细。",
       "process-private-below-attributed": "页帧数据库中的进程私有页面少于已归属的进程私有内存，该差额为负，未列出。",
-      "resource-breakdown-dataset-sample-failed": "本次采样失败。",
-      "resource-breakdown-dataset-output-missing": "本次采样没有产出数据。",
-      "resource-breakdown-dataset-observation-not-current": "本轮观测不完整。"
+      "resource-breakdown-dataset-sample-failed": "本次页帧采样失败。",
+      "system-total-unavailable": "当前没有物理内存的系统总量读数。"
     },
     reasonFamilies: {
-      nativeError: (code: string) => `系统调用失败（Win32 错误 ${code}）。`,
+      nativeError: (code: string) => `读取线程的令牌或模拟操作失败（Win32 错误 ${code}）。`,
       profilePrivilege: (status: string) => `无法为读取线程启用所需的系统权限（状态 ${status}）。`,
       privilegeRestore: (status: string) => `读取后恢复线程权限失败（状态 ${status}）。`,
-      superfetchQuery: (informationClass: string, status: string) => `页帧查询失败（信息类 ${informationClass}，状态 ${status}）。`
-    },
-    unknownReason: "界面没有登记这个原因代码的说明。"
+      superfetchRanges: (status: string) => `物理内存范围查询失败（状态 ${status}）。`,
+      superfetchPages: (status: string) => `页帧批次查询失败（状态 ${status}）。`
+    }
   },
   "zh-TW": {
     kinds: {
@@ -116,17 +115,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "測得的各類別之和超過系統/驅動程式保留量，本次不予拆分。",
       "capture-output-missing": "本次擷取沒有產生分頁框明細。",
       "process-private-below-attributed": "分頁框資料庫中的處理程序私人分頁少於已歸屬的處理程序私人記憶體，該差額為負，未列出。",
-      "resource-breakdown-dataset-sample-failed": "本次取樣失敗。",
-      "resource-breakdown-dataset-output-missing": "本次取樣沒有產生資料。",
-      "resource-breakdown-dataset-observation-not-current": "本輪觀測不完整。"
+      "resource-breakdown-dataset-sample-failed": "本次分頁框取樣失敗。",
+      "system-total-unavailable": "目前沒有實體記憶體的系統總量讀數。"
     },
     reasonFamilies: {
-      nativeError: (code: string) => `系統呼叫失敗（Win32 錯誤 ${code}）。`,
+      nativeError: (code: string) => `讀取執行緒的權杖或模擬作業失敗（Win32 錯誤 ${code}）。`,
       profilePrivilege: (status: string) => `無法為讀取執行緒啟用所需的系統權限（狀態 ${status}）。`,
       privilegeRestore: (status: string) => `讀取後還原執行緒權限失敗（狀態 ${status}）。`,
-      superfetchQuery: (informationClass: string, status: string) => `分頁框查詢失敗（資訊類別 ${informationClass}，狀態 ${status}）。`
-    },
-    unknownReason: "介面沒有登錄此原因代碼的說明。"
+      superfetchRanges: (status: string) => `實體記憶體範圍查詢失敗（狀態 ${status}）。`,
+      superfetchPages: (status: string) => `分頁框批次查詢失敗（狀態 ${status}）。`
+    }
   },
   "en-US": {
     kinds: {
@@ -179,17 +177,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "The measured categories exceed the system/driver reserved amount; no breakdown is given for this reading.",
       "capture-output-missing": "This capture produced no page frame breakdown.",
       "process-private-below-attributed": "Process private pages in the page frame database are fewer than the attributed process private memory; the negative difference is not listed.",
-      "resource-breakdown-dataset-sample-failed": "This sample failed.",
-      "resource-breakdown-dataset-output-missing": "This sample produced no data.",
-      "resource-breakdown-dataset-observation-not-current": "This observation round is incomplete."
+      "resource-breakdown-dataset-sample-failed": "This page frame sample failed.",
+      "system-total-unavailable": "No current system total of physical memory is available."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `A system call failed (Win32 error ${code}).`,
+      nativeError: (code: string) => `A token or impersonation operation of the reading thread failed (Win32 error ${code}).`,
       profilePrivilege: (status: string) => `The required system privilege could not be enabled for the reading thread (status ${status}).`,
       privilegeRestore: (status: string) => `Restoring the thread privileges after the read failed (status ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `The page frame query failed (information class ${informationClass}, status ${status}).`
-    },
-    unknownReason: "The interface has no description registered for this reason code."
+      superfetchRanges: (status: string) => `The physical memory range query failed (status ${status}).`,
+      superfetchPages: (status: string) => `The page frame batch query failed (status ${status}).`
+    }
   },
   "ja-JP": {
     kinds: {
@@ -242,17 +239,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "測定した各区分の合計がシステム/ドライバー予約を超えたため、今回は内訳を示しません。",
       "capture-output-missing": "今回の取得ではページフレームの内訳が生成されませんでした。",
       "process-private-below-attributed": "ページフレームデータベース上のプロセスのプライベートページが帰属済みの値より少なく、差が負になるため表示していません。",
-      "resource-breakdown-dataset-sample-failed": "今回のサンプリングに失敗しました。",
-      "resource-breakdown-dataset-output-missing": "今回のサンプリングではデータが生成されませんでした。",
-      "resource-breakdown-dataset-observation-not-current": "今回の観測は不完全です。"
+      "resource-breakdown-dataset-sample-failed": "今回のページフレームのサンプリングに失敗しました。",
+      "system-total-unavailable": "物理メモリのシステム合計の現在値がありません。"
     },
     reasonFamilies: {
-      nativeError: (code: string) => `システム呼び出しに失敗しました（Win32 エラー ${code}）。`,
+      nativeError: (code: string) => `読み取りスレッドのトークンまたは偽装の操作に失敗しました（Win32 エラー ${code}）。`,
       profilePrivilege: (status: string) => `読み取りスレッドに必要なシステム特権を有効にできませんでした（状態 ${status}）。`,
       privilegeRestore: (status: string) => `読み取り後にスレッドの特権を復元できませんでした（状態 ${status}）。`,
-      superfetchQuery: (informationClass: string, status: string) => `ページフレームの照会に失敗しました（情報クラス ${informationClass}、状態 ${status}）。`
-    },
-    unknownReason: "この理由コードの説明はインターフェイスに登録されていません。"
+      superfetchRanges: (status: string) => `物理メモリ範囲の照会に失敗しました（状態 ${status}）。`,
+      superfetchPages: (status: string) => `ページフレームのバッチ照会に失敗しました（状態 ${status}）。`
+    }
   },
   "ko-KR": {
     kinds: {
@@ -305,17 +301,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "측정된 분류의 합이 시스템/드라이버 예약량을 초과하여 이번에는 세부 정보를 제공하지 않습니다.",
       "capture-output-missing": "이번 수집에서 페이지 프레임 세부 정보가 생성되지 않았습니다.",
       "process-private-below-attributed": "페이지 프레임 데이터베이스의 프로세스 전용 페이지가 귀속된 값보다 적어 차이가 음수이므로 표시하지 않습니다.",
-      "resource-breakdown-dataset-sample-failed": "이번 샘플링에 실패했습니다.",
-      "resource-breakdown-dataset-output-missing": "이번 샘플링에서 데이터가 생성되지 않았습니다.",
-      "resource-breakdown-dataset-observation-not-current": "이번 관측이 완전하지 않습니다."
+      "resource-breakdown-dataset-sample-failed": "이번 페이지 프레임 샘플링에 실패했습니다.",
+      "system-total-unavailable": "실제 메모리의 현재 시스템 합계 값이 없습니다."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `시스템 호출에 실패했습니다(Win32 오류 ${code}).`,
+      nativeError: (code: string) => `읽기 스레드의 토큰 또는 가장 작업에 실패했습니다(Win32 오류 ${code}).`,
       profilePrivilege: (status: string) => `읽기 스레드에 필요한 시스템 권한을 사용하도록 설정할 수 없습니다(상태 ${status}).`,
       privilegeRestore: (status: string) => `읽기 후 스레드 권한을 복원하지 못했습니다(상태 ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `페이지 프레임 조회에 실패했습니다(정보 클래스 ${informationClass}, 상태 ${status}).`
-    },
-    unknownReason: "이 원인 코드에 대한 설명이 인터페이스에 등록되어 있지 않습니다."
+      superfetchRanges: (status: string) => `실제 메모리 범위 조회에 실패했습니다(상태 ${status}).`,
+      superfetchPages: (status: string) => `페이지 프레임 일괄 조회에 실패했습니다(상태 ${status}).`
+    }
   },
   "fr-FR": {
     kinds: {
@@ -368,17 +363,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "Les catégories mesurées dépassent la part réservée par le système et les pilotes ; aucune répartition n’est donnée pour ce relevé.",
       "capture-output-missing": "Ce relevé n’a produit aucune répartition des cadres de pages.",
       "process-private-below-attributed": "Les pages privées de processus de la base de données sont inférieures à la mémoire privée attribuée ; l’écart négatif n’est pas indiqué.",
-      "resource-breakdown-dataset-sample-failed": "Cet échantillonnage a échoué.",
-      "resource-breakdown-dataset-output-missing": "Cet échantillonnage n’a produit aucune donnée.",
-      "resource-breakdown-dataset-observation-not-current": "Ce cycle d’observation est incomplet."
+      "resource-breakdown-dataset-sample-failed": "Cet échantillonnage des cadres de pages a échoué.",
+      "system-total-unavailable": "Aucun total système actuel de la mémoire physique n’est disponible."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `Un appel système a échoué (erreur Win32 ${code}).`,
+      nativeError: (code: string) => `Une opération de jeton ou d’emprunt d’identité du thread de lecture a échoué (erreur Win32 ${code}).`,
       profilePrivilege: (status: string) => `Le privilège système requis n’a pas pu être activé pour le thread de lecture (état ${status}).`,
       privilegeRestore: (status: string) => `La restauration des privilèges du thread après la lecture a échoué (état ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `La requête sur les cadres de pages a échoué (classe d’information ${informationClass}, état ${status}).`
-    },
-    unknownReason: "Aucune description n’est enregistrée dans l’interface pour ce code de motif."
+      superfetchRanges: (status: string) => `La requête sur les plages de mémoire physique a échoué (état ${status}).`,
+      superfetchPages: (status: string) => `La requête par lots sur les cadres de pages a échoué (état ${status}).`
+    }
   },
   "de-DE": {
     kinds: {
@@ -431,17 +425,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "Die gemessenen Kategorien übersteigen die System-/Treiberreserve; für diesen Messwert wird keine Aufschlüsselung angegeben.",
       "capture-output-missing": "Diese Erfassung hat keine Seitenrahmen-Aufschlüsselung ergeben.",
       "process-private-below-attributed": "Die privaten Prozessseiten in der Seitenrahmendatenbank liegen unter dem zugeordneten privaten Prozessspeicher; die negative Differenz wird nicht aufgeführt.",
-      "resource-breakdown-dataset-sample-failed": "Diese Abtastung ist fehlgeschlagen.",
-      "resource-breakdown-dataset-output-missing": "Diese Abtastung hat keine Daten ergeben.",
-      "resource-breakdown-dataset-observation-not-current": "Diese Beobachtungsrunde ist unvollständig."
+      "resource-breakdown-dataset-sample-failed": "Diese Abtastung der Seitenrahmen ist fehlgeschlagen.",
+      "system-total-unavailable": "Für den physischen Arbeitsspeicher liegt keine aktuelle Systemsumme vor."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `Ein Systemaufruf ist fehlgeschlagen (Win32-Fehler ${code}).`,
+      nativeError: (code: string) => `Ein Token- oder Identitätswechselvorgang des lesenden Threads ist fehlgeschlagen (Win32-Fehler ${code}).`,
       profilePrivilege: (status: string) => `Das erforderliche Systemrecht konnte für den lesenden Thread nicht aktiviert werden (Status ${status}).`,
       privilegeRestore: (status: string) => `Die Threadrechte konnten nach dem Lesen nicht wiederhergestellt werden (Status ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `Die Seitenrahmenabfrage ist fehlgeschlagen (Informationsklasse ${informationClass}, Status ${status}).`
-    },
-    unknownReason: "Für diesen Ursachencode ist in der Oberfläche keine Beschreibung hinterlegt."
+      superfetchRanges: (status: string) => `Die Abfrage der physischen Speicherbereiche ist fehlgeschlagen (Status ${status}).`,
+      superfetchPages: (status: string) => `Die stapelweise Seitenrahmenabfrage ist fehlgeschlagen (Status ${status}).`
+    }
   },
   "es-ES": {
     kinds: {
@@ -494,17 +487,16 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "Las categorías medidas superan la reserva del sistema y los controladores; no se ofrece desglose para esta lectura.",
       "capture-output-missing": "Esta captura no produjo ningún desglose de marcos de página.",
       "process-private-below-attributed": "Las páginas privadas de procesos de la base de datos son menos que la memoria privada atribuida; la diferencia negativa no se muestra.",
-      "resource-breakdown-dataset-sample-failed": "Este muestreo ha fallado.",
-      "resource-breakdown-dataset-output-missing": "Este muestreo no produjo datos.",
-      "resource-breakdown-dataset-observation-not-current": "Esta ronda de observación está incompleta."
+      "resource-breakdown-dataset-sample-failed": "Este muestreo de marcos de página ha fallado.",
+      "system-total-unavailable": "No hay un total actual del sistema para la memoria física."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `Falló una llamada al sistema (error de Win32 ${code}).`,
+      nativeError: (code: string) => `Falló una operación de token o de suplantación del subproceso de lectura (error de Win32 ${code}).`,
       profilePrivilege: (status: string) => `No se pudo habilitar el privilegio del sistema necesario para el subproceso de lectura (estado ${status}).`,
       privilegeRestore: (status: string) => `No se pudieron restaurar los privilegios del subproceso tras la lectura (estado ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `La consulta de marcos de página falló (clase de información ${informationClass}, estado ${status}).`
-    },
-    unknownReason: "La interfaz no tiene registrada una descripción para este código de motivo."
+      superfetchRanges: (status: string) => `La consulta de intervalos de memoria física falló (estado ${status}).`,
+      superfetchPages: (status: string) => `La consulta por lotes de marcos de página falló (estado ${status}).`
+    }
   },
   "ru-RU": {
     kinds: {
@@ -557,16 +549,15 @@ export const physicalMemoryResidualCopy = {
       "components-exceed-residual": "Измеренные категории превышают резерв системы и драйверов; для этого показания распределение не приводится.",
       "capture-output-missing": "Это получение данных не дало распределения страничных кадров.",
       "process-private-below-attributed": "Частных страниц процессов в базе данных меньше, чем атрибутированной частной памяти; отрицательная разность не показана.",
-      "resource-breakdown-dataset-sample-failed": "Эта выборка завершилась ошибкой.",
-      "resource-breakdown-dataset-output-missing": "Эта выборка не дала данных.",
-      "resource-breakdown-dataset-observation-not-current": "Этот цикл наблюдения неполон."
+      "resource-breakdown-dataset-sample-failed": "Эта выборка страничных кадров завершилась ошибкой.",
+      "system-total-unavailable": "Нет текущего системного итога физической памяти."
     },
     reasonFamilies: {
-      nativeError: (code: string) => `Системный вызов завершился ошибкой (ошибка Win32 ${code}).`,
+      nativeError: (code: string) => `Операция с маркером или олицетворением потока чтения завершилась ошибкой (ошибка Win32 ${code}).`,
       profilePrivilege: (status: string) => `Не удалось включить необходимую системную привилегию для потока чтения (состояние ${status}).`,
       privilegeRestore: (status: string) => `Не удалось восстановить привилегии потока после чтения (состояние ${status}).`,
-      superfetchQuery: (informationClass: string, status: string) => `Запрос страничных кадров завершился ошибкой (класс сведений ${informationClass}, состояние ${status}).`
-    },
-    unknownReason: "Для этого кода причины в интерфейсе нет зарегистрированного описания."
+      superfetchRanges: (status: string) => `Запрос диапазонов физической памяти завершился ошибкой (состояние ${status}).`,
+      superfetchPages: (status: string) => `Пакетный запрос страничных кадров завершился ошибкой (состояние ${status}).`
+    }
   }
 };

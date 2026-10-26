@@ -98,21 +98,22 @@ function groupPhysicalMemoryResidualParts<T extends { kind: string }>(parts: rea
 type ReasonKey = keyof typeof uiText.physicalMemoryResidual.reasons;
 
 /**
- * 原因代码的说明。固定代码逐个对应；带参数的四类（native-error:N、profile-privilege:0x…、privilege-restore:0x…、
- * superfetch-N:0x…）按前缀对应并写出参数；没有登记的代码给出“没有登记说明”。调用方同时原样显示代码本身。
+ * 原因代码的说明（权威 Residual reason codes 一节的完整清单）。固定代码逐个对应；带参数的五类按家族对应，
+ * 参数（NTSTATUS 或十进制 Win32 错误）只作为数据写进说明，不当作文案的键：superfetch-17:0x… 是物理内存范围查询，
+ * superfetch-6:0x… 是页帧批次查询，profile-privilege:0x…、privilege-restore:0x…、native-error:N。
+ * 清单以外的代码返回 null：不猜它的含义，调用方只原样显示代码本身。
  */
-export function physicalMemoryResidualReason(code: string): string {
+export function physicalMemoryResidualReason(code: string): string | null {
   const copy = uiText.physicalMemoryResidual;
   if (Object.hasOwn(copy.reasons, code)) return copy.reasons[code as ReasonKey];
-  const native = /^native-error:(-?\d+)$/.exec(code);
+  const family = /^(superfetch-17|superfetch-6|profile-privilege|privilege-restore):(0x[0-9A-F]{8})$/.exec(code);
+  if (family?.[1] === "superfetch-17") return copy.reasonFamilies.superfetchRanges(family[2]);
+  if (family?.[1] === "superfetch-6") return copy.reasonFamilies.superfetchPages(family[2]);
+  if (family?.[1] === "profile-privilege") return copy.reasonFamilies.profilePrivilege(family[2]);
+  if (family?.[1] === "privilege-restore") return copy.reasonFamilies.privilegeRestore(family[2]);
+  const native = /^native-error:(\d+)$/.exec(code);
   if (native) return copy.reasonFamilies.nativeError(native[1]);
-  const profile = /^profile-privilege:(0x[0-9A-F]{8})$/.exec(code);
-  if (profile) return copy.reasonFamilies.profilePrivilege(profile[1]);
-  const restore = /^privilege-restore:(0x[0-9A-F]{8})$/.exec(code);
-  if (restore) return copy.reasonFamilies.privilegeRestore(restore[1]);
-  const superfetch = /^superfetch-(\d+):(0x[0-9A-F]{8})$/.exec(code);
-  if (superfetch) return copy.reasonFamilies.superfetchQuery(superfetch[1], superfetch[2]);
-  return copy.unknownReason;
+  return null;
 }
 
 /** 页帧明细表的一行：组标题行，或一个分项（含未分类）的字节数和占保留量的百分比。 */
@@ -122,16 +123,16 @@ export type PhysicalMemoryResidualRow =
 
 /**
  * 进程明细里 physicalMemoryResidual 帧怎么显示，三种状态与帧一一对应：
- * 没有帧是 not-collected（还没有发布过，不是零）；unavailable 带原因说明和原样的原因代码；
+ * 没有帧是 not-collected（还没有发布过，不是零）；unavailable 带原因说明（清单以外的代码没有说明）和原样的原因代码；
  * ready 按帧里的顺序列出分项（相邻的非分页池分项归到一组），末尾是未分类，再给出帧里的保留量、
  * 已用物理内存和已归属的进程私有内存。百分比是行字节数除以帧里的保留量；就绪帧带的原因代码
  * （例如 process-private-below-attributed）同样给出说明和代码。这里不校验帧，帧的自洽由后端和解码器负责。
  */
 export type PhysicalMemoryResidualView =
   | { state: "not-collected" }
-  | { state: "unavailable"; capturedAt: string; reason: string; reasonCode: string }
+  | { state: "unavailable"; capturedAt: string; reason: string | null; reasonCode: string }
   | { state: "ready"; capturedAt: string; rows: PhysicalMemoryResidualRow[]; residualBytes: number; usedBytes: number;
-      attributedProcessPrivateBytes: number; reason: { text: string; reasonCode: string } | null };
+      attributedProcessPrivateBytes: number; reason: { text: string | null; reasonCode: string } | null };
 
 export function physicalMemoryResidualView(frame: PhysicalMemoryResidualFrame | undefined): PhysicalMemoryResidualView {
   if (!frame) return { state: "not-collected" };

@@ -328,11 +328,17 @@ export function decodePhysicalMemoryResidualFrame(value: unknown): PhysicalMemor
         || usedBytes - attributedProcessPrivateBytes !== residualBytes
         || parts.reduce((sum, part) => sum + part.bytes, 0) + unclassifiedBytes !== residualBytes)
       throw new ResponseDecodeError(path, "self-consistent physical memory partition");
+    // A ready frame can carry only this reason; every other PFN reason means unavailable.
+    if (reasonCode !== null && reasonCode !== "process-private-below-attributed")
+      throw new ResponseDecodeError(`${path}.reasonCode`, "null or process-private-below-attributed on a ready frame");
     return { version: 1, source, status, reasonCode, capturedAt,
       usedBytes, attributedProcessPrivateBytes, residualBytes, unclassifiedBytes, parts };
   }
   if (!reasonCode || [usedBytes, attributedProcessPrivateBytes, residualBytes, unclassifiedBytes].some(value => value !== null) || parts.length !== 0)
     throw new ResponseDecodeError(path, "unavailable frame with reason and empty readings");
+  // process-private-below-attributed belongs to ready frames and system-total-unavailable to facts only.
+  if (reasonCode === "process-private-below-attributed" || reasonCode === "system-total-unavailable")
+    throw new ResponseDecodeError(`${path}.reasonCode`, "a PFN unavailable reason");
   return { version: 1, source, status, reasonCode, capturedAt,
     usedBytes: null, attributedProcessPrivateBytes: null, residualBytes: null, unclassifiedBytes: null, parts: [] };
 }

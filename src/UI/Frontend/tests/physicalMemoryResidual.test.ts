@@ -110,14 +110,7 @@ for (const language of languages) {
   assert.equal(resourceProcessDisplayName({ name: "NtFC", attributionKind: "system-memory/nonpaged-pool/tag/4346744E" }, "memory.usage"), names[0]);
   assert.equal(resourceProcessDisplayName({ name: "", attributionKind: "system-memory/unclassified" }, "memory.usage"), names[4]);
 
-  // 原因代码：固定代码逐个有说明；带参数的四类写出参数；未登记的代码给出“未登记”说明（代码本身由界面原样显示）。
-  for (const code of Object.keys(uiText.physicalMemoryResidual.reasons)) assert.notEqual(physicalMemoryResidualReason(code), uiText.physicalMemoryResidual.unknownReason);
-  assert.ok(physicalMemoryResidualReason("native-error:5").includes("5"));
-  assert.ok(physicalMemoryResidualReason("profile-privilege:0xC0000061").includes("0xC0000061"));
-  assert.ok(physicalMemoryResidualReason("privilege-restore:0xC0000022").includes("0xC0000022"));
-  const superfetch = physicalMemoryResidualReason("superfetch-79:0xC0000004");
-  assert.ok(superfetch.includes("79") && superfetch.includes("0xC0000004"));
-  assert.equal(physicalMemoryResidualReason("pool-tags:overflow"), uiText.physicalMemoryResidual.unknownReason);
+  // 原因代码的完整清单、家族和未知代码见 physicalMemoryResidualReasonContract.test.ts。
 
   // 三种状态。没有帧：尚未采集，不是零。
   assert.deepEqual(physicalMemoryResidualView(undefined), { state: "not-collected" });

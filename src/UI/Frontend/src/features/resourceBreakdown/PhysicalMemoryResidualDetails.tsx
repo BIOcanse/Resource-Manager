@@ -34,8 +34,8 @@ export function PhysicalMemoryResidualDetails(props: { frame: PhysicalMemoryResi
           {(current) => (
             <div class="resource-residual-details-state">
               <strong>{copy().unavailable}</strong>
-              <p>{current().reason}</p>
-              <p class="resource-residual-details-code">{copy().reasonCode(current().reasonCode)}</p>
+              <Show when={current().reason}>{(reason) => <p>{reason()}</p>}</Show>
+              <p class="resource-residual-details-code" data-reason-code={current().reasonCode}>{copy().reasonCode(current().reasonCode)}</p>
             </div>
           )}
         </Match>
@@ -88,7 +88,7 @@ function ReadyDetails(props: { view: ReadyView }) {
       <Show when={props.view.reason}>
         {(reason) => (
           <p class="resource-residual-details-note" data-reason-code={reason().reasonCode}>
-            {reason().text} {copy().reasonCode(reason().reasonCode)}
+            {reason().text === null ? copy().reasonCode(reason().reasonCode) : `${reason().text} ${copy().reasonCode(reason().reasonCode)}`}
           </p>
         )}
       </Show>
