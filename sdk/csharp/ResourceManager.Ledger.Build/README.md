@@ -1,6 +1,6 @@
 # ResourceManager.Ledger.Build
 
-This independent .NET 10 command-line project generates consumer-specific static owner shape. It is separate from the FreedomPoint resolver and the managed runtime, with no package or product references. It is delivered as the `ledger-build` tool; packing is enabled by the SDK packaging entry point. Read the current formal version in [the consumption guide](../../../docs/ledger-sdk-consumption.md).
+This independent .NET 10 command-line project generates consumer-specific static owner shape. It is separate from the FreedomPoint resolver and the managed runtime, with no package or product references. It is delivered as the `ledger-build` tool; packing is enabled by the SDK packaging entry point. The current formal version is `0.1.0-dev.2`.
 
 The command accepts one canonical JSON declaration and an output directory:
 

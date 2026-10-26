@@ -28,23 +28,25 @@ Start using Resource Manager and take real control of your PC! 🚀
 
 ## 📊 Monitor
 
-The console helps you monitor a wide range of system data. As shown below, all the commonly used information is here, and you can freely adjust both the layout and which data is monitored.
+The console helps you monitor a wide range of system data. As shown below, all the commonly used information is here, and you can freely adjust both the layout and which data is monitored. Each card holds six units that you fill with readings in four slot sizes. Cards and bars refresh once per update interval, each time with every reading they show.
 
 ![Monitoring console](docs/screenshots/en/01-dashboard.png)
 
 ### 🧭 Reading sources
 
-The same reading often has more than one source: integrated GPU temperature, for example, can come from the processor's SMU or from the graphics driver. By default each reading shows only the most accurate source on this computer. Settings → Appearance → Reading Sources can list every available source instead, with the most accurate one marked **Preferred**. Scheduling always uses the most accurate source, whatever this setting says.
+The same reading often has more than one source: integrated GPU temperature, for example, can come from the processor's SMU or from the graphics driver. When you add a card item, a resource bar, a resource-list column or an overlay item, you choose the reading first and then its source: **Automatic** uses the most accurate source on this computer, while a specific source is read on its own and shows as unavailable when it cannot be read. Settings → Appearance → Reading Sources decides whether only the most accurate source is listed or every available source, with the most accurate one marked **Preferred**. Scheduling always uses the most accurate source.
 
 ### 📈 Bar-chart overview
 
-The lower half of the screenshot above uses bar charts so you can judge the state of your machine at a glance. Beyond the usual CPU, GPU, memory and VRAM views, you can also watch **virtual memory**. There are more monitoring items available here than the screenshot shows, and you can configure them freely.
+The lower half of the screenshot above uses bar charts so you can judge the state of your machine at a glance. Beyond the usual CPU, GPU, memory and VRAM views, you can also watch **virtual memory**. There are more monitoring items available here than the screenshot shows, and you can configure them freely. A bar without a reading states the reason in its header instead of a value.
+
+The **System / driver reserved** part of the physical memory bar is split into measured parts — nonpaged pool by tag, resident paged pool, drivers, system code and an unclassified remainder — listed in its tooltip. Expanding that segment adds a breakdown by physical page use (mapped files, page tables, kernel stacks and more); this breakdown is collected only on request, at most every 10 seconds by default.
 
 ### 🧮 Task-Manager-style view
 
 This page is similar to the Windows Task Manager, except that you can inspect **many more monitoring items**. The layout and content follow Task Manager as closely as possible, and you can look at both application and process information — with lower overhead and smoother interaction.
 
-It also fixes Task Manager's **double counting of shared memory**: the yellow part of each bar is the application's estimated share of shared memory. This is only meant to help you roughly analyze each application — nobody can divide shared memory between applications with perfect accuracy.
+It also fixes Task Manager's **double counting of shared memory**: in the thin bar under each memory value, the dashed yellow part is the application's estimated share of shared memory. This is only meant to help you roughly analyze each application — nobody can divide shared memory between applications with perfect accuracy. The memory column can count the working set including shared pages, the private working set or private commit; the difference between the system total and the processes appears as a separate **System / driver reserved** row, which for physical memory lists the same measured parts.
 
 ![Resource list](docs/screenshots/en/02-resource-list.png)
 
@@ -63,9 +65,11 @@ From here you can quickly:
 
 ![Per-application scheduling policy](docs/screenshots/en/09-app-policy.png)
 
-Each application can configure its base score, permitted adjustments, startup GPU preference and Level 2 protection. Runtime GPU placement is calculated after the process enters scheduling; it is not a saved target. Startup preferences do not override that calculation.
+Each application can configure its base score, permitted adjustments, startup GPU preference and Level 2 protection. Runtime GPU placement is calculated after the process enters scheduling; it is not a saved target. Startup preferences do not override that calculation. An application's details also set up its performance overlay, drawn externally or injected (injection may be flagged by anti-cheat software).
 
 The components that readings and hardware control rely on are managed here too, such as the hardware sensor driver (PawnIO), AMD processor sensor support and the hardware control helper. Each one is installed and verified only when you ask; until then its readings show as unavailable and everything else keeps working. Fan Control Core is built into the backend as a library and has no separate component installation or resident process.
+
+Downloads, installations, uninstallations and disk scans appear in the **task center**, each named after the component, dependency, application, folder or drive it was started for (or all drives), as recorded when the request was accepted.
 
 ---
 
@@ -79,7 +83,7 @@ Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** indepe
 - **⚙️ CPU scheduling** — adjusts CPU policy and core placement.
 - **⚡ GPU scheduling** — considers GPU load and VRAM pressure when placing supported renderers.
 
-**VRAM and memory pressure.** GPU scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency.
+**VRAM and memory pressure.** GPU scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency. Settings → Performance sets the dedicated-GPU overflow thresholds (usage 95% and dedicated memory 80% by default): when either is reached while scheduling is on and an integrated GPU is available, low-scoring background processes are moved from the dedicated GPU to the integrated GPU.
 
 **Multiple GPUs.** Per-application policies can select a launch GPU. Runtime moves are limited to renderer routes that pass their compatibility and cleanup checks; they are not general-purpose migration of every GPU-using application.
 
@@ -118,7 +122,7 @@ Wondering where your space went? After a scan, files and folders are laid out as
 
 ![Disk usage](docs/screenshots/en/13-disk-usage.png)
 
-Scan every disk, one disk, or a single folder. **Fast scan** reads the NTFS file-system index directly and needs administrator rights; **Full scan** walks the folders one by one, which is slower but works on any disk. Scanning only reads file information and never changes or deletes files.
+Scan every disk, one disk, or a single folder; the drive list marks each drive as physical, virtual, external, network or optical. **Fast scan** reads the NTFS file-system index directly and needs administrator rights; **Full scan** walks the folders one by one, which is slower but works on any disk. Scanning only reads file information and never changes or deletes files.
 
 ---
 
@@ -134,11 +138,11 @@ The adjustment support matrix, with dependencies and hardware limitations, is in
 
 ### 🌡️ Fan curves
 
-Choose the cooling response you want at each temperature. Drag a point or adjust it with the keyboard; neighboring points use **straight-line interpolation**, with a temperature and percentage grid for precise adjustments.
+Choose the cooling response you want at each temperature. The curve has a point every 5 °C up to 100 °C (fewer when the firmware accepts fewer points); drag a point up or down or set it with the keyboard. Neighboring points use **straight-line interpolation**.
 
 ![Fan curve editor](docs/screenshots/en/12-fan-curve.png)
 
-Where supported, choose between writing the curve to firmware and letting Resource Manager manage it in software. Editing stays in the card's draft until you apply it. You can also return a device to firmware control. Available settings, firmware curve steps and shared fan-control behavior depend on the hardware and driver.
+Each fan offers up to three management modes: **Firmware management** (the firmware sets the speed by its own policy), **Firmware write** (the curve is written into the firmware and stays in effect after Resource Manager closes or the PC restarts) and **Software management** (Resource Manager sets the speed every 0.1 s, and the fan returns to the firmware when it is not running). Editing stays in the card's draft until you apply it. Available modes, firmware curve steps and whether software management takes over other fans depend on the hardware and driver.
 
 ---
 
@@ -149,6 +153,8 @@ Resource Manager displays every interface on the device — internal and externa
 ![Device topology](docs/screenshots/en/05-device-topology.png)
 
 You can quickly check the **protocol that was actually negotiated**, which in many cases is the real limit on transfer speed.
+
+The page also names the machine's form factor — laptop, mobile workstation, workstation or desktop — with the evidence used (chassis type, built-in battery, CPU and GPU). External devices are kept apart from the machine itself: an external discrete GPU appears as a graphics dock, and a computer connected over a USB4 host-to-host link as a separate standalone workstation.
 
 ---
 
@@ -164,6 +170,8 @@ Detailed CPU and GPU monitoring, instead of a single utilization percentage that
 
 ![GPU scheduling](docs/screenshots/en/07-gpu-scheduling.png)
 
+**Targeted monitoring reports**: record one registered, running application — its Present frame times and the resources of all its processes — for up to 3600 seconds (600 by default). The report shows average FPS, 1% and 0.1% lows, P50 / P95 / P99 frame times and resource curves, and exports to JSON or CSV; the latest 50 recordings are kept.
+
 ---
 
 ## 📋 Support List
@@ -173,7 +181,7 @@ Detailed CPU and GPU monitoring, instead of a single utilization percentage that
 - **Hardware adjustment:** ✅ means writes and readback have been verified on a specific model. 🟡 means supported by design, with integration or physical testing still required. ❌ means excluded from the design.
 - **Monitoring and device information:** ✅ means the reading returned current values on a real machine: an AMD Ryzen 9 8940HX laptop with an NVIDIA GeForce RTX 5060 Laptop GPU and AMD Radeon 610M integrated graphics, without an NPU, checked read-only on 2026-10-22. The values were not compared against other tools. 🟡 means implemented and tested with recorded or simulated data, but not yet confirmed on real hardware. ❌ means not supported.
 
-This list describes the 0.3.0 beta (2026-10-23). What your PC shows depends on its hardware, drivers and installed components. A reading that the hardware does not report is shown as unavailable.
+This list describes 0.3.2-beta.20261026.1 (2026-10-26). The ✅ marks come from the 2026-10-22 check of a development build and have not been repeated on this release. What your PC shows depends on its hardware, drivers and installed components. A reading that the hardware does not report is shown as unavailable.
 
 ### Hardware adjustment
 
@@ -199,7 +207,7 @@ GPU means discrete graphics; iGPU means integrated graphics.
 
 **Adjustment scope and implementation status:**
 
-The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tuning** to the control page, dependency manager, readback and restore flow. Desktop motherboard fans use Fan Control Core's Super I/O backend. These changes have interface tests and are **not yet verified on physical hardware**. The 0.2.8 beta did not change the adjustment scope. Since 0.3.0, on / off controls offer three choices: return to firmware, on and off, and laptop fan curves run through Fan Control Core v0.2.0. A Uniwill laptop reports curve support; writing curves has not yet been verified on physical hardware. The remaining design gaps are listed below.
+The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tuning** to the control page, dependency manager, readback and restore flow. Desktop motherboard fans use Fan Control Core's Super I/O backend. These changes have interface tests and are **not yet verified on physical hardware**. The 0.2.8 beta did not change the adjustment scope. Since 0.3.0, on / off controls offer three choices: return to firmware, on and off, and laptop fan curves run through Fan Control Core. Since 0.3.1, Fan Control Core runs inside the backend as a library, and each fan offers firmware management, firmware write and software management. A Uniwill laptop reports curve support; writing curves has not yet been verified on physical hardware. The remaining design gaps are listed below.
 
 - **AMD CPUs / APUs**: STAPM, slow and fast power limits, PBO Scalar and CPU Curve Optimizer. Hardware Bridge required; the processor, firmware and available driver determine each capability. Curve Optimizer requires readback. TDC / EDC current limits and temperature limit remain unavailable until mapping or readback is confirmed.
 - **Intel CPUs**: PL1 / PL2, independent time windows and core / cache / iGPU / system-agent voltage offsets are implemented through the signed PawnIO IntelMSR module. Installation is explicit; firmware locks and OC mailbox errors are reported. **MMIO, TCC, Turbo ratios / switch, HWP / EPP and CPU / iGPU power balance remain incomplete**: the current signed modules do not permit their required registers. Installing the current component does not unlock these items.
@@ -213,7 +221,7 @@ The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tu
 
 | Device type | Status | Scope |
 | --- | --- | --- |
-| 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
+| 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control, through the built-in Fan Control Core; each capability is detected separately |
 | 🖥️ Desktop | 🟡 | Super I/O motherboard headers use Fan Control Core + LibreHardwareMonitorLib (PawnIO). AMD ADLX fan controllers expose minimum speed, target RPM and Zero RPM when supported. USB / HID controllers, NVIDIA native fan writing and AMD firmware fan curves remain incomplete |
 
 Automatic / maximum-only channels do not offer arbitrary fixed speed. Requested RPM and monitored RPM are separate values. Remaining design gaps also include AMD CPU current / temperature readback and command mapping, advanced SMU controls and the Linux product control host; existing Linux hwmon support in Fan Control Core does not establish full Linux product support.
@@ -224,7 +232,7 @@ No complete physical validation record with model, driver, requested values and 
 
 ### Monitoring and readings
 
-The monitoring console can show up to 325 named readings, grouped by device. The tables below group them by device type; the details list each group with its source.
+Resource Manager names 326 readings; 277 of them can be placed on monitoring cards, grouped by device (the other 49 are raw counters, timestamps, scale constants, raw log pages and register values that are not meaningful on a card). The tables below group them by device type; the details list each group with its source.
 
 <table>
   <thead>
@@ -334,6 +342,7 @@ The verification machine has no NPU. Qualcomm NPUs run on Windows on Arm, which 
 | Area | Status | Contents |
 | --- | :---: | --- |
 | 🔌 Device topology | ✅ | Internal and external ports, connected devices, negotiated and maximum link speed |
+| 💻 Form factor | 🟡 | Laptop, mobile workstation, workstation or desktop, with its evidence; graphics docks and external workstations |
 | 🔗 USB, HID and cameras | ✅ | USB identity and speed, HID collections, declared UVC camera frame intervals |
 | 🖥️ Displays and EDID basics | ✅ | Current mode, HDR state, luminance, rotation; raw EDID, version, size and chromaticity |
 | 📐 Display modes and timings | 🟡 | Modes parsed from EDID, CTA-861 and DisplayID 1.3 / 2.x, including Type V / VI timings and Adaptive-Sync |
@@ -351,6 +360,7 @@ The verification machine has no NPU. Qualcomm NPUs run on Windows on Arm, which 
 | Area | Status | Contents | Source |
 | --- | :---: | --- | --- |
 | Device topology | ✅ | USB, PCIe, HD Audio, eDP, HDMI, Mini DP, RJ45 and Bluetooth ports with the devices behind them, and the USB-C connector manager (UCSI); negotiated and maximum speed | Windows device tree (SetupAPI / CfgMgr32) |
+| Form factor | 🟡 | Laptop, mobile workstation, workstation or desktop, from the SMBIOS chassis type, the built-in battery, CPU and GPU names and how each GPU is attached; external discrete GPUs as graphics docks, USB4 host-to-host links as separate standalone workstations | SMBIOS, Windows battery and device information, D3DKMT |
 | USB | ✅ | VID / PID, class, USB version, device version, serial number, connector type, parent hub port, current and maximum speed | USB hub queries |
 | USB cameras (UVC) | ✅ | Declared frame intervals per format and resolution (Uncompressed / MJPEG) and best mode; the current stream mode is 🟡 | USB descriptors |
 | HID | ✅ | Top-level collections, usage, report lengths, button and value capabilities | Windows HID API |
@@ -381,10 +391,10 @@ Tested once on 2026-10-22 with a development build on the verification machine a
 | Item | Status | Observed |
 | --- | :---: | --- |
 | Memory scheduling: trimming idle background processes | ✅ | 8 low-usage background processes trimmed in 12 minutes, about 430 MB in total; truly idle processes stay low |
-| Memory scheduling: lowering background memory priority | 🟡 | 92 processes written within 30 seconds of switching to memory scheduling, all restored when switching back to normal or stopping; applying too few when entered directly at cold start is fixed in source and awaits a retest |
+| Memory scheduling: lowering background memory priority | 🟡 | 92 processes written within 30 seconds of switching to memory scheduling, all restored when switching back to normal or stopping; applying too few when entered directly at cold start was fixed after the test and awaits a retest |
 | CPU scheduling: background priority and efficiency mode (EcoQoS) | ✅ | Background processes are moved to idle priority with EcoQoS step by step; within 5 seconds of switching back to normal, and after a normal stop, everything matched the state before the test |
-| CPU scheduling: all-core score balancing | 🟡 | Preferred cores set for 270 threads in 9 processes within 30 seconds, landing on both CCDs, without touching any process's CPU Sets or affinity; all restored after switching back to normal and stopping. Slow progress right after entering is fixed in source and awaits a retest |
-| CPU scheduling: single-CCD placement | 🟡 | Places processes on one CCD on a 2-CCD machine; a failure to undo placements is fixed in source and awaits a retest |
+| CPU scheduling: all-core score balancing | 🟡 | Preferred cores set for 270 threads in 9 processes within 30 seconds, landing on both CCDs, without touching any process's CPU Sets or affinity; all restored after switching back to normal and stopping. Slow progress right after entering was fixed after the test and awaits a retest |
+| CPU scheduling: single-CCD placement | 🟡 | Places processes on one CCD on a 2-CCD machine; a failure to undo placements was fixed after the test and awaits a retest |
 | GPU scheduling | — | Not tested; it involves launch interception and a D3D proxy |
 
 After the test, every process's priority, affinity, memory priority, throttling state, CPU Sets and preferred thread cores matched the state before the test.
@@ -395,9 +405,13 @@ After the test, every process's priority, affinity, memory priority, throttling 
 
 Configure the scheduling policies you want.
 
-Appearance offers an interface style and a palette. A style changes the corners, lines, shadows and fonts of controls without changing the layout: Standard (System, Light, Dark, Low contrast), Soft (System, Light, Dark), Outline (System, Paper, Graphite, Blueprint) and Terminal (Phosphor, Amber, Ice). Each style lists only its own palettes.
+Appearance offers an interface style and a palette. A style changes the corners, lines, shadows and fonts of controls without changing the layout: Standard follows Windows 11 native controls, Classic keeps the previous standard look (both with System, Light, Dark, Low contrast), and there are Soft (System, Light, Dark), Outline (System, Paper, Graphite, Blueprint) and Terminal (Phosphor, Amber, Ice). Each style lists only its own palettes, and every style colours status tags by severity.
 
-Appearance also sets the resource-bar animation frame rate (follows the display refresh rate by default, or a custom 10–240 FPS) and reading sources (only the most accurate source by default, or every source with the preferred one marked).
+Appearance also sets the motion feel (Standard, Smooth, Crisp), the resource-bar animation frame rate (follows the display refresh rate by default, or a custom 10–240 FPS) and reading sources. Appearance, update-interval choices and overlay layout are kept by the interface on this device and can be reset to their defaults together.
+
+Updates & Versions offers three update modes: **Off**, **Check and notify only**, and **Download and apply automatically**, which downloads and verifies a new version and applies it once no Resource Manager window is open. Automatic checks wait for an internet connection; a new version can be announced once in the interface and, while the interface is not visible, as a Windows notification.
+
+System Integration manages **trusted access keys** for local programs: create a key with chosen scopes, rotate or revoke it, or approve a program's one-time authorization request.
 
 ![Settings](docs/screenshots/en/08-settings.png)
 
@@ -407,7 +421,7 @@ Appearance also sets the resource-bar animation frame rate (follows the display 
 
 Efficient resource management takes cooperation 🤝.
 
-Local APIs and the adapter SDK let you connect your own monitoring and management tools. The developer API documentation is still being prepared.
+Local APIs and the adapter SDK let you connect your own monitoring and management tools. A program authenticates with a trusted access key: it can ask once for the scopes it needs, and once you approve the request in Settings it receives its own key, which you can revoke at any time. The developer API documentation is still being prepared.
 
 ---
 
@@ -422,7 +436,7 @@ Get the Windows x64 beta from GitHub Releases:
 - Windows 11 x64
 - Microsoft Edge WebView2 Runtime
 
-The release package includes the required .NET runtime. It uses your system's WebView2 runtime; if WebView2 is missing, the official Microsoft runtime is downloaded and installed on first startup. Checking for and downloading product updates also requires an internet connection; normal use does not.
+The release package includes the required .NET runtime. It uses your system's WebView2 runtime; if WebView2 is missing, the interface asks before downloading and installing the official Microsoft runtime on first startup. Checking for and downloading product updates also requires an internet connection; normal use does not.
 
 ---
 
@@ -435,7 +449,7 @@ The release package includes the required .NET runtime. It uses your system's We
 5. For updates, interrupted update recovery, or main program repair, open **Resource Manager 更新管理** from the Start menu. Manual update and repair require a complete extracted release folder. The manager shows its actions before requesting administrator permission.
 Service management requests administrator permission; the interface runs as a standard user.
 
-`Install.exe` only installs or reinstalls, and `Start.exe` only starts the product. Reinstallation copies `Config`, `UserData`, and `Misc` into a new root; an occupied default root uses a versioned directory. Previous maintenance files remain in the old root; legacy external entry files are preserved under `Internal` there. The independent update manager still provides updates in the existing directory and same-version repair. The automatic update switch currently saves a preference; automatic installation awaits release signing and real-machine upgrade validation.
+`Install.exe` only installs or reinstalls, and `Start.exe` only starts the product. Reinstallation copies `Config`, `UserData`, and `Misc` into a new root; an occupied default root uses a versioned directory. Previous maintenance files remain in the old root; legacy external entry files are preserved under `Internal` there. The independent update manager still provides updates in the existing directory and same-version repair; automatic updates in Settings take packages from the official GitHub releases.
 
 Use `UninstallResourceManager.exe` to uninstall. Keeping user data leaves only one importable ZIP in the old installation folder and opens that folder in File Explorer. The independent update manager can import the ZIP. If you reinstall into that folder, the retained ZIP is saved under `UserData/Archives` until you choose to import it.
 

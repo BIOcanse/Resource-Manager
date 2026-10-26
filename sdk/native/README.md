@@ -1,6 +1,6 @@
 # Resource Manager Ledger Native
 
-**Local development release:** `0.1.0-dev.1` is published in `artifacts/sdk`. ABI v1 and UID128/256 passed the installed-package consumer gate (fourteen cases per width), all seventeen exports and public record layouts, and the remaining domain checks. The supported delivery target is Windows x64. The header is `include/ledger_native.h`; see [the consumption guide](../../docs/ledger-sdk-consumption.md) and the formal release manifest for package status. Consumer migration and ABI10 retirement remain separate work; this does not freeze the production pin.
+**Local development release:** `0.1.0-dev.2` is published in `artifacts/sdk`. ABI v1 and UID128/256 passed the installed-package consumer gate (fourteen cases per width), all seventeen exports and public record layouts, and the remaining domain checks. The supported delivery target is Windows x64. The header is `include/ledger_native.h`; see the formal release manifest for package status. Consumer migration and ABI10 retirement remain separate work; this does not freeze the production pin.
 
 ## Build and identify the library
 

@@ -2,7 +2,7 @@
 
 This is the independent ledger managed runtime, delivered in local SDK `0.1.0-dev.2`. It pairs an explicitly loaded Native ledger library with generated `LedgerBuildIdentity` metadata and exposes typed owner, lease, region, workspace, and subscription lifetimes. It has no Resource Manager product dependency or external package dependency.
 
-Both UID widths passed Native compilation and installed-package consumer runs, fourteen cases each, on Windows x64/.NET 10. Opening each library verified all seventeen exports and the 616-byte descriptor plus every public record layout. The domain acceptance checks also passed. See [the consumption guide](../../../docs/ledger-sdk-consumption.md) and the formal release manifest; packing is enabled explicitly by the SDK packaging command. Consumer migration and ABI10 retirement remain open.
+Both UID widths passed Native compilation and installed-package consumer runs, fourteen cases each, on Windows x64/.NET 10. Opening each library verified all seventeen exports and the 616-byte descriptor plus every public record layout. The domain acceptance checks also passed. See the formal release manifest; packing is enabled explicitly by the SDK packaging command. Consumer migration and ABI10 retirement remain open.
 
 ## Use
 

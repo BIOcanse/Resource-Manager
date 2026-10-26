@@ -41,7 +41,7 @@ pwsh -NoProfile -File scripts/analysis/Invoke-WebNativeStaticAnalysis.ps1
 - After human review:
   - `Write-StaticAnalysisTriage.ps1` checks the review manifest's coverage;
   - `Write-StaticAnalysisReport.ps1` writes the short report.
-  - Both only read existing files.
+  - Neither runs an analyzer; both work from existing results.
 
 ## Web, native and scripts (`Invoke-WebNativeStaticAnalysis.ps1`)
 

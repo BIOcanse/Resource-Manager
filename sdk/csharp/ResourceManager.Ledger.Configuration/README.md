@@ -7,7 +7,7 @@ sizes, and fixed resource identities remain structural declarations supplied
 by the adopter.
 
 It consumes the formal FreedomPoint `0.1.0-dev.39` Core and Generators packages
-from `D:/Code/FreedomPoint/artifacts/sdk`. `FactResolver` resolves each selected
+from the repository copy in `sdk/freedom-point/packages`. `FactResolver` resolves each selected
 build input and `TypedProjection` produces its C# and Zig output. The project
 does not implement a second resolver or source emitter.
 
@@ -61,7 +61,7 @@ change. The checked-in structure must use the table count selected by the
 adopter; this example generates the two-table owner fixture:
 
 ```powershell
-dotnet <configuration-tool.dll> structure D:/Code/Resource-Manager-Development/sdk/zig/src/local_resource_manager/generated --table-count 2
+dotnet <configuration-tool.dll> structure <repository>/sdk/zig/src/local_resource_manager/generated --table-count 2
 ```
 
 The command writes only configuration-independent artifacts:
@@ -93,7 +93,7 @@ Every build supplies its selected table count, a distinct absolute output
 directory, the checked-in structure directory, and optional choices:
 
 ```powershell
-dotnet <configuration-tool.dll> values D:/build/ledger-values D:/Code/Resource-Manager-Development/sdk/zig/src/local_resource_manager/generated --table-count 2 --choices D:/build/ledger-choices.json
+dotnet <configuration-tool.dll> values D:/build/ledger-values <repository>/sdk/zig/src/local_resource_manager/generated --table-count 2 --choices D:/build/ledger-choices.json
 ```
 
 Override keys are exact canonical point names. Global examples are

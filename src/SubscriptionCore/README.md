@@ -2,11 +2,11 @@
 
 ## Current source candidate
 
-ReadWriteCore `0.1.0-dev.69` and SubscriptionCore `0.1.0-dev.72` are the current local source candidates; the last accepted product combination used `0.1.0-dev.68` / `0.1.0-dev.71`. DisplayID 2.0/2.1 containers with supported Type VII/X modes may also contain recognized non-mode CTA audio/color/HDR blocks without losing the existing mode declarations. Embedded mode/reference blocks remain unavailable, and complete raw EDID remains independent. No model, field identity, owner, sampling, or SDK pin changes are introduced. Product and independent package qualification of these new candidates is pending; they are not a published release.
+ReadWriteCore `0.1.0-dev.85` and SubscriptionCore `0.1.0-dev.88` are the current source versions. The product consumes both as project references; they are not a published release.
 
 ## Intel PSys raw platform evidence and accepted publication
 
-The Intel PSys acceptance below was originally qualified with ReadWriteCore/SubscriptionCore `0.1.0-dev.54` / `0.1.0-dev.57`. The interfaces and publication semantics below use the original hardware metric owner and collection borrow. See the project contract `docs/intel_psys_register_evidence_collection.md` and current evidence in `.local/backend-intel-psys-evidence/` for acceptance scope and results.
+The Intel PSys acceptance below was originally qualified with ReadWriteCore/SubscriptionCore `0.1.0-dev.54` / `0.1.0-dev.57`. The interfaces and publication semantics below use the original hardware metric owner and collection borrow.
 
 The two canonical fields are `system_intel_psys_energy_counter_raw` (`unsigned64`, `count`) and `system_intel_psys_energy_unit_joules` (`float64`, `J/count`). They belong to one `intel_platform` target, admitted only for GenuineIntel family 6 model 4E/5E with complete consistent single-package topology and matching current CPUID evidence. The package identity associates this platform locally; it is not a permanent platform serial number. The original Intel reader reads MSR 64D low 32 bits for raw demand and MSR 606 ESU for unit demand independently. Successful zero does not prove BIOS measurement enablement or zero consumption. These are raw register evidence and a nominal unit declaration, not effective joules, interval watts or wall power. Hardware, BIOS validity and OEM domain coverage remain unverified.
 
@@ -70,7 +70,7 @@ The product directly consumes that same loop while keeping its original hosted p
 
 `RunAsync` also accepts an explicit `planCreated` callback. The host may inspect the exact plan, including idle/waiting plans, to apply its existing publication schedule or stop rule. The library does not interpret role IDs or publication state. Diagnostics can propagate an exception to stop a role or return to allow the caller-configured retry; the product keeps each role's original failure policy. All seven product roles use this worker, with collectors, ETW sessions and publication owned by their existing adapters.
 
-The sampling ABI is `0x00040000`. Capacity is 72 bytes, PlanHeader 128 bytes, TriggerOutput 48 bytes and CompletionInput 96 bytes. Trigger capacity follows the explicitly configured maximum membership count. Configuration and command structs must use their published sizes, validity masks and zero reserved fields. Plan completion settles the exact issued plan/items and triggers before the next plan. The packaged runtime is Windows x64; other platform assets are not included.
+The sampling ABI is `0x00040000`. Capacity is 72 bytes, PlanHeader 128 bytes, Trigger 48 bytes and CompletionInput 96 bytes. Trigger capacity follows the explicitly configured maximum membership count. Configuration and command structs must use their published sizes, validity masks and zero reserved fields. Plan completion settles the exact issued plan/items and triggers before the next plan. The packaged runtime is Windows x64; other platform assets are not included.
 
 Package consumption is exercised by `tests/SubscriptionCore/PackageConsumer`. Product frequency/publication/workspace lifecycle acceptance remains in `tests/App`. Overall SDK finalization, licensing and combined open source delivery are pending.
 

@@ -34,4 +34,4 @@ Roslyn ProductVersion 为 `5.6.0-2.26230.102+caa81fa4971f74880cdab61990cb1b11420
 
 `scripts/validation/Test-FreedomPointSources.ps1` 从真实托管消费端取得编译上下文，导出视图和源码绑定；缺少生产消费或生成位置失效应返回错误。自定义分组保存在 `backend.groups.json`，SDK 身份、绑定和分组引用使用 PointPath。既有编译器地址字符串在原消费方替换前继续作为宿主别名。
 
-扩展检查入口为 `scripts/validation/Test-FrontendPreferenceSources.ps1 -WorkRoot <已登记运行目录> -LedgerWorkRoot <账本工作根>`。它先生成，再编译实际 native-shell，捕获实际 TypeScript 程序（含 node_modules junction 的物理依赖），调用 SDK 的源码分析与合同检查，要求 26 个自有点均有真实读取且零问题。可用 `-BuildProperties` 明确指定现有 NuGet 缓存；离线不另造依赖声明。
+扩展检查入口为 `scripts/validation/Test-FrontendPreferenceSources.ps1 -WorkRoot <已登记运行目录> -LedgerWorkRoot <账本工作根>`。它先生成，再编译实际 native-shell，捕获实际 TypeScript 程序（含 node_modules junction 的物理依赖），调用 SDK 的源码分析与合同检查，要求 `preferences.points.json` 中的全部自有点（当前 31 个）均有真实读取且零问题。可用 `-BuildProperties` 明确指定现有 NuGet 缓存；离线不另造依赖声明。
