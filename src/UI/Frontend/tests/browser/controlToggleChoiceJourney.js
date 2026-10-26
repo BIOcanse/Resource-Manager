@@ -88,7 +88,7 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
 
   await group.getByRole("radio", { name: "交还固件", exact: true }).click();
   assert.deepEqual(await apply(), [], "Return to firmware removes the setting instead of writing false");
-  const tag = page.locator(".control-capability-tag").filter({ hasText: "没应用上" });
+  const tag = page.locator(".control-capability-tag").filter({ hasText: "应用失败" });
   await tag.waitFor();
   assert.equal(await tag.getAttribute("title"), "未能释放此项控制。", "A failed release shows the localized stable reason");
   await page.getByRole("button", { name: "重试", exact: true }).click();

@@ -255,8 +255,8 @@ export const zhShellCopy = {
       edited: "已改动，未应用",
       applying: "正在应用",
       applied: "已应用",
-      unsupported: "这台机器上控不了",
-      failed: "没应用上"
+      unsupported: "此设备不支持调节",
+      failed: "应用失败"
     },
     kind: {
       gpu: "显卡",
