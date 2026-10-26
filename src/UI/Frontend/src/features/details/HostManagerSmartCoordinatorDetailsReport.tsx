@@ -7,7 +7,7 @@ import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibility
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
-import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot";
 import { userFacingDateTime } from "../../presentation/userFacingText";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
 import { smartPlacementTarget } from "../../presentation/smartScheduling.ts";

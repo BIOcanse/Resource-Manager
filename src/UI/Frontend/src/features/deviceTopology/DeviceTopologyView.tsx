@@ -47,7 +47,6 @@ import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibility
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
-import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 
 import { deviceMetricFieldNames } from "./deviceMetricFields.ts";
 import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";

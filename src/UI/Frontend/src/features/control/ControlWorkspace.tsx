@@ -40,7 +40,6 @@ import {
   canRetryControlObject,
   hasPendingChanges
 } from "./controlStateMachine.ts";
-import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { RadioGroupRoot, RadioGroupItem } from "../../ui/primitives/RadioGroup";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";

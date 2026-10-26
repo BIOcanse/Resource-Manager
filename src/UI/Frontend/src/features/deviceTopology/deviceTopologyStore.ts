@@ -9,7 +9,6 @@ import {
   loadingObservation,
   type ObservationState
 } from "../../observation/observationState";
-import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { uiText } from "../../text.ts";
 import type { DeviceTopologySnapshotState } from "../../types";
 import { projectDeviceTopologyObservation } from "./deviceTopologyObservation";
