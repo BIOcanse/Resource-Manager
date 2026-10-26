@@ -7,7 +7,7 @@ import { waitForStableRendering } from "./journeyWaits.js";
 /**
  * 动画风格（docs/animation_style_2026-10-26.md「验证」），简体中文，真实点击和保存。
  * - 设置 → 外观：一行「动画风格」五个选项，下面一行开关「按自调度自动关闭动画」；旧的两行没有了；默认流畅平滑、开关开。
- * - 每种风格：开关（键盘切换）、弹窗（任务中心）开和关、换设置分区的实际过渡，逐帧在页面里读。
+ * - 每种风格：开关（键盘切换）、弹窗（任务中心）开和关、换设置分区（含很快换回去的反向）的实际过渡，逐帧在页面里读。
  *   所有风格交互先到（「总原则」）：点击处理完新分区已在终态几何上可点；关弹窗那一刻对话框已不在，原处不命中幽灵。
  *   流畅平滑带速度、能接住（动画中再按一次，滑块先顺着原来的方向走一点再回头）；桌面常规按固定时长、不带速度；
  *   终端顿挫按固定步数跳（拖着时连续）；无动画、超高性能在按键的同一个任务里就到终态。
@@ -242,6 +242,16 @@ export default async function animationStyleJourney(page, baseUrl) {
     await sectionRest();
     return sample({ reader: "section", startEvent: "click", trigger: () => openSection(section) });
   };
+  /**
+   * 反向（docs/animation_style_2026-10-26.md「已裁定」：平滑反向）：换到「更新」约 60 ms 后又换回「外观」。
+   * 量的是第二次点击起的一段：新内容当场进场，不等上一段的幽灵退完；新内容是另一个节点，从开度 0、静止开始，不接旧内容的位置和速度。
+   */
+  const sectionReverse = async () => {
+    await sectionRest();
+    await openSection("updates");
+    await page.waitForTimeout(60);
+    return sample({ reader: "section", startEvent: "click", trigger: () => openSection("appearance") });
+  };
   /** 设置内容滚到顶，指针放在上面往上滚三格：读越过边缘的偏移。 */
   const edgeBand = async () => {
     const content = page.locator(".settings-content");
@@ -276,6 +286,7 @@ export default async function animationStyleJourney(page, baseUrl) {
     const closed = await dialogClose();
     await openSettings();
     const sections = [await sectionChange("updates"), await sectionChange("appearance")];
+    const reverse = await sectionReverse();
     await page.waitForTimeout(400);
     const band = await edgeBand();
     const bandPeak = Math.max(...band.frames.map((frame) => Math.abs(frame.value)));
@@ -286,10 +297,11 @@ export default async function animationStyleJourney(page, baseUrl) {
       dialog: { settledAt: dialog.settledAt, first: dialog.frames.find((frame) => frame.value)?.value, values: distinct(dialog.frames.filter((frame) => frame.value).map((frame) => frame.value.opacity)) },
       band: { peak: bandPeak, settledAt: band.settledAt, final: band.final, left: bandLeft },
       closed,
-      sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => opacityOf(frame.value))) })) };
+      sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => opacityOf(frame.value))) })),
+      reverse: { settledAt: reverse.settledAt, sameTask: reverse.sameTask, frames: reverse.frames.slice(0, 12).map((frame) => [Math.round(frame.t), opacityOf(frame.value), frame.value.leaving]) } };
     results[style] = entry;
     // 所有风格：交互先到。点击处理完那一刻新分区已在、在终态几何上可点；真节点从不带变换；关弹窗那一刻对话框已不在、原处不命中幽灵。
-    for (const run of sections) {
+    for (const run of [...sections, reverse]) {
       if (!run.sameTask?.hit) fail(`${style}: the new section is not hit at its final place when the click is handled: ${JSON.stringify(run.sameTask)}`);
       if (run.frames.some((frame) => frame.value.transform || !frame.value.hit)) fail(`${style}: the section stage moves or is not hit during its entrance: ${JSON.stringify(run.frames.map((frame) => frame.value))}`);
     }
@@ -304,7 +316,7 @@ export default async function animationStyleJourney(page, baseUrl) {
       // 当帧到终态：按键派发完那一刻滑块已在另一端；弹窗、分区的第一帧就是终态。
       for (const run of toggle) if (run.sameTask !== run.final) fail(`${style}: the switch is not at its end in the same task: ${JSON.stringify(entry.toggle)}`);
       if (entry.dialog.first?.opacity !== 1 || entry.dialog.first?.transform !== "none") fail(`${style}: the dialog is not final in its first frame: ${JSON.stringify(entry.dialog)}`);
-      for (const run of sections) {
+      for (const run of [...sections, reverse]) {
         const first = run.frames[0]?.value;
         if (!first || first.transform !== "" || first.opacity !== "" || first.leaving !== 0) fail(`${style}: the section is not final in its first frame: ${JSON.stringify(first)}`);
         if (run.sameTask?.opacity !== "" || run.sameTask?.leaving !== 0) fail(`${style}: the section is not final when the click is handled: ${JSON.stringify(run.sameTask)}`);
@@ -317,6 +329,17 @@ export default async function animationStyleJourney(page, baseUrl) {
       if (!(Math.abs(run.final) < 0.5 || Math.abs(run.final - 20) < 0.5)) fail(`${style}: the switch did not reach an end: ${run.final}`);
     }
     if (!closed.frames.some((frame) => frame.ghosts > 0)) fail(`${style}: closing the dialog shows no exit: ${JSON.stringify(closed)}`);
+    // 反向：第二次点击处理完那一刻新内容已经开始进场（开度 0 起、静止），旧内容的幽灵还在退；之后几帧里开度就往上走，不等幽灵退完。
+    {
+      const opacities = reverse.frames.map((frame) => Number(opacityOf(frame.value)));
+      const start = Number(opacityOf(reverse.sameTask ?? {}));
+      if (!(start < 0.3) || !(reverse.sameTask?.leaving >= 1)) fail(`${style}: the reversed section does not enter at once from rest: ${JSON.stringify(entry.reverse)}`);
+      const risenAt = reverse.frames.find((frame) => Number(opacityOf(frame.value)) > start + 0.01)?.t;
+      if (!(risenAt <= 120)) fail(`${style}: the reversed section waits ${risenAt} ms before it starts to show: ${JSON.stringify(entry.reverse)}`);
+      if (opacities.some((value, index) => index > 0 && value < opacities[index - 1] - 0.001)) fail(`${style}: the reversed section's opacity goes back: ${JSON.stringify(entry.reverse)}`);
+      const single = Math.max(...sections.map((run) => run.settledAt));
+      if (reverse.settledAt > single + 120) fail(`${style}: the reversed section settles at ${reverse.settledAt} ms, a single change at ${single} ms: it waited for the previous one`);
+    }
     const dragDistinct = new Set(drag).size;
     if (dragDistinct < 6) fail(`${style}: dragging the knob is not continuous: ${JSON.stringify(drag)}`);
     if (style === "desktop" || style === "terminal") {
