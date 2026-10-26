@@ -4,7 +4,8 @@ import type { AppAnimationMode, ResourceManagerSelfGpuGrade } from "../../types.
 export type EffectiveAnimationMode = Exclude<AppAnimationMode, "auto">;
 
 export const AUTO_ANIMATION_RECENT_INPUT_MS = 5_000;
-export const AUTO_ANIMATION_OPTIMIZE_MODE: EffectiveAnimationMode = "ultra";
+// The user's example for a strained machine is no animation (docs/automatic_animation_selection_2026-10-25.md).
+export const AUTO_ANIMATION_OPTIMIZE_MODE: EffectiveAnimationMode = "none";
 
 /** Owns the resolved tier. Only a foreground entry may sample the auto grade. */
 export function createAnimationModeSelection(options: {
