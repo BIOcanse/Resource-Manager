@@ -387,8 +387,8 @@ function ResourceBreakdownItem(props: {
     });
   });
 
-  // While segments slide/scale, flag the track as .moving so split boundaries fade
-  // out during motion and back in once settled (CSS gates this to animated modes).
+  // 分段过渡期间轨道带 .moving，任务中心诊断里显示为“资源布局过渡”。
+  // 画布不看它：分隔线在过渡的每一帧都画，它翻转时也不会打断正在走的过渡。
   const [moving, setMoving] = createSignal(false);
   const layoutTaskScope = useTaskScope(
     `monitor.resource-breakdown-item:${props.bar.metricId}`);
@@ -531,7 +531,6 @@ function ResourceBreakdownItem(props: {
             contentWidth={trackGeometry.contentWidth()}
             devicePixelRatio={trackGeometry.devicePixelRatio()}
             drawDividers
-            moving={moving()}
           />
           <Show when={interactionEntry()}>
             {(item) => (

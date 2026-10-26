@@ -8,20 +8,15 @@ import {
 } from "../../presentation/resourceBarFrameRate";
 import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
 import { readMotionDurationMs, readMotionEase } from "../../presentation/motionTokens.ts";
+import {
+  enteringSources,
+  leavingSegments,
+  transitionFrame,
+  type ResourcePaintSegment
+} from "./resourceSegmentPainting.ts";
 
-export interface ResourcePaintSegment {
-  key: string;
-  left: number;
-  right: number;
-  color: string;
-  /** 共享部分占本段的比例，画在本段右端，用 --resource-shared-tint 提亮。 */
-  sharedFraction?: number;
-  distinctColor?: string;
-  /** 斜纹：系统/驱动保留这类不是软件的段。 */
-  hatched?: boolean;
-  label?: string;
-  labelColor?: string;
-}
+export type { ResourcePaintSegment } from "./resourceSegmentPainting.ts";
+
 
 interface ResourceSegmentPaintPlaneProps {
   segments: ResourcePaintSegment[];
@@ -31,13 +26,16 @@ interface ResourceSegmentPaintPlaneProps {
   contentWidth: number;
   devicePixelRatio: number;
   drawDividers?: boolean;
-  moving?: boolean;
 }
 
+/** 画布画法依赖的外观：动画模式、配色、帧率，以及决定 CSS 颜色变量取值的风格、配色主题和系统深浅色。 */
 interface ResourceBarPresentation {
   animations: string;
   barColor: string;
   frameRate: ResourceBarFrameRate;
+  uiStyle: string;
+  theme: string;
+  systemDark: boolean;
 }
 
 interface PaintGeometry {
@@ -62,10 +60,12 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   let animationFrame = 0;
   let lastSignature = "";
   let lastGeometrySignature = "";
+  let lastPresentation: ResourceBarPresentation | null = null;
   let lastDrawnSegments: ResourcePaintSegment[] = [];
-  const [presentation, setPresentation] = createSignal(readResourceBarPresentation());
+  // 按内容比较：属性被写成同样的值时（App 的外观副作用随自调度快照重跑，每次都会写）观察器也会通知，
+  // 这时外观没变，不能当成变化去重画，否则正在走的过渡被直接画成末帧。
+  const [presentation, setPresentation] = createSignal(readResourceBarPresentation(), { equals: samePresentation });
 
-  // 每次都给一个新对象，外观变化（颜色从 CSS 变量取）也会触发重画。
   const refreshPresentation = () => setPresentation(readResourceBarPresentation());
   const observer = new MutationObserver(refreshPresentation);
   observer.observe(document.body, {
@@ -83,14 +83,16 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   createEffect(() => {
     const element = canvas;
     const currentPresentation = presentation();
-    const moving = Boolean(props.moving);
     const targetSegments = normalizePaintSegments(props.segments);
     const geometry = normalizePaintGeometry(props.contentWidth, props.segmentHeight, props.devicePixelRatio, paintOverscanPx);
     const paintOptions = {
-      drawDividers: shouldDrawDividers(targetSegments, Boolean(props.drawDividers), moving)
+      drawDividers: shouldDrawDividers(targetSegments, Boolean(props.drawDividers))
     };
     const signature = paintSegmentSignature(targetSegments);
     const geometrySignature = `${geometry.width}|${geometry.height}|${geometry.devicePixelRatio}|${geometry.overscan}`;
+    const unchanged = signature === lastSignature
+      && geometrySignature === lastGeometrySignature
+      && currentPresentation === lastPresentation;
     const shouldAnimate = Boolean(lastSignature)
       && signature !== lastSignature
       && geometrySignature === lastGeometrySignature
@@ -98,12 +100,18 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
 
     lastSignature = signature;
     lastGeometrySignature = geometrySignature;
+    lastPresentation = currentPresentation;
 
     if (!element || geometry.width <= 0 || geometry.height <= 0) {
       return;
     }
+    // 要画的和正在过渡去的完全一样（别的依赖变了但段、尺寸、外观都没变）：让过渡走完，不跳到末帧。
+    if (unchanged && animationFrame !== 0) {
+      return;
+    }
 
     cancelAnimationFrame(animationFrame);
+    animationFrame = 0;
     const paintStyle = createCanvasPaintStyle(element);
 
     if (!shouldAnimate || lastDrawnSegments.length === 0) {
@@ -152,15 +160,19 @@ function animateSegments(
   setAnimationFrame: (frame: number) => void,
   setLastDrawnSegments: (segments: ResourcePaintSegment[]) => void)
 {
-  const fromByKey = new Map(fromSegments.map((segment) => [segment.key, segment]));
+  // 新来的段从左边最近仍在的段的旧右端长出来，和离开的段一样不让条上露底。
+  const fromByKey = new Map([
+    ...enteringSources(fromSegments, toSegments),
+    ...fromSegments.map((segment) => [segment.key, segment] as const)
+  ]);
+  const leaving = leavingSegments(fromSegments, toSegments);
   // 时长和曲线与上面交互层的数据条过渡（motion.css）是同一对令牌，这一段开始时读一次；时长 0 时直接画末帧。
   const durationMs = readMotionDurationMs(canvas, "--motion-bar");
   const easeBar = readMotionEase(canvas, "--ease-bar");
   const startedAt = performance.now();
   const pixelWidth = paintPixelWidth(geometry);
   // 每秒一次的小幅变化常常落在同样的像素上：这时中间帧与末帧逐像素相同，直接画末帧。
-  // 末帧画分隔线而中间帧不画，所以有分隔线时仍按原样过渡。
-  if (durationMs <= 0 || !paintOptions.drawDividers
+  if (durationMs <= 0 || leaving.length === 0
     && segmentPixelKey(toSegments.map((target) => fromByKey.get(target.key) ?? target), pixelWidth)
       === segmentPixelKey(toSegments, pixelWidth)) {
     drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
@@ -178,20 +190,15 @@ function animateSegments(
       return;
     }
     const eased = easeBar(progress);
-    const interpolated = toSegments.map((target) => {
-      const source = fromByKey.get(target.key) ?? target;
-      return {
-        ...target,
-        left: lerpNumber(source.left, target.left, eased),
-        right: lerpNumber(source.right, target.right, eased)
-      };
-    });
+    // 离开的段先画、垫在下面；新来的段直接在终点，由右边让开的段逐渐露出来。
+    const interpolated = transitionFrame(fromByKey, leaving, toSegments, eased);
 
     if (progress < 1) {
       // 与上一帧落在同样的像素上时不重画，画面不变。
       const pixelKey = segmentPixelKey(interpolated, pixelWidth);
       if (pixelKey !== drawnPixelKey) {
-        drawSegments(canvas, interpolated, geometry, presentation, { drawDividers: false }, paintStyle);
+        // 中间帧也画分隔线，跟着分界走：每秒一次的更新里分隔线不再一隐一现。
+        drawSegments(canvas, interpolated, geometry, presentation, paintOptions, paintStyle);
         drawnPixelKey = pixelKey;
         drawnAt = now;
       }
@@ -202,6 +209,7 @@ function animateSegments(
 
     drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
     setLastDrawnSegments(toSegments);
+    setAnimationFrame(0);
   };
 
   setAnimationFrame(requestAnimationFrame(step));
@@ -446,12 +454,9 @@ function segmentPaintLabelColor(segment: ResourcePaintSegment) {
 // 两种配色都画分隔线：类型固定色里同组的段同色，异色区分的散列色也可能让相邻两段撞色。
 function shouldDrawDividers(
   segments: ResourcePaintSegment[],
-  drawDividers: boolean,
-  moving: boolean)
+  drawDividers: boolean)
 {
-  return drawDividers
-    && !moving
-    && segments.length > 1;
+  return drawDividers && segments.length > 1;
 }
 
 /**
@@ -524,14 +529,23 @@ function readResourceBarPresentation(): ResourceBarPresentation {
   return {
     animations: document.body.dataset.animations ?? "normal",
     barColor: document.body.dataset.barColor ?? "type",
-    frameRate: parseResourceBarFrameRate(document.body.dataset.resourceBarFrameRate)
+    frameRate: parseResourceBarFrameRate(document.body.dataset.resourceBarFrameRate),
+    uiStyle: document.documentElement.dataset.uiStyle ?? "",
+    theme: document.documentElement.dataset.theme ?? "",
+    systemDark: window.matchMedia?.("(prefers-color-scheme: dark)").matches === true
   };
 }
 
-
-function lerpNumber(from: number, to: number, progress: number) {
-  return from + (to - from) * progress;
+function samePresentation(a: ResourceBarPresentation, b: ResourceBarPresentation) {
+  return a.animations === b.animations
+    && a.barColor === b.barColor
+    && a.frameRate === b.frameRate
+    && a.uiStyle === b.uiStyle
+    && a.theme === b.theme
+    && a.systemDark === b.systemDark;
 }
+
+
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));

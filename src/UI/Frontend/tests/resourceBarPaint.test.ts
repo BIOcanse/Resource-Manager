@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  enteringSources,
+  leavingSegments,
+  transitionFrame,
+  type ResourcePaintSegment
+} from "../src/features/resourceBreakdown/resourceSegmentPainting.ts";
 
 const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const read = (path: string) => readFileSync(resolve(srcRoot, path), "utf8");
@@ -68,4 +74,34 @@ assert.match(breakdown, /startsWith\("resource-residual:"\)/, "system/driver res
 assert.match(breakdown, /hatched: isReservedSegment\(item\.segment\)/);
 const plane = read("features/resourceBreakdown/ResourceSegmentPaintPlane.tsx");
 assert.doesNotMatch(plane, /barColor !== "distinct"/, "dividers are drawn in the distinct colour mode too");
+
+// ---- 过渡中离开和新来的段 ----
+// 离开的段收向左边仍在的那一段的新右端，新来的段从它的旧右端长出来，过渡的每一帧条上都不留洞。
+const segment = (key: string, left: number, right: number): ResourcePaintSegment => ({ key, left, right, color: "var(--x)" });
+const from = [segment("a", 0, 20), segment("gone", 20, 50), segment("b", 50, 60)];
+const to = [segment("a", 0, 25), segment("b", 25, 35)];
+const leaving = leavingSegments(from, to);
+assert.deepEqual(leaving.map((item) => [item.source.key, item.anchor]), [["gone", 25]]);
+const fromByKey = new Map(from.map((item) => [item.key, item]));
+for (const eased of [0, 0.25, 0.5, 0.75, 1]) {
+  const frame = transitionFrame(fromByKey, leaving, to, eased);
+  const byKey = new Map(frame.map((item) => [item.key, item]));
+  assert.ok(Math.abs(byKey.get("gone")!.left - byKey.get("a")!.right) < 1e-9, `leaving segment stays attached to its left neighbour at ${eased}`);
+  assert.ok(Math.abs(byKey.get("gone")!.right - byKey.get("b")!.left) < 1e-9, `no gap opens after the leaving segment at ${eased}`);
+}
+assert.equal(transitionFrame(fromByKey, leaving, to, 1).find((item) => item.key === "gone")!.right
+  - transitionFrame(fromByKey, leaving, to, 1).find((item) => item.key === "gone")!.left, 0, "it has collapsed at the end");
+
+// 软件回来：b 后面新来 c 和 d，右边的 e 让开；每一帧从 0 到最右端连成一片。
+const before = [segment("b", 0, 30), segment("e", 30, 50)];
+const after = [segment("b", 0, 20), segment("c", 20, 35), segment("d", 35, 40), segment("e", 40, 70)];
+const entering = enteringSources(before, after);
+assert.deepEqual([...entering.values()].map((item) => [item.key, item.left, item.right]), [["c", 30, 30], ["d", 30, 30]]);
+const enteringFrom = new Map([...entering, ...before.map((item) => [item.key, item] as const)]);
+for (const eased of [0, 0.25, 0.5, 0.75, 1]) {
+  const frame = transitionFrame(enteringFrom, leavingSegments(before, after), after, eased);
+  for (let index = 1; index < frame.length; index++) {
+    assert.ok(Math.abs(frame[index].left - frame[index - 1].right) < 1e-9, `${frame[index].key} is attached to ${frame[index - 1].key} at ${eased}`);
+  }
+}
 
