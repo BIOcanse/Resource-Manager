@@ -1,4 +1,3 @@
-import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 

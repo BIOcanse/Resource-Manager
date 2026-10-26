@@ -1,5 +1,5 @@
 import { customRefresh, seedFrontendPreferences } from "./frontendPreferencesFixture.js";
-import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+import { observeSubscriptionChannel, subscriptionPathMaximum } from "./subscriptionChannelProbe.js";
 
 export default async function currentValueSubscriptionJourney(
   page,
@@ -42,12 +42,16 @@ export default async function currentValueSubscriptionJourney(
     schedulingDirect: await readTelemetry(page, schedulingDirectPath),
     uptime: await page.locator("#captureTime").textContent()
   };
-  assertSingleActiveSubscription(initial.local, "local system");
+  // Server close delivery can lag a replacement request. Strict browser concurrency
+  // plus unique selectors per request measures the client's actual logical maximum.
+  initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
+  assertSingleActiveSubscription(initial.local, "local system", initial.browserChannel.maxInFlight
+    * subscriptionPathMaximum(initial.channel.subscriptionSets, localStreamPath));
   assert(initial.local.queries.every(query => new URLSearchParams(query).get("intervalMs") === "1000"),
     `Local-system subscription ignored the saved 1 s refresh choice: ${JSON.stringify(initial.local.queries)}`);
-  assertSingleActiveSubscription(initial.scheduling, "self scheduling");
+  assertSingleActiveSubscription(initial.scheduling, "self scheduling", initial.browserChannel.maxInFlight
+    * subscriptionPathMaximum(initial.channel.subscriptionSets, schedulingStreamPath));
   assertSinglePhysicalChannel(initial.channel, "physical callback channel");
-  initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
   assert(initial.localDirect.started === 0,
     `Local-system value used periodic/direct GET: ${JSON.stringify(initial.localDirect)}`);
   assert(initial.schedulingDirect.started === 0,
@@ -124,13 +128,13 @@ export default async function currentValueSubscriptionJourney(
     smartStarted, smartContinued, smartDirect, smartRetired, smartInactive };
 }
 
-function assertSingleActiveSubscription(telemetry, label) {
+function assertSingleActiveSubscription(telemetry, label, maximumInFlight) {
   assert(telemetry.started >= 1
     && telemetry.inFlight === 1
-    && telemetry.maxInFlight === 1
+    && maximumInFlight === 1
     && telemetry.completed === 0
     && telemetry.started === telemetry.aborted + 1,
-  `${label} did not retain one active subscription: ${JSON.stringify(telemetry)}`);
+  `${label} did not retain one active subscription (client maximum ${maximumInFlight}): ${JSON.stringify(telemetry)}`);
 }
 
 function assertSinglePhysicalChannel(telemetry, label) {

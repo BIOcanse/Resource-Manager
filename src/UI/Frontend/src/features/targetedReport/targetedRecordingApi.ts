@@ -5,6 +5,7 @@ import {
   ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { uiText } from "../../text.ts";
+import { decodeSoftwareRecords } from "../management/softwareRecordDecoder.ts";
 
 export interface RecordingHeader {
   id: string;
@@ -144,6 +145,12 @@ export const recordingReportDecoder = defineResponseDecoder<RecordingReport>("ta
 
 type Client = Pick<RequestClient, "request">;
 const error = () => uiText.targetedReport.failed;
+
+export function getRecordingTargets(client: Client, signal?: AbortSignal) {
+  return client.request({ key: "targeted.targets", url: "/api/software",
+    fallbackError: error(), signal,
+    decoder: defineResponseDecoder("targeted.targets.v1", decodeSoftwareRecords) });
+}
 
 export function listRecordings(client: Client, signal?: AbortSignal) {
   return client.request({ key: "targeted.list", url: "/api/targeted-recordings",

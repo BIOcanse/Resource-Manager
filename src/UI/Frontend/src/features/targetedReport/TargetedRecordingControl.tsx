@@ -4,11 +4,11 @@ import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts"
 import { useSource } from "../../frontendRuntime/source/useSource.ts";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { uiText } from "../../text.ts";
-import { startRecording, stopRecording } from "./targetedRecordingApi.ts";
+import { startRecording, stopRecording, type RecordingHeader } from "./targetedRecordingApi.ts";
 
 const activeRecordingRefreshIntervalMs = 2_000;
 
-export function TargetedRecordingControl(props: { softwareId: string }) {
+export function TargetedRecordingControl(props: { softwareId: string; onStarted?: (recording: RecordingHeader) => void }) {
   const runtime = useFrontendRuntime();
   const work = useFrontendWork();
   const [refreshIntervalMs, setRefreshIntervalMs] = createSignal<number | null>(null);
@@ -22,10 +22,12 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
     ?? null);
   const [busy, setBusy] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
+  const otherActive = createMemo(() => recordingsSource.snapshot().data
+    ?.find((item) => item.softwareId !== props.softwareId && item.status === "recording"));
 
   createEffect(() => {
     const snapshot = recordingsSource.snapshot();
-    setRefreshIntervalMs(active()
+    setRefreshIntervalMs(active() || otherActive()
       ? activeRecordingRefreshIntervalMs
       : null);
     if (snapshot.status === "error" || snapshot.status === "unavailable") {
@@ -50,6 +52,7 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
         recordingsSource.snapshot().data ?? [],
         recording));
       await recordingsSource.refresh();
+      props.onStarted?.(recording);
     } catch {
       setFailed(true);
     } finally {
@@ -88,7 +91,8 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
             <input type="number" min="1" max="3600" step="1" value={maximumSeconds()}
               onInput={(event) => setMaximumSeconds(Number(event.currentTarget.value))} />
           </label>
-          <button type="button" disabled={busy() || !sourceCanRender(recordingsSource.snapshot())} onClick={() => void start()}>{uiText.targetedReport.start}</button>
+          <button type="button" disabled={busy() || !!otherActive() || !sourceCanRender(recordingsSource.snapshot())} onClick={() => void start()}>{uiText.targetedReport.start}</button>
+          <Show when={otherActive()}>{(recording) => <p role="status">{uiText.targetedReport.oneAtATime} · {recording().softwareName}</p>}</Show>
         </div>
       }>
         {(recording) => (
@@ -98,7 +102,13 @@ export function TargetedRecordingControl(props: { softwareId: string }) {
           </div>
         )}
       </Show>
-      <Show when={failed()}><p role="alert">{uiText.targetedReport.failed}</p></Show>
+      <Show when={failed()}><div role="alert">
+        <p>{uiText.targetedReport.failed}</p>
+        <button class="secondary" type="button" disabled={busy()}
+          onClick={() => void recordingsSource.refresh().catch(() => setFailed(true))}>
+          {uiText.observationNotice.retry}
+        </button>
+      </div></Show>
     </section>
   );
 }

@@ -1,6 +1,10 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
   tab: "대상 소프트웨어 모니터링 보고서", title: "대상 소프트웨어 모니터링 보고서",
+  chooseSoftware: "기록할 소프트웨어 선택",
+  noSoftware: "등록된 소프트웨어가 없습니다. 먼저 소프트웨어 관리에서 대상을 등록하세요.",
+  oneAtATime: "한 번에 하나만 기록할 수 있습니다. 현재 기록을 먼저 중지하세요.",
+  workflow: "등록되어 실행 중인 소프트웨어를 선택하여 기록하세요. 소프트웨어 상세 정보의 개요에서도 시작할 수 있습니다. 기본값은 600초이며 1~3600초로 설정할 수 있습니다. 수동 중지, 프로세스 종료 또는 시간 제한 도달 시 보고서를 만들고 완료된 기록을 최근 50개까지 보관합니다.",
   intro: "이 소프트웨어의 모든 프로세스에서 앱 Present 프레임 시간과 리소스 사용량을 기록합니다.",
   maximumSeconds: "최대 기록 시간(초)", start: "기록 시작", stop: "기록 중지",
   recording: "기록 중", completed: "완료", refresh: "보고서 새로 고침",

@@ -1,6 +1,10 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
   tab: "Rapports de surveillance ciblée", title: "Rapports de surveillance ciblée",
+  chooseSoftware: "Choisir le logiciel à enregistrer",
+  noSoftware: "Aucun logiciel enregistré. Ajoutez la cible dans la gestion des logiciels.",
+  oneAtATime: "Un seul enregistrement est possible à la fois. Arrêtez d'abord celui en cours.",
+  workflow: "Choisissez un logiciel enregistré et en cours d'exécution, ou démarrez depuis sa vue d'ensemble. La durée est de 600 secondes par défaut, réglable de 1 à 3600. Un arrêt manuel, la fin des processus ou la limite de temps termine le rapport. Les 50 derniers enregistrements terminés sont conservés.",
   intro: "Enregistre les temps des trames Present et les ressources de tous les processus de ce logiciel.",
   maximumSeconds: "Durée maximale d’enregistrement (secondes)", start: "Démarrer l’enregistrement", stop: "Arrêter l’enregistrement",
   recording: "Enregistrement", completed: "Terminé", refresh: "Actualiser les rapports",

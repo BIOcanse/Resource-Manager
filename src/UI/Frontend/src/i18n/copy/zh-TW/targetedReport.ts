@@ -4,6 +4,10 @@ export const zhTwTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
   targetedReport: {
     tab: "定向監控報告",
     title: "定向監控報告",
+    chooseSoftware: "選擇要錄製的軟體",
+    noSoftware: "沒有已登記的軟體。請先在軟體管理中登記目標軟體。",
+    oneAtATime: "同時只能錄製一個軟體，請先停止目前的錄製。",
+    workflow: "選擇已登記且正在執行的軟體開始錄製，也可從軟體詳情的概覽開始。預設600秒，可設1–3600秒；手動停止、處理程序結束或到時後產生報告，保留最近50筆已結束錄製。",
     intro: "記錄此軟體所有處理程序的應用程式提交影格時間與資源用量。",
     maximumSeconds: "最長錄製時間（秒）",
     start: "開始錄製",

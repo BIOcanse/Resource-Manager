@@ -60,6 +60,18 @@ export function subscriptionChannelConcurrency(events) {
   return { inFlight, maxInFlight };
 }
 
+export function subscriptionPathMaximum(subscriptionSets, pathname) {
+  let maximum = 0;
+  for (const selectors of subscriptionSets) {
+    let count = 0;
+    for (const selector of selectors) {
+      if (new URL(selector, "http://127.0.0.1").pathname === pathname) count++;
+    }
+    maximum = Math.max(maximum, count);
+  }
+  return maximum;
+}
+
 export function assertSubscriptionChannelReleased(events, hiddenAt, timeoutMs) {
   assert.equal(subscriptionChannelConcurrency(events).inFlight, 0,
     `Browser subscription channel is still active after hiding: ${JSON.stringify(events)}`);

@@ -3,6 +3,7 @@ import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext
 import type { SourceLease } from "../../frontendRuntime/source/SourceDescriptor.ts";
 import { SourceLeaseBinding } from "../../frontendRuntime/source/SourceLeaseBinding.ts";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { useSource } from "../../frontendRuntime/source/useSource.ts";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
@@ -10,13 +11,15 @@ import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
 import { formatBytes, formatBytesPerSecond } from "../../presentation/byteUnits.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
+import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import { currentLanguage, uiText } from "../../text.ts";
 import {
-  deleteRecording, exportRecording,
+  deleteRecording, exportRecording, stopRecording,
   type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
 import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
+import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
@@ -35,6 +38,11 @@ export function TargetedReportsPage() {
   }));
   const recordings = createMemo<RecordingHeader[]>(() =>
     recordingsSource.snapshot().data ?? []);
+  const targetsSource = useSource(runtime.sources.targetedRecordingTargets, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.targetedReportsPage), refreshIntervalMs: null
+  }));
+  const [targetId, setTargetId] = createSignal("");
+  const [stoppingId, setStoppingId] = createSignal<string | null>(null);
   const [reportSource, setReportSource] =
     createSignal<SourceSnapshot<RecordingReport> | null>(null);
   const report = createMemo(() => reportSource()?.data ?? null);
@@ -141,6 +149,7 @@ export function TargetedReportsPage() {
     try {
       await Promise.all([
         recordingsSource.refresh(),
+        targetsSource.refresh(),
         reportLease?.refresh() ?? Promise.resolve(null)
       ]);
     } catch {
@@ -172,6 +181,22 @@ export function TargetedReportsPage() {
     }
   };
 
+  const stop = async (id: string) => {
+    if (stoppingId()) return;
+    setStoppingId(id);
+    setActionFailed(false);
+    try {
+      const completed = await stopRecording(runtime.requestClient, id);
+      recordingsSource.acceptAuthoritative(recordings().map((item) => item.id === id ? completed : item));
+      select(id);
+      await Promise.all([recordingsSource.refresh(), reportLease?.refresh()]);
+    } catch {
+      setActionFailed(true);
+    } finally {
+      setStoppingId(null);
+    }
+  };
+
   const download = async (id: string, format: "json" | "csv") => {
     setActionFailed(false);
     try {
@@ -198,11 +223,29 @@ export function TargetedReportsPage() {
         <CurrentPageHeading />
         <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
       </div>
-      <Show when={failed()}><div class="targeted-report-note error" role="alert">
+      <p class="targeted-report-note">{uiText.targetedReport.workflow}</p>
+      <div class="targeted-recording-actions">
+        <label>{uiText.targetedReport.software}
+          <select value={targetId()} disabled={!sourceCanRender(targetsSource.snapshot())}
+            onChange={(event) => setTargetId(event.currentTarget.value)}>
+            <option value="">{uiText.targetedReport.chooseSoftware}</option>
+            <For each={targetsSource.snapshot().data ?? []}>{(software) =>
+              <option value={software.id} selected={software.id === targetId()}>{softwareRecordName(software)}</option>}
+            </For>
+          </select>
+        </label>
+      </div>
+      <Show when={targetsSource.snapshot().status === "loading"}><p role="status">{uiText.targetedReport.loading}</p></Show>
+      <Show when={targetsSource.snapshot().status === "ready" && targetsSource.snapshot().data?.length === 0}>
+        <p class="targeted-report-note">{uiText.targetedReport.noSoftware}</p>
+      </Show>
+      <Show when={targetsSource.snapshot().data?.some((software) => software.id === targetId())}><TargetedRecordingControl softwareId={targetId()}
+        onStarted={(recording) => select(recording.id)} /></Show>
+      <Show when={failed() || targetsSource.snapshot().status === "error" || targetsSource.snapshot().status === "unavailable"}><div class="targeted-report-note error" role="alert">
         <span>{uiText.targetedReport.failed}</span>
         <button class="secondary" type="button" onClick={() => void refresh()}>{uiText.observationNotice.retry}</button>
       </div></Show>
-      <Show when={recordings().length > 0} fallback={<div class="optimization-empty">{loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}</div>}>
+      <Show when={recordings().length > 0} fallback={<Show when={!listFailed()}><div class="optimization-empty">{loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}</div></Show>}>
         <div class="targeted-report-list" role="list">
           <For each={recordings()}>
             {(item) => (
@@ -213,6 +256,11 @@ export function TargetedReportsPage() {
                   <span>{dateTime(item.startedAt)} · {item.status === "recording"
                     ? uiText.targetedReport.recording : stopReason(item.stopReason)}</span>
                 </button>
+                <Show when={item.status === "recording"}>
+                  <span>{item.maximumDurationSeconds} {uiText.targetedReport.seconds}</span>
+                  <button class="secondary panel-refresh-button" type="button" disabled={!!stoppingId()}
+                    onClick={() => void stop(item.id)}>{uiText.targetedReport.stop}</button>
+                </Show>
                 <Show when={item.status === "completed"}>
                   <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item.id)}>
                     {uiText.targetedReport.delete}
@@ -266,7 +314,7 @@ export function TargetedReportsPage() {
                 <TargetedReportChart points={distributionPoints()}
                   from={distributionPoints()[0]?.x ?? 0}
                   to={(distributionPoints().at(-1)?.x ?? 0) + 10}
-                  mode="bars" unit="FPS" ariaLabel={uiText.targetedReport.distribution} />
+                  mode="bars" unit={uiText.targetedReport.frameCount} ariaLabel={uiText.targetedReport.distribution} />
               </section>
             </Show>
             <h4>{uiText.targetedReport.resources}</h4>

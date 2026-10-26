@@ -4,6 +4,10 @@ export const enTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
   targetedReport: {
     tab: "Targeted monitoring reports",
     title: "Targeted monitoring reports",
+    chooseSoftware: "Choose software to record",
+    noSoftware: "No registered software. Register the target in software management first.",
+    oneAtATime: "Only one recording can run at a time. Stop the current recording first.",
+    workflow: "Choose registered, running software to record, or start from its detail overview. The default is 600 seconds, adjustable from 1 to 3600. Stop manually, let the processes exit, or reach the time limit to finish. The latest 50 completed recordings are kept.",
     intro: "Record application Present frame times and resources for all processes of this software.",
     maximumSeconds: "Maximum recording duration (seconds)",
     start: "Start recording",

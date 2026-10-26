@@ -1,6 +1,10 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
   tab: "Berichte zur gezielten Überwachung", title: "Berichte zur gezielten Überwachung",
+  chooseSoftware: "Software für die Aufzeichnung wählen",
+  noSoftware: "Keine registrierte Software. Registrieren Sie das Ziel zuerst in der Softwareverwaltung.",
+  oneAtATime: "Es kann nur eine Aufzeichnung gleichzeitig laufen. Beenden Sie zuerst die aktuelle Aufzeichnung.",
+  workflow: "Wählen Sie registrierte, laufende Software oder starten Sie in deren Detailübersicht. Die Vorgabe beträgt 600 Sekunden, einstellbar von 1 bis 3600. Manuelles Stoppen, das Ende der Prozesse oder das Zeitlimit schließen den Bericht ab. Die letzten 50 abgeschlossenen Aufzeichnungen bleiben gespeichert.",
   intro: "Erfasst Present-Bildzeiten und Ressourcennutzung aller Prozesse dieser Software.",
   maximumSeconds: "Maximale Aufnahmedauer (Sekunden)", start: "Aufnahme starten", stop: "Aufnahme beenden",
   recording: "Aufnahme läuft", completed: "Abgeschlossen", refresh: "Berichte aktualisieren",

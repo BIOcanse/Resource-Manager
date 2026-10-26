@@ -17,7 +17,6 @@ import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import cpuBaselineRatioJourney from "./cpuBaselineRatioJourney.js";
@@ -139,6 +138,7 @@ const allJourneys = [
   ["disk-usage-feedback-refresh", diskUsageFeedbackRefreshJourney],
   ["disk-usage-operation-invalidation", diskUsageOperationInvalidationJourney],
   ["targeted-recording-source", targetedRecordingSourceJourney],
+  ["targeted-recordings", async (...args) => (await import("./targetedRecordingsJourney.js")).default(...args)],
   ["cpu-baseline-ratio", cpuBaselineRatioJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
@@ -171,12 +171,16 @@ if (journeys.length === 0 || (journeyFilter && journeys.length !== requestedJour
   throw new Error(`Unknown browser journey: ${journeyFilter}`);
 }
 
-const port = await reservePort();
-const baseUrl = `http://127.0.0.1:${port}`;
+let baseUrl;
+let listeningPort = null;
 const server = spawn(process.execPath, [resolve(projectRoot, "tests/browser/mockFrontendServer.mjs")], {
   cwd: projectRoot,
-  env: { ...process.env, RM_FRONTEND_HARNESS_PORT: String(port) },
-  stdio: ["ignore", "pipe", "pipe"]
+  env: { ...process.env, RM_FRONTEND_HARNESS_PORT: "0" },
+  stdio: ["ignore", "pipe", "pipe", "ipc"]
+});
+server.on("message", message => {
+  if (message?.type === "frontend-harness-ready" && Number.isInteger(message.port)
+    && message.port > 0 && message.port <= 65535) listeningPort = message.port;
 });
 let serverOutput = "";
 server.stdout.on("data", (chunk) => { serverOutput += chunk; });
@@ -184,7 +188,7 @@ server.stderr.on("data", (chunk) => { serverOutput += chunk; });
 
 let browser;
 try {
-  await waitForServer(baseUrl, server);
+  baseUrl = await waitForServer(server);
   const { chromium } = await loadPlaywright();
   browser = await launchBrowser(chromium);
   const results = [];
@@ -292,34 +296,20 @@ async function launchBrowser(chromium) {
   return chromium.launch({ headless: true, executablePath: systemBrowser });
 }
 
-async function reservePort() {
-  const server = createServer();
-  await new Promise((resolveListen, rejectListen) => {
-    server.once("error", rejectListen);
-    server.listen(0, "127.0.0.1", resolveListen);
-  });
-  const address = server.address();
-  const selectedPort = typeof address === "object" && address ? address.port : 0;
-  await new Promise((resolveClose, rejectClose) => server.close((error) => error ? rejectClose(error) : resolveClose()));
-  if (!selectedPort) {
-    throw new Error("Unable to reserve a browser-gate port.");
-  }
-  return selectedPort;
-}
-
-async function waitForServer(baseUrl, processHandle) {
+async function waitForServer(processHandle) {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     if (processHandle.exitCode !== null) {
       throw new Error(`Frontend harness exited early (${processHandle.exitCode}).\n${serverOutput}`);
     }
     try {
-      const response = await fetch(`${baseUrl}/__test/scenario`);
-      if (response.ok) {
-        return;
+      if (listeningPort !== null) {
+        const url = `http://127.0.0.1:${listeningPort}`;
+        const response = await fetch(`${url}/__test/scenario`);
+        if (response.ok) return url;
       }
     } catch {
-      // The harness has not bound the reserved port yet.
+      // Wait for the bound harness to respond before starting a journey.
     }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
   }

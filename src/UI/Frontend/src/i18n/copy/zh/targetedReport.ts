@@ -2,6 +2,10 @@ export const zhTargetedReportCopy = {
   targetedReport: {
     tab: "定向监控报告",
     title: "定向监控报告",
+    chooseSoftware: "选择要录制的软件",
+    noSoftware: "没有已登记的软件。请先在软件管理中登记目标软件。",
+    oneAtATime: "同时只能录制一个软件，请先停止当前录制。",
+    workflow: "选择已登记且正在运行的软件开始录制，也可从软件详情的概览开始。默认600秒，可设1–3600秒；手动停止、进程退出或到时后生成报告，保留最近50条已结束录制。",
     intro: "记录此软件所有进程的应用提交帧时间和资源用量。",
     maximumSeconds: "最长录制时间（秒）",
     start: "开始录制",

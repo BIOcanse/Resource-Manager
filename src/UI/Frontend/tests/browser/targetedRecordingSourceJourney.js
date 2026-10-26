@@ -21,17 +21,15 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   };
   const app = await loadAppCopy("zh-CN");
   let unrelatedRecording = true;
-  await page.route("**/api/targeted-recordings", async route => {
-    if (route.request().method() !== "GET") return route.continue();
-    const response = await route.fetch();
-    const records = await response.json();
-    if (unrelatedRecording) records.push({
+  const recordingList = async route => {
+    if (route.request().method() !== "GET" || !unrelatedRecording) return route.continue();
+    return route.fulfill({ json: [{
       id: "unrelated-active-recording", softwareId: "another-software", softwareName: "Other software",
       startedAt: new Date().toISOString(), endedAt: null, maximumDurationSeconds: 600,
       status: "recording", stopReason: null, incomplete: false
-    });
-    return route.fulfill({ json: records });
-  });
+    }] });
+  };
+  await page.route("**/api/targeted-recordings", recordingList);
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   const navigation = page.locator(".shell-pages");
@@ -44,16 +42,22 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await detail.locator(".targeted-recording-control").waitFor({ state: "visible", timeout: 5000 });
   const startButton = detail.getByRole("button", { name: app.targetedReport.start, exact: true });
   await startButton.waitFor({ state: "visible", timeout: 5000 });
+  await detail.getByRole("status").filter({ hasText: app.targetedReport.oneAtATime }).waitFor();
+  assert(await startButton.isDisabled(), "Another software recording must block start");
+  const conflictReads = listReads;
+  unrelatedRecording = false;
   await page.waitForFunction((label) => Array.from(document.querySelectorAll(
     ".targeted-recording-control button")).some((button) =>
     button.textContent?.trim() === label && !button.disabled), app.targetedReport.start,
   { timeout: 5000 });
+  assert(listReads > conflictReads, "Another software finishing must release the start button without a manual refresh");
+  await page.unroute("**/api/targeted-recordings", recordingList);
   const idleReadCount = listReads;
   await page.waitForTimeout(2250);
   assert(listReads === idleReadCount,
     `The shared recording list polled without an active recording: ${idleReadCount} -> ${listReads}`);
-  unrelatedRecording = false;
 
+  await detail.locator(".targeted-recording-actions input").fill("15");
   await startButton.click();
   await detail.locator(".targeted-recording-actions [role='status']")
     .waitFor({ state: "visible", timeout: 5000 });
@@ -123,6 +127,10 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await detailPanel.locator(".targeted-report-note")
     .filter({ hasText: app.targetedReport.stopReasons.maxDuration })
     .waitFor({ state: "visible", timeout: 10000 });
+  // List and detail publish independently; both must observe completion before polling can stop.
+  await reopenedRow.locator(".targeted-report-open span")
+    .filter({ hasText: app.targetedReport.stopReasons.maxDuration })
+    .waitFor({ state: "visible", timeout: 5000 });
   const listReadsAfterCompletion = listReads;
   const reportReadsAfterCompletion = reportReads.get(id) ?? 0;
   await page.waitForTimeout(2250);

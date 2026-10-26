@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const port = Number(process.env.RM_FRONTEND_HARNESS_PORT || 4177);
+let port = Number(process.env.RM_FRONTEND_HARNESS_PORT || 4177);
 const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
   ? resolve(process.env.RM_FRONTEND_STATIC_ROOT)
   : fileURLToPath(new URL("../../../../../src/Core/wwwroot/", import.meta.url));
@@ -351,6 +351,8 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
+  port = server.address().port;
+  process.send?.({ type: "frontend-harness-ready", port });
   console.log(`frontend harness listening on http://127.0.0.1:${port}`);
 });
 
@@ -648,7 +650,16 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/targeted-recordings" && request.method === "POST") {
     const body = JSON.parse(await readBody(request));
-    const softwareId = typeof body.softwareId === "string" ? body.softwareId : "frontend-harness.software";
+    let softwareId = typeof body.softwareId === "string" ? body.softwareId : "";
+    const duration = body.maximumDurationSeconds ?? 600;
+    if (!softwareId.trim() || !Number.isInteger(duration) || duration < 1 || duration > 3600) {
+      response.writeHead(400); response.end(); return;
+    }
+    if ([...targetedRecordings.values()].some((entry) => entry.header.status === "recording")) {
+      response.writeHead(409); response.end(); return;
+    }
+    if (softwareId.toLowerCase() !== mockSoftware.id.toLowerCase()) { response.writeHead(404); response.end(); return; }
+    softwareId = mockSoftware.id;
     const softwareName = softwareId === "frontend-harness.software" ? "示例软件" : softwareId;
     const startedAt = now();
     const id = `recording-fixture-${++targetedRecordingSequence}`;
@@ -673,14 +684,14 @@ async function handleApi(request, response, url) {
     targetedRecordingCompletionTimer = setTimeout(() => {
       targetedRecordingCompletionTimer = null;
       completeTargetedRecording(id, "max-duration");
-    }, 15_000);
+    }, duration * 1000);
     return json(response, 200, entry.header);
   }
   const targetedRecordingMatch = path.match(/^\/api\/targeted-recordings\/([^/]+)$/);
   const targetedRecordingStopMatch = path.match(/^\/api\/targeted-recordings\/([^/]+)\/stop$/);
   if (targetedRecordingStopMatch && request.method === "POST") {
     const entry = targetedRecordings.get(decodeURIComponent(targetedRecordingStopMatch[1]));
-    if (!entry) return json(response, 404, { error: "recording not found" });
+    if (!entry || entry.header.status !== "recording") { response.writeHead(404); response.end(); return; }
     if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
     targetedRecordingCompletionTimer = null;
     completeTargetedRecording(entry.header.id, "user");
@@ -688,22 +699,27 @@ async function handleApi(request, response, url) {
   }
   if (targetedRecordingMatch && request.method === "GET") {
     const entry = targetedRecordings.get(decodeURIComponent(targetedRecordingMatch[1]));
-    return entry ? json(response, 200, {
-      recording: entry.header,
-      summary: null,
-      frameIntervals: entry.frameIntervals,
-      fpsDistribution: entry.fpsDistribution,
-      resourceSamples: entry.resourceSamples
-    }) : json(response, 404, { error: "recording not found" });
+    return entry ? json(response, 200, targetedRecordingReport(entry)) : json(response, 404, { error: "recording not found" });
   }
   if (targetedRecordingMatch && request.method === "DELETE") {
-    targetedRecordings.delete(decodeURIComponent(targetedRecordingMatch[1]));
+    const id = decodeURIComponent(targetedRecordingMatch[1]);
+    const entry = targetedRecordings.get(id);
+    if (!entry || entry.header.status !== "completed") { response.writeHead(404); response.end(); return; }
+    targetedRecordings.delete(id);
     response.writeHead(204);
     response.end();
     return;
   }
-  if (path.startsWith("/api/targeted-recordings/") && request.method === "GET") {
-    return json(response, 200, { recording: {}, summary: null, frameIntervals: [], fpsDistribution: [], resourceSamples: [] });
+  const targetedExport = path.match(/^\/api\/targeted-recordings\/([^/]+)\/export$/);
+  if (targetedExport && request.method === "GET") {
+    const entry = targetedRecordings.get(decodeURIComponent(targetedExport[1]));
+    if (!entry) { response.writeHead(404); response.end(); return; }
+    const format = url.searchParams.get("format") ?? "json";
+    if (format === "json") return json(response, 200, targetedRecordingReport(entry));
+    if (format !== "csv") { response.writeHead(400); response.end(); return; }
+    response.writeHead(200, { "Content-Type": "text/csv; charset=utf-8" });
+    response.end("kind,utc,processId,processStartKey,source,swapChain,frameTimeMs,scope,metric,value\r\nsummary,,,,,,,,averageFps,100\r\n");
+    return;
   }
   if (path === "/api/metrics/catalog") {
     return json(response, 200, metricCatalogBody());
@@ -2394,6 +2410,27 @@ function completeTargetedRecording(id, stopReason) {
     endedAt,
     stopReason,
     incomplete: false
+  };
+}
+
+// Deterministic report values, using the production wire shape including nullable metrics.
+function targetedRecordingReport(entry) {
+  const start = Date.parse(entry.header.startedAt);
+  const end = Date.parse(entry.header.endedAt ?? now());
+  const capturedAt = new Date(Math.max(start, end)).toISOString();
+  return {
+    recording: entry.header,
+    summary: { intervalCount: 3, durationMs: 30, averageFps: 100,
+      onePercentLowFps: 100, pointOnePercentLowFps: 100,
+      p50FrameTimeMs: 10, p95FrameTimeMs: 10, p99FrameTimeMs: 10, maxFrameTimeMs: 10 },
+    frameIntervals: [0, 1, 2].map((index) => ({ processId: 123, processStartKey: 1234,
+      source: 0, swapChain: 1, endedAt: new Date(start + (end - start) * index / 2).toISOString(), durationMs: 10 })),
+    fpsDistribution: [{ fromFps: 100, toFps: 110, count: 3 }],
+    resourceSamples: [entry.header.startedAt, capturedAt].map((capturedAt) => ({
+      capturedAt, software: { "cpu.usage": 25, "memory.usage": 1048576 },
+      system: { "cpu.usage": 40, "cpu.temperature": null },
+      processes: [{ processId: 123, processStartKey: 1234 }]
+    }))
   };
 }
 

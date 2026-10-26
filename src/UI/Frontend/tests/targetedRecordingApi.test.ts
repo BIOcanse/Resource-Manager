@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {
-  deleteRecording, exportRecording, getRecording, listRecordings,
+  deleteRecording, exportRecording, getRecording, getRecordingTargets, listRecordings,
   recordingReportDecoder, startRecording, stopRecording
 } from "../src/features/targetedReport/targetedRecordingApi.ts";
 import type { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
@@ -38,7 +38,8 @@ const client = {
     calls.push({ key: descriptor.key, url: descriptor.url,
       method: descriptor.request?.method ?? "GET", body: descriptor.request?.body,
       binary: descriptor.request?.binary });
-    const value = descriptor.key === "targeted.list" ? [header]
+    const value = descriptor.key === "targeted.targets" ? []
+      : descriptor.key === "targeted.list" ? [header]
       : descriptor.key === "targeted.get" ? report
       : descriptor.key === "targeted.delete" ? null
       : descriptor.key.startsWith("targeted.export") ? new ArrayBuffer(4)
@@ -64,4 +65,7 @@ assert.deepEqual(calls.map((call) => [call.method, call.url]), [
 ]);
 assert.deepEqual(JSON.parse(calls[1].body ?? ""), { softwareId: "game-1", maximumDurationSeconds: 600 });
 assert.equal(calls[5].binary, true);
+assert.deepEqual(await getRecordingTargets(client), []);
+assert.deepEqual(calls.at(-1), { key: "targeted.targets", url: "/api/software",
+  method: "GET", body: undefined, binary: undefined });
 console.log("Targeted recording API routes, request shapes and report decoding passed.");

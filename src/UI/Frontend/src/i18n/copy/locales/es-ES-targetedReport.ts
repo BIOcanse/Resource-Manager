@@ -1,6 +1,10 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
   tab: "Informes de supervisión dirigida", title: "Informes de supervisión dirigida",
+  chooseSoftware: "Elegir el software que se grabará",
+  noSoftware: "No hay software registrado. Registre primero el destino en la gestión de software.",
+  oneAtATime: "Solo se puede realizar una grabación a la vez. Detenga primero la actual.",
+  workflow: "Elija un software registrado y en ejecución, o inicie desde su vista de detalles. La duración predeterminada es de 600 segundos, ajustable de 1 a 3600. La grabación termina al detenerla, al cerrarse los procesos o al alcanzar el límite. Se conservan las últimas 50 grabaciones completadas.",
   intro: "Registra los tiempos de fotogramas Present y los recursos de todos los procesos de este programa.",
   maximumSeconds: "Duración máxima de la grabación (segundos)", start: "Iniciar grabación", stop: "Detener grabación",
   recording: "Grabando", completed: "Finalizado", refresh: "Actualizar informes",

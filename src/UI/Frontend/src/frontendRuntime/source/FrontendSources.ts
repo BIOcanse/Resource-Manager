@@ -123,7 +123,7 @@ import {
 import type { OptimizationReportOverview } from "../../types.ts";
 import {
   getRecording,
-  listRecordings,
+  listRecordings, getRecordingTargets,
   type RecordingHeader,
   type RecordingReport
 } from "../../features/targetedReport/targetedRecordingApi.ts";
@@ -181,6 +181,7 @@ export interface FrontendSources {
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
   readonly targetedRecordings: SourceHandle<RecordingHeader[]>;
+  readonly targetedRecordingTargets: SourceHandle<Awaited<ReturnType<typeof getRecordingTargets>>>;
   readonly targetedRecordingReport: SourceFamily<
     { readonly recordingId: string },
     RecordingReport
@@ -324,6 +325,11 @@ export function createFrontendSources(
       retainLastGood: true,
       selectCapturedAt: (value) =>
         value.status.lastEvaluationAt ?? value.capturedAt
+    }),
+    targetedRecordingTargets: sourceRegistry.define({
+      key: "targeted-recordings.targets",
+      load: (signal) => getRecordingTargets(requestClient, signal),
+      retainLastGood: false
     }),
     targetedRecordings: sourceRegistry.define<RecordingHeader[]>({
       key: "targeted-recordings.list",
