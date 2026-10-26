@@ -10,6 +10,7 @@ import type {
   FrontendPerformanceMonitor
 } from "./frontendRuntime/performance/FrontendPerformanceMonitor";
 import "./styles.css";
+import { observeMotionTokens } from "./presentation/motionTokens.ts";
 
 const root = document.getElementById("root");
 
@@ -28,6 +29,7 @@ if (frontendPerformanceBootstrapRequested(bootstrapTarget)) {
 }
 
 function startApplication(performance: FrontendPerformanceMonitor) {
+  const disposeMotionTokens = observeMotionTokens(document);
   const runtime = createFrontendRuntime(performance);
   const disposeApp = render(
     () => (
@@ -40,6 +42,7 @@ function startApplication(performance: FrontendPerformanceMonitor) {
 
   window.addEventListener("pagehide", () => {
     disposeApp();
+    disposeMotionTokens();
     runtime.dispose();
   }, { once: true });
 }
