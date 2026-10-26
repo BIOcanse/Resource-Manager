@@ -87,8 +87,14 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             }
         }
 
-        return new ResourceProcessDetailsWireSnapshot(capturedAt ?? source.PhysicalMemoryResidual?.CapturedAt, metrics,
-            softwareIds.Contains("resource-residual:memory.usage") ? source.PhysicalMemoryResidual : null);
+        // A residual owner alone is not PFN demand. Reuse only the published PFN
+        // value, retaining its own capture time and status across counter captures.
+        var physical = softwareIds.Contains("resource-residual:memory.usage")
+            && metricIds.Any(static id => id.Equals("memory.usage", StringComparison.OrdinalIgnoreCase)
+                || id.Equals("process_all_private_working_set_actual", StringComparison.OrdinalIgnoreCase)
+                || id.Equals(PhysicalMemoryResidualFrame.MetricId, StringComparison.OrdinalIgnoreCase))
+            ? source.PhysicalMemoryResidual : null;
+        return new ResourceProcessDetailsWireSnapshot(capturedAt ?? physical?.CapturedAt, metrics, physical);
     }
 }
 

@@ -1,11 +1,41 @@
 using System.Runtime.InteropServices;
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class PhysicalMemoryPfnTests
 {
+    [Theory]
+    [InlineData("memory.usage", true)]
+    [InlineData("process_all_private_working_set_actual", true)]
+    [InlineData("cpu.usage", false)]
+    public void DetailsReuseOnlyASelectedPublishedPfnValueWithItsOwnTime(string metric, bool selected)
+    {
+        var at = At.AddSeconds(2);
+        var owners = new HashSet<string> { "resource-residual:memory.usage" };
+        var hasCounter = metric == "memory.usage";
+        var source = new ResourceBreakdownSnapshot(at, hasCounter
+            ? [new ResourceBreakdownBar(metric, "B", "capacity", 100, 200, 50, [])] : [])
+        {
+            Datasets = hasCounter ? [new(SamplingDatasetIds.ForProcessMetric(metric), "ready", 1, 1,
+                at, at, at, at.AddSeconds(5), null, null)] : []
+        };
+        var absent = ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot.Create(source, [metric], owners);
+        Assert.Null(absent.PhysicalMemoryResidual);
+        Assert.Equal(hasCounter ? at : (DateTimeOffset?)null, absent.CapturedAt);
+
+        foreach (var frame in new[] { Frame(), PhysicalMemoryResidualFrame.Unavailable(At, "capture-output-missing") })
+        {
+            var wire = ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot.Create(
+                source with { PhysicalMemoryResidual = frame }, [metric], owners);
+            Assert.Equal(selected ? frame : null, wire.PhysicalMemoryResidual);
+            Assert.Equal(hasCounter ? at : selected ? At : (DateTimeOffset?)null, wire.CapturedAt);
+            if (selected) Assert.NotEqual(source.CapturedAt, wire.PhysicalMemoryResidual!.CapturedAt);
+        }
+    }
+
     internal static readonly DateTimeOffset At = DateTimeOffset.Parse("2026-10-26T00:00:00Z");
     internal static PhysicalMemoryResidualFrame Frame(bool negativePrivate = false)
     {

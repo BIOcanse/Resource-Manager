@@ -14,12 +14,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         if (scope != ResourceMonitorScope.Details || !softwareIds.Any(static id => id.Equals("resource-residual:memory.usage", StringComparison.OrdinalIgnoreCase))
             || !request.MetricIds.Any(IsPhysicalPrivateMetric))
             return request;
-        // Its own logical subscription: a bar/basic-metric publication cannot trigger a walk or a details read.
+        // Preserve the requested counter facts. PFNs remain a separate dataset/item;
+        // publishing a counter dataset cannot make the PFN item due.
         return request with
         {
-            MetricIds = request.MetricIds.Where(static id => !IsPhysicalPrivateMetric(id))
-                .Append(PhysicalMemoryResidualFrame.MetricId).ToArray(),
-            ProcessMemoryFactIds = request.ProcessMemoryFactIds.Where(static id => !id.Equals("process_all_private_working_set_actual", StringComparison.OrdinalIgnoreCase)).ToArray()
+            MetricIds = request.MetricIds.Append(PhysicalMemoryResidualFrame.MetricId)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
         };
     }
 }

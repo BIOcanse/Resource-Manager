@@ -586,7 +586,7 @@ public sealed partial class ResourceMonitorDetailsSubscriptionTests
         var selector = $"scope=details&ids={metric}&processDetails=resource-residual:memory.usage";
         using var direct = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?"+selector));
         Assert.Equal("pfn",direct.RootElement.GetProperty("physicalMemoryResidual").GetProperty("source").GetString());
-        Assert.Equal([PhysicalMemoryResidualFrame.MetricId],Assert.Single(source.SnapshotRequests).MetricIds);
+        Assert.Equal([metric, PhysicalMemoryResidualFrame.MetricId],Assert.Single(source.SnapshotRequests).MetricIds);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var request = new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream")
         { Content = JsonContent.Create(new {version=1,subscriptions=new[]{new{id="physical-details",path="/api/resource-monitor/subscribe?"+selector+"&intervalMs=1000"}}}) };
@@ -595,7 +595,7 @@ public sealed partial class ResourceMonitorDetailsSubscriptionTests
         using var reader=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
         using var frame=JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
         Assert.Equal("pfn",frame.RootElement.GetProperty("value").GetProperty("physicalMemoryResidual").GetProperty("source").GetString());
-        Assert.Equal([PhysicalMemoryResidualFrame.MetricId],Assert.Single(source.PushRequests).Request.MetricIds);
+        Assert.Equal([metric, PhysicalMemoryResidualFrame.MetricId],Assert.Single(source.PushRequests).Request.MetricIds);
         await timeout.CancelAsync(); response.Dispose(); await app.StopAsync();
     }
     private static void AssertDetailsPayload(JsonElement root, DateTimeOffset capturedAt)
