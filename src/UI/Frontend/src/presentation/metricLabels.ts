@@ -1,4 +1,5 @@
 import { formatFixedDigits, formatSignificantDigits } from "./interfaceNumbers.ts";
+import { isReservedSegment } from "../features/resourceBreakdown/resourceProcessIdentity.ts";
 import { uiText } from "../text.ts";
 import { isPhysicalMemoryResidualKind, physicalMemoryResidualKindName } from "./physicalMemoryResidual.ts";
 import {
@@ -93,14 +94,13 @@ export function softwareDisplayName(software: {
   softwareId?: string | null;
   name?: string | null;
   displayKind?: string | null;
-}): string {
-  if (software.softwareId === "resource-manager:self") {
-    return uiText.shell.productName;
+}, totalMetricId: string | null): string {
+  if (isReservedSegment(software)) {
+    return uiText.resourceTable.systemResidualRow(localizedMetricLabel(totalMetricId));
   }
 
-  const residualMetricId = /^resource-residual:(.+)$/.exec(software.softwareId ?? "")?.[1];
-  if (residualMetricId) {
-    return uiText.resourceTable.systemResidualRow(localizedMetricLabel(residualMetricId));
+  if (software.softwareId === "resource-manager:self") {
+    return uiText.shell.productName;
   }
 
   const reported = software.name?.trim();
@@ -117,11 +117,11 @@ export function softwareDisplayName(software: {
 /** Synthetic attribution names belong to the UI; real process names remain factual. */
 export function resourceProcessDisplayName(
   process: Pick<ResourceProcessSegment, "name" | "attributionKind">,
-  metricId: string
+  metricId: string | null
 ): string {
   const text = uiText.resourceBreakdown;
   if (process.attributionKind === "system-residual") {
-    if (/^gpu\.\d+\.vram$/.test(metricId)) return text.residualVram;
+    if (/^gpu\.\d+\.vram$/.test(metricId ?? "")) return text.residualVram;
     if (metricId === "memory.usage") return text.residualMemory;
     if (metricId === "virtualMemory.usage") return text.residualCommit;
     return text.residualSystem;
@@ -140,7 +140,7 @@ export function resourceProcessDisplayName(
 export function resourceTableRowName(row: ResourceTableRow | undefined): string {
   if (row?.kind === "summary") return uiText.resourceTable.summaryRow.name;
   if (row?.kind === "process" || row?.kind === "attribution" || row?.kind === "filtered") return row.name;
-  return softwareDisplayName({ softwareId: row?.softwareId, name: row?.name, displayKind: row?.status });
+  return softwareDisplayName({ softwareId: row?.softwareId, name: row?.name, displayKind: row?.displayKind }, row?.totalMetricId ?? null);
 }
 
 function normalizeMetricId(id: string): { pattern: string; index: string | null } {

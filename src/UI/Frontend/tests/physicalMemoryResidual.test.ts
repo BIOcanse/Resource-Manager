@@ -28,10 +28,10 @@ assert.equal(isPhysicalMemoryResidualKind(undefined), false);
 
 // 保留量分项的判定在 resourceProcessIdentity.ts（与 bars-polish 同一份）：按所属条目，不按分项标识的前缀。
 const leaf = { processId: -1, name: "", value: 1, systemPercent: 1, softwarePercent: 100, attributionKind: "system-memory/unclassified" };
-assert.equal(isReservedSegment({ softwareId: "resource-residual:memory.usage" }), true);
-assert.equal(isReservedSegment({ softwareId: "frontend-harness.software" }), false);
-assert.equal(isReservedProcess({ softwareId: "resource-residual:memory.usage" }, leaf as never), true);
-assert.equal(isReservedProcess({ softwareId: "frontend-harness.software" }, { ...leaf, processId: 42, attributionKind: "process" } as never), false);
+assert.equal(isReservedSegment({ displayKind: "system-residual" }), true);
+assert.equal(isReservedSegment({ displayKind: "application" }), false);
+assert.equal(isReservedProcess({ displayKind: "system-residual" }, leaf as never), true);
+assert.equal(isReservedProcess({ displayKind: "application" }, { ...leaf, processId: 42, attributionKind: "process" } as never), false);
 
 const counterKinds = ["system-memory/nonpaged-pool", "system-memory/nonpaged-pool/tag/4346744E", "system-memory/nonpaged-pool/other-tags",
   "system-memory/nonpaged-pool/unclassified", "system-memory/paged-pool-resident", "system-memory/driver-resident",

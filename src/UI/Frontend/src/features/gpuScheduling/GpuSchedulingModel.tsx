@@ -1,5 +1,6 @@
 import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
+import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
@@ -763,7 +764,7 @@ function parseGpuBreakdownMetric(metricId?: string | null) {
 
 function isRealProcessSoftwareSegment(segment: ResourceSoftwareSegment) {
   return Boolean(segment.softwareId)
-    && !segment.softwareId.startsWith("resource-residual:");
+    && !isReservedSegment(segment);
 }
 
 function normalizePressureThreshold(value: number | undefined): number | null {

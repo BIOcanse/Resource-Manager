@@ -2093,7 +2093,7 @@ function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareI
   const fixture = physicalMemoryFixture;
   const percent = (value) => value * 100 / fixture.capacityBytes;
   let residualIndex = softwareCatalog.findIndex(row => row[0] === physicalMemoryResidualSoftwareId);
-  if (residualIndex < 0) residualIndex = softwareCatalog.push([physicalMemoryResidualSoftwareId, "", "windows_system", "system_residual"]) - 1;
+  if (residualIndex < 0) residualIndex = softwareCatalog.push([physicalMemoryResidualSoftwareId, "", "windows_system", "system-residual"]) - 1;
   const residual = fixture.usedBytes - fixture.attributedPrivateBytes;
   const leaves = processDetailSoftwareIds.has(physicalMemoryResidualSoftwareId)
     ? fixture.counterLeaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])
@@ -2255,8 +2255,8 @@ const auditSoftware = [
 function auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds, measures, modes, keepMissingTotals) {
   const softwareCatalog = [
     ...auditSoftware.map(([id, name, kind, displayKind]) => [id, name, kind, displayKind]),
-    ["resource-residual:memory.usage", "", "windows_system", "windows_system"],
-    ["resource-residual:cpu.usage", "", "windows_system", "windows_system"]
+    ["resource-residual:memory.usage", "", "windows_system", "system-residual"],
+    ["resource-residual:cpu.usage", "", "windows_system", "system-residual"]
   ];
   const factor = index => 1 + 0.28 * Math.sin(generation * 1.7 + index * 0.9);
   const rows = (column, capacity, residualIndex, residualValue) => {
@@ -2316,7 +2316,7 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
     const detailed = processDetailSoftwareIds.has(softwareCatalog[0][0].toLowerCase());
     const residualId = `resource-residual:${fact.totalMetricId}`;
     let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
-    if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
+    if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "system-residual"]) - 1;
     // 不可加口径没有残差（后端 Balance），也就没有残差条目。
     const residual = fact.additive && !missing ? fact.totalValue - fact.processSum : null;
     // 和后端 r3 一样：只选物理私有内存度量、不带 memory.usage 时，它的保留量同样按计数器分项给出（PID -1 的行，

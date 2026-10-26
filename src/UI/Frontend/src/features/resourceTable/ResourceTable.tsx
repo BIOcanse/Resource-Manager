@@ -973,8 +973,8 @@ function ResourceTableRowSlot(props: {
         "process-row": row()?.kind === "process",
         "software-row": row()?.kind === "software",
         "summary-row": row()?.kind === "summary",
-        // 系统/驱动保留（软件行和它的进程行，进程级里也一样）：残差软件 id 是 resource-residual:<整机指标>。
-        "residual-row": row()?.softwareId?.startsWith("resource-residual:") === true,
+        // 软件行、它的进程行和归属行都带后端的软件 displayKind；软件 id 不透明。
+        "residual-row": isReservedSegment(row() ?? {}),
         "filtered-row": row()?.kind === "filtered",
         "attribution-row": row()?.kind === "attribution",
         "empty-row": !hasRow(),

@@ -3,6 +3,7 @@ import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegm
 import { decodeFactsMetricFacts, requireTimestamp } from "../../api/resourceMetricFactsWire.ts";
 import { requireArray, requireOneOf, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
+import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { resourceProcessDisplayName, resourceTableCellText } from "../../presentation/metricLabels.ts";
 import { uiText } from "../../text.ts";
 import { currentLanguage } from "../../i18n/appTextStore.ts";
@@ -23,7 +24,8 @@ function isProcess(process: Pick<ResourceProcessSegment, "processId">): boolean 
 /**
  * 资源事实的一个指标，带它自己的整机事实（ResourceMetricFacts）：total、processSum、带符号的 residual、
  * 时刻、窗口、口径和不可用原因都只属于这个指标，不和别的指标或别的订阅混用。
- * 残差是软件条目 resource-residual:<totalMetricId>，它下面的叶子是归属行。
+ * 普通资源指标的 totalMetricId 就是它自己的 metricId，进程字段指标指向它比较的整机指标。
+ * 残差是 displayKind 为 system-residual 的软件条目（软件 id 不透明），它下面的叶子是归属行。
  */
 export type ResourceFactsMetric = ResourceBreakdownBar;
 
@@ -117,6 +119,9 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     const metricId = resourceTableMetricId(column);
     if (metricId !== null) columnByMetric.set(metricId, column.id);
   }
+  // Identity-only catalog entries share the explicit total context of their metric rows.
+  const totalMetricBySoftware = new Map(facts.metrics.flatMap(metric => metric.software
+    .filter(isReservedSegment).map(software => [software.softwareId, metric.totalMetricId] as const)));
   const softwareRows = new Map<string, ResourceTableRow>();
   const processRows = new Map<string, ResourceTableRow>();
   const attributionRows = new Map<string, ResourceTableRow>();
@@ -130,7 +135,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   function ensureSoftware(software: IdentitySoftware) {
     let group = softwareRows.get(software.softwareId);
     if (!group) {
-      group = { ...row(`software:${software.softwareId}`, "software", software.name, software.displayKind), softwareId: software.softwareId, processIds: [], processNames: [], executablePaths: [] };
+      group = { ...row(`software:${software.softwareId}`, "software", software.name, software.displayKind), softwareId: software.softwareId, displayKind: software.displayKind, totalMetricId: totalMetricBySoftware.get(software.softwareId) ?? null, processIds: [], processNames: [], executablePaths: [] };
       softwareRows.set(software.softwareId, group);
       metadata.set(software.softwareId, { ids: new Set(), names: new Set(), paths: new Set() });
     }
@@ -145,7 +150,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     let item = attributionRows.get(key);
     if (!item) {
       item = { ...row(`attribution:${key}`, "attribution", resourceProcessDisplayName(process, metric.totalMetricId ?? metric.metricId), software.displayKind),
-        softwareId: software.softwareId, softwareName: software.name, processId: null, processCount: 0, processIds: [], processNames: [], executablePaths: [] };
+        softwareId: software.softwareId, displayKind: software.displayKind, totalMetricId: metric.totalMetricId, softwareName: software.name, processId: null, processCount: 0, processIds: [], processNames: [], executablePaths: [] };
       item.values.pid = { value: null, displayValue: "--", unit: "", attributionKind: process.attributionKind };
       attributionRows.set(key, item);
     }
@@ -157,8 +162,8 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     let child = processRows.get(key);
     if (!child) {
       const processId = process.processId;
-      child = { ...row(`process:${key}`, "process", resourceProcessDisplayName(process, ""), process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
-        softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
+      child = { ...row(`process:${key}`, "process", resourceProcessDisplayName(process, null), process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
+        softwareId: software.softwareId, displayKind: software.displayKind, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
         processId, processStartKey: process.processStartKey, processCount: 1, processIds: [processId], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
       child.values.pid = { value: processId, displayValue: processId.toString(), unit: "", attributionKind: process.attributionKind };
       child.values.user = { displayValue: process.userName || "--", unit: "" };

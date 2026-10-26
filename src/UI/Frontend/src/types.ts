@@ -670,6 +670,9 @@ export interface ResourceTableValue {
 }
 
 export interface ResourceTableRow {
+  /** Software identity kind and containing whole-machine fact; IDs remain opaque. */
+  displayKind?: string | null;
+  totalMetricId?: string | null;
   id: string;
   parentId?: string | null;
   depth: number;

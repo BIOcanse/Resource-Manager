@@ -19,14 +19,14 @@ const second = { ...first, processStartKey: "b" };
 assert.notEqual(resourceProcessKey(first), resourceProcessKey(second));
 
 // 系统/驱动保留条目下面的每一项都按保留画，不管 attributionKind 写的是什么。
-const residual = { softwareId: "resource-residual:memory.usage" };
+const residual = { softwareId: "resource-residual:memory.usage", displayKind: "system-residual" };
 assert.equal(isReservedSegment(residual), true);
 for (const process of [pool, drivers, tag, leaf("anything-else")]) {
   assert.equal(isReservedProcess(residual, process), true);
 }
 
 // 普通软件下：普通进程不是保留；后端标成 system-residual 的未拆分残差是保留。
-const software = { softwareId: "software:example" };
+const software = { softwareId: "software:example", displayKind: "application" };
 assert.equal(isReservedSegment(software), false);
 assert.equal(isReservedProcess(software, first), false);
 assert.equal(isReservedProcess(software, leaf("system-residual")), true);

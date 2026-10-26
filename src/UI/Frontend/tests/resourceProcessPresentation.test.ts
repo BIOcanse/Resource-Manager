@@ -23,7 +23,7 @@ const expected = {
 const metricIds = ["gpu.12.vram", "memory.usage", "virtualMemory.usage", "cpu.usage"];
 const wire: ResourceBreakdownWireSnapshot = {
   version: 8, capturedAt: null,
-  softwareCatalog: metricIds.map(id => [`resource-residual:${id}`, "", "system_residual", "system_residual"]),
+  softwareCatalog: metricIds.map(id => [`resource-residual:${id}`, "", "windows_system", "system-residual"]),
   bars: metricIds.map((metricId, index) => ({ metricId, unit: "B", scaleMode: "capacity", totalValue: 10, capacityValue: 100, totalSystemPercent: 10,
     processSumValue: index === 0 ? 10 : 0, residualValue: 10, additiveAcrossProcesses: true, capturedAt: null,
     software: [[index, 10, 10, 0, 0, [[-1, "", null, 10, 10, 100, null, null, "system-residual", 0, null]]]] }))
@@ -48,7 +48,7 @@ const processCatalog = bars.flatMap(bar => bar.software.flatMap(group => group.p
 const facts = decodeResourceFacts({ version: 2, capturedAt: null, attributions: [],
   software: wire.softwareCatalog.map(([softwareId, name, kind, attributionKind]) => ({ softwareId, name, kind, attributionKind })),
   processes: processCatalog.map(process => ({ ...process, userName: process.userName ?? null, architecture: process.architecture ?? null })),
-  metrics: bars.map(bar => ({ ...bar, residualSource: null, processFieldName: null, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
+  metrics: bars.map(bar => ({ ...bar, totalMetricId: bar.metricId, residualSource: null, processFieldName: null, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
     processes: group.processes.map(process => ({ ...process, processIndex: processCatalog.indexOf(process), sharedValue: null })) })) }))
 }).facts!;
 const columns = [{ id: "name", visible: true }, { id: "cpu", visible: true }, { id: "memory", visible: true }, { id: "gpu.12.vram", visible: true }];

@@ -550,7 +550,7 @@ function ResourceBreakdownItem(props: {
         }}
       >
           <ResourceSegmentPaintPlane
-            segments={resourceSoftwarePaintSegments(layout())}
+            segments={resourceSoftwarePaintSegments(layout(), props.bar.metricId)}
             logicalSegmentCount={layout().filter((item) => !item.segment.isEmpty).length}
             segmentTop={trackGeometry.segmentTop()}
             segmentHeight={trackGeometry.segmentHeight()}
@@ -674,7 +674,7 @@ function ResourceProcessPanel(props: {
   return (
     <div class="resource-process-panel" aria-busy={props.observation.status === "loading"}>
       <div class="resource-process-header">
-        <strong>{softwareDisplayName(props.software)}</strong>
+        <strong>{softwareDisplayName(props.software, props.bar.metricId)}</strong>
         <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.processes?.length ?? 0) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>
       </div>
       <div
@@ -683,7 +683,7 @@ function ResourceProcessPanel(props: {
         ref={trackGeometry.observeTrack}
         tabIndex={hasProcesses() ? 0 : -1}
         role={hasProcesses() ? "listbox" : undefined}
-        aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software)) : undefined}
+        aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software, props.bar.metricId)) : undefined}
         aria-description={hasProcesses() && props.bar.basis ? props.bar.basis : undefined}
         aria-activedescendant={activeProcessOptionId()}
         onPointerMove={(event) => {
@@ -708,7 +708,7 @@ function ResourceProcessPanel(props: {
         <Show
           when={hasProcesses()}
           fallback={<Show when={props.processes !== null} fallback={<ObservationStateNotice
-            state={props.observation} label={uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software))} />}>
+            state={props.observation} label={uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software, props.bar.metricId))} />}>
             <div class="resource-process-empty">{uiText.resourceBreakdown.noAttributableProcess}</div>
           </Show>}
         >
@@ -955,8 +955,8 @@ function resourceSelectableSoftwareSegments(bar: ResourceBreakdownBar): Resource
 }
 
 // 空白段的名字是前端自己造的，直接用；软件段按共用规则出名。
-function segmentLabel(segment: ResourceSelectableSegment) {
-  return segment.kind === "Empty" ? segment.name : softwareDisplayName(segment);
+function segmentLabel(segment: ResourceSelectableSegment, metricId: string) {
+  return segment.kind === "Empty" ? segment.name : softwareDisplayName(segment, metricId);
 }
 
 function resourceSegmentTooltip(bar: ResourceBarView, segment: ResourceSelectableSegment) {
@@ -966,7 +966,7 @@ function resourceSegmentTooltip(bar: ResourceBarView, segment: ResourceSelectabl
 function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSelectableSegment): ResourceTooltipParts {
   const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : resourceSharePercentLabel(bar);
   return {
-    title: segmentLabel(segment),
+    title: segmentLabel(segment, bar.metricId),
     swatch: {
       color: resourceSegmentPaintColor(segment, "type"),
       distinctColor: resourceSegmentPaintColor(segment, "distinct"),
@@ -1031,7 +1031,7 @@ function resourceBarLayoutOptions(bar: ResourceBreakdownBar) {
   };
 }
 
-function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSelectableSegment>[]): ResourcePaintSegment[] {
+function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSelectableSegment>[], metricId: string): ResourcePaintSegment[] {
   return items.map((item) => ({
     key: item.segment.softwareId,
     sharedFraction: !item.segment.isEmpty && item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
@@ -1041,7 +1041,7 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
     distinctColor: resourceSegmentPaintColor(item.segment, "distinct"),
     hatched: isReservedSegment(item.segment),
     // 放不放得下由画布按像素宽度决定。
-    label: segmentLabel(item.segment),
+    label: segmentLabel(item.segment, metricId),
     labelColor: item.segment.isEmpty ? "var(--text)" : segmentTextColor
   }));
 }

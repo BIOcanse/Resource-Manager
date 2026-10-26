@@ -72,7 +72,7 @@ for (const path of ["features/resourceBreakdown/ResourceBreakdown.tsx", "feature
 }
 const breakdown = read("features/resourceBreakdown/ResourceBreakdown.tsx");
 const identity = read("features/resourceBreakdown/resourceProcessIdentity.ts");
-assert.match(identity, /startsWith\("resource-residual:"\)/, "system/driver reserved segments are recognised by their residual id");
+assert.match(identity, /segment\.displayKind === "system-residual"/, "system/driver reserved segments are recognised by their typed display kind");
 assert.match(breakdown, /import \{[^}]*isReservedSegment[^}]*\} from "\.\/resourceProcessIdentity\.ts"/, "one owner decides the reserved treatment");
 assert.match(breakdown, /hatched: isReservedSegment\(item\.segment\)/);
 assert.match(breakdown, /hatched: isReservedProcess\(software, item\.segment\)/, "every process under the reserved entry is hatched");
