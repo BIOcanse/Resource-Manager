@@ -9,6 +9,7 @@ import usabilityProbe from "./usabilityProbe.js";
 import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, enableMetricFields, seedFieldCards } from "./metricFieldsProbe.js";
 import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney.js";
 import { checkResourceBarSourceText } from "./resourceBarSourceChoiceJourney.js";
+import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 
 export default async function localizationJourney(page, baseUrl) {
   const failures = [];
@@ -163,6 +164,7 @@ export default async function localizationJourney(page, baseUrl) {
     if (!scenarioResponse.ok) throw new Error(option.id + ": EDID fixture unavailable");
     await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
     const topology = page.locator(".device-topology-panel"); await topology.waitFor();
+    await checkNetworkConnectionStates(page, app, option.id, baseUrl);
     await topology.locator(".device-port-item").first().click();
     await checkRecordedDisplayDialog(page, app);
     for (const variant of ["type3", "type3Inactive", "type3Unknown", "type3"]) {

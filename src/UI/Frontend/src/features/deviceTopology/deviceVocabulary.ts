@@ -95,3 +95,13 @@ export function mountStateLabel(value?: string | null) {
     default: return undefined;
   }
 }
+
+// 后端给的是状态 id（见 DeviceNetworkConnectionStates），措辞在这里。
+export function userFacingNetworkState(value?: string | null) {
+  switch (String(value ?? "").trim()) {
+    case "connected": return uiText.deviceTopology.connectionState.connected;
+    case "disconnected": return uiText.deviceTopology.connectionState.disconnected;
+    case "not-reported": return uiText.deviceTopology.notReportedMarker;
+    default: return uiText.deviceTopology.connectionState.unknown;
+  }
+}

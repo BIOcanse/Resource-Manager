@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
+import { displayConnectorTechnology, portHardwareKind, portProtocol, userFacingNetworkState } from "./deviceVocabulary.ts";
 import { deviceTopologySummaryFields } from "./deviceTopologyPresentation.ts";
 import type { ExternalInterfaceNodeRole } from "./externalInterfaceTree.ts";
 import type { InternalInterfaceNodeRole } from "./internalInterfaceTree.ts";
@@ -172,16 +172,6 @@ function reportedDeviceValue(value?: string | null) {
 function isReportedDeviceValue(value?: string | null) {
   const text = String(value ?? "").trim();
   return Boolean(text && text !== "--" && text.toLocaleLowerCase() !== "unknown" && !text.includes(uiText.deviceTopology.notReportedMarker));
-}
-
-// 后端给的是状态 id（见 DeviceNetworkConnectionStates），措辞在这里。
-function userFacingNetworkState(value?: string | null) {
-  switch (String(value ?? "").trim()) {
-    case "connected": return uiText.deviceTopology.connectionState.connected;
-    case "disconnected": return uiText.deviceTopology.connectionState.disconnected;
-    case "not-reported": return uiText.deviceTopology.notReportedMarker;
-    default: return uiText.deviceTopology.connectionState.unknown;
-  }
 }
 
 // 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。

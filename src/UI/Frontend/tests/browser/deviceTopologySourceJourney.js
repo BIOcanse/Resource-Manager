@@ -3,6 +3,7 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
 import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
 import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
@@ -117,6 +118,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     `Keyboard selection did not expose the full device description: ${selectedDetails}`);
 
   const app = await loadAppCopy("zh-CN");
+  await checkNetworkConnectionStates(page, app, "zh-CN", baseUrl);
   const beforeEdid = (await readTelemetry(page, subscriptionPath)).publications;
   await setScenario(page, { displayEdid: "ready" });
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeEdid);

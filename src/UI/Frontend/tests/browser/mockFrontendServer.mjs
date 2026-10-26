@@ -46,6 +46,7 @@ const defaultScenario = {
   invalidMetricFields: false,
   deviceTopologyNullProtocol: false,
   deviceTopologyPortCount: null,
+  deviceTopologyPorts: null,
   displayEdid: "off",
   gpuGrade: "normal",
   cpuGrade: "normal",
@@ -2006,7 +2007,8 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
         cpuModels: { value: [], reason: null }, gpuModels: { value: [], reason: null },
         gpuAttachments: { value: [], reason: null }, workstationComponents: []
       } },
-      ports: Number.isSafeInteger(scenario.deviceTopologyPortCount) ? fixtureManyHdmiPorts(scenario.deviceTopologyPortCount)
+      ports: Array.isArray(scenario.deviceTopologyPorts) ? scenario.deviceTopologyPorts
+        : Number.isSafeInteger(scenario.deviceTopologyPortCount) ? fixtureManyHdmiPorts(scenario.deviceTopologyPortCount)
         : scenario.deviceTopologyNullProtocol ? [fixtureHdmiPort(), {
         ...fixtureHdmiPort(), id: "fixture-null-protocol", deviceId: "DISPLAY\\FIXTURE_NULL_PROTOCOL", protocol: null
       }] : scenario.displayEdid === "identity" ? [fixtureHdmiPort(), { ...fixtureHdmiPort(), id: "fixture-hdmi-2", deviceId: "DISPLAY\\FIXTURE_HDMI_2",

@@ -13,7 +13,7 @@ import type {
   InternalControllerDeviceModel,
   NetworkAdapterDeviceModel
 } from "./types";
-import { portProtocol } from "../deviceVocabulary.ts";
+import { portProtocol, userFacingNetworkState } from "../deviceVocabulary.ts";
 import { uiText } from "../../../text.ts";
 
 export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
@@ -64,7 +64,7 @@ export const networkAdapter: DeviceAdapter<NetworkAdapterDeviceModel> = {
     const title = deviceTitle(context, uiText.deviceAdapters.networkAdapter);
     const networkStandard = resolveNetworkStandard(context.port);
     const interfaceName = displayValue(network?.interfaceName);
-    const connectionState = displayValue(network?.connectionState, context.port.status ?? "--");
+    const connectionState = userFacingNetworkState(network?.connectionState);
     const transmitSpeed = displayValue(network?.transmitLinkSpeed);
     const receiveSpeed = displayValue(network?.receiveLinkSpeed);
     const activeMtu = typeof network?.activeMtuBytes === "number" ? `${network.activeMtuBytes} B` : "--";
