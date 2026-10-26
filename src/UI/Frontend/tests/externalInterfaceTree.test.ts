@@ -6,6 +6,7 @@ import {
 import { deviceTopologySummaryFields } from "../src/features/deviceTopology/deviceTopologyPresentation.ts";
 import { resolveSpecializedDevice } from "../src/features/deviceTopology/adapters/adapterRegistry.ts";
 import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../src/types.ts";
+import { uiText } from "../src/text.ts";
 
 const rootHubPath = String.raw`\\?\usb#root_hub30#root`;
 const dockHubPath = String.raw`\\?\usb#vid_1234&pid_5678#dock`;
@@ -29,7 +30,7 @@ const dockPorts = [
     portNumber: 1,
     connected: true,
     productName: "Gaming Mouse",
-    interfaceProtocols: ["HID Boot Mouse [03/01/02]"],
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x02 }],
     hid: {
       hidType: "mouse",
       hidSpecification: "HID 1.11",
@@ -46,7 +47,7 @@ const dockPorts = [
     portNumber: 2,
     connected: true,
     productName: "Portable SSD",
-    interfaceProtocols: ["Mass Storage / SCSI / UAS [08/06/62]"],
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x08, subClassCode: 0x06, protocolCode: 0x62 }],
     storage: {
       physicalDeviceId: String.raw`\\.\PHYSICALDRIVE1`,
       model: "Portable SSD",
@@ -194,7 +195,10 @@ const classifiedTree = buildExternalInterfaceTree([
     portNumber: 5,
     connected: true,
     productName: "HERO 99 HE",
-    interfaceProtocols: ["HID Boot Keyboard [03/01/01]", "HID [03/00/00]"],
+    interfaces: [
+      { interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x01 },
+      { interfaceNumber: 1, alternateSetting: 0, classCode: 0x03, subClassCode: 0x00, protocolCode: 0x00 }
+    ],
     hid: {
       hidType: "keyboard",
       hidSpecification: "HID 1.11",
@@ -211,11 +215,11 @@ const classifiedTree = buildExternalInterfaceTree([
     portNumber: 6,
     connected: true,
     productName: "HIK 2K Camera",
-    interfaceProtocols: [
-      "Video Control [0E/01/00]",
-      "Video Streaming [0E/02/00]",
-      "Audio Control [01/01/00]",
-      "Audio Streaming [01/02/00]"
+    interfaces: [
+      { interfaceNumber: 0, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x01, protocolCode: 0x00 },
+      { interfaceNumber: 1, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x02, protocolCode: 0x00 },
+      { interfaceNumber: 2, alternateSetting: 0, classCode: 0x01, subClassCode: 0x01, protocolCode: 0x00 },
+      { interfaceNumber: 3, alternateSetting: 0, classCode: 0x01, subClassCode: 0x02, protocolCode: 0x00 }
     ],
     camera: {
       capabilitySource: { domain: 5, code: 61, args: [] },
@@ -234,7 +238,11 @@ const classifiedTree = buildExternalInterfaceTree([
     portNumber: 7,
     connected: true,
     productName: "USB Audio Device",
-    interfaceProtocols: ["Audio Control [01/01/00]", "Audio Streaming [01/02/00]", "HID [03/00/00]"]
+    interfaces: [
+      { interfaceNumber: 0, alternateSetting: 0, classCode: 0x01, subClassCode: 0x01, protocolCode: 0x00 },
+      { interfaceNumber: 1, alternateSetting: 0, classCode: 0x01, subClassCode: 0x02, protocolCode: 0x00 },
+      { interfaceNumber: 2, alternateSetting: 0, classCode: 0x03, subClassCode: 0x00, protocolCode: 0x00 }
+    ]
   }),
   usbPort({
     id: "mobile-port",
@@ -244,7 +252,11 @@ const classifiedTree = buildExternalInterfaceTree([
     portNumber: 8,
     connected: true,
     productName: "SAMSUNG_Android",
-    interfaceProtocols: ["Still Image [06/01/01]", "CDC Control [02/02/01]", "CDC Data [0A/00/00]"],
+    interfaces: [
+      { interfaceNumber: 0, alternateSetting: 0, classCode: 0x06, subClassCode: 0x01, protocolCode: 0x01 },
+      { interfaceNumber: 1, alternateSetting: 0, classCode: 0x02, subClassCode: 0x02, protocolCode: 0x01 },
+      { interfaceNumber: 2, alternateSetting: 0, classCode: 0x0a, subClassCode: 0x00, protocolCode: 0x00 }
+    ],
     smartDevice: {
       deviceType: "phone",
       manufacturer: "Samsung",
@@ -265,7 +277,8 @@ const classifiedTree = buildExternalInterfaceTree([
     isHub: true,
     downstreamHubPath: String.raw`USB#VID_9876&PID_5432#hub`,
     productName: "USB 2.0 Hub",
-    interfaceProtocols: ["Hub [09/00/00]"]
+    deviceClassCode: 0x09,
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x09, subClassCode: 0x00, protocolCode: 0x00 }]
   }),
   usbPort({
     id: "bus-powered-port",
@@ -275,7 +288,7 @@ const classifiedTree = buildExternalInterfaceTree([
     portNumber: 10,
     connected: true,
     productName: "USB Light",
-    interfaceProtocols: ["Vendor Specific [FF/00/00]"]
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0xff, subClassCode: 0x00, protocolCode: 0x00 }]
   })
 ]);
 
@@ -291,6 +304,30 @@ const mobile = classifiedTree.nodes.find((node) => node.title === "SAMSUNG_Andro
 assert.equal(mobile?.specializedDevice?.summaryFields[1]?.value, "Samsung · SM-N981U");
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "external-gpu-dock"));
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "power-input"));
+
+// 英文描述不补全缺失的数值事实；未知代码保留原值。
+const unknownUsbTree = buildExternalInterfaceTree([
+  usbPort({
+    id: "unknown-usb", name: "Unidentified Device", connectorKind: "usb-a", hubPath: rootHubPath,
+    portNumber: 11, connected: true,
+    interfaceProtocols: ["Audio Control [01/01/00]", "Video Streaming [0E/02/00]", "Still Image [06/01/01]", "CDC Data [0A/00/00]"],
+    interfaces: null
+  }),
+  usbPort({
+    id: "unrecognized-usb", name: "Unrecognized Device", connectorKind: "usb-a", hubPath: rootHubPath,
+    portNumber: 12, connected: true, deviceClassCode: 0xfe,
+    interfaceProtocols: ["Audio Control [01/01/00]"],
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0xfe, subClassCode: 0x7e, protocolCode: 0x7d }]
+  })
+]);
+const unknownUsb = unknownUsbTree.nodes.find((node) => node.title === "Unidentified Device")?.specializedDevice;
+assert.ok(unknownUsb?.kind === "generic-device");
+assert.equal(unknownUsb.deviceClass, uiText.deviceTopology.deviceCategory.unknown);
+assert.deepEqual(unknownUsb.interfaceProtocols, [uiText.deviceTopology.deviceCategory.unknown]);
+const unrecognizedUsb = unknownUsbTree.nodes.find((node) => node.title === "Unrecognized Device")?.specializedDevice;
+assert.ok(unrecognizedUsb?.kind === "generic-device");
+assert.equal(unrecognizedUsb.deviceClass, "254");
+assert.deepEqual(unrecognizedUsb.interfaceProtocols, ["254/126/125"]);
 
 // 两个集线器互为下游的成环关系由解码边界拒绝；直接喂给构建器时遍历也必须结束。
 const hubAPath = String.raw`\\?\usb#vid_aaaa&pid_0001#hub-a`;
@@ -364,6 +401,8 @@ function usbPort(options: {
   downstreamHubPath?: string;
   productName?: string;
   interfaceProtocols?: string[];
+  deviceClassCode?: DeviceTopologyUsbConnection["deviceClassCode"];
+  interfaces?: DeviceTopologyUsbConnection["interfaces"];
   hid?: DeviceTopologyPort["hid"];
   camera?: DeviceTopologyPort["camera"];
   smartDevice?: DeviceTopologyPort["smartDevice"];
@@ -402,6 +441,8 @@ function usbConnection(options: {
   downstreamHubPath?: string;
   productName?: string;
   interfaceProtocols?: string[];
+  deviceClassCode?: DeviceTopologyUsbConnection["deviceClassCode"];
+  interfaces?: DeviceTopologyUsbConnection["interfaces"];
 }): DeviceTopologyUsbConnection {
   return {
     hubDevicePath: options.hubPath,
@@ -419,7 +460,10 @@ function usbConnection(options: {
     deviceClass: options.isHub ? "Hub" : "Device",
     productName: options.productName,
     interfaceProtocols: options.interfaceProtocols ?? [],
-    deviceClassCode: null, deviceSubClassCode: null, deviceProtocolCode: null, interfaces: null,
+    deviceClassCode: options.deviceClassCode ?? (options.isHub ? 0x09 : null),
+    deviceSubClassCode: null,
+    deviceProtocolCode: null,
+    interfaces: options.interfaces ?? null,
     downstreamHubDevicePath: options.downstreamHubPath
   };
 }

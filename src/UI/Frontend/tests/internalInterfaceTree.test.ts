@@ -4,7 +4,8 @@ import {
   buildInternalInterfaceTree,
   filterInternalInterfaceTree
 } from "../src/features/deviceTopology/internalInterfaceTree.ts";
-import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../src/types.ts";
+import type { DeviceTopologyPort, DeviceTopologyUsbConnection, DeviceTopologyWirelessConnection } from "../src/types.ts";
+import { uiText } from "../src/text.ts";
 
 const externalDeviceId = String.raw`USB\VID_1111&PID_2222\EXTERNAL`;
 const externalPort = port({
@@ -199,7 +200,15 @@ const wifi = port({
     permanentAddress: "00-11-22-33-44-55",
     activeMtuBytes: 1500,
     hardwareInterface: true,
-    connectorPresent: true
+    connectorPresent: true,
+    wireless: {
+      source: "wlanapi",
+      interfaceStateRaw: 1,
+      supportedPhyTypesRaw: [7, 8, 10],
+      supportedStandards: ["802.11n", "802.11ac", "802.11ax"],
+      negotiatedPhyTypeRaw: 8,
+      negotiatedStandard: "802.11ac"
+    }
   }
 });
 const panel = port({
@@ -271,13 +280,47 @@ assert.equal(requiredNode("internal-audio").specializedDevice?.internalFacts?.ca
 assert.equal(requiredNode("gpu").specializedDevice?.kind, "graphics-adapter");
 assert.equal(requiredNode("gpu").specializedDevice?.internalFacts?.transport, "PCI Express");
 assert.equal(requiredNode("wifi").specializedDevice?.kind, "network-adapter");
-assert.equal(requiredNode("wifi").specializedDevice?.summaryFields[0].value, "Wi-Fi");
+assert.equal(requiredNode("wifi").specializedDevice?.summaryFields[0].value, "802.11ac");
 assert.equal(requiredNode("panel").specializedDevice?.kind, "monitor");
 assert.equal(requiredNode("bluetooth-adapter").specializedDevice?.kind, "bluetooth-device");
 assert.equal(requiredNode("bluetooth-device").specializedDevice?.kind, "bluetooth-device");
 assert.equal(requiredNode("bluetooth-device").specializedDevice?.deviceTypeLabel, "Bluetooth 立体声音频");
 assert.equal(requiredNode("nvme-controller").specializedDevice?.kind, "internal-controller");
 assert.equal(requiredNode("nvme-controller").specializedDevice?.summaryFields[0].value, "NVMe 控制器");
+
+// 数值接口存在时给出确定能力；没有 USB 描述符的原生功能保留未知。
+const internalCameraModel = requiredNode("internal-camera").specializedDevice;
+assert.ok(internalCameraModel?.kind === "camera");
+assert.equal(internalCameraModel.videoControl, true);
+assert.equal(internalCameraModel.videoStreaming, true);
+assert.equal(internalCameraModel.audioCapable, false);
+const cameraFunctionModel = requiredNode("camera-function").specializedDevice;
+assert.ok(cameraFunctionModel?.kind === "camera");
+assert.equal(cameraFunctionModel.videoControl, null);
+assert.equal(cameraFunctionModel.videoStreaming, null);
+assert.equal(cameraFunctionModel.audioCapable, null);
+const internalAudioModel = requiredNode("internal-audio").specializedDevice;
+assert.ok(internalAudioModel?.kind === "audio-device");
+assert.equal(internalAudioModel.audioControl, null);
+assert.equal(internalAudioModel.audioStreaming, null);
+assert.equal(internalAudioModel.hidControls, null);
+
+// 当前协商标准优先；无协商值时使用 backend 的支持列表，缺失事实不从名称猜。
+assert.ok(wifi.network?.wireless);
+const wirelessCases: Array<[DeviceTopologyWirelessConnection, string]> = [
+  [{ ...wifi.network.wireless, negotiatedPhyTypeRaw: null, negotiatedStandard: null }, "802.11n / 802.11ac / 802.11ax"],
+  [{ ...wifi.network.wireless, supportedPhyTypesRaw: null, supportedStandards: null, negotiatedPhyTypeRaw: null, negotiatedStandard: null }, uiText.deviceTopology.deviceCategory.unknown],
+  [{ ...wifi.network.wireless, supportedPhyTypesRaw: [99], supportedStandards: null, negotiatedPhyTypeRaw: 99, negotiatedStandard: null }, `${uiText.deviceTopology.deviceCategory.unknown} (99)`]
+];
+for (const [wireless, expected] of wirelessCases) {
+  const wirelessTree = buildInternalInterfaceTree([{
+    ...wifi,
+    displayName: "Wi-Fi 7 802.11be Adapter",
+    network: { ...wifi.network, wireless }
+  }]);
+  const wirelessNode = wirelessTree.nodes.find((candidate) => candidate.port.id === "wifi" && candidate.role !== "internal-interface");
+  assert.equal(wirelessNode?.specializedDevice?.summaryFields[0].value, expected);
+}
 
 const diskSearch = filterInternalInterfaceTree(tree.nodes, "Internal NVMe");
 assert.deepEqual(diskSearch.map((node) => node.title).slice(-2), ["Standard NVM Express Controller", "Internal NVMe"]);
@@ -370,9 +413,15 @@ function usbConnection(id: string, userConnectable: boolean): DeviceTopologyUsbC
     deviceRevision: "1.0",
     deviceClass: "Per-interface class",
     productName: id === "external" ? "External Keyboard" : "Integrated Camera",
-    deviceClassCode: null, deviceSubClassCode: null, deviceProtocolCode: null, interfaces: null,
-    interfaceProtocols: id === "external"
-      ? ["HID Boot Keyboard [03/01/01]"]
-      : ["Video Control [0E/01/00]", "Video Streaming [0E/02/00]"]
+    deviceClassCode: 0x00,
+    deviceSubClassCode: 0x00,
+    deviceProtocolCode: 0x00,
+    interfaces: id === "external"
+      ? [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x01 }]
+      : [
+        { interfaceNumber: 0, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x01, protocolCode: 0x00 },
+        { interfaceNumber: 1, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x02, protocolCode: 0x00 }
+      ],
+    interfaceProtocols: []
   };
 }

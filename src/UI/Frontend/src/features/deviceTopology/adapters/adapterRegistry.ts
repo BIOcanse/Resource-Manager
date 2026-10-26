@@ -1,6 +1,5 @@
 import { audioDeviceAdapter } from "./audioDeviceAdapter.ts";
 import { cameraAdapter } from "./cameraAdapter.ts";
-import { externalGpuDockAdapter } from "./externalGpuDockAdapter.ts";
 import { externalStorageAdapter } from "./externalStorageAdapter.ts";
 import { genericDeviceAdapter } from "./genericDeviceAdapter.ts";
 import { dockAdapter, usbHubAdapter } from "./hubAdapter.ts";
@@ -19,7 +18,6 @@ import type { DeviceAdapter, DeviceAdapterContext, SpecializedDeviceModel } from
 
 const adapters: readonly DeviceAdapter[] = [
   monitorAdapter,
-  externalGpuDockAdapter,
   dockAdapter,
   usbHubAdapter,
   externalStorageAdapter,

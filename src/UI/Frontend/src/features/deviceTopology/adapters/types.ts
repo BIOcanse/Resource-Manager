@@ -167,18 +167,18 @@ export interface MouseDeviceModel extends SpecializedDeviceBase {
 export interface AudioDeviceModel extends SpecializedDeviceBase {
   kind: "audio-device";
   adapterId: "audio-device";
-  audioControl: boolean;
-  audioStreaming: boolean;
-  hidControls: boolean;
+  audioControl: boolean | null;
+  audioStreaming: boolean | null;
+  hidControls: boolean | null;
   interfaceProtocols: string[];
 }
 
 export interface CameraDeviceModel extends SpecializedDeviceBase {
   kind: "camera";
   adapterId: "camera";
-  videoControl: boolean;
-  videoStreaming: boolean;
-  audioCapable: boolean;
+  videoControl: boolean | null;
+  videoStreaming: boolean | null;
+  audioCapable: boolean | null;
   interfaceProtocols: string[];
   bestMode: string;
   nativeModes: DeviceTopologyCameraMode[];
@@ -188,9 +188,9 @@ export interface CameraDeviceModel extends SpecializedDeviceBase {
 export interface MobileDeviceModel extends SpecializedDeviceBase {
   kind: "mobile-device";
   adapterId: "mobile-device";
-  mediaTransfer: boolean;
-  dataConnection: boolean;
-  vendorChannel: boolean;
+  mediaTransfer: boolean | null;
+  dataConnection: boolean | null;
+  vendorChannel: boolean | null;
   interfaceProtocols: string[];
   manufacturer: string;
   model: string;

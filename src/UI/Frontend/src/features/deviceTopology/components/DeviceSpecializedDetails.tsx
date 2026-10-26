@@ -364,14 +364,15 @@ function reportedFacts(fields: Array<[string, string]>) {
   return fields.filter(([, value]) => value !== "--");
 }
 
-function StatusStrip(props: { values: Array<[string, boolean]> }) {
+function StatusStrip(props: { values: Array<[string, boolean | null]> }) {
   return (
     <div class="device-capability-status">
       <Index each={props.values}>
         {(status) => (
-          <div classList={{ active: status()[1] }}>
+          <div classList={{ active: status()[1] === true }}>
             <span>{status()[0]}</span>
-            <strong>{status()[1] ? uiText.deviceSpecialized.supported : uiText.deviceSpecialized.notReported}</strong>
+            <strong>{status()[1] === null ? uiText.deviceTopology.deviceCategory.unknown
+                : status()[1] ? uiText.deviceSpecialized.supported : uiText.deviceSpecialized.notReported}</strong>
           </div>
         )}
       </Index>

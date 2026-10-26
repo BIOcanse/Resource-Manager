@@ -20,7 +20,7 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
   matches: ({ port }) => port.hid?.hidType === "keyboard"
     || port.pnpClass?.toLocaleLowerCase() === "keyboard"
     || port.service?.toLocaleLowerCase() === "kbdhid"
-    || hasUsbInterface(port, /HID Boot Keyboard|\[03\/01\/01\]/i),
+    || hasUsbInterface(port, 0x03, 0x01, 0x01),
   createModel: (context) => {
     const title = deviceTitle(context, uiText.deviceAdapters.usbKeyboard);
     const connection = connectionFacts(context);
@@ -71,7 +71,7 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
   matches: ({ port }) => port.hid?.hidType === "mouse"
     || port.pnpClass?.toLocaleLowerCase() === "mouse"
     || port.service?.toLocaleLowerCase() === "mouhid"
-    || hasUsbInterface(port, /HID Boot Mouse|\[03\/01\/02\]/i),
+    || hasUsbInterface(port, 0x03, 0x01, 0x02),
   createModel: (context) => {
     const title = deviceTitle(context, uiText.deviceAdapters.usbMouse);
     const connection = connectionFacts(context);

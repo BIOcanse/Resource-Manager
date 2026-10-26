@@ -8,14 +8,16 @@ import {
   internalDeviceFacts,
   interfaceProtocols,
   joinSummary,
-  summaryFields
+  summaryFields,
+  usbInterfaceCapability
 } from "./adapterEvidence.ts";
 import type { AudioDeviceModel, DeviceAdapter } from "./types";
 import { uiText } from "../../../text.ts";
 
 export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
   id: "audio-device",
-  matches: ({ scope, port }) => hasUsbInterface(port, /Audio (?:Control|Streaming)|\[01\/(?:01|02)\//i)
+  matches: ({ scope, port }) => hasUsbInterface(port, 0x01, 0x01)
+    || hasUsbInterface(port, 0x01, 0x02)
     || (scope === "internal" && (port.busKind === "audio" || port.pnpClass?.toLocaleLowerCase() === "media")),
   createModel: (context) => {
     const internal = context.scope === "internal";
@@ -23,9 +25,9 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
     const protocols = interfaceProtocols(context.port);
-    const audioControl = protocols.some((value) => /Audio Control|\[01\/01\//i.test(value));
-    const audioStreaming = protocols.some((value) => /Audio Streaming|\[01\/02\//i.test(value));
-    const hidControls = protocols.some((value) => /HID|\[03\//i.test(value));
+    const audioControl = usbInterfaceCapability(context.port, 0x01, 0x01);
+    const audioStreaming = usbInterfaceCapability(context.port, 0x01, 0x02);
+    const hidControls = usbInterfaceCapability(context.port, 0x03);
     const capabilities = activeCapabilities([
       [uiText.deviceAdapters.label.audioControl, audioControl],
       [uiText.deviceAdapters.label.audioStreaming, audioStreaming],
@@ -42,7 +44,8 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
       : summaryFields(
         [uiText.deviceAdapters.label.deviceType, typeLabel],
         [uiText.deviceAdapters.label.upstreamInterface, connection.upstreamInterface],
-        [uiText.deviceAdapters.label.audioCapability, capabilities.join(" / ")],
+        [uiText.deviceAdapters.label.audioCapability, context.port.usb?.interfaces == null
+          ? uiText.deviceTopology.deviceCategory.unknown : capabilities.join(" / ")],
         [uiText.deviceAdapters.label.currentLink, connection.currentLink]
       );
     return {

@@ -13,7 +13,7 @@ import type {
   InternalControllerDeviceModel,
   NetworkAdapterDeviceModel
 } from "./types";
-import { portProtocol, userFacingNetworkState } from "../deviceVocabulary.ts";
+import { userFacingNetworkState } from "../deviceVocabulary.ts";
 import { uiText } from "../../../text.ts";
 
 export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
@@ -216,12 +216,12 @@ function resolveControllerType(port: import("../../../types").DeviceTopologyPort
 }
 
 function resolveNetworkStandard(port: import("../../../types").DeviceTopologyPort) {
-  const evidence = `${port.displayName} ${port.protocol} ${port.idResolution?.deviceName ?? ""}`;
-  if (/Wi-?Fi\s*7|802\.11be/i.test(evidence)) return "Wi-Fi 7";
-  if (/Wi-?Fi\s*6E/i.test(evidence)) return "Wi-Fi 6E";
-  if (/Wi-?Fi\s*6|802\.11ax/i.test(evidence)) return "Wi-Fi 6";
-  if (/Wi-?Fi\s*5|802\.11ac/i.test(evidence)) return "Wi-Fi 5";
-  if (/Wi-?Fi|Wireless|802\.11/i.test(evidence)) return "Wi-Fi";
-  if (/Ethernet|以太网/i.test(evidence)) return uiText.deviceTopology.ethernetProtocol;
-  return displayValue(portProtocol(port), uiText.deviceAdapters.networkAdapter);
+  const wireless = port.network?.wireless;
+  if (wireless?.negotiatedStandard != null) return wireless.negotiatedStandard;
+  if (wireless?.supportedStandards != null) return wireless.supportedStandards.join(" / ") || "[]";
+  const rawCodes = wireless?.negotiatedPhyTypeRaw != null
+    ? [wireless.negotiatedPhyTypeRaw] : wireless?.supportedPhyTypesRaw;
+  if (rawCodes?.length) return `${uiText.deviceTopology.deviceCategory.unknown} (${rawCodes.join(" / ")})`;
+  if (rawCodes != null) return "[]";
+  return uiText.deviceTopology.deviceCategory.unknown;
 }

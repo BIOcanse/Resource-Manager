@@ -8,7 +8,8 @@ import {
   hasUsbInterface,
   interfaceProtocols,
   joinSummary,
-  summaryFields
+  summaryFields,
+  usbInterfaceCapability
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MobileDeviceModel } from "./types";
 import { uiText } from "../../../text.ts";
@@ -16,16 +17,16 @@ import { uiText } from "../../../text.ts";
 export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
   id: "mobile-device",
   matches: ({ port }) => port.smartDevice != null
-    || hasUsbInterface(port, /MTP/i)
-    || (hasUsbInterface(port, /Still Image|\[06\/01\/01\]/i)
-      && hasUsbInterface(port, /CDC|Vendor Specific|\[(?:02|0a|ff)\//i)),
+    || (hasUsbInterface(port, 0x06, 0x01, 0x01)
+      && (hasUsbInterface(port, 0x02) || hasUsbInterface(port, 0x0a) || hasUsbInterface(port, 0xff))),
   createModel: (context) => {
     const title = deviceTitle(context, uiText.deviceAdapters.mobileDevice);
     const connection = connectionFacts(context);
     const protocols = interfaceProtocols(context.port);
-    const mediaTransfer = protocols.some((value) => /MTP|Still Image|\[06\/01\/01\]/i.test(value));
-    const dataConnection = protocols.some((value) => /CDC|\[(?:02|0a)\//i.test(value));
-    const vendorChannel = protocols.some((value) => /Vendor Specific|\[ff\//i.test(value));
+    const mediaTransfer = usbInterfaceCapability(context.port, 0x06, 0x01, 0x01);
+    const dataConnection = context.port.usb?.interfaces == null ? null
+      : hasUsbInterface(context.port, 0x02) || hasUsbInterface(context.port, 0x0a);
+    const vendorChannel = usbInterfaceCapability(context.port, 0xff);
     const smart = context.port.smartDevice;
     const deviceType = portableDeviceTypeLabel(smart?.deviceType) ?? uiText.deviceAdapters.mobileDevice;
     const manufacturer = displayValue(smart?.manufacturer, context.port.manufacturer ?? undefined);

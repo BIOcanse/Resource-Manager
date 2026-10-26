@@ -2,9 +2,9 @@ import { portDisplayName } from "../deviceVocabulary.ts";
 import {
   connectionFacts,
   deviceTitle,
-  displayValue,
   summaryFields,
-  usbSpecification
+  usbSpecification,
+  usbDeviceClass
 } from "./adapterEvidence.ts";
 import type {
   DeviceAdapter,
@@ -70,6 +70,6 @@ function createHubModel(
       total > 0 ? uiText.deviceAdapters.hubDownstreamSummary(total) : undefined,
       specification !== "--" ? specification : undefined
     ].filter((value): value is string => Boolean(value)),
-    searchTerms: [typeLabel, kind, `${total} ports`, displayValue(context.port.usb?.deviceClass)]
+    searchTerms: [typeLabel, kind, `${total} ports`, usbDeviceClass(context.port)]
   } as DockDeviceModel | UsbHubDeviceModel;
 }

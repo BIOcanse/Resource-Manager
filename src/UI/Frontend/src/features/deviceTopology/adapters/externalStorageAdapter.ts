@@ -6,7 +6,6 @@ import {
   deviceTitle,
   displayValue,
   formatBytes,
-  hasAnyEvidence,
   hasUsbInterface,
   interfaceProtocols,
   summaryFields,
@@ -17,9 +16,7 @@ import { uiText } from "../../../text.ts";
 
 export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> = {
   id: "external-storage",
-  matches: ({ scope, port }) => port.storage != null
-    || hasUsbInterface(port, /Mass Storage|SCSI|UAS|\[08\/06\/(?:50|62)\]/i)
-    || (scope === "external" && hasAnyEvidence(port, /USBSTOR|UASPSTOR/i)),
+  matches: ({ port }) => port.storage != null || hasUsbInterface(port, 0x08),
   createModel: (context) => {
     const storage = context.port.storage;
     const title = storage?.model?.trim() || deviceTitle(context, uiText.deviceAdapters.externalStorageDevice);
@@ -27,8 +24,8 @@ export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> =
     const protocols = interfaceProtocols(context.port);
     const external = isExternalStorage(context.port.storage?.busType, context.port.usb != null);
     const deviceTypeLabel = external ? uiText.deviceAdapters.externalStorage : uiText.deviceAdapters.disk;
-    const transportMode = protocols.length > 0
-      ? resolveStorageTransport(protocols)
+    const transportMode = context.port.usb != null
+      ? resolveStorageTransport(context.port)
       : displayValue(storage?.busType, portProtocol(context.port));
     const specification = usbSpecification(context.port);
     const revision = deviceRevision(context.port);
@@ -73,12 +70,12 @@ function isExternalStorage(busType: string | null | undefined, hasUsbConnection:
   return hasUsbConnection || /USB|IEEE 1394|Thunderbolt/i.test(busType ?? "");
 }
 
-function resolveStorageTransport(protocols: readonly string[]) {
-  if (protocols.some((value) => /UAS|\[08\/06\/62\]/i.test(value))) {
-    return "USB Attached SCSI (UAS)";
-  }
-  if (protocols.some((value) => /Bulk-Only|\[08\/06\/50\]/i.test(value))) {
-    return "USB Mass Storage (Bulk-Only)";
-  }
-  return "USB Mass Storage";
+function resolveStorageTransport(port: import("../../../types").DeviceTopologyPort) {
+  if (port.usb?.interfaces == null) return uiText.deviceTopology.deviceCategory.unknown;
+  const storageInterfaces = port.usb.interfaces.filter((usbInterface) => usbInterface.classCode === 0x08);
+  return storageInterfaces.map(({ classCode, subClassCode, protocolCode }) => {
+    if (subClassCode === 0x06 && protocolCode === 0x62) return "UAS";
+    if (subClassCode === 0x06 && protocolCode === 0x50) return "BOT";
+    return `${classCode}/${subClassCode}/${protocolCode}`;
+  }).join(" / ") || uiText.deviceTopology.deviceCategory.unknown;
 }

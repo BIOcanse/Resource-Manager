@@ -7,7 +7,8 @@ import {
   internalDeviceFacts,
   interfaceProtocols,
   joinSummary,
-  summaryFields
+  summaryFields,
+  usbInterfaceCapability
 } from "./adapterEvidence.ts";
 import type { CameraDeviceModel, DeviceAdapter } from "./types";
 import { uiText, currentLanguage } from "../../../text.ts";
@@ -16,7 +17,8 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
   id: "camera",
   matches: ({ port }) => port.camera != null
     || port.pnpClass?.toLocaleLowerCase() === "camera"
-    || hasUsbInterface(port, /Video (?:Control|Streaming)|\[0e\/(?:01|02)\//i),
+    || hasUsbInterface(port, 0x0e, 0x01)
+    || hasUsbInterface(port, 0x0e, 0x02),
   createModel: (context) => {
     const reportedTitle = deviceTitle(context, uiText.deviceAdapters.usbCamera);
     const title = context.scope === "internal" && /^USB Composite Device$/i.test(reportedTitle)
@@ -25,16 +27,18 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
     const protocols = interfaceProtocols(context.port);
-    const videoControl = protocols.some((value) => /Video Control|\[0e\/01\//i.test(value));
-    const videoStreaming = protocols.some((value) => /Video Streaming|\[0e\/02\//i.test(value));
-    const audioCapable = protocols.some((value) => /Audio (?:Control|Streaming)|\[01\/(?:01|02)\//i.test(value));
+    const videoControl = usbInterfaceCapability(context.port, 0x0e, 0x01);
+    const videoStreaming = usbInterfaceCapability(context.port, 0x0e, 0x02);
+    const audioCapable = context.port.usb?.interfaces == null ? null
+      : hasUsbInterface(context.port, 0x01, 0x01) || hasUsbInterface(context.port, 0x01, 0x02);
+    const hasInterfaces = (context.port.usb?.interfaces?.length ?? 0) > 0;
     const nativeModes = context.port.camera?.nativeModes ?? [];
     const bestMode = formatCameraMode(context.port.camera?.bestMode);
-    const functionOnly = context.scope === "internal" && context.port.camera == null && protocols.length === 0;
+    const functionOnly = context.scope === "internal" && context.port.camera == null && !hasInterfaces;
     const typeLabel = functionOnly ? uiText.deviceAdapters.cameraVideoFunction : uiText.deviceAdapters.camera;
     const capabilitySource = renderBackendMessage(
       context.port.camera?.capabilitySource,
-      protocols.length > 0
+      hasInterfaces
         ? uiText.deviceAdapters.uvcInterfaceDescriptor
         : uiText.deviceAdapters.windowsPnpCameraFunction);
     return {
@@ -65,7 +69,9 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
         : summaryFields(
           [uiText.deviceAdapters.label.highestNativeMode, bestMode],
           [uiText.deviceAdapters.label.nativeModes, nativeModes.length > 0 ? uiText.deviceAdapters.modeGroupCount(nativeModes.length) : uiText.deviceAdapters.notReported],
-          [uiText.deviceAdapters.label.companionAudio, audioCapable ? uiText.deviceAdapters.supported : uiText.deviceAdapters.notReported],
+          [uiText.deviceAdapters.label.companionAudio, context.port.usb?.interfaces == null
+            ? uiText.deviceTopology.deviceCategory.unknown
+            : audioCapable ? uiText.deviceAdapters.supported : uiText.deviceAdapters.notReported],
           [uiText.deviceAdapters.label.currentLink, connection.currentLink]
         ),
       capabilityLabels: capabilityLabels(context.port),

@@ -37,13 +37,39 @@ export function deviceTitle(context: DeviceAdapterContext, fallback = uiText.dev
 }
 
 export function interfaceProtocols(port: DeviceTopologyPort) {
-  return (port.usb?.interfaceProtocols ?? [])
-    .map((value) => value.trim())
-    .filter(Boolean);
+  return port.usb?.interfaces == null
+    ? [uiText.deviceTopology.deviceCategory.unknown]
+    : port.usb.interfaces.map(({ classCode, subClassCode, protocolCode }) => {
+      const codes = `${classCode}/${subClassCode}/${protocolCode}`;
+      let label: string | undefined;
+      if (classCode === 0x01 && subClassCode === 0x01) label = uiText.deviceAdapters.label.audioControl;
+      if (classCode === 0x01 && subClassCode === 0x02) label = uiText.deviceAdapters.label.audioStreaming;
+      if (classCode === 0x03) label = uiText.deviceAdapters.label.hidControls;
+      if (classCode === 0x03 && subClassCode === 0x01 && protocolCode === 0x01) label = uiText.deviceAdapters.hidKeyboard;
+      if (classCode === 0x03 && subClassCode === 0x01 && protocolCode === 0x02) label = uiText.deviceAdapters.hidMouse;
+      if (classCode === 0x0e && subClassCode === 0x01) label = uiText.deviceSpecialized.videoControl;
+      if (classCode === 0x0e && subClassCode === 0x02) label = uiText.deviceSpecialized.videoStreaming;
+      if (classCode === 0x06 && subClassCode === 0x01 && protocolCode === 0x01) label = uiText.deviceSpecialized.mediaTransfer;
+      if (classCode === 0x02 || classCode === 0x0a) label = uiText.deviceSpecialized.dataConnection;
+      if (classCode === 0xff) label = uiText.deviceSpecialized.vendorChannel;
+      return label ? `${label} (${codes})` : codes;
+    });
 }
 
-export function hasUsbInterface(port: DeviceTopologyPort, pattern: RegExp) {
-  return interfaceProtocols(port).some((value) => pattern.test(value));
+export function hasUsbInterface(port: DeviceTopologyPort, classCode: number, subClassCode?: number, protocolCode?: number) {
+  return port.usb?.interfaces?.some((usbInterface) => usbInterface.classCode === classCode
+    && (subClassCode === undefined || usbInterface.subClassCode === subClassCode)
+    && (protocolCode === undefined || usbInterface.protocolCode === protocolCode)) ?? false;
+}
+
+export function usbInterfaceCapability(port: DeviceTopologyPort, classCode: number, subClassCode?: number, protocolCode?: number) {
+  return port.usb?.interfaces == null ? null : hasUsbInterface(port, classCode, subClassCode, protocolCode);
+}
+
+export function usbDeviceClass(port: DeviceTopologyPort) {
+  return port.usb?.deviceClassCode == null
+    ? uiText.deviceTopology.deviceCategory.unknown
+    : String(port.usb.deviceClassCode);
 }
 
 export function hasAnyEvidence(port: DeviceTopologyPort, pattern: RegExp) {
@@ -53,18 +79,16 @@ export function hasAnyEvidence(port: DeviceTopologyPort, pattern: RegExp) {
     port.pnpClass,
     port.deviceId,
     port.service,
-    port.usb?.deviceClass,
     port.usb?.productName,
     port.advancedInterconnect?.kind,
     port.advancedInterconnect?.technology,
     ...port.hardwareIds,
-    ...port.compatibleIds,
-    ...interfaceProtocols(port)
+    ...port.compatibleIds
   ].some((value) => pattern.test(value ?? ""));
 }
 
 export function capabilityLabels(port: DeviceTopologyPort) {
-  return interfaceProtocols(port).map((value) => value.replace(/\s*\[[^\]]+\]\s*$/, "").trim());
+  return interfaceProtocols(port);
 }
 
 export function summaryFields(...fields: Array<[string, string | null | undefined]>): SpecializedDeviceSummaryField[] {
@@ -104,8 +128,8 @@ export function deviceRevision(port: DeviceTopologyPort) {
   return displayValue(port.usb?.deviceRevision);
 }
 
-export function activeCapabilities(values: Array<[string, boolean]>) {
-  return values.filter(([, enabled]) => enabled).map(([label]) => label);
+export function activeCapabilities(values: Array<[string, boolean | null]>) {
+  return values.filter(([, enabled]) => enabled === true).map(([label]) => label);
 }
 
 /**
