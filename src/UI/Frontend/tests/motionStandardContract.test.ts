@@ -74,6 +74,9 @@ assert.equal(declarationsOf(".metric-pending-bar").get("animation"), "motion-pen
 assert.equal(declarationsOf(".metric-value:not(.pending)").get("animation"), "motion-fade-in var(--motion-medium) var(--ease-standard)");
 assert.ok(!rules.some((rule) => rule.selectors.some((selector) => /^\.metric-value(?![:\w-])/.test(selector)) && rule.declarations.has("transition")),
   "card readings change in place; a transition would blur a value that updates every second");
+assert.equal(declarationsOf(".slot-actions").get("transition"), "opacity var(--motion-fast) var(--ease-standard)");
+assert.equal(declarationsOf(".metric-card").get("transition"),
+  "opacity var(--motion-fast) var(--ease-standard), box-shadow var(--motion-medium) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard)");
 
 // 组件样式不写过渡；持续循环的加载转圈是唯一写在组件里的动画。
 const cssFiles: string[] = [];

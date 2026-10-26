@@ -10,6 +10,7 @@ import { metricFieldDevices, npuBusyCardId, readingSourceDevices, readingSourceI
  * 2. 德文窄卡片上小行标签最多两行、不截成省略号，没有值时那句话靠右折行、不挤掉标签；
  * 3. 四种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
  * 4. 强制配色下读数来源标记有边框、没有值的读数用系统灰字；
+ * 5. 编辑时可拖的槽和卡片空白处各自有悬停反馈，槽内按钮淡入；无动画档下这些过渡和数值淡入都是 0。
  */
 export default async function metricCardStatesJourney(page, baseUrl) {
   const errors = [];
@@ -96,6 +97,28 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.ok(!signature.split(" | ").includes(zh.dashboard.noReading), `a slot claimed "no reading" before its first reading: ${signature}`);
     assert.ok(!signature.split(" | ").includes("--"), `a slot showed "--" before its first reading: ${signature}`);
   }
+
+  // 5. 编辑：槽和卡片空白处的悬停反馈，按钮淡入。
+  await page.getByRole("button", { name: zh.monitorPage.editLayoutLabel, exact: true }).click();
+  const slots = card("cpu").locator(".edit-slot.has-metric");
+  await slots.nth(1).waitFor();
+  const borderOf = (locator) => locator.evaluate((element) => getComputedStyle(element).borderTopColor);
+  const restingSlot = await borderOf(slots.nth(2));
+  const restingCard = await borderOf(card("cpu"));
+  await slots.nth(1).hover();
+  await page.waitForTimeout(400);
+  assert.notEqual(await borderOf(slots.nth(1)), restingSlot, "a draggable slot lights up under the pointer");
+  assert.equal(await borderOf(card("cpu")), restingCard, "the card does not light up while a slot is the drag target");
+  assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).opacity), "1");
+  const cardBox = await card("cpu").boundingBox();
+  await page.mouse.move(cardBox.x + cardBox.width - 6, cardBox.y + cardBox.height - 4);
+  await page.waitForTimeout(400);
+  assert.notEqual(await borderOf(card("cpu")), restingCard, "the card lights up when pressing would drag the whole card");
+  assert.match(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionProperty), /opacity/);
+  await page.evaluate(() => { document.body.dataset.animations = "none"; });
+  assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionDuration), "0s");
+  assert.equal(await card("cpu").locator(".metric-main .metric-value").evaluate((value) => getComputedStyle(value).animationDuration), "0s");
+  await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
 
   // 4. 强制配色。
   await page.emulateMedia({ forcedColors: "active" });

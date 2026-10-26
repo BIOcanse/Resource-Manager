@@ -202,11 +202,14 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
 /* --- 编辑模式与拖拽反馈 --- */
 .metric-card {
   transition:
-    padding var(--motion-medium) var(--ease-standard),
     opacity var(--motion-fast) var(--ease-standard),
     box-shadow var(--motion-medium) var(--ease-standard),
-    transform var(--motion-medium) var(--ease-decel),
     border-color var(--motion-fast) var(--ease-standard);
+}
+
+/* 槽内的替换、删除按钮悬停或聚焦时淡入，和按钮自己的悬停色同一节奏 */
+.slot-actions {
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
 /* 颜色反馈各档都有（无动画档瞬时变色）；阴影抬起只在 normal */

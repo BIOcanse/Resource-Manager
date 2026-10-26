@@ -174,6 +174,7 @@ body.reordering * {
   overflow-wrap: anywhere;
   hyphens: auto;
 }
+
 /*
  * 首个读数还没到：一条圆角占位，字号、行高沿用数值本身，读数到了换成数值时这一行高度不变。
  * 颜色只取主题变量；强制配色（Windows 高对比）下背景会被抹掉，改用系统的灰色字色画实心条。
@@ -296,6 +297,19 @@ body.reordering * {
 
 .edit-slot.has-metric {
   cursor: grab;
+}
+
+/*
+ * 编辑时按下哪里拖哪个：指针在有指标的槽上，按下拖的是槽，槽的边和底色亮起；指针在卡片空白处，按下拖整张卡，卡片的边亮起。
+ * 两者不同时亮，免得看不出要拖的是哪个。颜色的过渡在 motion.css。
+ */
+.edit-slot.has-metric:hover {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+  background: color-mix(in oklab, var(--surface-soft) 82%, var(--accent-soft));
+}
+
+.metric-card.editing:hover:not(:has(.edit-slot.has-metric:hover, .slot-add:hover)) {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--hairline));
 }
 
 .edit-slot.has-metric:active {
