@@ -1,4 +1,5 @@
 import type {
+  PhysicalMemoryResidualFrame,
   ResourceBreakdownBar,
   ResourceBreakdownSnapshot,
   ResourceMonitorSnapshot,
@@ -162,6 +163,7 @@ function decodeBar(
   const optionalName = (key: "processFieldName" | "totalMetricId") =>
     bar[key] === undefined ? null : requireNonEmptyString(bar[key], `${path}.${key}`);
   return {
+    ...(bar.residualSource === undefined ? {} : { residualSource: requireOneOf(bar.residualSource, `${path}.residualSource`, ["counters"] as const) }),
     metricId: requireNonEmptyString(bar.metricId, `${path}.metricId`),
     processFieldName: optionalName("processFieldName"),
     totalMetricId: optionalName("totalMetricId"),
@@ -214,6 +216,8 @@ export function decodeResourceProcessDetailsWireSnapshot(value: unknown): Resour
   }
   return {
     capturedAt: requireNullable(snapshot.capturedAt, "$.capturedAt", requireTimestamp) ?? undefined,
+    ...(snapshot.physicalMemoryResidual === undefined ? {}
+      : { physicalMemoryResidual: decodePhysicalMemoryResidualFrame(snapshot.physicalMemoryResidual) }),
     metrics: requireArray(snapshot.metrics, "$.metrics").map((value, index) => {
       const path = `$.metrics[${index}]`;
       const metric = requireRecord(value, path);
@@ -283,4 +287,46 @@ function optionalNullableFiniteNumber(
   path: string
 ): number | null | undefined {
   return value === undefined ? undefined : requireNullable(value, path, requireFiniteNumber);
+}
+
+export function decodePhysicalMemoryResidualFrame(value: unknown): PhysicalMemoryResidualFrame {
+  const path = "$.physicalMemoryResidual";
+  const frame = requireRecord(value, path);
+  if (requireSafeInteger(frame.version, `${path}.version`) !== 1)
+    throw new ResponseDecodeError(`${path}.version`, "physical memory frame version 1");
+  const source = requireOneOf(frame.source, `${path}.source`, ["pfn"] as const);
+  const status = requireOneOf(frame.status, `${path}.status`, ["ready", "unavailable"] as const);
+  const reasonCode = requireNullable(frame.reasonCode, `${path}.reasonCode`, requireNonEmptyString);
+  const bytes = (value: unknown, field: string): number => {
+    const number = requireSafeInteger(value, field);
+    if (number < 0) throw new ResponseDecodeError(field, "nonnegative bytes");
+    return number;
+  };
+  const reading = (field: string) => requireNullable(frame[field], `${path}.${field}`, bytes);
+  const usedBytes = reading("usedBytes");
+  const attributedProcessPrivateBytes = reading("attributedProcessPrivateBytes");
+  const residualBytes = reading("residualBytes");
+  const unclassifiedBytes = reading("unclassifiedBytes");
+  const kinds = new Set<string>();
+  const parts = requireArray(frame.parts, `${path}.parts`).map((value, index) => {
+    const itemPath = `${path}.parts[${index}]`;
+    const part = requireRecord(value, itemPath);
+    const kind = requireNonEmptyString(part.kind, `${itemPath}.kind`);
+    if (kinds.has(kind)) throw new ResponseDecodeError(itemPath, "unique measured part kind");
+    kinds.add(kind);
+    return { kind, bytes: bytes(part.bytes, `${itemPath}.bytes`) };
+  });
+  const capturedAt = requireTimestamp(frame.capturedAt, `${path}.capturedAt`);
+  if (status === "ready") {
+    if (usedBytes === null || attributedProcessPrivateBytes === null || residualBytes === null || unclassifiedBytes === null
+        || usedBytes - attributedProcessPrivateBytes !== residualBytes
+        || parts.reduce((sum, part) => sum + part.bytes, 0) + unclassifiedBytes !== residualBytes)
+      throw new ResponseDecodeError(path, "self-consistent physical memory partition");
+    return { version: 1, source, status, reasonCode, capturedAt,
+      usedBytes, attributedProcessPrivateBytes, residualBytes, unclassifiedBytes, parts };
+  }
+  if (!reasonCode || [usedBytes, attributedProcessPrivateBytes, residualBytes, unclassifiedBytes].some(value => value !== null) || parts.length !== 0)
+    throw new ResponseDecodeError(path, "unavailable frame with reason and empty readings");
+  return { version: 1, source, status, reasonCode, capturedAt,
+    usedBytes: null, attributedProcessPrivateBytes: null, residualBytes: null, unclassifiedBytes: null, parts: [] };
 }

@@ -182,6 +182,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.MetricSnapshotWireSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceBreakdownWireSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceMonitorWireSnapshot))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.ResourceBreakdown.PhysicalMemoryResidualFrame))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.CpuTopology.EtwCpuCoreResidencyDiagnostics))]
     [JsonSerializable(typeof(global::ResourceManager.App.Infrastructure.Monitoring.TargetedRecording.TargetedRecordingHeader))]

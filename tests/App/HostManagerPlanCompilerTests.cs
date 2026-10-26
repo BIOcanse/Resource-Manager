@@ -17,6 +17,23 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerPlanCompilerTests
 {
+    [Theory]
+    [InlineData(10000)]
+    [InlineData(25000)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void PhysicalMemoryResidualMinimumIsConfiguredAndPositive(long milliseconds)
+    {
+        var json = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        json["hot_publish"]!["sampling_subscription"]!["physical_memory_residual_minimum_interval_ms"] = milliseconds;
+        var bytes = Encoding.UTF8.GetBytes(json.ToJsonString());
+        if (milliseconds <= 0)
+            Assert.Throws<InvalidDataException>(() => Compile(StrictHostManagerProfileLoader.LoadBytes(bytes,"pfn-minimum")));
+        else
+            Assert.Equal(milliseconds, Compile(StrictHostManagerProfileLoader.LoadBytes(bytes,"pfn-minimum"))
+                .SamplingSubscription.HotPublish.PhysicalMemoryResidualMinimumIntervalMilliseconds);
+    }
+
     [Fact]
     public void DefaultProfilePublishesTheOperationFactPayloadAbi()
     {

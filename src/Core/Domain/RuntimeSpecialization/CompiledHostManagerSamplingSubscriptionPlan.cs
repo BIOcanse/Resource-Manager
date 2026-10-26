@@ -73,7 +73,9 @@ public sealed record CompiledHostManagerSamplingSubscriptionHotPublishPlan(
     ulong ConfigurationGeneration,
     ImmutableArray<CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan> Roles)
 {
-    public bool IsPublished => ConfigurationGeneration > 0
+    public long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; } = 10000;
+
+    public bool IsPublished => PhysicalMemoryResidualMinimumIntervalMilliseconds > 0 && ConfigurationGeneration > 0
         && CompiledHostManagerSamplingSubscriptionPlan.HasExactRoles(Roles)
         && Roles.All(static role => role.IsPublished);
 

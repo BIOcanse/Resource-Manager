@@ -7,6 +7,12 @@ public interface IResourceResidualBreakdownProvider
     IReadOnlyList<ResourceProcessSegment> CreateResidualSegments(ResourceResidualBreakdownRequest request);
 }
 
+/// <summary>Explicit capture invoked only by a due physical-private-memory sample, never a read.</summary>
+public interface IResourceResidualCaptureSource
+{
+    IResourceResidualBreakdownProvider CaptureResiduals(CancellationToken cancellationToken);
+}
+
 /// <summary>A held GPU VRAM output subscription needs residual evidence independently of reads.</summary>
 public interface IGpuVramResidualObservationSource
 {

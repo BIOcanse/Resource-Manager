@@ -77,6 +77,12 @@ public sealed partial class WindowsResourceBreakdownSampler(
     IDisposable
 {
     private const int SamplingRoleId = 3;
+    internal Func<ulong, CancellationToken, PhysicalMemoryResidualFrame> PhysicalMemoryPfnCapture { get; set; }
+        = new WindowsPhysicalMemoryPfnReader(state =>
+        {
+            if (state == "ready") logger?.LogInformation("Physical memory PFN state: {State}", state);
+            else logger?.LogWarning("Physical memory PFN state: {State}", state);
+        }).Capture;
     private readonly object lifecycleGate = new();
     private WindowsProcessFieldOwner processFieldOwner => hostedPublicationState.ProcessOwner;
     private SemaphoreSlim sampleGate => processFieldOwner.CaptureGate;
@@ -97,7 +103,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
         Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch)
         => new(owner, SamplingRoleId,
             static request => $"resource-breakdown:{request.CacheKey}", GetSubscriptionDatasetIds,
-            CreateResourceBreakdownSampleRequest, coalesceItemsIntoLatestCapture: true, createOutputScratch);
+            // Keep each dataset's native due time: the expensive PFN item must never be
+            // pulled into a faster ordinary capture. Shared basic fields still share their dataset.
+            CreateResourceBreakdownSampleRequest, coalesceItemsIntoLatestCapture: false, createOutputScratch);
     private readonly Func<WindowsGpuAdapterInventoryRead> gpuAdapterInventory = new WindowsGpuAdapterOrderReader().ReadInventory;
     private readonly WindowsShellProcessIdentityReader shellIdentityReader = new();
     private readonly ConcurrentDictionary<string, ProcessFileMetadata> fileMetadataCache = new(StringComparer.OrdinalIgnoreCase);
@@ -293,6 +301,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ResourceBreakdownSampleRequest request,
         CancellationToken cancellationToken)
     {
+        if (request.MetricIds.Contains(PhysicalMemoryResidualFrame.MetricId))
+            throw new InvalidOperationException("PFN details are captured only by the held subscription schedule.");
         await sampleGate.WaitAsync(cancellationToken);
         var attemptedAt = DateTimeOffset.UtcNow;
         directSnapshotState.MarkAttempt(request, attemptedAt);
@@ -820,8 +830,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
         var definitions = cleanMetricIds.Select(ProcessMetricFieldRegistry.Find).OfType<ProcessMetricFieldDefinition>().ToArray();
         var needsObservedNetwork = definitions.Any(static field => field.DatasetId == SamplingDatasetIds.ProcessObservedNetworkTraffic);
         var needsObservedDisk = definitions.Any(static field => field.DatasetId == SamplingDatasetIds.ProcessObservedPhysicalDiskIo);
+        var needsPfnDetails = cleanMetricIds.Contains(PhysicalMemoryResidualFrame.MetricId);
         var basicMask = definitions.Aggregate(ProcessMetricReadMask.None, static (mask, field) => mask | field.ReadMask);
-        if (cleanMetricIds.Any(IsSupportedBarMetric) || request.SchedulingMetricMask != SchedulingProcessMetricMask.None)
+        if (needsPfnDetails || cleanMetricIds.Any(IsSupportedBarMetric) || request.SchedulingMetricMask != SchedulingProcessMetricMask.None)
             basicMask |= ProcessMetricReadMask.Memory | ProcessMetricReadMask.PrivateWorkingSet;
         var processBatch = CaptureProcessSamples(
             needsCpu,
@@ -878,6 +889,13 @@ public sealed partial class WindowsResourceBreakdownSampler(
         if (needsObservedDisk)
             queriedPublicationKeys.Add(ProcessMetricDatasetIds.ObservedPhysicalDiskIo);
 
+        // The existing subscription plan owns this work. Capture once and bind all physical-private
+        // projections in this sample to the same immutable window; endpoint reads never enter here.
+        var needsPhysicalResidual = cleanMetricIds.Contains("memory.usage", StringComparer.OrdinalIgnoreCase)
+            || request.IncludeProcessMemoryFacts && request.ProcessMemoryFactIds.Contains(
+                "process_all_private_working_set_actual", StringComparer.OrdinalIgnoreCase);
+        var capturedResiduals = needsPhysicalResidual && residualBreakdownProvider is IResourceResidualCaptureSource source
+            ? source.CaptureResiduals(cancellationToken) : residualBreakdownProvider;
         var bars = new List<ResourceBreakdownBar>();
         if (requireHostedHardwareObservation && NeedsGpuAllocations(request) && gpuAllocations is not null)
             await gpuAllocations.CaptureAsync(GpuAllocationProcesses(processSamples), cancellationToken);
@@ -903,7 +921,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 diskAttribution,
                 networkAttribution,
                 allocationReading,
-                residualBreakdownProvider);
+                capturedResiduals);
             if (bar is not null)
             {
                 bars.Add(bar);
@@ -927,12 +945,17 @@ public sealed partial class WindowsResourceBreakdownSampler(
         if (needsObservedNetwork) processFieldParts.Add(CreateProcessNetworkFields(cleanMetricIds, processSamples, networkAttribution.ObservedTraffic));
         if (definitions.Any(static field => field.DatasetId == SamplingDatasetIds.ProcessBasicMetrics))
             processFieldParts.Add(CreateProcessBasicFields(definitions, processSamples, processCapturedAt, processBatch.CpuInterval, ioRates));
+        var pfnFrame = needsPfnDetails ? PhysicalMemoryPfnCapture(
+            processSamples.Where(static process => process.HasPrivateWorkingSetBytes && process.StartKey is > 0)
+                .Aggregate(0UL, static (sum, process) => checked(sum + (ulong)Math.Max(0, process.PrivateWorkingSetBytes))),
+            cancellationToken) : null;
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.Now, bars)
         {
+            PhysicalMemoryResidual = pfnFrame,
             ProcessFields = processFieldParts.Count > 0 ? ProcessMetricFieldSnapshot.Merge(processFieldParts) : null,
             ProcessMemoryFacts = request.IncludeProcessMemoryFacts && processAttribution is not null
                 ? CreateProcessMemoryFacts(definitions.Where(field => request.ProcessMemoryFactIds.Contains(field.Name, StringComparer.OrdinalIgnoreCase)).ToArray(),
-                    processSamples, hardwareSnapshot) : []
+                    processSamples, hardwareSnapshot, capturedResiduals) : []
         };
         SchedulingProcessFactSnapshot? schedulingSnapshot = null;
         if (request.SchedulingMetricMask != SchedulingProcessMetricMask.None

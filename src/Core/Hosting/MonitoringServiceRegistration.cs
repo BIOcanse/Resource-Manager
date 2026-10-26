@@ -262,7 +262,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<DxgkrnlVidMmEtwResidualBreakdownProvider>();
-        services.AddSingleton<IResourceResidualBreakdownProvider>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwResidualBreakdownProvider>());
+        services.AddSingleton<WindowsResourceResidualBreakdownProvider>();
+        services.AddSingleton<IResourceResidualBreakdownProvider>(static provider => provider.GetRequiredService<WindowsResourceResidualBreakdownProvider>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwResidualBreakdownProvider>());
 
         services.AddSingleton<IKnownNetworkProxyCatalog, KnownNetworkProxyCatalog>();

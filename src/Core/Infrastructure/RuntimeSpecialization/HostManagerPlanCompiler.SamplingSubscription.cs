@@ -56,6 +56,7 @@ public sealed partial class HostManagerPlanCompiler
         int profileRevision)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ValidatePositive(source.PhysicalMemoryResidualMinimumIntervalMilliseconds, "hot_publish.sampling_subscription.physical_memory_residual_minimum_interval_ms");
         var rows = source.Roles ?? throw Missing("hot_publish.sampling_subscription.roles");
         if (rows.Length != CompiledHostManagerSamplingSubscriptionPlan.RoleCount)
         {
@@ -105,7 +106,7 @@ public sealed partial class HostManagerPlanCompiler
 
         return new CompiledHostManagerSamplingSubscriptionHotPublishPlan(
             ((ulong)checked((uint)profileRevision) << 32) | NativeSamplingSubscriptionAbi.Version,
-            builder.MoveToImmutable());
+            builder.MoveToImmutable()) { PhysicalMemoryResidualMinimumIntervalMilliseconds = source.PhysicalMemoryResidualMinimumIntervalMilliseconds };
     }
 
     private static CompiledHostManagerSamplingSubscriptionPlan CompileSamplingSubscriptionPlan(

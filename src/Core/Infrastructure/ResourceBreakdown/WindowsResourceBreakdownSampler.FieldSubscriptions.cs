@@ -136,6 +136,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         ResourceBreakdownSampleRequest request, TimeSpan interval,
         NativeSamplingSubscriptionSourceFlags flags, IDisposable? fieldDeliveryLease)
     {
+        if (request.MetricIds.Contains(PhysicalMemoryResidualFrame.MetricId))
+            interval = PhysicalMemoryDetailsInterval(interval);
         IDisposable? hardwareLease = null;
         IDisposable? allocationLease = null;
         IDisposable? residualLease = null;
@@ -168,6 +170,14 @@ public sealed partial class WindowsResourceBreakdownSampler
             fieldDeliveryLease?.Dispose();
             throw;
         }
+    }
+
+    internal TimeSpan PhysicalMemoryDetailsInterval(TimeSpan requested)
+    {
+        if (requested <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(requested));
+        var minimum = TimeSpan.FromMilliseconds(runtimePlanProvider.Current.HostManager.RequirePublished()
+            .SamplingSubscription.HotPublish.PhysicalMemoryResidualMinimumIntervalMilliseconds);
+        return requested < minimum ? minimum : requested;
     }
 
     private sealed record FieldDemand(

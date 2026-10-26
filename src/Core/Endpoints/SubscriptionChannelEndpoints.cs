@@ -517,6 +517,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var sampleRequest = new ResourceBreakdownSampleRequest(
             metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
         { ProcessMemoryFactIds = measures };
+        sampleRequest = SelectPhysicalResidualDetails(sampleRequest, scope, processDetailSoftwareIds);
         var source = services.GetRequiredService<IResourceBreakdownPushSource>();
         if (scope == ResourceMonitorScope.Details)
         {

@@ -1,6 +1,6 @@
 import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
 import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
-import { requireArray, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
+import { requireArray, requireOneOf, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
 import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
@@ -55,6 +55,8 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
     return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
       totalMetricId: requireNullable(metric.totalMetricId, `${path}.totalMetricId`, requireNonEmptyString),
       processSumValue: nullableNumber(metric, "processSumValue", path),
+      ...(metric.residualSource === undefined || metric.residualSource === null ? {}
+        : { residualSource: requireOneOf(metric.residualSource, `${path}.residualSource`, ["counters"] as const) }),
       processFieldName: requireNullable(metric.processFieldName, `${path}.processFieldName`, requireNonEmptyString),
       totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),

@@ -60,6 +60,9 @@ internal sealed class HostManagerSamplingSubscriptionRoleHotPublishProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerSamplingSubscriptionHotPublishProfile
 {
+    [JsonPropertyName("physical_memory_residual_minimum_interval_ms")]
+    public long PhysicalMemoryResidualMinimumIntervalMilliseconds { get; init; } = 10000;
+
     [JsonPropertyName("roles")]
     public required HostManagerSamplingSubscriptionRoleHotPublishProfile[] Roles { get; init; }
 }

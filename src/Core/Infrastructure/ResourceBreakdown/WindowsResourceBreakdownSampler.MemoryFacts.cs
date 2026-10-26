@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.ReadWrite.ProcessFields;
@@ -8,7 +9,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 {
     private IReadOnlyList<ProcessMemoryFact> CreateProcessMemoryFacts(
         IReadOnlyList<ProcessMetricFieldDefinition> definitions, IReadOnlyList<ProcessResourceSample> samples,
-        HardwareMetricSnapshot? hardware)
+        HardwareMetricSnapshot? hardware, IResourceResidualBreakdownProvider capturedResiduals)
     {
         var facts = new List<ProcessMemoryFact>();
         foreach (var field in definitions)
@@ -30,7 +31,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                 Residuals = total is { } systemTotal && systemTotal > sum
                     ? [CreateResidualSoftwareSegment(totalId, systemTotal - sum, capacity ?? 0,
                         isBytes: true, isBytesPerSecond: false,
-                        values.Select(static row => row.ProcessId).ToHashSet(), residualBreakdownProvider)] : []
+                        values.Select(static row => row.ProcessId).ToHashSet(),
+                        field.Name == "process_all_private_working_set_actual" ? capturedResiduals : new StaticResourceResidualBreakdownProvider())] : []
             });
         }
         return facts;

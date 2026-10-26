@@ -186,7 +186,7 @@ public sealed partial class WindowsResourceBreakdownSampler
     }
 
     private static bool IsSupportedMetric(string metricId)
-        => ProcessMetricFieldRegistry.Find(metricId) is not null || IsSupportedBarMetric(metricId);
+        => metricId == PhysicalMemoryResidualFrame.MetricId || ProcessMetricFieldRegistry.Find(metricId) is not null || IsSupportedBarMetric(metricId);
 
     private static bool IsSupportedBarMetric(string metricId)
     {

@@ -59,7 +59,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus))
-                    with { ProcessFieldName = "process_all_private_working_set_actual" };
+                    with { ProcessFieldName = "process_all_private_working_set_actual", ResidualSource = "counters" };
             }
 
             return CreateBar(
@@ -75,7 +75,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 processAttribution,
                 baseScorePlan,
                 residualBreakdownProvider,
-                isBytes: true) with { ProcessFieldName = "process_all_private_working_set_actual" };
+                isBytes: true) with { ProcessFieldName = "process_all_private_working_set_actual", ResidualSource = "counters" };
         }
 
         if (metricId.Equals("virtualMemory.usage", StringComparison.OrdinalIgnoreCase))

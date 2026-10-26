@@ -1219,6 +1219,7 @@
       "shutdown_drain_timeout_ms": 30000
     },
     "sampling_subscription": {
+      "physical_memory_residual_minimum_interval_ms": 10000,
       "roles": [
         {
           "role_id": 1,

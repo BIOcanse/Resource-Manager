@@ -170,6 +170,7 @@ public sealed record ResourceBreakdownSnapshot(
     DateTimeOffset CapturedAt,
     IReadOnlyList<ResourceBreakdownBar> Bars)
 {
+    public PhysicalMemoryResidualFrame? PhysicalMemoryResidual { get; init; }
     public ProcessMetricFieldSnapshot? ProcessFields { get; init; }
     public IReadOnlyList<ProcessMemoryFact> ProcessMemoryFacts { get; init; } = [];
 
@@ -192,6 +193,7 @@ public sealed record ResourceBreakdownBar(
     SamplingObservationStatus AttributionStatus = SamplingObservationStatus.Current)
 {
     public double? SharedValue { get; init; }
+    public string? ResidualSource { get; init; }
     public string? ProcessFieldName { get; init; }
 }
 

@@ -127,7 +127,7 @@ public sealed class ResourceBreakdownWireSnapshot
                             process.AttributionKind, row.BaseScore)
                         { ProcessStartKey = process.ProcessStartKey is { } key ? long.Parse(key, CultureInfo.InvariantCulture) : null };
                     }).ToArray(), owner.BaseScore);
-            }).ToArray()) { ProcessFieldName = metric.ProcessFieldName });
+            }).ToArray()) { ProcessFieldName = metric.ProcessFieldName, ResidualSource = metric.MetricId == "process_all_private_working_set_actual" ? "counters" : null });
     }
 }
 
@@ -189,6 +189,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             writer.WriteString("metricId", bar.MetricId);
             writer.WriteString("unit", bar.Unit);
             writer.WriteString("scaleMode", bar.ScaleMode);
+            if (bar.ResidualSource is { } residualSource) writer.WriteString("residualSource", residualSource);
             var totalMetricId = ProcessMemoryFactFields.TotalMetricId(bar.MetricId);
             if (totalMetricId is not null) writer.WriteString("totalMetricId", totalMetricId);
             var processFieldName = bar.ProcessFieldName

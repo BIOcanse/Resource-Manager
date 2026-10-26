@@ -334,6 +334,15 @@ internal sealed class ResourceBreakdownSnapshotState
             var dataset = GetOrCreateDataset(requestedDataset.Key);
             dataset.LastAttemptAt = attemptedAt;
             dataset.ProcessMemoryFacts = sample.ProcessMemoryFacts.Where(fact => requestedDataset.Contains(fact.MetricId, StringComparer.OrdinalIgnoreCase)).ToArray();
+            if (requestedDataset.Contains(PhysicalMemoryResidualFrame.MetricId))
+            {
+                dataset.PhysicalMemoryResidual = sample.PhysicalMemoryResidual
+                    ?? PhysicalMemoryResidualFrame.Unavailable(attemptedAt, "capture-output-missing");
+                dataset.Coverage.Clear();
+                dataset.Coverage.Add(PhysicalMemoryResidualFrame.MetricId, new MetricCoverage(request.ProcessDetailLevel));
+                SetDatasetSuccess(dataset, sample.CapturedAt);
+                continue;
+            }
             if (requestedDataset.All(static id => ProcessMetricFieldRegistry.Find(id) is not null))
             {
                 var selected = requestedDataset.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -474,6 +483,7 @@ internal sealed class ResourceBreakdownSnapshotState
             .Max();
         return new ResourceBreakdownSnapshot(capturedAt, bars)
         {
+            PhysicalMemoryResidual = selectedDatasets.Select(static entry => entry.PhysicalMemoryResidual).FirstOrDefault(static frame => frame is not null),
             Sampling = sampling,
             Datasets = datasetStates,
             ProcessFields = CreateProcessFields(selectedDatasets, requestedMetricSet),
@@ -545,6 +555,9 @@ internal sealed class ResourceBreakdownSnapshotState
         string code,
         string message)
     {
+        if (dataset.DatasetId == SamplingDatasetIds.ForProcessMetric(PhysicalMemoryResidualFrame.MetricId))
+            dataset.PhysicalMemoryResidual = PhysicalMemoryResidualFrame.Unavailable(attemptedAt, code);
+
         var signature = CreateFailureSignature(error);
         var transition = dataset.FailureCode is null
             ? ResourceBreakdownFailureTransition.Entered
@@ -695,6 +708,7 @@ internal sealed class ResourceBreakdownSnapshotState
         internal void BindFields(ProcessFieldCurrentState current) => fields = current;
         public ProcessMetricFieldSnapshot? ProcessFields { get => fields.ReadPart(DatasetId); set => fields.SetPart(DatasetId, value); }
         public string DatasetId { get; } = datasetId;
+        public PhysicalMemoryResidualFrame? PhysicalMemoryResidual { get; set; }
         public IReadOnlyList<ProcessMemoryFact> ProcessMemoryFacts { get; set; } = [];
         public Dictionary<string, ResourceBreakdownBar> Bars { get; } =
             new(StringComparer.OrdinalIgnoreCase);
@@ -715,6 +729,7 @@ internal sealed class ResourceBreakdownSnapshotState
             var clone = new DatasetEntry(DatasetId, targetFields)
             {
                 ProcessFields = ProcessFields,
+                PhysicalMemoryResidual = PhysicalMemoryResidual,
                 ProcessMemoryFacts = ProcessMemoryFacts,
                 Generation = Generation,
                 StateRevision = StateRevision,

@@ -538,6 +538,7 @@ export interface ResourceSoftwareSegment {
 }
 
 export interface ResourceBreakdownBar {
+  residualSource?: "counters" | null;
   sharedValue?: number | null;
   metricId: string;
   /** 这一条实际读的进程字段（后端只给进程内存类的条）；没有为 null。 */
@@ -557,7 +558,29 @@ export interface ResourceBreakdownSnapshot {
   bars?: ResourceBreakdownBar[];
 }
 
+export type PhysicalMemoryResidualFrame = {
+  version: 1;
+  source: "pfn";
+  capturedAt: string;
+} & ({
+  status: "ready";
+  reasonCode: string | null;
+  usedBytes: number;
+  attributedProcessPrivateBytes: number;
+  residualBytes: number;
+  unclassifiedBytes: number;
+  parts: { kind: string; bytes: number }[];
+} | {
+  status: "unavailable";
+  reasonCode: string;
+  usedBytes: null;
+  attributedProcessPrivateBytes: null;
+  residualBytes: null;
+  unclassifiedBytes: null;
+  parts: [];
+});
 export interface ResourceProcessDetailsSnapshot {
+  physicalMemoryResidual?: PhysicalMemoryResidualFrame;
   capturedAt?: string;
   metrics: {
     metricId: string;

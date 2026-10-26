@@ -12,12 +12,14 @@ internal sealed class ResourceProcessDetailsWireSnapshot
 
     private ResourceProcessDetailsWireSnapshot(
         DateTimeOffset? capturedAt,
-        IReadOnlyList<ResourceProcessDetailsMetric> metrics)
+        IReadOnlyList<ResourceProcessDetailsMetric> metrics, PhysicalMemoryResidualFrame? physicalMemoryResidual = null)
     {
         CapturedAt = capturedAt;
         Metrics = metrics;
+        PhysicalMemoryResidual = physicalMemoryResidual;
     }
 
+    internal PhysicalMemoryResidualFrame? PhysicalMemoryResidual { get; }
     internal DateTimeOffset? CapturedAt { get; }
 
     internal IReadOnlyList<ResourceProcessDetailsMetric> Metrics { get; }
@@ -87,7 +89,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             }
         }
 
-        return new ResourceProcessDetailsWireSnapshot(capturedAt, metrics);
+        return new ResourceProcessDetailsWireSnapshot(capturedAt ?? source.PhysicalMemoryResidual?.CapturedAt, metrics,
+            softwareIds.Contains("resource-residual:memory.usage") ? source.PhysicalMemoryResidual : null);
     }
 }
 
@@ -125,6 +128,11 @@ internal sealed class ResourceProcessDetailsWireSnapshotJsonConverter
             writer.WriteNull("capturedAt");
         }
 
+        if (value.PhysicalMemoryResidual is { } physical)
+        {
+            writer.WritePropertyName("physicalMemoryResidual");
+            JsonSerializer.Serialize(writer, physical, options);
+        }
         writer.WritePropertyName("metrics");
         writer.WriteStartArray();
         foreach (var metric in value.Metrics)

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Diagnostics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -44,8 +45,15 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         if (scenario == "missing-total")
             snapshot = snapshot with { Items = new Dictionary<string, MetricReadingValue>() };
         var hardware = new StaticMetricSampler(snapshot);
+        var residualCaptures = 0;
+        var residualProvider = new WindowsResourceResidualBreakdownProvider(new StaticResourceResidualBreakdownProvider(),
+            NullLogger<WindowsResourceResidualBreakdownProvider>.Instance, _ =>
+            {
+                Interlocked.Increment(ref residualCaptures);
+                return new(new(100, 200, 30, 20), null, 0, "pool-tags:fixture-unavailable");
+            });
         using var sampler = new WindowsResourceBreakdownSampler(hardware, catalog,
-            new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
+            residualProvider, null!, null!, subscriptions.Provider, subscriptions.Owner,
             new PdhProcessGpuReader(), new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]),
             new WindowsProcessBasicMetricReader(api));
         var request = ResourceBreakdownSampleRequest.ForResourceTable([name], new Dictionary<string, string>())
@@ -55,6 +63,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var before = api.MemoryCalls;
         _ = await sampler.GetSnapshotAsync(request, default);
         Assert.Equal(before, api.MemoryCalls);
+        Assert.Equal(0, Volatile.Read(ref residualCaptures));
         await sampler.StartAsync(default);
         try
         {
@@ -98,13 +107,23 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                     Assert.Equal(name, Assert.Single(combined.ProcessMemoryFacts).MetricId);
                     Assert.DoesNotContain("virtualMemory.usage", hardware.LastReadRequest!.Ids);
                 }
+                var captureCount = Volatile.Read(ref residualCaptures);
+                Assert.Equal(name == "process_all_private_working_set_actual", captureCount > 0);
+
+                if (name == "process_all_private_working_set_actual")
+                    Assert.Contains(current.ProcessMemoryFacts.SelectMany(fact => fact.Residuals)
+                        .SelectMany(residual => residual.Processes), row => row.AttributionKind == PhysicalMemoryResidualKinds.NonPagedPool);
                 Assert.Empty(current.Bars); // resource bars by process field are outside this change
                 Assert.All(api.PrivateRequests, value => Assert.Equal(privateResident, value));
             }
             await Task.Delay(150); // let an already accepted capture finish before measuring no demand
             var stopped = api.MemoryCalls;
+            var stoppedResiduals = Volatile.Read(ref residualCaptures);
             await Task.Delay(300);
             Assert.Equal(stopped, api.MemoryCalls);
+            _ = await sampler.GetSnapshotAsync(request, default);
+            sampler.ReadLatest(request);
+            Assert.Equal(stoppedResiduals, Volatile.Read(ref residualCaptures));
             Assert.Equal(0, hardware.ActiveSubscriptions);
         }
         finally { await sampler.StopAsync(default); }
