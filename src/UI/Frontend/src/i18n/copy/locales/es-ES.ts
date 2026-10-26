@@ -488,7 +488,7 @@ const esEsAppCopy: AppCopy = {
     uptimeTitle: "Tiempo transcurrido desde el último inicio de este equipo"
   },
   managementPage: {
-    browserRuntimeTab: "Entornos",
+    browserRuntimeTab: "Entornos de ejecución",
     migrationTab: "Banco de migración",
     pageLabel: (kind: string) => `Gestión: ${kind}`,
     searchLabel: (kind: string) => `Buscar en ${kind}`,

@@ -488,7 +488,7 @@ const frFrAppCopy: AppCopy = {
     uptimeTitle: "Temps écoulé depuis le dernier démarrage de ce PC"
   },
   managementPage: {
-    browserRuntimeTab: "Runtimes",
+    browserRuntimeTab: "Environnements d’exécution",
     migrationTab: "Atelier de migration",
     pageLabel: (kind: string) => `Gestion : ${kind}`,
     searchLabel: (kind: string) => `Rechercher dans ${kind}`,

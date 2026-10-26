@@ -488,7 +488,7 @@ const deDeAppCopy: AppCopy = {
     uptimeTitle: "Zeit seit dem letzten Start dieses PCs"
   },
   managementPage: {
-    browserRuntimeTab: "Laufzeiten",
+    browserRuntimeTab: "Laufzeitumgebungen",
     migrationTab: "Migrations-Werkbank",
     pageLabel: (kind: string) => `Verwaltung: ${kind}`,
     searchLabel: (kind: string) => `${kind} durchsuchen`,

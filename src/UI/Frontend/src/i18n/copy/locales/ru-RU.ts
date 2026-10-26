@@ -488,7 +488,7 @@ const ruRuAppCopy: AppCopy = {
     uptimeTitle: "Время с последнего запуска этого компьютера"
   },
   managementPage: {
-    browserRuntimeTab: "Среды",
+    browserRuntimeTab: "Среды выполнения",
     migrationTab: "Рабочая панель переноса",
     pageLabel: (kind: string) => `Управление: ${kind}`,
     searchLabel: (kind: string) => `Поиск: ${kind}`,

@@ -240,6 +240,12 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await page.getByRole("radio", { name: app.control.ownership.firmware, exact: true }).click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
+    const runtimeLabels = {
+      "zh-CN": "运行时管理", "zh-TW": "執行時管理", "en-US": "Runtimes",
+      "ja-JP": "ランタイム", "ko-KR": "런타임 관리", "fr-FR": "Environnements d’exécution",
+      "de-DE": "Laufzeitumgebungen", "es-ES": "Entornos de ejecución", "ru-RU": "Среды выполнения"
+    };
+    await page.getByRole("tab", { name: runtimeLabels[option.id], exact: true }).waitFor();
     await page.getByRole("tab", { name: `${app.managementRole.dependency} 1`, exact: true }).click();
     const verify = page.getByRole("button", { name: app.management.verify, exact: true });
     const beforeRequests = verificationRequests;
