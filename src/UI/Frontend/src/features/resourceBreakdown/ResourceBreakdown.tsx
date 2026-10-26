@@ -1,6 +1,6 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, softwareDisplayName } from "../../presentation/metricLabels.ts";
-import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
 import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
@@ -361,6 +361,7 @@ function ResourceBreakdownItem(props: {
     return softwareId ? layoutIndex().get(softwareId) ?? null : null;
   });
   const interactionOptionId = activeDescendantOptionId(props.bar.metricId, "active-segment");
+  const interactionFollowsData = createSegmentChangeJump(() => interactionEntry()?.segment.softwareId ?? null);
   const activeOptionId = () => interactionEntry() ? interactionOptionId : undefined;
   const selectedSoftware = () => {
     const selectedId = props.selected?.softwareId;
@@ -534,7 +535,7 @@ function ResourceBreakdownItem(props: {
               <div
                 class="resource-segment-layer resource-segment-interaction-layer"
                 classList={{
-                  "motion-segment": shouldAnimateResourceSegment(item().width)
+                  "motion-segment": interactionFollowsData() && shouldAnimateResourceSegment(item().width)
                 }}
                 role="presentation"
                 style={resourceSegmentLayerStyle(item(), {
@@ -623,6 +624,10 @@ function ResourceProcessPanel(props: {
   });
   const processTrackId = () => `${props.bar.metricId}:${props.software.softwareId}`;
   const interactionOptionId = () => activeDescendantOptionId(processTrackId(), "active-segment");
+  const interactionFollowsData = createSegmentChangeJump(() => {
+    const entry = interactionEntry();
+    return entry ? processKey(entry.segment) : null;
+  });
   const activeProcessOptionId = () => interactionEntry() ? interactionOptionId() : undefined;
   const trackGeometry = createResourceTrackGeometry();
   let interactionProxy: HTMLDivElement | undefined;
@@ -701,7 +706,7 @@ function ResourceProcessPanel(props: {
               <div
                 class="resource-segment-layer resource-segment-interaction-layer"
                 classList={{
-                  "motion-segment": shouldAnimateResourceSegment(item().width)
+                  "motion-segment": interactionFollowsData() && shouldAnimateResourceSegment(item().width)
                 }}
                 role="presentation"
                 style={resourceSegmentLayerStyle(item(), {
@@ -1026,4 +1031,19 @@ function hashKey(key: string) {
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 悬停框、选中框和提示所在的交互层：换到另一段时直接跳过去（不跟在指针后面滑 --motion-bar 那么久，
+ * 提示也按新位置摆）；还是同一段、只是数据变了时才和画布一起过渡。
+ * 标识变化的那一帧不带过渡，下一帧起才带。
+ */
+function createSegmentChangeJump(id: () => string | null) {
+  const [settledId, setSettledId] = createSignal<string | null>(null);
+  createEffect(() => {
+    const current = id();
+    const frame = requestAnimationFrame(() => setSettledId(current));
+    onCleanup(() => cancelAnimationFrame(frame));
+  });
+  return () => id() !== null && id() === settledId();
 }
