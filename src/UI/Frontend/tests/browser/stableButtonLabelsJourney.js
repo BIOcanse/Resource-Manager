@@ -9,6 +9,12 @@ import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 export default async function stableButtonLabelsJourney(page, baseUrl) {
   const failures = [];
   page.on("pageerror", error => failures.push(String(error)));
+  // 性能优化页只在优化运行时可用时出现在导航里。
+  const scenario = await fetch(`${baseUrl}/__test/scenario`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ optimizationRuntime: true })
+  });
+  if (!scenario.ok) throw new Error(`Unable to enable the optimization runtime: ${scenario.status}`);
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
