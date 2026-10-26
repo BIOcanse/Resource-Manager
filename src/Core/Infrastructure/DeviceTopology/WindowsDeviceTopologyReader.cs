@@ -206,6 +206,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var ports = pnpPorts
             .Concat(unrepresentedConnectors)
             .Concat(displayPorts)
+            .Select(port => DeviceTopologyTransportClassifier.Apply(port, nativeDevices))
             .OrderBy(GetConnectorSortKey)
             .ThenBy(static port => port.DisplayName ?? port.DeviceId, StringComparer.OrdinalIgnoreCase)
             .ToArray();

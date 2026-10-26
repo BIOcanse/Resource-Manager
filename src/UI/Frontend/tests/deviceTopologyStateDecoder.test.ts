@@ -5,6 +5,7 @@ import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDeco
 import { currentVolumeFreeBytes } from "../src/features/deviceTopology/deviceTopologyLiveInformation.ts";
 
 const port = {
+  transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
   id: "port-1",
   isPhysicalConnector: true,
   displayName: "USB-C Port",

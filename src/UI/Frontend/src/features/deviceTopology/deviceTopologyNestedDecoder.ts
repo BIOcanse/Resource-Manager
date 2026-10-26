@@ -1,4 +1,5 @@
 import { decodeDisplayEdidCapability, decodeEdidUInt32, optionalEdidValue } from "./displayEdidDecoder.ts";
+import { decodeTransport } from "./transportDecoder.ts";
 import {
   requireArray,
   requireBackendMessage,
@@ -63,6 +64,7 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
       requireBackendMessage),
     connectorKind: requireString(record.connectorKind, `${path}.connectorKind`),
     busKind: requireString(record.busKind, `${path}.busKind`),
+    transport: decodeTransport(record.transport, `${path}.transport`),
     hardwareKind: requireNullable(record.hardwareKind ?? null, `${path}.hardwareKind`, requireString),
     hardwareKindCode: requireNullable(
       record.hardwareKindCode ?? null,

@@ -320,6 +320,7 @@ function port(options: Omit<Partial<DeviceTopologyPort>, "id" | "displayName" | 
     displayName: options.name,
     connectorKind: options.connectorKind ?? "generic",
     busKind: options.busKind ?? "unknown",
+    transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     hardwareKind: options.hardwareKind ?? "Device",
     protocol: options.protocol ?? options.pnpClass ?? "Device",
     speed: options.speed ?? null,

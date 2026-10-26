@@ -135,6 +135,7 @@ console.log("deviceDetailSections: ok");
 
 function basePort(id: string, connectorKind: string, busKind: string): DeviceTopologyPort {
   return {
+    transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     id,
     isPhysicalConnector: true,
     displayName: null,

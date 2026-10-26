@@ -1013,6 +1013,7 @@ function fixtureHdmiPort() {
     displayName: "Fixture HDMI",
     connectorKind: "hdmi",
     busKind: "display",
+    transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     hardwareKind: "display-output",
     protocol: "HDMI 2.1",
     speed: "48 Gbps FRL，支持 7680 × 4320、可变刷新率与高动态范围传输",

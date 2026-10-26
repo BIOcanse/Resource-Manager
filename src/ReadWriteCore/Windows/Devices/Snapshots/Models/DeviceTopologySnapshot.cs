@@ -105,7 +105,10 @@ public sealed record DeviceTopologyPort(
     PciDeviceIdentification? PciIdentification = null,
     IReadOnlyList<DeviceTopologyPciResourceRange>? PciResourceRanges = null,
     IReadOnlyList<DeviceTopologyPciInterrupt>? PciInterrupts = null,
-    IReadOnlyList<DeviceTopologyPciDmaChannel>? PciDmaChannels = null);
+    IReadOnlyList<DeviceTopologyPciDmaChannel>? PciDmaChannels = null)
+{
+    public DeviceTopologyTransport Transport { get; init; } = DeviceTopologyTransport.Unqueried;
+}
 
 public sealed record DeviceTopologyDisplayConnection(
     /// <summary>机型接口档案给的接口名（「HDMI 2.1」一类）；没有档案时为 null。</summary>

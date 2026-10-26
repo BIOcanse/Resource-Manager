@@ -1134,7 +1134,16 @@ export interface DeviceTopologySystemIdentity {
   baseBoardProduct?: string | null;
 }
 
+export interface DeviceTopologyTransport {
+  code: "hd_audio" | "bluetooth" | "ucsi" | "nvme" | "ahci" | "i2c_hid" | "acpi" | "pci" | "usb" | "usb4" | null;
+  reason: string | null;
+  ruleId: string | null;
+  evidence: { source: "setupapi-cfgmgr32" | "usb-hub-ioctl"; deviceId: string; depth: number;
+    enumeratorName: string | null; busTypeGuid: string | null; service: string | null; parentDeviceId: string | null }[];
+}
+
 export interface DeviceTopologyPort {
+  transport: DeviceTopologyTransport;
   id: string;
   isPhysicalConnector: boolean;
   /** 设备自报的名字；我们自己生成名字时为 null，改看 displayNameCode。 */

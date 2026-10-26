@@ -82,7 +82,8 @@ public static partial class WindowsDeviceTopologyNativeReader
                     ReadParentDeviceId(info.DevInst),
                     devNodeState?.Status,
                     devNodeState?.ProblemCode)
-                { LocationPathsAvailable = locationPaths is not null,
+                { BusTypeGuid = ReadBusTypeGuid(deviceInfoSet, ref info),
+                  LocationPathsAvailable = locationPaths is not null,
                   PciResources = WindowsPciResourceInformationReader.ReadNative(info.DevInst, normalizedDeviceId),
                   DriverInformation = string.IsNullOrWhiteSpace(driverKey) ? null : Drivers.WindowsDeviceDriverPropertyReader.Read(info.DevInst, normalizedDeviceId) };
             }
@@ -94,6 +95,17 @@ public static partial class WindowsDeviceTopologyNativeReader
             SetupDiDestroyDeviceInfoList(deviceInfoSet);
         }
     }
+
+    private static Guid? ReadBusTypeGuid(nint deviceInfoSet, ref SpDevInfoData info)
+    {
+        var buffer = new byte[16];
+        return SetupDiGetDeviceRegistryProperty(deviceInfoSet, ref info, (uint)SetupDiRegistryProperty.BusTypeGuid,
+            out var propertyType, buffer, (uint)buffer.Length, out var requiredSize) && requiredSize == buffer.Length
+                ? DecodeBusTypeGuid(buffer, propertyType) : null;
+    }
+
+    internal static Guid? DecodeBusTypeGuid(byte[] buffer, uint propertyType)
+        => propertyType == 3 && buffer.Length == 16 && new Guid(buffer) != Guid.Empty ? new Guid(buffer) : null;
 
     private static string? ReadDeviceInstanceId(nint deviceInfoSet, ref SpDevInfoData info)
     {
@@ -342,6 +354,7 @@ public static partial class WindowsDeviceTopologyNativeReader
         Manufacturer = 0x0000000B,
         FriendlyName = 0x0000000C,
         LocationInformation = 0x0000000D,
+        BusTypeGuid = 0x00000013,
         EnumeratorName = 0x00000016,
         LocationPaths = 0x00000023
     }

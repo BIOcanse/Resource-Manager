@@ -30,6 +30,7 @@
     "ports": [
       {
         "id": "fixture-hdmi-1",
+        "transport": {"code":null,"reason":"not-queried","ruleId":null,"evidence":[]},
         "isPhysicalConnector": true,
         "displayName": "Fixture HDMI",
         "connectorKind": "hdmi",

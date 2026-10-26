@@ -22,6 +22,7 @@ public sealed record DeviceTopologyNativeDevice(
     uint? DevNodeStatus,
     uint? ProblemCode)
 {
+    public Guid? BusTypeGuid { get; init; }
     // The presentation's empty list alone cannot distinguish a failed property
     // query from a successfully reported empty REG_MULTI_SZ declaration.
     public bool LocationPathsAvailable { get; init; }
