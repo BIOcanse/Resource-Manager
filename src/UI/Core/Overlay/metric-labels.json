@@ -297,8 +297,8 @@
     "ru-RU": "Запись на диск"
   },
   "disk.{index}.temperature": {
-    "zh-CN": "磁盘{index} 温度",
-    "zh-TW": "磁碟{index} 溫度",
+    "zh-CN": "磁盘 {index} 温度",
+    "zh-TW": "磁碟 {index} 溫度",
     "en-US": "Disk {index} temperature",
     "ja-JP": "ディスク {index} 温度",
     "ko-KR": "디스크 {index} 온도",
@@ -308,8 +308,8 @@
     "ru-RU": "Температура диска {index}"
   },
   "fan.{index}.speed": {
-    "zh-CN": "风扇{index}",
-    "zh-TW": "風扇{index}",
+    "zh-CN": "风扇 {index}",
+    "zh-TW": "風扇 {index}",
     "en-US": "Fan {index}",
     "ja-JP": "ファン {index}",
     "ko-KR": "팬 {index}",
@@ -319,8 +319,8 @@
     "ru-RU": "Вентилятор {index}"
   },
   "fan.{index}.speedPercent": {
-    "zh-CN": "风扇{index} 百分比",
-    "zh-TW": "風扇{index} 百分比",
+    "zh-CN": "风扇 {index} 百分比",
+    "zh-TW": "風扇 {index} 百分比",
     "en-US": "Fan {index} percent",
     "ja-JP": "ファン {index} の割合",
     "ko-KR": "팬 {index} 비율",
