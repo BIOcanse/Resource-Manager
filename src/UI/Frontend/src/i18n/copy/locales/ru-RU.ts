@@ -664,6 +664,7 @@ const ruRuAppCopy: AppCopy = {
     empty: "Свободно",
     emptyPercent: "Доля свободного",
     systemPercent: "Доля системы",
+    currentTotalPercent: "Доля текущего итога",
     categoryCount: (count: number) => plural("ru-RU", count, { one: "{count} категория", few: "{count} категории", many: "{count} категорий", other: "{count} категории" }),
     processCount: (count: number) => plural("ru-RU", count, { one: "{count} процесс", few: "{count} процесса", many: "{count} процессов", other: "{count} процесса" }),
     noAttributableProcess: "Нет процессов, которым можно отнести использование",
@@ -713,6 +714,33 @@ const ruRuAppCopy: AppCopy = {
       process: "По процессам",
       performance: "Производительность"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "Значения этого источника нельзя складывать по процессам. Итог представляет отдельное системное измерение.",
+    factsBalance: (processes: string, residual: string) => `Процессы: ${processes}; зарезервировано системой и драйверами (остаток): ${residual}`,
+    factsWindow: (seconds: string) => `Окно выборки: ${seconds} с`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "Нет выделенной памяти", hint: "Этот GPU использует только общую системную память и не имеет итога выделенной памяти, поэтому строки памяти не показываются." },
+      "system-total-unavailable": { label: "Нет системного значения", hint: "Системный итог этой метрики в этом снимке не прочитан, поэтому строки не показываются." },
+      "gpu-measure-observation-unavailable": { label: "Нет выборки движка", hint: "Для этого движка GPU в этом снимке нет полной выборки за общее окно, поэтому строки не показываются." },
+      "gpu-measure-total-unavailable": { label: "Нет итога движка", hint: "Системный итог этого движка GPU в этом снимке не прочитан, поэтому строки не показываются." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "Резидентная выделенная память (общие части распределены)",
+      dedicated_resident_private: "Резидентная выделенная память (только частная)",
+      dedicated_resident_shared_apportioned: "Резидентная выделенная память (доля общих частей)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `Загрузка движка ${engine} (физический адаптер ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "прочее", RayTracing: "трассировка лучей", Compute: "вычисления" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "Загрузка ЦП процессом",
+      process_all_physical_disk_read_bytes_attributed: "Чтение с физического диска",
+      process_all_physical_disk_write_bytes_attributed: "Запись на физический диск",
+      process_all_network_receive_bytes_attributed: "Получено по сети",
+      process_all_network_send_bytes_attributed: "Отправлено по сети",
+      process_all_network_receive_rate_attributed: "Скорость приёма по сети",
+      process_all_network_send_rate_attributed: "Скорость отправки по сети"
+    } as Record<string, string | undefined>,
+    filteredRows: "Строки, скрытые фильтром",
+    accountingBasis: "Итоги и остатки поступают от сервера. Учитывайте строки программ либо процессов и отдельных назначений, не считая родителей и потомков дважды. Скрытые поиском строки объединены внизу; прокрутка не ограничивает данные.",
     summaryRow: {
       name: "Общая нагрузка",
       status: {

@@ -9,7 +9,9 @@ const cpuColumn: ResourceTableColumn = {
   visible: true,
   sortable: true,
   width: 120,
-  source: null
+  source: null,
+  processFieldName: null,
+  additiveAcrossProcesses: true
 };
 const memoryColumn: ResourceTableColumn = {
   id: "memory",
@@ -17,7 +19,9 @@ const memoryColumn: ResourceTableColumn = {
   visible: true,
   sortable: true,
   width: 140,
-  source: null
+  source: null,
+  processFieldName: null,
+  additiveAcrossProcesses: true
 };
 
 assert.equal(resourceTableColumnsEqual(
@@ -32,7 +36,10 @@ for (const [field, value] of [
   ["sortable", false],
   ["width", 121],
   // 换了来源，表头措辞跟着变。
-  ["source", "process_all_private_commit_actual"]
+  ["source", "process_all_private_commit_actual"],
+  ["processFieldName", "process_all_private_commit_actual"],
+  // 换成不可加口径，筛选隐藏项不再相加。
+  ["additiveAcrossProcesses", false]
 ] as const) {
   assert.equal(resourceTableColumnsEqual(
     [cpuColumn],

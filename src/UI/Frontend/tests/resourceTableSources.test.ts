@@ -10,15 +10,17 @@ import {
   resourceTableMetricId
 } from "../src/features/resourceTable/resourceTableSources.ts";
 import { uiText } from "../src/text.ts";
+import { catalogField, gpuEngineField, gpuResidentField, staticProcessFieldCatalog } from "./processFieldCatalogFixture.ts";
+import { factsMetricKeys } from "./resourceFactsWireFixture.ts";
 
 // 后端 ProcessMetricFieldRegistry 的 wire 形状：内存四种口径带 reading，其余为 null。
 // supportsResourceFacts 是后端说的（工作集、私有工作集、私有提交量 true，峰值提交量 false），前端只读它。
 const totalFor = (quantity: string | null) => quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
   : quantity === "private_commit" ? "virtualMemory.usage" : null;
 const wireField = (name: string, quantity: string | null, supportsResourceFacts = quantity !== null && quantity !== "peak_private_commit") => ({
-  name, valueKind: "unsigned64", unit: "B", sourceId: "windows.process.query",
-  resource: "process", vendor: "all", reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts,
-  resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
+  ...catalogField(name, "unsigned64", "B", "windows.process.query", { reading: quantity === null ? null : { resource: "memory", quantity },
+    additive: quantity === null ? null : quantity === "private_working_set" || quantity === "private_commit" }),
+  supportsResourceFacts, resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
 const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_handle_count_actual", null),
   wireField("process_all_working_set_actual", "working_set_including_shared"),
@@ -30,8 +32,8 @@ assert.deepEqual(fields.map((field) => field.reading?.quantity ?? null),
   [null, "working_set_including_shared", "private_working_set", "private_commit", "peak_private_commit"]);
 assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null), reading: undefined }]), /reading/,
   "A field without the reading member is not the current wire");
-assert.throws(() => processFieldCatalogDecoder.decode([wireField("x", "shared_bytes")]), /quantity/,
-  "An unknown memory quantity is a wire change, not something to guess");
+assert.equal(processFieldCatalogDecoder.decode([wireField("x", "shared_bytes")])[0].reading?.quantity, "shared_bytes",
+  "Unknown quantities remain catalog data and use the field name as label");
 assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null), resource: "gpu" }]), /resource/);
 assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null), supportsResourceFacts: undefined }]), /supportsResourceFacts/,
   "Whether a field can be a resource fact is a backend fact; a catalog without it is not the current wire");
@@ -39,16 +41,17 @@ assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null)
 // 内存列：自动选择在前，然后是资源事实接受的口径（峰值提交量不进资源事实），按目录顺序。别的列没有来源。
 const choices = resourceColumnSourceChoices("memory", fields);
 assert.deepEqual(choices.map((choice) => choice.source),
-  [null, "process_all_working_set_actual", "process_all_private_working_set_actual", "process_all_private_commit_actual"]);
+  [null, "process_all_working_set_actual", "process_all_private_working_set_actual", "process_all_private_commit_actual"],
+  "The memory column lists every memory quantity; private commit is compared with system commit (contract 2026-10-25)");
 assert.deepEqual(choices.map((choice) => resourceColumnSourceLabel(choice, fields)), [uiText.metricPicker.sourceAutomatic(null),
   uiText.resourceTable.memoryQuantities.working_set_including_shared, uiText.resourceTable.memoryQuantities.private_working_set,
   uiText.resourceTable.memoryQuantities.private_commit]);
 assert.deepEqual(resourceColumnSourceChoices("cpu", fields), []);
 assert.deepEqual(resourceColumnSourceChoices("memory", []), [], "No catalog yet: nothing to choose");
-// 能不能作来源只听目录：后端改标峰值提交量后它就出现，名字没有文案时写字段名。
+// 能不能作来源只听目录：仅有能力标记却没有匹配的整机指标，仍不能列为本列候选。
 const peakAllowed = processFieldCatalogDecoder.decode([wireField("process_all_peak_private_commit_actual", "peak_private_commit", true)]);
 assert.deepEqual(resourceColumnSourceChoices("memory", peakAllowed).map((choice) => resourceColumnSourceLabel(choice, peakAllowed)),
-  [uiText.metricPicker.sourceAutomatic(null), "process_all_peak_private_commit_actual"]);
+  [], "A capability without a matching total metric cannot be offered");
 // 自动选择写出后端这次实际读的字段（资源事实的 processFieldName）。
 assert.equal(resourceColumnSourceLabel(choices[0], fields, "process_all_private_working_set_actual"),
   uiText.metricPicker.sourceAutomatic(uiText.resourceTable.memoryQuantities.private_working_set));
@@ -84,8 +87,10 @@ const wire = {
     { softwareId: "resource-residual:virtualMemory.usage", name: "", kind: "windows_system", attributionKind: "system-residual" }],
   processes: [{ processId: 42, processStartKey: "100", name: "example.exe", executablePath: null, userName: "user", architecture: "x64", attributionKind: "other" },
     { processId: -1, processStartKey: null, name: "", executablePath: null, userName: null, architecture: null, attributionKind: "system-residual" }],
-  metrics: [{ metricId: "process_all_private_commit_actual", unit: "B", totalMetricId: "virtualMemory.usage", processFieldName: "process_all_private_commit_actual", totalValue: 6 * GiB, capacityValue: 24 * GiB,
-    totalSystemPercent: 25, processSumValue: GiB, sharedValue: null, software: [
+  metrics: [{ metricId: "process_all_private_commit_actual", unit: "B", ...factsMetricKeys({ totalMetricId: "virtualMemory.usage", processSumValue: GiB,
+      residualValue: 5 * GiB, additiveAcrossProcesses: true, capturedAt: "2026-10-25T00:00:00Z", quantity: "private_commit" }),
+    processFieldName: "process_all_private_commit_actual", totalValue: 6 * GiB, capacityValue: 24 * GiB,
+    totalSystemPercent: 25, sharedValue: null, software: [
       { softwareId: "example", value: GiB, systemPercent: 100 / 24, processCount: 1, baseScore: 5, sharedValue: null,
         processes: [{ processIndex: 0, value: GiB, systemPercent: 100 / 24, softwarePercent: 100, baseScore: 5, sharedValue: null }] },
       { softwareId: "resource-residual:virtualMemory.usage", value: 5 * GiB, systemPercent: 500 / 24, processCount: 0, baseScore: 0, sharedValue: null,
@@ -110,12 +115,61 @@ assert.equal(summary.values.memory.value, 6 * GiB, "The total row is the system 
 assert.equal(summary.values.memory.percent, 25);
 const residual = table.rows.find((row) => row.softwareId === "resource-residual:virtualMemory.usage" && row.kind === "software")!;
 assert.equal(residual.values.memory.value, 5 * GiB);
-const residualProcess = table.rows.find((row) => row.kind === "process" && row.softwareId === "resource-residual:virtualMemory.usage")!;
-assert.equal(residualProcess.name, uiText.resourceBreakdown.residualCommit, "The residual is named after the commit total it belongs to");
+const residualAttribution = projectResourceFacts(facts, table.columns, "process", "memory", "desc").rows
+  .find((row) => row.kind === "attribution" && row.softwareId === "resource-residual:virtualMemory.usage")!;
+assert.equal(residualAttribution.name, uiText.resourceBreakdown.residualCommit, "The residual is an attribution named after its backend metric");
+assert.equal(residualAttribution.processId, null);
 assert.equal(table.rows.find((row) => row.softwareId === "example" && row.kind === "software")!.values.memory.value, GiB);
 
 // 自动选择的列不认领进程字段指标。
 const automatic = projectResourceFacts(facts, [{ id: "name", visible: true, width: 200 }, { id: "memory", visible: true, width: 110 }], "software", "memory", "desc");
-assert.equal(automatic.rows[0].values.memory, undefined);
+assert.equal(automatic.rows[0].values.memory.availability, "Unavailable");
 
 console.log("resourceTableSources: process field catalog, memory column sources and private-commit totals passed");
+
+// Matching is driven only by the catalog's supportsResourceFacts and resourceFactTotalMetricId, over the backend's real field set
+// (ProcessMetricFieldRegistry plus the per-adapter ProcessGpuResourceFieldRegistry fields).
+const luid = 0x17;
+const authority = processFieldCatalogDecoder.decode([...staticProcessFieldCatalog(),
+  gpuEngineField(0, luid, 0, 0), gpuEngineField(0, luid, 0, 1, "Compute"), gpuEngineField(0, luid, 1, 0, "FutureClass"),
+  gpuResidentField(0, luid, "dedicated_resident_apportioned"), gpuResidentField(0, luid, "dedicated_resident_private"),
+  gpuResidentField(0, luid, "dedicated_resident_shared_apportioned"),
+  catalogField("process_all_gpu_future_attributed_gpu_0_luid_0000000000000017", "float64", "B", "windows.etw.gpu-allocation",
+    { reading: { resource: "gpu", quantity: "future_quantity" }, total: "gpu.0.vram", additive: true })]);
+const sourcesOf = (id: string) => resourceColumnSourceChoices(id, authority).map(choice => choice.source);
+assert.deepEqual(sourcesOf("cpu"), [null, "process_all_cpu_usage_actual"]);
+assert.deepEqual(sourcesOf("disk"), [null, "process_all_physical_disk_read_bytes_attributed", "process_all_physical_disk_write_bytes_attributed"]);
+assert.deepEqual(sourcesOf("network"), [null, "process_all_network_receive_bytes_attributed", "process_all_network_send_bytes_attributed",
+  "process_all_network_receive_rate_attributed", "process_all_network_send_rate_attributed"]);
+assert.deepEqual(sourcesOf("memory"), [null, "process_all_working_set_actual", "process_all_private_working_set_actual", "process_all_private_commit_actual"]);
+assert.equal(sourcesOf("gpu.0.usage").length, 4);
+assert.equal(sourcesOf("gpu.0.vram").length, 5);
+assert.deepEqual(sourcesOf("gpu.1.usage"), [], "A GPU without catalog fields offers no source");
+assert.deepEqual(sourcesOf("name"), []);
+const labelOf = (id: string, source: string) => resourceColumnSourceLabel({ source, field: authority.find(field => field.name === source)! }, authority);
+const text = uiText.resourceTable;
+assert.equal(labelOf("cpu", "process_all_cpu_usage_actual"), text.processFieldNames.process_all_cpu_usage_actual);
+assert.equal(labelOf("network", "process_all_network_send_rate_attributed"), text.processFieldNames.process_all_network_send_rate_attributed);
+assert.deepEqual(sourcesOf("gpu.0.usage").slice(1).map(source => labelOf("gpu.0.usage", source!)),
+  [text.gpuEngineBusy(0, 0, null), text.gpuEngineBusy(1, 0, text.gpuEngineClasses.Compute!), text.gpuEngineBusy(0, 1, "FutureClass")],
+  "Engine sources are named from the catalog's engine scope; an unknown class is shown as sent");
+assert.deepEqual(sourcesOf("gpu.0.vram").slice(1).map(source => labelOf("gpu.0.vram", source!)),
+  [text.gpuQuantities.dedicated_resident_apportioned, text.gpuQuantities.dedicated_resident_private,
+    text.gpuQuantities.dedicated_resident_shared_apportioned, "process_all_gpu_future_attributed_gpu_0_luid_0000000000000017"]);
+assert.equal(resourceTableMetricId({ id: "gpu.0.usage", source: sourcesOf("gpu.0.usage")[2] }), sourcesOf("gpu.0.usage")[2]);
+assert.equal(resourceTableColumnText({ id: "network", source: "process_all_network_receive_rate_attributed" }, authority).label,
+  `${uiText.resourceTable.columns.network} · ${text.processFieldNames.process_all_network_receive_rate_attributed}`);
+// Additivity is the catalog's declaration: working set is not additive, private working set is.
+const workingSetBasis = resourceTableColumnText({ id: "memory", source: "process_all_working_set_actual" }, authority).basis!;
+assert.ok(workingSetBasis.includes(text.nonAdditiveBasis));
+assert.ok(workingSetBasis.includes(text.memorySourceBasis.working_set_including_shared), "The additivity note does not replace the quantity description");
+assert.ok(!resourceTableColumnText({ id: "memory", source: "process_all_private_working_set_actual" }, authority).basis!.includes(text.nonAdditiveBasis));
+assert.equal(authority.find(field => field.name === "process_all_handle_count_actual")!.additiveAcrossProcesses, null, "An undeclared field stays undeclared");
+assert.deepEqual(authority.find(field => field.reading?.quantity === "engine_busy_percent" && field.engineClass === "Compute")!.gpuEngine,
+  { physicalIndex: 0, engineIndex: 1 });
+// Every catalog key is written by System.Text.Json; a missing one is a changed wire, not a default.
+for (const key of ["additiveAcrossProcesses", "gpuEngine", "engineClass", "resourceFactTotalMetricId", "reading"]) {
+  const { [key]: _removed, ...rest } = staticProcessFieldCatalog()[0] as Record<string, unknown>;
+  assert.throws(() => processFieldCatalogDecoder.decode([rest]), new RegExp(key));
+}
+console.log("resourceTableSources: catalog-driven CPU, disk, network, GPU engine and GPU resident sources and catalog additivity passed");

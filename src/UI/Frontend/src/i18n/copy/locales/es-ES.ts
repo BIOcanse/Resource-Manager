@@ -664,6 +664,7 @@ const esEsAppCopy: AppCopy = {
     empty: "Libre",
     emptyPercent: "Proporción libre",
     systemPercent: "Proporción del sistema",
+    currentTotalPercent: "Proporción del total actual",
     categoryCount: (count: number) => plural("es-ES", count, { one: "{count} categoría", many: "{count} de categorías", other: "{count} categorías" }),
     processCount: (count: number) => plural("es-ES", count, { one: "{count} proceso", many: "{count} de procesos", other: "{count} procesos" }),
     noAttributableProcess: "Ningún proceso atribuible",
@@ -713,6 +714,33 @@ const esEsAppCopy: AppCopy = {
       process: "Por proceso",
       performance: "Rendimiento"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "Esta fuente no es aditiva entre procesos. El total es una lectura independiente del sistema.",
+    factsBalance: (processes: string, residual: string) => `Procesos: ${processes}; reservado por el sistema y los controladores (residuo): ${residual}`,
+    factsWindow: (seconds: string) => `Ventana de muestreo: ${seconds} s`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "Sin memoria dedicada", hint: "Esta GPU solo usa memoria compartida del sistema y no tiene un total de memoria dedicada, por lo que no se muestran filas de memoria." },
+      "system-total-unavailable": { label: "Sin lectura del sistema", hint: "No se leyó el total del sistema de esta métrica en esta captura, por lo que no se muestran filas." },
+      "gpu-measure-observation-unavailable": { label: "Sin muestra del motor", hint: "Este motor de GPU no tiene una muestra completa en una ventana común en esta captura, por lo que no se muestran filas." },
+      "gpu-measure-total-unavailable": { label: "Sin total del motor", hint: "No se leyó el total del sistema de este motor de GPU en esta captura, por lo que no se muestran filas." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "Memoria dedicada residente (partes compartidas repartidas)",
+      dedicated_resident_private: "Memoria dedicada residente (solo privada)",
+      dedicated_resident_shared_apportioned: "Memoria dedicada residente (parte repartida de lo compartido)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `Ocupación del motor ${engine} (adaptador físico ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "otro", RayTracing: "trazado de rayos", Compute: "cómputo" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "Uso de CPU del proceso",
+      process_all_physical_disk_read_bytes_attributed: "Lectura de disco físico",
+      process_all_physical_disk_write_bytes_attributed: "Escritura en disco físico",
+      process_all_network_receive_bytes_attributed: "Datos de red recibidos",
+      process_all_network_send_bytes_attributed: "Datos de red enviados",
+      process_all_network_receive_rate_attributed: "Velocidad de recepción de red",
+      process_all_network_send_rate_attributed: "Velocidad de envío de red"
+    } as Record<string, string | undefined>,
+    filteredRows: "Filas ocultas por el filtro",
+    accountingBasis: "El backend proporciona totales y residuos. Cuente filas de software o de procesos y atribución, sin contar padres e hijos dos veces. Las filas ocultas por la búsqueda se agrupan abajo; el desplazamiento no limita los datos.",
     summaryRow: {
       name: "Uso total",
       status: {

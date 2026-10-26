@@ -664,6 +664,7 @@ const deDeAppCopy: AppCopy = {
     empty: "Frei",
     emptyPercent: "Freier Anteil",
     systemPercent: "Systemanteil",
+    currentTotalPercent: "Anteil an der aktuellen Gesamtmenge",
     categoryCount: (count: number) => plural("de-DE", count, { one: "{count} Kategorie", other: "{count} Kategorien" }),
     processCount: (count: number) => plural("de-DE", count, { one: "{count} Prozess", other: "{count} Prozesse" }),
     noAttributableProcess: "Kein zuordenbarer Prozess",
@@ -713,6 +714,33 @@ const deDeAppCopy: AppCopy = {
       process: "Nach Prozess",
       performance: "Leistung"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "Diese Quelle ist über Prozesse hinweg nicht additiv. Der Gesamtwert ist eine unabhängige Systemmessung.",
+    factsBalance: (processes: string, residual: string) => `Prozesse: ${processes}; von System/Treibern reserviert (Rest): ${residual}`,
+    factsWindow: (seconds: string) => `Messfenster: ${seconds} s`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "Kein dedizierter Speicher", hint: "Diese GPU nutzt nur gemeinsam genutzten Systemspeicher und hat keine Gesamtmenge an dediziertem Speicher; daher werden keine Speicherzeilen aufgeführt." },
+      "system-total-unavailable": { label: "Kein Systemwert", hint: "Der Systemgesamtwert dieser Metrik wurde in dieser Erfassung nicht gelesen; daher werden keine Zeilen aufgeführt." },
+      "gpu-measure-observation-unavailable": { label: "Keine Engine-Messung", hint: "Für diese GPU-Engine liegt in dieser Erfassung keine vollständige Messung über ein gemeinsames Fenster vor; daher werden keine Zeilen aufgeführt." },
+      "gpu-measure-total-unavailable": { label: "Kein Engine-Gesamtwert", hint: "Der Systemgesamtwert dieser GPU-Engine wurde in dieser Erfassung nicht gelesen; daher werden keine Zeilen aufgeführt." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "Dedizierter residenter Speicher (gemeinsame Teile aufgeteilt)",
+      dedicated_resident_private: "Dedizierter residenter Speicher (nur privat)",
+      dedicated_resident_shared_apportioned: "Dedizierter residenter Speicher (Anteil an gemeinsamen Teilen)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `Auslastung Engine ${engine} (physischer Adapter ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "Sonstige", RayTracing: "Raytracing", Compute: "Compute" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "Prozess-CPU-Auslastung",
+      process_all_physical_disk_read_bytes_attributed: "Gelesene Daten (physischer Datenträger)",
+      process_all_physical_disk_write_bytes_attributed: "Geschriebene Daten (physischer Datenträger)",
+      process_all_network_receive_bytes_attributed: "Empfangene Netzwerkdaten",
+      process_all_network_send_bytes_attributed: "Gesendete Netzwerkdaten",
+      process_all_network_receive_rate_attributed: "Netzwerk-Empfangsrate",
+      process_all_network_send_rate_attributed: "Netzwerk-Senderate"
+    } as Record<string, string | undefined>,
+    filteredRows: "Ausgefilterte Zeilen",
+    accountingBasis: "Summen und Restwerte kommen vom Backend. Softwarezeilen oder Prozess- und Zuordnungszeilen berücksichtigen, Eltern und Kinder nicht doppelt zählen. Ausgefilterte Zeilen werden unten zusammengefasst; Scrollen begrenzt die Daten nicht.",
     summaryRow: {
       name: "Gesamtauslastung",
       status: {

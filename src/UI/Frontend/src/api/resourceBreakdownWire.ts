@@ -9,6 +9,7 @@ import type {
   ResourceSoftwareSegment
 } from "../types";
 import { decodeResourceFacts, projectResourceFacts } from "../features/resourceTable/resourceFacts.ts";
+import { decodeBarMetricFacts, decodeDetailsMetricFacts, requireTimestamp } from "./resourceMetricFactsWire.ts";
 import {
   requireArray,
   requireFiniteNumber,
@@ -62,6 +63,19 @@ interface ResourceBreakdownBarWire {
   totalSystemPercent: number | null;
   sharedValue?: number | null;
   unavailableReason?: string | null;
+  /** 总写的四项（metric-source round 4）。 */
+  processSumValue: number | null;
+  residualValue: number | null;
+  additiveAcrossProcesses: boolean;
+  capturedAt: string | null;
+  /** 有值时才写的几项。 */
+  residualSource?: "counters";
+  quantity?: string;
+  totalMetricId?: string;
+  processFieldName?: string;
+  windowMilliseconds?: number;
+  gpuEngine?: { adapterLuid: number; physicalIndex: number; engineIndex: number };
+  engineClass?: string | null;
   software: SoftwareValueRow[];
 }
 
@@ -163,15 +177,10 @@ function decodeBar(
       || unavailableReason === null || software.length !== 0))
     throw new ResponseDecodeError(path, "empty bar with null totals, reason and no segments");
 
-  // 后端只在进程内存类的条上写这两项（自动的整机内存条写 processFieldName，按字段订阅的条两项都写）；
-  // 写了就必须是非空字符串。
-  const optionalName = (key: "processFieldName" | "totalMetricId") =>
-    bar[key] === undefined ? null : requireNonEmptyString(bar[key], `${path}.${key}`);
   return {
     ...(bar.residualSource === undefined ? {} : { residualSource: requireOneOf(bar.residualSource, `${path}.residualSource`, ["counters"] as const) }),
+    ...decodeBarMetricFacts(bar, path),
     metricId: requireNonEmptyString(bar.metricId, `${path}.metricId`),
-    processFieldName: optionalName("processFieldName"),
-    totalMetricId: optionalName("totalMetricId"),
     unit: requireString(bar.unit, `${path}.unit`),
     scaleMode: requireOneOf(bar.scaleMode, `${path}.scaleMode`, scaleModes),
     totalValue,
@@ -229,6 +238,7 @@ export function decodeResourceProcessDetailsWireSnapshot(value: unknown): Resour
       const metric = requireRecord(value, path);
       return {
         metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`),
+        ...decodeDetailsMetricFacts(metric, path),
         software: requireArray(metric.software, `${path}.software`).map((value, index) => {
           const softwarePath = `${path}.software[${index}]`;
           const software = requireRecord(value, softwarePath);
@@ -270,14 +280,6 @@ function requireTuple(value: unknown, path: string, length: number, optionalLeng
     throw new ResponseDecodeError(path, `${length}-item tuple`);
   }
   return row;
-}
-
-function requireTimestamp(value: unknown, path: string): string {
-  const timestamp = requireNonEmptyString(value, path);
-  if (!Number.isFinite(Date.parse(timestamp))) {
-    throw new ResponseDecodeError(path, "valid timestamp string");
-  }
-  return timestamp;
 }
 
 function requirePositiveIntegerString(value: unknown, path: string): string {

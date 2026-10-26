@@ -58,6 +58,7 @@ import {
   resourceBarSourceLabel,
   resourceBarText,
   physicalMemoryResidualSoftwareId,
+  processSourceAdditivity,
   type ResourceBarView
 } from "./resourceBarSources.ts";
 
@@ -338,7 +339,8 @@ function ResourceBarEditor(props: {
                 <Index each={choices()}>
                   {(source, index) => (
                     <RadioGroupItem value={`source-${index}`} class="segment"
-                      title={resourceBarText({ metricId, source: source(), processFieldName: null }, props.processFields).basis}>
+                      title={resourceBarText({ metricId, source: source(), processFieldName: null }, props.processFields,
+                        processSourceAdditivity(source(), props.processFields)).basis}>
                       {resourceBarSourceLabel(source(), props.processFields, automaticField(metricId))}
                     </RadioGroupItem>
                   )}
@@ -844,7 +846,7 @@ function resourceProcessTooltipParts(bar: ResourceBarView, software: ResourceSof
     swatch: { color, distinctColor: color, hatched: isReservedProcess(software, process) },
     kind: null,
     lines: [
-      `${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}`,
+      `${resourceSharePercentLabel(bar)} ${formatPercent(process.systemPercent)}`,
       `${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}`,
       resourceValueLine(bar, process)
     ],
@@ -962,7 +964,7 @@ function resourceSegmentTooltip(bar: ResourceBarView, segment: ResourceSelectabl
 }
 
 function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSelectableSegment): ResourceTooltipParts {
-  const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
+  const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : resourceSharePercentLabel(bar);
   return {
     title: segmentLabel(segment),
     swatch: {
@@ -980,6 +982,11 @@ function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSele
 function residualLeafLines(bar: ResourceBarView, segment: ResourceSelectableSegment) {
   if (segment.isEmpty || bar.residualSource !== "counters" || !isReservedSegment(segment)) return [];
   return (segment.processes ?? []).map((leaf) => `${resourceProcessDisplayName(leaf, bar.metricId)} ${formatResourceBarValue(bar, leaf.value)}`);
+}
+
+/** 容量类分项写“系统占比”；吞吐类分项按本帧总量比较，写“占当前总量”。 */
+function resourceSharePercentLabel(bar: Pick<ResourceBarView, "metricId">) {
+  return resourceBarSupportsCapacity(bar.metricId) ? uiText.resourceBreakdown.systemPercent : uiText.resourceBreakdown.currentTotalPercent;
 }
 
 function resourceValueLine(bar: ResourceBarView, segment: { value: number; sharedValue?: number | null }) {

@@ -5,19 +5,20 @@ import { localizedMetricLabel, resourceMetricBasis } from "../../presentation/me
 import {
   automaticProcessSourceLabel,
   processMemoryQuantity,
-  processMemorySourceName,
-  processMemorySources
+  processSourceName,
+  processResourceSources
 } from "../../presentation/processMemorySources.ts";
+import { currentLanguage } from "../../i18n/appTextStore.ts";
 import { normalizeResourceBarScaleMode } from "./resourceBarScaleCapabilities.ts";
 import { uiText } from "../../text.ts";
 
 /*
  * 资源条先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md）。
  *
- * 项目是资源条本身（物理内存 memory.usage、虚拟内存提交量 virtualMemory.usage）。来源第一项是“自动选择”：
+ * 项目是资源条本身（例如物理内存 memory.usage、虚拟内存提交量 virtualMemory.usage）。来源第一项是“自动选择”：
  * 资源条存 source = null，按原来的指标 id 订阅（ids=），后端按它的口径给软件分项和整机总量，并在
- * processFieldName 写出这次实际读的进程字段。其余每项是进程内存的一个口径（presentation/processMemorySources.ts，
- * 和资源表内存列同一出处），而且只列后端说整机比较指标（resourceFactTotalMetricId）就是这条资源条的那些：
+ * processFieldName 写出这次实际读的进程字段。其余候选是目录标了 supportsResourceFacts 的进程字段（与资源表同一出处），
+ * 而且只列后端说整机比较指标（resourceFactTotalMetricId）就是这条资源条的那些，例如：
  * 物理内存条列工作集类，提交量条列私有提交量。资源条存字段名，订阅时作显式口径（measures=）只读这个字段，
  * 缩放照常按 modes=字段名:缩放 传；总量、比例和“系统/驱动保留”由后端按这个字段的整机事实给出。
  * 选了的字段读不到总量时后端不发这一条，资源条就不显示，不换成别的口径。进程明细（scope=details）
@@ -31,21 +32,19 @@ export interface ResourceBarView extends ResourceBreakdownBar {
   /** 名字和说明（resourceBarText）：条头、分项提示都用它。 */
   readonly label: string;
   readonly basis: string | undefined;
+  /** 来源的静态说明；进程明细不能借用 bars 订阅的采样窗口。 */
+  readonly sourceBasis: string | undefined;
 }
-
-/** 有来源可选的资源条：两条整机内存。 */
-const memoryBarIds: ReadonlySet<string> = new Set(["memory.usage", "virtualMemory.usage"]);
 
 /** 一条资源条能选的来源：null 是自动选择，其余是整机比较指标就是这条资源条的进程字段名；没得选时为空数组（不摆选择）。 */
 export function resourceBarSourceChoices(metricId: string, fields: readonly ProcessMetricField[]): readonly (string | null)[] {
-  if (!memoryBarIds.has(metricId)) return [];
-  const sources = processMemorySources(fields).filter((field) => field.resourceFactTotalMetricId === metricId);
+  const sources = processResourceSources([metricId], fields);
   return sources.length === 0 ? [] : [null, ...sources.map((field) => field.name)];
 }
 
-/** 资源条实际用的来源：只有内存资源条认存的来源，其余为 null。 */
+/** 已保存的显式字段始终只请求自身；目录暂缺时也不能暗改为自动选择。 */
 export function resourceBarSource(bar: Pick<ResourceBarSettings, "metricId" | "source">): string | null {
-  return bar.source && memoryBarIds.has(bar.metricId) ? bar.source : null;
+  return bar.source || null;
 }
 
 /**
@@ -84,8 +83,11 @@ export function resourceBarViews(
     const source = resourceBarSource(setting);
     const bar = byId.get(source ?? setting.metricId);
     if (!bar) continue;
-    const text = resourceBarText({ metricId: setting.metricId, source, processFieldName: bar.processFieldName ?? null }, fields);
-    views.push({ ...bar, metricId: setting.metricId, source, label: text.label, basis: text.basis });
+    const text = resourceBarText({ metricId: setting.metricId, source, processFieldName: bar.processFieldName }, fields, bar.additiveAcrossProcesses);
+    const window = bar.windowMilliseconds === null ? null
+      : uiText.resourceTable.factsWindow((bar.windowMilliseconds / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 }));
+    views.push({ ...bar, metricId: setting.metricId, source, label: text.label, sourceBasis: text.basis,
+      basis: [text.basis, window].filter(Boolean).join("\n") || undefined });
   }
   return views;
 }
@@ -95,23 +97,41 @@ export interface ResourceBarText {
   readonly basis: string | undefined;
 }
 
-/** 资源条的名字和说明：自动选择用原来的名字，说明前写出后端这次实际读的字段；选了来源写出口径和它的整机比较。 */
-export function resourceBarText(bar: Pick<ResourceBarView, "metricId" | "source" | "processFieldName">, fields: readonly ProcessMetricField[]): ResourceBarText {
+/**
+ * 资源条的名字和说明：自动选择用原来的名字，说明前写出后端这次实际读的字段；选了来源写出口径和它的整机比较。
+ * additive 由调用方给出：显示中的资源条用它自己这一帧的 additiveAcrossProcesses，编辑时的来源选项用目录的声明
+ * （processSourceAdditivity）；false 时写明不可相加，null 表示没有声明。
+ */
+export function resourceBarText(bar: Pick<ResourceBarView, "metricId" | "source" | "processFieldName">, fields: readonly ProcessMetricField[],
+  additive: boolean | null): ResourceBarText {
   if (!bar.source) {
-    const basis = resourceMetricBasis(bar.metricId);
+    const quantity = bar.processFieldName ? processMemoryQuantity(bar.processFieldName, fields) : null;
+    const basis = withAdditivity(additive, quantity === "working_set_including_shared"
+      ? uiText.resourceTable.memorySourceBasis.working_set_including_shared : resourceMetricBasis(bar.metricId));
     return { label: localizedMetricLabel(bar.metricId),
       basis: bar.processFieldName ? [automaticProcessSourceLabel(bar.processFieldName, fields), basis].filter(Boolean).join("\n") : basis };
   }
   const quantity = processMemoryQuantity(bar.source, fields);
   return {
-    label: uiText.resourceTable.memoryColumnBySource(processMemorySourceName(bar.source, fields)),
-    basis: quantity === "working_set_including_shared" ? uiText.resourceTable.memorySourceBasis.working_set_including_shared
+    label: quantity ? uiText.resourceTable.memoryColumnBySource(processSourceName(bar.source, fields))
+      : `${localizedMetricLabel(bar.metricId)} · ${processSourceName(bar.source, fields)}`,
+    basis: withAdditivity(additive, quantity === "working_set_including_shared" ? uiText.resourceTable.memorySourceBasis.working_set_including_shared
       : quantity === "private_working_set" ? uiText.resourceBreakdown.memoryBasis
-        : quantity === "private_commit" ? uiText.resourceBreakdown.commitBasis : undefined
+        : quantity === "private_commit" ? uiText.resourceBreakdown.commitBasis : undefined)
   };
+}
+
+/** 不可相加时在口径说明前写明，口径说明照常保留（与资源表表头相同）。 */
+function withAdditivity(additive: boolean | null, basis: string | undefined): string | undefined {
+  return additive === false ? [uiText.resourceTable.nonAdditiveBasis, basis].filter(Boolean).join("\n") : basis;
 }
 
 /** 编辑时来源选项的名字；自动选择写出这条资源条现在实际读的字段（没有显示或后端没说时只写“自动选择”）。 */
 export function resourceBarSourceLabel(source: string | null, fields: readonly ProcessMetricField[], automaticField: string | null): string {
-  return source ? processMemorySourceName(source, fields) : automaticProcessSourceLabel(automaticField, fields);
+  return source ? processSourceName(source, fields) : automaticProcessSourceLabel(automaticField, fields);
+}
+
+/** 编辑时一个来源选项的可加性：目录对这个字段的声明；自动选择或目录没有这个字段为 null。 */
+export function processSourceAdditivity(source: string | null, fields: readonly ProcessMetricField[]): boolean | null {
+  return source === null ? null : fields.find((field) => field.name === source)?.additiveAcrossProcesses ?? null;
 }

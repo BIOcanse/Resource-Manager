@@ -18,6 +18,10 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
         totalValue: 64,
         capacityValue: 1024,
         totalSystemPercent: 6.25,
+        processSumValue: 64,
+        residualValue: 0,
+        additiveAcrossProcesses: true,
+        capturedAt,
         software: [[
           0,
           64,

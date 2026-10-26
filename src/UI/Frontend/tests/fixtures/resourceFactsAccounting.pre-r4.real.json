@@ -1,0 +1,61 @@
+{
+  "provenance": "Real read-only backend wire capture, sanitized in place before repository output; reduced to the published metric ids per frame and the gpu.1.vram total and row sum, as pre-round-4 evidence for the open backend requirements",
+  "privacyScan": {
+    "strings": 206657,
+    "originalSensitiveValues": 5131,
+    "passed": true
+  },
+  "frames": [
+    {
+      "capturedAt": "2024-01-02T00:08:09.8368536+00:00",
+      "metricIds": [
+        "cpu.usage",
+        "memory.usage",
+        "gpu.0.usage",
+        "gpu.0.vram",
+        "gpu.1.usage",
+        "gpu.1.vram",
+        "network.traffic"
+      ],
+      "gpu1Vram": {
+        "totalValue": null,
+        "rowSum": 107122688,
+        "rowCount": 5
+      }
+    },
+    {
+      "capturedAt": "2024-01-02T00:08:11.1390534+00:00",
+      "metricIds": [
+        "cpu.usage",
+        "memory.usage",
+        "gpu.0.usage",
+        "gpu.0.vram",
+        "gpu.1.usage",
+        "gpu.1.vram",
+        "network.traffic"
+      ],
+      "gpu1Vram": {
+        "totalValue": null,
+        "rowSum": 107122688,
+        "rowCount": 5
+      }
+    },
+    {
+      "capturedAt": "2024-01-02T00:08:12.3217417+00:00",
+      "metricIds": [
+        "cpu.usage",
+        "memory.usage",
+        "gpu.0.usage",
+        "gpu.0.vram",
+        "gpu.1.usage",
+        "gpu.1.vram",
+        "network.traffic"
+      ],
+      "gpu1Vram": {
+        "totalValue": null,
+        "rowSum": 107122688,
+        "rowCount": 5
+      }
+    }
+  ]
+}

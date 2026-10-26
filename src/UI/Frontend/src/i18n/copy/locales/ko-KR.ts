@@ -663,6 +663,7 @@ const koKrAppCopy: AppCopy = {
     empty: "여유",
     emptyPercent: "여유 비율",
     systemPercent: "시스템 비율",
+    currentTotalPercent: "현재 합계 대비 비율",
     categoryCount: (count: number) => `${count}개 범주`,
     processCount: (count: number) => `${count}개 프로세스`,
     noAttributableProcess: "귀속할 수 있는 프로세스 없음",
@@ -712,6 +713,33 @@ const koKrAppCopy: AppCopy = {
       process: "프로세스별",
       performance: "성능"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "이 소스는 프로세스 간 합산할 수 없습니다. 합계는 독립적인 시스템 측정값입니다.",
+    factsBalance: (processes: string, residual: string) => `프로세스 합계 ${processes}, 시스템/드라이버 예약(잔여) ${residual}`,
+    factsWindow: (seconds: string) => `샘플링 구간 ${seconds}초`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "전용 메모리 없음", hint: "이 GPU는 공유 시스템 메모리만 사용하며 전용 메모리 총량이 없으므로 메모리 항목을 표시하지 않습니다." },
+      "system-total-unavailable": { label: "시스템 값 없음", hint: "이번 수집에서 이 지표의 시스템 합계를 읽지 못해 항목을 표시하지 않습니다." },
+      "gpu-measure-observation-unavailable": { label: "엔진 샘플 없음", hint: "이번 수집에서 이 GPU 엔진에 공통 구간의 완전한 샘플이 없어 항목을 표시하지 않습니다." },
+      "gpu-measure-total-unavailable": { label: "엔진 합계 없음", hint: "이번 수집에서 이 GPU 엔진의 시스템 합계를 읽지 못해 항목을 표시하지 않습니다." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "전용 메모리 상주량(공유 부분 배분)",
+      dedicated_resident_private: "전용 메모리 상주량(전용분만)",
+      dedicated_resident_shared_apportioned: "전용 메모리 상주량(공유 부분의 배분량)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `엔진 ${engine} 사용률(물리 어댑터 ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "기타", RayTracing: "레이 트레이싱", Compute: "컴퓨팅" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "프로세스 CPU 사용률",
+      process_all_physical_disk_read_bytes_attributed: "물리 디스크 읽기량",
+      process_all_physical_disk_write_bytes_attributed: "물리 디스크 쓰기량",
+      process_all_network_receive_bytes_attributed: "네트워크 수신량",
+      process_all_network_send_bytes_attributed: "네트워크 송신량",
+      process_all_network_receive_rate_attributed: "네트워크 수신 속도",
+      process_all_network_send_rate_attributed: "네트워크 송신 속도"
+    } as Record<string, string | undefined>,
+    filteredRows: "필터로 숨겨진 행",
+    accountingBasis: "합계와 잔여 값은 백엔드에서 제공합니다. 소프트웨어 행 또는 프로세스 및 별도 귀속 행을 확인하고 부모와 자식을 중복 계산하지 마세요. 검색으로 숨겨진 행은 아래에 묶이며 스크롤은 데이터를 제한하지 않습니다.",
     summaryRow: {
       name: "총 사용량",
       status: {

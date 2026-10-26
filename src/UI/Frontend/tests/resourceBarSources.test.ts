@@ -15,17 +15,19 @@ import {
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
-  resourceBarViews
+  resourceBarViews,
+  processSourceAdditivity
 } from "../src/features/resourceBreakdown/resourceBarSources.ts";
 import { uiText } from "../src/text.ts";
+import { catalogField, gpuEngineField, gpuResidentField, staticProcessFieldCatalog } from "./processFieldCatalogFixture.ts";
 import type { ResourceBarSettings, ResourceBreakdownBar } from "../src/types.ts";
 
 const totalFor = (quantity: string | null) => quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
   : quantity === "private_commit" ? "virtualMemory.usage" : null;
-const wireField = (name: string, quantity: string | null, supportsResourceFacts: boolean) => ({ name, valueKind: "unsigned64", unit: "B",
-  sourceId: "windows.process.query", resource: "process", vendor: "all",
-  reading: quantity === null ? null : { resource: "memory", quantity }, supportsResourceFacts,
-  resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
+const wireField = (name: string, quantity: string | null, supportsResourceFacts: boolean) => ({
+  ...catalogField(name, "unsigned64", "B", "windows.process.query", { reading: quantity === null ? null : { resource: "memory", quantity },
+    additive: quantity === null ? null : quantity === "private_working_set" || quantity === "private_commit" }),
+  supportsResourceFacts, resourceFactTotalMetricId: supportsResourceFacts ? totalFor(quantity) : null });
 const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_handle_count_actual", null, false),
   wireField("process_all_working_set_actual", "working_set_including_shared", true),
@@ -34,15 +36,29 @@ const fields = processFieldCatalogDecoder.decode([
   wireField("process_all_peak_private_commit_actual", "peak_private_commit", false)
 ]);
 const quantities = uiText.resourceTable.memoryQuantities;
+// Bar sources come from the same catalog facts as the table, over the backend's real field set.
+const authority = processFieldCatalogDecoder.decode([...staticProcessFieldCatalog(), gpuEngineField(2, 0x2a, 0, 3, "RayTracing"),
+  gpuResidentField(2, 0x2a, "dedicated_resident_private")]);
+assert.deepEqual(resourceBarSourceChoices("cpu.usage", authority), [null, "process_all_cpu_usage_actual"]);
+assert.deepEqual(resourceBarSourceChoices("disk.io", authority), [null, "process_all_physical_disk_read_bytes_attributed", "process_all_physical_disk_write_bytes_attributed"]);
+assert.equal(resourceBarSourceChoices("network.traffic", authority).length, 5);
+const engineSource = resourceBarSourceChoices("gpu.2.usage", authority)[1]!;
+assert.equal(resourceBarSourceLabel(engineSource, authority, null),
+  uiText.resourceTable.gpuEngineBusy(3, 0, uiText.resourceTable.gpuEngineClasses.RayTracing!));
+assert.equal(resourceBarSourceLabel(resourceBarSourceChoices("gpu.2.vram", authority)[1]!, authority, null),
+  uiText.resourceTable.gpuQuantities.dedicated_resident_private);
+assert.equal(resourceBarQuery({ id: "gpu", metricId: "gpu.2.usage", source: engineSource, scaleMode: "capacity" }).source, engineSource);
+assert.equal(resourceBarText({ metricId: "network.traffic", source: "process_all_network_send_rate_attributed", processFieldName: null }, authority, true).label,
+  `${uiText.metricLabel["network.traffic"]} · ${uiText.resourceTable.processFieldNames.process_all_network_send_rate_attributed}`);
 
 // 两条整机内存资源条有来源：自动选择在前，然后是后端说整机比较指标就是这条的内存口径；别的条没有。
 assert.deepEqual(resourceBarSourceChoices("memory.usage", fields),
   [null, "process_all_working_set_actual", "process_all_private_working_set_actual"], "Physical memory lists the working-set fields");
 assert.deepEqual(resourceBarSourceChoices("virtualMemory.usage", fields),
   [null, "process_all_private_commit_actual"], "Commit lists private commit");
-// resourceFactTotalMetricId 必须给出（可以是 null），且只能是两个整机指标之一。
+// resourceFactTotalMetricId 必须给出（可以是 null），值域保持开放以接收新资源。
 assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null, false), resourceFactTotalMetricId: undefined }]), /resourceFactTotalMetricId/);
-assert.throws(() => processFieldCatalogDecoder.decode([{ ...wireField("x", null, false), resourceFactTotalMetricId: "cpu.usage" }]), /resourceFactTotalMetricId/);
+assert.equal(processFieldCatalogDecoder.decode([{ ...wireField("x", null, false), resourceFactTotalMetricId: "cpu.usage" }])[0].resourceFactTotalMetricId, "cpu.usage");
 assert.deepEqual(resourceBarSourceChoices("cpu.usage", fields), []);
 assert.deepEqual(resourceBarSourceChoices("memory.usage", []), [], "No catalog yet: nothing to choose");
 assert.equal(resourceBarSourceLabel(null, fields, "process_all_private_working_set_actual"), uiText.metricPicker.sourceAutomatic(quantities.private_working_set));
@@ -55,7 +71,7 @@ const cpu: ResourceBarSettings = { id: "resource-cpu", metricId: "cpu.usage", sc
 assert.deepEqual(resourceBarQuery(memory), { metricId: "memory.usage", scaleMode: "active", source: "process_all_private_commit_actual" },
   "A chosen source keeps the bar's scale mode");
 assert.deepEqual(resourceBarQuery({ ...memory, source: null }), { metricId: "memory.usage", scaleMode: "active", source: null });
-assert.deepEqual(resourceBarQuery({ ...cpu, source: "process_all_private_commit_actual" }).source, null, "Only memory bars take a source");
+assert.deepEqual(resourceBarQuery({ ...cpu, source: "cpu_field" }).source, "cpu_field", "Any bar can keep its explicit catalog source");
 const query = (bars: ResourceBarSettings[]) => new URL(buildResourceMonitorSubscriptionUrl(normalizeResourceMonitorQuery({
   scope: "bars", bars: bars.map(resourceBarQuery), processDetailSoftwareIds: [], sampleMetricIds: null, visibleColumnIds: [],
   sortColumnId: "impact", sortDirection: "desc", tableMode: "software" }), 1000), "http://local").searchParams;
@@ -79,7 +95,8 @@ assert.deepEqual(details.getAll("processDetails"), ["example"]);
 
 // 条上的 processFieldName / totalMetricId：后端只给进程内存类的条；写了就必须是非空字符串。
 const wireBar = (metricId: string, extra: Record<string, unknown> = {}) => ({ metricId, unit: "B", scaleMode: "capacity",
-  totalValue: 6, capacityValue: 24, totalSystemPercent: 25, software: [[0, 1, 4, 1, 5, []]], ...extra });
+  totalValue: 6, capacityValue: 24, totalSystemPercent: 25, processSumValue: 1, residualValue: 5, additiveAcrossProcesses: true,
+  capturedAt: "2026-10-25T00:00:00Z", software: [[0, 1, 4, 1, 5, []]], ...extra });
 const decode = (bars: unknown[]) => decodeResourceBreakdownWireSnapshot({ version: 8, capturedAt: null,
   softwareCatalog: [["example", "Example", "other", "other"]], bars }).bars!;
 const decoded = decode([
@@ -105,13 +122,24 @@ assert.equal(automaticView.label, uiText.metricLabel["memory.usage"]);
 assert.equal(automaticView.basis, `${uiText.metricPicker.sourceAutomatic(quantities.private_working_set)}\n${uiText.resourceBreakdown.memoryBasis}`,
   "Automatic names the field the backend actually reads");
 
-// 说明跟着口径：工作集写共享页，私有工作集同自动选择，未知字段写字段名本身。
-assert.equal(resourceBarText({ metricId: "memory.usage", source: "process_all_working_set_actual", processFieldName: null }, fields).basis,
-  uiText.resourceTable.memorySourceBasis.working_set_including_shared);
-assert.equal(resourceBarText({ metricId: "memory.usage", source: "process_all_private_working_set_actual", processFieldName: null }, fields).basis,
-  uiText.resourceBreakdown.memoryBasis);
-assert.equal(resourceBarText({ metricId: "memory.usage", source: "process_all_unknown", processFieldName: null }, []).label,
-  uiText.resourceTable.memoryColumnBySource("process_all_unknown"));
+// 说明跟着口径：工作集写共享页（目录声明不可相加时先写明），私有工作集同自动选择，未知字段写字段名本身。
+const option = (source: string) => resourceBarText({ metricId: "memory.usage", source, processFieldName: null }, fields, processSourceAdditivity(source, fields));
+assert.equal(option("process_all_working_set_actual").basis,
+  `${uiText.resourceTable.nonAdditiveBasis}\n${uiText.resourceTable.memorySourceBasis.working_set_including_shared}`);
+assert.equal(option("process_all_private_working_set_actual").basis, uiText.resourceBreakdown.memoryBasis);
+assert.equal(resourceBarText({ metricId: "memory.usage", source: "process_all_unknown", processFieldName: null }, [], null).label,
+  `${uiText.metricLabel["memory.usage"]} · process_all_unknown`);
+// A shown bar takes additivity and window from its own frame, not from the catalog or another subscription.
+const frameBars = decode([wireBar("process_all_working_set_actual", { processFieldName: "process_all_working_set_actual", totalMetricId: "memory.usage",
+  additiveAcrossProcesses: false, residualValue: null }),
+  wireBar("process_all_network_receive_rate_attributed", { unit: "B/s", processFieldName: "process_all_network_receive_rate_attributed",
+    totalMetricId: "network.traffic", windowMilliseconds: 2000, capacityValue: 6, totalSystemPercent: 100 })]);
+const frameViews = resourceBarViews(frameBars, [{ id: "ws", metricId: "memory.usage", scaleMode: "capacity", source: "process_all_working_set_actual" },
+  { id: "net", metricId: "network.traffic", scaleMode: "active", source: "process_all_network_receive_rate_attributed" }], []);
+assert.equal(frameViews[0].basis, `${uiText.resourceTable.nonAdditiveBasis}`, "The frame says non-additive even before the catalog arrives");
+assert.equal(frameViews[0].residualValue, null);
+assert.equal(frameViews[1].basis, uiText.resourceTable.factsWindow("2"));
+assert.equal(frameViews[1].sourceBasis, undefined, "Static source text never inherits a bars sampling window for use in details");
 const _typed: ResourceBreakdownBar = views[0];
 void _typed;
 

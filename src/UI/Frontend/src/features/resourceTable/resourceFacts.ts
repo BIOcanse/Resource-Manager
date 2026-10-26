@@ -1,24 +1,31 @@
 import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
 import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
+import { decodeFactsMetricFacts, requireTimestamp } from "../../api/resourceMetricFactsWire.ts";
 import { requireArray, requireOneOf, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
-import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
+import { resourceProcessDisplayName, resourceTableCellText } from "../../presentation/metricLabels.ts";
+import { uiText } from "../../text.ts";
+import { currentLanguage } from "../../i18n/appTextStore.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
 type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes" | "baseScore"> & { processes: IdentityProcess[] };
 
 /**
- * 资源事实的一个指标。totalValue/capacityValue 是 totalMetricId 指向的整机事实（如私有提交量对应系统提交量），
- * 不是进程之和；processSumValue 是本帧有值的真实进程之和（不含系统残差）。只有进程字段指标带这两项，其余为 null。
- * processFieldName 是这一指标实际读的进程字段：自动的 memory.usage 写私有工作集、virtualMemory.usage 写私有提交量，
- * 按字段请求的写它自己；不是进程字段的指标为 null。
+ * 后端的进程身份规则（ResourceFactsSnapshot.Index）：PID > 0 的是进程，按 PID 和启动标识认；
+ * 其余是归属叶子（系统/驱动保留下的分项，PID -1、名字可为空），按 attributionKind 和名字认。叶子不是进程，
+ * 不计进程数、不显示 PID。
  */
-export interface ResourceFactsMetric extends ResourceBreakdownBar {
-  totalMetricId: string | null;
-  processSumValue: number | null;
-  processFieldName: string | null;
+function isProcess(process: Pick<ResourceProcessSegment, "processId">): boolean {
+  return process.processId > 0;
 }
+
+/**
+ * 资源事实的一个指标，带它自己的整机事实（ResourceMetricFacts）：total、processSum、带符号的 residual、
+ * 时刻、窗口、口径和不可用原因都只属于这个指标，不和别的指标或别的订阅混用。
+ * 残差是软件条目 resource-residual:<totalMetricId>，它下面的叶子是归属行。
+ */
+export type ResourceFactsMetric = ResourceBreakdownBar;
 
 export interface ResourceFacts {
   identities?: IdentitySoftware[];
@@ -30,7 +37,7 @@ export interface ResourceFacts {
 export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
   const frame = requireRecord(value);
   if (requireSafeInteger(frame.version, "$.version") !== 2) throw new ResponseDecodeError("$.version", "resource facts version 2");
-  const capturedAt = requireNullable(frame.capturedAt, "$.capturedAt", requireString) ?? undefined;
+  const capturedAt = requireNullable(frame.capturedAt, "$.capturedAt", requireTimestamp) ?? undefined;
   const software = new Map(requireArray(frame.software, "$.software").map((value, index) => {
     const path = `$.software[${index}]`;
     const item = requireRecord(value, path);
@@ -53,12 +60,11 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
     const path = `$.metrics[${index}]`;
     const metric = requireRecord(value, path);
     return { metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`), unit: requireString(metric.unit, `${path}.unit`), scaleMode: "capacity",
-      totalMetricId: requireNullable(metric.totalMetricId, `${path}.totalMetricId`, requireNonEmptyString),
-      processSumValue: nullableNumber(metric, "processSumValue", path),
-      ...(metric.residualSource === undefined || metric.residualSource === null ? {}
-        : { residualSource: requireOneOf(metric.residualSource, `${path}.residualSource`, ["counters"] as const) }),
+      ...decodeFactsMetricFacts(metric, path),
+      residualSource: requireNullable(metric.residualSource, `${path}.residualSource`,
+        (source, sourcePath) => requireOneOf(source, sourcePath, ["counters"] as const)),
       processFieldName: requireNullable(metric.processFieldName, `${path}.processFieldName`, requireNonEmptyString),
-      totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
+      capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
       unavailableReason: metric.unavailableReason == null ? null
         : requireNonEmptyString(metric.unavailableReason, `${path}.unavailableReason`),
@@ -91,7 +97,7 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
     let group = groups.get(id);
     if (!group) { group = { ...owner, processCount: 0, processes: [] }; groups.set(id, group); }
     group.processes.push({ ...process, baseScore: requireFiniteNumber(item.baseScore, `${path}.baseScore`) });
-    group.processCount = group.processes.length;
+    if (isProcess(process)) group.processCount++;
   }
   const facts = { capturedAt, metrics, identities: [...groups.values()] };
   return { capturedAt, facts, breakdown: { capturedAt, bars: [] }, table: { capturedAt, columns: [], rows: [], sort: { columnId: "impact", direction: "desc" } } };
@@ -102,6 +108,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   const columns = options.filter(column => column.visible).map(column => {
     const metric = facts.metrics.find(candidate => resourceTableMetricId(column) === candidate.metricId);
     return { ...column, source: column.source ?? null, unit: metric?.unit ?? "", processFieldName: metric?.processFieldName ?? null,
+      additiveAcrossProcesses: metric?.additiveAcrossProcesses ?? null,
       sortable: true, width: column.width ?? ResourceManager.FrontendPoints.DashboardLayoutLimits.defaultColumnWidth };
   });
   // 列按自己的来源认领指标：自动选择认列原来的指标，选了来源就认那个进程字段。
@@ -112,10 +119,14 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   }
   const softwareRows = new Map<string, ResourceTableRow>();
   const processRows = new Map<string, ResourceTableRow>();
+  const attributionRows = new Map<string, ResourceTableRow>();
   const children = new Map<string, ResourceTableRow[]>();
   const metadata = new Map<string, { ids: Set<number>; names: Set<string>; paths: Set<string> }>();
   const summary = row("summary:total", "summary", "", facts.metrics.length > 0 ? "ready" : "empty");
   const cell = (value: number | null, percent: number | null, unit: string, sharedValue?: number | null): ResourceTableValue => ({ value, percent, unit, displayValue: "", sharedValue });
+  for (const column of columns) if (isResourceTableMetricColumn(column.id)) {
+    summary.values[column.id] = { ...cell(null, null, column.unit), displayValue: uiText.dashboard.noReading, availability: "Unavailable" };
+  }
   function ensureSoftware(software: IdentitySoftware) {
     let group = softwareRows.get(software.softwareId);
     if (!group) {
@@ -126,21 +137,30 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     group.processCount = Math.max(group.processCount, software.processCount);
     return group;
   }
-  // Residual rows are named from the metric that carries them; identity-only rows have no metric.
-  function ensureProcess(software: IdentitySoftware, process: IdentityProcess, metricId = "") {
+  // 归属叶子（PID ≤ 0）不是进程：只在进程视图里成为自己的一行，按后端的软件条目、attributionKind 和名字认，
+  // 名字由 resourceProcessDisplayName 按叶子种类给出。软件视图里叶子的值已经在所属条目那一行
+  // （后端给这个条目的进程数是 0，不展开）。
+  function ensureAttribution(software: IdentitySoftware, process: IdentityProcess, metric: ResourceFactsMetric) {
+    const key = `${software.softwareId}:${process.attributionKind}:${process.processId}:${process.name}`;
+    let item = attributionRows.get(key);
+    if (!item) {
+      item = { ...row(`attribution:${key}`, "attribution", resourceProcessDisplayName(process, metric.totalMetricId ?? metric.metricId), software.displayKind),
+        softwareId: software.softwareId, softwareName: software.name, processId: null, processCount: 0, processIds: [], processNames: [], executablePaths: [] };
+      item.values.pid = { value: null, displayValue: "--", unit: "", attributionKind: process.attributionKind };
+      attributionRows.set(key, item);
+    }
+    return item;
+  }
+  function ensureProcess(software: IdentitySoftware, process: IdentityProcess) {
     const group = ensureSoftware(software);
-    const identity = process.processStartKey ? `${process.processId}:${process.processStartKey}` : `${process.attributionKind}:${process.processId}:${process.name}`;
-    const key = `${software.softwareId}:${identity}`;
+    const key = `${software.softwareId}:${process.processId}:${process.processStartKey ?? ""}`;
     let child = processRows.get(key);
     if (!child) {
-      const processId = process.processId > 0 && process.attributionKind !== "system-residual" ? process.processId : null;
-      // 残差进程按它所属的整机事实命名：残差软件 id 就写着这个指标（私有提交量的残差是 resource-residual:virtualMemory.usage），
-      // 和软件行的名字同一出处；身份目录先于数值建行时也一样。
-      const displayName = resourceProcessDisplayName(process, /^resource-residual:(.+)$/.exec(software.softwareId)?.[1] ?? metricId);
-      child = { ...row(`process:${key}`, "process", displayName, process.attributionKind === "system-residual" ? "system-residual" : process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
+      const processId = process.processId;
+      child = { ...row(`process:${key}`, "process", resourceProcessDisplayName(process, ""), process.attributionKind === "etw-residual-process" ? "DXGKrnl/VidMm" : "running"),
         softwareId: software.softwareId, softwareName: software.name, parentId: mode === "process" ? null : group.id, depth: mode === "process" ? 0 : 1,
-        processId, processStartKey: process.processStartKey, processCount: processId ? 1 : 0, processIds: processId ? [processId] : [], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
-      child.values.pid = { value: processId, displayValue: processId?.toString() ?? "--", unit: "", attributionKind: process.attributionKind };
+        processId, processStartKey: process.processStartKey, processCount: 1, processIds: [processId], processNames: process.name.trim() ? [process.name] : [], executablePaths: process.executablePath ? [process.executablePath] : [] };
+      child.values.pid = { value: processId, displayValue: processId.toString(), unit: "", attributionKind: process.attributionKind };
       child.values.user = { displayValue: process.userName || "--", unit: "" };
       child.values.architecture = { displayValue: process.architecture || "--", unit: "" };
       processRows.set(key, child);
@@ -148,7 +168,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
       siblings.push(child);
       children.set(software.softwareId, siblings);
       const seen = metadata.get(software.softwareId)!;
-      if (processId && !seen.ids.has(processId)) {
+      if (!seen.ids.has(processId)) {
         seen.ids.add(processId);
         group.processIds!.push(processId);
       }
@@ -167,25 +187,33 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   }
   for (const software of facts.identities ?? []) {
     ensureSoftware(software);
-    for (const process of software.processes) ensureProcess(software, process);
+    for (const process of software.processes) if (isProcess(process)) ensureProcess(software, process);
   }
   for (const metric of facts.metrics) {
     const columnId = columnByMetric.get(metric.metricId) ?? null;
-    if (columnId) summary.values[columnId] = metric.totalValue !== null && metric.totalSystemPercent !== null && metric.capacityValue !== null
-      ? cell(metric.totalValue, metric.totalSystemPercent, metric.unit, metric.sharedValue)
-      : { ...cell(null, null, metric.unit), availability: "Unavailable" };
+    if (columnId) summary.values[columnId] = metric.totalValue !== null
+      ? { ...cell(metric.totalValue, metric.totalSystemPercent, metric.unit, metric.sharedValue), basis: resourceFactsTotalBasis(metric) }
+      : { ...cell(null, null, metric.unit), availability: "Unavailable", unavailableReason: metric.unavailableReason };
     for (const software of metric.software) {
       const group = ensureSoftware(software);
       if (columnId) group.values[columnId] = cell(software.value, software.systemPercent, metric.unit, software.sharedValue);
       for (const process of software.processes) {
-        const child = ensureProcess(software, process, metric.metricId);
-        if (columnId) child.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
+        if (isProcess(process)) {
+          const child = ensureProcess(software, process);
+          if (columnId) child.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
+        } else if (mode === "process") {
+          const leaf = ensureAttribution(software, process, metric);
+          if (columnId) leaf.values[columnId] = cell(process.value, process.systemPercent, metric.unit, process.sharedValue);
+        }
       }
     }
   }
   const weights: Record<string, number> = { cpu: 1, memory: .9, disk: .45, network: .25 };
   const visibleIds = new Set(columns.map(column => column.id));
-  for (const item of [summary, ...softwareRows.values(), ...processRows.values()]) {
+  for (const item of [summary, ...softwareRows.values(), ...processRows.values(), ...attributionRows.values()]) {
+    for (const column of columns) if (column.source && !item.values[column.id]) {
+      item.values[column.id] = { ...cell(null, null, column.unit), displayValue: uiText.dashboard.noReading, availability: "Unavailable" };
+    }
     item.impactScore = Object.entries(item.values).reduce((sum, [key, value]) => sum + (value.percent ?? 0) * (weights[key] ?? (key.startsWith("gpu.") ? 1 : 0)), 0);
     // Identity text remains searchable, while numeric cells follow local visibility.
     for (const key of Object.keys(item.values)) if (isResourceTableMetricColumn(key) && !visibleIds.has(key)) delete item.values[key];
@@ -199,8 +227,24 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     const result = typeof a === "string" && typeof b === "string" ? textOrder.compare(a, b) : a === b ? 0 : a < b ? -1 : 1;
     return result * (direction === "asc" ? 1 : -1) || textOrder.compare(left.name, right.name);
   };
-  const rows = mode === "process" ? [...processRows.values()].sort(compare(true)) : [...softwareRows.values()].sort(compare(true)).flatMap(group => [group, ...(children.get(group.softwareId!) ?? []).sort(compare(false))]);
+  const rows = mode === "process" ? [...processRows.values(), ...attributionRows.values()].sort(compare(true)) : [...softwareRows.values()].sort(compare(true)).flatMap(group => [group, ...(children.get(group.softwareId!) ?? []).sort(compare(false))]);
   return { capturedAt: facts.capturedAt, columns, rows: [summary, ...rows], sort: { columnId: sortColumnId, direction }, viewMode: mode };
+}
+
+/**
+ * 总计格的说明，全部取这个指标自己的事实：可加口径写出进程之和与带符号的残差，不可加口径写明不能相加（没有残差），
+ * 有采样窗口时写出窗口。
+ */
+export function resourceFactsTotalBasis(metric: ResourceFactsMetric): string | undefined {
+  const text = uiText.resourceTable;
+  const value = (number: number) => resourceTableCellText({ value: number, unit: metric.unit }, metric.totalMetricId ?? metric.metricId);
+  const balance = metric.processSumValue !== null && metric.residualValue !== null
+    ? text.factsBalance(value(metric.processSumValue), (metric.residualValue < 0 ? "−" : "") + value(Math.abs(metric.residualValue)))
+    : null;
+  const lines = [metric.additiveAcrossProcesses ? balance : text.nonAdditiveBasis,
+    metric.windowMilliseconds !== null ? text.factsWindow((metric.windowMilliseconds / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 })) : null];
+  const basis = lines.filter((line): line is string => line !== null).join("\n");
+  return basis || undefined;
 }
 
 /** Widths are consumed by the table's column memo, independently of fact rows. */

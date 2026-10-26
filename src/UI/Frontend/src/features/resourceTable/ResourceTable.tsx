@@ -2,6 +2,7 @@ import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { observeLayout } from "../../interactions/solid/layoutObservation.ts";
 import {
   resourceTableCellText,
+  resourceFactUnavailableText,
   resourceTableColumnLabel,
   resourceTableRowName as rowName
 } from "../../presentation/metricLabels";
@@ -39,6 +40,7 @@ import {
 import { pinResourceTableRow } from "./resourceTableRowPin";
 import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity";
 import { projectResourceTableHeat } from "./resourceTableHeat";
+import { accountResourceTableVisibility } from "./resourceTableAccounting.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
@@ -108,7 +110,7 @@ export function ResourceTable(props: ResourceTableProps) {
     props.expandedSoftwareIds,
     searchQuery(),
     rowSearchKeyCache));
-  const visibleRows = createMemo(() => projectResourceTableHeat(projectedRows()));
+  const visibleRows = createMemo(() => projectResourceTableHeat(accountResourceTableVisibility(sourceRows(), projectedRows(), props.mode, props.snapshot?.columns ?? [])));
   const baseCount = createMemo(() => {
     const rows = sourceRows();
     return props.mode === "software"
@@ -121,7 +123,7 @@ export function ResourceTable(props: ResourceTableProps) {
     hasSnapshot: props.snapshot !== null,
     status: props.observation.status,
     businessRowCount: baseCount(),
-    visibleBusinessRowCount: visibleBusinessCount(),
+    visibleBusinessRowCount: visibleRows().filter(row => row.kind !== "summary").length,
     searchActive: Boolean(normalizeSearchText(searchQuery()))
   }));
   const statusText = createMemo(() => {
@@ -151,7 +153,7 @@ export function ResourceTable(props: ResourceTableProps) {
         <div class="resource-table-title">
           <h2>{props.mode === "performance" ? uiText.resourceTable.performance : uiText.resourceTable.panel}</h2>
           <Show when={props.mode !== "performance"}>
-            <span id="resourceTableStatus" class="count-badge">{statusText()}</span>
+            <span id="resourceTableStatus" class="count-badge" title={uiText.resourceTable.accountingBasis}>{statusText()}</span>
           </Show>
         </div>
         <div class="panel-header-actions">
@@ -974,6 +976,8 @@ function ResourceTableRowSlot(props: {
         "summary-row": row()?.kind === "summary",
         // 系统/驱动保留（软件行和它的进程行，进程级里也一样）：残差软件 id 是 resource-residual:<整机指标>。
         "residual-row": row()?.softwareId?.startsWith("resource-residual:") === true,
+        "filtered-row": row()?.kind === "filtered",
+        "attribution-row": row()?.kind === "attribution",
         "empty-row": !hasRow(),
         highlighted: isHighlighted(),
         "context-target": hasRow() && row()?.id === props.contextRowId(),
@@ -1300,7 +1304,9 @@ function ResourceTableCell(props: {
         : value()
           ? `${props.text.label}: ${resourceTableCellText(value(), props.column.id)}`
           : props.text.label)
-        + (props.text.basis ? `\n${props.text.basis}` : "")}
+        + (props.text.basis ? `\n${props.text.basis}` : "")
+        + (value()?.basis ? `\n${value()!.basis}` : "")
+        + (value()?.unavailableReason ? `\n${resourceFactUnavailableText(value()!.unavailableReason!).hint}` : "")}
     >
       <span class="resource-table-cell-text">{resourceTableCellText(value(), props.column.id)}</span>
     </div>
@@ -1327,18 +1333,18 @@ function contextMenuEventForElement(element: HTMLElement) {
 function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
   const processMode = mode === "process";
   return [
-    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null, processFieldName: null },
-    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null }] : []),
-    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null, processFieldName: null },
+    { id: "name", unit: "", visible: true, sortable: true, width: 260, source: null, processFieldName: null, additiveAcrossProcesses: null },
+    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null, additiveAcrossProcesses: null }] : []),
+    { id: "status", unit: "", visible: true, sortable: true, width: 92, source: null, processFieldName: null, additiveAcrossProcesses: null },
     ...(processMode ? [
-      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null, processFieldName: null },
-      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null }
+      { id: "user", unit: "", visible: true, sortable: true, width: 150, source: null, processFieldName: null, additiveAcrossProcesses: null },
+      { id: "architecture", unit: "", visible: true, sortable: true, width: 76, source: null, processFieldName: null, additiveAcrossProcesses: null }
     ] : []),
-    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null, processFieldName: null },
-    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null, processFieldName: null },
+    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86, source: null, processFieldName: null, additiveAcrossProcesses: null },
+    { id: "memory", unit: "B", visible: true, sortable: true, width: 110, source: null, processFieldName: null, additiveAcrossProcesses: null },
     ...gpuResourceTableColumns(catalog),
-    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null, processFieldName: null },
-    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null, processFieldName: null }
+    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106, source: null, processFieldName: null, additiveAcrossProcesses: null },
+    { id: "network", unit: "bps", visible: true, sortable: true, width: 106, source: null, processFieldName: null, additiveAcrossProcesses: null }
   ];
 }
 
@@ -1353,7 +1359,8 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
       sortable: true,
       width: metric.id.endsWith(".vram") ? 132 : 108,
       source: null,
-      processFieldName: null
+      processFieldName: null,
+      additiveAcrossProcesses: null
     }));
 }
 

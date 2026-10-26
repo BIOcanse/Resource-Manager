@@ -87,6 +87,7 @@ export const zhMonitorCopy = {
     empty: "空餘",
     emptyPercent: "空餘佔比",
     systemPercent: "系統佔比",
+    currentTotalPercent: "佔目前總量",
     categoryCount: (count: number) => `${count} 個分類`,
     processCount: (count: number) => `${count} 個程序`,
     noAttributableProcess: "無可歸因程序",
@@ -136,6 +137,33 @@ export const zhMonitorCopy = {
       process: "程序級",
       performance: "效能"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "目前口徑不可按程序相加；總計是獨立的整機資料。",
+    factsBalance: (processes: string, residual: string) => `程序合計 ${processes}；系統/驅動程式保留（殘差） ${residual}`,
+    factsWindow: (seconds: string) => `取樣視窗 ${seconds} 秒`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "無獨立視訊記憶體", hint: "此 GPU 只使用共用系統記憶體，沒有獨立視訊記憶體總量，因此不列出視訊記憶體分項。" },
+      "system-total-unavailable": { label: "無整機讀數", hint: "此指標的整機總量本次未讀到，因此不列出分項。" },
+      "gpu-measure-observation-unavailable": { label: "無引擎取樣", hint: "此 GPU 引擎本次沒有同一視窗的完整取樣，因此不列出分項。" },
+      "gpu-measure-total-unavailable": { label: "無引擎總量", hint: "此 GPU 引擎的整機總量本次未讀到，因此不列出分項。" }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "獨立視訊記憶體駐留（共用部分依參照分攤）",
+      dedicated_resident_private: "獨立視訊記憶體駐留（僅私有部分）",
+      dedicated_resident_shared_apportioned: "獨立視訊記憶體駐留（共用部分的分攤額）"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `引擎 ${engine} 忙碌度（實體介面卡 ${physical}${engineClass ? `，${engineClass}` : ""}）`,
+    gpuEngineClasses: { Other: "其他", RayTracing: "光線追蹤", Compute: "運算" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "程序 CPU 使用率",
+      process_all_physical_disk_read_bytes_attributed: "實體磁碟讀取量",
+      process_all_physical_disk_write_bytes_attributed: "實體磁碟寫入量",
+      process_all_network_receive_bytes_attributed: "網路接收量",
+      process_all_network_send_bytes_attributed: "網路傳送量",
+      process_all_network_receive_rate_attributed: "網路接收速率",
+      process_all_network_send_rate_attributed: "網路傳送速率"
+    } as Record<string, string | undefined>,
+    filteredRows: "篩選隱藏項目",
+    accountingBasis: "總計與殘差由後端提供。軟體檢視按軟體列查看，程序檢視按程序及獨立歸屬列查看，父子列請勿重複相加。搜尋隱藏項目合併於下方，捲動不截斷資料。",
     summaryRow: {
       name: "總佔用",
       status: {

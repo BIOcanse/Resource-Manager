@@ -664,6 +664,7 @@ const frFrAppCopy: AppCopy = {
     empty: "Libre",
     emptyPercent: "Part libre",
     systemPercent: "Part système",
+    currentTotalPercent: "Part du total actuel",
     categoryCount: (count: number) => plural("fr-FR", count, { one: "{count} catégorie", many: "{count} de catégories", other: "{count} catégories" }),
     processCount: (count: number) => plural("fr-FR", count, { one: "{count} processus", many: "{count} de processus", other: "{count} processus" }),
     noAttributableProcess: "Aucun processus attribuable",
@@ -713,6 +714,33 @@ const frFrAppCopy: AppCopy = {
       process: "Par processus",
       performance: "Performances"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "Cette source ne peut pas être additionnée entre processus. Le total est une mesure système indépendante.",
+    factsBalance: (processes: string, residual: string) => `Processus : ${processes} ; réservé par le système et les pilotes (reste) : ${residual}`,
+    factsWindow: (seconds: string) => `Fenêtre d’échantillonnage : ${seconds} s`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "Aucune mémoire dédiée", hint: "Ce GPU n’utilise que la mémoire système partagée et n’a pas de total de mémoire dédiée ; aucune ligne de mémoire n’est donc affichée." },
+      "system-total-unavailable": { label: "Aucune mesure système", hint: "Le total système de cette métrique n’a pas été lu lors de cette capture ; aucune ligne n’est donc affichée." },
+      "gpu-measure-observation-unavailable": { label: "Aucun échantillon du moteur", hint: "Ce moteur GPU n’a pas d’échantillon complet sur une fenêtre commune lors de cette capture ; aucune ligne n’est donc affichée." },
+      "gpu-measure-total-unavailable": { label: "Aucun total du moteur", hint: "Le total système de ce moteur GPU n’a pas été lu lors de cette capture ; aucune ligne n’est donc affichée." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "Mémoire dédiée résidente (parties partagées réparties)",
+      dedicated_resident_private: "Mémoire dédiée résidente (privée uniquement)",
+      dedicated_resident_shared_apportioned: "Mémoire dédiée résidente (part répartie des parties partagées)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `Occupation du moteur ${engine} (adaptateur physique ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "autre", RayTracing: "lancer de rayons", Compute: "calcul" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "Utilisation du processeur par le processus",
+      process_all_physical_disk_read_bytes_attributed: "Lecture sur disque physique",
+      process_all_physical_disk_write_bytes_attributed: "Écriture sur disque physique",
+      process_all_network_receive_bytes_attributed: "Données réseau reçues",
+      process_all_network_send_bytes_attributed: "Données réseau envoyées",
+      process_all_network_receive_rate_attributed: "Débit de réception réseau",
+      process_all_network_send_rate_attributed: "Débit d’envoi réseau"
+    } as Record<string, string | undefined>,
+    filteredRows: "Lignes masquées par le filtre",
+    accountingBasis: "Les totaux et les résidus sont fournis par le serveur. Comptez les logiciels ou les processus et les attributions, sans compter deux fois parents et enfants. Les lignes masquées par la recherche sont regroupées en bas ; le défilement ne limite pas les données.",
     summaryRow: {
       name: "Utilisation totale",
       status: {

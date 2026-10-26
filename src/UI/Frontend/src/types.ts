@@ -557,18 +557,46 @@ export interface ResourceSoftwareSegment {
   baseScore: number;
 }
 
-export interface ResourceBreakdownBar {
+/** One GPU engine of a per-engine process field or fact (backend ProcessGpuEngineScope). */
+export interface ResourceGpuEngineScope {
+  physicalIndex: number;
+  engineIndex: number;
+}
+
+/**
+ * 一个指标在本帧自己的整机事实（metric-source round 4）：资源事实、资源条和进程明细里每个指标各带一份，
+ * 互不借用。totalValue 是 totalMetricId 的整机读数；processSumValue 是本帧发布的进程之和；
+ * residualValue = totalValue − processSumValue，带符号，只在 additiveAcrossProcesses 时有值，
+ * 不可加的口径（工作集）为 null，也没有残差条目。capturedAt 和 windowMilliseconds 是这个指标自己的采样时刻和窗口。
+ * totalValue 为 null 时 unavailableReason 写原因码，后端不发进程行。
+ */
+export interface ResourceMetricFacts {
+  totalMetricId: string | null;
+  totalValue: number | null;
+  processSumValue: number | null;
+  residualValue: number | null;
+  additiveAcrossProcesses: boolean;
+  capturedAt: string | null;
+  windowMilliseconds: number | null;
+  quantity: string | null;
+  unavailableReason: string | null;
+  gpuEngine: ResourceGpuEngineScope | null;
+  engineClass: string | null;
+}
+
+export interface ResourceBreakdownBar extends ResourceMetricFacts {
   residualSource?: "counters" | null;
   unavailableReason?: string | null;
   sharedValue?: number | null;
   metricId: string;
-  /** 这一条实际读的进程字段（后端只给进程内存类的条）；没有为 null。 */
-  processFieldName?: string | null;
-  /** 按进程字段订阅的条比较的整机事实（memory.usage 或 virtualMemory.usage）；没有为 null。 */
-  totalMetricId?: string | null;
+  /** 这一条实际读的进程字段；不是进程字段的条为 null。 */
+  processFieldName: string | null;
   unit: string;
   scaleMode: ResourceScaleMode;
-  totalValue: number | null;
+  /**
+   * 后端的比较基数。整机容量类指标（cpu/memory/virtualMemory/gpu.N.usage/vram，见 resourceBarSupportsCapacity）是容量；
+   * 吞吐类（disk.io、network.traffic）是本帧总量 max(1, total)，不是设备容量。
+   */
   capacityValue: number | null;
   totalSystemPercent: number | null;
   software: ResourceSoftwareSegment[];
@@ -603,10 +631,11 @@ export type PhysicalMemoryResidualFrame = {
 export interface ResourceProcessDetailsSnapshot {
   physicalMemoryResidual?: PhysicalMemoryResidualFrame;
   capturedAt?: string;
-  metrics: {
+  metrics: ({
     metricId: string;
+    capacityValue: number | null;
     software: { softwareId: string; processes: ResourceProcessSegment[] }[];
-  }[];
+  } & Pick<ResourceMetricFacts, "totalMetricId" | "totalValue" | "processSumValue" | "residualValue" | "additiveAcrossProcesses" | "capturedAt">)[];
 }
 
 export interface ResourceTableColumn {
@@ -620,6 +649,8 @@ export interface ResourceTableColumn {
   source: string | null;
   /** 这一列的指标实际读的进程字段（资源事实的 processFieldName）；不是进程字段或还没有数据时为 null。 */
   processFieldName: string | null;
+  /** 这一列的指标在本帧声明的 additiveAcrossProcesses；不是指标列或还没有数据时为 null。 */
+  additiveAcrossProcesses: boolean | null;
 }
 
 export interface ResourceTableValue {
@@ -629,6 +660,10 @@ export interface ResourceTableValue {
   displayValue?: string | null;
   unit: string;
   availability?: string | null;
+  /** Backend reason code when the metric has no total (ResourceMetricFacts.unavailableReason). */
+  unavailableReason?: string | null;
+  /** A table-only explanation, e.g. why an independent system total is not additive. */
+  basis?: string;
   heatPercent?: number | null;
   sharedValue?: number | null;
   privateHeatPercent?: number;

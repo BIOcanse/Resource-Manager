@@ -108,6 +108,8 @@ export function softwareDisplayName(software: {
     return reported;
   }
 
+  if (software.displayKind === "system-residual") return uiText.resourceBreakdown.residualSystem;
+
   const group = (software.displayKind ?? "").trim() as keyof typeof uiText.softwareKind;
   return uiText.softwareKind[group] ?? "";
 }
@@ -137,7 +139,7 @@ export function resourceProcessDisplayName(
 /** Process rows already carry the localized fact projection; only software rows use group naming. */
 export function resourceTableRowName(row: ResourceTableRow | undefined): string {
   if (row?.kind === "summary") return uiText.resourceTable.summaryRow.name;
-  if (row?.kind === "process") return row.name;
+  if (row?.kind === "process" || row?.kind === "attribution" || row?.kind === "filtered") return row.name;
   return softwareDisplayName({ softwareId: row?.softwareId, name: row?.name, displayKind: row?.status });
 }
 
@@ -327,6 +329,11 @@ export function byteQuantityKindForMetric(
  * 表格由前端从资源事实生成；文本单元使用本地投影的 displayValue，数值在这里格式化。
  * 读不到时根据本地单元的 availability 显示无数据。
  */
+/** 后端不可用原因码（ResourceMetricFacts.unavailableReason）的说明；没有译文的原因码按原样写出，不换成别的说法。 */
+export function resourceFactUnavailableText(reason: string): { label: string; hint: string } {
+  return uiText.resourceTable.unavailableReasons[reason] ?? { label: reason, hint: reason };
+}
+
 export function resourceTableCellText(
   cell: ResourceTableValue | null | undefined,
   metricId?: string | null
@@ -341,6 +348,7 @@ export function resourceTableCellText(
       : "--";
   }
   if (typeof cell.value !== "number" || !Number.isFinite(cell.value)) {
+    if (cell.unavailableReason) return resourceFactUnavailableText(cell.unavailableReason).label;
     return cell.availability ? uiText.dashboard.noReading : "--";
   }
 

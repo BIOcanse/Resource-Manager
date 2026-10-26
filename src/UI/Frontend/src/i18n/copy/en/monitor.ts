@@ -91,6 +91,7 @@ export const enMonitorCopy: Pick<
     empty: "Free",
     emptyPercent: "Free share",
     systemPercent: "System share",
+    currentTotalPercent: "Share of current total",
     categoryCount: (count: number) => plural("en-US", count, { one: "{count} category", other: "{count} categories" }),
     processCount: (count: number) => plural("en-US", count, { one: "{count} process", other: "{count} processes" }),
     noAttributableProcess: "No attributable process",
@@ -148,6 +149,33 @@ export const enMonitorCopy: Pick<
         failed: "Sampling failed"
       }
     },
+    nonAdditiveBasis: "This source is not additive across processes. The total is an independent system reading.",
+    factsBalance: (processes: string, residual: string) => `Processes: ${processes}; system/driver reserved (residual): ${residual}`,
+    factsWindow: (seconds: string) => `Sampling window: ${seconds} s`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "No dedicated memory", hint: "This GPU uses shared system memory only and has no dedicated memory total, so no memory rows are listed." },
+      "system-total-unavailable": { label: "No system reading", hint: "The system total of this metric was not read in this capture, so no rows are listed." },
+      "gpu-measure-observation-unavailable": { label: "No engine sample", hint: "This GPU engine has no complete sample over one common window in this capture, so no rows are listed." },
+      "gpu-measure-total-unavailable": { label: "No engine total", hint: "The system total of this GPU engine was not read in this capture, so no rows are listed." }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "Dedicated resident memory (shared parts divided)",
+      dedicated_resident_private: "Dedicated resident memory (private only)",
+      dedicated_resident_shared_apportioned: "Dedicated resident memory (divided share of shared parts)"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `Engine ${engine} busy (physical adapter ${physical}${engineClass ? `, ${engineClass}` : ""})`,
+    gpuEngineClasses: { Other: "other", RayTracing: "ray tracing", Compute: "compute" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "Process CPU usage",
+      process_all_physical_disk_read_bytes_attributed: "Physical disk read",
+      process_all_physical_disk_write_bytes_attributed: "Physical disk written",
+      process_all_network_receive_bytes_attributed: "Network received",
+      process_all_network_send_bytes_attributed: "Network sent",
+      process_all_network_receive_rate_attributed: "Network receive rate",
+      process_all_network_send_rate_attributed: "Network send rate"
+    } as Record<string, string | undefined>,
+    filteredRows: "Filtered-out rows",
+    accountingBasis: "Totals and residuals are supplied by the backend. Count software rows or process and attribution rows, without counting parents and children twice. Search-hidden rows are grouped below; scrolling does not limit the data.",
     systemResidualRow: (metric: string) => `System/driver reserved · ${metric}`,
     columnSourceLabel: (column: string) => `${column} source`,
     memoryQuantities: {

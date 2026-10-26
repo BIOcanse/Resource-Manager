@@ -25,6 +25,7 @@ const wire: ResourceBreakdownWireSnapshot = {
   version: 8, capturedAt: null,
   softwareCatalog: metricIds.map(id => [`resource-residual:${id}`, "", "system_residual", "system_residual"]),
   bars: metricIds.map((metricId, index) => ({ metricId, unit: "B", scaleMode: "capacity", totalValue: 10, capacityValue: 100, totalSystemPercent: 10,
+    processSumValue: index === 0 ? 10 : 0, residualValue: 10, additiveAcrossProcesses: true, capturedAt: null,
     software: [[index, 10, 10, 0, 0, [[-1, "", null, 10, 10, 100, null, null, "system-residual", 0, null]]]] }))
 };
 wire.softwareCatalog.push(["unattributed", "", "unattributed", "unattributed"]);
@@ -32,10 +33,14 @@ wire.bars[0].software.push([4, 10, 10, 2, 0, [
   [42, "worker.exe", "C:/worker.exe", 5, 5, 50, null, "x64", "etw-residual-process", 0, "123"],
   [43, "ordinary.exe", "C:/ordinary.exe", 5, 5, 50, null, "x64", "process", 0, "124"]
 ]]);
+wire.bars[0].totalValue = 20;
+wire.bars[0].totalSystemPercent = 20;
 const bars = decodeResourceBreakdownWireSnapshot(wire).bars!;
 assert.ok(bars.every(bar => bar.software[0].processes[0].name === ""));
 const details = decodeResourceProcessDetailsWireSnapshot({ version: 1, capturedAt: null, metrics: wire.bars.map(bar => ({
-  metricId: bar.metricId, software: bar.software.map(group => ({ softwareId: wire.softwareCatalog[group[0]][0], processes: group[5] }))
+  metricId: bar.metricId, totalMetricId: bar.metricId, totalValue: bar.totalValue, capacityValue: bar.capacityValue, processSumValue: bar.processSumValue,
+  residualValue: bar.residualValue, additiveAcrossProcesses: bar.additiveAcrossProcesses, capturedAt: bar.capturedAt,
+  software: bar.software.map(group => ({ softwareId: wire.softwareCatalog[group[0]][0], processes: group[5] }))
 })) });
 assert.deepEqual(details.metrics.map(metric => metric.software[0].processes[0].name), ["", "", "", ""]);
 
@@ -43,10 +48,10 @@ const processCatalog = bars.flatMap(bar => bar.software.flatMap(group => group.p
 const facts = decodeResourceFacts({ version: 2, capturedAt: null, attributions: [],
   software: wire.softwareCatalog.map(([softwareId, name, kind, attributionKind]) => ({ softwareId, name, kind, attributionKind })),
   processes: processCatalog.map(process => ({ ...process, userName: process.userName ?? null, architecture: process.architecture ?? null })),
-  metrics: bars.map(bar => ({ ...bar, totalMetricId: null, processSumValue: null, processFieldName: null, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
+  metrics: bars.map(bar => ({ ...bar, residualSource: null, processFieldName: null, sharedValue: null, software: bar.software.map(group => ({ ...group, sharedValue: null,
     processes: group.processes.map(process => ({ ...process, processIndex: processCatalog.indexOf(process), sharedValue: null })) })) }))
 }).facts!;
-const columns = [{ id: "name", visible: true }, { id: "memory", visible: true }, { id: "gpu.12.vram", visible: true }];
+const columns = [{ id: "name", visible: true }, { id: "cpu", visible: true }, { id: "memory", visible: true }, { id: "gpu.12.vram", visible: true }];
 const projection = createRoot(dispose => ({ dispose,
   rows: createResourceFactsProjection(() => facts, () => columns, () => "process", () => ({ columnId: "name", direction: "asc" }))
 }));
@@ -63,6 +68,8 @@ try {
       const process = bars[index].software[0].processes[0];
       assert.equal(resourceProcessDisplayName(process, metricId), names[index], `${language.id}: ${metricId}`);
       assert.equal(resourceProcessDisplayName({ ...process, name: "obsolete backend prose" }, metricId), names[index], "static names must never be used as a compatibility fallback");
+      // Commit is a bar address, not an automatic table column; explicit commit table coverage is in resourceTableSources.
+      if (metricId === "virtualMemory.usage") continue;
       const row = projected.rows.find(row => row.softwareId === `resource-residual:${metricId}`)!;
       assert.equal(resourceTableRowName(row), names[index], `${language.id}: process name must not be replaced with the software group name`);
       assert.deepEqual(row.processNames, [], `${language.id}: categories have no factual process name`);

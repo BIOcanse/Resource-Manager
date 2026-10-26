@@ -87,6 +87,7 @@ export const zhMonitorCopy = {
     empty: "空余",
     emptyPercent: "空余占比",
     systemPercent: "系统占比",
+    currentTotalPercent: "占当前总量",
     categoryCount: (count: number) => `${count} 个分类`,
     processCount: (count: number) => `${count} 个进程`,
     noAttributableProcess: "无可归因进程",
@@ -136,6 +137,33 @@ export const zhMonitorCopy = {
       process: "进程级",
       performance: "性能"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "当前口径不可按进程相加；总计是独立的整机事实。",
+    factsBalance: (processes: string, residual: string) => `进程合计 ${processes}；系统/驱动保留（残差） ${residual}`,
+    factsWindow: (seconds: string) => `采样窗口 ${seconds} 秒`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "无独立显存", hint: "该 GPU 只使用共享系统内存，没有独立显存总量，因此不列出显存分项。" },
+      "system-total-unavailable": { label: "无整机读数", hint: "这一指标的整机总量本次没有读到，因此不列出分项。" },
+      "gpu-measure-observation-unavailable": { label: "无引擎采样", hint: "这一 GPU 引擎本次没有同一窗口的完整采样，因此不列出分项。" },
+      "gpu-measure-total-unavailable": { label: "无引擎总量", hint: "这一 GPU 引擎的整机总量本次没有读到，因此不列出分项。" }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "独立显存驻留（共享部分按引用分摊）",
+      dedicated_resident_private: "独立显存驻留（仅私有部分）",
+      dedicated_resident_shared_apportioned: "独立显存驻留（共享部分的分摊额）"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `引擎 ${engine} 忙碌度（物理适配器 ${physical}${engineClass ? `，${engineClass}` : ""}）`,
+    gpuEngineClasses: { Other: "其他", RayTracing: "光线追踪", Compute: "计算" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "进程 CPU 使用率",
+      process_all_physical_disk_read_bytes_attributed: "物理磁盘读取量",
+      process_all_physical_disk_write_bytes_attributed: "物理磁盘写入量",
+      process_all_network_receive_bytes_attributed: "网络接收量",
+      process_all_network_send_bytes_attributed: "网络发送量",
+      process_all_network_receive_rate_attributed: "网络接收速率",
+      process_all_network_send_rate_attributed: "网络发送速率"
+    } as Record<string, string | undefined>,
+    filteredRows: "筛选隐藏项",
+    accountingBasis: "总计与残差由后端提供。软件视图按软件行查看，进程视图按进程及独立归属行查看，父子行不要重复相加。搜索隐藏项合并在下方，滚动不截断数据。",
     summaryRow: {
       name: "总占用",
       status: {

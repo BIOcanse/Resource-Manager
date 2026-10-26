@@ -664,6 +664,7 @@ const jaJpAppCopy: AppCopy = {
     empty: "空き",
     emptyPercent: "空きの割合",
     systemPercent: "システムの割合",
+    currentTotalPercent: "現在の合計に占める割合",
     categoryCount: (count: number) => `${count} 分類`,
     processCount: (count: number) => `${count} プロセス`,
     noAttributableProcess: "帰属できるプロセスがありません",
@@ -713,6 +714,33 @@ const jaJpAppCopy: AppCopy = {
       process: "プロセス別",
       performance: "パフォーマンス"
     } as Record<ResourceTableViewMode, string>,
+    nonAdditiveBasis: "このソースはプロセス間で加算できません。合計は独立したシステム測定値です。",
+    factsBalance: (processes: string, residual: string) => `プロセス合計 ${processes}、システム/ドライバー予約（残差） ${residual}`,
+    factsWindow: (seconds: string) => `サンプリング期間 ${seconds} 秒`,
+    unavailableReasons: {
+      "gpu-dedicated-memory-total-unavailable": { label: "専用メモリなし", hint: "この GPU は共有システム メモリのみを使用し、専用メモリの合計がないため、メモリの内訳は表示しません。" },
+      "system-total-unavailable": { label: "システム値なし", hint: "この指標のシステム合計を今回の取得で読み取れなかったため、内訳は表示しません。" },
+      "gpu-measure-observation-unavailable": { label: "エンジンのサンプルなし", hint: "この GPU エンジンには今回の取得で共通期間の完全なサンプルがないため、内訳は表示しません。" },
+      "gpu-measure-total-unavailable": { label: "エンジン合計なし", hint: "この GPU エンジンのシステム合計を今回の取得で読み取れなかったため、内訳は表示しません。" }
+    } as Record<string, { label: string; hint: string } | undefined>,
+    gpuQuantities: {
+      dedicated_resident_apportioned: "専用メモリ常駐量（共有部分を按分）",
+      dedicated_resident_private: "専用メモリ常駐量（専有分のみ）",
+      dedicated_resident_shared_apportioned: "専用メモリ常駐量（共有部分の按分額）"
+    } as Record<string, string | undefined>,
+    gpuEngineBusy: (engine: number, physical: number, engineClass: string | null) => `エンジン ${engine} の使用率（物理アダプター ${physical}${engineClass ? `、${engineClass}` : ""}）`,
+    gpuEngineClasses: { Other: "その他", RayTracing: "レイトレーシング", Compute: "コンピューティング" } as Record<string, string | undefined>,
+    processFieldNames: {
+      process_all_cpu_usage_actual: "プロセスの CPU 使用率",
+      process_all_physical_disk_read_bytes_attributed: "物理ディスク読み取り量",
+      process_all_physical_disk_write_bytes_attributed: "物理ディスク書き込み量",
+      process_all_network_receive_bytes_attributed: "ネットワーク受信量",
+      process_all_network_send_bytes_attributed: "ネットワーク送信量",
+      process_all_network_receive_rate_attributed: "ネットワーク受信速度",
+      process_all_network_send_rate_attributed: "ネットワーク送信速度"
+    } as Record<string, string | undefined>,
+    filteredRows: "フィルターで非表示の行",
+    accountingBasis: "合計と残差はバックエンドが提供します。ソフトウェア行、またはプロセス行と独立した帰属行を確認し、親子を二重に数えないでください。検索で非表示の行は下部にまとめられ、スクロールでデータは切り捨てられません。",
     summaryRow: {
       name: "合計使用量",
       status: {

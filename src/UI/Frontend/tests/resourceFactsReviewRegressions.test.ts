@@ -15,8 +15,10 @@ function software(id: string, name: string, value: number): ResourceSoftwareSegm
       systemPercent: value, softwarePercent: 100, baseScore: 0 }] };
 }
 function metric(metricId: string, software: ResourceSoftwareSegment[]): ResourceFactsMetric {
-  return { metricId, unit: metricId === "memory.usage" ? "B" : "%", scaleMode: "capacity", totalMetricId: null, processSumValue: null, processFieldName: null,
-    totalValue: 10, capacityValue: 100, totalSystemPercent: 10, software };
+  const processSumValue = software.reduce((sum, item) => sum + item.value, 0);
+  return { metricId, unit: metricId === "memory.usage" ? "B" : "%", scaleMode: "capacity", totalMetricId: metricId, processSumValue, processFieldName: null,
+    residualValue: 10 - processSumValue, additiveAcrossProcesses: true, capturedAt: null, windowMilliseconds: null, quantity: null,
+    unavailableReason: null, gpuEngine: null, engineClass: null, totalValue: 10, capacityValue: 100, totalSystemPercent: 10, software };
 }
 function factsFor(groups: { name: string; memory?: number }[]): ResourceFacts {
   return { capturedAt: time, metrics: [metric("cpu.usage", groups.map((group, index) => software(String(index), group.name, 0))),
@@ -69,13 +71,13 @@ assert.deepEqual(metadataGroup.executablePaths, ["C:/APP/Worker.EXE"]);
 // Identity text belongs to the frontend projection and is read by the cell renderer.
 const identitySoftware = software("100", "Identity group", 1);
 identitySoftware.processes[0] = { ...identitySoftware.processes[0], userName: "TEST-PC\\operator", architecture: "x64" };
-const identityRow = projectResourceFacts({ capturedAt: time, metrics: [metric("memory.usage", [identitySoftware])] }, columns, "process", "name", "asc").rows[1];
+const identityRow = projectResourceFacts({ capturedAt: time, metrics: [metric("memory.usage", [identitySoftware])] }, columns, "process", "name", "asc").rows.find(row => row.processId === 101)!;
 assert.equal(resourceTableCellText(identityRow.values.pid), "101");
 assert.equal(resourceTableCellText(identityRow.values.user), "TEST-PC\\operator");
 assert.equal(resourceTableCellText(identityRow.values.architecture), "x64");
 
 // A ready dataset may contain one available adapter and one explicitly unavailable adapter.
-// Null total, null percentage or null capacity each makes only that summary cell unavailable.
+// Only a missing backend total hides that reading; missing scale metadata preserves its value.
 const gpuColumns = [0, 1, 2].map(index => ({ id: `gpu.${index}.usage`, visible: true, width: 108 }));
 for (const missing of ["totalValue", "totalSystemPercent", "capacityValue"] as const) {
   const ready = metric("gpu.0.usage", []);
@@ -84,12 +86,12 @@ for (const missing of ["totalValue", "totalSystemPercent", "capacityValue"] as c
   const cells = projectResourceTableHeat(projected.rows)[0].values;
   assert.equal(cells["gpu.0.usage"].value, 10);
   assert.equal(resourceTableCellText(cells["gpu.0.usage"]), "10.0%");
-  assert.equal(cells["gpu.1.usage"].value, null);
-  assert.equal(cells["gpu.1.usage"].percent, null);
-  assert.equal(cells["gpu.1.usage"].availability, "Unavailable");
-  assert.equal(resourceTableCellText(cells["gpu.1.usage"]), uiText.dashboard.noReading);
-  assert.equal(cells["gpu.2.usage"], undefined);
-  assert.equal(resourceTableCellText(cells["gpu.2.usage"]), "--");
+  assert.equal(cells["gpu.1.usage"].value, missing === "totalValue" ? null : 10);
+  assert.equal(cells["gpu.1.usage"].percent, missing === "totalValue" || missing === "totalSystemPercent" ? null : 10);
+  assert.equal(cells["gpu.1.usage"].availability, missing === "totalValue" ? "Unavailable" : undefined);
+  assert.equal(resourceTableCellText(cells["gpu.1.usage"]), missing === "totalValue" ? uiText.dashboard.noReading : "10.0%");
+  assert.equal(cells["gpu.2.usage"].availability, "Unavailable");
+  assert.equal(resourceTableCellText(cells["gpu.2.usage"]), uiText.dashboard.noReading);
 }
 
 // Deterministic complexity regression: a real 5,000-process group, repeated in two metrics.
@@ -114,7 +116,7 @@ try {
   Array.prototype.includes = originalIncludes;
 }
 assert.equal(longArrayScans, 0);
-assert.ok(linearMembershipChecks <= 6 * count + 20, `Membership checks must be linear: ${linearMembershipChecks}`);
+assert.ok(linearMembershipChecks <= 8 * count + 40, `Membership checks including accounting must be linear: ${linearMembershipChecks}`);
 const largeGroup = projected!.rows.find(row => row.kind === "software")!;
 assert.equal(largeGroup.processIds!.length, count);
 assert.equal(largeGroup.processNames!.length, count);

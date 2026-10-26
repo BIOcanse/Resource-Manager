@@ -20,6 +20,10 @@ const wire: ResourceBreakdownWireSnapshot = {
     totalValue: 64,
     capacityValue: 1024,
     totalSystemPercent: 6.25,
+    processSumValue: 64,
+    residualValue: 0,
+    additiveAcrossProcesses: true,
+    capturedAt: "2026-07-12T00:00:00Z",
     software: [[
       0,
       64,
@@ -66,9 +70,35 @@ const emptyValueWire: ResourceBreakdownWireSnapshot = {
     ...wire.bars[0],
     totalValue: 0,
     totalSystemPercent: 0,
+    processSumValue: 0,
+    residualValue: 0,
     software: []
   }]
 };
+
+// metric-source round 4: every bar carries its own facts; keys the converter writes only when set read as null.
+assert.deepEqual(
+  [bar?.totalMetricId, bar?.processFieldName, bar?.quantity, bar?.unavailableReason, bar?.windowMilliseconds, bar?.gpuEngine, bar?.engineClass],
+  [null, null, null, null, null, null, null]);
+assert.deepEqual([bar?.processSumValue, bar?.residualValue, bar?.additiveAcrossProcesses, bar?.capturedAt], [64, 0, true, "2026-07-12T00:00:00Z"]);
+const engineWire = structuredClone(wire);
+Object.assign(engineWire.bars[0], { metricId: "process_all_gpu_residency_attributed_gpu_0_luid_0000000000000017_physical_0_engine_1",
+  unit: "%", totalMetricId: "gpu.0.usage", processFieldName: "process_all_gpu_residency_attributed_gpu_0_luid_0000000000000017_physical_0_engine_1",
+  quantity: "engine_busy_percent", windowMilliseconds: 1000, gpuEngine: { adapterLuid: 23, physicalIndex: 0, engineIndex: 1 }, engineClass: null,
+  totalValue: 100, capacityValue: 100, totalSystemPercent: 100, processSumValue: 64, residualValue: 36 });
+const engineBar = decodeResourceBreakdownWireSnapshot(engineWire).bars![0];
+assert.deepEqual([engineBar.totalMetricId, engineBar.quantity, engineBar.windowMilliseconds, engineBar.gpuEngine, engineBar.engineClass],
+  ["gpu.0.usage", "engine_busy_percent", 1000, { physicalIndex: 0, engineIndex: 1 }, null]);
+// A gpuEngine block always carries engineClass (null when not unique); a written optional key is never null.
+assert.throws(() => decodeResourceBreakdownWireSnapshot({ ...engineWire, bars: [{ ...engineWire.bars[0], engineClass: undefined }] }), /engineClass/);
+assert.throws(() => decodeResourceBreakdownWireSnapshot({ ...wire, bars: [{ ...wire.bars[0], quantity: null as unknown as string }] }), /quantity/);
+// Always-written keys are required, and a non-additive bar has no residual.
+for (const key of ["processSumValue", "residualValue", "additiveAcrossProcesses", "capturedAt"] as const) {
+  const missing = structuredClone(wire);
+  delete (missing.bars[0] as Partial<typeof missing.bars[0]>)[key];
+  assert.throws(() => decodeResourceBreakdownWireSnapshot(missing), new RegExp(key));
+}
+assert.throws(() => decodeResourceBreakdownWireSnapshot({ ...wire, bars: [{ ...wire.bars[0], additiveAcrossProcesses: false }] }), /residualValue/);
 const emptyValueBar = decodeResourceBreakdownWireSnapshot(emptyValueWire).bars?.[0];
 assert.equal(emptyValueBar?.totalValue, 0);
 assert.deepEqual(emptyValueBar?.software, []);

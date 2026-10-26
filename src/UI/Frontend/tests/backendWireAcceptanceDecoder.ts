@@ -41,6 +41,13 @@ const tableProcess = table?.rows.find((row) => row.kind === "process");
 const details = request.kind === "details"
   ? decodeResourceProcessDetailsWireSnapshot(request.payload) : null;
 const decodedMetrics = details?.metrics ?? monitor?.facts?.metrics ?? monitor?.breakdown.bars ?? [];
+// The sampler acceptance sends every automatic metric in both available and unavailable states.
+// Keep the former BACKEND-RF-DISK-METRIC assertion on production-serialized r4 data, not the pre-r4 capture.
+if (request.kind === "facts" && request.metricIds?.includes("disk.io")) {
+  const disk = monitor?.facts?.metrics.find(metric => metric.metricId === "disk.io");
+  assert.ok(disk, "A requested disk.io must have a facts item");
+  assert.ok(disk.totalValue !== null || !!disk.unavailableReason, "disk.io must publish its total or an unavailable reason");
+}
 const decodedProcesses = decodedMetrics.flatMap(metric => metric.software
   .flatMap(software => software.processes.map(process => ({ metricId: metric.metricId, ...process }))));
 const localizedNames: Record<string, string[]> = {};
