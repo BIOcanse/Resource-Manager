@@ -18,6 +18,7 @@ internal sealed class NativeUiApplicationServices
     internal Func<BackendServiceSession, CancellationToken, Task>? ConnectSession { get; init; }
     internal Func<TimeSpan, CancellationToken, Task>? ReconnectDelay { get; init; }
     internal Func<WebView2HostConfiguration, IFrontendHost>? CreateFrontendHost { get; init; }
+    internal Func<CancellationToken, Task>? BeforeProxyStart { get; init; }
     internal Func<ContextMenuStrip, NotifyIcon>? CreateTrayIcon { get; init; }
     internal Action<MainForm, bool, bool>? PresentWindow { get; init; }
     internal Func<BackendServiceSession, CancellationToken, Task>? ObserveDesktop { get; init; }

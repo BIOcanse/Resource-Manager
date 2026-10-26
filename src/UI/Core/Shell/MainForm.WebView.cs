@@ -64,6 +64,15 @@ public sealed partial class MainForm
         }
     }
 
+    internal void RecordProxyStartupFailure(Exception exception)
+    {
+        if (frontendStopping) return;
+        System.Diagnostics.Trace.WriteLine(exception);
+        WriteWebViewStartupFailure(exception);
+        // Same condition as the WebView initialization failure it replaces.
+        if (backendContentEnabled) ShowFrontendUnavailable(NativeUiText.Current.WebViewInitializationFailed);
+    }
+
     private static void WriteWebViewStartupFailure(Exception exception)
     {
         try

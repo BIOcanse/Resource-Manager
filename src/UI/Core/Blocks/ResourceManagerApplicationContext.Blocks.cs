@@ -131,8 +131,8 @@ public sealed partial class ResourceManagerApplicationContext
             (request, token) => backendReady && backendSession is { } current
                 ? current.SendFrontendRequestAsync(request, token)
                 : Task.FromException<System.Net.Http.HttpResponseMessage>(
-                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
-        proxyBlock = new NativeUiProxyBlock(frontendProxy);
+                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)), services.BeforeProxyStart);
+        proxyBlock = new NativeUiProxyBlock(frontendProxy, failure => mainForm?.RecordProxyStartupFailure(failure));
         try
         {
             var window = GetOrCreateMainForm();
@@ -260,12 +260,12 @@ public sealed partial class ResourceManagerApplicationContext
         await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Stopped);
     }
 
-    private void OnSessionEnding(object sender, Microsoft.Win32.SessionEndingEventArgs args)
+    private void OnSessionEnded(object sender, Microsoft.Win32.SessionEndedEventArgs args)
     {
         if (uiDispatcher.IsDisposed) return;
-        // Do not veto Windows logoff. Keep our message pump alive while the roots drain;
+        // Windows has confirmed session end. Keep our message pump alive while the roots drain;
         // Windows' process shutdown deadline remains the outer forced-end policy.
-        uiDispatcher.BeginInvoke(new Action(() => ExitApplication("windows-session-ending")));
+        uiDispatcher.BeginInvoke(new Action(() => ExitApplication("windows-session-ended")));
     }
 
     private void ObserveUiCommand(Task command)

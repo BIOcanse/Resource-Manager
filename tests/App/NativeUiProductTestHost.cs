@@ -41,9 +41,11 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
     internal FrontendLoopbackProxy Proxy => Field<FrontendLoopbackProxy>("frontendProxy");
 
     private int connectionAttempts;
+    private readonly Func<CancellationToken, Task>? beforeProxyStart;
     private NativeUiProductTestHost(bool delayedConnection, bool slowBrowser, bool slowTray, bool startInBackground,
-        bool pauseReconnect, bool failFirstPresentation)
+        bool pauseReconnect, bool failFirstPresentation, Func<CancellationToken, Task>? beforeProxyStart)
     {
+        this.beforeProxyStart = beforeProxyStart;
         this.startInBackground = startInBackground;
         this.failFirstPresentation = failFirstPresentation;
         if (!delayedConnection) AllowConnect.SetResult();
@@ -56,10 +58,10 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
 
     internal static async Task<NativeUiProductTestHost> StartAsync(bool delayedConnection = false,
         bool slowBrowser = false, bool slowTray = false, bool startInBackground = false, bool pauseReconnect = false,
-        bool failFirstPresentation = false)
+        bool failFirstPresentation = false, Func<CancellationToken, Task>? beforeProxyStart = null)
     {
         var host = new NativeUiProductTestHost(delayedConnection, slowBrowser, slowTray, startInBackground, pauseReconnect,
-            failFirstPresentation);
+            failFirstPresentation, beforeProxyStart);
         host.thread.Start();
         try { await host.ready.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
         catch { await host.exited.Task; throw; }
@@ -89,6 +91,7 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
                 FrontendPreferencesPath = Path.Combine(root, "preferences.json"),
                 Preferences = new FrontendPreferencesOwner(Path.Combine(root, "preferences.json")),
                 Hotkeys = new NoHotkeys(),
+                BeforeProxyStart = beforeProxyStart,
                 CreateSession = CreateSession,
                 ConnectSession = async (session, token) =>
                 {
@@ -179,9 +182,21 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
 
     internal Task TrayExitAsync() => InvokeAsync(() => Field<ToolStripMenuItem>("exitMenuItem").PerformClick());
     internal Task WindowCloseAsync() => InvokeAsync(() => Window.Close());
-    internal Task SessionEndingAsync() => InvokeAsync(() =>
-        typeof(ResourceManagerApplicationContext).GetMethod("OnSessionEnding", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(Context, [this, new Microsoft.Win32.SessionEndingEventArgs(Microsoft.Win32.SessionEndReasons.SystemShutdown)]));
+    internal Task SessionEndedAsync() => SystemSessionMessageAsync(0x0016, 1);
+    internal async Task<nint> SystemSessionMessageAsync(uint message, nint confirmed)
+    {
+        // Exercise the actual SystemEvents subscription, including background startup.
+        // The .NET implementation owns one private HWND inside this test process.
+        var type = typeof(Microsoft.Win32.SystemEvents);
+        var systemEvents = type.GetField("s_systemEvents", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+        var handle = (nint)type.GetField("_windowHandle", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(systemEvents)!;
+        Assert.NotEqual(nint.Zero, handle);
+        var result = await Task.Run(() => SendMessage(handle, message, confirmed, 0));
+        await InvokeAsync(() => { }); // Process the product handler's UI dispatch.
+        return result;
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessage(nint window, uint message, nint wParam, nint lParam);
     internal async Task SendCommandAsync(string command)
     {
         await Trees.WaitForStateAsync(NativeUiBlockIds.SingleInstance, BusinessBlockState.Running).WaitAsync(TimeSpan.FromSeconds(10));

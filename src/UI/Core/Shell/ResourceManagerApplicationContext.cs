@@ -70,7 +70,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
             new ForceTerminateHotkeyController(NativeUiPaths.AppSettingsPath,
                 OnForceTerminateHotkeyPressed, ShowForceTerminateHotkeyStatus));
 
-        Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
+        Microsoft.Win32.SystemEvents.SessionEnded += OnSessionEnded;
         Application.Idle += OnApplicationIdle;
     }
 
@@ -92,7 +92,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
             RunDisposalAction(() => mainForm?.Hide());
             RunDisposalAction(shutdown.Cancel);
             RunDisposalAction(() => Application.Idle -= OnApplicationIdle);
-            RunDisposalAction(() => Microsoft.Win32.SystemEvents.SessionEnding -= OnSessionEnding);
+            RunDisposalAction(() => Microsoft.Win32.SystemEvents.SessionEnded -= OnSessionEnded);
             // Concurrent entries have already joined before ExitThread. These are process resources.
             RunDisposalAction(singleInstance.Dispose);
             RunDisposalAction(uiDispatcher.Dispose);
@@ -589,8 +589,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         }
     }
 
-    private void OnExitRequested(object? sender, EventArgs args) => ExitApplication(
-        args is Microsoft.Win32.SessionEndingEventArgs ? "windows-session-ending" : "tray-exit");
+    private void OnExitRequested(object? sender, EventArgs args) => ExitApplication();
 
     private void OnMainFormClosed(object? sender, FormClosedEventArgs args)
     {

@@ -51,11 +51,11 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
                 : [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection]),
             new(NativeUiBlockIds.BackendConnection, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
                 ? [NativeUiBlockIds.DesktopObservation, NativeUiBlockIds.Overlay] : []),
-            new(NativeUiBlockIds.MainWindow, [], _ => [NativeUiBlockIds.LoopbackProxy]),
-            new(NativeUiBlockIds.LoopbackProxy, [BackendSessionReadyFact], input =>
+            new(NativeUiBlockIds.MainWindow, [BackendSessionReadyFact], input =>
                 input.Facts[BackendSessionReadyFact].Value
-                    || input.Children[NativeUiBlockIds.WebViewHost] != BusinessBlockState.Stopped
-                        ? [NativeUiBlockIds.WebViewHost] : []),
+                    || input.Children[NativeUiBlockIds.LoopbackProxy] != BusinessBlockState.Stopped
+                        ? [NativeUiBlockIds.LoopbackProxy] : []),
+            new(NativeUiBlockIds.LoopbackProxy, [], _ => [NativeUiBlockIds.WebViewHost]),
             new(NativeUiBlockIds.TrayRoot, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
                 ? [NativeUiBlockIds.TrayNotifications] : [])
         ], () => Volatile.Read(ref sessionGeneration));

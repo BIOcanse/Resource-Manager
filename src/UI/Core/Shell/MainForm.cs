@@ -238,7 +238,7 @@ public sealed partial class MainForm : Form
         // from the screen before any closing handler can tear down the surface.
         Hide();
         // WinForms labels a raw WM_CLOSE (including taskbar close) TaskManagerClosing.
-        // Windows session messages enter the application exit path in WndProc.
+        // Session messages retain the window; SystemEvents owns confirmed program exit.
         if (!finalClose
             && args.CloseReason is (CloseReason.UserClosing or CloseReason.TaskManagerClosing)
             && WindowCloseRequested is not null)

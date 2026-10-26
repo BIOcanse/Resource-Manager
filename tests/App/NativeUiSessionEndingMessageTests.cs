@@ -2,7 +2,6 @@ using System.Drawing;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using Microsoft.Win32;
 using ResourceManager.NativeUi;
 using ResourceManager.NativeUi.WebView;
 
@@ -15,10 +14,10 @@ public sealed class NativeUiSessionEndingMessageTests
     private const int EndSessionLogoff = unchecked((int)0x80000000);
 
     [Theory]
-    [InlineData(0, SessionEndReasons.SystemShutdown)]
-    [InlineData(EndSessionLogoff, SessionEndReasons.Logoff)]
-    public Task QueryEndSessionAcceptsWindowsExitAndRequestsApplicationShutdown(
-        int flags, SessionEndReasons reason) => OnStaAsync(() =>
+    [InlineData(0)]
+    [InlineData(EndSessionLogoff)]
+    public Task QueryEndSessionAcceptsWithoutRequestingApplicationShutdown(
+        int flags) => OnStaAsync(() =>
     {
         using var host = new ControlledHost();
         using var form = CreateForm(host);
@@ -30,7 +29,7 @@ public sealed class NativeUiSessionEndingMessageTests
         var result = SendMessage(form.Handle, WmQueryEndSession, 0, flags);
 
         Assert.NotEqual(nint.Zero, result);
-        Assert.Equal(reason, Assert.IsType<SessionEndingEventArgs>(exitArgs).Reason);
+        Assert.Null(exitArgs);
         Assert.Equal(0, windowCloseRequests);
         Assert.False(form.IsDisposed);
         Assert.False(host.Disposed);
@@ -58,37 +57,24 @@ public sealed class NativeUiSessionEndingMessageTests
     });
 
     [Theory]
-    [InlineData(0, SessionEndReasons.SystemShutdown)]
-    [InlineData(EndSessionLogoff, SessionEndReasons.Logoff)]
+    [InlineData(0)]
+    [InlineData(EndSessionLogoff)]
     public Task ConfirmedEndSessionRetainsWindowUntilOwnedFrontendDrainCompletes(
-        int flags, SessionEndReasons reason) => OnStaAsync(async () =>
+        int flags) => OnStaAsync(async () =>
     {
         using var host = new ControlledHost();
         using var form = CreateForm(host);
-        Task? shutdown = null;
         var exitRequests = 0;
-        var windowCloseRequests = 0;
-        EventArgs? exitArgs = null;
-        form.WindowCloseRequested += (_, _) => windowCloseRequests++;
-        form.ExitRequested += (_, args) =>
-        {
-            exitArgs = args;
-            exitRequests++;
-            shutdown = DrainAndCloseAsync(form);
-        };
-
+        form.WindowCloseRequested += (_, _) => throw new InvalidOperationException("Not a user close.");
+        form.ExitRequested += (_, _) => exitRequests++;
         var result = SendMessage(form.Handle, WmEndSession, 1, flags);
-
         Assert.Equal(nint.Zero, result);
-        Assert.Equal(1, exitRequests);
-        Assert.Equal(reason, Assert.IsType<SessionEndingEventArgs>(exitArgs).Reason);
-        Assert.Equal(0, windowCloseRequests);
-        Assert.NotNull(shutdown);
+        Assert.Equal(0, exitRequests);
+        Assert.False(form.IsDisposed);
+        Assert.False(host.StopStarted);
+        var shutdown = DrainAndCloseAsync(form);
         Assert.True(host.StopStarted);
         Assert.False(shutdown.IsCompleted);
-        Assert.False(form.IsDisposed);
-        Assert.False(host.Disposed);
-        Assert.Throws<InvalidOperationException>(form.CompleteClose);
         host.Drained.SetResult();
         await shutdown;
         Assert.True(form.IsDisposed);
