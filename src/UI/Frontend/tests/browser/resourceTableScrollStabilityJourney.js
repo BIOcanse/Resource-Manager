@@ -66,6 +66,21 @@ export default async function resourceTableScrollStabilityJourney(
     throw new Error(`Fixture did not create a scrollable monitor page: ${JSON.stringify(before)}`);
   }
 
+  // 滚动让表格重新进入可见区域；先等可见性调度完成，再检查排序等纯呈现操作的订阅身份。
+  const demandDeadline = Date.now() + 10000;
+  let visibleDemand;
+  while (Date.now() < demandDeadline) {
+    visibleDemand = await (await page.request.get(`${baseUrl}/__test/requests`)).json();
+    if (visibleDemand["/api/resource-facts/subscribe"]?.logicalInFlight === 1
+      && visibleDemand["/api/metrics/subscribe"]?.logicalInFlight === 0
+      && visibleDemand["/api/metrics/fields/catalog/subscribe"]?.logicalInFlight === 0) break;
+    await page.waitForTimeout(50);
+  }
+  if (visibleDemand?.["/api/resource-facts/subscribe"]?.logicalInFlight !== 1
+    || visibleDemand?.["/api/metrics/subscribe"]?.logicalInFlight !== 0
+    || visibleDemand?.["/api/metrics/fields/catalog/subscribe"]?.logicalInFlight !== 0) {
+    throw new Error("Scrolling did not settle the visible table facts demand before the interaction baseline.");
+  }
   const subscriptionIds = [...new Set(factSubscriptions.map(subscription => subscription.id))];
   const assertSameFactsLease = action => {
     if (factSubscriptions.some(subscription => !subscriptionIds.includes(subscription.id))) throw new Error(`${action} recreated the neutral facts lease.`);

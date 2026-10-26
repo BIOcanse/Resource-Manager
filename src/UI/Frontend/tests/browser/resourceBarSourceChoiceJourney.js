@@ -10,7 +10,7 @@ import { waitForCondition } from "./journeyWaits.js";
  * 私有提交量比的是提交量，不在这里列。选工作集并保存：订阅把这个字段作显式口径（measures=），缩放按
  * modes=字段名:缩放 传，不再按 ids 请求 memory.usage；条头写出口径和说明，数值是后端给的物理内存已用量；
  * 缩放可以改成现有占用，订阅随之改；展开这一条看得到这个字段的进程（明细订阅同样带 measures=）。
- * 选择存进前端布局缓存，重新载入后仍在。这个字段的整机总量读不到时后端不发这一条，页面上就只有这一条不见，
+ * 选择存进前端布局缓存，重新载入后仍在。这个字段的整机总量读不到时后端保留显式不可用条，页面显示空值，
  * CPU 条照常。改回自动选择：恢复按 ids 请求 memory.usage，条头回到原样。
  */
 export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
@@ -117,9 +117,11 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitFor(async () => await header("memory.usage").textContent() === sourcedLabel || await header("memory.usage").textContent(), "Saved bar source after reload");
 
-  // 这个字段的整机总量读不到：后端不发这一条，只有它不见，CPU 条照常。
+  // bar-continuity：总量读不到仍保留所选条，空值不能显示成零或沿用上帧数值。
   await setScenario({ resourceBarMeasureTotalsMissing: [field] });
-  await waitFor(async () => await bar("memory.usage").count() === 0 || "memory bar still shown", "A bar whose total is missing disappears");
+  await waitFor(async () => (await bar("memory.usage").locator(".resource-breakdown-header > span").first().textContent())?.startsWith("- ·")
+    || "missing total was not shown as unavailable", "An unavailable bar remains with an empty total");
+  if (await bar("memory.usage").locator('[role="option"]').count() !== 0) throw new Error("An unavailable bar retained software segments");
   if (await bar("cpu.usage").count() !== 1) throw new Error("A missing memory total removed other bars");
   await setScenario({ resourceBarMeasureTotalsMissing: [] });
   await header("memory.usage").waitFor({ timeout: 15_000 });

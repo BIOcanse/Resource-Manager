@@ -117,6 +117,7 @@ const emptyBarWire: ResourceBreakdownWireSnapshot = {
   ...unavailableWire,
   bars: [{ metricId: "disk.io", unit: "B/s", scaleMode: "active",
     totalValue: null, capacityValue: null, totalSystemPercent: null,
+    processSumValue: null, residualValue: null, additiveAcrossProcesses: true, capturedAt: null,
     unavailableReason: "disk-io-window-incomplete", software: [] }]
 };
 const emptyBar = decodeResourceBreakdownWireSnapshot(emptyBarWire).bars![0];

@@ -112,8 +112,7 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
   for (const field of [cpuField, engineField]) if (!measures.includes(field)) {
     throw new Error(`Bar source did not request ${field}: ${JSON.stringify(measures)}`);
   }
-  // A missing total shows the backend's reason. Physical memory keeps its process rows without a residual (Balance);
-  // GPU memory without a dedicated total is published with no rows at all.
+  // Automatic bars without a total publish an explicit unavailable fact with no process rows.
   await page.request.post(`${baseUrl}/__test/scenario`, { data: { resourceTableTotalsMissing: ["memory.usage", "gpu.0.vram"] } });
   const reasons = app.resourceTable.unavailableReasons;
   const columnCells = (label) => page.evaluate((label) => {
@@ -135,7 +134,7 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     memoryReason: reasons["system-total-unavailable"].label, vramReason: reasons["gpu-dedicated-memory-total-unavailable"].label });
   const memoryCells = await columnCells(app.resourceTable.columns.memory);
   if (!memoryCells[0].title.includes(reasons["system-total-unavailable"].hint)) throw new Error("The unavailable total lost its reason sentence");
-  if (!memoryCells.some(cell => cell.kind === "other" && /^\d/.test(cell.text))) throw new Error("A missing memory total hid the process rows the backend sent");
+  if (memoryCells.slice(1).some(cell => /^\d/.test(cell.text))) throw new Error(`Numeric rows under an unavailable memory total: ${JSON.stringify(memoryCells)}`);
   const vramCells = await columnCells(app.resourceTable.gpuVramLabel("0"));
   if (!vramCells[0].title.includes(reasons["gpu-dedicated-memory-total-unavailable"].hint)) throw new Error("The shared-only GPU lost its reason sentence");
   if (vramCells.slice(1).some(cell => /^\d/.test(cell.text))) throw new Error(`Numeric rows under an unavailable GPU memory total: ${JSON.stringify(vramCells)}`);

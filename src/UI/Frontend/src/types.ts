@@ -586,7 +586,6 @@ export interface ResourceMetricFacts {
 
 export interface ResourceBreakdownBar extends ResourceMetricFacts {
   residualSource?: "counters" | null;
-  unavailableReason?: string | null;
   sharedValue?: number | null;
   metricId: string;
   /** 这一条实际读的进程字段；不是进程字段的条为 null。 */
