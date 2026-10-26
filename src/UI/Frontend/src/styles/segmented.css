@@ -53,9 +53,15 @@
   box-shadow: var(--segment-active-shadow);
 }
 
-/* 轨道裁掉溢出，焦点环画在分段内侧。 */
+/* 轨道裁掉溢出，焦点环画在分段内侧。环的颜色取段上文字的颜色：未选中段是正文色，选中段是选中文字色，
+   两者都按正文对比度挑过，压在段底或指示条上至少 3:1（10-26 扫描：强调色环在段上只有 2.91:1）。 */
 .segment:focus-visible {
+  outline-color: var(--text);
   outline-offset: -2px;
+}
+
+.segment.active:focus-visible {
+  outline-color: var(--segment-active-fg);
 }
 
 /* ============================================================

@@ -48,8 +48,9 @@
   outline: 0;
 }
 
+/* 实色强调色：45% 透明的强调色压在面板底上只有 1.8:1（10-26 扫描），焦点指示至少要 3:1。 */
 .ui-tabs-panel:focus-visible {
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 /*
