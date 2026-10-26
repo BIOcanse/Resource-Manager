@@ -65,9 +65,8 @@ export function TabsRoot(props: {
     key: () => props.value,
     order,
     stage: () => panels.get(props.value),
-    layer: () => root,
     snapshot: () => "clone",
-    distance: 16
+    distance: 5
   });
   return (
     <TabsContext.Provider value={context}>

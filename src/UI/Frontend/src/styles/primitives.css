@@ -55,10 +55,12 @@
 
 /*
  * 折叠标题（ui/primitives/Disclosure.tsx）：低调的文字按钮，左边一个箭头。
- * 开度由磁石带，写在按钮的 --disclosure-openness（0 收起、1 展开）：箭头从朝右转到朝下，内容的高度由组件直接写。
+ * 开度由磁石带，写在按钮的 --disclosure-openness（0 收起、1 展开）：箭头从朝右转到朝下。内容在展开、收起的那一刻就在终态布局上。
  * 这里不写过渡：被运行时带着动的属性不加 CSS 过渡（docs/ui_interaction_kit.md 第 1 节）。
+ * 定位：收起时内容的退场幽灵按折叠块的坐标放（presentation/nodeAnimation.ts）。
  */
 .ui-disclosure {
+  position: relative;
   min-width: 0;
 }
 

@@ -59,8 +59,8 @@ export default async function managementSourceStatesJourney(page, baseUrl) {
     await leave(); modes[name] = "ready";
   }
   // The global usability probe measures the settled destination, after its leaving layer is gone.
-  await page.waitForFunction(() => document.querySelectorAll(".page-leaving-layer > .content-transition-leaving").length === 0
-    && getComputedStyle(document.querySelector("#pageStage")).transform === "none");
+  await page.waitForFunction(() => document.querySelector("[data-exit-ghost]") === null
+    && document.querySelector("[style*='will-change: opacity']") === null);
   assert.deepEqual(errors, []);
   return { counts, failureReplaced: true, emptyAccepted: true, revisionRecoveredWhileError: true };
 }

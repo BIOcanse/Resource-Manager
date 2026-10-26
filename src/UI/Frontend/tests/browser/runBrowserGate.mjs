@@ -177,6 +177,7 @@ const allJourneys = [
   ["wheel-accumulation", async (...args) => (await import("./wheelAccumulationJourney.js")).default(...args)],
   ["reorder-interaction", reorderInteractionJourney],
   ["animation-style", animationStyleJourney],
+  ["interaction-parity", async (...args) => (await import("./interactionParityJourney.js")).default(...args)],
   ["page-motion", pageMotionJourney],
   ["page-motion-desktop", pageMotionJourneyIn("desktop")],
   ["page-motion-terminal", pageMotionJourneyIn("terminal")],

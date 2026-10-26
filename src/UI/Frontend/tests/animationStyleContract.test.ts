@@ -12,12 +12,11 @@ import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 import type { Definition } from "../src/interactions/protocol/definition.ts";
 import { cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
 import { columnResizeHandleDefinition } from "../src/interactions/components/columnResizeHandle.ts";
-import { contentTransitionDefinition } from "../src/interactions/components/contentTransition.ts";
+import { entranceDefinitions } from "../src/interactions/components/entrance.ts";
 import { controlSliderDefinition } from "../src/interactions/components/controlSlider.ts";
 import { curvePointDefinition } from "../src/interactions/components/curvePoint.ts";
 import { selectionIndicatorDefinition } from "../src/interactions/components/selectionIndicator.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
-import { dialogEntranceDefinition } from "../src/interactions/components/dialogEntrance.ts";
 import { EDGE_BAND_RUBBER, edgeRubberBandDefinition, IOS_RUBBER } from "../src/interactions/components/edgeRubberBand.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
@@ -94,9 +93,9 @@ for (const id of ["none", "ultra"]) assert.deepEqual(byId(id).lodestone, desktop
 assert.deepEqual(animationStyles.map((style) => [style.id, style.engineMode]),
   [["smooth", "normal"], ["desktop", "normal"], ["terminal", "normal"], ["none", "none"], ["ultra", "ultra"]]);
 const definitions: Array<[string, Definition]> = [
-  ["内容过渡", contentTransitionDefinition], ["选中指示条", selectionIndicatorDefinition], ["卡片槽位", cardSlotLayoutDefinition],
+  ["内容进场", entranceDefinitions.page], ["选中指示条", selectionIndicatorDefinition], ["卡片槽位", cardSlotLayoutDefinition],
   ["曲线点", curvePointDefinition], ["数值滑条", controlSliderDefinition], ["设置开关", switchToggleDefinition], ["列宽把手", columnResizeHandleDefinition],
-  ["弹窗入场", dialogEntranceDefinition], ["滚动区边缘回弹", edgeRubberBandDefinition]
+  ["弹窗进场", entranceDefinitions.dialog], ["滚动区边缘回弹", edgeRubberBandDefinition]
 ];
 const known = new Set([...PARAM_SPECS.map((spec) => spec.id as string), ...definitions.flatMap(([, def]) => declaredSpecs(def).map((spec) => spec.id as string))]);
 for (const key of keys(desktop)) assert.ok(known.has(key), `Lodestone layer key ${key} is declared by the engine or a component`);
@@ -122,9 +121,18 @@ assert.equal(byId("smooth").lodestone[springParam(SWITCH_PART.prefix)], 1);
 // 滚动区边缘回弹只在流畅平滑：橡皮筋系数取 iOS 列表复刻的值，其余风格 0（不回弹，组件给的默认）。
 for (const style of animationStyles) assert.equal(style.lodestone[EDGE_BAND_RUBBER], style.id === "smooth" ? IOS_RUBBER : 0, `${style.id}: edge rubber band`);
 assert.equal(resolveParams(null, [], declaredSpecs(edgeRubberBandDefinition))[EDGE_BAND_RUBBER].value, 0, "the component default does not bounce");
-// 弹窗不再有 CSS 入场动画：磁石带。
+// 弹窗不再有 CSS 进场动画：呈现层用磁石带（presentation/nodeAnimation.ts）；退场在幽灵上（[data-exit-ghost]）。
 assert.ok(!rules.some((rule) => rule.selectors.some((selector) => selector === ".modal" || selector === ".modal-backdrop") && rule.declarations.has("animation")),
   "the dialog entrance is drawn by Lodestone, not a CSS animation");
+// 退出动画槽位只在会动的风格里有：每条 [data-exit-ghost] 的动画规则都挂在会动的风格下，无动画、超高性能的槽位是空的。
+const exitRules = rules.filter((rule) => rule.declarations.has("animation") && rule.selectors.some((selector) => selector.includes("[data-exit-ghost]")));
+assert.ok(exitRules.length >= 8, "exit slots exist for popovers, dialogs, toasts, content, rows, disclosures and the rest");
+for (const rule of exitRules) {
+  for (const selector of rule.selectors) {
+    assert.ok(selector.startsWith('body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])'),
+      `${selector}: an exit slot exists only in the moving styles`);
+  }
+}
 // 范围小的覆盖大的：组件定义里写死的值不受风格影响；没写的项跟风格走。
 for (const style of animationStyles) {
   const layer = globalLayer({ ...style.lodestone });
@@ -133,7 +141,7 @@ for (const style of animationStyles) {
   const toggle = table("设置开关", switchToggleDefinition);
   assert.equal(toggle.releaseAbsorb.value, 0, `${style.id}: the switch keeps releaseAbsorb 0`);
   assert.equal(toggle.springTime.value, style.lodestone.springTime, `${style.id}: the switch spring time follows the style`);
-  const page = table("内容过渡", contentTransitionDefinition);
+  const page = table("内容进场", entranceDefinitions.page);
   assert.equal(page.pageSpring.value, style.lodestone.pageSpring, `${style.id}: page transition spring choice follows the style`);
   assert.equal(page.pageEaseMs.value, style.lodestone.pageEaseMs, `${style.id}: page transition duration follows the style`);
   assert.equal(page.outputSteps.value, style.lodestone.outputSteps, `${style.id}: output steps follow the style`);

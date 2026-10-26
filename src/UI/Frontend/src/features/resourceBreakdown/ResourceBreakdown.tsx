@@ -60,6 +60,7 @@ import {
   processSourceAdditivity,
   type ResourceBarView
 } from "./resourceBarSources.ts";
+import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 export interface ResourcePrecisionSelection {
   metricId: string;
@@ -675,7 +676,7 @@ function ResourceProcessPanel(props: {
     return processes.length > 0 && processes.every((process) => isSystemResidualProcess(process));
   };
   return (
-    <div class="resource-process-panel" aria-busy={props.observation.status === "loading"}>
+    <div ref={(element) => exitOnUnmount(element)} class="resource-process-panel" aria-busy={props.observation.status === "loading"}>
       <div class="resource-process-header">
         <strong>{softwareDisplayName(props.software, props.bar.metricId)}</strong>
         <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.processes?.length ?? 0) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>

@@ -1,3 +1,4 @@
+import { checkDisclosureFrames, toggleDisclosure } from "./disclosureFrames.js";
 import assert from "node:assert/strict";
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
@@ -45,7 +46,7 @@ export default async function productUpdatesJourney(page, baseUrl) {
   const apply = region.getByRole("button", { name: copy.apply, exact: true });
   await apply.waitFor({ timeout: 7000 });
   // 1.1.0 是新版本，界面内提示一直显示到用户关闭；它停在页面右上角，先关掉再操作设置页头部的保存。
-  const notice = page.locator(".toast").filter({ hasText: text.noticeTitle });
+  const notice = page.locator(".toast:not([data-exit-ghost])").filter({ hasText: text.noticeTitle });
   await notice.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByText("已选择目标版本：1.1.0", { exact: true }).waitFor();
   const versionList = [await checkVersionList(page, region, text, "desktop")];
@@ -147,29 +148,18 @@ async function checkVersionList(page, region, text, mode) {
   const older = list.locator('input[value="version:1.0.0-beta.2"]');
   const inert = () => older.evaluate(input => input.closest("[inert]") !== null);
   assert.ok(await inert(), "A collapsed series must keep its older versions inert");
-  const toggle = () => page.evaluate(async () => {
-    const button = document.querySelector(".version-selector-expand");
-    const body = button.parentElement.querySelector(".ui-disclosure-body");
-    const heights = [];
-    button.click();
-    const start = performance.now();
-    while (performance.now() - start < 700) {
-      await new Promise(resolve => requestAnimationFrame(resolve));
-      heights.push(Math.round(body.getBoundingClientRect().height));
-    }
-    return { heights, expanded: button.getAttribute("aria-expanded"), openness: button.style.getPropertyValue("--disclosure-openness").trim() };
-  });
+  // 展开、收起的布局当帧到位；桌面常规里画面是内容淡入、收起时幽灵淡出，无动画里什么都不画（disclosureFrames.js）。
+  const toggle = () => toggleDisclosure(page, ".version-selector-expand", 700);
   const opened = await toggle();
-  const full = opened.heights.at(-1);
-  const between = heights => heights.filter(height => height > 1 && height < full - 1).length;
+  const full = opened.frames.at(-1).height;
   assert.ok(full > 20 && opened.expanded === "true" && Number(opened.openness) === 1 && !await inert(), `Series did not expand: ${JSON.stringify(opened)}`);
-  if (mode === "desktop") assert.ok(between(opened.heights) >= 3, `Normal motion: expanding has no in-between frames: ${opened.heights}`);
-  else assert.ok(opened.heights[1] === full && between(opened.heights.slice(1)) === 0, `No motion: expanding still animates: ${opened.heights.slice(0, 6)}`);
+  const openProblems = checkDisclosureFrames(opened, { moving: mode === "desktop", opening: true });
+  assert.deepEqual(openProblems, [], `${mode}: expanding the series: ${openProblems.join("; ")}`);
   assert.ok(await older.isDisabled(), "An older version can be selected");
   const closed = await toggle();
-  assert.ok(closed.heights.at(-1) === 0 && closed.expanded === "false" && Number(closed.openness) === 0 && await inert(),
+  assert.ok(closed.frames.at(-1).height === 0 && closed.expanded === "false" && Number(closed.openness) === 0 && await inert(),
     `Series did not collapse: ${JSON.stringify(closed)}`);
-  if (mode === "desktop") assert.ok(between(closed.heights) >= 3, `Normal motion: collapsing has no in-between frames: ${closed.heights}`);
-  else assert.ok(closed.heights[1] === 0, `No motion: collapsing still animates: ${closed.heights.slice(0, 6)}`);
-  return { mode, openFrames: opened.heights.length, full };
+  const closeProblems = checkDisclosureFrames(closed, { moving: mode === "desktop", opening: false });
+  assert.deepEqual(closeProblems, [], `${mode}: collapsing the series: ${closeProblems.join("; ")}`);
+  return { mode, openFrames: opened.frames.length, full };
 }

@@ -97,9 +97,9 @@ export default async function managementSharedRefreshJourney(page, baseUrl) {
   await waitForNextPaint(page, { timeoutMs: 5_000 });
   releasePortable();
 
-  await page.locator(".toast.success").filter({ hasText: app.managementFeedback.manualRemoved }).first().waitFor();
-  await page.locator(".toast.error").filter({ hasText: app.stores.refreshFailed }).first().waitFor();
-  const wrongFailures = await page.locator(".toast.error").filter({ hasText: app.managementFeedback.manualRemoveFailed }).count();
+  await page.locator(".toast.success:not([data-exit-ghost])").filter({ hasText: app.managementFeedback.manualRemoved }).first().waitFor();
+  await page.locator(".toast.error:not([data-exit-ghost])").filter({ hasText: app.stores.refreshFailed }).first().waitFor();
+  const wrongFailures = await page.locator(".toast.error:not([data-exit-ghost])").filter({ hasText: app.managementFeedback.manualRemoveFailed }).count();
   assert(wrongFailures === 0, "The removal reported the concurrent portable refresh failure as its own");
   assert(errors.length === 0, errors.join("\n"));
   return { portableReads, removalReportedSuccess: true, refreshFailureReported: true, pageErrors: errors };

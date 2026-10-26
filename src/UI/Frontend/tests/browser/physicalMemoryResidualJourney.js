@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
 import { formatPercent } from "../../src/utils.ts";
@@ -20,7 +21,7 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
   const residualId = "resource-residual:memory.usage";
   const bar = page.locator(".resource-breakdown-item").filter({ has: page.locator('.resource-bar-track[data-metric-id="memory.usage"]') });
   const track = bar.locator('.resource-bar-track[data-metric-id="memory.usage"]');
-  const details = bar.locator(".resource-residual-details");
+  const details = bar.locator(`.resource-residual-details${NOT_GHOST}`);
   const setScenario = async (patch) => {
     const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     if (!response.ok) throw new Error(`Scenario ${JSON.stringify(patch)} was rejected`);

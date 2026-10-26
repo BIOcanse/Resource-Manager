@@ -3,6 +3,7 @@ import type { DeviceTopologySystemIdentity, DeviceTopologyMachineIdentity, Devic
 import { uiText } from "../../../text.ts";
 import { machineEvidenceLines, machineFormName } from "../machineFormPresentation.ts";
 import { machineIdentity } from "../machineIdentityPresentation.ts";
+import { exitOnUnmount } from "../../../presentation/nodeAnimation.ts";
 
 /**
  * 整机：按后端判定的形态画一个简洁的外观示意，下面是形态和判定依据，最下面是上面没写过的主板型号和 BIOS。
@@ -18,7 +19,7 @@ export function DeviceMachineView(props: { system: DeviceTopologySystemIdentity;
     <div class="device-top-view" role="group" aria-label={uiText.deviceTopology.topView}>
       <Show when={props.machineIdentity.formFactor} keyed>
         {(form) => (
-          <div class="device-machine-figure" data-form-factor={form}>
+          <div ref={(element) => exitOnUnmount(element)} class="device-machine-figure" data-form-factor={form}>
             <div class="device-machine-body">
               <span class="device-brand-logo">{identity().wordmark}</span>
               <Show when={identity().vendor}>

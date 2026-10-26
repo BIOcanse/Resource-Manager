@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 export default async function targetedRecordingSourceJourney(page, baseUrl) {
@@ -153,11 +154,11 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
 
   await navigation.getByRole("button", { name: app.page.details, exact: true }).click();
   await page.getByRole("tab", { name: app.targetedReport.tab, exact: true }).click();
-  const row = page.locator(".targeted-report-list-row")
+  const row = page.locator(`.targeted-report-list-row${NOT_GHOST}`)
     .filter({ hasText: "示例软件" }).first();
   await row.waitFor({ state: "visible", timeout: 5000 });
   await row.locator(".targeted-report-open").click();
-  const detailPanel = page.locator(".targeted-report-detail");
+  const detailPanel = page.locator(`.targeted-report-detail${NOT_GHOST}`);
   await detailPanel.waitFor({ state: "visible", timeout: 5000 });
   const id = "recording-fixture-1";
   await passPollWindow();
@@ -175,7 +176,7 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
 
   await navigation.getByRole("button", { name: app.page.details, exact: true }).click();
   await page.getByRole("tab", { name: app.targetedReport.tab, exact: true }).click();
-  const reopenedRow = page.locator(".targeted-report-list-row")
+  const reopenedRow = page.locator(`.targeted-report-list-row${NOT_GHOST}`)
     .filter({ hasText: "示例软件" }).first();
   await reopenedRow.waitFor({ state: "visible", timeout: 5000 });
   await reopenedRow.locator(".targeted-report-open").click();
@@ -207,7 +208,7 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await page.route("**/api/targeted-recordings/recording-fixture-1", failDetail);
   await navigation.getByRole("button", { name: app.page.details, exact: true }).click();
   await page.getByRole("tab", { name: app.targetedReport.tab, exact: true }).click();
-  await page.locator(".targeted-report-list-row").filter({ hasText: "示例软件" }).first().locator(".targeted-report-open").click();
+  await page.locator(`.targeted-report-list-row${NOT_GHOST}`).filter({ hasText: "示例软件" }).first().locator(".targeted-report-open").click();
   const error = page.locator(".targeted-reports-page").getByRole("alert");
   await error.waitFor();
   assert(await page.locator(".targeted-reports-page").getByText(app.targetedReport.loading, { exact: true }).count() === 0,

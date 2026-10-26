@@ -1,6 +1,7 @@
 import { onCleanup, onMount, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { resolveResourceTooltipPlacement } from "./resourceTooltipPlacement.ts";
+import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 /**
  * 资源条的悬停提示。挂在页面最顶层（和下拉框的弹出层一样，Portal 到 body，position: fixed），不在资源条那一行里，
@@ -42,7 +43,7 @@ export function ResourceTooltipOverlay(props: { anchor: () => HTMLElement | unde
 
   return (
     <Portal>
-      <div ref={(element) => { tooltip = element; }} class="resource-tooltip" aria-hidden="true">
+      <div ref={(element) => { tooltip = element; exitOnUnmount(element); }} class="resource-tooltip" aria-hidden="true">
         {props.children}
       </div>
     </Portal>

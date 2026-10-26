@@ -14,7 +14,7 @@ import {
   type ResourceTableColumnText
 } from "./resourceTableSources.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { batch, createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show, untrack } from "solid-js";
+import { batch, createComputed, createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowDown, ArrowLeft, ArrowRight, ChevronRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
@@ -48,6 +48,7 @@ import { columnEdgeBound, columnResizeHandleDefinition } from "../../interaction
 import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
 import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
+import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
 
 const rowHeight = 38;
 const overscan = 6;
@@ -438,30 +439,28 @@ function VirtualResourceTable(props: {
     }
   });
   const rows = createMemo(() => pinResourceTableRow(props.rows, pinnedRowId(), pinnedIndex()));
-  // 刚展开的软件组露出来的进程行：这些行出现时淡入、从软件行下面落下一点（motion.css）。
-  // 哪一行播完就把它去掉；收起任何一组、滚动时整个清空，滚动和排序换进行位的行不会再播。
-  const [revealingRowIds, setRevealingRowIds] = createSignal<ReadonlySet<string>>(new Set());
-  let previousExpanded: Record<string, boolean> = { ...props.expandedSoftwareIds };
+  // 展开、收起：交互上当场就是新的行（行位换成别的行，焦点、aria-expanded 都在这一刻改好）；画面交给呈现层
+  // （presentation/nodeAnimation.ts，docs/resource_table_rows_2026-10-25.md）。
+  // 收起：换之前（createComputed，DOM 还没改），还显示着的、属于收起的组的进程行各留一份幽灵，播放行的退出槽位。
+  // 展开：换之后（createEffect），刚露出来的进程行播放进场槽位 row；滚动时正在播的直接到终态，滚动换进行位的行不播。
+  let expandedBeforeChange: Record<string, boolean> = { ...props.expandedSoftwareIds };
+  let expandedAfterChange: Record<string, boolean> = { ...props.expandedSoftwareIds };
+  const processRowSlotsOf = (softwareIds: ReadonlySet<string>) => [...(viewport?.querySelectorAll<HTMLElement>(
+    ".resource-table-spacer > .resource-table-row.process-row:not([data-exit-ghost])") ?? [])]
+    .filter((element) => softwareIds.has(element.dataset.resourceSoftwareId ?? ""));
+  createComputed(() => {
+    const expanded = props.expandedSoftwareIds;
+    const closed = new Set(Object.keys(expandedBeforeChange).filter((id) => expandedBeforeChange[id] && !expanded[id]));
+    expandedBeforeChange = { ...expanded };
+    for (const element of processRowSlotsOf(closed)) exitInPlace(element);
+  });
   createEffect(() => {
     const expanded = props.expandedSoftwareIds;
-    const opened = new Set(Object.keys(expanded).filter((id) => expanded[id] && !previousExpanded[id]));
-    const closed = Object.keys(previousExpanded).some((id) => previousExpanded[id] && !expanded[id]);
-    previousExpanded = { ...expanded };
-    if (opened.size > 0) {
-      setRevealingRowIds(new Set(untrack(rows)
-        .filter((row) => row.kind === "process" && row.softwareId && opened.has(row.softwareId))
-        .map((row) => row.id)));
-    } else if (closed) {
-      setRevealingRowIds(new Set<string>());
-    }
+    rows();
+    const opened = new Set(Object.keys(expanded).filter((id) => expanded[id] && !expandedAfterChange[id]));
+    expandedAfterChange = { ...expanded };
+    for (const element of processRowSlotsOf(opened)) enterSlot(element, "row");
   });
-  const finishReveal = (rowId: string) => {
-    const current = revealingRowIds();
-    if (!current.has(rowId)) return;
-    const next = new Set(current);
-    next.delete(rowId);
-    setRevealingRowIds(next);
-  };
   const columnSettingsById = createMemo(() => new Map(props.columnSettings.map((column) => [column.id, column])));
   const columnOrderIndex = createMemo(() => new Map(props.columnSettings.map((column, index) => [column.id, index])));
   const baseColumns = createMemo(() => {
@@ -881,7 +880,7 @@ function VirtualResourceTable(props: {
         role="rowgroup"
         ref={viewport}
         onScroll={(event) => {
-          if (revealingRowIds().size > 0) setRevealingRowIds(new Set<string>());
+          if (viewport) settleEntrancesWithin(viewport);
           viewportScrollTop = event.currentTarget.scrollTop;
           if (rows().length > 0) {
             setScrollTop(event.currentTarget.scrollTop);
@@ -906,8 +905,6 @@ function VirtualResourceTable(props: {
                   highlightedSoftwareId={props.highlightedSoftwareId}
                   activeRowId={activeRowId}
                   contextRowId={pinnedRowId}
-                  revealingRowIds={revealingRowIds}
-                  onRevealed={finishReveal}
                   onActivateRow={activateRow}
                   onRowKeyDown={handleRowKeyDown}
                   onToggleExpand={props.onToggleExpand}
@@ -935,9 +932,6 @@ function ResourceTableRowSlot(props: {
   activeRowId: () => string | null;
   /** 右键菜单打开时它所属的那一行（菜单关掉为 null）：这一行显示成当前行，看得出菜单是对谁的。 */
   contextRowId: () => string | null;
-  /** 刚展开露出来、入场还没播完的行。 */
-  revealingRowIds: () => ReadonlySet<string>;
-  onRevealed: (rowId: string) => void;
   onActivateRow: (rowId: string, focus: boolean) => void;
   onRowKeyDown: (event: KeyboardEvent, row: ResourceTableRow, element: HTMLElement) => void;
   onToggleExpand: (softwareId: string) => void;
@@ -960,6 +954,7 @@ function ResourceTableRowSlot(props: {
       class="resource-table-row"
       role="row"
       data-resource-row-id={row()?.id}
+      data-resource-software-id={row()?.softwareId}
       aria-rowindex={props.rowIndex() + 2}
       aria-label={rowName(row())}
       aria-level={hasRow() ? (row()?.depth ?? 0) + 1 : undefined}
@@ -979,16 +974,9 @@ function ResourceTableRowSlot(props: {
         "attribution-row": row()?.kind === "attribution",
         "empty-row": !hasRow(),
         highlighted: isHighlighted(),
-        "context-target": hasRow() && row()?.id === props.contextRowId(),
-        revealing: hasRow() && props.revealingRowIds().has(row()!.id)
+        "context-target": hasRow() && row()?.id === props.contextRowId()
       }}
       aria-hidden={hasRow() ? "false" : "true"}
-      onAnimationEnd={(event) => {
-        const current = row();
-        if (current && event.animationName === "motion-row-reveal") {
-          props.onRevealed(current.id);
-        }
-      }}
       onFocus={() => {
         const current = row();
         if (current) {

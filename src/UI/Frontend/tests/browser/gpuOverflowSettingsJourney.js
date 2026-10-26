@@ -1,3 +1,4 @@
+import { liveText } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -19,8 +20,8 @@ export default async function gpuOverflowSettingsJourney(page, baseUrl) {
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const settings = await loadSettingsText(option.id);
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
-    await page.getByText(settings.performance.gpuOverflowTitle, { exact: true }).waitFor();
-    await page.getByText(settings.performance.gpuOverflowDescription, { exact: true }).waitFor();
+    await liveText(page, settings.performance.gpuOverflowTitle).waitFor();
+    await liveText(page, settings.performance.gpuOverflowDescription).waitFor();
     for (const [label, value] of [
       [settings.performance.gpuOverflowUsageLabel, "95"],
       [settings.performance.gpuOverflowDedicatedMemoryLabel, "80"]

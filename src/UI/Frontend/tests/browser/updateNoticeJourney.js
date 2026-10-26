@@ -1,3 +1,4 @@
+import { liveText } from "./liveLocator.js";
 import assert from "node:assert/strict";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
@@ -29,13 +30,13 @@ export default async function updateNoticeJourney(page, baseUrl) {
   assert.equal((await scenario({ productUpdateStatus: { nextCheckAt: "2026-10-26T08:00:00" } })).ok, false);
   assert.equal((await scenario({ productUpdateStatus: { nextCheckAt: "2026-10-26T16:00:00+08:00" } })).ok, false);
 
-  const notices = () => page.locator(".toast").filter({ hasText: text.noticeTitle });
+  const notices = () => page.locator(".toast:not([data-exit-ghost])").filter({ hasText: text.noticeTitle });
   const save = async () => {
     const response = page.waitForResponse(item => item.request().method() === "PATCH"
       && new URL(item.url()).pathname === "/api/settings/app");
     await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
     assert.ok((await response).ok(), "settings PATCH rejected");
-    await page.getByText(settings.saveState.saved, { exact: true }).waitFor();
+    await liveText(page, settings.saveState.saved).waitFor();
   };
   const openUpdates = async () => {
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -49,10 +50,10 @@ export default async function updateNoticeJourney(page, baseUrl) {
   const settleNoticeEffect = async (version, inApp, notifiedVersion) => {
     // The version text and App's notice effect consume the same productUpdates.status.
     // After reload the status starts null; 1.3.0 is a new publication in this document.
-    await page.getByText(`${text.availableVersion}${version}`, { exact: true }).waitFor({ timeout: 5_000 });
+    await liveText(page, `${text.availableVersion}${version}`).waitFor({ timeout: 5_000 });
     // settingsStore cannot project loadState=ready before preferenceOwner.read has
     // set frontendNotifications. The fieldset exposes this real owner-ready state.
-    await page.locator('.settings-readonly-boundary[aria-disabled="false"]:not(.content-transition-leaving)')
+    await page.locator('.settings-readonly-boundary[aria-disabled="false"]:not([data-exit-ghost])')
       .waitFor({ state: "visible", timeout: 5_000 });
     await waitForCondition(page, async () => {
       const notifications = (await readFrontendPreferences(page))?.notifications;
@@ -72,7 +73,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await openUpdates();
   // 版本目录的“上次检查”与更新状态同样按 UTC 显示。
-  await page.getByText(`${text.lastChecked}2026-10-27 08:30 UTC`, { exact: true }).waitFor();
+  await liveText(page, `${text.lastChecked}2026-10-27 08:30 UTC`).waitFor();
 
   // 三档：默认自动下载并应用；选“只检查并提示”保存后重新加载仍是它。
   assert.equal(await mode(option("automatic")).getAttribute("aria-checked"), "true");
@@ -81,12 +82,12 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await save();
   assert.deepEqual(patches.at(-1).changes, { update: { mode: "notify" } });
   // 自动检查一律等联网、不可关闭：没有联网等待开关，只有一行说明；手动检查不等联网。
-  await page.getByText(text.internetNote, { exact: true }).waitFor();
-  await page.getByText(text.manualCheckNote, { exact: true }).waitFor();
+  await liveText(page, text.internetNote).waitFor();
+  await liveText(page, text.manualCheckNote).waitFor();
   assert.equal(await page.getByRole("checkbox", { name: /联网|internet/i }).count(), 0, "a startup internet-wait switch is shown");
 
   // 间隔检查：范围 24–168 写在标签里，范围外的输入不被接受（落到最近的边界）。
-  await page.getByText(text.intervalLabel(24, 168), { exact: true }).waitFor();
+  await liveText(page, text.intervalLabel(24, 168)).waitFor();
   assert.equal(await interval().inputValue(), "24");
   await periodic().check();
   for (const [typed, kept] of [["6", "24"], ["200", "168"], ["48", "48"]]) {
@@ -116,19 +117,19 @@ export default async function updateNoticeJourney(page, baseUrl) {
   // 状态如实显示：等待联网时下次检查为空，显示“联网后计时”；联网后显示 UTC 时间和已累计联网时长。
   await publish({ automaticCheckStatus: "waitingForInternet", checkResult: "failed", nextCheckAt: null, onlineTimeSinceLastCheckSeconds: 0 });
   await page.getByRole("status").filter({ hasText: text.waitingForInternet }).waitFor();
-  await page.getByText(`${text.nextCheck}${text.nextCheckAfterInternet}`, { exact: true }).waitFor();
+  await liveText(page, `${text.nextCheck}${text.nextCheckAfterInternet}`).waitFor();
   await publish({ checkResult: "noUpdate", lastCheckedAt: "2026-10-25T08:00:00+00:00",
     automaticCheckStatus: "scheduled", nextCheckAt: "2026-10-27T08:00:00Z", onlineTimeSinceLastCheckSeconds: 3725 });
-  await page.getByText(`${text.nextCheck}2026-10-27 08:00 UTC`, { exact: true }).waitFor();
-  await page.getByText(`${text.lastChecked}2026-10-25 08:00 UTC`, { exact: true }).waitFor();
-  await page.getByText(`${text.connectedElapsed}1:02:05`, { exact: true }).waitFor();
+  await liveText(page, `${text.nextCheck}2026-10-27 08:00 UTC`).waitFor();
+  await liveText(page, `${text.lastChecked}2026-10-25 08:00 UTC`).waitFor();
+  await liveText(page, `${text.connectedElapsed}1:02:05`).waitFor();
   assert.equal(await page.getByRole("status").filter({ hasText: text.waitingForInternet }).count(), 0);
   assert.equal(await notices().count(), 0, "a notice without an available version");
 
   // 推送的新版本：界面内提示恰好一次，记进前端偏好缓存；同一版本的其他状态变化不再提示。
   await publish({ checkResult: "available", lastCheckedAt: "2026-10-25T09:00:00Z", availableVersion: "1.1.0" });
   await notices().filter({ hasText: text.noticeMessage("1.1.0") }).waitFor();
-  await page.getByText(`${text.availableVersion}1.1.0`, { exact: true }).waitFor();
+  await liveText(page, `${text.availableVersion}1.1.0`).waitFor();
   await publish({ checkResult: "available", stage: "checking", lastCheckedAt: "2026-10-25T09:00:00Z", availableVersion: "1.1.0" });
   await page.getByRole("status").filter({ hasText: text.stages.checking }).waitFor();
   assert.equal(await notices().count(), 1, "the same version was noticed twice");
@@ -139,7 +140,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   // 同一版本重新加载后不再提示。
   await page.reload({ waitUntil: "domcontentloaded" });
   await openUpdates();
-  await page.getByText(`${text.availableVersion}1.1.0`, { exact: true }).waitFor();
+  await liveText(page, `${text.availableVersion}1.1.0`).waitFor();
   await settleNoticeEffect("1.1.0", "on", "1.1.0");
   assert.equal(await notices().count(), 0, "the same version was noticed again after reload");
 
@@ -156,7 +157,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   assert.equal(await notices().count(), 0, "the notice stayed after its entry was used");
   await page.getByRole("button", { name: copy.apply, exact: true }).waitFor();
   // 从提示打开的更新区：没有稳定版时，空状态在固定项的格子里；没有不能选的版本，顶上不写原因。
-  const versionList = page.locator(".version-selector");
+  const versionList = page.locator(".version-selector:not([data-exit-ghost]):not([data-exit-ghost] *)");
   await versionList.locator(".version-selector-pinned > .version-selector-empty").filter({ hasText: text.noStable }).waitFor();
   assert.equal(await versionList.locator(".version-selector-notes").count(), 0, "a reason note without an unavailable version");
   assert.equal(await versionList.locator('input[value="latest"]').isEnabled(), true);
@@ -165,7 +166,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).uncheck();
   await page.getByRole("checkbox", { name: text.systemNoticeTitle, exact: true }).uncheck();
   assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), true);
-  await page.getByText(text.accessRequestNoticeDescription, { exact: true }).waitFor();
+  await liveText(page, text.accessRequestNoticeDescription).waitFor();
   await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).uncheck();
   const patchCount = patches.length;
   await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
@@ -175,12 +176,12 @@ export default async function updateNoticeJourney(page, baseUrl) {
   });
   // writePreferences sets the saved notification signal before saveDraft marks
   // this preferences-only save complete; localStorage alone is an earlier signal.
-  await page.getByText(settings.saveState.saved, { exact: true }).waitFor({ timeout: 5_000 });
+  await liveText(page, settings.saveState.saved).waitFor({ timeout: 5_000 });
   assert.equal(patches.length, patchCount, "notification switches reached the backend settings");
   const saved = await readFrontendPreferences(page);
   assert.deepEqual(saved.notifications, { updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" });
   await publish({ checkResult: "available", availableVersion: "1.3.0" });
-  await page.getByText(`${text.availableVersion}1.3.0`, { exact: true }).waitFor();
+  await liveText(page, `${text.availableVersion}1.3.0`).waitFor();
   await settleNoticeEffect("1.3.0", "off", "1.2.0");
   assert.equal(await notices().count(), 0, "a notice while the in-app switch is off");
   assert.equal((await readFrontendPreferences(page)).notifications.updateInAppNotifiedVersion, "1.2.0");
@@ -202,7 +203,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await openUpdates();
   assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), true);
   assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), true);
-  await page.getByText(`${text.availableVersion}1.2.0`, { exact: true }).waitFor();
+  await liveText(page, `${text.availableVersion}1.2.0`).waitFor();
   await settleNoticeEffect("1.2.0", "on", "1.2.0");
   assert.equal(await notices().count(), 0, "the same version was noticed again after resetting the interface preferences");
 

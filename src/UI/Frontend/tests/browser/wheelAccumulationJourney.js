@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { waitForStableRendering } from "./journeyWaits.js";
@@ -35,7 +36,7 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.locator(".shell-pages").getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
     await page.locator(".disk-usage-result .optimization-heading h2").getByText("C:\\", { exact: true }).waitFor();
-    const canvas = page.locator(".disk-usage-treemap-canvas");
+    const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
     await canvas.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => window.__treemapDraws.length > 0);
     await waitForStableRendering(page, ".disk-usage-treemap-canvas", { includeCanvas: true });

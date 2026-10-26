@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { restoreFocusTarget, scheduleFocusRestore } from "../interactions/focusReturn.ts";
+import { exitOnUnmount } from "../presentation/nodeAnimation.ts";
 
 export interface StandardContextMenuItem {
   id: string;
@@ -201,7 +202,7 @@ export function StandardContextMenu(props: {
     <Show when={props.model}>
       {(model) => (
         <div
-          ref={menu}
+          ref={(element) => { menu = element; exitOnUnmount(element); }}
           class="standard-context-menu"
           role="menu"
           tabIndex={-1}

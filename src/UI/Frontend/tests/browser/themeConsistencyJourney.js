@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkRecordedDisplayDialog } from "./displayEdidDialogProbe.js";
 import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
@@ -45,7 +46,7 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
   const checkEdid = async () => {
     const app = await loadAppCopy("zh-CN");
     await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
-    const topology = page.locator(".device-topology-panel"); await topology.waitFor();
+    const topology = page.locator(`.device-topology-panel${NOT_GHOST}`); await topology.waitFor();
     await topology.locator(".device-port-item").first().click();
     edidThemes.push({ theme: await page.locator("html").getAttribute("data-theme"), ...await checkRecordedDisplayDialog(page, app) });
     await openAppearanceSettings(page);
@@ -171,7 +172,7 @@ async function settingsLayout(page) {
 
 async function openAppearanceSettings(page) {
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.locator(".settings-readonly-boundary").waitFor({
+  await page.locator(".settings-readonly-boundary:not([data-exit-ghost])").waitFor({
     state: "visible",
     timeout: 7000
   });

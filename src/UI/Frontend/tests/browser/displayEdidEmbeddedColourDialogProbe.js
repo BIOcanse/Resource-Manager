@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
@@ -47,11 +48,11 @@ export async function checkEmbeddedColourDisplayDialog(page, app, baseline, base
   const attached = roots.first().locator("xpath=following-sibling::button[1]"); await attached.waitFor({ state: "visible" });
   if (!(await attached.getAttribute("class"))?.split(" ").includes("nested")) throw new Error("Embedded colour root lost its monitor");
   await attached.click(); await topology.locator(".device-details-button").click();
-  const identity = page.locator(".user-details-modal:visible");
+  const identity = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await identity.getByText(String.raw`DISPLAY\FIXTURE_HDMI_1`, { exact: true }).waitFor();
   await page.keyboard.press("Escape"); await identity.waitFor({ state: "hidden" });
   await roots.first().click(); await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`); const declared = dialog.locator("[data-display-edid]");
   await declared.getByRole("heading", { name: c.declared, exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".user-details-modal [data-display-edid] details").length === 5);
   for (let i = 0; i < 5; i++) {

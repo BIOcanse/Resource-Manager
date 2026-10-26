@@ -1,3 +1,4 @@
+import { liveText } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -25,7 +26,7 @@ export default async function realtimeActionBudgetSettingsJourney(page, baseUrl)
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const settings = await loadSettingsText(option.id);
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
-    await page.getByText(settings.performance.realtimeActionBudgetDescription, { exact: true }).waitFor();
+    await liveText(page, settings.performance.realtimeActionBudgetDescription).waitFor();
     const group = page.getByRole("radiogroup", { name: settings.performance.realtimeActionBudgetTitle, exact: true });
     for (const mode of settings.performance.realtimeActionBudgetModeOptions) {
       const radio = group.getByRole("radio", { name: mode.label, exact: true });

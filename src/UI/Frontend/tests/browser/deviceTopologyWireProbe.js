@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 // Exercise the production subscription, adapters and rendered facts with typed backend scenarios.
 export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl) {
   const topology = page.locator(".device-topology-panel");
@@ -49,7 +50,7 @@ export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl)
       const node = topology.locator(".device-port-item.device-node").filter({ hasText: `Fixture ${fixture}` }).first();
       await node.click();
       await topology.locator(".device-details-button").click();
-      const dialog = page.locator(".user-details-modal:visible");
+      const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
       const details = dialog.locator(`.device-specialized-details.kind-${kind}`);
       await details.waitFor();
       if (code) await details.getByText(code, { exact: false }).first().waitFor();
@@ -95,7 +96,7 @@ export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl)
       const actual = (await summary.textContent()).trim();
       assert(actual === expected, `${language}: ${name} replaced its transport fact: ${actual}`);
       await topology.locator(".device-details-button").click();
-      const dialog = page.locator(".user-details-modal:visible");
+      const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
       const transport = dialog.locator(".user-details-row")
         .filter({ has: page.getByText(app.deviceAdapters.label.internalTransport, { exact: true }) }).locator("dd");
       await transport.getByText(expected, { exact: true }).waitFor();
@@ -111,7 +112,7 @@ export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl)
       `${language}: the transport tree invented a PCI Express interface`);
     return result;
   } finally {
-    const dialog = page.locator(".user-details-modal:visible");
+    const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
     if (await dialog.count()) { await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" }); }
     await publish(restore);
     await topology.getByRole("radio", { name: scope?.trim() || app.deviceTopology.externalScope, exact: true }).click();

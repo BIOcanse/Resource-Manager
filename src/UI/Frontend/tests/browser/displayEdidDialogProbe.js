@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { readFileSync } from "node:fs";
@@ -29,7 +30,7 @@ if (hasBitmap && (!legacy || recordedModes[13].containerRevision !== 0x12
 export async function checkRecordedDisplayDialog(page, app) {
   const topology = page.locator(".device-topology-panel");
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   const current = dialog.locator("[data-display-current]"); const declared = dialog.locator("[data-display-edid]");
   await declared.getByRole("heading", { name: app.deviceTopology.edid.declared, exact: true }).waitFor();
   await current.getByRole("heading", { name: app.deviceTopology.edid.current, exact: true }).waitFor();
@@ -160,7 +161,7 @@ async function checkDisplayRefreshInteraction(page, current, declaration, app) {
 
 export async function checkDisplayVariant(page, app, variant) {
   const topology = page.locator(".device-topology-panel"); await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`); const declared = dialog.locator("[data-display-edid]");
   const current = dialog.locator("[data-display-current]");
   if (variant === "inactive" || variant === "inactiveConnected") {
     const connected = variant === "inactiveConnected";
@@ -220,12 +221,12 @@ export async function checkType3DisplayDialog(page, app, variant = "type3") {
     await attached.waitFor({ state: "visible" });
     if (!(await attached.getAttribute("class"))?.split(" ").includes("nested")) throw new Error("TypeIII root lost its attached monitor");
     await attached.click(); await topology.locator(".device-details-button").click();
-    const identityDialog = page.locator(".user-details-modal:visible");
+    const identityDialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
     await identityDialog.getByText(String.raw`DISPLAY\FIXTURE_HDMI_1`, { exact: true }).waitFor();
     await page.keyboard.press("Escape"); await identityDialog.waitFor({ state: "hidden" });
   }
   await roots.first().click(); await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`); const declared = dialog.locator("[data-display-edid]");
   await declared.getByRole("heading", { name: c.declared, exact: true }).waitFor();
   const raw = dialog.locator("[data-display-edid-raw]"); await raw.locator("summary").click();
   const expectedRaw = Buffer.from(type3Raw);
@@ -312,11 +313,11 @@ export async function checkTypeXDisplayDialog(page, app) {
   const attached=roots.first().locator("xpath=following-sibling::button[1]"); await attached.waitFor({state:"visible"});
   if(!(await attached.getAttribute("class"))?.split(" ").includes("nested")) throw new Error("TypeX selected root lost its monitor");
   await attached.click(); await topology.locator(".device-details-button").click();
-  const identity=page.locator(".user-details-modal:visible");
+  const identity=page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await identity.getByText(String.raw`DISPLAY\FIXTURE_HDMI_1`,{exact:true}).waitFor();
   await page.keyboard.press("Escape"); await identity.waitFor({state:"hidden"});
   await roots.first().click(); await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`); const declared = dialog.locator("[data-display-edid]");
   await declared.getByRole("heading", {name:c.declared,exact:true}).waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".user-details-modal [data-display-edid] details").length === 3);
   for (const i of [0,1,2]) {

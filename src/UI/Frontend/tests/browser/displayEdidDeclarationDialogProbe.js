@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
@@ -97,7 +98,7 @@ export async function checkDeclarationDisplayDialog(page, app, variant) {
   await roots.first().click();
   if (await roots.first().getAttribute("aria-pressed") !== "true") throw new Error(`${variant} physical root was not selected`);
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`); const declared = dialog.locator("[data-display-edid]");
   await declared.getByRole("heading", { name: c.declared, exact: true }).waitFor();
   // 先等到本场景的真实载荷到达，避免读到上一个场景留下的同数量声明。
   await page.waitForFunction(expected => document.querySelectorAll(".user-details-modal [data-display-edid] details").length === expected.count

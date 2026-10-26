@@ -72,16 +72,16 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     assert(started.softwareId === "frontend-harness.software" && started.maximumDurationSeconds === 3600,
       `${language}: wrong start payload`);
     await control.getByRole("status").filter({ hasText: copy.recording }).waitFor();
-    const row = panel.locator(".targeted-report-list-row");
+    const row = panel.locator(".targeted-report-list-row:not([data-exit-ghost])");
     await row.getByText("示例软件", { exact: true }).waitFor();
     const recordingStatus = row.locator(".targeted-report-open span");
     await recordingStatus.waitFor();
     assert((await recordingStatus.textContent()).endsWith(` · ${copy.recording}`),
       `${language}: list row did not show the recording status`);
-    await panel.locator(".targeted-report-detail").waitFor();
+    await panel.locator(".targeted-report-detail:not([data-exit-ghost])").waitFor();
     // The page must expose stop without reopening the software details.
     await row.getByRole("button", { name: copy.stop, exact: true }).click();
-    await panel.locator(".targeted-report-detail").getByText(new RegExp(copy.stopReasons.user)).waitFor();
+    await panel.locator(".targeted-report-detail:not([data-exit-ghost])").getByText(new RegExp(copy.stopReasons.user)).waitFor();
     await panel.locator(".targeted-report-summary").getByText(copy.averageFps, { exact: true }).waitFor();
     assert(await panel.getByRole("img", { name: copy.frameTime, exact: true }).count() === 1, `${language}: no frame chart`);
     assert(await panel.getByRole("img", { name: copy.distribution, exact: true }).count() === 1, `${language}: no distribution`);
@@ -144,7 +144,7 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       `${language}: delete confirmation does not name the recording and its consequence`);
     await confirmDelete.getByRole("button", { name: copy.delete, exact: true }).click();
     await panel.getByText(copy.empty, { exact: true }).waitFor();
-    assert(await panel.locator(".targeted-report-detail").count() === 0, `${language}: deleted report remained visible`);
+    assert(await panel.locator(".targeted-report-detail:not([data-exit-ghost])").count() === 0, `${language}: deleted report remained visible`);
     checked.push(language);
     previous = language;
   }

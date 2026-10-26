@@ -53,16 +53,21 @@ export async function checkMachineIdentity(page, topology, publish) {
     && sticky.scrolled && sticky.tabsTop >= sticky.listTop - 1 && sticky.tabsBottom <= sticky.listBottom + 1,
     `The scope switch scrolls away with the list: ${JSON.stringify(sticky)}`);
 
-  const readMachine = () => view.evaluate((element) => ({
-    figure: element.querySelector(".device-machine-figure")?.getAttribute("data-form-factor") ?? null,
-    name: element.querySelector(".device-machine-form strong")?.textContent?.trim() ?? null,
-    lines: [...element.querySelectorAll(".device-machine-evidence li")]
+  // 换形态时旧的整机图留着淡出的幽灵（不可命中、aria-hidden）：只读真实节点。
+  const readMachine = () => view.evaluate((element) => {
+    const all = (selector) => [...element.querySelectorAll(selector)].filter((node) => !node.closest("[data-exit-ghost]"));
+    const one = (selector) => all(selector)[0] ?? null;
+    return {
+    figure: one(".device-machine-figure")?.getAttribute("data-form-factor") ?? null,
+    name: one(".device-machine-form strong")?.textContent?.trim() ?? null,
+    lines: [...all(".device-machine-evidence li")]
       .map((li) => `${li.querySelector("span")?.textContent?.trim() ?? ""}|${li.querySelector("strong")?.textContent?.trim() ?? ""}`),
-    empty: element.querySelector(".device-machine-evidence-empty")?.textContent?.trim() ?? null,
-    laptopParts: element.querySelectorAll(".device-machine-hinge, .device-machine-deck").length,
-    feet: element.querySelectorAll(".device-machine-feet").length,
-    manufacturer: element.querySelector(".device-machine-manufacturer")?.textContent?.trim() ?? null
-  }));
+    empty: one(".device-machine-evidence-empty")?.textContent?.trim() ?? null,
+    laptopParts: all(".device-machine-hinge, .device-machine-deck").length,
+    feet: all(".device-machine-feet").length,
+    manufacturer: one(".device-machine-manufacturer")?.textContent?.trim() ?? null
+    };
+  });
 
   // 后端默认fixture明确报告desktop；缺字段是解码错误，不在呈现中补默认。
   const initial = await readMachine();
@@ -150,7 +155,7 @@ export async function checkMachineIdentity(page, topology, publish) {
     if (before === undefined) delete body.dataset.animations; else body.dataset.animations = before;
     return result;
   });
-  assert(motion.desktop.name === "motion-rise-in" && motion.desktop.duration !== "0s"
+  assert(motion.desktop.name === "motion-fade-in" && motion.desktop.duration !== "0s"
     && motion.none.duration === "0s" && motion.ultra.duration === "0s",
   `The machine figure entrance does not have a normal and a reduced version: ${JSON.stringify(motion)}`);
 

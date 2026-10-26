@@ -21,6 +21,7 @@ import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisib
 import { frontendVisibilitySourceDemand, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { dashboardMetricAvailable } from "../../preferences/dashboardPreferences.ts";
+import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -258,7 +259,7 @@ function MetricSlot(props: {
     <Show when={props.editMode} fallback={view()}>
       <div
         class="edit-slot has-metric"
-        ref={props.reorder.item({ id: key, enabled: () => props.editMode })}
+        ref={(element: HTMLElement) => { props.reorder.item({ id: key, enabled: () => props.editMode })(element); exitOnUnmount(element); }}
       >
         {view()}
         {/* 槽内操作：悬停或聚焦这一槽时显示。 */}

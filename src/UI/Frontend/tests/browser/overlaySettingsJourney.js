@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { pointOverlayPresentation } from "../../src/preferences/frontendPreferences.ts";
@@ -40,11 +41,11 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   const open = async () => {
     await card.getByRole("button", { name: "软件设置" }).click();
     await page.getByRole("tab", { name: copy.performanceOverlay.tab, exact: true }).click();
-    await page.locator(".overlay-settings-fields").waitFor({ state: "visible" });
+    await page.locator(`.overlay-settings-fields${NOT_GHOST}`).waitFor({ state: "visible" });
   };
   await open();
   await installElevatedBackendBridge(page);
-  const editor = page.locator(".overlay-settings");
+  const editor = page.locator(`.overlay-settings${NOT_GHOST}`);
   const save = editor.getByRole("button", { name: copy.softwareDetail.save, exact: true });
   const font = editor.getByRole("spinbutton", { name: copy.performanceOverlay.fontSizePx });
   await editor.getByRole("checkbox").check();
@@ -62,6 +63,8 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   const sent = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/__test/elevated-backend-request"));
   const completed = page.waitForResponse(response => response.request().method() === "POST"
     && response.url().endsWith("/__test/elevated-backend-request"));
+  // 后面的断言失败时页面会关掉，这个等待随之拒绝：先接住，免得未处理的拒绝打断整个工作进程、盖住真正的失败。
+  completed.catch(() => undefined);
   await save.click();
   const request = await sent;
   const command = request.postDataJSON();
@@ -69,9 +72,10 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   assert(command.type === "backend.elevatedRequest" && command.method === "PUT" && command.path === modulePath, "Mutation bypassed the explicit native bridge");
   assert(JSON.stringify(Object.keys(selection).sort()) === JSON.stringify(["moduleIds", "softwareId"]), "Renderer preferences entered the backend startup-module request");
   assert(JSON.stringify(selection.moduleIds) === JSON.stringify(["performance-overlay-preload", "performance-overlay-vulkan"]), "Injected mode did not select its declared startup modules");
-  for (const control of await editor.locator("input, button").all()) {
-    assert(await control.isDisabled(), "An overlay control remained editable during save");
-  }
+  // 一次读完所有控件（逐个往返读时保存可能已经结束、编辑区重新挂上）。
+  const editable = await editor.evaluate(root => [...root.querySelectorAll("input, button")]
+    .filter(control => !control.disabled && !control.closest("[data-exit-ghost]")).map(control => control.outerHTML.slice(0, 200)));
+  assert(editable.length === 0, `Overlay controls remained editable during save: ${editable.join(" | ")}`);
   // Even a dispatched event cannot change the pending draft.
   await font.evaluate(element => { element.value = "36"; element.dispatchEvent(new Event("input", { bubbles: true })); });
   assert((await (await completed).json()).statusCode === 200, "Delayed elevated save failed");

@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { waitForStableRendering } from "./journeyWaits.js";
 
@@ -31,7 +32,7 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
   const copy = await loadAppCopy("zh-CN");
   await page.locator(".shell-pages").getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
   await page.locator(".disk-usage-result .optimization-heading h2").getByText("C:\\", { exact: true }).waitFor();
-  const errorToasts = text => page.locator(".toast.error").filter({ hasText: text });
+  const errorToasts = text => page.locator(".toast.error:not([data-exit-ghost])").filter({ hasText: text });
 
   // 两个选文件夹入口：切到「一个文件夹」范围时自动打开，以及该行的「选择文件夹」按钮。
   const setup = page.locator(".disk-usage-setup");
@@ -40,11 +41,11 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
   await setup.getByText(copy.diskUsage.scopeFolder, { exact: true }).first().click();
   await errorToasts(copy.diskUsage.chooseFolderFailed).first().waitFor();
   await setup.getByRole("button", { name: copy.diskUsage.chooseFolder, exact: true }).click();
-  await page.waitForFunction(text => [...document.querySelectorAll(".toast.error")]
+  await page.waitForFunction(text => [...document.querySelectorAll(".toast.error:not([data-exit-ghost])")]
     .filter(toast => toast.textContent?.includes(text)).length >= 2, copy.diskUsage.chooseFolderFailed);
 
   // 右键菜单的三个动作。
-  const canvas = page.locator(".disk-usage-treemap-canvas");
+  const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
   await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   assert(box && box.width > 0 && box.height > 0, "Treemap canvas has no size");
@@ -56,7 +57,7 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
   // keyboard.press has dispatched the key sequence; let its synchronous context-menu
   // handler and resulting render commit finish before asserting the absence of a menu.
   await waitForStableRendering(page, [".disk-usage-result"], { timeoutMs: 3_000 });
-  assert(await page.locator(".disk-usage-context-menu").count() === 0, "Shift+F10 opened a menu with no selected tile");
+  assert(await page.locator(`.disk-usage-context-menu${NOT_GHOST}`).count() === 0, "Shift+F10 opened a menu with no selected tile");
   const checkedMenuActions = [];
   for (const [label, failure] of [
     [copy.diskUsage.menuOpenLocation, copy.softwareActions.openFileLocationFailed],
@@ -64,7 +65,7 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
     [copy.diskUsage.menuCopyPath, copy.misc.copyFailed]
   ]) {
     await canvas.click({ button: "right", position: { x: box.width / 2, y: box.height / 2 } });
-    const menu = page.locator(".disk-usage-context-menu");
+    const menu = page.locator(`.disk-usage-context-menu${NOT_GHOST}`);
     await menu.waitFor();
     await menu.getByRole("menuitem", { name: label, exact: true }).click();
     await errorToasts(failure).first().waitFor();
@@ -73,7 +74,7 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
 
   // 右键已经选中了中间的方格：Shift+F10 和菜单键对它开菜单，焦点在第一个动作上，
   // 上下键、Home/End 在动作间移动，Esc 和 Tab 关闭后焦点回到方格图。
-  const menu = page.locator(".disk-usage-context-menu");
+  const menu = page.locator(`.disk-usage-context-menu${NOT_GHOST}`);
   const activeMenuItem = () => page.evaluate(() => document.activeElement?.getAttribute("role") === "menuitem"
     ? document.activeElement.textContent?.trim() : `not a menu item: ${document.activeElement?.tagName}`);
   const focusReturnedToCanvas = () => page.waitForFunction(() =>

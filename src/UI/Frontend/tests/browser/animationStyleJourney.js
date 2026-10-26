@@ -7,7 +7,8 @@ import { waitForStableRendering } from "./journeyWaits.js";
 /**
  * 动画风格（docs/animation_style_2026-10-26.md「验证」），简体中文，真实点击和保存。
  * - 设置 → 外观：一行「动画风格」五个选项，下面一行开关「按自调度自动关闭动画」；旧的两行没有了；默认流畅平滑、开关开。
- * - 每种风格：开关（键盘切换）、弹窗（任务中心）、换设置分区的实际过渡，逐帧在页面里读。
+ * - 每种风格：开关（键盘切换）、弹窗（任务中心）开和关、换设置分区的实际过渡，逐帧在页面里读。
+ *   所有风格交互先到（「总原则」）：点击处理完新分区已在终态几何上可点；关弹窗那一刻对话框已不在，原处不命中幽灵。
  *   流畅平滑带速度、能接住（动画中再按一次，滑块先顺着原来的方向走一点再回头）；桌面常规按固定时长、不带速度；
  *   终端顿挫按固定步数跳（拖着时连续）；无动画、超高性能在按键的同一个任务里就到终态。
  * - 滚动区边缘回弹：流畅平滑里滚到顶还往上滚，内容按橡皮筋偏出去再回到边缘，滚动区本身不动；其余风格不偏。
@@ -69,10 +70,19 @@ export default async function animationStyleJourney(page, baseUrl) {
         const element = document.querySelector("[data-edge-band]");
         return element ? Number.parseFloat(element.style.getPropertyValue("--edge-band")) : 0;
       },
+      /** hit：内容层在视口里那一块的中心点命中的是真节点（幽灵不可命中，进场不挪命中区域）。 */
       section: () => {
-        const stage = document.querySelector(".settings-content > fieldset:not(.content-transition-leaving)");
-        return { transform: stage?.style.transform ?? null, opacity: stage?.style.opacity ?? null,
-          leaving: document.querySelectorAll(".settings-content > .content-transition-leaving").length };
+        const stage = document.querySelector(".settings-content > fieldset:not([data-exit-ghost])");
+        let hit = false;
+        if (stage) {
+          const box = stage.getBoundingClientRect();
+          const top = Math.max(box.top, 0);
+          const bottom = Math.min(box.bottom, innerHeight);
+          const target = document.elementFromPoint(box.left + box.width / 2, (top + bottom) / 2);
+          hit = !!target && stage.contains(target) && !target.closest("[data-exit-ghost]");
+        }
+        return { transform: stage?.style.transform ?? null, opacity: stage?.style.opacity ?? null, hit,
+          leaving: document.querySelectorAll(".settings-content > [data-exit-ghost]").length };
       }
     };
   });
@@ -179,12 +189,57 @@ export default async function animationStyleJourney(page, baseUrl) {
     await page.getByRole("dialog", { name: app.taskCenter.title, exact: true }).waitFor({ state: "hidden" });
     return run;
   };
-  /** 换分区之前等上一段分区过渡走完（退出副本撤掉、内容层没有内联变换）：量的是从静止开始的一段。 */
+  /**
+   * 关弹窗（「总原则」：退场的幽灵只给眼睛看）：Esc 派发完那一刻对话框已经不在可访问树里，原处命中的是下面一层；
+   * 动着的风格之后几帧有幽灵（不可命中、inert、aria-hidden），无动画、超高性能同一帧就没有幽灵。
+   */
+  const dialogClose = async () => {
+    await page.locator("#taskCenterButton").click();
+    const dialog = page.getByRole("dialog", { name: app.taskCenter.title, exact: true });
+    await dialog.waitFor();
+    await page.waitForFunction(() => !document.querySelector("[data-exit-ghost]") && !document.querySelector("[style*='will-change: opacity']"), undefined, { timeout: 5000 });
+    const box = await dialog.boundingBox();
+    await page.evaluate(({ x, y }) => {
+      const read = () => {
+        const target = document.elementFromPoint(x, y);
+        const ghosts = [...document.querySelectorAll("[data-exit-ghost]")];
+        return { dialogs: document.querySelectorAll("[role='dialog']").length, ghosts: ghosts.length,
+          hitGhost: !!target?.closest("[data-exit-ghost]"), hitModal: !!target?.closest(".modal-backdrop:not([data-exit-ghost])"),
+          ghostsHidden: ghosts.every((ghost) => ghost.inert && ghost.getAttribute("aria-hidden") === "true" && getComputedStyle(ghost).pointerEvents === "none") };
+      };
+      const probe = { pressed: false, sameTask: undefined, frames: [], done: false };
+      window.__closeProbe = probe;
+      // Esc 被对话框的焦点陷阱停在冒泡之前，窗口上收不到冒泡的 keydown：在捕获阶段开始观察，
+      // 对话框从 DOM 里卸下的那批变动（同一个任务里的微任务）读一次。
+      window.addEventListener("keydown", () => {
+        probe.pressed = true;
+        const observer = new MutationObserver(() => {
+          if (probe.sameTask !== undefined || document.querySelector("[role='dialog']")) return;
+          probe.sameTask = read();
+          observer.disconnect();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }, { once: true, capture: true });
+      const tick = () => {
+        if (probe.pressed) probe.frames.push(read());
+        if (probe.frames.length >= 4) { probe.done = true; return; }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => window.__closeProbe.done, undefined, { timeout: 5000 });
+    const probe = await page.evaluate(() => window.__closeProbe);
+    await page.waitForFunction(() => !document.querySelector("[data-exit-ghost]"), undefined, { timeout: 5000 });
+    return probe;
+  };
+  /** 换分区之前等上一段分区过渡走完（幽灵撤掉、内容层没有内联不透明度）：量的是从静止开始的一段。 */
+  const sectionRest = () => page.waitForFunction(() => {
+    const stage = document.querySelector(".settings-content > fieldset:not([data-exit-ghost])");
+    return !document.querySelector(".settings-content > [data-exit-ghost]") && stage && !stage.style.opacity;
+  }, undefined, { timeout: 5000 });
   const sectionChange = async (section) => {
-    await page.waitForFunction(() => {
-      const stage = document.querySelector(".settings-content > fieldset:not(.content-transition-leaving)");
-      return !document.querySelector(".settings-content > .content-transition-leaving") && stage && !stage.style.transform;
-    }, undefined, { timeout: 5000 });
+    await sectionRest();
     return sample({ reader: "section", startEvent: "click", trigger: () => openSection(section) });
   };
   /** 设置内容滚到顶，指针放在上面往上滚三格：读越过边缘的偏移。 */
@@ -201,6 +256,8 @@ export default async function animationStyleJourney(page, baseUrl) {
     } });
   };
 
+  /** 内容层的开度：进场完内联不透明度撤掉，读作 1。 */
+  const opacityOf = (value) => (value.opacity === "" || value.opacity == null ? "1" : value.opacity);
   const distinct = (values) => [...new Set(values.map((value) => JSON.stringify(value)))].map((value) => JSON.parse(value));
   const monotone = (values) => values.every((value, index) => index < 2 || Math.sign(value - values[index - 1]) * Math.sign(values[1] - values[0]) >= 0);
   const results = {};
@@ -216,6 +273,7 @@ export default async function animationStyleJourney(page, baseUrl) {
     const caught = await switchCatch();
     const drag = await switchDrag();
     const dialog = await dialogOpen();
+    const closed = await dialogClose();
     await openSettings();
     const sections = [await sectionChange("updates"), await sectionChange("appearance")];
     await page.waitForTimeout(400);
@@ -227,8 +285,17 @@ export default async function animationStyleJourney(page, baseUrl) {
       caught: caught.frames.map((frame) => [Math.round(frame.t), frame.value]), caughtPresses: caught.events.map(Math.round), caughtChanges: caught.changes.map(Math.round), drag,
       dialog: { settledAt: dialog.settledAt, first: dialog.frames.find((frame) => frame.value)?.value, values: distinct(dialog.frames.filter((frame) => frame.value).map((frame) => frame.value.opacity)) },
       band: { peak: bandPeak, settledAt: band.settledAt, final: band.final, left: bandLeft },
-      sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => frame.value.transform)) })) };
+      closed,
+      sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => opacityOf(frame.value))) })) };
     results[style] = entry;
+    // 所有风格：交互先到。点击处理完那一刻新分区已在、在终态几何上可点；真节点从不带变换；关弹窗那一刻对话框已不在、原处不命中幽灵。
+    for (const run of sections) {
+      if (!run.sameTask?.hit) fail(`${style}: the new section is not hit at its final place when the click is handled: ${JSON.stringify(run.sameTask)}`);
+      if (run.frames.some((frame) => frame.value.transform || !frame.value.hit)) fail(`${style}: the section stage moves or is not hit during its entrance: ${JSON.stringify(run.frames.map((frame) => frame.value))}`);
+    }
+    if (closed.sameTask?.dialogs !== 0 || closed.sameTask?.hitGhost || closed.frames.some((frame) => frame.dialogs !== 0 || frame.hitGhost || frame.hitModal || !frame.ghostsHidden)) {
+      fail(`${style}: the closed dialog is still in interaction or its ghost can be hit: ${JSON.stringify(closed)}`);
+    }
     const xs = (run) => run.frames.map((frame) => frame.value);
     if (style === "smooth") {
       if (!(bandPeak > 5) || band.final !== 0 || bandLeft !== 0 || band.settledAt > 2000) fail(`smooth: the scroll edge does not rubber-band and return: ${JSON.stringify(entry.band)}`);
@@ -240,13 +307,16 @@ export default async function animationStyleJourney(page, baseUrl) {
       for (const run of sections) {
         const first = run.frames[0]?.value;
         if (!first || first.transform !== "" || first.opacity !== "" || first.leaving !== 0) fail(`${style}: the section is not final in its first frame: ${JSON.stringify(first)}`);
+        if (run.sameTask?.opacity !== "" || run.sameTask?.leaving !== 0) fail(`${style}: the section is not final when the click is handled: ${JSON.stringify(run.sameTask)}`);
       }
+      if (closed.sameTask?.ghosts !== 0 || closed.frames.some((frame) => frame.ghosts !== 0)) fail(`${style}: closing the dialog leaves a ghost: ${JSON.stringify(closed)}`);
       continue;
     }
     for (const run of toggle) {
       if (run.sameTask === run.final) fail(`${style}: the switch jumps to its end in the same task`);
       if (!(Math.abs(run.final) < 0.5 || Math.abs(run.final - 20) < 0.5)) fail(`${style}: the switch did not reach an end: ${run.final}`);
     }
+    if (!closed.frames.some((frame) => frame.ghosts > 0)) fail(`${style}: closing the dialog shows no exit: ${JSON.stringify(closed)}`);
     const dragDistinct = new Set(drag).size;
     if (dragDistinct < 6) fail(`${style}: dragging the knob is not continuous: ${JSON.stringify(drag)}`);
     if (style === "desktop" || style === "terminal") {
@@ -260,14 +330,18 @@ export default async function animationStyleJourney(page, baseUrl) {
       const atSecond = caught.frames.filter((frame) => frame.t <= second + 1).at(-1)?.value;
       const after = caught.frames.filter((frame) => frame.t > second + 1).map((frame) => frame.value);
       const firstDirection = Math.sign((atSecond ?? 0) - caught.frames[0].value);
-      if (after.length && Math.sign(after[0] - atSecond) === firstDirection && Math.abs(after[0] - atSecond) > 0.05) {
-        fail(`${style}: after the second press the knob keeps going (${atSecond} → ${after[0]}): it carries velocity`);
+      // 第二次按下之后的第一帧可能还是按下前算的那一步；从这一帧起不再往原来的方向走：不带速度。
+      // 终端顿挫画的是按步取整的位置，比真实位置落后：反向的新一段从真实位置起步，画面会先跳到真实位置一次（不是速度），之后不再往前。
+      const reference = style === "terminal" && after.length > 1 ? Math.max(firstDirection * after[0], firstDirection * after[1]) * firstDirection : after[0];
+      const checked = style === "terminal" ? after.slice(2) : after.slice(1);
+      if (after.length > 1 && checked.some((value) => firstDirection * (value - reference) > 0.05)) {
+        fail(`${style}: after the second press the knob keeps going (${atSecond} → ${JSON.stringify(after.slice(0, 4))}): it carries velocity`);
       }
       if (style === "terminal") {
         // 按步跳：画面最多 TERMINAL_STEPS + 1 个位置（含起点），弹窗的不透明度、分区的位移也一样。
         for (const run of toggle) if (distinct(xs(run)).length > TERMINAL_STEPS + 1) fail(`terminal: the switch takes ${distinct(xs(run)).length} positions: ${JSON.stringify(distinct(xs(run)))}`);
         if (entry.dialog.values.length > TERMINAL_STEPS + 1) fail(`terminal: the dialog takes ${entry.dialog.values.length} looks: ${JSON.stringify(entry.dialog.values)}`);
-        for (const run of entry.sections) if (run.values.length > TERMINAL_STEPS + 1) fail(`terminal: the section takes ${run.values.length} positions: ${JSON.stringify(run.values)}`);
+        for (const run of entry.sections) if (run.values.length > TERMINAL_STEPS + 1) fail(`terminal: the section takes ${run.values.length} looks: ${JSON.stringify(run.values)}`);
       } else {
         for (const run of toggle) if (distinct(xs(run)).length <= TERMINAL_STEPS + 1) fail(`desktop: the switch moves in too few frames to be eased: ${JSON.stringify(distinct(xs(run)))}`);
       }
@@ -278,7 +352,7 @@ export default async function animationStyleJourney(page, baseUrl) {
       const atSecond = caught.frames.filter((frame) => frame.t <= second + 1).at(-1)?.value;
       const after = caught.frames.filter((frame) => frame.t > second + 1).map((frame) => frame.value);
       const firstDirection = Math.sign((atSecond ?? 0) - caught.frames[0].value);
-      if (!(after.length && Math.sign(after[0] - atSecond) === firstDirection)) fail(`smooth: the caught knob does not carry its velocity: ${JSON.stringify(entry.caught)}`);
+      if (!(after.length > 1 && after.slice(1).some((value) => firstDirection * (value - after[0]) > 0.05))) fail(`smooth: the caught knob does not carry its velocity: ${JSON.stringify(entry.caught)}`);
       const jumps = caught.frames.slice(1).map((frame, index) => Math.abs(frame.value - caught.frames[index].value));
       if (Math.max(...jumps) > 8) fail(`smooth: the caught knob jumps ${Math.max(...jumps)} px in a frame: ${JSON.stringify(entry.caught)}`);
       for (const run of toggle) if (run.settledAt < 120 || run.settledAt > 900) fail(`smooth: the switch spring settles at ${run.settledAt} ms`);

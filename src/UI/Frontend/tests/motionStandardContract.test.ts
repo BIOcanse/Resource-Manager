@@ -62,10 +62,21 @@ for (const selector of [".settings-switch .settings-switch-track", ".settings-sw
     `${selector} follows the switch openness; a CSS transition would lag behind it`);
 }
 
-// 小弹层入场：下拉和两种右键菜单同一条。
+// 小弹层进场：下拉和两种右键菜单同一条，只淡入（docs/animation_style_2026-10-26.md「总原则」：进场不挪动命中区域）。
 for (const selector of [".standard-select-popover", ".standard-context-menu", ".disk-usage-context-menu"]) {
-  assert.equal(declarationsOf(selector).get("animation"), "motion-rise-in var(--motion-fast) var(--ease-decel)",
+  assert.equal(declarationsOf(selector).get("animation"), "motion-fade-in var(--motion-fast) var(--ease-decel)",
     `${selector} enters like the other small popovers`);
+}
+// 进场不挪动命中区域：真实节点上的动画（不在 [data-exit-ghost] 上的规则）只能用只改不透明度的关键帧；位移、缩放只在退场幽灵上。
+const keyframeBodies = new Map([...stripComments(readFileSync(join(srcRoot, "styles/motion.css"), "utf8")).matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?\})\s*\}/g)].map((match) => [match[1], match[2]]));
+for (const rule of rules) {
+  const animation = rule.declarations.get("animation");
+  if (!animation || rule.selectors.every((selector) => selector.includes("[data-exit-ghost]"))) continue;
+  const name = animation.split(/\s+/)[0];
+  const body = keyframeBodies.get(name);
+  if (body === undefined) continue;
+  assert.doesNotMatch(body, /transform|translate|scale|rotate|height|width|top|left/,
+    `${rule.selectors.join(", ")} animates ${name} on a real node; an entrance may only change opacity`);
 }
 // 换页、二级分页、页签面板、设置分区的进出由磁石内容过渡带（docs/page_motion_2026-10-25.md），样式表不给它们写入场动画，
 // 否则每次挂上都重播一遍，和运行时带的进出叠在一起。

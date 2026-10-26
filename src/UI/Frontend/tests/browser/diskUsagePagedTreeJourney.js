@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -30,7 +31,7 @@ export default async function diskUsagePagedTreeJourney(page, baseUrl) {
   let currentLanguage = "zh-CN";
   const checked = [];
   const title = page.locator(".disk-usage-result .optimization-heading h2");
-  const canvas = page.locator(".disk-usage-treemap-canvas");
+  const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     if (currentLanguage !== option.id) {
       const oldCopy = await loadAppCopy(currentLanguage);

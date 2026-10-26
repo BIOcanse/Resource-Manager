@@ -8,6 +8,7 @@ import {
   type FeedbackTone
 } from "../ui/patterns/ConfirmDialog.tsx";
 import { UserDetailsDialog } from "./UserDetailsDialog";
+import { exitOnUnmount } from "../presentation/nodeAnimation.ts";
 
 export type {
   ConfirmDialogRecord,
@@ -67,7 +68,7 @@ export function ToastHost(props: {
       <div class="toast-host" aria-live="polite" aria-atomic="false">
         <For each={props.items}>
           {(item) => (
-            <article class={`toast ${item.tone}`}>
+            <article ref={(element) => exitOnUnmount(element)} class={`toast ${item.tone}`}>
               <div class="toast-content">
                 <strong>{item.title}</strong>
                 <Show when={item.message}>

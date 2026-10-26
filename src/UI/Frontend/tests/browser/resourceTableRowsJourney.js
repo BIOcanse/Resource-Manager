@@ -182,13 +182,16 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.resizeHandle = { browsing, editing };
 
-  // 7. 展开：箭头是图标并转到朝下；刚露出来的进程行播一次入场，播完自己清掉；无动画档直接出现，同样清掉。
+  // 7. 展开：箭头是图标并转到朝下；刚露出来的进程行由呈现层标上进场槽位 row，只淡入（不位移），播完自己清掉；无动画档直接出现，同样清掉。
+  //    再收起：交互上进程行当场没有了（行位换成别的行、aria-expanded 为 false），画面上留下的幽灵不可命中、inert、aria-hidden；
+  //    无动画档没有幽灵（docs/resource_table_rows_2026-10-25.md，docs/animation_style_2026-10-26.md「总原则」）。
   const expandAndWatch = (name) => panel.evaluate(async (_panel, name) => {
-    const row = document.querySelector(`.resource-table-row[aria-label="${name}"]`);
+    const row = document.querySelector(`.resource-table-row:not([data-exit-ghost])[aria-label="${name}"]`);
     const button = row.querySelector(".resource-row-expander");
     button.click();
+    const sameTaskRows = document.querySelectorAll(".resource-table-row.process-row:not([data-exit-ghost])").length;
     await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
-    const revealing = [...document.querySelectorAll(".resource-table-row.revealing")];
+    const revealing = [...document.querySelectorAll('.resource-table-row[data-enter-slot="row"]')];
     const first = {
       count: revealing.length,
       kinds: [...new Set(revealing.map((element) => element.classList.contains("process-row") ? "process" : "other"))],
@@ -199,14 +202,44 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
       glyphText: button.textContent.trim()
     };
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 700));
-    return { ...first, after: document.querySelectorAll(".resource-table-row.revealing").length,
+    const opened = { ...first, sameTaskRows, after: document.querySelectorAll('.resource-table-row[data-enter-slot="row"]').length,
       expanded: row.getAttribute("aria-expanded"), chevronAfter: getComputedStyle(row.querySelector(".resource-row-expander svg")).transform };
+    // 收起：同一个任务里读交互状态；幽灵在下一帧画出来之前放好，到那一帧再读幽灵。
+    const processBefore = document.querySelectorAll(".resource-table-row.process-row:not([data-exit-ghost])").length;
+    row.querySelector(".resource-row-expander").click();
+    const collapsedRow = document.querySelector(`.resource-table-row:not([data-exit-ghost])[aria-label="${name}"]`);
+    const processAfter = document.querySelectorAll(".resource-table-row.process-row:not([data-exit-ghost])").length;
+    await new Promise((resolveFrame) => requestAnimationFrame(resolveFrame));
+    const ghosts = [...document.querySelectorAll(".resource-table-row[data-exit-ghost]")];
+    const hits = ghosts.map((ghost) => {
+      const rect = ghost.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit ? Boolean(hit.closest("[data-exit-ghost]")) : false;
+    });
+    const collapse = {
+      processBefore,
+      processAfter,
+      expanded: collapsedRow?.getAttribute("aria-expanded") ?? null,
+      ghosts: ghosts.length,
+      ghostsQuiet: ghosts.every((ghost) => ghost.inert && ghost.getAttribute("aria-hidden") === "true"
+        && getComputedStyle(ghost).pointerEvents === "none" && !ghost.hasAttribute("role") && !ghost.hasAttribute("data-resource-row-id")),
+      ghostHit: hits.some(Boolean),
+      ghostAnimation: ghosts[0] ? getComputedStyle(ghosts[0]).animationName : null
+    };
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 700));
+    collapse.ghostsLeft = document.querySelectorAll("[data-exit-ghost]").length;
+    return { ...opened, collapse };
   }, name);
   const reveal = await expandAndWatch("示例软件 5");
-  if (reveal.count < 1 || reveal.kinds.join() !== "process" || reveal.animation !== "motion-row-reveal" || reveal.duration === "0s"
-    || reveal.glyphText !== "" || !reveal.chevronTransition.includes("transform") || reveal.after !== 0 || reveal.expanded !== "true"
-    || reveal.chevronAfter !== "matrix(0, 1, -1, 0, 0, 0)") {
+  if (reveal.count < 1 || reveal.kinds.join() !== "process" || reveal.animation !== "motion-fade-in" || reveal.duration === "0s"
+    || reveal.sameTaskRows < 1 || reveal.glyphText !== "" || !reveal.chevronTransition.includes("transform") || reveal.after !== 0
+    || reveal.expanded !== "true" || reveal.chevronAfter !== "matrix(0, 1, -1, 0, 0, 0)") {
     throw new Error(`Expanded process rows do not reveal once: ${JSON.stringify(reveal)}`);
+  }
+  const collapse = reveal.collapse;
+  if (collapse.processAfter >= collapse.processBefore || collapse.expanded !== "false" || collapse.ghosts < 1 || !collapse.ghostsQuiet
+    || collapse.ghostHit || collapse.ghostAnimation !== "motion-fade-out" || collapse.ghostsLeft !== 0) {
+    throw new Error(`Collapsed process rows must leave interaction at once and exit as ghosts: ${JSON.stringify(collapse)}`);
   }
   // 动画风格的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect 在测量窗口里改回。
   // 用已保存偏好重新加载，让无动画的展开处于真实的 none 状态，测完恢复原偏好。
@@ -221,8 +254,9 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   const instant = await expandAndWatch("示例软件 6");
   await reloadWithAnimations("desktop");
   // 时长为 0 的入场两帧内多半已经结束、类已清掉；还在的话时长必须是 0。
-  if ((instant.count > 0 && instant.duration !== "0s") || instant.after !== 0 || instant.expanded !== "true"
-    || instant.chevronTransition.includes("transform")) {
+  if (instant.count !== 0 || instant.after !== 0 || instant.expanded !== "true" || instant.sameTaskRows < 1
+    || instant.chevronTransition.includes("transform") || instant.collapse.ghosts !== 0 || instant.collapse.expanded !== "false"
+    || instant.collapse.processAfter >= instant.collapse.processBefore) {
     throw new Error(`Without animations the rows must appear at once and leave no reveal state: ${JSON.stringify(instant)}`);
   }
   results.reveal = { reveal, instant };

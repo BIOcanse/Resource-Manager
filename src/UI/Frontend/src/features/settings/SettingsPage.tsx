@@ -120,10 +120,9 @@ export function SettingsPage(props: SettingsPageProps) {
     key: () => props.activeSection,
     order: sectionOrder,
     stage: () => sectionStage,
-    layer: () => content,
     snapshot: () => "move",
     axis: "y",
-    distance: 16
+    distance: 5
   });
   const statusText = () => {
     if (props.saveState === "saving") {

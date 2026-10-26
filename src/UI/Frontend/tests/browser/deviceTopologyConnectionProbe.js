@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 // Reuse the regular topology subscription and UI; these ports follow the production wire shape.
 export function networkPort(state) {
   return {
@@ -37,7 +38,7 @@ export async function checkNetworkConnectionStates(page, app, language, baseUrl)
         .filter({ has: page.getByText(app.deviceAdapters.label.connectionState, { exact: true }) });
       await summaryRow.locator("strong").getByText(expected, { exact: true }).waitFor();
       await topology.locator(".device-details-button").click();
-      const dialog = page.locator(".user-details-modal:visible");
+      const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
       const facts = dialog.locator(".device-specialized-details.kind-network-adapter");
       await facts.getByText(expected, { exact: true }).waitFor();
       const actual = await facts.locator("strong").allTextContents();

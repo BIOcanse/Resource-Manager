@@ -1,3 +1,4 @@
+import { liveText } from "./liveLocator.js";
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
 import { componentFixture } from "./componentFixtures.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
@@ -76,7 +77,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
       if (release) release();
       else void responseRelease.then(resolve => resolve());
     }
-    await page.getByText(expectedMessage, { exact: true }).waitFor();
+    await liveText(page, expectedMessage).waitFor();
   }
   let protectedSoftware = null;
   let failProtectionSave = false;
@@ -154,11 +155,11 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await switchLanguage(previous, option);
     const app = await loadAppCopy(option.id);
     const settings = await loadSettingsText(option.id);
-    await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
+    await liveText(page, settings.appearance.settingsLanguageDescription).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
     // 动画风格这一行和自动关闭开关：标题、说明和五个风格名都是这种语言的。
-    await page.getByText(settings.appearance.animationStyleDescription, { exact: true }).waitFor();
-    await page.getByText(settings.appearance.autoDisableAnimationsDescription, { exact: true }).waitFor();
+    await liveText(page, settings.appearance.animationStyleDescription).waitFor();
+    await liveText(page, settings.appearance.autoDisableAnimationsDescription).waitFor();
     await page.getByRole("checkbox", { name: settings.appearance.autoDisableAnimationsTitle, exact: true }).waitFor();
     const styleGroup = page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true });
     const styleLabels = (await styleGroup.getByRole("radio").allTextContents()).map(text => text.trim());
@@ -167,9 +168,9 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     }
 
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
-    await page.getByText(settings.performance.gpuOverflowTitle, { exact: true }).waitFor();
-    await page.getByText(settings.performance.gpuOverflowDescription, { exact: true }).waitFor();
-    await page.getByText(settings.performance.realtimeActionBudgetDescription, { exact: true }).waitFor();
+    await liveText(page, settings.performance.gpuOverflowTitle).waitFor();
+    await liveText(page, settings.performance.gpuOverflowDescription).waitFor();
+    await liveText(page, settings.performance.realtimeActionBudgetDescription).waitFor();
     const budgetMode = page.getByRole("radiogroup", { name: settings.performance.realtimeActionBudgetTitle, exact: true });
     for (const budgetOption of settings.performance.realtimeActionBudgetModeOptions) {
       const radio = budgetMode.getByRole("radio", { name: budgetOption.label, exact: true });
@@ -277,19 +278,19 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
       await details.getByText(hint, { exact: true }).waitFor();
     }
     const protection = protectionGroup.getByRole("checkbox", { name: app.softwareDetail.protection.enabled, exact: true });
-    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     await protection.check();
-    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     if (!await protection.isChecked()) throw new Error(`${option.id}: protection not enabled`);
     await details.locator('button.icon-button').first().click();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     await policyTab.click();
-    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     if (!await protection.isChecked()) throw new Error(`${option.id}: protection did not reload`);
     if (await details.getByRole("checkbox", { name: app.softwareDetail.participation.cpu, exact: true }).isChecked())
       throw new Error(`${option.id}: protection changed an opt-out switch`);
     await protection.uncheck();
-    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle:not([data-exit-ghost] *) input')?.disabled);
     if (await protection.isChecked()) throw new Error(`${option.id}: protection not removed`);
     failProtectionSave = true;
     // A failed save immediately reverts the switch. check() itself requires
@@ -308,20 +309,20 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     const modeGroup = page.getByRole("radiogroup", { name: settings.updates.modeTitle, exact: true });
     for (const mode of settings.updates.modeOptions) await modeGroup.getByRole("radio", { name: mode.label, exact: true }).waitFor();
     await page.getByRole("checkbox", { name: settings.updates.periodicTitle, exact: true }).waitFor();
-    await page.getByText(settings.updates.intervalLabel(24, 168), { exact: true }).waitFor();
-    await page.getByText(settings.updates.internetNote, { exact: true }).waitFor();
-    await page.getByText(settings.updates.manualCheckNote, { exact: true }).waitFor();
+    await liveText(page, settings.updates.intervalLabel(24, 168)).waitFor();
+    await liveText(page, settings.updates.internetNote).waitFor();
+    await liveText(page, settings.updates.manualCheckNote).waitFor();
     await page.getByRole("checkbox", { name: settings.updates.inAppNoticeTitle, exact: true }).waitFor();
     await page.getByRole("checkbox", { name: settings.updates.systemNoticeTitle, exact: true }).waitFor();
-    await page.getByText(settings.updates.systemNoticeDescription, { exact: true }).waitFor();
+    await liveText(page, settings.updates.systemNoticeDescription).waitFor();
     await page.getByRole("checkbox", { name: settings.updates.accessRequestNoticeTitle, exact: true }).waitFor();
-    await page.getByText(settings.updates.accessRequestNoticeDescription, { exact: true }).waitFor();
-    await page.getByText(`${settings.updates.nextCheck}2026-10-27 08:00 UTC`, { exact: true }).waitFor();
-    await page.getByText(`${settings.updates.connectedElapsed}0:01:01`, { exact: true }).waitFor();
-    await page.getByText(`${settings.updates.lastChecked}2026-10-01 12:00 UTC`, { exact: true }).waitFor();
-    await page.getByText(settings.updates.versionsDescription, { exact: true }).waitFor();
-    await page.getByText(settings.updates.latest, { exact: true }).waitFor();
-    await page.getByText(settings.updates.latestStable, { exact: true }).waitFor();
+    await liveText(page, settings.updates.accessRequestNoticeDescription).waitFor();
+    await liveText(page, `${settings.updates.nextCheck}2026-10-27 08:00 UTC`).waitFor();
+    await liveText(page, `${settings.updates.connectedElapsed}0:01:01`).waitFor();
+    await liveText(page, `${settings.updates.lastChecked}2026-10-01 12:00 UTC`).waitFor();
+    await liveText(page, settings.updates.versionsDescription).waitFor();
+    await liveText(page, settings.updates.latest).waitFor();
+    await liveText(page, settings.updates.latestStable).waitFor();
     const oldVersion = page.locator('input[value="version:0.3.1"]');
     // 收起的系列：旧版本在折叠内容里，内容 inert（不能聚焦、辅助技术读不到）。
     const collapsed = async () => oldVersion.evaluate(element => element.closest("[inert]") !== null);
@@ -329,7 +330,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await page.locator(".version-selector-expand").click();
     if (await collapsed()) throw new Error(`${option.id}: expanding the series left its versions inert`);
     if (!await oldVersion.isDisabled()) throw new Error(`${option.id}: an old version can be selected`);
-    await page.getByText(settings.updates.unavailableReasons["notNewer"], { exact: true }).waitFor();
+    await liveText(page, settings.updates.unavailableReasons["notNewer"]).waitFor();
     await page.locator('input[value="latest"]').check();
     const confirmation = page.waitForEvent("dialog");
     const click = page.getByRole("button", { name: settings.updates.prepare, exact: true }).click();

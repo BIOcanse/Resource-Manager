@@ -4,6 +4,7 @@ import { scheduleFocusRestore } from "../../interactions/focusReturn.ts";
 import { moveRovingFocus } from "../../ui/primitives/RovingFocus.ts";
 import { uiText } from "../../text.ts";
 import type { DiskUsageNode } from "./diskUsageLayoutTypes.ts";
+import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 /**
  * 方格图的右键菜单。
@@ -68,7 +69,7 @@ export function DiskUsageContextMenu(props: {
 
   return (
     <div
-      ref={(element) => { menu = element; }}
+      ref={(element) => { menu = element; exitOnUnmount(element); }}
       class="disk-usage-context-menu"
       role="menu"
       tabIndex={-1}

@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import assert from "node:assert/strict";
 import { seedFrontendPreferences, customRefresh } from "./frontendPreferencesFixture.js";
 import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
@@ -13,7 +14,7 @@ export default async function liveKeyboardFocusJourney(page, baseUrl) {
   const topology = page.locator(".device-topology-panel");
   await topology.locator(".device-port-item").first().click();
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await dialog.waitFor();
   assert(await dialog.locator("summary").count() > 0, "The device dialog must include its EDID summaries");
   const modal = await tabSequence(dialog, ".modal-header button", ".modal-actions button", "/api/device-topology/state/subscribe").catch(error => { failures.push(String(error)); });

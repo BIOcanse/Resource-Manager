@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createComputed, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import type { SourceLease } from "../../frontendRuntime/source/SourceDescriptor.ts";
 import { SourceLeaseBinding } from "../../frontendRuntime/source/SourceLeaseBinding.ts";
@@ -23,6 +24,7 @@ import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import type { ConfirmDialogRequest } from "../../components/AppFeedback";
+import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
@@ -44,6 +46,10 @@ export function TargetedReportsPage(props: {
   }));
   const recordings = createMemo<RecordingHeader[]>(() =>
     recordingsSource.snapshot().data ?? []);
+  // 列表的行按录制 id 保持：同一条录制刷新后还是同一个行节点，行只在录制出现、消失时进场、退场。
+  // reconcile 会改它的目标，所以行列表是这里自己的一份，不改共享的来源快照。
+  const [recordingRows, setRecordingRows] = createStore<RecordingHeader[]>([]);
+  createComputed(() => setRecordingRows(reconcile(structuredClone(recordings()), { key: "id" })));
   const targetsSource = useSource(runtime.sources.targetedRecordingTargets, () => ({
     active: frontendWork.isNeeded(frontendWorkIds.targetedReportsPage), refreshIntervalMs: null
   }));
@@ -282,9 +288,9 @@ export function TargetedReportsPage(props: {
             detail={loading() ? undefined : uiText.targetedReport.emptyDetail} />
         </Show>}>
           <div class="targeted-report-list" role="list">
-            <For each={recordings()}>
+            <For each={recordingRows}>
               {(item) => (
-                <div class="targeted-report-list-row" role="listitem"
+                <div ref={(element) => exitOnUnmount(element)} class="targeted-report-list-row" role="listitem"
                   classList={{ active: selectedId() === item.id, recording: item.status === "recording" }}>
                   <button class="targeted-report-open" type="button" classList={{ active: selectedId() === item.id }}
                     aria-pressed={selectedId() === item.id} onClick={() => void select(item.id)}>
@@ -319,7 +325,7 @@ export function TargetedReportsPage(props: {
       </section>
       <Show when={report()}>
         {(current) => (
-          <div class="targeted-report-detail">
+          <div ref={(element) => exitOnUnmount(element)} class="targeted-report-detail">
             <div class="targeted-report-toolbar">
               <h3>{current().recording.softwareName} · {dateTime(current().recording.startedAt)}</h3>
               <div class="targeted-report-actions">

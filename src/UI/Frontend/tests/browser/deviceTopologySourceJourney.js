@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { metricFieldDevices } from "./metricFieldsProbe.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
@@ -185,7 +186,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     "The selected interface does not have its expected attached display");
     await attached.click();
     await topology.locator(".device-details-button").click();
-    const identityDialog = page.locator(".user-details-modal:visible");
+    const identityDialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
     await identityDialog.getByText(deviceId, { exact: true }).waitFor();
     await page.keyboard.press("Escape"); await identityDialog.waitFor({ state: "hidden" });
     await root.click();
@@ -230,7 +231,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
 
   await topology.locator(".device-port-item.nested.device-node").first().click();
   await topology.locator(".device-details-button").click();
-  const metricDialog = page.locator(".user-details-modal:visible");
+  const metricDialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await metricDialog.getByText("137.5%", { exact: true }).waitFor();
   await setScenario(page, { invalidMetricFields: true });
   await metricDialog.getByText("137.5%", { exact: true }).waitFor({ state: "detached" });
@@ -244,7 +245,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   assert(await topology.locator(".observation-state.error").count() === 0, "One nullable protocol must not reject the snapshot");
   await topology.locator(".device-port-item.nested.device-node").nth(1).click();
   await topology.locator(".device-details-button").click();
-  const protocolDialog = page.locator(".user-details-modal:visible");
+  const protocolDialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await protocolDialog.waitFor();
   const protocolRow = protocolDialog.locator(".user-details-row").filter({ has: page.getByText(app.deviceTopology.label.protocol, { exact: true }) });
   assert((await protocolRow.locator("dd").textContent()) === app.deviceTopology.deviceCategory.unknown, "Only the nullable port protocol shows localized unknown");
@@ -338,7 +339,7 @@ async function checkDetachedDisplayDialog(page, app) {
   const root = topology.locator(".device-port-item:not(.nested)").filter({ hasText: "HDMI" }).first();
   await root.click();
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await dialog.waitFor();
   await dialog.getByText(app.deviceTopology.label.interfaceType, { exact: true }).first().waitFor();
   const details = {
@@ -395,7 +396,7 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
   `Selecting a scrolled device lost its place after a publication: ${JSON.stringify({ before, after })}`);
 
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await dialog.waitFor();
   const rowCount = await dialog.evaluate((element) => {
     const rows = element.querySelectorAll(".user-details-row");

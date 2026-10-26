@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 /*
  * 规范字段新显示的浏览器检查：CPU 拓扑的 NUMA 行、核心详情的有效频率、设备详情里的
  * NPU／AMD NPU 两节，以及监视控制台上的设备字段卡片。同一份设备值供单语言旅程和九语旅程共用。
@@ -91,7 +92,7 @@ export async function checkCpuMetricFields(page, app, language) {
   await numaLine.waitFor();
   if (await numaLine.getAttribute("title") !== cpu.numaHint) throw new Error(`${language}: NUMA hint missing`);
   await model.locator(".cpu-topology-actions").getByRole("button", { name: cpu.details, exact: true }).click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await dialog.getByText(cpu.coreDetailTitle, { exact: true }).waitFor();
   const frequency = dialog.locator(".user-details-row").filter({ hasText: cpu.effectiveFrequency });
   await frequency.locator("dd").filter({
@@ -111,7 +112,7 @@ export async function checkDeviceMetricFields(page, app, language) {
   const topology = page.locator(".device-topology-panel");
   await topology.locator(".device-port-item").first().click();
   await topology.locator(".device-details-button").click();
-  const dialog = page.locator(".user-details-modal:visible");
+  const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   const npu = dialog.locator(".user-details-section").filter({ has: page.getByRole("heading", { name: text.npuTitle, exact: true }) });
   await npu.locator(".user-details-row").filter({ hasText: app.fieldLabel.npu_all_engine_busy_percent.label }).filter({ hasText: `${(137.5).toLocaleString(language, { useGrouping: false })}%` }).waitFor();
   const amd = dialog.locator(".user-details-section").filter({ has: page.getByRole("heading", { name: text.amdNpuTitle, exact: true }) });

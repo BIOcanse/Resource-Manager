@@ -197,7 +197,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
     `Dialog did not restore its opener: ${dialogFocusRestored}`);
 
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  const settingsBoundary = page.locator(".settings-readonly-boundary");
+  const settingsBoundary = page.locator(".settings-readonly-boundary:not([data-exit-ghost])");
   await settingsBoundary.waitFor({ state: "visible", timeout: 5000 });
   assert(await settingsBoundary.isEnabled(), "Ready settings boundary is unexpectedly disabled");
 

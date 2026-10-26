@@ -25,8 +25,8 @@
   margin-right: auto;
 }
 
-/* 换页时旧内容的退出副本放在这一层（磁石内容过渡，interactions/solid/contentTransition.ts）：
-   和正文同一块位置，不随正文滚动，排在正文下面、不接收指针。 */
+/* 换页时旧页的退场幽灵放在这一层（呈现层 presentation/nodeAnimation.ts，内容过渡 interactions/solid/contentTransition.ts）：
+   和正文同一块位置，不随正文滚动，排在正文下面、不接收指针。空着时也保留外框：幽灵按它的坐标放。 */
 .page-leaving-layer {
   position: fixed;
   top: calc(var(--shellbar-height) + var(--managementbar-height));
@@ -35,10 +35,6 @@
   bottom: 0;
   overflow: hidden;
   pointer-events: none;
-}
-
-.page-leaving-layer:empty {
-  display: none;
 }
 
 /*

@@ -16,12 +16,14 @@ const SWITCH_SAMPLE_MS = 700;
  * - 分页树：一级页签和二级分页的名字都是树里的名字；顶栏不写当前页名；页面上没有和选中分页同名的可见标题。
  * - 二级分页条常驻：点下去之后的第一帧新的那组分页就在；A→B→A 快速往返，条和每组分页的节点都不换，组不进场（不动、不淡入）。
  * - 每一页的内容从同一个 y 开始，磁盘占用、控制面、设置也一样。
- * - 换页、换二级分页：旧内容的副本先淡出，新内容从序号大的一侧进来（往右的分页从右边进），结束后副本清掉、内容不留变换。
+ * - 换页、换二级分页（docs/animation_style_2026-10-26.md「总原则」）：新内容从第一帧起就在终态几何上（没有位移，命中区域不动），
+ *   只有不透明度由呈现层带进来；旧内容的幽灵（[data-exit-ghost]，不可命中）淡出，并往和新内容相反的方向退（往右的分页，旧内容往左退），
+ *   结束后幽灵撤掉、内容不留样式。
  * - 指示条停下来时和选中项重合：一级页签、二级分页、任务中心的分页、分段选择。
  * - 任务中心：换分页时高度一帧都不变。
  * - 无动画、超高性能（设置里选）：第一帧就是终态，没有副本、没有位移，指示条已经到位。
  * - 每种会动的风格各跑一遍（docs/animation_style_2026-10-26.md）：page-motion 是流畅平滑，page-motion-desktop、page-motion-terminal 是另外两种；
- *   终端顿挫的进出按固定步数跳（新内容的位移最多 TERMINAL_STEPS 个不同的值），退出副本和新内容同一步走完。
+ *   终端顿挫的进出按固定步数跳（新内容的不透明度最多 TERMINAL_STEPS + 1 个不同的值），幽灵不晚于新内容走完。
  * - 鼠标点完没有焦点环（:focus-visible 不成立）；按 Tab 进去有。
  * - 预热后按点击窗口归因长任务；超过 50 ms 必须匹配具名动效登记和容差；正常动画、无动画走同一串切换，动画不引起重连。
  * 帧都在页面里用 requestAnimationFrame 逐帧读（无头浏览器不节流）。
@@ -187,15 +189,20 @@ async function pageMotionJourney(page, baseUrl, style) {
   const checkContent = (label, run, direction) => {
     contentRuns[label] = summarize(run);
     const first = run.frames[0];
-    if (!(first.leaving.length >= 1)) fail(`${label}: no leaving copy in the first frame`);
-    if (!(Math.sign(first.stage.x) === direction)) fail(`${label}: content enters from ${first.stage.x} (expected sign ${direction})`);
+    if (!(first.leaving.length >= 1)) fail(`${label}: no exit ghost in the first frame`);
+    // 命中几何从第一帧起就是终态：新内容没有位移，只有不透明度在变。
+    const moved = run.frames.filter((frame) => frame.stage.transform !== "none");
+    if (moved.length > 0) fail(`${label}: the entering content moves (its hit area would move with it): ${JSON.stringify(moved[0].stage)}`);
+    // 方向在幽灵上：旧内容往和新内容相反的方向退。
+    const ghostShift = run.frames.map((frame) => frame.leavingX[0]).filter((x) => x !== undefined && Math.abs(x) > 0.05).at(-1);
+    if (ghostShift === undefined || Math.sign(ghostShift) !== -direction) fail(`${label}: the exit ghost leaves towards ${ghostShift} (expected sign ${-direction})`);
     if (style === "terminal") {
-      // 按步跳：位移只取几个值，单调走向 0；退出副本只会变暗，最后一步和新内容一起走完。
-      const xs = run.frames.map((frame) => frame.stage.x);
-      const distinct = [...new Set(xs)];
-      if (distinct.length < 3 || distinct.length > TERMINAL_STEPS + 1) fail(`${label}: terminal content takes ${distinct.length} positions, not up to ${TERMINAL_STEPS} steps: ${JSON.stringify(distinct)}`);
-      if (xs.some((x, index) => index > 0 && Math.abs(x) > Math.abs(xs[index - 1]) + 0.01)) fail(`${label}: terminal content moves back: ${JSON.stringify(distinct)}`);
-      contentRuns[label].positions = distinct;
+      // 按步跳：不透明度只取几个值，单调走向 1。
+      const opacities = run.frames.map((frame) => frame.stage.opacity);
+      const distinct = [...new Set(opacities)];
+      if (distinct.length < 3 || distinct.length > TERMINAL_STEPS + 1) fail(`${label}: terminal content takes ${distinct.length} looks, not up to ${TERMINAL_STEPS} steps: ${JSON.stringify(distinct)}`);
+      if (opacities.some((value, index) => index > 0 && value < opacities[index - 1] - 0.001)) fail(`${label}: terminal content fades back: ${JSON.stringify(distinct)}`);
+      contentRuns[label].opacities = distinct;
     }
     let lastLeaving = Infinity;
     let leavingGoneAt = null;
@@ -205,19 +212,16 @@ async function pageMotionJourney(page, baseUrl, style) {
       if (opacity > lastLeaving + 0.02) { fail(`${label}: the leaving copy brightens again at ${Math.round(frame.dt)} ms`); break; }
       lastLeaving = opacity;
       if (leavingGoneAt === null && opacity < 0.05) leavingGoneAt = frame.dt;
-      if (settledAt === null && frame.stage.x === 0 && frame.stage.opacity === 1) settledAt = frame.dt;
+      if (settledAt === null && frame.stage.opacity === 1) settledAt = frame.dt;
     }
-    // 退出看得见（不是一两帧就没了），并且在新内容停下之前走完：降到 5% 以下的时刻在进来用时的 25%～75% 之间。
-    // 流畅平滑的换页是临界阻尼弹簧，停下的时刻由停下距离定，最后一段是看不见的尾巴：退出降到 5% 时（1 − p³ < 0.05，
-    // 还剩一段的 1.7%）新内容只差不到 0.5 px，到停下距离（0.5%）还要约 90 ms，所以这里只要求在 25% 之后、停下之前走完（10-26 实测约 390 / 478 ms）。
+    // 退出看得见（不是一两帧就没了），并且在新内容到位之前走完：降到 5% 以下的时刻在进来用时的 25%～75% 之间；终端顿挫不晚于新内容。
     const exitEarly = style === "terminal" ? leavingGoneAt !== null && leavingGoneAt <= settledAt + 1
-      : style === "smooth" ? leavingGoneAt !== null && leavingGoneAt >= settledAt * 0.25 && leavingGoneAt < settledAt
       : leavingGoneAt !== null && leavingGoneAt >= settledAt * 0.25 && leavingGoneAt <= settledAt * 0.75;
     if (settledAt === null || !exitEarly) {
       fail(`${label}: the exit fades out at ${leavingGoneAt} ms, the enter settles at ${settledAt} ms`);
     }
     const last = run.frames.at(-1);
-    if (last.leaving.length !== 0 || last.stage.transform !== "none") fail(`${label}: copies or transforms stay after settling: ${JSON.stringify(last)}`);
+    if (last.leaving.length !== 0 || last.stage.transform !== "none" || last.stage.opacity !== 1) fail(`${label}: ghosts or styles stay after settling: ${JSON.stringify(last)}`);
   };
   await primary("components").click();
   await settle();
@@ -433,8 +437,9 @@ async function installProbe(page, captureGeometry = true) {
       const animations = bar ? bar.getAnimations({ subtree: true }).filter((animation) => groupTargets.has(animation.effect?.target)).length : 0;
       const stage = document.querySelector("#pageStage");
       const stageMove = translate(stage);
-      const leaving = [...document.querySelectorAll(".page-leaving-layer > .content-transition-leaving")]
-        .map((element) => Math.round(Number(getComputedStyle(element).opacity) * 1000) / 1000);
+      const ghosts = [...document.querySelectorAll(".page-leaving-layer > [data-exit-ghost]")];
+      const leaving = ghosts.map((element) => Math.round(Number(getComputedStyle(element).opacity) * 1000) / 1000);
+      const leavingX = ghosts.map((element) => translate(element).x);
       const dialog = document.querySelector("[role='dialog']");
       return {
         t: performance.now(),
@@ -444,6 +449,7 @@ async function installProbe(page, captureGeometry = true) {
           : { page: null, node: null, tabs: 0, opacity: 1, transform: "none", animations },
         stage: { x: stageMove.x, y: stageMove.y, transform: stageMove.transform, opacity: Math.round(Number(getComputedStyle(stage).opacity) * 1000) / 1000 },
         leaving,
+        leavingX,
         primaryIndicator: indicatorOffset(document.querySelector(".shell-pages")),
         subnavIndicator: indicatorOffset(group?.querySelector("[role='tablist']") ?? null),
         dialog: dialog ? Math.round(dialog.getBoundingClientRect().height * 10) / 10 : null

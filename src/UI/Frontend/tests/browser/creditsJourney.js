@@ -1,3 +1,4 @@
+import { checkDisclosureFrames, toggleDisclosure } from "./disclosureFrames.js";
 import { readFileSync } from "node:fs";
 import { waitForStableRendering } from "./journeyWaits.js";
 import { creditSources } from "../../src/i18n/settingsCredits.ts";
@@ -21,7 +22,8 @@ export default async function creditsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   const openCredits = () => page.getByRole("button", { name: settings.sections.credits, exact: true }).click();
   await openCredits();
-  const panel = page.locator(".settings-credits-panel");
+  // 换分区时旧分区留着淡出的幽灵（不可命中、去掉了身份），按类名找时排除它。
+  const panel = page.locator(".settings-credits-panel:not([data-exit-ghost]):not([data-exit-ghost] *)");
   await panel.getByText(credits.heroTitle, { exact: true }).waitFor({ timeout: 7000 });
   // 外部链接不真的打开：捕获阶段拦掉默认动作，组件自己的点击处理照常运行。
   await page.evaluate(() => window.addEventListener("click", (event) => {
@@ -145,19 +147,8 @@ export default async function creditsJourney(page, baseUrl) {
   const body = panel.locator(".settings-credit-dependencies .ui-disclosure-body");
   assert((await header.textContent()).includes(credits.dependencyListTitle), "The dependency disclosure header is missing");
   assert(await header.getAttribute("aria-expanded") === "false" && await body.evaluate((element) => element.inert), "Dependencies must start collapsed and inert");
-  /** 点一下标题，按帧记内容的高度，直到停下。 */
-  const toggleHeights = () => page.evaluate(async () => {
-    const button = document.querySelector(".settings-credit-dependencies .ui-disclosure-header");
-    const element = document.querySelector(".settings-credit-dependencies .ui-disclosure-body");
-    const heights = [];
-    button.click();
-    const start = performance.now();
-    while (performance.now() - start < 900) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      heights.push(Math.round(element.getBoundingClientRect().height));
-    }
-    return { heights, inlineHeight: element.style.height, inert: element.inert };
-  });
+  /** 点一下标题，按帧读内容体高度、内容和幽灵的不透明度（disclosureFrames.js）：布局当帧到位，画面是淡入、淡出。 */
+  const toggleFrames = () => toggleDisclosure(page, ".settings-credit-dependencies .ui-disclosure-header");
   /** 设置 → 外观 → 动画，保存后回到致谢页（致谢组件重新挂上，依赖表回到收起）。 */
   const setAnimation = async (id) => {
     await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
@@ -169,11 +160,11 @@ export default async function creditsJourney(page, baseUrl) {
     await header.waitFor();
   };
   if (await page.evaluate(() => document.body.dataset.animations) !== "desktop") await setAnimation("desktop");
-  const opened = await toggleHeights();
-  const full = opened.heights.at(-1);
-  const between = (heights, top) => heights.filter((height) => height > 1 && height < top - 1).length;
-  assert(full > 100 && opened.inlineHeight === "" && !opened.inert, `Dependencies did not open fully: ${JSON.stringify(opened)}`);
-  assert(between(opened.heights, full) >= 3, `Normal motion: opening has no in-between frames: ${opened.heights}`);
+  const opened = await toggleFrames();
+  const full = opened.frames.at(-1).height;
+  assert(full > 100 && !opened.inert, `Dependencies did not open fully: ${JSON.stringify(opened.frames.at(-1))}`);
+  const openProblems = checkDisclosureFrames(opened, { moving: true, opening: true });
+  assert(openProblems.length === 0, `Normal motion, opening: ${openProblems.join("; ")}`);
 
   const dependencies = panel.locator(".settings-credit-dependency-table tbody tr");
   const lock = JSON.parse(readFileSync(new URL("../../package-lock.json", import.meta.url), "utf8"));
@@ -209,24 +200,25 @@ export default async function creditsJourney(page, baseUrl) {
   await panel.locator(".settings-credit-dependency-scroll").evaluate((element) => { element.scrollTop = element.scrollHeight; });
   assert(await panel.locator(".settings-credit-dependency-table tbody tr").last().isVisible(), "The last dependency cannot be scrolled into view");
 
-  const closed = await toggleHeights();
-  assert(closed.heights.at(-1) === 0 && closed.inert, `Dependencies did not close: ${JSON.stringify(closed)}`);
-  assert(between(closed.heights, full) >= 3, `Normal motion: closing has no in-between frames: ${closed.heights}`);
+  const closed = await toggleFrames();
+  assert(closed.frames.at(-1).height === 0 && closed.inert, `Dependencies did not close: ${JSON.stringify(closed.frames.at(-1))}`);
+  const closeProblems = checkDisclosureFrames(closed, { moving: true, opening: false });
+  assert(closeProblems.length === 0, `Normal motion, closing: ${closeProblems.join("; ")}`);
 
   // 减弱版：无动画档直接到终态。
   await setAnimation("none");
-  const instantOpen = await toggleHeights();
-  const instantFull = instantOpen.heights.at(-1);
-  assert(instantFull > 100 && between(instantOpen.heights.slice(1), instantFull) === 0 && instantOpen.heights[1] === instantFull,
-    `No motion: opening still animates: ${instantOpen.heights.slice(0, 6)}`);
-  const instantClose = await toggleHeights();
-  assert(instantClose.heights[1] === 0 && instantClose.heights.at(-1) === 0, `No motion: closing still animates: ${instantClose.heights.slice(0, 6)}`);
+  const instantOpen = await toggleFrames();
+  const instantOpenProblems = checkDisclosureFrames(instantOpen, { moving: false, opening: true });
+  assert(instantOpen.frames.at(-1).height > 100 && instantOpenProblems.length === 0, `No motion, opening: ${instantOpenProblems.join("; ")}`);
+  const instantClose = await toggleFrames();
+  const instantCloseProblems = checkDisclosureFrames(instantClose, { moving: false, opening: false });
+  assert(instantCloseProblems.length === 0, `No motion, closing: ${instantCloseProblems.join("; ")}`);
   // 恢复正常档，后面的旅程从默认状态开始。
   await setAnimation("desktop");
 
   assert(errors.length === 0, `Page errors: ${errors.join("; ")}`);
   return {
     groupCount: result.groups.length, officialDescriptions: result.quotes.length, linkCount: result.links.length, layouts,
-    dependencyRows: table.rows.length, normalOpenFrames: opened.heights.length, pageErrors: errors
+    dependencyRows: table.rows.length, normalOpenFrames: opened.frames.length, pageErrors: errors
   };
 }

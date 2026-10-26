@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 export default async function diskUsageLocalTreemapJourney(page, baseUrl) {
@@ -52,7 +53,7 @@ export default async function diskUsageLocalTreemapJourney(page, baseUrl) {
   const title = page.locator(".disk-usage-result .optimization-heading h2");
   await title.getByText("C:\\", { exact: true }).waitFor();
   const acceptedReadCount = diskRequests.length;
-  const canvas = page.locator(".disk-usage-treemap-canvas");
+  const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
   const checked = [];
   for (const size of [{ width: 800, height: 500 }, { width: 1200, height: 950 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(size);

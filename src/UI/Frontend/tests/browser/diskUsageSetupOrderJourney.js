@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 /*
@@ -77,7 +78,7 @@ export default async function diskUsageSetupOrderJourney(page, baseUrl) {
   await expand.click();
   await setup.waitFor();
   await expectOrder("expanded with result", ["setting", "volumes", "actions", "result"]);
-  await page.locator(".disk-usage-treemap-canvas").waitFor();
+  await page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`).waitFor();
 
   assert(errors.length === 0, `Page errors: ${errors.join("; ")}`);
 }

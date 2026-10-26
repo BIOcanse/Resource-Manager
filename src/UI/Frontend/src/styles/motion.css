@@ -79,17 +79,11 @@ body[data-window-resizing="yes"] {
   --motion-bar: 0ms;
 }
 
-/* --- 入场关键帧：小位移 + 淡入 --- */
+/* --- 进场：只改不透明度 ---
+   交互和无动画完全一致（docs/animation_style_2026-10-26.md「总原则」）：进场的真实节点从第一帧起就在终态几何上可点、可聚焦。
+   不透明度为 0 的节点照样可命中；位移、缩放会带着命中区域一起移动，所以进场不写位移和缩放（只放在退场幽灵上）。 */
 @keyframes motion-fade-in {
   from { opacity: 0; }
-}
-
-@keyframes motion-rise-in {
-  from { opacity: 0; transform: translateY(4px); }
-}
-
-@keyframes motion-toast-in {
-  from { opacity: 0; transform: translateX(24px); }
 }
 
 /* --- 交互控件：悬停 / 按压 --- */
@@ -161,19 +155,20 @@ textarea {
   transition: fill var(--motion-fast) var(--ease-standard);
 }
 
-/* --- 页面与分区入场 ---
-   换页、切二级分页、页签面板的进出由磁石内容过渡带（interactions/solid/contentTransition.ts），不写 CSS 动画。 */
+/* --- 页面与分区 ---
+   换页、切二级分页、页签面板、设置分区：旧内容的幽灵和新内容的进场都由呈现层放（interactions/solid/contentTransition.ts → presentation/nodeAnimation.ts），
+   进场不写 CSS 动画；旧内容的退出槽位 content 在下面“退出动画槽位”里。 */
 /* --- 弹窗与 Toast ---
-   弹窗和遮罩的入场由磁石带（interactions/solid/dialogEntrance.ts，按动画风格是弹簧或缓动），不写 CSS 动画。 */
+   弹窗和遮罩的进场由呈现层带（presentation/nodeAnimation.ts 的 enterNode，磁石按动画风格是弹簧或缓动），不写 CSS 动画。 */
 
 .toast {
-  animation: motion-toast-in var(--motion-page) var(--ease-decel);
+  animation: motion-fade-in var(--motion-page) var(--ease-decel);
 }
 
 .standard-select-popover,
 .standard-context-menu,
 .disk-usage-context-menu {
-  animation: motion-rise-in var(--motion-fast) var(--ease-decel);
+  animation: motion-fade-in var(--motion-fast) var(--ease-decel);
 }
 
 /* --- 资源条形图交互层 --- */
@@ -202,14 +197,9 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
   animation: motion-fade-in var(--motion-fast) var(--ease-standard);
 }
 
-/* 展开面板整体上浮展开；按 softwareId keyed，切换分段时重挂→重放，轮询时不重挂 */
-@keyframes motion-panel-unfold {
-  from { opacity: 0; transform: translateY(10px); }
-}
-
+/* 展开面板淡入；按 softwareId keyed，切换分段时重挂→重放，轮询时不重挂 */
 .resource-process-panel {
-  animation: motion-panel-unfold var(--motion-panel) var(--ease-decel);
-  transform-origin: top center;
+  animation: motion-fade-in var(--motion-panel) var(--ease-decel);
 }
 
 /* --- 资源表格 --- */
@@ -218,18 +208,19 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
   transition: --row-tint-amount var(--motion-fast) var(--ease-standard);
 }
 
-/* 展开、收起：箭头转过去只在正常档（按钮按行重建，滚动换行不转）；
-   刚露出来的进程行淡入、从软件行下面落下 6 px，无动画、极简档时长清零直接出现。收起是直接移除（退场动画未决）。 */
-@keyframes motion-row-reveal {
-  from { opacity: 0; transform: translateY(-6px); }
-}
-
+/* 展开、收起：箭头转过去只在会动的风格（按钮按行重建，滚动换行不转）；
+   刚露出来的进程行由呈现层标上进场槽位 row 淡入（presentation/nodeAnimation.ts 的 enterSlot），收起时进程行留幽灵播放退出槽位。 */
 body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-row-expander svg {
   transition: transform var(--motion-medium) var(--ease-standard);
 }
 
-.resource-table-row.revealing > .resource-table-cell {
-  animation: motion-row-reveal var(--motion-medium) var(--ease-decel);
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-table-row[data-enter-slot="row"] > .resource-table-cell {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
+}
+
+/* 折叠内容展开：内容当场在终态布局上，画面淡入（presentation/nodeAnimation.ts 的 enterSlot） */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .ui-disclosure-content[data-enter-slot="disclosure"] {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
 }
 
 /* 排序箭头：出现、悬停预览是颜色类（各档都有），换方向的半圈旋转只在正常档。 */
@@ -319,19 +310,18 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
 }
 
 .edit-slot {
-  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
 }
 
-/* 设备拓扑的整机示意：后端判定的形态变了才换一张（DeviceMachineView），换上时上浮淡入；
-   有位移，只在 normal；无动画、极简直接到终态。 */
-body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-machine-figure {
-  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+/* 设备拓扑的整机示意：后端判定的形态变了才换一张（DeviceMachineView），换上时淡入。 */
+.device-machine-figure {
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
 }
 
-/* 定向报告：新录制行和报告详情按分区入场；状态行换内容只淡入不位移，选中行的底色和边框随颜色过渡。 */
+/* 定向报告：新录制行和报告详情按分区淡入；状态行换内容只淡入，选中行的底色和边框随颜色过渡。 */
 .targeted-report-list-row,
 .targeted-report-detail {
-  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+  animation: motion-fade-in var(--motion-medium) var(--ease-decel);
 }
 
 .targeted-report-list-row {
@@ -344,6 +334,81 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
 .targeted-recording-alert,
 .targeted-report-note.error {
   animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+}
+
+/* --- 退出动画槽位 ---
+   节点在交互上离开的那一刻，呈现层（presentation/nodeAnimation.ts）在原处留一份幽灵（[data-exit-ghost]）：不可命中、inert、aria-hidden，
+   只播放这里给它的槽位，播完撤掉。槽位按节点自己的 class 取默认，或由调用方写 data-exit-slot。
+   位移、缩放只在幽灵上（幽灵不参与命中）。槽位只在会动的风格里有：无动画、超高性能的槽位是空的，没有幽灵，退出当场结束。
+   forwards：停在终态直到撤掉，不闪回。 */
+@keyframes motion-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes motion-sink-out {
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes motion-dialog-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+@keyframes motion-toast-out {
+  to { opacity: 0; transform: translateX(24px); }
+}
+
+@keyframes motion-content-out {
+  to { opacity: 0; transform: translate(var(--exit-shift-x, 0px), var(--exit-shift-y, 0px)); }
+}
+
+@keyframes motion-row-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
+/* 小弹层（下拉、右键菜单） */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu) {
+  animation: motion-sink-out var(--motion-fast) var(--ease-standard) forwards;
+}
+
+/* 对话框：遮罩淡出，对话框淡出、下沉 6 px、缩到 0.97（进场的反向，只在幽灵上） */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].modal-backdrop {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].modal-backdrop > .modal {
+  animation: motion-dialog-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].toast {
+  animation: motion-toast-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* 换页、切分页、页签面板、设置分区的旧内容：淡出，往和新内容相反的方向移出一小段（--exit-shift-x / -y 由内容过渡给） */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost][data-exit-slot="content"] {
+  animation: motion-content-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* 资源表收起时的进程行：行位用 transform 定位，所以动的是行里的格子 */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-table-row {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-table-row > .resource-table-cell {
+  animation: motion-row-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* 折叠内容收起：内容在布局上当场让位，幽灵在原处淡出 */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost][data-exit-slot="disclosure"] {
+  animation: motion-fade-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+/* 资源条的进程面板、提示，编辑槽，定向报告的行和详情，设备拓扑的整机示意 */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.resource-process-panel, .edit-slot, .targeted-report-list-row, .targeted-report-detail, .device-machine-figure) {
+  animation: motion-sink-out var(--motion-medium) var(--ease-standard) forwards;
+}
+
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost].resource-tooltip {
+  animation: motion-fade-out var(--motion-fast) var(--ease-standard) forwards;
 }
 
 /* --- 无动画 / 超高性能：一切瞬时 --- */

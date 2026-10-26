@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
@@ -239,7 +240,7 @@ async function checkDiskUsageFeedbackRefresh(page, baseUrl) {
     assert(dHeader.includes(dTotals) && !dHeader.includes(scanWideTotal),
       `${option.id}: the D: root size was confused with scan-wide byte totals`);
 
-    const canvas = page.locator(".disk-usage-treemap-canvas");
+    const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
     const center = await canvas.evaluate(element => {
       const rect = element.getBoundingClientRect();
       return { x: rect.width / 2, y: rect.height / 2 };

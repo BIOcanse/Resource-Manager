@@ -1,7 +1,7 @@
-import { Show, type JSX } from "solid-js";
+import { onMount, Show, type JSX } from "solid-js";
 import { X } from "lucide-solid";
 import { useModalFocus } from "../../interactions/modalFocus.ts";
-import { useDialogEntrance } from "../../interactions/solid/dialogEntrance.ts";
+import { enterNode, exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 import { uiText } from "../../text.ts";
 
 export interface DialogRootProps {
@@ -35,17 +35,20 @@ export function DialogRoot(props: DialogRootProps) {
   );
 }
 
-/** 打开着的对话框：每次打开挂一次，挂上时由磁石带入场（interactions/solid/dialogEntrance.ts）。 */
+/**
+ * 打开着的对话框：每次打开挂一次。交互上挂上即可用、卸下即消失（焦点、inert 由 useModalFocus 当场改）；
+ * 画面由呈现层（presentation/nodeAnimation.ts）放：挂上时对话框和遮罩的不透明度由磁石带进来，卸下时遮罩连同对话框留一份幽灵播放退出槽位。
+ */
 function DialogFrame(props: DialogRootProps & {
   readonly backdropRef: (element: HTMLDivElement) => void;
   readonly dialogRef: (element: HTMLElement) => void;
 }) {
   let backdropElement: HTMLDivElement | undefined;
   let dialogElement: HTMLElement | undefined;
-  useDialogEntrance({ name: "弹窗入场", dialog: () => dialogElement, backdrop: () => backdropElement });
+  onMount(() => enterNode(dialogElement!, { part: "dialog", name: "弹窗进场", alsoFade: [backdropElement!] }));
   return (
     <div
-      ref={(element) => { backdropElement = element; props.backdropRef(element); }}
+      ref={(element) => { backdropElement = element; props.backdropRef(element); exitOnUnmount(element); }}
       class={`modal-backdrop ${props.backdropClass ?? ""}`.trim()}
       role="presentation"
       onClick={(event) => {

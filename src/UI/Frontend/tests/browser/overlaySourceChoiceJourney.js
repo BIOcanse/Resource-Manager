@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { metricFieldDevices, readingSourceDevices } from "./metricFieldsProbe.js";
 import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
@@ -25,13 +26,13 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
   await page.setViewportSize({ width: 1200, height: 950 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const app = await loadAppCopy("zh-CN");
-  const editor = page.locator(".overlay-settings");
+  const editor = page.locator(`.overlay-settings${NOT_GHOST}`);
   const open = async (copy) => {
     await page.getByRole("button", { name: copy.page.components, exact: true }).click();
     await page.getByRole("tablist", { name: copy.management.categoryNav }).getByRole("tab", { name: new RegExp(copy.softwareKind.other) }).click();
     await page.locator(".software-item").filter({ hasText: "示例软件" }).first().getByRole("button", { name: copy.management.softwareSettings }).click();
     await page.getByRole("tab", { name: copy.performanceOverlay.tab, exact: true }).click();
-    await page.locator(".overlay-settings-fields").waitFor({ state: "visible" });
+    await page.locator(`.overlay-settings-fields${NOT_GHOST}`).waitFor({ state: "visible" });
   };
   const close = async (copy) => {
     await page.getByRole("dialog", { name: "示例软件", exact: true }).getByRole("button", { name: copy.softwareDetail.close, exact: true }).first().click();

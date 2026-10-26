@@ -2,6 +2,7 @@ import { Check, ChevronDown, Search } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { uiText } from "../text.ts";
+import { exitOnUnmount } from "../presentation/nodeAnimation.ts";
 
 export interface StandardSelectOption<T extends string = string> {
   value: T;
@@ -330,7 +331,7 @@ export function StandardSelect<T extends string>(props: {
       <Show when={open()}>
         <Portal>
           <div
-            ref={popup}
+            ref={(element) => { popup = element; exitOnUnmount(element); }}
             class="standard-select-popover"
             data-modal-focus-portal="true"
             style={{

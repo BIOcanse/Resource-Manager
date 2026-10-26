@@ -1,3 +1,4 @@
+import { NOT_GHOST } from "./liveLocator.js";
 import assert from "node:assert/strict";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
@@ -120,10 +121,10 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   const sensorName = initialApp.status.component.names.hardwareSensorsPawnIo;
   for (const query of ["hardware_monitor", "HARDWARE_MONITOR"]) {
     await page.getByRole("searchbox").fill(query);
-    await page.locator(".component-item").filter({ hasText: sensorName }).waitFor();
+    await page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: sensorName }).waitFor();
   }
   await page.getByRole("searchbox").fill("unmatched-provider-kind");
-  await page.locator(".component-item").filter({ hasText: sensorName }).waitFor({ state: "hidden" });
+  await page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: sensorName }).waitFor({ state: "hidden" });
   await page.getByRole("searchbox").fill("");
   let previous = "zh-CN";
   const languages = [];
@@ -148,14 +149,14 @@ export default async function managementFeedbackJourney(page, baseUrl) {
     payloadRepaired = false;
     const refresh = page.locator("#componentsPage button.panel-refresh-button");
     await refresh.click();
-    const payload = page.locator(".component-item").filter({ hasText: app.status.component.names.amdSmuPawnIo });
+    const payload = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: app.status.component.names.amdSmuPawnIo });
     await payload.getByText(app.status.state.payloadMissing, { exact: true }).waitFor();
     await payload.getByText(app.backendMessage.dependency.payloadMissing, { exact: true }).waitFor();
     await payload.getByRole("button", { name: app.componentCatalog.verifyAndRepair, exact: true }).click();
     await payload.getByText(app.status.state.payloadMissing, { exact: true }).waitFor({ state: "hidden" });
     await payload.getByText(app.management.installed, { exact: true }).waitFor();
 
-    const updateTarget = page.locator(".component-item").filter({ hasText: app.status.component.names.intelMsrPawnIo });
+    const updateTarget = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: app.status.component.names.intelMsrPawnIo });
     await updateTarget.getByText(app.status.state.updateAvailable, { exact: true }).waitFor();
     await updateTarget.getByText(app.backendMessage.dependency.updateAvailable, { exact: true }).waitFor();
     assert.equal(await updateTarget.getByRole("button", { name: app.componentCatalog.verifyAndRepair, exact: true }).count(), 0,
@@ -169,7 +170,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
       `${option.id}: updates must not offer version choices`);
     await updateDialog.getByRole("button", { name: app.componentAcquisition.agreeAndUpdate, exact: true }).waitFor();
     await updateDialog.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
-    const bridge = page.locator(".component-item").filter({ hasText: app.status.component.names.hardwareBridge });
+    const bridge = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: app.status.component.names.hardwareBridge });
     await bridge.getByRole("button", { name: app.managementPage.detailsOf(app.status.component.names.hardwareBridge), exact: true }).click();
     const componentDetail = page.getByRole("dialog", { name: app.status.component.names.hardwareBridge, exact: true });
     await componentDetail.getByText(app.componentCatalog.installNotes.hardwareBridge, { exact: true }).waitFor();
@@ -184,7 +185,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
 
     bridgeUpdateAvailable = true;
     await refresh.click();
-    const bridgeUpdateTarget = page.locator(".component-item").filter({ hasText: app.status.component.names.hardwareBridge });
+    const bridgeUpdateTarget = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: app.status.component.names.hardwareBridge });
     await bridgeUpdateTarget.getByText(app.status.state.payloadMissing, { exact: true }).waitFor();
     await bridgeUpdateTarget.getByText(app.backendMessage.dependency.updateAvailable, { exact: true }).waitFor();
     assert.equal(await bridgeUpdateTarget.getByRole("button", { name: app.componentCatalog.verifyAndRepair, exact: true }).count(), 0,
@@ -227,7 +228,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   const finalApp = await loadAppCopy(previous);
   await page.getByRole("navigation").getByRole("button", { name: finalApp.page.components, exact: true }).click();
   await page.locator("#managementTab-Dependency").click();
-  const updateTarget = page.locator(".component-item").filter({ hasText: finalApp.status.component.names.intelMsrPawnIo });
+  const updateTarget = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: finalApp.status.component.names.intelMsrPawnIo });
   await updateTarget.getByRole("button", { name: finalApp.componentCatalog.update, exact: true }).click();
   const finalUpdateDialog = page.getByRole("dialog", { name: finalApp.status.component.names.intelMsrPawnIo, exact: true });
   const updateResponsePromise = page.waitForResponse(response =>
@@ -238,17 +239,17 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   assert.deepEqual(updateResponse.request().postDataJSON(), { acknowledgeExternalTerms: true, versionChoice: "verified" });
   assert.equal(updateRequests.length, 1, "Only the explicit update confirmation may submit an update");
   assert.equal(updateVersionLookups, 0, "Updates must not fetch version choices");
-  const updateFailureToast = page.locator(".toast.error")
+  const updateFailureToast = page.locator(".toast.error:not([data-exit-ghost])")
     .filter({ hasText: finalApp.backendMessage.dependency.runtimeFilesUnavailable });
   await updateFailureToast.waitFor({ state: "visible" });
   await updateFailureToast.getByText(finalApp.feedback.error, { exact: true }).waitFor();
-  assert.equal(await page.locator(".toast.success")
+  assert.equal(await page.locator(".toast.success:not([data-exit-ghost])")
     .filter({ hasText: finalApp.backendMessage.dependency.runtimeFilesUnavailable }).count(), 0,
   "A failed update must not display its dependency failure message as a success toast");
   bridgeUpdateAvailable = true;
   const finalRefresh = page.locator("#componentsPage button.panel-refresh-button");
   await finalRefresh.click();
-  const bridgeUpdateTarget = page.locator(".component-item").filter({ hasText: finalApp.status.component.names.hardwareBridge });
+  const bridgeUpdateTarget = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: finalApp.status.component.names.hardwareBridge });
   await bridgeUpdateTarget.getByText(finalApp.backendMessage.dependency.updateAvailable, { exact: true }).waitFor();
   const bridgeVersionLookupsBeforeSubmit = bridgeVersionLookups;
   await bridgeUpdateTarget.getByRole("button", { name: finalApp.componentCatalog.update, exact: true }).click();
