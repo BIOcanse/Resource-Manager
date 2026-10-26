@@ -1,5 +1,6 @@
-/* Theme Tokens: the base :root block is the standard light palette plus the layout tokens every style shares.
-   Palette blocks here apply to the standard and classic styles; other styles live in styles/ui-styles/. */
+/* Theme Tokens: the base :root block is the classic light palette plus the layout tokens every style shares.
+   Palette blocks here apply to the classic style only (the look standard had until 10-26); every other style,
+   standard included, lives in styles/ui-styles/. Rules: docs/ui_styles.md. */
 :root {
   color-scheme: light;
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -69,12 +70,10 @@
   --edge: var(--line-soft);
 }
 
-:root[data-ui-style="standard"][data-theme="light"],
 :root[data-ui-style="classic"][data-theme="light"] {
   color-scheme: light;
 }
 
-:root[data-ui-style="standard"][data-theme="dark"],
 :root[data-ui-style="classic"][data-theme="dark"] {
   color-scheme: dark;
   --bg: color(display-p3 0.078 0.086 0.090);
@@ -113,7 +112,6 @@
   --hairline: color(display-p3 1 1 1 / 0.06);
 }
 
-:root[data-ui-style="standard"][data-theme="lowContrast"],
 :root[data-ui-style="classic"][data-theme="lowContrast"] {
   color-scheme: light;
   --bg: color(display-p3 0.900 0.914 0.902);
@@ -150,7 +148,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-ui-style="standard"][data-theme="system"],
   :root[data-ui-style="classic"][data-theme="system"] {
     color-scheme: dark;
     --bg: color(display-p3 0.078 0.086 0.090);

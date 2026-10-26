@@ -24,8 +24,10 @@ public sealed class UiStyleCatalogTests
     [Fact]
     public void ResolveStartupBackground_FollowsWindowsForSystemPalettes()
     {
-        Assert.Equal(new UiStartupBackground(244, 247, 248), UiStyleCatalog.ResolveStartupBackground(null, null, systemUsesLightTheme: true));
-        Assert.Equal(new UiStartupBackground(20, 22, 23), UiStyleCatalog.ResolveStartupBackground(null, null, systemUsesLightTheme: false));
+        Assert.Equal(new UiStartupBackground(243, 243, 243), UiStyleCatalog.ResolveStartupBackground(null, null, systemUsesLightTheme: true));
+        Assert.Equal(new UiStartupBackground(32, 32, 32), UiStyleCatalog.ResolveStartupBackground(null, null, systemUsesLightTheme: false));
+        Assert.Equal(new UiStartupBackground(244, 247, 248), UiStyleCatalog.ResolveStartupBackground("classic", "system", systemUsesLightTheme: true));
+        Assert.Equal(new UiStartupBackground(20, 22, 23), UiStyleCatalog.ResolveStartupBackground("classic", "system", systemUsesLightTheme: false));
         Assert.Equal(new UiStartupBackground(230, 233, 230), UiStyleCatalog.ResolveStartupBackground("standard", "lowContrast", systemUsesLightTheme: false));
         Assert.Equal(
             UiStyleCatalog.ResolveStartupBackground("outline", "paper", systemUsesLightTheme: false),

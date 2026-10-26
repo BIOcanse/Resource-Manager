@@ -1,0 +1,475 @@
+/* standard style（标准）. Rules: docs/ui_styles.md.
+   贴近 Windows 11 原生控件（WinUI 3 / Fluent）：中性的 Mica 式底色（不用模糊，平涂近似），卡片是一层浅填充加 1px 卡片描边、
+   不投影；按钮是近表面色的实心填充，1px 中性描边、下沿略深（WinUI 的控件立体描边，用 border-color 分边写，不改边框宽度）；
+   强调按钮是实心强调色，同样只有下沿略深，没有光晕和投影；图标按钮静止时透明，悬停时浅底。
+   浮层（右键菜单、下拉、提示条）和对话框是 8px 圆角、1px 描边、一层柔和阴影。焦点是系统的深色外环（深色配色里是浅色）。
+   用户 10-26：「我不喜欢这种按钮风格……大众接受度更高的也是扁平化极简现代风格」「总之主打风格建议接近windows原生控件那种，系统UI那种」。
+   10-26 之前的标准外观原样保留为 classic（经典），由 theme.css 的配色块和各组件样式本身提供。
+   只改颜色、圆角、阴影和边框颜色，不改尺寸、间距和布局。
+   阴影一律经 --elev-* / --shadow / --modal-shadow 令牌，超高性能模式（body[data-animations="ultra"]）把令牌清零时这里跟着变平。
+   配色按 Windows 的 sRGB 中性色设计（浅色底 #F3F3F3、卡片 #FBFBFB，深色底 #202020、卡片 #2B2B2B），换算成 display-p3 写入。 */
+
+/* ---------- 风格级（不分配色） ---------- */
+:root[data-ui-style="standard"] {
+  /* 顶栏和二级分页条是不透明的 Mica 底色，背景模糊看不出来，关掉省合成开销。 */
+  --shell-backdrop: none;
+  /* WinUI：控件 4px，卡片、浮层、对话框 8px。 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  /* 卡片、面板和按钮都不投影；悬停也不抬起。零阴影而不是 none：这些变量和 --edge-highlight 写在同一个逗号列表里。 */
+  --elev-1: 0 0 0 0 transparent;
+  --elev-2: 0 0 0 0 transparent;
+  --edge-highlight: 0 0 0 0 transparent;
+  /* 强调按钮悬停是强调色略淡一点（WinUI AccentFillColorSecondary），不是变深；按下再淡一点（85%），文字保持满色以守住 4.5:1。 */
+  --accent-hover: color-mix(in srgb, var(--accent) 90%, var(--surface));
+  /* 系统焦点外环：浅色配色里近黑，深色配色里近白，跟正文色走；与控件之间留出的底色就是内侧的浅环。 */
+  --focus-ring: 2px solid var(--text);
+  /* 磁盘占用方格：目录是青色、文件是蓝灰，跟强调色同一色系。 */
+  --treemap-directory-hue: 172;
+  --treemap-file-hue: 210;
+}
+
+/* ---------- 浅色（跟随系统的浅色一侧） ---------- */
+:root[data-ui-style="standard"][data-theme="light"],
+:root[data-ui-style="standard"][data-theme="system"] {
+  color-scheme: light;
+  --bg: color(display-p3 0.953 0.953 0.953);
+  --surface: color(display-p3 0.984 0.984 0.984);
+  --surface-soft: color(display-p3 0.969 0.969 0.969);
+  --surface-strong: color(display-p3 0.929 0.929 0.929);
+  --table-header-bg: color(display-p3 0.969 0.969 0.969);
+  --hover-bg: color(display-p3 0.941 0.941 0.941);
+  --text: color(display-p3 0.106 0.106 0.106);
+  --muted: color(display-p3 0.361 0.361 0.361);
+  --line: color(display-p3 0.863 0.863 0.863);
+  --line-soft: color(display-p3 0.902 0.902 0.902);
+  --divider: color(display-p3 0.890 0.890 0.890);
+  --divider-soft: color(display-p3 0.918 0.918 0.918);
+  --accent: color(display-p3 0.185 0.417 0.370);
+  --accent-strong: color(display-p3 0.153 0.355 0.318);
+  --accent-soft: color(display-p3 0.891 0.943 0.933);
+  --warn: color(display-p3 0.581 0.377 0.121);
+  --warn-soft: color(display-p3 0.993 0.958 0.824);
+  --danger: color(display-p3 0.707 0.226 0.159);
+  --danger-soft: color(display-p3 0.978 0.909 0.915);
+  --shell-bg: color(display-p3 0.953 0.953 0.953);
+  --badge-bg: color(display-p3 0.922 0.922 0.922);
+  --empty-bg: color(display-p3 0.984 0.984 0.984 / 0.6);
+  --resource-empty: color(display-p3 0.984 0.984 0.984);
+  --on-accent: color(display-p3 1.000 1.000 1.000);
+  --backdrop: color(display-p3 0.000 0.000 0.000 / 0.3);
+  --shadow: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.14);
+  --modal-shadow: 0 24px 48px color(display-p3 0.000 0.000 0.000 / 0.18);
+  --shadow-color: 0 0 0;
+  --elev-3: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.14);
+  --hairline: color(display-p3 0.890 0.890 0.890);
+}
+
+/* ---------- 深色 ---------- */
+:root[data-ui-style="standard"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: color(display-p3 0.125 0.125 0.125);
+  --surface: color(display-p3 0.169 0.169 0.169);
+  --surface-soft: color(display-p3 0.157 0.157 0.157);
+  --surface-strong: color(display-p3 0.208 0.208 0.208);
+  --table-header-bg: color(display-p3 0.153 0.153 0.153);
+  --hover-bg: color(display-p3 0.196 0.196 0.196);
+  --text: color(display-p3 1.000 1.000 1.000);
+  --muted: color(display-p3 0.678 0.678 0.678);
+  --line: color(display-p3 0.290 0.290 0.290);
+  --line-soft: color(display-p3 0.220 0.220 0.220);
+  --divider: color(display-p3 0.267 0.267 0.267);
+  --divider-soft: color(display-p3 0.235 0.235 0.235);
+  --accent: color(display-p3 0.430 0.751 0.684);
+  --accent-strong: color(display-p3 0.550 0.830 0.770);
+  --accent-soft: color(display-p3 0.147 0.229 0.212);
+  --warn: color(display-p3 0.971 0.886 0.296);
+  --warn-soft: color(display-p3 0.254 0.210 0.114);
+  --danger: color(display-p3 0.945 0.619 0.649);
+  --danger-soft: color(display-p3 0.251 0.158 0.152);
+  --shell-bg: color(display-p3 0.125 0.125 0.125);
+  --badge-bg: color(display-p3 0.208 0.208 0.208);
+  --empty-bg: color(display-p3 0.169 0.169 0.169 / 0.56);
+  --resource-empty: color(display-p3 0.153 0.153 0.153);
+  --on-accent: color(display-p3 0.000 0.000 0.000);
+  --backdrop: color(display-p3 0.000 0.000 0.000 / 0.5);
+  --shadow: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.26);
+  --modal-shadow: 0 24px 48px color(display-p3 0.000 0.000 0.000 / 0.37);
+  --shadow-color: 0 0 0;
+  --elev-3: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.26);
+  --hairline: color(display-p3 0.110 0.110 0.110);
+}
+
+/* ---------- 低对比：沿用原来的低对比底色和强调色，控件按本风格画 ---------- */
+:root[data-ui-style="standard"][data-theme="lowContrast"] {
+  color-scheme: light;
+  --bg: color(display-p3 0.900 0.914 0.902);
+  --surface: color(display-p3 0.936 0.946 0.932);
+  --surface-soft: color(display-p3 0.912 0.928 0.916);
+  --surface-strong: color(display-p3 0.840 0.862 0.852);
+  --table-header-bg: color(display-p3 0.888 0.904 0.894);
+  --hover-bg: color(display-p3 0.870 0.895 0.884);
+  --text: color(display-p3 0.180 0.205 0.195);
+  --muted: color(display-p3 0.340 0.370 0.357);
+  --line: color(display-p3 0.740 0.765 0.752);
+  --line-soft: color(display-p3 0.805 0.830 0.818);
+  --divider: color(display-p3 0.785 0.792 0.794);
+  --divider-soft: color(display-p3 0.842 0.848 0.850);
+  --accent: color(display-p3 0.160 0.455 0.400);
+  --accent-strong: color(display-p3 0.120 0.375 0.330);
+  --accent-soft: color(display-p3 0.820 0.880 0.858);
+  --warn: color(display-p3 0.495 0.330 0.075);
+  --warn-soft: color(display-p3 0.925 0.875 0.760);
+  --danger: color(display-p3 0.570 0.220 0.210);
+  --danger-soft: color(display-p3 0.905 0.800 0.792);
+  --shell-bg: color(display-p3 0.900 0.914 0.902);
+  --badge-bg: color(display-p3 0.862 0.842 0.752);
+  --empty-bg: color(display-p3 0.936 0.946 0.932 / 0.56);
+  --resource-empty: color(display-p3 0.930 0.940 0.928);
+  --on-accent: color(display-p3 0.985 0.990 0.988);
+  --backdrop: color(display-p3 0.180 0.205 0.195 / 0.26);
+  --shadow: 0 8px 16px color(display-p3 0.180 0.205 0.195 / 0.12);
+  --modal-shadow: 0 24px 48px color(display-p3 0.180 0.205 0.195 / 0.16);
+  --shadow-color: 0.180 0.205 0.195;
+  --elev-3: 0 8px 16px color(display-p3 0.180 0.205 0.195 / 0.12);
+  --hairline: color(display-p3 0.760 0.782 0.770);
+}
+
+/* ---------- 跟随系统的深色一侧：与上面的深色逐项相同 ---------- */
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-style="standard"][data-theme="system"] {
+    color-scheme: dark;
+    --bg: color(display-p3 0.125 0.125 0.125);
+    --surface: color(display-p3 0.169 0.169 0.169);
+    --surface-soft: color(display-p3 0.157 0.157 0.157);
+    --surface-strong: color(display-p3 0.208 0.208 0.208);
+    --table-header-bg: color(display-p3 0.153 0.153 0.153);
+    --hover-bg: color(display-p3 0.196 0.196 0.196);
+    --text: color(display-p3 1.000 1.000 1.000);
+    --muted: color(display-p3 0.678 0.678 0.678);
+    --line: color(display-p3 0.290 0.290 0.290);
+    --line-soft: color(display-p3 0.220 0.220 0.220);
+    --divider: color(display-p3 0.267 0.267 0.267);
+    --divider-soft: color(display-p3 0.235 0.235 0.235);
+    --accent: color(display-p3 0.430 0.751 0.684);
+    --accent-strong: color(display-p3 0.550 0.830 0.770);
+    --accent-soft: color(display-p3 0.147 0.229 0.212);
+    --warn: color(display-p3 0.971 0.886 0.296);
+    --warn-soft: color(display-p3 0.254 0.210 0.114);
+    --danger: color(display-p3 0.945 0.619 0.649);
+    --danger-soft: color(display-p3 0.251 0.158 0.152);
+    --shell-bg: color(display-p3 0.125 0.125 0.125);
+    --badge-bg: color(display-p3 0.208 0.208 0.208);
+    --empty-bg: color(display-p3 0.169 0.169 0.169 / 0.56);
+    --resource-empty: color(display-p3 0.153 0.153 0.153);
+    --on-accent: color(display-p3 0.000 0.000 0.000);
+    --backdrop: color(display-p3 0.000 0.000 0.000 / 0.5);
+    --shadow: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.26);
+    --modal-shadow: 0 24px 48px color(display-p3 0.000 0.000 0.000 / 0.37);
+    --shadow-color: 0 0 0;
+    --elev-3: 0 8px 16px color(display-p3 0.000 0.000 0.000 / 0.26);
+    --hairline: color(display-p3 0.110 0.110 0.110);
+  }
+}
+
+/* ============================================================
+   元素级覆盖（不分配色）。
+   选择器以 :root[data-ui-style="standard"] 开头，优先级高于组件自己的悬停规则，
+   所以凡是改了常态的控件，悬停、按下、禁用也在这里一并写全；颜色类规则带 :not(:disabled)，
+   禁用态仍走全局禁用样式。只点名具体的按钮类，不写泛泛的 button 规则，免得盖掉分页、分段、列表项这些自带样子的按钮。
+   ============================================================ */
+
+/* ---------- 按钮：全部去掉明暗渐变 ---------- */
+:root[data-ui-style="standard"] button {
+  background-image: none;
+}
+
+/* ---------- 强调按钮（WinUI AccentButton）：没有 class 的主按钮 ----------
+   描边四边分开写：上、左、右是强调色，下沿压暗，就是 WinUI 的强调控件立体描边。 */
+:root[data-ui-style="standard"] button:not([class]):not(:disabled) {
+  border-color: var(--accent) var(--accent) color-mix(in srgb, var(--accent), black 28%);
+  background-color: var(--accent);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button:not([class]):not(:disabled):hover {
+  border-color: var(--accent-hover) var(--accent-hover) color-mix(in srgb, var(--accent-hover), black 28%);
+  background-color: var(--accent-hover);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button:not([class]):not(:disabled):active {
+  border-color: color-mix(in srgb, var(--accent) 85%, var(--surface));
+  background-color: color-mix(in srgb, var(--accent) 85%, var(--surface));
+  color: var(--on-accent);
+}
+
+/* ---------- 普通按钮（WinUI Button）：次要按钮、卡片上的操作按钮、带文字的工具按钮 ----------
+   近表面色的实心填充，1px 中性描边，下沿深一级；悬停填充略变，按下填充更低、文字变淡、下沿不再加深。 */
+:root[data-ui-style="standard"] button.secondary:not(:disabled),
+:root[data-ui-style="standard"] .management-action-button:not(:disabled),
+:root[data-ui-style="standard"] .panel-refresh-button:not(:disabled),
+:root[data-ui-style="standard"] .settings-hotkey-add:not(:disabled),
+:root[data-ui-style="standard"] .settings-credit-link {
+  border-color: var(--line-soft) var(--line-soft) var(--line);
+  background-color: var(--surface);
+  color: var(--text);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button.secondary:not(:disabled):hover,
+:root[data-ui-style="standard"] .management-action-button:not(:disabled):hover,
+:root[data-ui-style="standard"] .panel-refresh-button:not(:disabled):hover,
+:root[data-ui-style="standard"] .settings-hotkey-add:not(:disabled):hover,
+:root[data-ui-style="standard"] .settings-credit-link:hover {
+  border-color: var(--line-soft) var(--line-soft) var(--line);
+  background-color: color-mix(in srgb, var(--surface) 55%, var(--hover-bg));
+  color: var(--text);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button.secondary:not(:disabled):active,
+:root[data-ui-style="standard"] .management-action-button:not(:disabled):active,
+:root[data-ui-style="standard"] .panel-refresh-button:not(:disabled):active,
+:root[data-ui-style="standard"] .settings-hotkey-add:not(:disabled):active,
+:root[data-ui-style="standard"] .settings-credit-link:active {
+  border-color: var(--line-soft);
+  background-color: var(--surface-soft);
+  color: var(--muted);
+}
+
+/* ---------- 图标按钮（WinUI 的 subtle 按钮）：卡片右侧的“ⓘ”、弹窗的关闭等 ----------
+   静止时透明无描边，悬停是一层浅底，按下更浅、图标变淡。弹窗关闭按钮同时带 secondary，选择器写成 button.x 与次要按钮同级、排在后面取胜。 */
+:root[data-ui-style="standard"] button.management-settings-button,
+:root[data-ui-style="standard"] button.icon-button:not(:disabled),
+:root[data-ui-style="standard"] .settings-icon-button {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button.management-settings-button:not(:disabled):hover,
+:root[data-ui-style="standard"] button.icon-button:not(:disabled):hover {
+  border-color: transparent;
+  background-color: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] button.management-settings-button:not(:disabled):active,
+:root[data-ui-style="standard"] button.icon-button:not(:disabled):active {
+  background-color: color-mix(in srgb, var(--text) 4%, transparent);
+  color: var(--muted);
+}
+
+:root[data-ui-style="standard"] .settings-icon-button:hover {
+  border-color: transparent;
+  background-color: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- 顶栏与二级分页条：Mica 底色，下沿一条细分隔线 ---------- */
+:root[data-ui-style="standard"] .window-shellbar,
+:root[data-ui-style="standard"] .page-subnav {
+  border-bottom-color: var(--divider);
+}
+
+/* ---------- 分页（WinUI NavigationView）----------
+   未选中是透明的文字项；悬停和选中都是一层浅底（正文色 4% / 6%，深色配色里就是白色的同等透明度，对应 WinUI 的 subtle 填充），
+   选中项下沿再加一条强调色指示线（内嵌阴影，不改边框宽度）。所有分页同一个样子，设置页的竖排导航也一样（用户 10-25 分页一致）。 */
+:root[data-ui-style="standard"] .page-tab {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+}
+
+:root[data-ui-style="standard"] .page-tab:not(.active):not(:disabled):hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: var(--text);
+}
+
+:root[data-ui-style="standard"] .page-tab.active,
+:root[data-ui-style="standard"] .page-tab.active:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* ---------- 输入框（WinUI TextBox）：1px 浅描边、下沿深一级；聚焦时底色变白、下沿一条强调色线 ---------- */
+:root[data-ui-style="standard"] .toolbar-search input,
+:root[data-ui-style="standard"] .resource-table-search input,
+:root[data-ui-style="standard"] .device-port-search,
+:root[data-ui-style="standard"] .metric-picker-search,
+:root[data-ui-style="standard"] .settings-text-field,
+:root[data-ui-style="standard"] .settings-number-pair input,
+:root[data-ui-style="standard"] .settings-number-field input,
+:root[data-ui-style="standard"] .settings-hotkey-key-row select,
+:root[data-ui-style="standard"] .control-editor-value-input,
+:root[data-ui-style="standard"] .manual-software-field input,
+:root[data-ui-style="standard"] .manual-software-field textarea,
+:root[data-ui-style="standard"] .cpu-score-input,
+:root[data-ui-style="standard"] .gpu-score-input {
+  border-color: var(--line-soft) var(--line-soft) color-mix(in srgb, var(--muted) 70%, var(--line));
+  background: var(--surface);
+}
+
+:root[data-ui-style="standard"] .toolbar-search input:focus,
+:root[data-ui-style="standard"] .resource-table-search input:focus,
+:root[data-ui-style="standard"] .device-port-search:focus,
+:root[data-ui-style="standard"] .metric-picker-search:focus-within,
+:root[data-ui-style="standard"] .settings-text-field:focus,
+:root[data-ui-style="standard"] .settings-number-pair input:focus,
+:root[data-ui-style="standard"] .settings-number-field input:focus,
+:root[data-ui-style="standard"] .settings-hotkey-key-row select:focus,
+:root[data-ui-style="standard"] .control-editor-value-input:focus,
+:root[data-ui-style="standard"] .manual-software-field input:focus,
+:root[data-ui-style="standard"] .manual-software-field textarea:focus,
+:root[data-ui-style="standard"] .cpu-score-input:focus,
+:root[data-ui-style="standard"] .gpu-score-input:focus {
+  border-color: var(--line-soft) var(--line-soft) var(--accent);
+  background: var(--resource-empty);
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+/* ---------- 下拉框（WinUI ComboBox）：和普通按钮同一套填充与描边；展开时下沿一条强调色线 ---------- */
+:root[data-ui-style="standard"] .standard-select-trigger:not(:disabled) {
+  border-color: var(--line-soft) var(--line-soft) var(--line);
+  background: var(--surface);
+}
+
+:root[data-ui-style="standard"] .standard-select-trigger:not(:disabled):hover {
+  border-color: var(--line-soft) var(--line-soft) var(--line);
+  background: color-mix(in srgb, var(--surface) 55%, var(--hover-bg));
+}
+
+:root[data-ui-style="standard"] .standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--line-soft) var(--line-soft) var(--accent);
+  background: var(--surface-soft);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+/* 下拉弹层（WinUI 浮层）：8px 圆角、1px 描边、一层柔和阴影。 */
+:root[data-ui-style="standard"] .standard-select-popover {
+  border-color: var(--line-soft);
+  box-shadow: var(--elev-3);
+}
+
+/* 弹层里的搜索框和输入框同一口径；外框画焦点，里面的输入框不再画轮廓。 */
+:root[data-ui-style="standard"] .standard-select-search {
+  border-color: var(--line-soft) var(--line-soft) color-mix(in srgb, var(--muted) 70%, var(--line));
+  background: var(--surface);
+}
+
+:root[data-ui-style="standard"] .standard-select-search:focus-within {
+  border-color: var(--line-soft) var(--line-soft) var(--accent);
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
+
+:root[data-ui-style="standard"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* 选项是列表项（WinUI ListViewItem）：悬停浅底；选中项左侧一条强调色短竖线，文字不加粗变色以外不另加东西。 */
+:root[data-ui-style="standard"] .standard-select-options button {
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] .standard-select-options button.selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--text);
+}
+
+/* ---------- 右键菜单和提示条（WinUI MenuFlyout / TeachingTip 一类浮层） ---------- */
+:root[data-ui-style="standard"] .standard-context-menu,
+:root[data-ui-style="standard"] .toast {
+  border-color: var(--line-soft);
+  box-shadow: var(--elev-3);
+}
+
+:root[data-ui-style="standard"] .standard-context-menu-item {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="standard"] .standard-context-menu-item:disabled {
+  background: transparent;
+}
+
+/* ---------- 对话框（WinUI ContentDialog）：8px 圆角、1px 描边、一层柔和阴影 ---------- */
+:root[data-ui-style="standard"] .modal {
+  border-color: var(--line-soft);
+  box-shadow: var(--modal-shadow);
+}
+
+/* ---------- 分段控件（WinUI SelectorBar / 分段按钮）----------
+   轨道是浅填充加中性描边；选中段是表面色的小块，下沿一条强调色线，文字用正文色。 */
+:root[data-ui-style="standard"] .segmented {
+  border-color: var(--line-soft) var(--line-soft) var(--line);
+  background: var(--line-soft);
+}
+
+:root[data-ui-style="standard"] .segment:not(:disabled) {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+:root[data-ui-style="standard"] .segment:not(.active):not(:disabled):hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+:root[data-ui-style="standard"] .segment.active:not(:disabled) {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 轨道裁掉溢出，焦点画在分段内侧。 */
+:root[data-ui-style="standard"] .segment:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+:root[data-ui-style="standard"] .segment.active:disabled {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--text);
+}
+
+:root[data-ui-style="standard"] .optimization-mode.pending {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+
+/* ---------- 开关（WinUI ToggleSwitch）：关时只有描边的空心轨道和深色圆点，开时强调色轨道和白点 ---------- */
+:root[data-ui-style="standard"] .settings-switch .settings-switch-track {
+  --switch-off-border: color-mix(in srgb, var(--muted) 85%, var(--surface));
+  --switch-off-bg: color-mix(in srgb, var(--surface-strong) 50%, var(--surface));
+  --switch-on-border: var(--accent);
+  --switch-on-bg: var(--accent);
+}
+
+:root[data-ui-style="standard"] .settings-switch .settings-switch-knob {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+:root[data-ui-style="standard"] .settings-switch input:checked + .settings-switch-track .settings-switch-knob {
+  background: var(--on-accent);
+}
+
+:root[data-ui-style="standard"] .settings-switch input:focus-visible + .settings-switch-track {
+  outline-color: var(--text);
+}
+
+/* ---------- 卡片与面板（WinUI 卡片 / 设置卡片）：一层填充、1px 卡片描边、不投影 ---------- */
+:root[data-ui-style="standard"] .component-item,
+:root[data-ui-style="standard"] .software-item {
+  border-color: var(--hairline);
+  background: var(--surface);
+}

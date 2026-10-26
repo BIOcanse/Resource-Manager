@@ -12,11 +12,11 @@
         },
         {
           "id": "light",
-          "startupBackground": "#F4F7F8"
+          "startupBackground": "#F3F3F3"
         },
         {
           "id": "dark",
-          "startupBackground": "#141617"
+          "startupBackground": "#202020"
         },
         {
           "id": "lowContrast",

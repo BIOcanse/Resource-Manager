@@ -1,4 +1,4 @@
-// 每个新风格的每个配色都要完整定义颜色变量，风格文件只改外观不改布局。规则见 docs/ui_styles.md。
+// classic 的配色在 theme.css；其余每个风格（包括 standard）的每个配色都要在自己的文件里完整定义颜色变量，风格文件只改外观不改布局。规则见 docs/ui_styles.md。
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -53,11 +53,11 @@ function parseCss(source: string): CssRule[] {
   return rules;
 }
 
-const standardRules = parseCss(readFileSync(resolve(stylesRoot, "theme.css"), "utf8"));
-const standardDark = standardRules.find((rule) =>
+const classicRules = parseCss(readFileSync(resolve(stylesRoot, "theme.css"), "utf8"));
+const classicDark = classicRules.find((rule) =>
   rule.media === null && rule.selectors.some((selector) => selector.includes('[data-theme="dark"]')));
-assert.ok(standardDark, "theme.css must define the standard dark palette");
-const requiredTokens = [...standardDark.declarations.keys()].filter((name) => name.startsWith("--"));
+assert.ok(classicDark, "theme.css must define the classic dark palette");
+const requiredTokens = [...classicDark.declarations.keys()].filter((name) => name.startsWith("--"));
 requiredTokens.push("color-scheme");
 
 const layoutTokens = [
@@ -74,7 +74,7 @@ const forbiddenProperties = /^(width|height|min-width|min-height|max-width|max-h
 const darkMedia = (media: string | null) => media !== null && /prefers-color-scheme:\s*dark/.test(media);
 
 for (const style of uiStyles) {
-  if (style.id === "standard") {
+  if (style.id === "classic") {
     continue;
   }
   const file = resolve(stylesRoot, "ui-styles", `${style.id}.css`);

@@ -79,7 +79,8 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
     { label: "柔和", uiStyle: "soft", palettes: ["跟随系统", "浅色", "深色"], kept: "浅色", pick: "深色", theme: "dark", scheme: "dark" },
     { label: "终端", uiStyle: "terminal", palettes: ["磷绿", "琥珀", "冰蓝"], kept: "磷绿", pick: "琥珀", theme: "amber", scheme: "dark" },
     { label: "线框", uiStyle: "outline", palettes: ["跟随系统", "纸面", "石墨", "蓝图"], kept: "跟随系统", pick: "纸面", theme: "paper", scheme: "light" },
-    { label: "标准", uiStyle: "standard", palettes: ["跟随系统", "浅色", "深色", "低对比"], kept: "跟随系统", pick: "浅色", theme: "light", scheme: "light" }
+    { label: "经典", uiStyle: "classic", palettes: ["跟随系统", "浅色", "深色", "低对比"], kept: "跟随系统", pick: "低对比", theme: "lowContrast", scheme: "light" },
+    { label: "标准", uiStyle: "standard", palettes: ["跟随系统", "浅色", "深色", "低对比"], kept: "低对比", pick: "浅色", theme: "light", scheme: "light" }
   ]) {
     await styleGroup.getByRole("radio", { name: transition.label, exact: true }).click();
     const palettes = await paletteGroup.getByRole("radio").allTextContents();
