@@ -7,6 +7,7 @@ import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
 import diskUsageLocalTreemapJourney from "./diskUsageLocalTreemapJourney.js";
 import diskUsagePagedTreeJourney from "./diskUsagePagedTreeJourney.js";
 import diskUsageActionErrorsJourney from "./diskUsageActionErrorsJourney.js";
+import diskUsageSetupOrderJourney from "./diskUsageSetupOrderJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
 import loginStartupJourney from "./loginStartupJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
@@ -89,6 +90,7 @@ const allJourneys = [
   ["disk-usage-local-treemap", diskUsageLocalTreemapJourney],
   ["disk-usage-paged-tree", diskUsagePagedTreeJourney],
   ["disk-usage-action-errors", diskUsageActionErrorsJourney],
+  ["disk-usage-setup-order", diskUsageSetupOrderJourney],
   ["overlay-settings", overlaySettingsJourney],
   ["login-startup", loginStartupJourney],
   ["management-feedback", managementFeedbackJourney],

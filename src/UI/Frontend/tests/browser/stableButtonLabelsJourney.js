@@ -34,7 +34,7 @@ export default async function stableButtonLabelsJourney(page, baseUrl) {
     const pages = [
       ["settings", ".settings-page .stable-label"],
       ["components", ".panel-refresh-button .stable-label"],
-      ["diskUsage", ".disk-usage-setup .stable-label"],
+      ["diskUsage", ".disk-usage-setup-actions .stable-label"],
       ["optimization", ".optimization-report-filter ~ button .stable-label"],
       ["monitor", "[data-focus-key=\"monitor-dashboard-edit\"] .stable-label"]
     ];

@@ -34,7 +34,7 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
 
   // 两个选文件夹入口：切到「一个文件夹」范围时自动打开，以及该行的「选择文件夹」按钮。
   const setup = page.locator(".disk-usage-setup");
-  const expand = setup.getByRole("button", { name: copy.diskUsage.expandSetup, exact: true });
+  const expand = page.locator(".disk-usage-setup-actions").getByRole("button", { name: copy.diskUsage.expandSetup, exact: true });
   if (await expand.count() > 0) await expand.click();
   await setup.getByText(copy.diskUsage.scopeFolder, { exact: true }).first().click();
   await errorToasts(copy.diskUsage.chooseFolderFailed).first().waitFor();

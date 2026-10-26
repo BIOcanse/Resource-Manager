@@ -256,22 +256,12 @@
 }
 
 /* 有结果之后设置区收起来，把版面让给方格图。 */
-.disk-usage-setup.collapsed .settings-row,
-.disk-usage-setup.collapsed .disk-usage-warning {
-  display: none;
-}
-
-/* 设置之后的操作行：和控制面的"应用"一样靠右；最后一行设置的分隔线把它和设置隔开。 */
+/* 范围、方式和磁盘列表之后的操作行：和控制面的"应用"一样靠右，与面板的间距沿用页面网格。 */
 .disk-usage-setup-actions {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 10px;
-}
-
-.disk-usage-setup.collapsed .disk-usage-setup-actions {
-  margin-top: 0;
 }
 
 /* 视图操作：复位 / 上一层。挨在标题右侧。 */

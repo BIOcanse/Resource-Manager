@@ -77,98 +77,73 @@ export function DiskUsagePage(props: {
 
   return (
     <div class="disk-usage-page">
-      <div class="panel disk-usage-setup" classList={{ collapsed: collapsed() }}>
-        <div class="settings-row">
-          <div class="settings-row-copy">
-            <strong>{uiText.diskUsage.scopeLabel}</strong>
-          </div>
-          <SegmentedControl<DiskUsageScanScope>
-            class="settings-segmented-control"
-            itemClass="settings-segment"
-            value={scope()}
-            options={[
-              { id: "allVolumes", label: uiText.diskUsage.scopeAllVolumes },
-              { id: "volume", label: uiText.diskUsage.scopeVolume },
-              { id: "folder", label: uiText.diskUsage.scopeFolder }
-            ]}
-            ariaLabel={uiText.diskUsage.scopeLabel}
-            onChange={(value) => {
-              setScope(value);
-              if (value === "folder" && !folder()) {
-                void chooseFolder();
-              }
-            }}
-          />
-        </div>
-
-        <div class="settings-row">
-          <div class="settings-row-copy">
-            <strong>{uiText.diskUsage.modeLabel}</strong>
-          </div>
-          <SegmentedControl<DiskUsageScanMode>
-            class="settings-segmented-control"
-            itemClass="settings-segment"
-            value={mode()}
-            options={[
-              {
-                id: "fast",
-                label: uiText.diskUsage.modeFast,
-                description: uiText.diskUsage.modeFastHint
-              },
-              {
-                id: "full",
-                label: uiText.diskUsage.modeFull,
-                description: uiText.diskUsage.modeFullHint
-              }
-            ]}
-            ariaLabel={uiText.diskUsage.modeLabel}
-            onChange={setMode}
-          />
-        </div>
-
-        <Show when={scope() === "folder"}>
+      <Show when={!collapsed()}>
+        <div class="panel disk-usage-setup">
           <div class="settings-row">
             <div class="settings-row-copy">
-              <strong>{uiText.diskUsage.scopeFolder}</strong>
-              <span>{folder() || uiText.diskUsage.folderNotChosen}</span>
+              <strong>{uiText.diskUsage.scopeLabel}</strong>
             </div>
-            <button class="secondary" type="button" onClick={() => void chooseFolder()}>
-              {uiText.diskUsage.chooseFolder}
-            </button>
-          </div>
-        </Show>
-
-        <Show when={fastUnreachable()}>
-          <p class="disk-usage-warning" role="alert">{uiText.diskUsage.fastUnsupported}</p>
-        </Show>
-
-        {/* 扫描作用于上面的范围和方式，所以排在它们之后；收起设置时只剩这一行。 */}
-        <div class="disk-usage-setup-actions">
-          <Show when={props.hasResult}>
-            <button
-              class="secondary"
-              type="button"
-              aria-expanded={setupOpen()}
-              onClick={() => setSetupOpen((open) => !open)}
-            >
-              <StableLabel
-                labels={{ expand: uiText.diskUsage.expandSetup, collapse: uiText.diskUsage.collapseSetup }}
-                current={setupOpen() ? "collapse" : "expand"}
-              />
-            </button>
-          </Show>
-          <button
-            type="button"
-            disabled={!canScan()}
-            onClick={() => props.onScan(scope(), mode(), target())}
-          >
-            <StableLabel
-              labels={{ scan: uiText.diskUsage.scan, rescan: uiText.diskUsage.rescan, scanning: uiText.diskUsage.scanning }}
-              current={props.scanning ? "scanning" : props.hasResult ? "rescan" : "scan"}
+            <SegmentedControl<DiskUsageScanScope>
+              class="settings-segmented-control"
+              itemClass="settings-segment"
+              value={scope()}
+              options={[
+                { id: "allVolumes", label: uiText.diskUsage.scopeAllVolumes },
+                { id: "volume", label: uiText.diskUsage.scopeVolume },
+                { id: "folder", label: uiText.diskUsage.scopeFolder }
+              ]}
+              ariaLabel={uiText.diskUsage.scopeLabel}
+              onChange={(value) => {
+                setScope(value);
+                if (value === "folder" && !folder()) {
+                  void chooseFolder();
+                }
+              }}
             />
-          </button>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <strong>{uiText.diskUsage.modeLabel}</strong>
+            </div>
+            <SegmentedControl<DiskUsageScanMode>
+              class="settings-segmented-control"
+              itemClass="settings-segment"
+              value={mode()}
+              options={[
+                {
+                  id: "fast",
+                  label: uiText.diskUsage.modeFast,
+                  description: uiText.diskUsage.modeFastHint
+                },
+                {
+                  id: "full",
+                  label: uiText.diskUsage.modeFull,
+                  description: uiText.diskUsage.modeFullHint
+                }
+              ]}
+              ariaLabel={uiText.diskUsage.modeLabel}
+              onChange={setMode}
+            />
+          </div>
+
+          <Show when={scope() === "folder"}>
+            <div class="settings-row">
+              <div class="settings-row-copy">
+                <strong>{uiText.diskUsage.scopeFolder}</strong>
+                <span>{folder() || uiText.diskUsage.folderNotChosen}</span>
+              </div>
+              <button class="secondary" type="button" onClick={() => void chooseFolder()}>
+                {uiText.diskUsage.chooseFolder}
+              </button>
+            </div>
+          </Show>
+
+          <Show when={fastUnreachable()}>
+            <p class="disk-usage-warning" role="alert">{uiText.diskUsage.fastUnsupported}</p>
+          </Show>
         </div>
-      </div>
+      </Show>
 
       <Show when={scope() !== "folder" && !collapsed()}>
         <div class="panel disk-usage-volumes">
@@ -244,6 +219,33 @@ export function DiskUsagePage(props: {
           </Show>
         </div>
       </Show>
+
+      {/* 扫描作用于上面的范围、方式和磁盘列表，所以排在它们之后；收起设置时只剩这一行。 */}
+      <div class="disk-usage-setup-actions">
+        <Show when={props.hasResult}>
+          <button
+            class="secondary"
+            type="button"
+            aria-expanded={setupOpen()}
+            onClick={() => setSetupOpen((open) => !open)}
+          >
+            <StableLabel
+              labels={{ expand: uiText.diskUsage.expandSetup, collapse: uiText.diskUsage.collapseSetup }}
+              current={setupOpen() ? "collapse" : "expand"}
+            />
+          </button>
+        </Show>
+        <button
+          type="button"
+          disabled={!canScan()}
+          onClick={() => props.onScan(scope(), mode(), target())}
+        >
+          <StableLabel
+            labels={{ scan: uiText.diskUsage.scan, rescan: uiText.diskUsage.rescan, scanning: uiText.diskUsage.scanning }}
+            current={props.scanning ? "scanning" : props.hasResult ? "rescan" : "scan"}
+          />
+        </button>
+      </div>
 
       <Show when={!props.hasResult && props.resultReadState !== "error"}>
         <div class="panel disk-usage-result">
