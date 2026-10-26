@@ -21,7 +21,7 @@
 [data-tone="neutral"] { --tone: var(--muted); }
 
 [data-tone] {
-  --tone-text: color-mix(in oklab, var(--tone) 72%, var(--text));
+  --tone-text: color-mix(in oklab, var(--tone) 65%, var(--text));
   --tone-fill: color-mix(in oklab, var(--tone) 13%, var(--surface));
   --tone-edge: color-mix(in oklab, var(--tone) 48%, var(--line));
 }
