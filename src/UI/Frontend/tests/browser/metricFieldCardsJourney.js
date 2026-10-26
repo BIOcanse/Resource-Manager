@@ -101,7 +101,7 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
 /**
  * 读数来源：默认每个读取项只列首选来源，非首选和不支持的不列，待确认的标「待确认」；
  * 设置「读数来源」改成所有可用后，次选和跨设备别名也列出，首选标「首选」。
- * 卡片上已放的非首选字段一直显示它自己的值。最后核对标记在四种风格的各配色下都看得清。
+ * 卡片上已放的非首选字段一直显示它自己的值。最后核对标记在每种风格的各配色下都看得清。
  */
 async function checkReadingSources(page, baseUrl, app) {
   const response = await fetch(`${baseUrl}/__test/scenario`, {

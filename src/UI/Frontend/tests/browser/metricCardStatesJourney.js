@@ -10,7 +10,7 @@ import { waitForCondition } from "./journeyWaits.js";
  * 监视卡片的读数状态和排版：
  * 1. 首个读数到之前画“读取中”占位（不先写“无读数”再跳成数值），占位和数值同高，数值淡入；设备不在照常直接写；
  * 2. 德文窄卡片上小行标签最多两行、不截成省略号，没有值时那句话靠右折行、不挤掉标签；
- * 3. 四种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
+ * 3. 每种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
  * 4. 强制配色下读数来源标记有边框、没有值的读数用系统灰字；
  * 5. 编辑时可拖的槽和卡片空白处各自有悬停反馈，槽内按钮淡入；无动画档下这些过渡和数值淡入都是 0。
  */
@@ -219,7 +219,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.ok(row.inside, `row "${row.label}" / "${row.value}" overflows its slot`);
   }
 
-  // 3. 数值和单位之间的空格：四种风格都在数值字号的 0.1–0.4 倍之间。
+  // 3. 数值和单位之间的空格：每种风格都在数值字号的 0.1–0.4 倍之间。
   const gapRatio = () => card("sources").locator(".metric-main-content .metric-value").evaluate((value) => {
     const number = value.querySelector(".metric-number");
     const unitText = value.querySelector(".metric-unit").firstChild;
