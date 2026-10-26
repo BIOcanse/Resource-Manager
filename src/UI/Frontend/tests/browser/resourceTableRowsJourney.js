@@ -216,6 +216,26 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.reveal = { reveal, instant };
 
+  // 8. 窄列：状态、文字、数值单元格的文字在能出省略号的那一层里；把状态列压到 44 px 时出现省略号而不是硬切。
+  const ellipsis = await residual.evaluate((row, statusAt) => {
+    const cells = [...row.querySelectorAll(".resource-table-cell:is(.status-cell, .text-cell, .value-cell)")];
+    const layers = cells.map((cell) => cell.querySelectorAll(":scope > .resource-table-cell-text").length);
+    const status = row.querySelectorAll(".resource-table-cell")[statusAt];
+    const columns = row.style.gridTemplateColumns;
+    const tracks = columns.split(" ");
+    tracks[statusAt] = "44px";
+    row.style.gridTemplateColumns = tracks.join(" ");
+    const text = status.querySelector(".resource-table-cell-text");
+    const result = { layers, overflow: text.scrollWidth > text.clientWidth, textOverflow: getComputedStyle(text).textOverflow,
+      cellClips: getComputedStyle(status).textOverflow };
+    row.style.gridTemplateColumns = columns;
+    return result;
+  }, statusIndex);
+  if (ellipsis.layers.some((count) => count !== 1) || !ellipsis.overflow || ellipsis.textOverflow !== "ellipsis") {
+    throw new Error(`Narrow cells must end in an ellipsis: ${JSON.stringify(ellipsis)}`);
+  }
+  results.ellipsis = ellipsis;
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

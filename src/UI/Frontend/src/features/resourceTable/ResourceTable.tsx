@@ -1255,7 +1255,7 @@ function ResourceTableCell(props: {
     const status = () => rowStatus(row());
     return (
       <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={status()}>
-        {status()}
+        <span class="resource-table-cell-text">{status()}</span>
       </div>
     );
   }
@@ -1263,7 +1263,7 @@ function ResourceTableCell(props: {
   if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
     return (
       <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={resourceTableCellText(value(), props.column.id)}>
-        {resourceTableCellText(value(), props.column.id)}
+        <span class="resource-table-cell-text">{resourceTableCellText(value(), props.column.id)}</span>
       </div>
     );
   }
@@ -1286,7 +1286,7 @@ function ResourceTableCell(props: {
           : props.text.label)
         + (props.text.basis ? `\n${props.text.basis}` : "")}
     >
-      {resourceTableCellText(value(), props.column.id)}
+      <span class="resource-table-cell-text">{resourceTableCellText(value(), props.column.id)}</span>
     </div>
   );
 

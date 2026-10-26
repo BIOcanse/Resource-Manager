@@ -504,6 +504,14 @@
   border-right: 0;
 }
 
+/* 单元格是弹性容器，直接放文字时 text-overflow 不起作用，窄列（德文状态、长数值）会被硬切掉半个字；文字放进这一层才有省略号。 */
+.resource-table-cell-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .resource-table-cell.name-cell {
   justify-content: flex-start;
   gap: 4px;
