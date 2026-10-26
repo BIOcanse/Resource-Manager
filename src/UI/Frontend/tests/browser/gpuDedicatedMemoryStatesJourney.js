@@ -29,7 +29,7 @@ export default async function gpuDedicatedMemoryStatesJourney(page, baseUrl) {
     });
     await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
     await page.getByRole("navigation").getByRole("button", { name: "详细信息", exact: true }).click();
-    await page.getByRole("tab", { name: "GPU 调度", exact: true }).click();
+    await page.getByRole("tab", { name: "GPU 调度模型", exact: true }).click();
     await page.locator(".gpu-scheduling-panel .gpu-position").waitFor();
     try {
       await page.waitForFunction(({ state, vram, position }) => {

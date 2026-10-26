@@ -4,7 +4,8 @@ import { gpuPerformanceScoreSnapshotDecoder } from "../src/data/gpu/gpuSchedulin
 const gpu = {
   gpuId: "opaque-gpu", index: 0, name: "Fixture GPU", rasterPerformanceScore: 7,
   defaultPerformanceScore: 10, performanceScore: 12, hasPerformanceOverride: true,
-  isIntegrated: false, source: "fixture", matchedPreset: null, isPresetMatch: true
+  isIntegrated: false, source: "fixture", matchedPreset: null, isPresetMatch: true,
+  hasDedicatedMemoryMetrics: true
 };
 const decode = (item: unknown) => gpuPerformanceScoreSnapshotDecoder.decode({
   capturedAt: "2026-10-25T00:00:00Z", storagePath: "scores.json", gpus: [item]
