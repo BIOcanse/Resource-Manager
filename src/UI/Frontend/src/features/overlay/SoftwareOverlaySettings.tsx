@@ -32,7 +32,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     const intervalMs = readIntervals.current()?.monitor;
     if (!props.active || intervalMs === undefined) return;
     const unsubscribe = runtime.sources.metricFieldCatalog.subscribeSnapshot(intervalMs,
-      (snapshot) => setFieldDevices(snapshot.data ?? []));
+      (snapshot) => setFieldDevices(snapshot.data?.fields ?? []));
     onCleanup(unsubscribe);
   });
   const sourceCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldDevices())]);

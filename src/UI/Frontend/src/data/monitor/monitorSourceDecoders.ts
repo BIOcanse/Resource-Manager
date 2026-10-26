@@ -23,8 +23,13 @@ import { decodeReading, metricFieldSourceAvailabilities } from "../metricFields/
 
 export const metricCatalogDecoder = defineResponseDecoder<MetricDefinition[]>(
   "monitor.metric-catalog.v2",
-  (value) => requireArray(value, "$")
-    .map((item, index) => decodeMetricDefinition(item, `$[${index}]`)));
+  (value) => decodeMetricCatalog(value, "$"));
+
+/** GET /api/metrics/catalog 的数组；目录订阅信封的 metrics 是同一形状（metricCatalogPush.ts）。 */
+export function decodeMetricCatalog(value: unknown, path: string): MetricDefinition[] {
+  return requireArray(value, path)
+    .map((item, index) => decodeMetricDefinition(item, `${path}[${index}]`));
+}
 
 export const metricSnapshotDecoder = defineResponseDecoder<MetricSnapshot>(
   "monitor.metric-snapshot.v5",

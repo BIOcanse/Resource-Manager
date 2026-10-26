@@ -142,13 +142,12 @@ import {
   type GpuSchedulingModelSnapshot,
   type GpuSpecializedTelemetryQuery
 } from "../../data/gpu/gpuSchedulingModelSource.ts";
+import { metricCatalogPushDecoder, type MetricCatalogPush } from "../../data/monitor/metricCatalogPush.ts";
 import {
   buildMetricFieldCatalogSubscriptionUrl,
   buildMetricFieldSubscriptionUrl,
-  metricFieldCatalogDecoder,
   metricFieldDevicesDecoder,
   normalizeMetricFieldQuery,
-  type MetricFieldCatalogDevice,
   type MetricFieldDevice,
   type MetricFieldQuery
 } from "../../data/metricFields/metricFieldSource.ts";
@@ -188,8 +187,8 @@ export interface FrontendSources {
   >;
   readonly gpuPerformanceScores: SourceHandle<GpuPerformanceScoreSnapshot>;
   readonly metricSnapshot: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
-  /** 规范字段的设备目录：每台设备是谁、绑定了哪些字段。 */
-  readonly metricFieldCatalog: PushValueSource<readonly MetricFieldCatalogDevice[]>;
+  /** 目录订阅：同一帧带目录修订号、规范字段的设备目录（每台设备是谁、绑定了哪些字段）和指标目录。 */
+  readonly metricFieldCatalog: PushValueSource<MetricCatalogPush>;
   /** 规范字段的设备值，按字段集合订阅。 */
   readonly metricFields: PushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>;
   readonly resourceMonitor: PushValueSourceFamily<
@@ -366,11 +365,11 @@ export function createFrontendSources(
         normalizeMetricSnapshotQuery(query)).key,
       decoder: metricSnapshotDecoder
     }),
-    metricFieldCatalog: new BackendPushValueSource<readonly MetricFieldCatalogDevice[]>({
+    metricFieldCatalog: new BackendPushValueSource<MetricCatalogPush>({
       key: "metric-fields.catalog",
       channel: subscriptionChannel,
       buildUrl: buildMetricFieldCatalogSubscriptionUrl,
-      decoder: metricFieldCatalogDecoder
+      decoder: metricCatalogPushDecoder
     }),
     metricFields: new BackendPushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>({
       key: "metric-fields.devices",

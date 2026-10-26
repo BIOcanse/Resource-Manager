@@ -60,6 +60,7 @@ import type {
   MetricFieldDevice,
   MetricFieldQuery
 } from "../data/metricFields/metricFieldSource.ts";
+import type { MetricCatalogPush } from "../data/monitor/metricCatalogPush.ts";
 import {
   fieldCardDefinitions,
   fieldCardSlot,
@@ -102,8 +103,11 @@ export interface MonitorStoreOptions {
   processFieldCatalogSource: SourceHandle<readonly ProcessMetricField[]>;
   dashboardSettingsSource: SourceHandle<DashboardSettingsResult>;
   metricSnapshotSource: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
-  /** 规范字段的设备目录：卡片选择器的设备字段条目、卡片上的设备名和「设备不在」都从这里来。 */
-  metricFieldCatalogSource: PushValueSource<readonly MetricFieldCatalogDevice[]>;
+  /**
+   * 目录订阅：每帧同时带目录修订号、规范字段的设备目录和指标目录。设备目录给卡片选择器的设备字段条目、
+   * 卡片上的设备名和「设备不在」；订阅收到过帧之后，指标目录也只从这里来（见 applyCatalogPush）。
+   */
+  metricFieldCatalogSource: PushValueSource<MetricCatalogPush>;
   /** 卡片上设备字段的当前值，按字段集合订阅。 */
   metricFieldsSource: PushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>;
   resourceMonitorSource: PushValueSourceFamily<
@@ -268,8 +272,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   let lastDashboardSettingsRevision = -1;
   // 出厂布局随目录重新展开（见 release_defaults_contract.md），目录换新时要重取看板设置；用户保存过的布局不用。
   let dashboardUsesFactoryDefaults = false;
-  // 快照帧带来的后端目录修订号。第一次收到和以后每次变化都重取目录；重取失败就清掉，下一帧再试。
+  // 当前目录所属的后端目录修订号（不透明，只作相等比较）。来自目录订阅帧，或快照帧（这时重取目录，重取失败就清掉，下一帧再试）。
   let backendCatalogRevision: string | null = null;
+  // 目录订阅在当前这次订阅里收到过帧：指标目录只由订阅帧写，GET 结果和快照帧的修订号不再改它。订阅结束时清掉。
+  let catalogFromPush = false;
 
   const activeCards = cards;
   const resourceBarEditing = createMemo(() => resourceBarEditMode());
@@ -365,10 +371,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       ? readyObservation(resourceTableFacts()?.capturedAt ?? undefined) : observation;
   });
   const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));
-  // 目录每 5 秒推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
-  const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<readonly MetricFieldCatalogDevice[]> | null>(null);
+  // 目录订阅每个探测周期推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
+  const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<MetricCatalogPush> | null>(null);
   const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<MonitorSourceBinding<readonly MetricFieldDevice[]> | null>(null);
-  const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data ?? null, null, { equals: sameMetricFieldCatalog });
+  const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data?.fields ?? null, null, { equals: sameMetricFieldCatalog });
   const fieldSlots = createMemo(() => fieldCardSlots(visibleCards()));
   const fieldQuery = createMemo(() => ({
     fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort()
@@ -446,7 +452,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
           if (value.data) {
             setAnsweredMetricIds(binding.query.ids === null ? "all" : new Set(binding.query.ids));
           }
-          if (value.data && value.data.catalogRevision !== backendCatalogRevision) {
+          if (value.data && !catalogFromPush && value.data.catalogRevision !== backendCatalogRevision) {
             backendCatalogRevision = value.data.catalogRevision;
             void followBackendCatalog(value.data.catalogRevision);
           }
@@ -463,8 +469,14 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     if (!options.metricSnapshotActive() || intervalMs === null) {
       return;
     }
-    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(intervalMs, setFieldCatalogSnapshot);
-    onCleanup(unsubscribe);
+    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(intervalMs, (value) => {
+      setFieldCatalogSnapshot(value);
+      if (value.data) applyCatalogPush(value.data);
+    });
+    onCleanup(() => {
+      unsubscribe();
+      catalogFromPush = false;
+    });
   });
   createEffect(() => {
     const binding = JSON.parse(fieldSubscriptionKey()) as {
@@ -546,9 +558,30 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     };
   }
 
+  /**
+   * 目录订阅的一帧：指标目录与设备目录、修订号同帧生效，不等普通指标帧。
+   * 同一修订号下组件安装信息也会变，所以指标目录按内容替换，不看修订号是否变化；
+   * 修订号变化时，仍是出厂布局就重取看板设置（和快照帧的路径相同）。
+   */
+  function applyCatalogPush(push: MetricCatalogPush): void {
+    catalogFromPush = true;
+    // 订阅可能在 createEffect 里同步回调：读当前值不能让那个 effect 跟踪目录。
+    untrack(() => {
+      if (JSON.stringify(catalog()) !== JSON.stringify(push.metrics)) setCatalog(push.metrics);
+      if (catalogObservation().status !== "ready") setCatalogObservation(readyObservation());
+    });
+    if (push.catalogRevision !== backendCatalogRevision) {
+      backendCatalogRevision = push.catalogRevision;
+      if (dashboardUsesFactoryDefaults) void refreshSettings();
+    }
+  }
+
   function applyMetricCatalogSourceSnapshot(
     source: SourceSnapshot<MetricDefinition[]>
   ): void {
+    if (catalogFromPush) {
+      return;
+    }
     if (sourceCanRender(source) && source.data) {
       if (source.revision !== lastCatalogRevision) {
         const items = source.data;

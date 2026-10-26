@@ -119,9 +119,16 @@ assert.match(monitorStore, /if \(resourceTableMode\(\) === "performance"\) \{\s*
 // 性能面板只画目录里可选的曲线，读不到的项不画空线。
 assert.match(readSource("features/resourceTable/ResourcePerformancePanel.tsx"),
   /\.filter\(\(id\) => available\.has\(id\) && available\.get\(id\)!\.selectable !== false\)/);
-// 快照帧的目录修订号第一次出现或变化时重取目录；还是出厂布局时再重取看板设置（后端按新目录重新展开）。
+// 目录订阅帧（{catalogRevision, fields, metrics}）收到后由它独自写指标目录：同帧生效、按内容替换（同一修订号下
+// 组件安装信息也会变），修订号变化时仍是出厂布局就重取看板设置；GET 结果和快照帧的修订号不再改目录。
+assert.match(monitorStore, /function applyCatalogPush\(push: MetricCatalogPush\): void \{\s*catalogFromPush = true;/);
+assert.match(monitorStore, /if \(JSON\.stringify\(catalog\(\)\) !== JSON\.stringify\(push\.metrics\)\) setCatalog\(push\.metrics\);/);
+assert.match(monitorStore, /if \(push\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = push\.catalogRevision;\s*if \(dashboardUsesFactoryDefaults\) void refreshSettings\(\);/);
+assert.match(monitorStore, /source: SourceSnapshot<MetricDefinition\[\]>\s*\): void \{\s*if \(catalogFromPush\) \{\s*return;/);
+assert.match(monitorStore, /if \(value\.data\) applyCatalogPush\(value\.data\);/);
+// 订阅没收到帧时（或没有订阅），快照帧的目录修订号第一次出现或变化时重取目录；还是出厂布局时再重取看板设置。
 assert.match(monitorStore, /dashboardUsesFactoryDefaults = settings\.usesFactoryDefaults === true;/);
-assert.match(monitorStore, /if \(value\.data && value\.data\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.data\.catalogRevision;\s*void followBackendCatalog\(value\.data\.catalogRevision\);/);
+assert.match(monitorStore, /if \(value\.data && !catalogFromPush && value\.data\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.data\.catalogRevision;\s*void followBackendCatalog\(value\.data\.catalogRevision\);/);
 assert.match(monitorStore, /if \(!await refreshCatalog\(\)\) \{\s*if \(backendCatalogRevision === revision\) \{\s*backendCatalogRevision = null;/);
 assert.match(monitorStore, /if \(dashboardUsesFactoryDefaults\) \{\s*await refreshSettings\(\);/);
 // 看板布局由后端按本机目录生成，设置到达前不画前端自带的占位卡。

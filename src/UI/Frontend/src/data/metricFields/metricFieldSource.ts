@@ -138,15 +138,19 @@ export function buildMetricFieldCatalogSubscriptionUrl(intervalMs: number): stri
   return `/api/metrics/fields/catalog/subscribe?${params.toString()}`;
 }
 
+/** GET /api/metrics/fields/catalog 的原样数组；订阅推送把同一形状放在信封的 fields 里（metricCatalogPush.ts）。 */
 export const metricFieldCatalogDecoder = defineResponseDecoder<readonly MetricFieldCatalogDevice[]>(
   "metric-field-catalog",
-  (value) => requireArray(value, "$").map((entry, index) => {
-    const path = `$[${index}]`;
-    const record = requireRecord(entry, path);
+  (value) => decodeMetricFieldCatalog(value, "$"));
+
+export function decodeMetricFieldCatalog(value: unknown, path: string): readonly MetricFieldCatalogDevice[] {
+  return requireArray(value, path).map((entry, index) => {
+    const devicePath = `${path}[${index}]`;
+    const record = requireRecord(entry, devicePath);
     return {
-      ...decodeDeviceInfo(record, path),
-      fields: requireArray(record.fields, `${path}.fields`).map((field, fieldIndex) => {
-        const fieldPath = `${path}.fields[${fieldIndex}]`;
+      ...decodeDeviceInfo(record, devicePath),
+      fields: requireArray(record.fields, `${devicePath}.fields`).map((field, fieldIndex) => {
+        const fieldPath = `${devicePath}.fields[${fieldIndex}]`;
         const definition = requireRecord(field, fieldPath);
         return {
           name: requireString(definition.name, `${fieldPath}.name`),
@@ -156,7 +160,8 @@ export const metricFieldCatalogDecoder = defineResponseDecoder<readonly MetricFi
         };
       })
     };
-  }));
+  });
+}
 
 function decodeDeviceInfo(record: Record<string, unknown>, path: string): MetricFieldDeviceInfo {
   const device = requireRecord(record.device, `${path}.device`);

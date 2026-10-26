@@ -91,7 +91,7 @@ export function MetricModal(props: MetricModalProps) {
     const intervalMs = readIntervals.current()?.monitor;
     if (!props.open || intervalMs === undefined) return;
     const unsubscribe = runtime.sources.metricFieldCatalog.subscribeSnapshot(intervalMs,
-      (snapshot) => setDevices(snapshot.data ?? []));
+      (snapshot) => setDevices(snapshot.data?.fields ?? []));
     onCleanup(unsubscribe);
   });
   const listboxId = "metric-modal-options";
