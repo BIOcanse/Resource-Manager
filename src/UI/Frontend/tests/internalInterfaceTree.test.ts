@@ -4,12 +4,13 @@ import {
   buildInternalInterfaceTree,
   filterInternalInterfaceTree
 } from "../src/features/deviceTopology/internalInterfaceTree.ts";
-import type { DeviceTopologyPort, DeviceTopologyUsbConnection, DeviceTopologyWirelessConnection } from "../src/types.ts";
+import type { DeviceTopologyPort, DeviceTopologyTransport, DeviceTopologyUsbConnection, DeviceTopologyWirelessConnection } from "../src/types.ts";
 import { uiText } from "../src/text.ts";
 
 const externalDeviceId = String.raw`USB\VID_1111&PID_2222\EXTERNAL`;
 const externalPort = port({
   id: "external-port",
+  transport: transport("usb"),
   name: "External Keyboard",
   deviceId: externalDeviceId,
   busKind: "usb",
@@ -27,6 +28,7 @@ const externalPort = port({
 });
 const externalFunction = port({
   id: "external-function",
+  transport: transport("usb"),
   name: "External Keyboard Function",
   deviceId: String.raw`HID\VID_1111&PID_2222&MI_00\FUNCTION`,
   nativeParentDeviceId: externalDeviceId,
@@ -40,6 +42,7 @@ const rootHubId = String.raw`USB\ROOT_HUB30\INTERNAL`;
 const cameraId = String.raw`USB\VID_3333&PID_4444\INTEGRATED_CAMERA`;
 const usbController = port({
   id: "usb-controller",
+  transport: transport("pci"),
   name: "AMD USB Host Controller",
   deviceId: usbControllerId,
   nativeParentDeviceId: String.raw`PCI\ROOT_PORT\USB`,
@@ -50,16 +53,19 @@ const usbController = port({
 });
 const rootHub = port({
   id: "root-hub",
+  transport: transport("usb"),
   name: "USB Root Hub",
   deviceId: rootHubId,
   nativeParentDeviceId: usbControllerId,
   busKind: "usb",
   hardwareKind: "USB Hub",
   pnpClass: "USB",
-  service: "USBHUB3"
+  service: "USBHUB3",
+  usb: { ...usbConnection("root-hub", false), deviceIsHub: true, interfaces: [] }
 });
 const internalCamera = port({
   id: "internal-camera",
+  transport: transport("usb"),
   name: "Integrated Camera",
   deviceId: cameraId,
   nativeParentDeviceId: rootHubId,
@@ -79,6 +85,7 @@ const internalCamera = port({
 });
 const cameraFunction = port({
   id: "camera-function",
+  transport: transport("usb"),
   name: "HD Webcam",
   deviceId: String.raw`USB\VID_3333&PID_4444&MI_00\CAMERA`,
   nativeParentDeviceId: cameraId,
@@ -89,6 +96,7 @@ const cameraFunction = port({
 });
 const internalMouse = port({
   id: "internal-mouse",
+  transport: transport("i2c_hid"),
   name: "HID-compliant mouse",
   deviceId: String.raw`HID\UNIW0001&COL01\TOUCHPAD`,
   nativeParentDeviceId: String.raw`ACPI\UNIW0001\1`,
@@ -100,6 +108,7 @@ const internalMouse = port({
 });
 const internalAudio = port({
   id: "internal-audio",
+  transport: transport("hd_audio"),
   name: "Internal Audio Codec",
   deviceId: String.raw`HDAUDIO\FUNC_01&VEN_14F1&DEV_1F87\CODEC`,
   nativeParentDeviceId: String.raw`PCI\HDAUDIO\CONTROLLER`,
@@ -121,6 +130,7 @@ const internalAudio = port({
 const bluetoothAdapterId = String.raw`USB\VID_5555&PID_6666&MI_00\BLUETOOTH`;
 const bluetoothAdapter = port({
   id: "bluetooth-adapter",
+  transport: transport("usb"),
   name: "Bluetooth Adapter",
   deviceId: bluetoothAdapterId,
   nativeParentDeviceId: rootHubId,
@@ -131,6 +141,7 @@ const bluetoothAdapter = port({
 });
 const bluetoothDevice = port({
   id: "bluetooth-device",
+  transport: transport("bluetooth"),
   name: "Wireless Headset",
   deviceId: String.raw`BTHENUM\DEV_AABBCCDDEEFF\HEADSET`,
   nativeParentDeviceId: bluetoothAdapterId,
@@ -143,6 +154,7 @@ const bluetoothDevice = port({
 const nvmeControllerId = String.raw`PCI\VEN_1E49&DEV_1081\NVME`;
 const nvmeController = port({
   id: "nvme-controller",
+  transport: transport("nvme"),
   name: "Standard NVM Express Controller",
   deviceId: nvmeControllerId,
   nativeParentDeviceId: String.raw`PCI\ROOT_PORT\NVME`,
@@ -153,6 +165,7 @@ const nvmeController = port({
 });
 const nvmeDisk = port({
   id: "nvme-disk",
+  transport: transport("nvme"),
   name: "Internal NVMe",
   deviceId: String.raw`SCSI\DISK&VEN_NVME&PROD_INTERNAL\0`,
   nativeParentDeviceId: nvmeControllerId,
@@ -174,6 +187,7 @@ const nvmeDisk = port({
 
 const gpu = port({
   id: "gpu",
+  transport: transport("pci"),
   name: "NVIDIA Test GPU",
   deviceId: String.raw`PCI\VEN_10DE&DEV_0001\GPU`,
   nativeParentDeviceId: String.raw`PCI\ROOT_PORT\GPU`,
@@ -185,6 +199,7 @@ const gpu = port({
 });
 const wifi = port({
   id: "wifi",
+  transport: transport("pci"),
   name: "Wi-Fi Adapter",
   deviceId: String.raw`PCI\VEN_14C3&DEV_0001\WIFI`,
   nativeParentDeviceId: String.raw`PCI\ROOT_PORT\WIFI`,
@@ -255,14 +270,14 @@ const tree = buildInternalInterfaceTree([
 ]);
 
 assert.ok(tree.interfaceCount >= 5);
-assert.ok(tree.controllerCount >= 3);
+assert.equal(tree.controllerCount, 2);
 assert.ok(!tree.nodes.some((node) => node.port.id === externalPort.id));
 assert.ok(!tree.nodes.some((node) => node.port.id === externalFunction.id));
 
 const diskNode = requiredNode("nvme-disk");
 assert.equal(diskNode.specializedDevice?.kind, "external-storage");
 assert.deepEqual(diskNode.path.slice(-2), ["Standard NVM Express Controller", "Internal NVMe"]);
-assert.match(diskNode.path[0], /^PCIe 内部接口/);
+assert.equal(diskNode.path[0], "NVMe");
 
 assert.equal(requiredNode("internal-camera").specializedDevice?.kind, "camera");
 assert.equal(requiredNode("internal-camera").title, "内置摄像头");
@@ -278,15 +293,15 @@ assert.equal(requiredNode("internal-audio").specializedDevice?.kind, "audio-devi
 assert.equal(requiredNode("internal-audio").specializedDevice?.deviceTypeLabel, "内置音频编解码器");
 assert.equal(requiredNode("internal-audio").specializedDevice?.internalFacts?.catalogIdentity, "Test HD Audio Codec");
 assert.equal(requiredNode("gpu").specializedDevice?.kind, "graphics-adapter");
-assert.equal(requiredNode("gpu").specializedDevice?.internalFacts?.transport, "PCI Express");
+assert.equal(requiredNode("gpu").specializedDevice?.internalFacts?.transport, "PCI");
 assert.equal(requiredNode("wifi").specializedDevice?.kind, "network-adapter");
 assert.equal(requiredNode("wifi").specializedDevice?.summaryFields[0].value, "802.11ac");
 assert.equal(requiredNode("panel").specializedDevice?.kind, "monitor");
 assert.equal(requiredNode("bluetooth-adapter").specializedDevice?.kind, "bluetooth-device");
 assert.equal(requiredNode("bluetooth-device").specializedDevice?.kind, "bluetooth-device");
-assert.equal(requiredNode("bluetooth-device").specializedDevice?.deviceTypeLabel, "Bluetooth 立体声音频");
+assert.equal(requiredNode("bluetooth-device").specializedDevice?.deviceTypeLabel, uiText.deviceAdapters.bluetoothDevice);
 assert.equal(requiredNode("nvme-controller").specializedDevice?.kind, "internal-controller");
-assert.equal(requiredNode("nvme-controller").specializedDevice?.summaryFields[0].value, "NVMe 控制器");
+assert.equal(requiredNode("nvme-controller").specializedDevice?.summaryFields[0].value, "Storage Device");
 
 // 数值接口存在时给出确定能力；没有 USB 描述符的原生功能保留未知。
 const internalCameraModel = requiredNode("internal-camera").specializedDevice;
@@ -324,7 +339,7 @@ for (const [wireless, expected] of wirelessCases) {
 
 const diskSearch = filterInternalInterfaceTree(tree.nodes, "Internal NVMe");
 assert.deepEqual(diskSearch.map((node) => node.title).slice(-2), ["Standard NVM Express Controller", "Internal NVMe"]);
-assert.match(diskSearch[0].title, /^PCIe 内部接口/);
+assert.equal(diskSearch[0].title, "NVMe");
 
 const controllerSearch = filterInternalInterfaceTree(tree.nodes, "Standard NVM Express Controller");
 assert.ok(controllerSearch.some((node) => node.title === "Internal NVMe"));
@@ -347,6 +362,46 @@ const cyclicTree = buildInternalInterfaceTree([
 assert.ok(cyclicTree.nodes.some((node) => node.port.id === "plain" && node.role !== "internal-interface"));
 assert.ok(cyclicTree.nodes.length <= 8);
 
+// Transport is a reported fact even when every legacy hint suggests something else.
+const misleading = port({ id: "reported-pci", name: "USB4 NVMe PCIe Controller",
+  deviceId: "opaque-device-id", service: "stornvme", busKind: "usb", protocol: "PCI Express",
+  nativeParentDeviceId: "PCI\\PARENT", nativeParentDisplayName: "I2C HID Controller",
+  transport: transport("pci") });
+const pciTree = buildInternalInterfaceTree([misleading]);
+const pciRoot = pciTree.nodes.find(node => node.role === "internal-interface")!;
+assert.equal(pciRoot.title, uiText.deviceTree.pciInterface);
+assert.ok(pciRoot.subtitle?.includes("PCI"));
+assert.doesNotMatch(`${pciRoot.title} ${pciRoot.subtitle}`, /PCIe|PCI Express|NVMe|USB4/);
+assert.equal(pciTree.controllerCount, 0, "A service or name must not invent a controller role");
+
+const unknownTree = buildInternalInterfaceTree([{ ...misleading, deviceId: "PCI\\MISLEADING",
+  transport: { code: null, reason: "conflicting-evidence", ruleId: null, evidence: [] } }]);
+const unknownRoot = unknownTree.nodes.find(node => node.role === "internal-interface")!;
+assert.equal(unknownRoot.title, `${uiText.deviceTopology.deviceCategory.unknown} (conflicting-evidence)`);
+assert.doesNotMatch(unknownRoot.subtitle ?? "", /PCIe|PCI Express|NVMe|USB4/);
+
+const parentChain: DeviceTopologyTransport = {
+  code: "i2c_hid", reason: null, ruleId: "service-hidi2c", evidence: [
+    { source: "setupapi-cfgmgr32", deviceId: "opaque-child", depth: 0, enumeratorName: "HID",
+      busTypeGuid: null, service: "kbdhid", parentDeviceId: "opaque-parent" },
+    { source: "setupapi-cfgmgr32", deviceId: "opaque-parent", depth: 1, enumeratorName: "ACPI",
+      busTypeGuid: null, service: "hidi2c", parentDeviceId: null }
+  ]
+};
+const originalChain = structuredClone(parentChain);
+const parentFactTree = buildInternalInterfaceTree([port({ id: "parent-fact", name: "USB Keyboard",
+  deviceId: "opaque-child", nativeParentDeviceId: "opaque-parent", nativeParentDisplayName: "PCIe Controller",
+  service: "BTHUSB", busKind: "usb", transport: parentChain })]);
+assert.equal(parentFactTree.nodes.find(node => node.role === "internal-interface")?.title, "I2C HID");
+assert.deepEqual(parentChain, originalChain, "Presentation must preserve the ordered backend evidence");
+
+function transport(code: NonNullable<DeviceTopologyTransport["code"]>): DeviceTopologyTransport {
+  return { code, reason: null, ruleId: "fixture-reported-transport", evidence: [
+    { source: "setupapi-cfgmgr32", deviceId: "fixture", depth: 0,
+      enumeratorName: null, busTypeGuid: null, service: null, parentDeviceId: null }
+  ] };
+}
+
 function requiredNode(portId: string) {
   const node = tree.nodes.find((candidate) => candidate.port.id === portId && candidate.role !== "internal-interface");
   assert.ok(node, `missing internal node ${portId}`);
@@ -364,7 +419,7 @@ function port(options: Omit<Partial<DeviceTopologyPort>, "id" | "displayName" | 
     displayName: options.name,
     connectorKind: options.connectorKind ?? "generic",
     busKind: options.busKind ?? "unknown",
-    transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
+    transport: options.transport ?? { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     hardwareKind: options.hardwareKind ?? "Device",
     protocol: options.protocol ?? options.pnpClass ?? "Device",
     speed: options.speed ?? null,

@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portHardwareKind, portProtocol, userFacingNetworkState } from "./deviceVocabulary.ts";
+import { displayConnectorTechnology, portHardwareKind, portProtocol, transportLabel, userFacingNetworkState } from "./deviceVocabulary.ts";
 import { deviceTopologySummaryFields } from "./deviceTopologyPresentation.ts";
 import type { ExternalInterfaceNodeRole } from "./externalInterfaceTree.ts";
 import type { InternalInterfaceNodeRole } from "./internalInterfaceTree.ts";
@@ -123,10 +123,12 @@ export function deviceUserDetailSections(
       isInterface ? firstShown(userDetailItem(uiText.deviceTopology.label.directChildren, uiText.deviceTopology.countSuffix(childCount))) : null
     ]),
     userDetailSection(uiText.deviceTopology.section.connection, [
+      scope === "internal" ? firstShown(userDetailItem(uiText.deviceAdapters.label.internalTransport, transportLabel(port.transport))) : null,
       firstShown(userDetailItem(uiText.deviceTopology.label.bus, reportedDeviceValue(busLabel(port.busKind)))),
       firstShown(unlessSummarized(userDetailItem(isDevice ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed, reportedDeviceValue(port.speed)))),
       firstShown(userDetailItem(uiText.deviceTopology.label.maxSpeed, reportedDeviceValue(port.physicalMaximumSpeed))),
       firstShown(userDetailItem(uiText.deviceTopology.label.protocol, reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : portProtocol(port)))),
+      port.storage ? firstShown(userDetailItem(uiText.deviceAdapters.label.busAndTransport, reportedDeviceValue(port.storage.busType))) : null,
       firstShown(userDetailItem(uiText.deviceTopology.label.manufacturer, reportedDeviceValue(port.manufacturer))),
       port.advancedInterconnect
         ? firstShown(userDetailItem(uiText.deviceTopology.label.interconnectTechnology, reportedDeviceValue(port.advancedInterconnect.technology)))
@@ -134,6 +136,7 @@ export function deviceUserDetailSections(
     ]),
     display ? userDetailSection(uiText.deviceTopology.section.display, [
       userDetailItem(uiText.deviceTopology.label.deviceName, reportedDeviceValue(display.monitorName)),
+      userDetailItem(uiText.deviceAdapters.label.displayTechnology, displayConnectorTechnology(display)),
       userDetailItem(uiText.deviceTopology.label.activeResolution, reportedDeviceValue(display.resolution)),
       userDetailItem(uiText.deviceTopology.label.refreshRate, reportedDeviceValue(display.refreshRate)),
       userDetailItem(uiText.deviceTopology.label.connectionLocation, display.internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external)
@@ -196,18 +199,7 @@ function hardwareKindLabel(port: DeviceTopologyPort) {
 
 function interfaceProtocol(node: DeviceTopologyListNode, scope: DeviceTopologyScope) {
   if (scope === "internal") {
-    switch (node.connectorKind) {
-      case "pcie": return "PCI Express";
-      case "usb-internal": return "USB";
-      case "internal-display": return node.port.display
-        ? displayConnectorTechnology(node.port.display)
-        : uiText.deviceTopology.internalDisplay;
-      case "audio": return "HD Audio";
-      case "bluetooth": return "Bluetooth";
-      case "acpi": return "ACPI";
-      case "storage": return node.port.storage?.busType ?? portProtocol(node.port);
-      default: return portProtocol(node.port);
-    }
+    return portProtocol(node.port);
   }
   return node.port.usb?.supportedProtocols
     ?? node.port.display?.connectorTechnology
@@ -222,7 +214,7 @@ function interfaceSummaryFields(node: DeviceTopologyListNode, childCount: number
     { label: uiText.deviceTopology.label.interfaceType, value: node.title },
     { label: uiText.deviceTopology.label.connectionState, value: connectionStateLabel(node.connectionState) },
     { label: uiText.deviceTopology.label.directChildren, value: uiText.deviceTopology.countSuffix(childCount) },
-    { label: uiText.deviceTopology.label.protocol, value: interfaceProtocol(node, scope) }
+    { label: uiText.deviceAdapters.label.internalTransport, value: transportLabel(node.port.transport) }
   ];
 }
 
@@ -312,6 +304,8 @@ function connectorLabel(kind: string) {
       return uiText.deviceTopology.deviceCategory.cardReader;
     case "pcie":
       return "PCIe";
+    case "pci":
+      return "PCI";
     case "bluetooth":
       return "Bluetooth";
     default:
@@ -328,7 +322,7 @@ function busLabel(kind: string) {
     case "thunderbolt":
       return "Thunderbolt";
     case "pci":
-      return "PCI / PCIe";
+      return "PCI";
     case "display":
       return uiText.deviceTopology.deviceCategory.display;
     case "network":

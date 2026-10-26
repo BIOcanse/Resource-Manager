@@ -18,12 +18,13 @@ for (const language of languages) {
     for (const state of wireStates) {
       const port: DeviceTopologyPort = {
         id: "network-adapter", isPhysicalConnector: false, displayName: "Fixture Ethernet",
+        transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
         connectorKind: "internal", busKind: "network", hardwareKind: "Network Adapter", protocol: "Ethernet",
         pnpClass: "Net", deviceId: String.raw`PCI\VEN_1234&DEV_5678\NETWORK`, status: "OK",
         locationPaths: [], hardwareIds: [], compatibleIds: [],
         confidence: { domain: 5, code: 24, args: [] }, source: { domain: 5, code: 35, args: [] },
         topologyPath: { domain: 5, code: 64, args: ["network-adapter"] },
-        network: { interfaceName: "Fixture Ethernet", connectionState: state }
+        network: { interfaceName: "Fixture Ethernet", connectionState: state, wireless: null }
       };
       const model = networkAdapter.createModel({ scope: "internal", port, fallbackTitle: "Fixture Ethernet",
         downstreamInterfaceCount: 0, connectedDownstreamInterfaceCount: 0 });

@@ -34,16 +34,6 @@ const externalConnectorKinds = new Set([
   "sd-card"
 ]);
 
-const controllerServices = new Set([
-  "storahci",
-  "stornvme",
-  "ucmucsiaacpidevice",
-  "ucmucsiacpiclient",
-  "usb4devicerouter",
-  "usb4hostrouter",
-  "usbxhci"
-]);
-
 export function describeDeviceTopologyNode(port: DeviceTopologyPort): DeviceTopologyNodePresentation {
   if (!isExternalDeviceInterface(port)) {
     return {
@@ -106,21 +96,8 @@ function isExternalDeviceInterface(port: DeviceTopologyPort) {
 }
 
 function isControllerNode(port: DeviceTopologyPort) {
-  if (port.advancedInterconnect) {
-    return true;
-  }
-
-  const service = port.service?.trim().toLocaleLowerCase();
-  if (service && controllerServices.has(service)) {
-    return true;
-  }
-
-  if (port.pnpClass?.trim().toLocaleLowerCase() === "scsiadapter") {
-    return true;
-  }
-
-  return [port.displayName, port.hardwareKind]
-    .some((value) => /controller|host router|connector manager|控制器|连接器管理器/i.test(value ?? ""));
+  return port.advancedInterconnect != null || port.usb?.deviceIsHub === true
+    || ["scsiadapter", "ucm"].includes(port.pnpClass?.trim().toLocaleLowerCase() ?? "");
 }
 
 function resolveConnectionState(port: DeviceTopologyPort): DeviceTopologyConnectionState {
@@ -218,7 +195,7 @@ function busLabel(busKind: string) {
     case "thunderbolt":
       return "Thunderbolt";
     case "pci":
-      return "PCI / PCIe";
+      return "PCI";
     case "display":
       return uiText.deviceInterface.category.displayOutput;
     case "network":

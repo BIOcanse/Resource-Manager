@@ -21,6 +21,7 @@
         "displayName": "Fixture HDMI",
         "connectorKind": "hdmi",
         "busKind": "display",
+        "transport": { "code": null, "reason": "not-queried", "ruleId": null, "evidence": [] },
         "hardwareKind": "display-output",
         "protocol": "HDMI 2.1",
         "speed": null,

@@ -1667,6 +1667,7 @@ const jaJpAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `直下のデバイス ${count} · ${protocol}`,
     hdAudioInterface: "HD Audio 内部インターフェイス",
     bluetoothInterface: "Bluetooth 内部インターフェイス",
+    pciInterface: "PCI 内部インターフェイス",
     pcieInterface: "PCIe 内部インターフェイス",
     internalUsbInterface: "内部 USB インターフェイス",
     acpiInterface: "ACPI 内部インターフェイス",

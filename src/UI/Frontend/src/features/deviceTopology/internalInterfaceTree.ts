@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portDisplayName, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
+import { portDisplayName, portHardwareKind, transportLabel } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
@@ -38,17 +38,6 @@ interface InterfaceDescriptor {
   connectorKind: string;
   protocol: string;
 }
-
-const controllerServices = new Set([
-  "stornvme",
-  "storahci",
-  "ucmucsiaacpidevice",
-  "ucmucsiacpiclient",
-  "usb4devicerouter",
-  "usb4hostrouter",
-  "usbxhci",
-  "usbhub3"
-]);
 
 const virtualServices = new Set(["vwifimp", "vhdmp", "mskssrv"]);
 
@@ -313,6 +302,9 @@ function isInternalHardwareCandidate(port: DeviceTopologyPort) {
     return false;
   }
 
+  // The backend can identify a transport for an opaque device ID.
+  if (port.transport.code !== null) return true;
+
   const service = port.service?.trim().toLocaleLowerCase();
   if (service && virtualServices.has(service)) {
     return false;
@@ -347,14 +339,7 @@ function isControllerPort(port: DeviceTopologyPort) {
   if (port.advancedInterconnect || port.usb?.deviceIsHub === true) {
     return true;
   }
-  const service = port.service?.trim().toLocaleLowerCase();
-  if (service && controllerServices.has(service)) {
-    return true;
-  }
-  if (["scsiadapter", "ucm"].includes(port.pnpClass?.trim().toLocaleLowerCase() ?? "")) {
-    return true;
-  }
-  return /controller|host router|root hub|控制器|连接器管理器|根集线器/i.test(`${port.displayName} ${port.hardwareKind}`);
+  return ["scsiadapter", "ucm"].includes(port.pnpClass?.trim().toLocaleLowerCase() ?? "");
 }
 
 function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescriptor {
@@ -362,33 +347,25 @@ function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescripto
     || normalizeDeviceId(port.upstreamDeviceId)
     || normalizeDeviceId(port.deviceId)
     || port.id;
+  const code = port.transport.code;
+  const protocol = transportLabel(port.transport);
   if (port.display?.internal === true) {
     return {
       key: `display:${port.id}`,
       title: internalDisplayInterfaceTitle(port),
       connectorKind: "internal-display",
-      protocol: displayConnectorTechnology(port.display) || uiText.deviceTree.internalDisplay
+      protocol
     };
   }
-  if (/^HDAUDIO\\/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `hda:${parentIdentity}`, title: uiText.deviceTree.hdAudioInterface, connectorKind: "audio", protocol: "HD Audio" };
+  const key = `${code ?? `unknown:${port.transport.reason}`}:${parentIdentity}`;
+  switch (code) {
+    case "hd_audio": return { key, title: uiText.deviceTree.hdAudioInterface, connectorKind: "audio", protocol };
+    case "bluetooth": return { key, title: uiText.deviceTree.bluetoothInterface, connectorKind: "bluetooth", protocol };
+    case "pci": return { key, title: uiText.deviceTree.pciInterface, connectorKind: "internal", protocol };
+    case "usb": return { key, title: uiText.deviceTree.internalUsbInterface, connectorKind: "usb-internal", protocol };
+    case "acpi": return { key, title: uiText.deviceTree.acpiInterface, connectorKind: "acpi", protocol };
+    default: return { key, title: protocol, connectorKind: "internal", protocol };
   }
-  if (port.busKind.toLocaleLowerCase() === "bluetooth" || /^BTH/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `bluetooth:${parentIdentity}`, title: uiText.deviceTree.bluetoothInterface, connectorKind: "bluetooth", protocol: "Bluetooth" };
-  }
-  if (/^PCI\\/.test(normalizeDeviceId(port.deviceId)) || /^PCI\\/.test(parentIdentity)) {
-    return { key: `pcie:${parentIdentity}`, title: uiText.deviceTree.pcieInterface, connectorKind: "pcie", protocol: "PCI Express" };
-  }
-  if (port.busKind.toLocaleLowerCase() === "usb" || /^USB\\/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `usb:${parentIdentity}`, title: uiText.deviceTree.internalUsbInterface, connectorKind: "usb-internal", protocol: "USB" };
-  }
-  if (/^ACPI\\/.test(normalizeDeviceId(port.deviceId)) || /^ACPI\\/.test(parentIdentity)) {
-    return { key: `acpi:${parentIdentity}`, title: uiText.deviceTree.acpiInterface, connectorKind: "acpi", protocol: "ACPI" };
-  }
-  if (port.busKind.toLocaleLowerCase() === "storage") {
-    return { key: `storage:${parentIdentity}`, title: uiText.deviceTree.storageInterface, connectorKind: "storage", protocol: port.storage?.busType ?? portProtocol(port) };
-  }
-  return { key: `system:${parentIdentity}`, title: uiText.deviceTree.systemInterface, connectorKind: "internal", protocol: portProtocol(port) };
 }
 
 function internalDisplayInterfaceTitle(port: DeviceTopologyPort) {
@@ -404,10 +381,10 @@ function inferDeviceConnectorKind(port: DeviceTopologyPort) {
   if (port.camera) return "camera";
   if (port.hid?.hidType === "keyboard") return "keyboard";
   if (port.hid?.hidType === "mouse") return "mouse";
-  if (port.busKind === "display") return "pcie";
-  if (port.busKind === "network") return "network-adapter";
-  if (port.busKind === "bluetooth") return "bluetooth";
-  if (port.busKind === "audio") return "audio";
+  if (port.pnpClass?.toLocaleLowerCase() === "display") return "graphics-card";
+  if (port.network != null) return "network-adapter";
+  if (port.transport.code === "bluetooth") return "bluetooth";
+  if (port.transport.code === "hd_audio") return "audio";
   if (isControllerPort(port)) return "controller";
   return port.connectorKind || "device";
 }

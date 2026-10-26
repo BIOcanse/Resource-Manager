@@ -28,7 +28,7 @@ export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
     const manufacturer = displayValue(context.port.manufacturer, context.port.idResolution?.vendorName ?? "--");
     const driverService = displayValue(context.port.service);
     const deviceStatus = displayValue(context.port.status);
-    const busType = displayValue(context.port.busKind === "display" ? "PCI Express" : context.port.busKind);
+    const busType = facts.transport;
     return {
       adapterId: "graphics-adapter",
       kind: "graphics-adapter",
@@ -101,13 +101,13 @@ export const bluetoothAdapter: DeviceAdapter<BluetoothDeviceModel> = {
   matches: ({ scope, port }) => scope === "internal"
     && (port.busKind.toLocaleLowerCase() === "bluetooth"
       || port.pnpClass?.toLocaleLowerCase() === "bluetooth"
-      || /^BTH/i.test(port.deviceId)),
+      || port.transport.code === "bluetooth"),
   createModel: (context) => {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context)!;
     const title = deviceTitle(context, uiText.deviceAdapters.bluetoothDevice);
-    const bluetoothRole = resolveBluetoothRole(context.port.deviceId, context.port.service, context.port.displayName);
-    const protocol = resolveBluetoothTransport(context.port.service, facts.transport);
+    const bluetoothRole = uiText.deviceAdapters.bluetoothDevice;
+    const protocol = facts.transport;
     const driverService = displayValue(context.port.service);
     const deviceStatus = displayValue(context.port.status);
     return {
@@ -176,42 +176,12 @@ export const internalControllerAdapter: DeviceAdapter<InternalControllerDeviceMo
 };
 
 function isController(port: import("../../../types").DeviceTopologyPort) {
-  const service = port.service?.toLocaleLowerCase() ?? "";
   return port.advancedInterconnect != null
     || port.usb?.deviceIsHub === true
-    || ["scsiadapter", "ucm"].includes(port.pnpClass?.toLocaleLowerCase() ?? "")
-    || /^(stornvme|storahci|usbxhci|usbhub3|ucmucsi|usb4)/.test(service)
-    || /controller|root hub|控制器|根集线器|连接器管理器/i.test(`${port.displayName} ${port.hardwareKind}`);
-}
-
-function resolveBluetoothRole(deviceId: string, service?: string | null, displayName?: string | null) {
-  const evidence = `${deviceId} ${service ?? ""} ${displayName ?? ""}`;
-  if (/BTHUSB/i.test(service ?? "") || /adapter|适配器/i.test(displayName ?? "")) return uiText.deviceAdapters.bluetoothAdapter;
-  if (/BTHMODEM/i.test(evidence)) return uiText.deviceAdapters.bluetoothSerialPort;
-  if (/RFCOMM/i.test(evidence)) return "Bluetooth RFCOMM";
-  if (/BTHLEDEVICE|UmPass/i.test(evidence)) return uiText.deviceAdapters.bluetoothLeGatt;
-  if (/AVRCP/i.test(evidence)) return uiText.deviceAdapters.bluetoothAvrcp;
-  if (/A2DP/i.test(evidence)) return uiText.deviceAdapters.bluetoothStereoAudio;
-  if (/HFAUD/i.test(evidence)) return uiText.deviceAdapters.bluetoothHandsFreeAudio;
-  if (/BTHENUM\\DEV_|BTHLE\\DEV_/i.test(deviceId)) return uiText.deviceAdapters.bluetoothEndpoint;
-  if (/MS_BTHLE/i.test(deviceId) || /^BthLEEnum$/i.test(service ?? "")) return uiText.deviceAdapters.bluetoothLeEnumerator;
-  if (/MS_BTHBRB/i.test(deviceId) || /^BthEnum$/i.test(service ?? "")) return uiText.deviceAdapters.bluetoothClassicEnumerator;
-  return uiText.deviceAdapters.bluetoothDevice;
-}
-
-function resolveBluetoothTransport(service: string | null | undefined, transport: string) {
-  return /BTHUSB/i.test(service ?? "") ? "USB / Bluetooth" : displayValue(transport, "Bluetooth");
+    || ["scsiadapter", "ucm"].includes(port.pnpClass?.toLocaleLowerCase() ?? "");
 }
 
 function resolveControllerType(port: import("../../../types").DeviceTopologyPort) {
-  const service = port.service?.toLocaleLowerCase() ?? "";
-  if (service === "stornvme") return uiText.deviceAdapters.nvmeController;
-  if (service === "storahci") return uiText.deviceAdapters.sataAhciController;
-  if (service === "usbxhci") return uiText.deviceAdapters.usbXhciController;
-  if (service === "usbhub3" && /ROOT_HUB/i.test(port.deviceId)) return uiText.deviceAdapters.usbRootHub;
-  if (service.startsWith("ucmucsi")) return uiText.deviceAdapters.usbCConnectorManager;
-  if (service.startsWith("usb4")) return uiText.deviceAdapters.usb4Router;
-  if (port.usb?.deviceIsHub) return "USB Hub";
   return displayValue(port.hardwareKind, port.pnpClass ?? uiText.deviceAdapters.internalController);
 }
 

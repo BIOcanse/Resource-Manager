@@ -1667,6 +1667,7 @@ const frFrAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `${count} appareils directs · ${protocol}`,
     hdAudioInterface: "Interface interne HD Audio",
     bluetoothInterface: "Interface interne Bluetooth",
+    pciInterface: "Interface interne PCI",
     pcieInterface: "Interface interne PCIe",
     internalUsbInterface: "Interface USB interne",
     acpiInterface: "Interface interne ACPI",

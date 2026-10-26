@@ -1667,6 +1667,7 @@ const deDeAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `${count} direkte Geräte · ${protocol}`,
     hdAudioInterface: "Interne HD-Audio-Schnittstelle",
     bluetoothInterface: "Interne Bluetooth-Schnittstelle",
+    pciInterface: "Interne PCI-Schnittstelle",
     pcieInterface: "Interne PCIe-Schnittstelle",
     internalUsbInterface: "Interne USB-Schnittstelle",
     acpiInterface: "Interne ACPI-Schnittstelle",

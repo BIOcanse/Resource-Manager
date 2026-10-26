@@ -2,6 +2,24 @@ import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import { uiText } from "../../text.ts";
 import type { DeviceTopologyDisplayConnection, DeviceTopologyPort } from "../../types.ts";
 
+/** Transport is classified by the backend; raw evidence is never reinterpreted here. */
+export function transportLabel(transport: DeviceTopologyPort["transport"]): string {
+  switch (transport.code) {
+    case null: return `${uiText.deviceTopology.deviceCategory.unknown} (${transport.reason})`;
+    case "hd_audio": return "HD Audio";
+    case "bluetooth": return "Bluetooth";
+    case "ucsi": return "UCSI";
+    case "nvme": return "NVMe";
+    case "ahci": return "AHCI";
+    case "i2c_hid": return "I2C HID";
+    case "acpi": return "ACPI";
+    case "pci": return "PCI";
+    case "usb": return "USB";
+    case "usb4": return "USB4";
+    default: return transport.code;
+  }
+}
+
 /**
  * 端口的名字：设备自报的优先，没有就渲染我们自己生成的那条码。
  * 两者恰好有一个非空，所以这里不需要再兜底。

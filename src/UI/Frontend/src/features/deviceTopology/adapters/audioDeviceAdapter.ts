@@ -85,6 +85,6 @@ function resolveAudioType(title: string, context: import("./types").DeviceAdapte
   if (/^BthA2dp$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.bluetoothStereoAudio;
   if (/^BthHFAud$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.bluetoothHandsFreeAudio;
   if (/^(NVHDA|AtiHDAudioService)$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.displayAudioDevice;
-  if (context.scope === "internal" && /^HDAUDIO\\/i.test(context.port.deviceId)) return uiText.deviceAdapters.internalAudioCodec;
+  if (context.scope === "internal" && context.port.transport.code === "hd_audio") return uiText.deviceAdapters.internalAudioCodec;
   return context.scope === "internal" ? uiText.deviceAdapters.internalAudioDevice : uiText.deviceAdapters.usbAudioDevice;
 }

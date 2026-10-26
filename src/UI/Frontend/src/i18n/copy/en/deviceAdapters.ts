@@ -154,6 +154,7 @@ export const enDeviceAdaptersCopy: Pick<
     directDeviceSummary: (count: number, protocol: string) => `${count} direct devices · ${protocol}`,
     hdAudioInterface: "HD Audio internal interface",
     bluetoothInterface: "Bluetooth internal interface",
+    pciInterface: "PCI internal interface",
     pcieInterface: "PCIe internal interface",
     internalUsbInterface: "Internal USB interface",
     acpiInterface: "ACPI internal interface",

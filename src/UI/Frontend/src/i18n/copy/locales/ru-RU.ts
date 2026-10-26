@@ -1667,6 +1667,7 @@ const ruRuAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `Прямых устройств: ${count} · ${protocol}`,
     hdAudioInterface: "Внутренний интерфейс HD Audio",
     bluetoothInterface: "Внутренний интерфейс Bluetooth",
+    pciInterface: "Внутренний интерфейс PCI",
     pcieInterface: "Внутренний интерфейс PCIe",
     internalUsbInterface: "Внутренний интерфейс USB",
     acpiInterface: "Внутренний интерфейс ACPI",

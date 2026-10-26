@@ -1667,6 +1667,7 @@ const esEsAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `${count} dispositivos directos · ${protocol}`,
     hdAudioInterface: "Interfaz interna HD Audio",
     bluetoothInterface: "Interfaz interna Bluetooth",
+    pciInterface: "Interfaz interna PCI",
     pcieInterface: "Interfaz interna PCIe",
     internalUsbInterface: "Interfaz USB interna",
     acpiInterface: "Interfaz interna ACPI",

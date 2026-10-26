@@ -45,7 +45,7 @@ const rj45: DeviceTopologyPort = {
   displayName: "Fixture Gigabit Ethernet Adapter",
   protocol: "Ethernet",
   manufacturer: "Fixture",
-  network: { interfaceName: "Ethernet 2", connectionState: "disconnected", permanentAddress: "000000000001", activeMtuBytes: 1500, hardwareInterface: true, connectorPresent: true }
+  network: { interfaceName: "Ethernet 2", connectionState: "disconnected", permanentAddress: "000000000001", activeMtuBytes: 1500, hardwareInterface: true, connectorPresent: true, wireless: null }
 };
 const emptyHdmi: DeviceTopologyPort = {
   ...basePort("hdmi", "hdmi", "display"),
@@ -127,6 +127,38 @@ assert.equal(portProtocol({ protocol: "displayport-embedded", display: display({
 assert.equal(portProtocol({ protocol: "HID", display: null }), "HID");
 assert.equal(portProtocol({ protocol: "Wi-Fi", display: null }), "Wi-Fi");
 
+// 内部传输只读后端事实；设备名称、服务、连接器分类和父链不参与重判。
+const pciPort: DeviceTopologyPort = {
+  ...basePort("plain-pci", "pci", "pci"),
+  transport: knownTransport("pci"),
+  displayName: "USB4 Bluetooth xHCI controller", service: "stornvme", protocol: "HID",
+  deviceId: "USB\\misleading", nativeParentDeviceId: "PCI\\parent", nativeParentDisplayName: "PCI Express root hub"
+};
+const internalNode: DeviceTopologyListNode = {
+  id: pciPort.id, port: pciPort, title: uiText.deviceTree.pciInterface,
+  subtitle: "", badge: "", connectorKind: "pcie", depth: 0, role: "internal-interface"
+};
+const internalSections = (node: DeviceTopologyListNode) => deviceUserDetailSections(node.port, node, null, "internal", 0, nodeSummaryFields(node, 0, "internal"));
+const internalItems = (node: DeviceTopologyListNode) => internalSections(node).flatMap(section => section.items);
+assert.equal(nodeSummaryFields(internalNode, 0, "internal").find(field => field.label === uiText.deviceAdapters.label.internalTransport)?.value, "PCI");
+assert.ok(internalItems(internalNode).some(item => item.label === t.label.protocol && item.value === "HID"), "the independent protocol is preserved");
+assert.ok(!internalItems(internalNode).some(item => /PCIe|PCI Express/.test(item.value)), "plain PCI has no fabricated Express label");
+const unknownInternal: DeviceTopologyListNode = { ...internalNode, port: { ...pciPort,
+  transport: { code: null, reason: "parent-chain-incomplete", ruleId: null, evidence: [] } } };
+assert.equal(nodeSummaryFields(unknownInternal, 0, "internal").find(field => field.label === uiText.deviceAdapters.label.internalTransport)?.value,
+  `${t.deviceCategory.unknown} (parent-chain-incomplete)`);
+assert.ok(internalItems(unknownInternal).some(item => item.label === uiText.deviceAdapters.label.internalTransport
+  && item.value === `${t.deviceCategory.unknown} (parent-chain-incomplete)`), "null transport reason remains visible in details");
+const internalPanel: DeviceTopologyListNode = { ...unknownInternal, port: { ...unknownInternal.port,
+  protocol: "displayport-embedded", display: display({ internal: true, active: true,
+    connectorTechnology: "eDP 1.4", outputTechnology: "displayport-embedded", monitorName: "Fixture panel" }) } };
+assert.ok(internalItems(internalPanel).some(item => item.label === uiText.deviceAdapters.label.displayTechnology && item.value === "eDP 1.4"),
+  "display technology remains independent from unavailable transport");
+const internalStorage: DeviceTopologyListNode = { ...unknownInternal, port: { ...unknownInternal.port,
+  storage: { physicalDeviceId: "FIXTURE\\disk", busType: "SATA", partitions: [], source: { domain: 5, code: 35, args: [] } } } };
+assert.ok(internalItems(internalStorage).some(item => item.label === uiText.deviceAdapters.label.busAndTransport && item.value === "SATA"),
+  "reported storage bus remains separate from unavailable transport");
+
 // 弹窗标题：名称和后缀之间有分隔，其他语言保持原有语序。
 assert.equal(t.detailTitle("HERO 99 HE"), "详细信息：HERO 99 HE");
 for (const [language, expected] of [["zh-TW", "詳細資訊：HERO 99 HE"], ["en-US", "HERO 99 HE details"], ["zh-CN", "详细信息：HERO 99 HE"]] as const) {
@@ -135,6 +167,8 @@ for (const [language, expected] of [["zh-TW", "詳細資訊：HERO 99 HE"], ["en
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   assert.equal(uiText.deviceTopology.detailTitle("HERO 99 HE"), expected);
+  assert.ok(internalItems(unknownInternal).some(item => item.label === uiText.deviceAdapters.label.internalTransport
+    && item.value === `${uiText.deviceTopology.deviceCategory.unknown} (parent-chain-incomplete)`), language);
   if (language === "en-US") {
     assert.ok(rows(ethernet).includes(`Overview | Protocol | Ethernet`), "English keeps Ethernet");
     assert.equal(section(hub, "USB")?.items.find((item) => item.label === "Port")?.value, "Parent hub port 2");
@@ -162,6 +196,13 @@ function basePort(id: string, connectorKind: string, busKind: string): DeviceTop
     hardwareIds: [],
     compatibleIds: []
   };
+}
+
+function knownTransport(code: NonNullable<DeviceTopologyPort["transport"]["code"]>): DeviceTopologyPort["transport"] {
+  return { code, reason: null, ruleId: "fixture-authoritative-transport", evidence: [{
+    source: "setupapi-cfgmgr32", deviceId: "FIXTURE\\transport", depth: 0,
+    enumeratorName: null, busTypeGuid: null, service: null, parentDeviceId: null
+  }] };
 }
 
 function display(overrides: Partial<DeviceTopologyDisplayConnection>): DeviceTopologyDisplayConnection {
@@ -218,6 +259,10 @@ function usbPort(options: {
   };
   return {
     ...basePort(options.id, options.connectorKind, "usb"),
+    transport: { code: "usb", reason: null, ruleId: "fixture-usb-hub-ioctl", evidence: [{
+      source: "usb-hub-ioctl", deviceId: `FIXTURE\\${options.id}`, depth: 0,
+      enumeratorName: null, busTypeGuid: null, service: null, parentDeviceId: null
+    }] },
     displayName: options.productName ?? null,
     hardwareKind: options.isHub ? "USB Hub" : "USB Device",
     protocol: "USB",

@@ -1,5 +1,5 @@
 import { formatBytes as formatBytesInUnits } from "../../../presentation/byteUnits.ts";
-import { portProtocol } from "../deviceVocabulary.ts";
+import { transportLabel } from "../deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../../types";
 import type {
   DeviceAdapterContext,
@@ -111,7 +111,7 @@ export function internalDeviceFacts(
 
   const port = context.port;
   return {
-    transport: internalTransport(port),
+    transport: transportLabel(port.transport),
     manufacturer: displayValue(port.manufacturer, port.idResolution?.vendorName ?? "--"),
     driverService: displayValue(port.service),
     deviceStatus: displayValue(port.status),
@@ -153,25 +153,4 @@ export function formatPollingInterval(value: number | null | undefined) {
   return value >= 1000
     ? `${(value / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 })} ms`
     : `${value.toLocaleString(currentLanguage(), { maximumFractionDigits: 1 })} us`;
-}
-
-function internalTransport(port: DeviceTopologyPort) {
-  const deviceId = port.deviceId.toLocaleUpperCase();
-  const service = port.service?.toLocaleLowerCase() ?? "";
-  const parent = `${port.nativeParentDeviceId ?? ""} ${port.nativeParentDisplayName ?? ""}`;
-
-  if (port.busKind.toLocaleLowerCase() === "usb") return "USB";
-  if (deviceId.startsWith("HDAUDIO\\")) return "HD Audio";
-  if (deviceId.startsWith("BTH") || service.startsWith("bth") || service === "umpass") return "Bluetooth";
-  if (service.startsWith("ucmucsi")) return "UCSI / ACPI";
-  if (service === "stornvme") return "NVMe / PCI Express";
-  if (service === "storahci") return "SATA / AHCI";
-  if (port.storage?.busType) return port.storage.busType;
-  if (port.display?.internal) return displayValue(port.display.connectorTechnology, uiText.deviceAdapters.internalDisplay);
-  if (port.pnpClass?.toLocaleLowerCase() === "display" || deviceId.startsWith("PCI\\")) return "PCI Express";
-  if (port.busKind.toLocaleLowerCase() === "network") return displayValue(portProtocol(port), uiText.deviceAdapters.internalNetworkBus);
-  if (deviceId.startsWith("USB\\")) return "USB";
-  if (deviceId.startsWith("HID\\") && /I2C/i.test(parent)) return "I2C HID";
-  if (deviceId.startsWith("ACPI\\")) return "ACPI";
-  return displayValue(portProtocol(port), port.busKind);
 }

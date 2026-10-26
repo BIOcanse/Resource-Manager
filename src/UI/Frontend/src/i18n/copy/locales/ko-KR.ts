@@ -1667,6 +1667,7 @@ const koKrAppCopy: AppCopy = {
     directDeviceSummary: (count: number, protocol: string) => `직속 장치 ${count} · ${protocol}`,
     hdAudioInterface: "HD Audio 내부 인터페이스",
     bluetoothInterface: "Bluetooth 내부 인터페이스",
+    pciInterface: "PCI 내부 인터페이스",
     pcieInterface: "PCIe 내부 인터페이스",
     internalUsbInterface: "내부 USB 인터페이스",
     acpiInterface: "ACPI 내부 인터페이스",

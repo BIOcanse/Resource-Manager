@@ -148,6 +148,7 @@ export const zhDeviceAdaptersCopy = {
     directDeviceSummary: (count: number, protocol: string) => `${count} 個直屬裝置 · ${protocol}`,
     hdAudioInterface: "HD Audio 內部介面",
     bluetoothInterface: "Bluetooth 內部介面",
+    pciInterface: "PCI 內部介面",
     pcieInterface: "PCIe 內部介面",
     internalUsbInterface: "內部 USB 介面",
     acpiInterface: "ACPI 內部介面",

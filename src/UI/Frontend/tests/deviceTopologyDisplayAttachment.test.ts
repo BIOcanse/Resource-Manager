@@ -10,6 +10,7 @@ import type { DeviceTopologyPort } from "../src/types.ts";
 function displayPort(active: boolean, targetAvailable = true, identity = true): DeviceTopologyPort {
   return {
     id: "display-port", isPhysicalConnector: true, displayName: identity ? "Fixture monitor" : "HDMI",
+    transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     connectorKind: "hdmi", busKind: "display", hardwareKind: "display-output", protocol: "HDMI",
     deviceId: "DISPLAY\\FIXTURE", locationPaths: [], hardwareIds: [], compatibleIds: [],
     confidence: { domain: 5, code: 24, args: [] }, source: { domain: 5, code: 35, args: [] },
