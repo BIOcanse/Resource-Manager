@@ -109,8 +109,8 @@ export const zhDetailsCopy = {
     telemetryUnavailable: "資料不可用",
     telemetryLoading: "讀取中",
     modelLabel: "GPU 排程模型",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${gpuCount} 張 GPU · GPU ${gpuPercent}% / 視訊記憶體 ${vramPercent}% · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `${gpuCount ?? "--"} 張 GPU · GPU ${gpuPercent}% / 視訊記憶體 ${vramPercent}% · ${telemetry}`,
     edit: "編輯",
     cancel: "取消",
     reset: "重置",

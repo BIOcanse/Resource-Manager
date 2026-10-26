@@ -112,8 +112,8 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     telemetryUnavailable: "Data unavailable",
     telemetryLoading: "Loading",
     modelLabel: "GPU scheduling model",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${plural("en-US", gpuCount, { one: "{count} GPU", other: "{count} GPUs" })} · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `${gpuCount === null ? "-- GPUs" : plural("en-US", gpuCount, { one: "{count} GPU", other: "{count} GPUs" })} · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "Edit",
     cancel: "Cancel",
     reset: "Reset",

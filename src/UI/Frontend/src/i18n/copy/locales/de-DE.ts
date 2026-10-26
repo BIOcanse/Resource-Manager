@@ -1797,8 +1797,8 @@ const deDeAppCopy: AppCopy = {
     telemetryUnavailable: "Daten nicht verfügbar",
     telemetryLoading: "Wird geladen",
     modelLabel: "Modell der GPU-Planung",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${plural("de-DE", gpuCount, { one: "{count} GPU", other: "{count} GPUs" })} · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `${gpuCount === null ? "-- GPUs" : plural("de-DE", gpuCount, { one: "{count} GPU", other: "{count} GPUs" })} · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
     edit: "Bearbeiten",
     cancel: "Abbrechen",
     reset: "Zurücksetzen",

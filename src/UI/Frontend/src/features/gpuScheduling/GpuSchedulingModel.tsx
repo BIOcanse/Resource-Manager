@@ -338,7 +338,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
             const thresholds = summaryThresholds();
             return thresholds
               ? uiText.gpuScheduling.summary(
-                  observationCanRender(observation()) ? String(positions().length) : "--",
+                  observationCanRender(observation()) ? positions().length : null,
                   thresholds.gpuUsagePercent,
                   thresholds.dedicatedMemoryPercent,
                   telemetryStatus())

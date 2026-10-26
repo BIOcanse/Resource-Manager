@@ -1797,8 +1797,8 @@ const jaJpAppCopy: AppCopy = {
     telemetryUnavailable: "データを取得できません",
     telemetryLoading: "読み込み中",
     modelLabel: "GPU スケジューリング モデル",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `GPU ${gpuCount} 基 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `GPU ${gpuCount ?? "--"} 基 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "編集",
     cancel: "キャンセル",
     reset: "リセット",

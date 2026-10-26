@@ -149,6 +149,9 @@ expect("fr-FR", "app.softwareActions.endTaskMessage", 1, "Cela mettra fin à 1 p
 expect("es-ES", "app.softwareActions.restoredRecords", 1, "Se restauró 1 registro de migración.");
 expect("en-US", "app.managementFeedback.processTerminateSummary", 1, "Terminated 1 / 1 process.");
 expect("de-DE", "app.gpuScheduling.summary", 1, "1 GPU · GPU «gpuPercent» % / VRAM «vramPercent» % · «telemetry»");
+// GPU 数量读不到时传 null，照旧显示 "--"，不经过单复数。
+assert.equal((await loadAppCopy("en-US")).gpuScheduling.summary(null, 80, 70, "ok"), "-- GPUs · GPU 80% / VRAM 70% · ok");
+assert.equal((await loadAppCopy("zh-CN")).gpuScheduling.summary(null, 80, 70, "ok"), "-- 张 GPU · GPU 80% / 显存 70% · ok");
 expect("zh-CN", "app.diskUsage.fileCount", 1, "1 个文件");
 expect("ja-JP", "app.diskUsage.fileCount", 1, "ファイル 1 件");
 expect("ko-KR", "app.diskUsage.fileCount", 1, "파일 1개");

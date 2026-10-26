@@ -109,8 +109,8 @@ export const zhDetailsCopy = {
     telemetryUnavailable: "数据不可用",
     telemetryLoading: "读取中",
     modelLabel: "GPU 调度模型",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${gpuCount} 张 GPU · GPU ${gpuPercent}% / 显存 ${vramPercent}% · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `${gpuCount ?? "--"} 张 GPU · GPU ${gpuPercent}% / 显存 ${vramPercent}% · ${telemetry}`,
     edit: "编辑",
     cancel: "取消",
     reset: "重置",

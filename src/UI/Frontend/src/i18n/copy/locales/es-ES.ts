@@ -1797,8 +1797,8 @@ const esEsAppCopy: AppCopy = {
     telemetryUnavailable: "Datos no disponibles",
     telemetryLoading: "Cargando",
     modelLabel: "Modelo de planificación de GPU",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${plural("es-ES", gpuCount, { one: "{count} GPU", many: "{count} de GPU", other: "{count} GPU" })} · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `${gpuCount === null ? "-- GPU" : plural("es-ES", gpuCount, { one: "{count} GPU", many: "{count} de GPU", other: "{count} GPU" })} · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
     edit: "Editar",
     cancel: "Cancelar",
     reset: "Restablecer",

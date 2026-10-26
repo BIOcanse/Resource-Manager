@@ -1796,8 +1796,8 @@ const koKrAppCopy: AppCopy = {
     telemetryUnavailable: "데이터를 사용할 수 없음",
     telemetryLoading: "불러오는 중",
     modelLabel: "GPU 스케줄링 모델",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `GPU ${gpuCount}개 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `GPU ${gpuCount ?? "--"}개 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "편집",
     cancel: "취소",
     reset: "재설정",

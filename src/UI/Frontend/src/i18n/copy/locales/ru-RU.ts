@@ -1797,8 +1797,8 @@ const ruRuAppCopy: AppCopy = {
     telemetryUnavailable: "Данные недоступны",
     telemetryLoading: "Загрузка",
     modelLabel: "Модель планирования GPU",
-    summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `GPU: ${gpuCount} · GPU ${gpuPercent} % / видеопамять ${vramPercent} % · ${telemetry}`,
+    summary: (gpuCount: number | null, gpuPercent: number, vramPercent: number, telemetry: string) =>
+      `GPU: ${gpuCount ?? "--"} · GPU ${gpuPercent} % / видеопамять ${vramPercent} % · ${telemetry}`,
     edit: "Изменить",
     cancel: "Отмена",
     reset: "Сбросить",
