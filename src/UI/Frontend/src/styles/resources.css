@@ -104,7 +104,29 @@
   margin: 0;
 }
 
-/* 列的来源（先选项目、再选来源）：占编辑区一整行，选项沿用指标选择器的来源样式。 */
+/* 芯片上的文字是“选中这一列”的按钮：去掉全局按钮的底色、边框、高度和按压缩放，芯片外观不变。 */
+.resource-table-column-option .resource-table-column-select,
+.resource-table-column-option .resource-table-column-select:hover,
+.resource-table-column-option .resource-table-column-select:active {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  transform: none;
+}
+
+/* 选中的列（下面摆它的来源）：沿用分段、分页当前项的强调色。 */
+.resource-table-column-option.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 选中列的来源（先选项目、再选来源）：占编辑区一整行，选项沿用指标选择器的来源样式。 */
 .resource-table-column-source {
   flex: 1 0 100%;
   display: flex;

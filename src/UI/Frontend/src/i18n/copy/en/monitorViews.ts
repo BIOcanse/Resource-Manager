@@ -46,6 +46,7 @@ export const enMonitorViewsCopy: Pick<
     emptyTitle: "No resources to show right now",
     emptyDetail: "Sampling finished, but this view has no software or process records.",
     columnEditorLabel: "Resource list column editor",
+    showColumn: (column: string) => `Show the ${column} column`,
     moveColumnLeft: (column: string) => `Move the ${column} column left`,
     moveLeftTitle: "Move left",
     moveColumnRight: (column: string) => `Move the ${column} column right`,

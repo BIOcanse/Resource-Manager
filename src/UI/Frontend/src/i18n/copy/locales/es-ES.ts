@@ -763,6 +763,7 @@ const esEsAppCopy: AppCopy = {
     emptyTitle: "Ahora mismo no hay recursos que mostrar",
     emptyDetail: "El muestreo ha terminado, pero esta vista no tiene registros de software ni de procesos.",
     columnEditorLabel: "Editor de columnas de la lista de recursos",
+    showColumn: (column: string) => `Mostrar la columna ${column}`,
     moveColumnLeft: (column: string) => `Mover la columna ${column} a la izquierda`,
     moveLeftTitle: "Mover a la izquierda",
     moveColumnRight: (column: string) => `Mover la columna ${column} a la derecha`,

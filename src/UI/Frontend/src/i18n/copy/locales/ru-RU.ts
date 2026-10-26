@@ -763,6 +763,7 @@ const ruRuAppCopy: AppCopy = {
     emptyTitle: "Сейчас нет ресурсов для отображения",
     emptyDetail: "Выборка завершена, но в этом представлении нет записей о программах или процессах.",
     columnEditorLabel: "Редактор столбцов списка ресурсов",
+    showColumn: (column: string) => `Показывать столбец «${column}»`,
     moveColumnLeft: (column: string) => `Переместить столбец «${column}» влево`,
     moveLeftTitle: "Переместить влево",
     moveColumnRight: (column: string) => `Переместить столбец «${column}» вправо`,

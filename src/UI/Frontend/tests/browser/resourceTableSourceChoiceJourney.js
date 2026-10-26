@@ -3,7 +3,7 @@ import { formatBytes } from "../../src/presentation/byteUnits.ts";
 
 /**
  * 资源表内存列先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
- * 编辑列时内存列下面摆“来源”，第一项是自动选择（已勾），写出后端这次实际读的字段（资源事实的 processFieldName，
+ * 编辑列时选中内存芯片（点芯片文字，不点方格子），下面摆内存的“来源”，第一项是自动选择（已勾），写出后端这次实际读的字段（资源事实的 processFieldName，
  * 夹具是私有工作集），表头说明的第一行也写出它；其后是后端进程字段目录里标了 supportsResourceFacts 的内存口径
  * （峰值提交量后端标为 false，不列）。选私有提交量并保存：资源事实只请求这个字段，表头写出口径，
  * 进程行显示私有提交量，总计行是后端给的系统提交量（不是进程之和），差额在“系统/驱动保留”行；
@@ -46,6 +46,8 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   const editButton = panel.getByRole("button", { name: app.resourceTableView.editLabel, exact: true });
   const saveButton = panel.getByRole("button", { name: app.resourceTableView.saveLabel, exact: true });
   const sources = panel.getByRole("radiogroup", { name: table.columnSourceLabel(table.columns.memory), exact: true });
+  const editor = panel.getByRole("group", { name: app.resourceTableView.columnEditorLabel, exact: true });
+  const selectMemory = () => editor.getByRole("button", { name: table.columns.memory, exact: true }).click();
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await panel.scrollIntoViewIfNeeded();
@@ -53,6 +55,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   await header(table.columns.memory).waitFor();
 
   await editButton.click();
+  await selectMemory();
   await sources.waitFor();
   const radios = sources.getByRole("radio");
   const labels = (await radios.allTextContents()).map((label) => label.trim());
@@ -91,6 +94,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
 
   // 自动选择恢复后端的选择。
   await editButton.click();
+  await selectMemory();
   await sources.waitFor();
   await sources.getByRole("radio").nth(0).click();
   await saveButton.click();
@@ -107,7 +111,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
 }
 
 /**
- * 九语检查（localizationJourney 调用，调用前已在监视控制台、资源表内存列可见）：编辑列时内存列的“来源”
+ * 九语检查（localizationJourney 调用，调用前已在监视控制台、资源表内存列可见）：编辑列时内存方格子的读屏名、选中内存后的“来源”
  * 名称、四个选项（自动选择写出实际读的私有工作集）和私有提交量的说明按当前语言显示；选私有提交量后表头写出口径；取消编辑后表头回到原样，不保存。
  */
 export async function checkResourceTableSourceText(page, app, language) {
@@ -115,6 +119,12 @@ export async function checkResourceTableSourceText(page, app, language) {
   const panel = page.locator(".resource-table-panel");
   await panel.scrollIntoViewIfNeeded();
   await panel.getByRole("button", { name: app.resourceTableView.editLabel, exact: true }).click();
+  // 选中内存芯片才摆它的来源；方格子的读屏名按当前语言写出“显示内存列”，并保持勾选。
+  const editor = panel.getByRole("group", { name: app.resourceTableView.columnEditorLabel, exact: true });
+  if (!await editor.getByRole("checkbox", { name: app.resourceTableView.showColumn(table.columns.memory), exact: true }).isChecked()) {
+    throw new Error(`${language}: the memory column box is not named in this language or not checked`);
+  }
+  await editor.getByRole("button", { name: table.columns.memory, exact: true }).click();
   const sources = panel.getByRole("radiogroup", { name: table.columnSourceLabel(table.columns.memory), exact: true });
   await sources.waitFor({ timeout: 15_000 });
   const radios = sources.getByRole("radio");

@@ -763,6 +763,7 @@ const koKrAppCopy: AppCopy = {
     emptyTitle: "지금 표시할 리소스가 없습니다",
     emptyDetail: "샘플링은 끝났지만 이 보기에는 소프트웨어나 프로세스 레코드가 없습니다.",
     columnEditorLabel: "리소스 목록 열 편집기",
+    showColumn: (column: string) => `${column} 열 표시`,
     moveColumnLeft: (column: string) => `${column} 열을 왼쪽으로 이동`,
     moveLeftTitle: "왼쪽으로 이동",
     moveColumnRight: (column: string) => `${column} 열을 오른쪽으로 이동`,

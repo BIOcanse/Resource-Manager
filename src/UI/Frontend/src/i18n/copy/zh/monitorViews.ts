@@ -41,6 +41,7 @@ export const zhMonitorViewsCopy = {
     emptyTitle: "当前没有可显示的资源",
     emptyDetail: "采样已经完成，但当前视图中没有软件或进程记录。",
     columnEditorLabel: "资源列表列编辑器",
+    showColumn: (column: string) => `显示 ${column} 列`,
     moveColumnLeft: (column: string) => `左移 ${column} 列`,
     moveLeftTitle: "左移",
     moveColumnRight: (column: string) => `右移 ${column} 列`,

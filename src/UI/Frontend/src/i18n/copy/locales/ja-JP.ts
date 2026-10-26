@@ -763,6 +763,7 @@ const jaJpAppCopy: AppCopy = {
     emptyTitle: "現在表示できるリソースがありません",
     emptyDetail: "サンプリングは完了しましたが、このビューにはソフトウェアやプロセスのレコードがありません。",
     columnEditorLabel: "リソース一覧の列エディター",
+    showColumn: (column: string) => `${column}列を表示`,
     moveColumnLeft: (column: string) => `${column}列を左へ移動`,
     moveLeftTitle: "左へ移動",
     moveColumnRight: (column: string) => `${column}列を右へ移動`,

@@ -154,10 +154,8 @@ export default async function resourceTableScrollStabilityJourney(
   await page.waitForTimeout(150);
   assertSameFactsLease("Resizing a column");
   const editor = page.locator(".resource-table-column-editor");
-  await editor.locator("label").filter({ hasText: /^CPU$/ }).getByRole("checkbox").uncheck();
-  await editor.locator("label").filter({ hasText: /内存（驻留）/ }).getByRole("checkbox").uncheck();
-  await editor.locator("label").filter({ hasText: /^磁盘$/ }).getByRole("checkbox").uncheck();
-  await editor.locator("label").filter({ hasText: /^网络$/ }).getByRole("checkbox").uncheck();
+  // 只有方格子切换显示（方格子的读屏名是“显示 X 列”）。
+  for (const column of ["CPU", "内存（驻留）", "磁盘", "网络"]) await editor.getByRole("checkbox", { name: `显示 ${column} 列`, exact: true }).uncheck();
   if (await page.locator('.resource-table-row.software-row[aria-hidden="false"]').count() < 2) throw new Error("Hiding numeric columns erased software identities.");
   if (await page.locator('.resource-table-row[aria-hidden="false"] .value-cell').count() !== 0) throw new Error("Hidden numeric columns retained visible cells.");
   // 可见列提交的正是它显示的读取项、隐藏的不占订阅（仪表布局移到前端时的合同）：隐藏全部数值列后，订阅只剩软件/进程身份，

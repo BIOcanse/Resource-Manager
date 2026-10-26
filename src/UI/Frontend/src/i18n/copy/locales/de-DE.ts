@@ -763,6 +763,7 @@ const deDeAppCopy: AppCopy = {
     emptyTitle: "Derzeit sind keine Ressourcen vorhanden",
     emptyDetail: "Die Abtastung ist abgeschlossen, aber diese Ansicht enthält keine Software- oder Prozesseinträge.",
     columnEditorLabel: "Spalteneditor der Ressourcenliste",
+    showColumn: (column: string) => `Spalte ${column} anzeigen`,
     moveColumnLeft: (column: string) => `Spalte ${column} nach links verschieben`,
     moveLeftTitle: "Nach links verschieben",
     moveColumnRight: (column: string) => `Spalte ${column} nach rechts verschieben`,

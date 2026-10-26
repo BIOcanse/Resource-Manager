@@ -763,6 +763,7 @@ const frFrAppCopy: AppCopy = {
     emptyTitle: "Aucune ressource à afficher pour l'instant",
     emptyDetail: "L'échantillonnage est terminé, mais cette vue ne contient aucun enregistrement de logiciel ou de processus.",
     columnEditorLabel: "Éditeur de colonnes de la liste des ressources",
+    showColumn: (column: string) => `Afficher la colonne ${column}`,
     moveColumnLeft: (column: string) => `Déplacer la colonne ${column} vers la gauche`,
     moveLeftTitle: "Déplacer vers la gauche",
     moveColumnRight: (column: string) => `Déplacer la colonne ${column} vers la droite`,

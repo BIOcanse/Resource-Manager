@@ -20,6 +20,7 @@ import type { SoftwareContextMenuTarget } from "../../components/SoftwareContext
 import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../../types";
 import { uiText } from "../../text.ts";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import { moveRovingFocus } from "../../ui/primitives/RovingFocus.ts";
 import type { ObservationState } from "../../observation/observationState";
 import {
   moveResourceTableFocus,
@@ -312,49 +313,77 @@ function ResourceTableColumnEditor(props: {
     const column = props.snapshotColumns.find((candidate) => candidate.id === columnId);
     return column && column.source === null ? column.processFieldName : null;
   };
-  // 先选项目、再选来源：有不止一个来源的列在勾选项后面摆“来源”，第一项是自动选择。
-  const sourceColumns = createMemo(() => resourceTableEditorColumns(props.columns, props.catalog, props.mode)
-    .map((column) => ({ id: column.id, choices: resourceColumnSourceChoices(column.id, props.processFields) }))
-    .filter((column) => column.choices.length > 0));
+  const editorColumns = createMemo(() => resourceTableEditorColumns(props.columns, props.catalog, props.mode));
+  // 按列 id 排芯片：列对象每次重算都是新的，按对象排会在每次勾选后重建芯片，键盘焦点随之丢失。
+  const editorColumnIds = createMemo(() => editorColumns().map((column) => column.id));
+  const editorColumnById = createMemo(() => new Map(editorColumns().map((column) => [column.id, column])));
+  // 先选项目、再选来源：点芯片的方格子只切换这一列显示与否；点芯片其他位置是选中这一列（同时只有一个，进入编辑时没有），
+  // 下面只摆选中列的“来源”，第一项是自动选择；选中的列没有来源可选时不摆来源行。再点一次选中的芯片取消选中。
+  const [selectedColumnId, setSelectedColumnId] = createSignal<string | null>(null);
+  // 来源行属于哪一列：选中的列还在编辑栏里、而且有来源可选时就是它，否则不摆来源行。
+  const sourceColumnId = createMemo(() => {
+    const id = selectedColumnId();
+    return id !== null && editorColumnById().has(id) && resourceColumnSourceChoices(id, props.processFields).length > 0 ? id : null;
+  });
   return (
     <div
       ref={props.onElement}
       class="resource-table-column-editor"
       role="group"
       aria-label={uiText.resourceTableView.columnEditorLabel}
+      // 左右方向键在芯片之间移动焦点，只移动、不选中；Home/End 到头尾。
+      onKeyDown={(event) => {
+        if ((event.target as Element).classList.contains("resource-table-column-select")) {
+          moveRovingFocus(event, { selector: ".resource-table-column-select", previousKeys: ["ArrowLeft"], nextKeys: ["ArrowRight"] });
+        }
+      }}
     >
-      <For each={resourceTableEditorColumns(props.columns, props.catalog, props.mode)}>
-        {(column) => (
-          <label class="resource-table-column-option">
-            <input
-              type="checkbox"
-              disabled={column.id === "name"}
-              checked={byId().get(column.id)?.visible ?? column.visible}
-              onChange={(event) => props.onToggle(column.id, event.currentTarget.checked)}
-            />
-            <span>{resourceTableColumnLabel(column.id)}</span>
-          </label>
-        )}
+      <For each={editorColumnIds()}>
+        {(columnId) => {
+          const label = () => resourceTableColumnLabel(columnId);
+          const selected = () => selectedColumnId() === columnId;
+          return (
+            // 芯片里除了方格子都是“选中”：选中按钮之外的内边距也算，按钮的点击（含键盘 Enter/空格）冒泡到这里处理。
+            <div
+              class="resource-table-column-option"
+              classList={{ selected: selected() }}
+              onClick={(event) => {
+                if (event.target instanceof HTMLInputElement) return;
+                setSelectedColumnId(selected() ? null : columnId);
+              }}
+            >
+              <input
+                type="checkbox"
+                aria-label={uiText.resourceTableView.showColumn(label())}
+                disabled={columnId === "name"}
+                checked={byId().get(columnId)?.visible ?? editorColumnById().get(columnId)?.visible ?? false}
+                onChange={(event) => props.onToggle(columnId, event.currentTarget.checked)}
+              />
+              <button type="button" class="resource-table-column-select" aria-pressed={selected()}>{label()}</button>
+            </div>
+          );
+        }}
       </For>
-      <For each={sourceColumns()}>
-        {(column) => {
-          const label = () => uiText.resourceTable.columnSourceLabel(resourceTableColumnLabel(column.id));
-          const current = () => byId().get(column.id)?.source ?? null;
+      <Show when={sourceColumnId()} keyed>
+        {(columnId) => {
+          const choices = () => resourceColumnSourceChoices(columnId, props.processFields);
+          const label = () => uiText.resourceTable.columnSourceLabel(resourceTableColumnLabel(columnId));
+          const current = () => byId().get(columnId)?.source ?? null;
           return (
             <div class="resource-table-column-source">
               <strong>{label()}</strong>
               <RadioGroupRoot class="segmented resource-table-column-source-choices" ariaLabel={label()}
                 // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
-                value={(() => { const index = column.choices.findIndex((choice) => choice.source === current()); return index < 0 ? "" : `source-${index}`; })()}
+                value={(() => { const index = choices().findIndex((choice) => choice.source === current()); return index < 0 ? "" : `source-${index}`; })()}
                 onChange={(value) => {
-                  const choice = column.choices[Number(value.slice("source-".length))];
-                  if (choice) props.onSourceChange(column.id, choice.source);
+                  const choice = choices()[Number(value.slice("source-".length))];
+                  if (choice) props.onSourceChange(columnId, choice.source);
                 }}>
-                <Index each={column.choices}>
+                <Index each={choices()}>
                   {(choice, index) => (
                     <RadioGroupItem value={`source-${index}`} class="segment"
-                      title={resourceTableColumnText({ id: column.id, source: choice().source }, props.processFields).basis}>
-                      {resourceColumnSourceLabel(choice(), props.processFields, automaticField(column.id))}
+                      title={resourceTableColumnText({ id: columnId, source: choice().source }, props.processFields).basis}>
+                      {resourceColumnSourceLabel(choice(), props.processFields, automaticField(columnId))}
                     </RadioGroupItem>
                   )}
                 </Index>
@@ -362,7 +391,7 @@ function ResourceTableColumnEditor(props: {
             </div>
           );
         }}
-      </For>
+      </Show>
     </div>
   );
 }
