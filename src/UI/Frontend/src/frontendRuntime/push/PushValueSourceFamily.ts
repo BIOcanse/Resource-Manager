@@ -8,6 +8,7 @@ import {
 
 export interface PushValueSourceFamily<TQuery, TValue> {
   readonly key: string;
+  readSnapshot(query: TQuery): SourceSnapshot<TValue>;
   subscribeSnapshot(
     query: TQuery,
     intervalMs: number,
@@ -17,6 +18,7 @@ export interface PushValueSourceFamily<TQuery, TValue> {
 
 export interface PushValueSource<TValue> {
   readonly key: string;
+  readSnapshot(): SourceSnapshot<TValue>;
   subscribeSnapshot(
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
@@ -25,6 +27,7 @@ export interface PushValueSource<TValue> {
 
 export interface CurrentValueSource<TValue> {
   readonly key: string;
+  readSnapshot(): SourceSnapshot<TValue>;
   subscribeSnapshot(listener: (value: SourceSnapshot<TValue>) => void): () => void;
 }
 
@@ -59,7 +62,7 @@ interface PushEntry<TQuery, TValue> {
   readonly canonicalQuery: string;
   readonly query: TQuery;
   readonly listeners: Map<number, PushListener<TValue>>;
-  snapshot: SourceSnapshot<TValue> | null;
+  snapshot: SourceSnapshot<TValue>;
   channelLease: BackendSubscriptionChannelLease | null;
   effectiveIntervalMs: number | null;
 }
@@ -84,39 +87,51 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.decoder = options.decoder;
   }
 
+  readSnapshot(query: TQuery): SourceSnapshot<TValue> {
+    return this.entryFor(query).snapshot;
+  }
+
+  private entryFor(query: TQuery): PushEntry<TQuery, TValue> {
+    const canonicalQuery = this.canonicalizeQuery(query);
+    let entry = this.entries.get(canonicalQuery);
+    if (!entry) {
+      entry = {
+        canonicalQuery, query, listeners: new Map(),
+        snapshot: this.pendingSnapshot(),
+        channelLease: null, effectiveIntervalMs: null
+      };
+      this.entries.set(canonicalQuery, entry);
+    }
+    if (entry.snapshot.backendEpoch !== this.channel.backendEpoch) {
+      entry.snapshot = this.pendingSnapshot();
+    }
+    if (entry.listeners.size === 0) this.retainUnused(entry);
+    return entry;
+  }
+
+  private pendingSnapshot(): SourceSnapshot<TValue> {
+    return Object.freeze({
+      key: this.key, status: "loading", data: null, error: null,
+      backendEpoch: this.channel.backendEpoch, revision: 0,
+      acceptedAttempt: null, domainRevision: null, capturedAt: null
+    });
+  }
+
   subscribeSnapshot(
     query: TQuery,
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
   ): () => void {
-    const canonicalQuery = this.canonicalizeQuery(query);
-    let entry = this.entries.get(canonicalQuery);
-    if (!entry) {
-      entry = {
-        canonicalQuery,
-        query,
-        listeners: new Map(),
-        snapshot: null,
-        channelLease: null,
-        effectiveIntervalMs: null
-      };
-      this.entries.set(canonicalQuery, entry);
-    }
-
-    this.unusedEntries.delete(canonicalQuery);
-    if (entry.snapshot?.backendEpoch !== this.channel.backendEpoch) {
-      entry.snapshot = null;
-    }
+    const entry = this.entryFor(query);
+    this.unusedEntries.delete(entry.canonicalQuery);
     const listenerId = ++this.nextListenerId;
     entry.listeners.set(listenerId, {
       intervalMs: normalizeInterval(intervalMs),
       publish: listener
     });
 
-    if (entry.snapshot) {
-      try { listener(entry.snapshot); } catch {
-        // Subscriber failures do not change the shared current snapshot.
-      }
+    try { listener(entry.snapshot); } catch {
+      // Subscriber failures do not change the shared current snapshot.
     }
     this.reconfigure(entry);
 
@@ -126,12 +141,12 @@ implements PushValueSourceFamily<TQuery, TValue> {
         return;
       }
       disposed = true;
-      entry!.listeners.delete(listenerId);
-      if (entry!.listeners.size === 0) {
-        this.releaseDemand(entry!);
+      entry.listeners.delete(listenerId);
+      if (entry.listeners.size === 0) {
+        this.releaseDemand(entry);
         return;
       }
-      this.reconfigure(entry!);
+      this.reconfigure(entry);
     };
   }
 
@@ -152,7 +167,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
         this.key,
         path,
         this.decoder,
-        (value) => this.publish(entry!, value));
+        (value) => this.publish(entry, value));
     }
   }
 
@@ -164,7 +179,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
       return;
     }
     // Reopening transport is demand, not a new value. Session changes still fence it.
-    if (value.status === "loading" && entry.snapshot
+    if (value.status === "loading" && entry.snapshot.revision > 0
       && value.backendEpoch === entry.snapshot.backendEpoch) {
       return;
     }
@@ -189,6 +204,10 @@ implements PushValueSourceFamily<TQuery, TValue> {
     entry.channelLease?.dispose();
     entry.channelLease = null;
     entry.effectiveIntervalMs = null;
+    this.retainUnused(entry);
+  }
+
+  private retainUnused(entry: PushEntry<TQuery, TValue>): void {
     this.unusedEntries.delete(entry.canonicalQuery);
     this.unusedEntries.set(entry.canonicalQuery, entry);
     while (this.unusedEntries.size > MAX_UNSUBSCRIBED_SOURCE_ENTRIES) {
@@ -220,6 +239,10 @@ implements PushValueSource<TValue> {
     });
   }
 
+  readSnapshot(): SourceSnapshot<TValue> {
+    return this.family.readSnapshot(null);
+  }
+
   subscribeSnapshot(
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
@@ -241,6 +264,10 @@ implements CurrentValueSource<TValue> {
       buildUrl: options.buildUrl,
       decoder: options.decoder
     });
+  }
+
+  readSnapshot(): SourceSnapshot<TValue> {
+    return this.source.readSnapshot();
   }
 
   subscribeSnapshot(listener: (value: SourceSnapshot<TValue>) => void): () => void {

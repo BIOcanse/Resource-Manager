@@ -734,3 +734,46 @@ async function waitFor(predicate: () => boolean): Promise<void> {
     assert.equal(pinned, -1, "Active entry never evicted or overwritten by another query");
   } finally { releases.forEach(stop => stop()); stopPinned(); channel.dispose(); owner.dispose(); }
 }
+
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "read-current"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch });
+  const family = new BackendPushValueSourceFamily<string, number>({
+    key: "test.read", channel, buildUrl: query => `/api/read?id=${query}`,
+    decoder: defineResponseDecoder("number", value => {
+      if (typeof value !== "number") throw new Error("Expected number");
+      return value;
+    })
+  });
+  try {
+    const pending = family.readSnapshot("a");
+    assert.equal(pending.status, "loading");
+    assert.equal(pending.data, null);
+    assert.strictEqual(family.readSnapshot("a"), pending, "Pending belongs to the entry");
+    await flush();
+    assert.equal(harness.streams.length, 0, "Reading a cold entry opens no channel");
+    const stop = family.subscribeSnapshot("a", 1000, () => {});
+    await waitFor(() => harness.streams.length === 1);
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, 42);
+    await flush();
+    const accepted = family.readSnapshot("a");
+    assert.equal(accepted.data, 42);
+    stop(); await flush();
+    assert.strictEqual(family.readSnapshot("a"), accepted);
+    assert.equal(family.readSnapshot("b").data, null, "Queries cannot borrow another current value");
+    await flush();
+    assert.equal(harness.streams.length, 1, "Reading retained data creates no new subscription");
+    assert.equal(harness.streams[0].signal.aborted, true);
+    host.publish(readyMessage("2", "read-current-next"));
+    const fenced = family.readSnapshot("a");
+    assert.equal(fenced.status, "loading");
+    assert.equal(fenced.data, null);
+    assert.equal(fenced.backendEpoch, "read-current-next");
+    await flush();
+    assert.equal(harness.streams.length, 1, "Epoch fencing a read creates no demand");
+  } finally { channel.dispose(); owner.dispose(); }
+}
+console.log("Push synchronous reads: pending, retained identity, no demand, query isolation and epoch fence passed.");
