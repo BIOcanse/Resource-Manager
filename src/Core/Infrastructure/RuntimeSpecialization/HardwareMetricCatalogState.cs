@@ -20,6 +20,14 @@ public sealed class HardwareMetricCatalogState
 
     public string Revision => Volatile.Read(ref revision);
 
+    public (HardwareMetricSnapshot? Snapshot, string Revision) ReadCommitted()
+    {
+        lock (gate)
+        {
+            return (current?.CreateSnapshot(), revision);
+        }
+    }
+
     public MetricSampleRequest SelectSubscribable(MetricSampleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -120,9 +128,10 @@ public sealed class HardwareMetricCatalogState
         private readonly ulong workspaceIdentity;
         private readonly ulong configurationGeneration;
         private readonly ulong catalogGeneration;
-        private readonly (int Index, string Identity)[] adapters;
+        private readonly (int Index, string Identity, bool? HasDedicatedMemoryMetrics)[] adapters;
         private readonly (string Id, string ScopeKind, string ScopeKey)[] metrics;
         private readonly (string Device, string Address, string Source, MetricReadingSource? Reading)[] bindings;
+        private readonly (string Address, string Alias, bool Selected)[] aliases;
         private readonly int hash;
 
         private CatalogIdentity(HardwareMetricSnapshot snapshot)
@@ -133,7 +142,7 @@ public sealed class HardwareMetricCatalogState
             var boundAddresses = snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases)
                 .Concat(snapshot.FieldBindings.Keys).ToHashSet(StringComparer.OrdinalIgnoreCase);
             adapters = snapshot.Gpus.OrderBy(static gpu => gpu.Index)
-                .Select(static gpu => (gpu.Index, gpu.IdentityKey ?? string.Empty)).ToArray();
+                .Select(static gpu => (gpu.Index, gpu.IdentityKey ?? string.Empty, gpu.HasDedicatedMemoryMetrics)).ToArray();
             metrics = MetricCatalog.FromSnapshot(snapshot)
                 .Where(definition => definition.Selectable || boundAddresses.Contains(definition.Id))
                 .OrderBy(static definition => definition.Id, StringComparer.OrdinalIgnoreCase)
@@ -143,6 +152,12 @@ public sealed class HardwareMetricCatalogState
                 .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
                 .Select(static binding => (binding.DeviceIdentity, binding.RequestAddress,
                     binding.SourceId, binding.Field.Reading)).ToArray();
+            aliases = snapshot.FieldBindings.Values.SelectMany(static binding =>
+                    binding.RequestAliases.Select(alias => (binding.RequestAddress, Alias: alias, Selected: false))
+                        .Concat(binding.SelectedRequestAliases.Select(alias => (binding.RequestAddress, Alias: alias, Selected: true))))
+                .OrderBy(static alias => alias.RequestAddress, StringComparer.Ordinal)
+                .ThenBy(static alias => alias.Alias, StringComparer.Ordinal)
+                .ThenBy(static alias => alias.Selected).ToArray();
             var builder = new HashCode();
             builder.Add(workspaceIdentity);
             builder.Add(configurationGeneration);
@@ -153,6 +168,8 @@ public sealed class HardwareMetricCatalogState
             foreach (var metric in metrics) builder.Add(metric);
             builder.Add(bindings.Length);
             foreach (var binding in bindings) builder.Add(binding);
+            builder.Add(aliases.Length);
+            foreach (var alias in aliases) builder.Add(alias);
             hash = builder.ToHashCode();
         }
 
@@ -165,7 +182,8 @@ public sealed class HardwareMetricCatalogState
                 && catalogGeneration == other.catalogGeneration
                 && adapters.AsSpan().SequenceEqual(other.adapters)
                 && metrics.AsSpan().SequenceEqual(other.metrics)
-                && bindings.AsSpan().SequenceEqual(other.bindings);
+                && bindings.AsSpan().SequenceEqual(other.bindings)
+                && aliases.AsSpan().SequenceEqual(other.aliases);
 
         public override bool Equals(object? obj) => obj is CatalogIdentity other && Equals(other);
         public override int GetHashCode() => hash;

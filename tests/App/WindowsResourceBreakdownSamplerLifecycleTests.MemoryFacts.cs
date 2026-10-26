@@ -92,7 +92,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                     row => published.Processes[row.ProcessIndex].ProcessId == Environment.ProcessId);
                 Assert.Equal(expected, process.Value);
                 Assert.Contains(published.Attributions, edge => edge.ProcessIndex == process.ProcessIndex);
-                if (scenario is "missing-total" or "shared")
+                if (scenario == "missing-total" || name == "process_all_working_set_actual")
                     Assert.DoesNotContain(fact.Software, software => software.SoftwareId.StartsWith("resource-residual:"));
                 else
                 {
@@ -129,3 +129,4 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         finally { await sampler.StopAsync(default); }
     }
 }
+

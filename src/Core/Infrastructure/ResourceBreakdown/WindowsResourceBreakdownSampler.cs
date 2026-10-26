@@ -779,7 +779,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 SamplingDatasetIds.ProcessGpuUsage)
             || publicationDatasetIds.Contains(
                 SamplingDatasetIds.ProcessGpuVram)
-            || cleanMetricIds.Any(IsGpuMetric);
+            || cleanMetricIds.Any(IsGpuMetric)
+            || cleanMetricIds.Any(static id => ProcessMetricFieldRegistry.Find(id) is { } field
+                && (field.GpuIndex is not null || field.DatasetId == ProcessMetricDatasetIds.GpuResidency));
         IReadOnlyList<WindowsGpuAdapter> adapters = capturesGpuDataset
             ? gpuAdapterInventory().Adapters
                 .Where(static adapter => !adapter.IsSoftware)
@@ -868,10 +870,22 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 requireHostedHardwareObservation,
                 allowMissingSnapshot: !cleanMetricIds.Any(IsSupportedBarMetric));
         }
-        var gpuAttribution = adapters.Count > 0
+        var needsGpuUsage = cleanMetricIds.Any(static id => TryParseGpuMetric(id, out _, out var kind) && kind == "usage");
+        var gpuAttribution = adapters.Count > 0 && needsGpuUsage
             ? processGpuReader.ReadBreakdownSnapshot(adapters, processSamples.Where(static sample => sample.StartKey is > 0)
                 .Select(static sample => new ProcessInstanceKey(sample.ProcessId, sample.StartKey!.Value)).ToArray())
             : ProcessGpuBreakdownRead.NotRequested;
+        ResourceManager.ReadWrite.Native.Pdh.NativePdhReadResult? pdhRead = capturesGpuDataset
+            && (needsGpuUsage || definitions.Any(static field => field.DatasetId == ProcessMetricDatasetIds.GpuResidency)) ? processGpuReader.SnapshotSource.Read(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(adapters)) : null;
+        if (capturesGpuDataset)
+        {
+            var adapterKeys = adapters.Select(static adapter => (adapter.Index, Luid: WindowsGpuAdapterIdentity.Pack(adapter.Luid))).ToHashSet();
+            var discovered = ProcessGpuResourceFieldRegistry.Describe(adapterKeys, pdhRead?.Snapshot);
+            Volatile.Write(ref gpuResourceFieldCatalog, discovered.Concat(ResourceFactFields.Where(field =>
+                field.GpuIndex is { } index && field.GpuAdapterLuid is { } luid && adapterKeys.Contains((index, luid))))
+                .DistinctBy(static field => field.Name, StringComparer.OrdinalIgnoreCase).ToArray());
+        }
         var networkAttribution = needsNetwork || needsObservedNetwork
             ? ReadNetworkAttribution(
                 CreateNetworkAttributionRequest(
@@ -935,16 +949,29 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 .Select(row => new ProcessMetricFieldValues(row.ProcessId, row.StartKey?.ToString(System.Globalization.CultureInfo.InvariantCulture), [])).ToArray());
             processFieldParts.Add(WindowsPhysicalDiskProcessFields.Project(cleanMetricIds, diskInventory, diskAttribution.ObservedTraffic));
         }
+        ProcessMetricFieldSnapshot? engineFields = null;
         if (definitions.Any(static field => field.DatasetId == ProcessMetricDatasetIds.GpuResidency))
         {
             var gpuInventory = new ProcessMetricFieldSnapshot(processCapturedAt, null, [], processSamples.Select(sample =>
                 new ProcessMetricFieldValues(sample.ProcessId, sample.StartKey?.ToString(System.Globalization.CultureInfo.InvariantCulture), [])).ToArray());
-            processFieldParts.Add(processGpuReader.ReadResidencyFields(gpuInventory));
+            engineFields = pdhRead is not null
+                ? PdhProcessGpuReader.ProjectResidencyFields(pdhRead.Value, gpuInventory)
+                : processGpuReader.ReadResidencyFields(gpuInventory);
+            if (cleanMetricIds.Contains(WindowsPdhProcessGpuFields.FieldName, StringComparer.OrdinalIgnoreCase))
+                processFieldParts.Add(engineFields);
             queriedPublicationKeys.Add(ProcessMetricDatasetIds.GpuResidency);
         }
         if (needsObservedNetwork) processFieldParts.Add(CreateProcessNetworkFields(cleanMetricIds, processSamples, networkAttribution.ObservedTraffic));
         if (definitions.Any(static field => field.DatasetId == SamplingDatasetIds.ProcessBasicMetrics))
             processFieldParts.Add(CreateProcessBasicFields(definitions, processSamples, processCapturedAt, processBatch.CpuInterval, ioRates));
+        var gpuFacts = CreateGpuResourceFacts(definitions.Where(ProcessGpuResourceFieldRegistry.IsBound).ToArray(),
+            processSamples, adapters, pdhRead, engineFields, allocationReading, hardwareSnapshot);
+        if (gpuFacts.Fields.Fields.Count > 0)
+        {
+            processFieldParts.Add(gpuFacts.Fields);
+            queriedPublicationKeys.UnionWith(gpuFacts.Fields.Fields.Select(static field => field.DatasetId));
+        }
+        var fieldSnapshot = processFieldParts.Count > 0 ? ProcessMetricFieldSnapshot.Merge(processFieldParts) : null;
         var pfnFrame = needsPfnDetails ? PhysicalMemoryPfnCapture(
             processSamples.Where(static process => process.HasPrivateWorkingSetBytes && process.StartKey is > 0)
                 .Aggregate(0UL, static (sum, process) => checked(sum + (ulong)Math.Max(0, process.PrivateWorkingSetBytes))),
@@ -952,10 +979,11 @@ public sealed partial class WindowsResourceBreakdownSampler(
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.Now, bars)
         {
             PhysicalMemoryResidual = pfnFrame,
-            ProcessFields = processFieldParts.Count > 0 ? ProcessMetricFieldSnapshot.Merge(processFieldParts) : null,
+            ProcessFields = fieldSnapshot,
             ProcessMemoryFacts = request.IncludeProcessMemoryFacts && processAttribution is not null
-                ? CreateProcessMemoryFacts(definitions.Where(field => request.ProcessMemoryFactIds.Contains(field.Name, StringComparer.OrdinalIgnoreCase)).ToArray(),
-                    processSamples, hardwareSnapshot, capturedResiduals) : []
+                ? CreateProcessMeasureFacts(definitions.Where(field => request.ProcessMemoryFactIds.Contains(field.Name, StringComparer.OrdinalIgnoreCase)).ToArray(),
+                    fieldSnapshot, hardwareSnapshot, networkAttribution.ObservedTraffic, diskAttribution.ObservedTraffic, capturedResiduals)
+                    .Concat(gpuFacts.Facts.Where(fact => request.ProcessMemoryFactIds.Contains(fact.MetricId, StringComparer.OrdinalIgnoreCase))).ToArray() : []
         };
         SchedulingProcessFactSnapshot? schedulingSnapshot = null;
         if (request.SchedulingMetricMask != SchedulingProcessMetricMask.None

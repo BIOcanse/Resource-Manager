@@ -30,14 +30,14 @@ public sealed partial class ProcessBasicFieldCollectorTests
         var factFields = catalog.RootElement.EnumerateArray()
             .Where(field => field.GetProperty("supportsResourceFacts").GetBoolean())
             .Select(field => field.GetProperty("name").GetString()).Order().ToArray();
-        Assert.Equal(new[] { "process_all_private_commit_actual", "process_all_private_working_set_actual", "process_all_working_set_actual" }, factFields);
+        Assert.Equal(new[] { "process_all_cpu_usage_actual", "process_all_network_receive_bytes_attributed", "process_all_network_receive_rate_attributed", "process_all_network_send_bytes_attributed", "process_all_network_send_rate_attributed", "process_all_physical_disk_read_bytes_attributed", "process_all_physical_disk_write_bytes_attributed", "process_all_private_commit_actual", "process_all_private_working_set_actual", "process_all_working_set_actual" }, factFields);
         Assert.False(Assert.Single(catalog.RootElement.EnumerateArray(), field => field.GetProperty("name").GetString()
             == "process_all_peak_private_commit_actual").GetProperty("supportsResourceFacts").GetBoolean());
         foreach (var field in catalog.RootElement.EnumerateArray())
         {
             var name = field.GetProperty("name").GetString()!;
             var expectedTotal = name is "process_all_working_set_actual" or "process_all_private_working_set_actual"
-                ? "memory.usage" : name == "process_all_private_commit_actual" ? "virtualMemory.usage" : null;
+                ? "memory.usage" : name == "process_all_private_commit_actual" ? "virtualMemory.usage" : name == "process_all_cpu_usage_actual" ? "cpu.usage" : name.StartsWith("process_all_network_") ? "network.traffic" : name.StartsWith("process_all_physical_disk_") ? "disk.io" : null;
             Assert.Equal(expectedTotal, field.GetProperty("resourceFactTotalMetricId").GetString());
         }
         string[] names = [Names[1], Names[5], NetworkNames[0]];
@@ -91,3 +91,4 @@ public sealed partial class ProcessBasicFieldCollectorTests
         throw new OperationCanceledException(token);
     }
 }
+

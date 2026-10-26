@@ -4,6 +4,7 @@ namespace ResourceManager.App.Application.ResourceBreakdown;
 
 public interface IResourceBreakdownSampler
 {
+    IReadOnlyList<ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldDefinition> ResourceFactFields => [];
     Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
         ResourceBreakdownSampleRequest request,
         CancellationToken cancellationToken);

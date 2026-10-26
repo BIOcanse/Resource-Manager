@@ -10,7 +10,8 @@ public enum ProcessMetricFieldCode
     IoReadBytes, IoWriteBytes, IoOtherBytes, IoOperations, HandleCount, CpuUsage,
     StartTime, ImagePath, ParentPid, UserSid, ThreadCount, CommandLine, PhysicalDiskReadBytes, PhysicalDiskWriteBytes, CpuResidency, GpuResidency,
     IoReadOperations, IoWriteOperations, IoOtherOperations,
-    IoReadOperationsRate, IoWriteOperationsRate, IoOtherOperationsRate, IoReadBytesRate, IoWriteBytesRate, IoOtherBytesRate
+    IoReadOperationsRate, IoWriteOperationsRate, IoOtherOperationsRate, IoReadBytesRate, IoWriteBytesRate, IoOtherBytesRate,
+    GpuResidentPrivateBytes, GpuResidentSharedBytes, GpuResidentBytes
 }
 
 [Flags]
@@ -26,18 +27,43 @@ public sealed record ProcessMetricFieldDefinition(
     public string Resource => "process";
     public string Vendor => "all";
     public bool SupportsResourceFacts => ResourceFactTotalMetricId is not null;
-    public string? ResourceFactTotalMetricId => Code switch
+    [JsonIgnore] public string? ResourceFactMetricId { get; init; }
+    [JsonIgnore] public bool? ResourceFactAdditive { get; init; }
+    [JsonIgnore] public int? GpuIndex { get; init; }
+    [JsonIgnore] public ulong? GpuAdapterLuid { get; init; }
+    public ProcessGpuEngineScope? GpuEngine { get; init; }
+    public string? EngineClass { get; init; }
+    public string? SourceFieldName { get; init; }
+    public bool? AdditiveAcrossProcesses => ResourceFactAdditive ?? (Code switch
+    {
+        ProcessMetricFieldCode.WorkingSet or ProcessMetricFieldCode.PeakPrivateCommit => false,
+        ProcessMetricFieldCode.CpuUsage or ProcessMetricFieldCode.CpuTime or ProcessMetricFieldCode.PrivateWorkingSet
+            or ProcessMetricFieldCode.PrivateCommit or ProcessMetricFieldCode.PhysicalDiskReadBytes
+            or ProcessMetricFieldCode.PhysicalDiskWriteBytes or ProcessMetricFieldCode.NetworkReceiveBytes
+            or ProcessMetricFieldCode.NetworkSendBytes or ProcessMetricFieldCode.NetworkReceiveRate
+            or ProcessMetricFieldCode.NetworkSendRate => true,
+        _ => (bool?)null
+    });
+    public string? ResourceFactTotalMetricId => ResourceFactMetricId ?? (Code switch
     {
         ProcessMetricFieldCode.WorkingSet or ProcessMetricFieldCode.PrivateWorkingSet => "memory.usage",
         ProcessMetricFieldCode.PrivateCommit => "virtualMemory.usage",
+        ProcessMetricFieldCode.CpuUsage => "cpu.usage",
+        ProcessMetricFieldCode.PhysicalDiskReadBytes or ProcessMetricFieldCode.PhysicalDiskWriteBytes => "disk.io",
+        ProcessMetricFieldCode.NetworkReceiveBytes or ProcessMetricFieldCode.NetworkSendBytes
+            or ProcessMetricFieldCode.NetworkReceiveRate or ProcessMetricFieldCode.NetworkSendRate => "network.traffic",
         _ => null
-    };
+    });
     public ProcessMetricReading? Reading => Code switch
     {
         ProcessMetricFieldCode.WorkingSet => new("memory", "working_set_including_shared"),
         ProcessMetricFieldCode.PrivateWorkingSet => new("memory", "private_working_set"),
         ProcessMetricFieldCode.PrivateCommit => new("memory", "private_commit"),
         ProcessMetricFieldCode.PeakPrivateCommit => new("memory", "peak_private_commit"),
+        ProcessMetricFieldCode.GpuResidency when GpuEngine is not null => new("gpu", "engine_busy_percent"),
+        ProcessMetricFieldCode.GpuResidentBytes => new("gpu", "dedicated_resident_apportioned"),
+        ProcessMetricFieldCode.GpuResidentPrivateBytes => new("gpu", "dedicated_resident_private"),
+        ProcessMetricFieldCode.GpuResidentSharedBytes => new("gpu", "dedicated_resident_shared_apportioned"),
         _ => null
     };
 }
@@ -95,7 +121,8 @@ public static class ProcessMetricFieldRegistry
     ];
     private static readonly FrozenDictionary<string, ProcessMetricFieldDefinition> ByName =
         Definitions.ToFrozenDictionary(static field => field.Name, StringComparer.OrdinalIgnoreCase);
-    public static ProcessMetricFieldDefinition? Find(string name) => ByName.GetValueOrDefault(name);
+    public static ProcessMetricFieldDefinition? Find(string name) => ByName.GetValueOrDefault(name)
+        ?? ProcessGpuResourceFieldRegistry.Find(name);
 
     private static ProcessMetricFieldDefinition Basic(ProcessMetricFieldCode code, string name, string kind,
         string unit, ProcessMetricReadMask mask)

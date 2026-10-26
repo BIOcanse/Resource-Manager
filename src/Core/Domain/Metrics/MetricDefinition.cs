@@ -10,6 +10,7 @@ public sealed record MetricDefinition(
     string? ScopeKind = null,
     string? ScopeKey = null)
 {
+    public bool? HasDedicatedMemoryMetrics { get; init; }
     public MetricFieldCode FieldCode { get; init; }
     public string? FieldName { get; init; }
     public string? DeviceIdentity { get; init; }

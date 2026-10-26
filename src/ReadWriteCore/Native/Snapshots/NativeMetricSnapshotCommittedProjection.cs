@@ -360,7 +360,8 @@ public static class NativeMetricSnapshotCommittedProjection
                     ValueOrNull(readings, prefix + "current")),
                 SourceId(frame, usage.Output.SourceHandle),
                 usage.IsAvailable,
-                binding.ExactIdentityKey) { AdapterKey = binding.AdapterLuid });
+                binding.ExactIdentityKey) { AdapterKey = binding.AdapterLuid,
+                    HasDedicatedMemoryMetrics = binding.SupportsDedicatedMetrics });
         }
         return result;
     }

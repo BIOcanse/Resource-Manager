@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -154,8 +155,10 @@ public sealed class MetricFieldEndpointTests
     [Fact]
     public async Task CataloguePushUsesExistingDemandChannelBeforeDirectoryIsReady()
     {
-        var source = new Source();
-        await using var app = await StartAsync(source, new());
+        var catalog = new HardwareMetricCatalogState();
+        var source = new Source { CommitCatalog = catalog.PublishCatalogProbe };
+        Assert.Null(catalog.Current);
+        await using var app = await StartAsync(source, catalog);
         using var client = CreateClient(app);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
@@ -167,7 +170,10 @@ public sealed class MetricFieldEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
         using var pushed = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
-        Assert.Equal("memory", pushed.RootElement.GetProperty("value")[0].GetProperty("deviceIdentity").GetString());
+        var envelope = pushed.RootElement.GetProperty("value");
+        Assert.Equal(catalog.Revision, envelope.GetProperty("catalogRevision").GetString());
+        Assert.Equal("memory", envelope.GetProperty("fields")[0].GetProperty("deviceIdentity").GetString());
+        Assert.NotEmpty(envelope.GetProperty("metrics").EnumerateArray());
         Assert.True(source.Request!.IsCatalogProbe);
         Assert.Equal(0, source.ReadCount);
         await timeout.CancelAsync();
@@ -335,6 +341,7 @@ public sealed class MetricFieldEndpointTests
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton<IMetricSampler>(source);
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
+        builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var name in new[] { "MapMetricFieldEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
@@ -353,6 +360,7 @@ public sealed class MetricFieldEndpointTests
         internal HardwareMetricSnapshot Current { get; } = snapshot ?? MetricDeviceFieldTests.CreateSnapshot(SamplingObservationStatus.Current);
         internal int ReadCount { get; private set; }
         internal MetricSampleRequest? Request { get; private set; }
+        internal Action<HardwareMetricSnapshot>? CommitCatalog { get; init; }
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken token) => throw new InvalidOperationException();
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken token)
         {
@@ -367,6 +375,7 @@ public sealed class MetricFieldEndpointTests
             [EnumeratorCancellation] CancellationToken token)
         {
             Request = request;
+            if (request.IsCatalogProbe) CommitCatalog?.Invoke(Current);
             yield return Current with { Items = new Dictionary<string, MetricReadingValue>(), Datasets = Current.Datasets.ToDictionary(
                 pair => pair.Key, pair => pair.Value with { Status = SamplingObservationStatus.Unavailable }) };
             await Task.Yield();

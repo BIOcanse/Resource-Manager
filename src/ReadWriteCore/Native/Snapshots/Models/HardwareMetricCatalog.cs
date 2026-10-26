@@ -7,7 +7,10 @@ public sealed record HardwareMetricItemDescriptor(string Id, string Unit, Metric
     string? FieldName, string? DeviceIdentity, string? ValueKind, string? SourceId);
 public sealed record HardwareMetricCpuDescriptor(string Name, int MaxFrequencyMhz, string FrequencySource);
 public sealed record HardwareMetricGpuDescriptor(int Index, string Name, string? IdentityKey,
-    ulong? AdapterKey, string UsageProvider);
+    ulong? AdapterKey, string UsageProvider)
+{
+    public bool? HasDedicatedMemoryMetrics { get; init; }
+}
 
 /// <summary>Discovered device and field facts. No sampled values, observation times or history are retained.</summary>
 public sealed record HardwareMetricCatalog(
@@ -20,7 +23,8 @@ public sealed record HardwareMetricCatalog(
     public static HardwareMetricCatalog FromSnapshot(HardwareMetricSnapshot snapshot)
         => new(new(snapshot.Cpu.Name, snapshot.Cpu.MaxFrequencyMhz, snapshot.Cpu.FrequencySource),
             snapshot.Gpus.Select(static gpu => new HardwareMetricGpuDescriptor(gpu.Index, gpu.Name,
-                gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)).ToArray(),
+                gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)
+                { HasDedicatedMemoryMetrics = gpu.HasDedicatedMemoryMetrics }).ToArray(),
             snapshot.Items.ToFrozenDictionary(static pair => pair.Key, static pair => new HardwareMetricItemDescriptor(
                 pair.Key, pair.Value.Unit, pair.Value.FieldCode, pair.Value.FieldName, pair.Value.DeviceIdentity,
                 pair.Value.ValueKind, pair.Value.SourceId), StringComparer.OrdinalIgnoreCase),
@@ -37,7 +41,8 @@ public sealed record HardwareMetricCatalog(
             new(0, 0, 0, false), new(0, 0, 0, false),
             Gpus.Select(gpu => new GpuMetrics(gpu.Index, gpu.Name, 0, 0, 0, 0, 0, 0, 0, 0,
                 new(provider, null, null, null, null, null, null, null, null, null, null),
-                gpu.UsageProvider, false, gpu.IdentityKey) { AdapterKey = gpu.AdapterKey }).ToArray(),
+                gpu.UsageProvider, false, gpu.IdentityKey) { AdapterKey = gpu.AdapterKey,
+                    HasDedicatedMemoryMetrics = gpu.HasDedicatedMemoryMetrics }).ToArray(),
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
             Items.ToDictionary(static pair => pair.Key, static pair => new MetricReadingValue(pair.Key, null, pair.Value.Unit)
             {

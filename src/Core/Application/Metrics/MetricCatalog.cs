@@ -69,6 +69,10 @@ public static partial class MetricCatalog
         }
         var result = definitions.Values.ToList();
         ApplyReadingAvailability(result, snapshot.FieldBindings.Values);
+        for (var index = 0; index < result.Count; index++)
+            if (GpuIndex(result[index].Id) is { } gpuIndex)
+                result[index] = result[index] with
+                { HasDedicatedMemoryMetrics = snapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex)?.HasDedicatedMemoryMetrics };
         return result;
 
         void Add(string id, string unit, string? dependency = null, bool capabilityKnown = false,

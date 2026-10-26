@@ -195,6 +195,16 @@ public sealed record ResourceBreakdownBar(
     public double? SharedValue { get; init; }
     public string? ResidualSource { get; init; }
     public string? ProcessFieldName { get; init; }
+    public string? Quantity { get; init; }
+    public string? UnavailableReason { get; init; }
+    public string? TotalMetricId { get; init; }
+    public double? ProcessSumValue { get; init; }
+    public double? ResidualValue { get; init; }
+    public bool AdditiveAcrossProcesses { get; init; } = true;
+    public DateTimeOffset? CapturedAt { get; init; }
+    public long? WindowMilliseconds { get; init; }
+    public ResourceManager.ReadWrite.ProcessFields.ProcessGpuEngineScope? GpuEngine { get; init; }
+    public string? EngineClass { get; init; }
 }
 
 public sealed record ResourceSoftwareSegment(

@@ -12,6 +12,8 @@ public sealed partial class WindowsResourceBreakdownSampler
     private static bool NeedsGpuAllocations(ResourceBreakdownSampleRequest request)
         => request.SchedulingMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
             || request.PublicationDatasetIds.Contains(SamplingDatasetIds.ProcessGpuVram)
+            || request.MetricIds.Any(static id => ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldRegistry.Find(id) is { } field
+                && ResourceManager.ReadWrite.ProcessFields.ProcessGpuResourceFieldRegistry.IsVram(field))
             || request.MetricIds.Any(static id => TryParseGpuMetric(id, out _, out var kind) && kind == "vram");
 
     private GpuAllocationReading? ReadGpuAllocations(IReadOnlyList<ProcessResourceSample> samples)

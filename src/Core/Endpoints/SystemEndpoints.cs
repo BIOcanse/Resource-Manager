@@ -162,7 +162,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         preset.IsIntegrated,
                         preset.Source,
                         preset.MatchedPreset,
-                        preset.IsPresetMatch);
+                        preset.IsPresetMatch) { HasDedicatedMemoryMetrics = gpu.HasDedicatedMemoryMetrics };
                 })
                 .ToArray();
             return Results.Ok(new GpuPerformanceScoreSnapshot(

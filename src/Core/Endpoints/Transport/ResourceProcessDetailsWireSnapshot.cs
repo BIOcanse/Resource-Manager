@@ -51,8 +51,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             .ToDictionary(
                 static dataset => dataset.DatasetId,
                 StringComparer.OrdinalIgnoreCase);
-        var barsByMetric = source.Bars.Concat(ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars(
-            source, metricIds, foundations, scaleModes)).ToDictionary(
+        var barsByMetric = ResourceBreakdownWireSnapshot.ProjectResourceBars(
+            source, metricIds, foundations, scaleModes).ToDictionary(
             static bar => bar.MetricId,
             StringComparer.OrdinalIgnoreCase);
         var metrics = new List<ResourceProcessDetailsMetric>();
@@ -77,12 +77,15 @@ internal sealed class ResourceProcessDetailsWireSnapshot
                     segment.SoftwareId,
                     segment.Processes))
                 .ToArray();
-            if (software.Length == 0)
-            {
-                continue;
-            }
+            // Owner filtering restricts details, not the captured metric's balance.
+            // A current metric can be entirely residual without a requested process.
 
-            metrics.Add(new ResourceProcessDetailsMetric(bar.MetricId, software));
+            metrics.Add(new ResourceProcessDetailsMetric(bar.MetricId, software)
+            {
+                TotalMetricId = bar.TotalMetricId, TotalValue = bar.TotalValue, CapacityValue = bar.CapacityValue,
+                ProcessSumValue = bar.ProcessSumValue, ResidualValue = bar.ResidualValue,
+                AdditiveAcrossProcesses = bar.AdditiveAcrossProcesses, CapturedAt = bar.CapturedAt
+            });
             if (capturedAt is null || dataset.CapturedAt > capturedAt)
             {
                 capturedAt = dataset.CapturedAt;
@@ -96,7 +99,16 @@ internal sealed class ResourceProcessDetailsWireSnapshot
 
 internal sealed record ResourceProcessDetailsMetric(
     string MetricId,
-    IReadOnlyList<ResourceProcessDetailsSoftware> Software);
+    IReadOnlyList<ResourceProcessDetailsSoftware> Software)
+{
+    public string? TotalMetricId { get; init; }
+    public double? TotalValue { get; init; }
+    public double? CapacityValue { get; init; }
+    public double? ProcessSumValue { get; init; }
+    public double? ResidualValue { get; init; }
+    public bool AdditiveAcrossProcesses { get; init; }
+    public DateTimeOffset? CapturedAt { get; init; }
+}
 
 internal sealed record ResourceProcessDetailsSoftware(
     string SoftwareId,
@@ -139,6 +151,14 @@ internal sealed class ResourceProcessDetailsWireSnapshotJsonConverter
         {
             writer.WriteStartObject();
             writer.WriteString("metricId", metric.MetricId);
+            writer.WriteString("totalMetricId", metric.TotalMetricId);
+            WriteNumber(writer, "totalValue", metric.TotalValue);
+            WriteNumber(writer, "capacityValue", metric.CapacityValue);
+            WriteNumber(writer, "processSumValue", metric.ProcessSumValue);
+            WriteNumber(writer, "residualValue", metric.ResidualValue);
+            writer.WriteBoolean("additiveAcrossProcesses", metric.AdditiveAcrossProcesses);
+            if (metric.CapturedAt is { } time) writer.WriteString("capturedAt", time);
+            else writer.WriteNull("capturedAt");
             writer.WritePropertyName("software");
             writer.WriteStartArray();
             foreach (var software in metric.Software)
@@ -159,5 +179,11 @@ internal sealed class ResourceProcessDetailsWireSnapshotJsonConverter
 
         writer.WriteEndArray();
         writer.WriteEndObject();
+    }
+
+    private static void WriteNumber(Utf8JsonWriter writer, string name, double? value)
+    {
+        if (value is { } number) writer.WriteNumber(name, number);
+        else writer.WriteNull(name);
     }
 }

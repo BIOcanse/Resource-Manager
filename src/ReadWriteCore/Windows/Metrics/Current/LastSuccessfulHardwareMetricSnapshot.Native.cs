@@ -177,7 +177,8 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
                 publication.CatalogGeneration, publication.CommittedGeneration), publication.CapturedAt)];
         nextCatalog.FieldBindings = publication.FieldBindings;
         nextCatalog.Gpus = publication.Gpus.Select(static gpu => new HardwareMetricGpuDescriptor(
-            gpu.Index, gpu.Name, gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)).ToArray();
+            gpu.Index, gpu.Name, gpu.IdentityKey, gpu.AdapterKey, gpu.UsageProvider)
+            { HasDedicatedMemoryMetrics = gpu.HasDedicatedMemoryMetrics }).ToArray();
         foreach (var entry in snapshots)
         {
             nextCatalog.DatasetIds.Add(entry.DatasetId);
@@ -428,7 +429,8 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
                 new(new(r.Text(k + 30) ?? string.Empty, r.Text(k + 31) ?? HardwareSensorProviderStates.Unavailable, r.Text(k + 32)),
                     r.Number(k + 20), r.Number(k + 21), r.Number(k + 22), r.Number(k + 23), r.Number(k + 24),
                     r.Number(k + 25), r.Number(k + 26), r.Number(k + 27), r.Number(k + 28), r.Number(k + 29)),
-                r.Text(k + 4) ?? string.Empty, r.Flag(k + 6), r.Text(k + 2)) { AdapterKey = r.Optional(k + 3) };
+                r.Text(k + 4) ?? string.Empty, r.Flag(k + 6), r.Text(k + 2)) { AdapterKey = r.Optional(k + 3),
+                    HasDedicatedMemoryMetrics = r.Gpus.FirstOrDefault(descriptor => descriptor.Index == (int)r.Signed(k))?.HasDedicatedMemoryMetrics };
             var found = gpus.FindIndex(value => value.Index == gpu.Index);
             if (found < 0) gpus.Add(gpu); else gpus[found] = gpu;
         }
@@ -465,5 +467,5 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
         0, 0, 0, 0, 0, 0, 0, 0,
         new(new(string.Empty, HardwareSensorProviderStates.NotRequested, null), null, null, null,
             null, null, null, null, null, null, null), gpu.UsageProvider, false, gpu.IdentityKey)
-        { AdapterKey = gpu.AdapterKey };
+        { AdapterKey = gpu.AdapterKey, HasDedicatedMemoryMetrics = gpu.HasDedicatedMemoryMetrics };
 }

@@ -105,8 +105,9 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         // Facts retain metrics with null totals. The production facts decoder must accept them.
         var facts = await DecodeAsync("facts", ResourceFactsSnapshot.Create(snapshot, metricIds), metricIds);
         AssertDecodedMetrics(facts, metricIds, metricIds.Length);
-        var details = await DecodeAsync("details", ResourceProcessDetailsWireSnapshot.Create(
-            snapshot, metricIds, softwareIds), metricIds);
+        var detailsWire = ResourceProcessDetailsWireSnapshot.Create(snapshot, metricIds, softwareIds);
+        Assert.Equal(available ? metricIds : [], detailsWire.Metrics.Select(metric => metric.MetricId));
+        var details = await DecodeAsync("details", detailsWire, metricIds);
         AssertDecodedMetrics(details, available ? metricIds : [], metricIds.Length);
         if (available)
         {

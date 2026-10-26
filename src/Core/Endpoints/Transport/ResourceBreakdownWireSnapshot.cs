@@ -62,7 +62,7 @@ public sealed class ResourceBreakdownWireSnapshot
         // 实测就这么炸过：核显那条不可用，GPU 调度页整页无限加载。
         var bars = visibleIds.Count == 0
             ? []
-            : source.Bars.Concat(ProjectProcessMemoryBars(source, visibleMetricIds, foundations, scaleModes))
+            : ProjectResourceBars(source, visibleMetricIds, foundations, scaleModes)
                 .Where(bar => visibleIds.Contains(bar.MetricId)
                 && currentDatasets.ContainsKey(
                     SamplingDatasetIds.ForProcessMetric(bar.MetricId))
@@ -104,17 +104,16 @@ public sealed class ResourceBreakdownWireSnapshot
             processFields);
     }
 
-    internal static IEnumerable<ResourceBreakdownBar> ProjectProcessMemoryBars(
+    internal static IEnumerable<ResourceBreakdownBar> ProjectResourceBars(
         ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations,
         IReadOnlyDictionary<string, string>? scaleModes = null)
     {
-        var fields = ids.Where(static id => ProcessMemoryFactFields.TotalMetricId(id) is not null).ToArray();
-        if (fields.Length == 0) return [];
-        var facts = ResourceFactsSnapshot.Create(source, fields, foundations);
+        var facts = ResourceFactsSnapshot.Create(source, ids, foundations);
         var owners = facts.Software.ToDictionary(static owner => owner.SoftwareId, StringComparer.Ordinal);
         return facts.Metrics.Select(metric => new ResourceBreakdownBar(metric.MetricId, metric.Unit,
             ResourceBreakdownScaleModes.Normalize(metric.TotalMetricId, scaleModes?.GetValueOrDefault(metric.MetricId)
-                ?? scaleModes?.GetValueOrDefault(metric.TotalMetricId!)),
+                ?? scaleModes?.GetValueOrDefault(metric.TotalMetricId!)
+                ?? source.Bars.FirstOrDefault(bar => bar.MetricId == metric.MetricId)?.ScaleMode),
             metric.TotalValue, metric.CapacityValue, metric.TotalSystemPercent, metric.Software.Select(owner =>
             {
                 var identity = owners[owner.SoftwareId];
@@ -125,9 +124,18 @@ public sealed class ResourceBreakdownWireSnapshot
                         return new ResourceProcessSegment(process.ProcessId, process.Name, process.ExecutablePath,
                             row.Value, row.SystemPercent, row.SoftwarePercent, process.UserName, process.Architecture,
                             process.AttributionKind, row.BaseScore)
-                        { ProcessStartKey = process.ProcessStartKey is { } key ? long.Parse(key, CultureInfo.InvariantCulture) : null };
-                    }).ToArray(), owner.BaseScore);
-            }).ToArray()) { ProcessFieldName = metric.ProcessFieldName, ResidualSource = metric.MetricId == "process_all_private_working_set_actual" ? "counters" : null });
+                        { ProcessStartKey = process.ProcessStartKey is { } key ? long.Parse(key, CultureInfo.InvariantCulture) : null,
+                            SharedValue = row.SharedValue };
+                    }).ToArray(), owner.BaseScore) { SharedValue = owner.SharedValue };
+            }).ToArray())
+        {
+            ProcessFieldName = metric.ProcessFieldName, TotalMetricId = metric.TotalMetricId,
+            ProcessSumValue = metric.ProcessSumValue, ResidualValue = metric.ResidualValue,
+            AdditiveAcrossProcesses = metric.AdditiveAcrossProcesses, CapturedAt = metric.CapturedAt,
+            WindowMilliseconds = metric.WindowMilliseconds, GpuEngine = metric.GpuEngine, EngineClass = metric.EngineClass,
+            SharedValue = metric.SharedValue, Quantity = metric.Quantity, UnavailableReason = metric.UnavailableReason,
+            ResidualSource = metric.ResidualSource
+        });
     }
 }
 
@@ -150,7 +158,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
         writer.WriteNumber("version", ResourceBreakdownWireSnapshot.CurrentVersion);
         WriteNullableTimestamp(writer, "capturedAt", value.CapturedAt);
         WriteSoftwareCatalog(writer, value.SoftwareCatalog);
-        WriteBars(writer, value);
+        WriteBars(writer, value, options);
         if (value.ProcessFields is not null)
         {
             writer.WritePropertyName("processFields");
@@ -179,7 +187,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
 
     private static void WriteBars(
         Utf8JsonWriter writer,
-        ResourceBreakdownWireSnapshot value)
+        ResourceBreakdownWireSnapshot value, JsonSerializerOptions options)
     {
         writer.WritePropertyName("bars");
         writer.WriteStartArray();
@@ -190,15 +198,28 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             writer.WriteString("unit", bar.Unit);
             writer.WriteString("scaleMode", bar.ScaleMode);
             if (bar.ResidualSource is { } residualSource) writer.WriteString("residualSource", residualSource);
-            var totalMetricId = ProcessMemoryFactFields.TotalMetricId(bar.MetricId);
+            if (bar.Quantity is not null) writer.WriteString("quantity", bar.Quantity);
+            if (bar.UnavailableReason is not null) writer.WriteString("unavailableReason", bar.UnavailableReason);
+            var totalMetricId = bar.TotalMetricId ?? ProcessMemoryFactFields.TotalMetricId(bar.MetricId);
             if (totalMetricId is not null) writer.WriteString("totalMetricId", totalMetricId);
             var processFieldName = bar.ProcessFieldName
-                ?? (totalMetricId is not null ? bar.MetricId : null);
+                ?? (ProcessMemoryFactFields.TotalMetricId(bar.MetricId) is not null ? bar.MetricId : null);
             if (processFieldName is not null) writer.WriteString("processFieldName", processFieldName);
             WriteNullableNumber(writer, "totalValue", bar.TotalValue);
             WriteNullableNumber(writer, "capacityValue", bar.CapacityValue);
             WriteNullableNumber(writer, "totalSystemPercent", bar.TotalSystemPercent);
             WriteNullableNumber(writer, "sharedValue", bar.SharedValue);
+            WriteNullableNumber(writer, "processSumValue", bar.ProcessSumValue);
+            WriteNullableNumber(writer, "residualValue", bar.ResidualValue);
+            writer.WriteBoolean("additiveAcrossProcesses", bar.AdditiveAcrossProcesses);
+            WriteNullableTimestamp(writer, "capturedAt", bar.CapturedAt);
+            if (bar.WindowMilliseconds is { } window) writer.WriteNumber("windowMilliseconds", window);
+            if (bar.GpuEngine is not null)
+            {
+                writer.WritePropertyName("gpuEngine");
+                JsonSerializer.Serialize(writer, bar.GpuEngine, options);
+                writer.WriteString("engineClass", bar.EngineClass);
+            }
             WriteSoftwareRows(writer, value, bar.Software);
             writer.WriteEndObject();
         }

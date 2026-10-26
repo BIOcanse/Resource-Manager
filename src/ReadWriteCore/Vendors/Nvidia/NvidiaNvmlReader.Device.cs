@@ -61,6 +61,7 @@ public sealed partial class NvidiaNvmlReader
             UsageProvider: "NVIDIA NVML",
             IsUsageAvailable: usage.IsAvailable)
         {
+            HasDedicatedMemoryMetrics = adapter.SupportsDedicatedMemoryMetrics,
             AdditionalReadings = information.Values,
             AdditionalIntegerReadings = information.Integers,
             AdditionalObservedAt = information.ObservedAt

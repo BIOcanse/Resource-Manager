@@ -217,7 +217,7 @@ public sealed class SubscriptionChannelContractTests
     }
 }
 
-public sealed class ResourceMonitorDetailsSubscriptionTests
+public sealed partial class ResourceMonitorDetailsSubscriptionTests
 {
     [Theory]
     [InlineData("process_all_working_set_actual", "memory.usage", false, "bars", "capacity", false)]
@@ -279,7 +279,13 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
                 Assert.Equal(total, bar.GetProperty("totalValue").GetDouble());
                 var rows = bar.GetProperty("software");
                 Assert.Equal(7, rows[0][1].GetDouble());
-                Assert.Equal(total - 7, rows[1][1].GetDouble());
+                if (field == "process_all_working_set_actual")
+                {
+                    Assert.Single(rows.EnumerateArray());
+                    Assert.Equal(JsonValueKind.Null, bar.GetProperty("residualValue").ValueKind);
+                    Assert.False(bar.GetProperty("additiveAcrossProcesses").GetBoolean());
+                }
+                else Assert.Equal(total - 7, rows[1][1].GetDouble());
                 Assert.Equal(7, rows[0][5][0][3].GetDouble());
             }
         }
@@ -443,9 +449,11 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
         using var direct = JsonDocument.Parse(await client.GetStringAsync(
             $"/api/resource-facts/snapshot?items={items}&processDetailLevel=full"));
         Assert.Equal(2, direct.RootElement.GetProperty("version").GetInt32());
-        Assert.Equal(2, direct.RootElement.GetProperty("processes").GetArrayLength());
+        var identities = direct.RootElement.GetProperty("processes");
+        Assert.Equal(2, identities.EnumerateArray().Count(process => process.GetProperty("processId").GetInt32() > 0));
         Assert.Equal(item != "memory.usage" || includeFoundations ? 2 : 0,
-            direct.RootElement.GetProperty("attributions").GetArrayLength());
+            direct.RootElement.GetProperty("attributions").EnumerateArray().Count(edge =>
+                identities[edge.GetProperty("processIndex").GetInt32()].GetProperty("processId").GetInt32() > 0));
         Assert.Single(direct.RootElement.GetProperty("metrics").EnumerateArray());
         Assert.False(direct.RootElement.TryGetProperty("rows", out _));
         var currentRequest = Assert.Single(source.SnapshotRequests);
@@ -789,3 +797,5 @@ public sealed class ResourceMonitorDetailsSubscriptionTests
 
 
 }
+
+

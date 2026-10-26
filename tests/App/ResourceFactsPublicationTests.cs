@@ -139,15 +139,21 @@ public sealed class ResourceFactsPublicationTests
         };
         var foundations = Foundations();
         var facts = ResourceFactsSnapshot.Create(source, fields, foundations);
-        Assert.Single(facts.Processes);
-        var attribution = Assert.Single(facts.Attributions);
+        Assert.Single(facts.Processes, process => process.ProcessId > 0);
+        var attribution = Assert.Single(facts.Attributions, edge => edge.SoftwareId == "example");
         Assert.All(facts.Metrics, metric => Assert.Equal(attribution.ProcessIndex,
-            Assert.Single(Assert.Single(metric.Software).Processes).ProcessIndex));
+            Assert.Single(Assert.Single(metric.Software, owner => owner.SoftwareId == "example").Processes).ProcessIndex));
         var reused = ResourceFactsSnapshot.Create(source, fields, foundations with
         { InventoryProcesses = Foundations(long.MaxValue - 1).InventoryProcesses });
-        Assert.Empty(reused.Processes);
-        Assert.Empty(reused.Attributions);
-        Assert.All(reused.Metrics, metric => { Assert.Empty(metric.Software); Assert.Equal(20, metric.TotalValue); });
+        Assert.DoesNotContain(reused.Processes, process => process.ProcessId > 0);
+        Assert.All(reused.Attributions, edge => Assert.StartsWith("resource-residual:", edge.SoftwareId));
+        Assert.All(reused.Metrics, metric =>
+        {
+            Assert.Equal(0, metric.ProcessSumValue);
+            Assert.Equal(20, metric.TotalValue);
+            if (metric.AdditiveAcrossProcesses) Assert.Equal(20, metric.ResidualValue);
+            else { Assert.Empty(metric.Software); Assert.Null(metric.ResidualValue); }
+        });
     }
     internal static ResourceBreakdownSnapshot Snapshot()
     {

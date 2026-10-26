@@ -1,9 +1,12 @@
 using ResourceManager.App.Domain.ResourceBreakdown;
+using ResourceManager.ReadWrite.ProcessFields;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class WindowsResourceBreakdownSampler
 {
+    private ProcessMetricFieldDefinition[] gpuResourceFieldCatalog = [];
+    public IReadOnlyList<ProcessMetricFieldDefinition> ResourceFactFields => Volatile.Read(ref gpuResourceFieldCatalog);
     internal long ProcessFieldRevision => snapshotState.Revision;
     internal ProcessMetricFieldSnapshot[] ReadProcessFieldParts() => snapshotState.ReadProcessFieldParts();
     internal ProcessMetricFieldSnapshot? ReadProcessFieldPart(string dataset) => snapshotState.ReadProcessFieldPart(dataset);

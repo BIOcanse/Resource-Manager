@@ -287,7 +287,10 @@ public sealed partial class WindowsResourceBreakdownSampler
         ArgumentNullException.ThrowIfNull(request);
         return CreateHardwareRequest(
             request.IncludeProcessMemoryFacts
-                ? request.MetricIds.Concat(request.ProcessMemoryFactIds.Select(ProcessMemoryFactFields.TotalMetricId).OfType<string>()).ToArray()
+                ? request.MetricIds.Concat(request.ProcessMemoryFactIds.Select(ProcessMetricFieldRegistry.Find)
+                    .OfType<ProcessMetricFieldDefinition>().Where(static field => field.GpuEngine is null
+                        && ResourceBreakdownScaleModes.SupportsCapacity(field.ResourceFactTotalMetricId))
+                    .Select(static field => field.ResourceFactTotalMetricId!)).ToArray()
                 : request.MetricIds,
             request.SchedulingMetricMask);
     }

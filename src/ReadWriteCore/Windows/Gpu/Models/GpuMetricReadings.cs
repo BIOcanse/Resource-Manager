@@ -17,6 +17,8 @@ public sealed record GpuMetrics(
     bool IsUsageAvailable = true,
     string? IdentityKey = null)
 {
+    // Topology capability, independent of this frame's numeric reading.
+    public bool? HasDedicatedMemoryMetrics { get; init; }
     /// <summary>Current catalog LUID routing key; neither persistent device identity nor telemetry.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public ulong? AdapterKey { get; init; }

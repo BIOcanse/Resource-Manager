@@ -62,7 +62,7 @@ public sealed record ProcessMetricFieldSnapshot(DateTimeOffset? CapturedAt, long
 
     public IReadOnlyList<ProcessMetricFieldSourceObservation> Sources { get; init; } = [];
     public static ProcessMetricFieldSnapshot Empty(IReadOnlySet<string> selected)
-        => new(null, null, ProcessMetricFieldRegistry.Definitions.Where(field => selected.Contains(field.Name)).ToArray(), []);
+        => new(null, null, selected.Select(ProcessMetricFieldRegistry.Find).OfType<ProcessMetricFieldDefinition>().ToArray(), []);
 
     public ProcessMetricFieldSnapshot Select(IReadOnlySet<string> selected)
     {

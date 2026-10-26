@@ -35,7 +35,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
     private static IEndpointRouteBuilder MapResourceMonitorEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/resource-breakdown/fields/catalog", () => Results.Ok(ProcessFieldCatalogWire))
+        app.MapGet("/api/resource-breakdown/fields/catalog", (IResourceBreakdownSampler sampler) =>
+            Results.Ok(ProcessFieldCatalogWire.Concat(sampler.ResourceFactFields).ToArray()))
             .AllowAnonymous();
         app.MapGet("/api/resource-breakdown/snapshot", async (
             HttpRequest request,
@@ -136,6 +137,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray()
             : [];
+        items = items.Concat(ParseResourceBarMeasures(query)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var foundations = items.Where(static item => item is Domain.Monitoring.SamplingDatasetIds.ProcessInventory
             or Domain.Monitoring.SamplingDatasetIds.ProcessAttribution).ToArray();
         var metrics = items.Except(foundations).ToArray();

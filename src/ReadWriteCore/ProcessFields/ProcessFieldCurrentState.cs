@@ -24,7 +24,8 @@ public sealed class ProcessFieldCurrentState
     {
         lock (Gate)
         {
-            if (dataset != ProcessMetricDatasetIds.BasicMetrics && dataset != ProcessMetricDatasetIds.ObservedNetworkTraffic && dataset != ProcessMetricDatasetIds.ObservedPhysicalDiskIo && dataset != ProcessMetricDatasetIds.GpuResidency && dataset != ProcessMetricDatasetIds.ObservedCpuResidency) return;
+            if (dataset != ProcessMetricDatasetIds.BasicMetrics && dataset != ProcessMetricDatasetIds.ObservedNetworkTraffic && dataset != ProcessMetricDatasetIds.ObservedPhysicalDiskIo && dataset != ProcessMetricDatasetIds.GpuResidency && dataset != ProcessMetricDatasetIds.ObservedCpuResidency
+                && dataset != ProcessGpuResourceFieldRegistry.AllocationDatasetId) return;
             parts[dataset] = value; revision++;
         }
     }

@@ -814,7 +814,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         datasets,
                         MetricDatasetIds.ForSystemMetric(
                             $"gpu.{index}.usage")),
-                descriptor.IdentityKey));
+                descriptor.IdentityKey) { HasDedicatedMemoryMetrics = descriptor.HasDedicatedMemoryMetrics });
         }
         return result;
     }

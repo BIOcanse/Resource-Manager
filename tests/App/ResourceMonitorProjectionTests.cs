@@ -313,9 +313,15 @@ public sealed class ResourceMonitorProjectionTests
         var root = document.RootElement;
 
         Assert.Equal(ResourceBreakdownWireSnapshot.CurrentVersion, root.GetProperty("version").GetInt32());
-        Assert.Equal(2, root.GetProperty("softwareCatalog").GetArrayLength());
+        // The third identity owns the same-frame remainder: total 3 minus two
+        // attributed process values of 1. Its value row needs a catalog reference.
+        var catalog = root.GetProperty("softwareCatalog");
+        Assert.Equal(3, catalog.GetArrayLength());
+        Assert.Contains(catalog.EnumerateArray(), row => row[0].GetString() == "resource-residual:memory.usage");
         var softwareRows = root.GetProperty("bars")[0].GetProperty("software");
-        Assert.Equal(2, softwareRows.GetArrayLength());
+        Assert.Equal(3, softwareRows.GetArrayLength());
+        Assert.Equal(3, softwareRows.EnumerateArray().Sum(row => row[1].GetDouble()));
+        Assert.All(softwareRows.EnumerateArray(), row => Assert.InRange(row[0].GetInt32(), 0, catalog.GetArrayLength() - 1));
         Assert.Equal(JsonValueKind.Array, softwareRows[0].ValueKind);
         Assert.DoesNotContain("worker-a.exe", json, StringComparison.Ordinal);
     }

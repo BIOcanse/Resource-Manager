@@ -293,6 +293,7 @@ public sealed partial class AmdAdlxBridgeReader
             UsageProvider: "AMD ADLX",
             IsUsageAvailable: hasUsage)
         {
+            HasDedicatedMemoryMetrics = adapter.SupportsDedicatedMemoryMetrics,
             AdditionalIntegerReadings = integerReadings,
             AdditionalReadings = new Dictionary<MetricFieldCode, double?>
             {

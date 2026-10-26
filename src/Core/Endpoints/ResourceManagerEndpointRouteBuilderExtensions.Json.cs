@@ -606,5 +606,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessRequestDenyWireRequest))]
     [JsonSerializable(typeof(global::ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessRequestDecisionWireResponse))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.Shared.Runtime.TrustedAccess.TrustedAccessRequestPendingWireSnapshot[]>))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.MetricCatalogWireSnapshot))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.MetricCatalogWireSnapshot>))]
     private partial class BackendHttpJsonContext : JsonSerializerContext;
 }

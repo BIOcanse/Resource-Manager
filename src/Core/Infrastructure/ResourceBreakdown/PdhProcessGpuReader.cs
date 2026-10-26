@@ -15,6 +15,10 @@ public sealed class PdhProcessGpuReader
         => ResourceManager.ReadWrite.ProcessFields.WindowsPdhProcessGpuFields.Read(snapshotSource, inventory);
     private readonly INativePdhSnapshotSource snapshotSource;
     internal INativePdhSnapshotSource SnapshotSource => snapshotSource;
+    internal static ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot ProjectResidencyFields(
+        NativePdhReadResult read, ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot inventory)
+        => ResourceManager.ReadWrite.ProcessFields.WindowsPdhProcessGpuFields.Project(read, inventory,
+            static pid => BasicMetricReader.ReadCurrentCreationFileTime(pid));
     private readonly Func<IReadOnlyCollection<ProcessInstanceKey>, IReadOnlySet<ProcessInstanceKey>>
         validateCurrentProcessInstances;
 

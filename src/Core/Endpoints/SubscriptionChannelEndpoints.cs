@@ -428,12 +428,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
     {
         var source = services.GetRequiredService<IMetricSnapshotPushSource>();
-        return subscription.Compile(async (writer, cancellationToken) =>
-        {
-            await foreach (var snapshot in source.SubscribeAsync($"frontend-channel:{subscription.Id}",
-                MetricSampleRequest.CatalogProbe, interval, cancellationToken))
-                await writer.WriteAsync(subscription.Id, ReadMetricFieldCatalog(snapshot, services), cancellationToken);
-        });
+        var catalog = services.GetRequiredService<HardwareMetricCatalogState>();
+        return subscription.Compile((writer, cancellationToken) => RunMetricCatalogSubscriptionAsync(
+            subscription.Id, source, catalog, interval, services, writer, cancellationToken));
     }
 
     private static CompiledFrontendSubscription CompileMetricSubscription(

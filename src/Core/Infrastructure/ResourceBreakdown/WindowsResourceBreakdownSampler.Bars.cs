@@ -31,7 +31,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     metricId,
                     "%",
                     scaleMode,
-                    CpuObservationStatus(hardwareSnapshot.Cpu));
+                    CpuObservationStatus(hardwareSnapshot.Cpu))
+                    with { ProcessFieldName = "process_all_cpu_usage_actual" };
             }
 
             return CreateBar(
@@ -47,7 +48,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 processAttribution,
                 baseScorePlan,
                 residualBreakdownProvider,
-                isBytes: false);
+                isBytes: false) with { ProcessFieldName = "process_all_cpu_usage_actual" };
         }
 
         if (metricId.Equals("memory.usage", StringComparison.OrdinalIgnoreCase))
@@ -282,6 +283,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (gpuMetricName.Equals("vram", StringComparison.OrdinalIgnoreCase))
         {
             var gpu = hardwareSnapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex);
+            if (gpu?.HasDedicatedMemoryMetrics == false)
+                return CreateUnavailableBar(metricId, "B", scaleMode, SamplingObservationStatus.Unsupported) with
+                { Quantity = "dedicated_memory_used", UnavailableReason = "gpu-dedicated-memory-metrics-unsupported" };
             var used = TryGetCurrentHardwareMetric(hardwareSnapshot, metricId, out var reading)
                 ? reading.NumericValue : null;
             var bar = CreateUnattributedMemoryUsageBar(metricId, scaleMode,
@@ -289,7 +293,13 @@ public sealed partial class WindowsResourceBreakdownSampler
             var adapter = hardwareSnapshot.GpuInventory.Adapters.FirstOrDefault(item => item.Index == gpuIndex);
             return CreateGpuResidentPartition(bar,
                 adapter is null ? null : residentReading?.Adapters.GetValueOrDefault(adapter.AdapterKey),
-                processAttribution, baseScorePlan);
+                processAttribution, baseScorePlan) with
+            {
+                Quantity = "dedicated_memory_used",
+                ProcessFieldName = adapter is null || adapter.AdapterKey == 0 ? null
+                    : ResourceManager.ReadWrite.ProcessFields.ProcessGpuResourceFieldRegistry.ForResidentMemory(
+                        gpuIndex, adapter.AdapterKey, ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldCode.GpuResidentBytes).Name
+            };
         }
 
         return null;

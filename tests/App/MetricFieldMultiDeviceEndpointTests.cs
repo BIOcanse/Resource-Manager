@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
@@ -128,8 +129,12 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
             Assert.Equal(HttpStatusCode.OK, catalogResponse.StatusCode);
             using var reader = new StreamReader(await catalogResponse.Content.ReadAsStreamAsync(timeout.Token));
             using var pushedCatalog = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
-            CheckDevices(pushedCatalog.RootElement.GetProperty("value"));
-            foreach (var value in pushedCatalog.RootElement.GetProperty("value").EnumerateArray())
+            var envelope = pushedCatalog.RootElement.GetProperty("value");
+            Assert.Equal(app.Services.GetRequiredService<HardwareMetricCatalogState>().Revision,
+                envelope.GetProperty("catalogRevision").GetString());
+            Assert.NotEmpty(envelope.GetProperty("metrics").EnumerateArray());
+            CheckDevices(envelope.GetProperty("fields"));
+            foreach (var value in envelope.GetProperty("fields").EnumerateArray())
                 Assert.Equal(catalogDevices[value.GetProperty("deviceIdentity").GetString()!], value.GetProperty("device").GetRawText());
         }
         var query = "?fields=" + string.Join(',', descriptors.Select(row => row.Field));
@@ -434,6 +439,7 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         builder.Services.AddSingleton(catalog);
         builder.Services.AddSingleton<IMetricSampler>(source);
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(source);
+        builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         if (topology is not null) builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(topology);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var name in new[] { "MapMetricFieldEndpoints", "MapSubscriptionChannelEndpoints" })

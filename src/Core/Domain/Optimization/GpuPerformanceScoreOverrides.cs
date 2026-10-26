@@ -28,4 +28,7 @@ public sealed record GpuPerformanceScoreItem(
     bool IsIntegrated,
     string Source,
     string? MatchedPreset,
-    bool IsPresetMatch);
+    bool IsPresetMatch)
+{
+    public bool? HasDedicatedMemoryMetrics { get; init; }
+}
