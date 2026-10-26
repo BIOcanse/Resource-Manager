@@ -1,19 +1,4 @@
-.targeted-recording-actions,
-.targeted-report-toolbar,
-.targeted-report-actions,
-.targeted-report-list-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.targeted-recording-actions label {
-  display: grid;
-  gap: 5px;
-}
-
-.targeted-recording-actions input { width: 8rem; }
+/* 定向报告页与录制控件。动效写在 motion.css，这里不写 transition/animation。 */
 
 /* 与详细信息其他页签（advanced-scheduling.css 的 .smart-details-report 等）同一种面板。 */
 .targeted-reports-page {
@@ -26,52 +11,446 @@
   background: var(--surface);
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
-.targeted-report-header { padding: 0; }
+
+.targeted-report-header {
+  margin: 0;
+  padding: 0;
+}
+
+.targeted-report-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* 读取中提示常驻占位：出现、消失都不推动标题或按钮。 */
+.targeted-report-busy {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .targeted-report-note {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.5;
 }
-.targeted-report-note.error { color: var(--danger); }
-.targeted-report-toolbar { justify-content: space-between; }
-.targeted-report-toolbar h3 { margin: 0; font-size: 14px; }
-.targeted-report-list { display: grid; gap: 6px; }
+
+.targeted-report-note.warning {
+  color: var(--warn);
+}
+
+/* 页面级失败：沿用 .observation-state.error 的底色和边框，重试按钮靠右。 */
+.targeted-report-note.error {
+  margin: 0;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text);
+}
+
+/* ---------- 录制控件（软件详情里的一节，或报告页顶部工具条） ---------- */
+
+.targeted-recording-control > p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.targeted-recording-toolbar {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.targeted-recording-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 字段行：标签在上、控件在下，各控件底边对齐；窄窗口时整格换行，不截断标签。 */
+.targeted-recording-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  min-width: 0;
+}
+
+.targeted-recording-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.targeted-recording-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.targeted-recording-target {
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+
+/* 输入框占满字段宽度：标签比输入框宽时（如德语）不在按钮前留空。 */
+.targeted-recording-duration input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 9rem;
+  min-height: var(--control-height);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.targeted-recording-duration input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.targeted-recording-duration input:disabled {
+  background: var(--control-disabled-bg);
+  border-color: var(--control-disabled-border);
+  color: var(--control-disabled-text);
+}
+
+/* 状态切换的按钮格：按钮与隐藏的两段文字叠在同一格，格宽取较宽的文字。 */
+.targeted-recording-action,
+.targeted-report-row-action {
+  display: inline-grid;
+  flex: 0 0 auto;
+}
+
+.targeted-recording-action > *,
+.targeted-report-row-action > * {
+  grid-area: 1 / 1;
+}
+
+.targeted-recording-action > button,
+.targeted-report-row-action > button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.targeted-recording-action-sizer,
+.targeted-report-row-action-sizer {
+  display: grid;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.targeted-recording-action-sizer > span,
+.targeted-report-row-action-sizer > span {
+  grid-area: 1 / 1;
+}
+
+.targeted-recording-action-sizer {
+  padding: 0 calc(var(--control-padding-x) + 1px);
+  font-size: 13px;
+}
+
+.targeted-report-row-action-sizer {
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+/* 状态行至少占一行：录制中、被其他软件占用、说明文字之间切换时下方内容不跳动。 */
+.targeted-recording-status {
+  min-height: 20px;
+  min-width: 0;
+}
+
+.targeted-recording-status > p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.targeted-recording-hint {
+  color: var(--muted);
+}
+
+.targeted-recording-notice {
+  color: var(--warn);
+}
+
+.targeted-recording-notice strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.targeted-recording-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 6px;
+  color: var(--muted);
+}
+
+.targeted-recording-live strong {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.targeted-recording-live-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.targeted-recording-alert.observation-state {
+  margin: 0;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---------- 录制记录 ---------- */
+
+.targeted-report-history {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.targeted-report-history > h3,
+.targeted-report-detail > h4 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.targeted-report-history > .content-state {
+  min-height: 96px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--empty-bg);
+  padding: 16px;
+}
+
+.targeted-report-list {
+  display: grid;
+  gap: 6px;
+}
+
 .targeted-report-list-row {
-  padding: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+  padding: 4px 8px 4px 4px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
 }
+
+.targeted-report-list-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 打开报告的整块区域是扁平按钮：没有自己的边框、底色和阴影，选中态画在行上。 */
 .targeted-report-list-row > .targeted-report-open {
   display: flex;
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 260px;
+  min-width: 0;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  padding: 4px 8px;
   font-size: 13px;
   text-align: left;
 }
-.targeted-report-open span { color: var(--muted); font-size: 12px; }
-.targeted-report-open.active { border-color: var(--accent); }
-.targeted-report-detail { display: grid; gap: 14px; }
-.targeted-report-detail > h4 { margin: 0; font-size: 14px; }
-.targeted-report-summary,
-.targeted-report-resource-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
+
+.targeted-report-list-row > .targeted-report-open:hover {
+  border-color: transparent;
+  background: var(--surface-strong);
 }
+
+.targeted-report-list-row.active > .targeted-report-open:hover {
+  background: transparent;
+}
+
+.targeted-report-open strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.targeted-report-open span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.targeted-report-list-row.recording .targeted-report-open span {
+  color: var(--accent-strong);
+}
+
+.targeted-report-list-row.recording .targeted-report-open span::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.targeted-report-row-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.targeted-report-row-action {
+  margin-left: auto;
+}
+
+/* ---------- 报告详情 ---------- */
+
+.targeted-report-detail {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.targeted-report-toolbar,
+.targeted-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.targeted-report-toolbar {
+  justify-content: space-between;
+}
+
+.targeted-report-toolbar h3 {
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.targeted-report-summary,
+.targeted-report-resource-grid,
+.targeted-report-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.targeted-report-chart-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+}
+
 .targeted-report-summary > div,
 .targeted-report-card {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-soft);
   padding: 10px;
 }
-.targeted-report-summary dt { color: var(--muted); font-size: 12px; font-weight: 700; }
-.targeted-report-summary dd { margin: 3px 0 0; font-size: 18px; font-weight: 700; }
+
+.targeted-report-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.targeted-report-summary dd {
+  margin: 3px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .targeted-report-card h4,
-.targeted-report-card h5 { margin: 0 0 8px; font-size: 13px; }
-.targeted-report-card h5 { display: flex; justify-content: space-between; gap: 6px; }
-.targeted-report-chart { display: block; width: 100%; height: 160px; }
+.targeted-report-card h5 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.targeted-report-card h5 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.targeted-report-card-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.targeted-report-card-value {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 卡片纵向排列，图表贴底：同一行里标题换行的卡片与其他卡片的图表仍然对齐。 */
+.targeted-report-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.targeted-report-chart {
+  display: block;
+  width: 100%;
+  height: 160px;
+  margin-top: auto;
+}
+
+@media (max-width: 720px) {
+  .targeted-reports-page {
+    padding: 12px;
+  }
+
+  .targeted-report-header {
+    flex-wrap: wrap;
+  }
+
+  .targeted-recording-target {
+    flex-basis: 100%;
+    max-width: none;
+  }
+}

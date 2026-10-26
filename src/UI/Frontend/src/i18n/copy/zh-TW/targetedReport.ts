@@ -42,7 +42,6 @@ export const zhTwTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
     frameCount: "影格間隔數",
     software: "目標軟體",
     system: "整機",
-    seconds: "秒",
     stopReasons: {
       user: "手動停止",
       processExit: "處理程序已結束",

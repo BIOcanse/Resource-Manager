@@ -31,7 +31,11 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     await panel.getByText(copy.workflow, { exact: true }).waitFor();
     await panel.getByText(copy.empty, { exact: true }).waitFor();
     const targets = panel.getByRole("combobox", { name: copy.software, exact: true });
-    await targets.selectOption("frontend-harness.software");
+    // The software list is the app's standard select (a combobox button with a listbox popup), not a native select.
+    const targetName = "示例软件";
+    await targets.click();
+    await page.getByRole("listbox", { name: copy.software, exact: true }).getByRole("option", { name: targetName, exact: true }).click();
+    const visibleTarget = async () => (await targets.textContent()).trim();
     const control = panel.locator(".targeted-recording-control");
     const duration = control.getByRole("spinbutton", { name: copy.maximumSeconds, exact: true });
     assert(await duration.inputValue() === "600", `${language}: default duration is not 600`);
@@ -53,7 +57,7 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await page.unroute("**/api/targeted-recordings", otherRecording);
       await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
       await panel.getByText(copy.empty, { exact: true }).waitFor();
-      assert(await targets.inputValue() === "frontend-harness.software", "Refreshing targets lost the visible selection");
+      assert(await visibleTarget() === targetName, "Refreshing targets lost the visible selection");
     }
     // This journey stops explicitly; a short deadline would expire during a queue memory pause.
     await duration.fill("3600");
@@ -119,7 +123,7 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await page.unroute("**/api/targeted-recordings", fail);
       await listError.getByRole("button", { name: app.observationNotice.retry, exact: true }).click();
       await listError.waitFor({ state: "detached" });
-      assert(await targets.inputValue() === started.softwareId, "Retry changed the visible recording target");
+      assert(await visibleTarget() === targetName, "Retry changed the visible recording target");
     }
     page.once("dialog", dialog => dialog.accept());
     await row.getByRole("button", { name: copy.delete, exact: true }).click();

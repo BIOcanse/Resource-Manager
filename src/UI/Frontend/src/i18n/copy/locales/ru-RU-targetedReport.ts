@@ -21,7 +21,7 @@ export const targetedReport: AppCopy["targetedReport"] = {
   averageFps: "Средний FPS", onePercentLow: "1 % Low", pointOnePercentLow: "0,1 % Low",
   p50: "Время кадра P50", p95: "Время кадра P95", p99: "Время кадра P99",
   maxFrameTime: "Максимальное время кадра", frameCount: "Интервалы кадров",
-  software: "Целевая программа", system: "Система", seconds: "секунды",
+  software: "Целевая программа", system: "Система",
   stopReasons: { user: "Остановлено вручную", processExit: "Процессы завершились", maxDuration: "Достигнут предел времени",
     interrupted: "Служба прервана", captureError: "Ошибка сбора данных" }
 };

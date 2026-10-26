@@ -42,7 +42,6 @@ export const enTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
     frameCount: "Frame intervals",
     software: "Target software",
     system: "System",
-    seconds: "seconds",
     stopReasons: {
       user: "Stopped manually",
       processExit: "Processes exited",

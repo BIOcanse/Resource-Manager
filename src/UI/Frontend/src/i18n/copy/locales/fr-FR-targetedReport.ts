@@ -21,7 +21,7 @@ export const targetedReport: AppCopy["targetedReport"] = {
   averageFps: "FPS moyens", onePercentLow: "1 % Low", pointOnePercentLow: "0,1 % Low",
   p50: "Temps de trame P50", p95: "Temps de trame P95", p99: "Temps de trame P99",
   maxFrameTime: "Temps de trame maximal", frameCount: "Intervalles de trame",
-  software: "Logiciel ciblé", system: "Système", seconds: "secondes",
+  software: "Logiciel ciblé", system: "Système",
   stopReasons: { user: "Arrêt manuel", processExit: "Processus terminés", maxDuration: "Durée maximale atteinte",
     interrupted: "Service interrompu", captureError: "Erreur de capture" }
 };

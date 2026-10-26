@@ -298,6 +298,24 @@ body[data-animations="normal"] .device-machine-figure {
   animation: motion-rise-in var(--motion-medium) var(--ease-decel);
 }
 
+/* 定向报告：新录制行和报告详情按分区入场；状态行换内容只淡入不位移，选中行的底色和边框随颜色过渡。 */
+.targeted-report-list-row,
+.targeted-report-detail {
+  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+}
+
+.targeted-report-list-row {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+.targeted-recording-status > p,
+.targeted-recording-alert,
+.targeted-report-note.error {
+  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+}
+
 /* --- 无动画 / 超高性能：一切瞬时 --- */
 body[data-animations="none"] *,
 body[data-animations="none"] *::before,

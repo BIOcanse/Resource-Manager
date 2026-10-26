@@ -21,7 +21,7 @@ export const targetedReport: AppCopy["targetedReport"] = {
   averageFps: "平均 FPS", onePercentLow: "1% Low", pointOnePercentLow: "0.1% Low",
   p50: "P50 フレーム時間", p95: "P95 フレーム時間", p99: "P99 フレーム時間",
   maxFrameTime: "最大フレーム時間", frameCount: "フレーム間隔数",
-  software: "対象ソフトウェア", system: "システム", seconds: "秒",
+  software: "対象ソフトウェア", system: "システム",
   stopReasons: { user: "手動停止", processExit: "プロセス終了", maxDuration: "最長時間に到達",
     interrupted: "サービス中断", captureError: "記録エラー" }
 };

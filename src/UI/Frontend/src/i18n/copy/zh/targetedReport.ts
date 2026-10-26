@@ -40,7 +40,6 @@ export const zhTargetedReportCopy = {
     frameCount: "帧间隔数",
     software: "目标软件",
     system: "整机",
-    seconds: "秒",
     stopReasons: {
       user: "手动停止",
       processExit: "进程已退出",

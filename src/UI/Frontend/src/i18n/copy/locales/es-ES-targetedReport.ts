@@ -21,7 +21,7 @@ export const targetedReport: AppCopy["targetedReport"] = {
   averageFps: "FPS medios", onePercentLow: "1 % Low", pointOnePercentLow: "0,1 % Low",
   p50: "Tiempo de fotograma P50", p95: "Tiempo de fotograma P95", p99: "Tiempo de fotograma P99",
   maxFrameTime: "Tiempo máximo de fotograma", frameCount: "Intervalos de fotograma",
-  software: "Software objetivo", system: "Sistema", seconds: "segundos",
+  software: "Software objetivo", system: "Sistema",
   stopReasons: { user: "Detenido manualmente", processExit: "Procesos finalizados", maxDuration: "Duración máxima alcanzada",
     interrupted: "Servicio interrumpido", captureError: "Error de captura" }
 };

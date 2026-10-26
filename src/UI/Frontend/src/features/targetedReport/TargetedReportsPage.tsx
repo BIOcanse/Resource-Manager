@@ -20,6 +20,8 @@ import {
 import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
+import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
+import { ContentState } from "../../ui/patterns/ContentState.tsx";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
@@ -213,6 +215,23 @@ export function TargetedReportsPage() {
   };
 
   const pageName = useCurrentPageName();
+  const targets = createMemo(() => targetsSource.snapshot().data ?? []);
+  // 选中的软件不在当前列表里（例如刷新后被移除）时按“未选择”显示；记住的选择保留，软件回到列表后恢复。
+  const selectedTarget = createMemo(() => targets().some((software) => software.id === targetId()) ? targetId() : "");
+  const targetOptions = createMemo<StandardSelectOption[]>(() => [
+    { value: "", label: uiText.targetedReport.chooseSoftware },
+    ...targets().map((software) => ({ value: software.id, label: softwareRecordName(software) }))
+  ]);
+  const targetsFailed = () => targetsSource.snapshot().status === "error"
+    || targetsSource.snapshot().status === "unavailable";
+  const toolbarHint = () => {
+    const snapshot = targetsSource.snapshot();
+    if (snapshot.status === "loading" && !snapshot.data) {
+      return uiText.observationNotice.loading(uiText.targetedReport.software);
+    }
+    return snapshot.status === "ready" && targets().length === 0 ? uiText.targetedReport.noSoftware : undefined;
+  };
+
   return (
     <section
       class="targeted-reports-page"
@@ -221,57 +240,71 @@ export function TargetedReportsPage() {
     >
       <div class="panel-header targeted-report-header">
         <CurrentPageHeading />
-        <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
+        <div class="targeted-report-header-actions">
+          <span class="targeted-report-busy" role="status">{loading() ? uiText.targetedReport.loading : ""}</span>
+          <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
+        </div>
       </div>
       <p class="targeted-report-note">{uiText.targetedReport.workflow}</p>
-      <div class="targeted-recording-actions">
-        <label>{uiText.targetedReport.software}
-          <select value={targetId()} disabled={!sourceCanRender(targetsSource.snapshot())}
-            onChange={(event) => setTargetId(event.currentTarget.value)}>
-            <option value="">{uiText.targetedReport.chooseSoftware}</option>
-            <For each={targetsSource.snapshot().data ?? []}>{(software) =>
-              <option value={software.id} selected={software.id === targetId()}>{softwareRecordName(software)}</option>}
-            </For>
-          </select>
-        </label>
-      </div>
-      <Show when={targetsSource.snapshot().status === "loading"}><p role="status">{uiText.targetedReport.loading}</p></Show>
-      <Show when={targetsSource.snapshot().status === "ready" && targetsSource.snapshot().data?.length === 0}>
-        <p class="targeted-report-note">{uiText.targetedReport.noSoftware}</p>
-      </Show>
-      <Show when={targetsSource.snapshot().data?.some((software) => software.id === targetId())}><TargetedRecordingControl softwareId={targetId()}
-        onStarted={(recording) => select(recording.id)} /></Show>
-      <Show when={failed() || targetsSource.snapshot().status === "error" || targetsSource.snapshot().status === "unavailable"}><div class="targeted-report-note error" role="alert">
-        <span>{uiText.targetedReport.failed}</span>
-        <button class="secondary" type="button" onClick={() => void refresh()}>{uiText.observationNotice.retry}</button>
-      </div></Show>
-      <Show when={recordings().length > 0} fallback={<Show when={!listFailed()}><div class="optimization-empty">{loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}</div></Show>}>
-        <div class="targeted-report-list" role="list">
-          <For each={recordings()}>
-            {(item) => (
-              <div class="targeted-report-list-row" role="listitem">
-                <button class="secondary targeted-report-open" type="button" classList={{ active: selectedId() === item.id }}
-                  onClick={() => void select(item.id)}>
-                  <strong>{item.softwareName}</strong>
-                  <span>{dateTime(item.startedAt)} · {item.status === "recording"
-                    ? uiText.targetedReport.recording : stopReason(item.stopReason)}</span>
-                </button>
-                <Show when={item.status === "recording"}>
-                  <span>{item.maximumDurationSeconds} {uiText.targetedReport.seconds}</span>
-                  <button class="secondary panel-refresh-button" type="button" disabled={!!stoppingId()}
-                    onClick={() => void stop(item.id)}>{uiText.targetedReport.stop}</button>
-                </Show>
-                <Show when={item.status === "completed"}>
-                  <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item.id)}>
-                    {uiText.targetedReport.delete}
-                  </button>
-                </Show>
-              </div>
-            )}
-          </For>
+      <TargetedRecordingControl layout="toolbar" softwareId={selectedTarget()} hint={toolbarHint()}
+        onStarted={(recording) => select(recording.id)}>
+        <div class="targeted-recording-field targeted-recording-target">
+          <span aria-hidden="true">{uiText.targetedReport.software}</span>
+          <StandardSelect value={selectedTarget()} options={targetOptions()} ariaLabel={uiText.targetedReport.software}
+            disabled={!sourceCanRender(targetsSource.snapshot())} onChange={setTargetId} />
+        </div>
+      </TargetedRecordingControl>
+      <Show when={failed() || targetsFailed()}>
+        <div class="targeted-report-note error observation-state" role="alert">
+          <strong>{uiText.targetedReport.failed}</strong>
+          <button class="secondary" type="button" onClick={() => void refresh()}>{uiText.observationNotice.retry}</button>
         </div>
       </Show>
-      <Show when={loading()}><p class="targeted-report-note" role="status">{uiText.targetedReport.loading}</p></Show>
+      <section class="targeted-report-history" aria-label={uiText.targetedReport.history}>
+        <h3>{uiText.targetedReport.history}</h3>
+        {/* 读取失败由上方的提示负责（含重试），这里只说明列表暂不可用，不显示成“暂无录制”。 */}
+        <Show when={recordings().length > 0} fallback={<Show when={!listFailed()}
+          fallback={<p class="targeted-report-note">{uiText.observationNotice.unavailable(uiText.targetedReport.history)}</p>}>
+          <ContentState kind={loading() ? "waiting" : "empty"}
+            title={loading() ? uiText.targetedReport.loading : uiText.targetedReport.empty}
+            detail={loading() ? undefined : uiText.targetedReport.emptyDetail} />
+        </Show>}>
+          <div class="targeted-report-list" role="list">
+            <For each={recordings()}>
+              {(item) => (
+                <div class="targeted-report-list-row" role="listitem"
+                  classList={{ active: selectedId() === item.id, recording: item.status === "recording" }}>
+                  <button class="targeted-report-open" type="button" classList={{ active: selectedId() === item.id }}
+                    aria-pressed={selectedId() === item.id} onClick={() => void select(item.id)}>
+                    <strong>{item.softwareName}</strong>
+                    <span>{dateTime(item.startedAt)} · {item.status === "recording"
+                      ? uiText.targetedReport.recording : stopReason(item.stopReason)}</span>
+                  </button>
+                  <Show when={item.status === "recording"}>
+                    <span class="targeted-report-row-meta">{uiText.targetedReport.maximumDurationValue(item.maximumDurationSeconds)}</span>
+                  </Show>
+                  {/* 停止、删除共用一格；隐藏的两段文字撑出较宽者的宽度，录制结束换成删除时按钮不变宽窄。 */}
+                  <span class="targeted-report-row-action">
+                    <Show when={item.status === "recording"}>
+                      <button class="secondary panel-refresh-button" type="button" disabled={!!stoppingId()}
+                        onClick={() => void stop(item.id)}>{uiText.targetedReport.stop}</button>
+                    </Show>
+                    <Show when={item.status === "completed"}>
+                      <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item.id)}>
+                        {uiText.targetedReport.delete}
+                      </button>
+                    </Show>
+                    <span class="targeted-report-row-action-sizer" aria-hidden="true">
+                      <span>{uiText.targetedReport.stop}</span>
+                      <span>{uiText.targetedReport.delete}</span>
+                    </span>
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </section>
       <Show when={report()}>
         {(current) => (
           <div class="targeted-report-detail">
@@ -284,7 +317,7 @@ export function TargetedReportsPage() {
             </div>
             <p class="targeted-report-note">{uiText.targetedReport.applicationPresent} · {current().recording.status === "recording"
               ? uiText.targetedReport.recording : stopReason(current().recording.stopReason)}</p>
-            <Show when={current().recording.incomplete}><p class="targeted-report-note" role="status">{uiText.targetedReport.incomplete}</p></Show>
+            <Show when={current().recording.incomplete}><p class="targeted-report-note warning" role="status">{uiText.targetedReport.incomplete}</p></Show>
             <Show when={current().summary} fallback={<p class="targeted-report-note">{uiText.targetedReport.noFrames}</p>}>
               {(summary) => (
                 <dl class="targeted-report-summary">
@@ -304,18 +337,20 @@ export function TargetedReportsPage() {
               )}
             </Show>
             <Show when={framePoints().length > 0}>
-              <section class="targeted-report-card">
-                <h4>{uiText.targetedReport.frameTime}</h4>
-                <TargetedReportChart points={framePoints()} from={start()} to={end()}
-                  mode="frames" unit="ms" ariaLabel={uiText.targetedReport.frameTime} />
-              </section>
-              <section class="targeted-report-card">
-                <h4>{uiText.targetedReport.distribution}</h4>
-                <TargetedReportChart points={distributionPoints()}
-                  from={distributionPoints()[0]?.x ?? 0}
-                  to={(distributionPoints().at(-1)?.x ?? 0) + 10}
-                  mode="bars" unit={uiText.targetedReport.frameCount} ariaLabel={uiText.targetedReport.distribution} />
-              </section>
+              <div class="targeted-report-chart-grid">
+                <section class="targeted-report-card">
+                  <h4>{uiText.targetedReport.frameTime}</h4>
+                  <TargetedReportChart points={framePoints()} from={start()} to={end()}
+                    mode="frames" unit="ms" ariaLabel={uiText.targetedReport.frameTime} />
+                </section>
+                <section class="targeted-report-card">
+                  <h4>{uiText.targetedReport.distribution}</h4>
+                  <TargetedReportChart points={distributionPoints()}
+                    from={distributionPoints()[0]?.x ?? 0}
+                    to={(distributionPoints().at(-1)?.x ?? 0) + 10}
+                    mode="bars" unit={uiText.targetedReport.frameCount} ariaLabel={uiText.targetedReport.distribution} />
+                </section>
+              </div>
             </Show>
             <h4>{uiText.targetedReport.resources}</h4>
             <div class="targeted-report-resource-grid">
@@ -327,7 +362,7 @@ export function TargetedReportsPage() {
                   const latest = () => current().resourceSamples.at(-1)?.[curve.scope][curve.metric] ?? null;
                   const label = () => `${curve.scope === "software" ? uiText.targetedReport.software : uiText.targetedReport.system} · ${localizedMetricLabel(curve.metric)}`;
                   return <section class="targeted-report-card">
-                    <h5>{label()} <span>{displayMetric(curve.metric, latest())}</span></h5>
+                    <h5><span class="targeted-report-card-label">{label()}</span> <span class="targeted-report-card-value">{displayMetric(curve.metric, latest())}</span></h5>
                     <TargetedReportChart points={points()} from={start()} to={end()} mode="line"
                       unit={metricUnit(curve.metric)} ariaLabel={label()} />
                   </section>;
