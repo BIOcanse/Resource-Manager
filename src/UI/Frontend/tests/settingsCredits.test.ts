@@ -107,45 +107,35 @@ for (const language of ["zh-CN", "en-US"] as const) {
   assert.ok(groups.every((group) => group.title && group.items.length > 0));
   const all = groups.flatMap((group) => group.items);
   assert.equal(new Set(all.map((item) => item.name)).size, all.length);
-  assert.ok(all.every((item) => item.role && item.note));
-  assert.ok(all.every((item) => item.links.length > 0));
+  assert.ok(all.every((item) => item.role && item.subjects.length > 0));
+  // 每个子项目都有自己的链接；官方原文和许可证义务另由 creditsSources.test.ts 检查。
+  assert.ok(all.every((item) => item.subjects.every((subject) => subject.links.length > 0)));
   assert.ok(all.every((item) => item.name !== atob("S2luZ3M=")));
-  assert.ok(all.flatMap(item => item.links).every(link => !/star|点星|點星/i.test(link.label)));
-  // 同一项里的链接文字必须能区分（不能出现“官网 官网”）。
-  for (const item of all) {
-    assert.equal(new Set(item.links.map((link) => link.label)).size, item.links.length,
-      `${language}: duplicate link labels in ${item.name}`);
-  }
+  const links = all.flatMap((item) => item.subjects.flatMap((subject) => subject.links));
+  assert.ok(links.every(link => !/star|点星|點星/i.test(link.label)));
   for (const name of ["Khronos / Vulkan-Headers / Valve / LunarG", "Mesa / WGL contributors",
     "UL Solutions / 3DMark Steel Nomad", "GCC / MinGW-w64 / winpthreads / WinLibs"]) {
     assert.ok(all.some((item) => item.name === name), `Missing upstream thanks: ${name}`);
   }
-  assert.match(all.find((item) => item.name === "Resource Manager")!.note, /Apache-2\.0/);
-  assert.ok(all.find((item) => item.name === "Resource Manager")!.links.some((link) => link.href.endsWith("/LICENSE")));
+  const project = all.find((item) => item.name === "Resource Manager")!;
+  assert.ok(project.subjects[0].links.some((link) => link.kind === "license" && link.href.endsWith("/LICENSE")));
   const runtime = groups.find((group) => group.title === copy.credits.groups.runtime)!;
   assert.ok(runtime.items.some((item) => item.name === "Lucide / Feather"));
   assert.ok(runtime.items.some((item) => item.name === "Microsoft WebView2"));
-  assert.match(runtime.items.find((item) => item.name.includes("SQLitePCLRaw"))!.note, /Apache-2\.0/);
+  assert.ok(runtime.items.some((item) => item.name.includes("SQLitePCLRaw")));
   const build = groups.find((group) => group.title === copy.credits.groups.build)!;
   assert.ok(build.items.some((item) => item.name === "Vite / vite-plugin-solid"));
   assert.ok(build.items.some((item) => item.name === "Zig"));
   const external = groups.find((group) => group.title === copy.credits.groups.hardware)!;
-  assert.ok(external.items.some((item) => item.name === "PawnIO / PawnIOLib"));
-  assert.match(external.items.find((item) => item.name === "PawnIO.Modules")!.note, /LGPL-2\.1/);
-  assert.match(external.items.find((item) => item.name === "LibreHardwareMonitorLib")!.note, /MPL-2\.0/);
-  // 核心库的传递依赖各按自己的许可致谢，不并入 LHM/MPL。
-  assert.match(external.items.find((item) => item.name === "DiskInfoToolkit / RAMSPDToolkit-NDD / BlackSharp.Core")!.note, /MPL-2\.0/);
-  assert.match(external.items.find((item) => item.name === "HidSharp")!.note, /Apache-2\.0/);
-  assert.match(external.items.find((item) => item.name === "Mono.Posix.NETStandard")!.note, /MIT/);
+  for (const name of ["PawnIO / PawnIOLib", "PawnIO.Modules", "LibreHardwareMonitorLib",
+    "DiskInfoToolkit / RAMSPDToolkit-NDD / BlackSharp.Core", "HidSharp", "Mono.Posix.NETStandard"]) {
+    assert.ok(external.items.some((item) => item.name === name), `Missing hardware credit: ${name}`);
+  }
   // 只用核心的依赖：包装程序（GUI、外部工具、厂商 SDK）不再出现在致谢里。
   for (const name of ["Windows Performance Toolkit", "MSI Afterburner", "LatencyMon", "Intel PCM",
     "Notebook FanControl", "AMD Ryzen Master Monitoring SDK", "OpenHardwareMonitor"]) {
     assert.ok(!all.some((item) => item.name === name), `Removed wrapper still credited: ${name}`);
   }
-  for (const item of all) {
-    for (const link of item.links) {
-      assert.equal(new URL(link.href).protocol, "https:");
-    }
-  }
+  for (const link of links) assert.equal(new URL(link.href).protocol, "https:");
 }
 process.stdout.write("PASS credits: dependency closure, full licenses, two locales, six groups and links\n");

@@ -18,7 +18,7 @@ const frontendDependencies = Object.entries(lock.packages)
       version: value.version ?? "",
       license: value.license ?? "See upstream notice",
       packageUrl: `https://www.npmjs.com/package/${path.slice(path.lastIndexOf("node_modules/") + "node_modules/".length)}/v/${value.version ?? ""}`,
-      packageSource: "npm",
+      packageKind: "npm" as const,
       kind: value.optional ? "optional" : value.dev ? "build" : "dependency"
     };
   });
@@ -26,5 +26,5 @@ const frontendDependencies = Object.entries(lock.packages)
 export const dependencyAcknowledgements = [
   ...frontendDependencies,
   ...managed.map((item) => ({ ...item, path: `nuget/${item.name}/${item.version}`,
-    packageUrl: `https://www.nuget.org/packages/${item.name}/${item.version}`, packageSource: "NuGet" }))
+    packageUrl: `https://www.nuget.org/packages/${item.name}/${item.version}`, packageKind: "nuget" as const }))
 ];

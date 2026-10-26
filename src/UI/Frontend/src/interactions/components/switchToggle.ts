@@ -2,6 +2,7 @@
 // 和演示的差别：开关是原生复选框，点击、空格、点标签文字照旧由浏览器切换，这份定义不读点击和激活请求；
 // 它只管滑块：宿主值变了由回点弹簧带到另一端，按住滑块拖动，松手停在落点（甩得够快越过中点就到另一端）。
 // 拖完松手的那一行认领，接入层拦掉紧随其后的 click，复选框不会再被切换一次（协议第 4.4 节“拖完不触发点击”）。
+// 折叠标题（ui/primitives/Disclosure.tsx）也用这份定义（协议 4.6：演示的折叠面板和开关同一份定义）：没有几何，不能拖，开度跟宿主值走。
 
 import { LANDING, STOP_POINT } from "../protocol/definition.ts";
 import type { Definition } from "../protocol/definition.ts";

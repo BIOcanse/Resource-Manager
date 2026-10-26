@@ -96,7 +96,9 @@ textarea {
 .resource-table-column-resizer::after,
 .cpu-core,
 .cpu-ccd,
-.settings-credit-link {
+.settings-credit-link,
+.settings-credit-source,
+.ui-disclosure-header {
   transition:
     background var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard),

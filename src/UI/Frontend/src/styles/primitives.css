@@ -46,3 +46,57 @@
 .ui-tabs-panel:focus-visible {
   box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
 }
+
+/*
+ * 折叠标题（ui/primitives/Disclosure.tsx）：低调的文字按钮，左边一个箭头。
+ * 开度由磁石带，写在按钮的 --disclosure-openness（0 收起、1 展开）：箭头从朝右转到朝下，内容的高度由组件直接写。
+ * 这里不写过渡：被运行时带着动的属性不加 CSS 过渡（docs/ui_interaction_kit.md 第 1 节）。
+ */
+.ui-disclosure {
+  min-width: 0;
+}
+
+.ui-disclosure-header {
+  min-height: var(--control-height-compact);
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+  padding: 0 8px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: start;
+}
+
+.ui-disclosure-header:not(:disabled):hover {
+  background: var(--hover-bg);
+}
+
+.ui-disclosure-header:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.ui-disclosure-chevron {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  margin: 0 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  rotate: calc(-45deg + var(--disclosure-openness, 0) * 90deg);
+  translate: calc(-1px + var(--disclosure-openness, 0) * 1px) calc(var(--disclosure-openness, 0) * -1px);
+}
+
+.ui-disclosure-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-disclosure-body {
+  min-width: 0;
+}

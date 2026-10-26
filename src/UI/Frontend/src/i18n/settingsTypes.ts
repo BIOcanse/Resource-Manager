@@ -10,16 +10,37 @@ export interface LanguageOption {
   nativeLabel: string;
 }
 
+/** 按钮只有这几种（docs/credits_sources.md）；界面按这个顺序排。 */
+export const creditLinkKinds = ["official", "github", "docs", "nuget", "npm", "license"] as const;
+export type CreditLinkKind = typeof creditLinkKinds[number];
+
+/** 项目自己的官方说明：GitHub About 或官网的一句话，原语言逐字，source 是取自的页面。 */
+export interface CreditDescription {
+  text: string;
+  source: string;
+}
+
 export interface CreditLink {
+  kind: CreditLinkKind;
+  /** 按钮上的固定词。 */
   label: string;
+  /** 无障碍名称：按钮词 · 子项目名。 */
+  accessibleName: string;
   href: string;
+}
+
+/** 一行致谢里的一个上游项目：它的官方说明（没有就是 null）和它的链接。 */
+export interface CreditSubject {
+  /** 子项目名；只有一个子项目且和行名相同时是 null，界面不重复写。 */
+  name: string | null;
+  description: CreditDescription | null;
+  links: CreditLink[];
 }
 
 export interface CreditItem {
   name: string;
   role: string;
-  note: string;
-  links: CreditLink[];
+  subjects: CreditSubject[];
 }
 
 export interface CreditGroup {
@@ -31,9 +52,11 @@ export interface CreditCatalogItem {
   group: keyof SettingsCopy["credits"]["groups"];
   name: string;
   role: keyof SettingsCopy["credits"]["roles"];
-  note: keyof SettingsCopy["credits"]["notes"];
-  // subject：同一项里有两个同类链接（例如两个官网）时，写明各自指向哪个项目，用来区分显示。
-  links: Array<{ label: keyof SettingsCopy["credits"]["linkLabels"]; href: string; subject?: string }>;
+  subjects: Array<{
+    name: string;
+    description?: CreditDescription;
+    links: Array<{ kind: CreditLinkKind; href: string }>;
+  }>;
 }
 
 export interface SettingsCopy {
@@ -248,54 +271,15 @@ export interface SettingsCopy {
       externalReference: string;
       deviceIdDatabase: string;
     };
-    notes: {
-      windowsFoundation: string;
-      microsoftTools: string;
-      managedServices: string;
-      nativeToolchain: string;
-      buildContributors: string;
-      testContributors: string;
-      upstreamContributors: string;
-      resourceManager: string;
-      solid: string;
-      lucide: string;
-      seroval: string;
-      webView2: string;
-      sqlite: string;
-      zig: string;
-      softwareCatalog: string;
-      vite: string;
-      typescript: string;
-      node: string;
-      dotnet: string;
-      minHook: string;
-      detours: string;
-      traceEvent: string;
-      systemManagement: string;
-      nvml: string;
-      nvapi: string;
-      adlx: string;
-      pawnIo: string;
-      pawnIoModules: string;
-      libreHardwareMonitor: string;
-      blacktempelToolkits: string;
-      hidSharp: string;
-      monoPosix: string;
-      usbIds: string;
-      pciIds: string;
-    };
-    linkLabels: {
-      official: string;
-      github: string;
-      docs: string;
+    /** 按钮上的固定词；GitHub、NuGet、npm 是名称，各语言相同。 */
+    linkLabels: Record<CreditLinkKind, string>;
+    /** 官方说明后面的“来源”链接。 */
+    sourceLabel: string;
+    dependencyColumns: {
+      name: string;
+      version: string;
       license: string;
-      nuget: string;
-      gpuOpen: string;
-      eula: string;
-      runtime: string;
-      aspnet: string;
-      vite: string;
-      solidPlugin: string;
+      source: string;
     };
   };
 }

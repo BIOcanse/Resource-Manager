@@ -35,7 +35,10 @@ export function flattenCopy(root: unknown): Map<string, unknown> {
 
 function isMetadata(path: string): boolean {
   // These fields are product/device names, stable option IDs, or navigation URLs.
-  return /(?:^|\.)(?:id|href|language|name|productName)$/.test(path);
+  // Credit descriptions are the upstream projects' own words and stay in their original language in every
+  // interface language (docs/credits_sources.md); tests/creditsSources.test.ts checks them instead.
+  return /(?:^|\.)(?:id|href|language|name|productName)$/.test(path)
+    || /\.subjects\.\d+\.description\.(?:text|source)$/.test(path);
 }
 
 export function inspectText(language: string, path: string, actual: unknown, english: unknown, requiresTranslation = false): LocalizationIssue[] {
