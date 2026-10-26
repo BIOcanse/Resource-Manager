@@ -3,7 +3,10 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
 import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
 import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+import { checkDeviceTopologyWireFacts } from "./deviceTopologyWireProbe.js";
+import { checkMachineIdentity } from "./deviceMachineIdentityProbe.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
+import { checkBadgesNotTruncated } from "./deviceBadgeProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
@@ -45,9 +48,9 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     heading: (await topology.getByRole("heading", { name: "设备拓扑", exact: true })
       .textContent())?.trim(),
     brand: (await topologyHeader.locator(".device-topology-heading > span").textContent())?.trim(),
-    manufacturer: (await topology.getByLabel("电脑俯视图").locator("strong")
+    manufacturer: (await topology.getByLabel("电脑俯视图").locator(".device-machine-manufacturer")
       .textContent())?.trim(),
-    model: (await topology.getByLabel("电脑俯视图").locator("small")
+    model: (await topology.getByLabel("电脑俯视图").locator(".device-machine-model")
       .textContent())?.trim(),
     portText: (await topology.getByLabel("外部接口清单").textContent())?.trim(),
     detailText: (await topology.getByLabel("拓扑详情").textContent())?.trim(),
@@ -63,33 +66,57 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     && !dom.loadingVisible
     && !dom.errorVisible,
   `Strict device topology data did not reach the DOM: ${JSON.stringify(dom)}`);
-
-  const longTransport = "48 Gbps FRL，支持 7680 × 4320、可变刷新率与高动态范围传输";
-  const hdmiItem = topology.locator(".device-port-item").filter({ hasText: "HDMI 接口" }).first();
-  const longTextPresentation = await hdmiItem.evaluate((element, expectedText) => {
-    const secondary = element.querySelector("small");
-    const itemRect = element.getBoundingClientRect();
-    const secondaryRect = secondary?.getBoundingClientRect();
-    return {
-      text: secondary?.textContent?.trim(),
-      itemWidth: itemRect.width,
-      itemBottom: itemRect.bottom,
-      secondaryWidth: secondaryRect?.width ?? 0,
-      secondaryBottom: secondaryRect?.bottom ?? 0,
-      secondaryScrollWidth: secondary?.scrollWidth ?? 0,
-      secondaryClientWidth: secondary?.clientWidth ?? 0,
-      wraps: secondary
-        ? secondary.getBoundingClientRect().height > parseFloat(getComputedStyle(secondary).lineHeight) + 1
-        : false,
-      containsExpectedText: secondary?.textContent?.includes(expectedText) ?? false
+  // 所在分页已经叫“设备拓扑”：区域里没有第二个看得见的同名标题，读屏仍从隐藏标题得到区域名，顶部是整机识别名。
+  const panelHeading = await page.evaluate(() => {
+    const panel = document.querySelector(".device-topology-panel");
+    const shown = (element) => {
+      const rect = element.getBoundingClientRect();
+      return rect.width > 2 && rect.height > 2 && getComputedStyle(element).visibility !== "hidden";
     };
-  }, longTransport);
-  assert(longTextPresentation.containsExpectedText
-    && longTextPresentation.secondaryWidth <= longTextPresentation.itemWidth
-    && longTextPresentation.secondaryBottom <= longTextPresentation.itemBottom + 1
-    && longTextPresentation.secondaryScrollWidth <= longTextPresentation.secondaryClientWidth + 1
-    && longTextPresentation.wraps,
-  `Long device description is clipped or unrecoverable: ${JSON.stringify(longTextPresentation)}`);
+    const headings = [...document.querySelectorAll("h1, h2, h3, h4, h5, h6, [role='heading']")]
+      .filter((element) => element.textContent?.trim() === "设备拓扑");
+    const labelledBy = panel?.getAttribute("aria-labelledby");
+    const identity = panel?.querySelector(".device-topology-identity");
+    return {
+      visibleOnPage: headings.filter(shown).length,
+      visibleInPanel: headings.filter((element) => panel?.contains(element) && shown(element)).length,
+      regionName: labelledBy ? document.getElementById(labelledBy)?.textContent?.trim() : null,
+      identity: identity?.textContent?.trim(),
+      identityShown: identity ? shown(identity) : false
+    };
+  });
+  assert(panelHeading.visibleOnPage <= 1 && panelHeading.visibleInPanel === 0
+    && panelHeading.regionName === "设备拓扑" && panelHeading.identity === "Frontend Harness" && panelHeading.identityShown,
+  `The topology area repeats the visible page heading or lost its region name: ${JSON.stringify(panelHeading)}`);
+  const machineIdentity = await checkMachineIdentity(page, topology, async (patch) => {
+    const count = (await readTelemetry(page, subscriptionPath)).publications;
+    await setScenario(page, patch);
+    await waitForTelemetry(page, subscriptionPath, (value) => value.publications > count);
+  });
+
+  // 清单副标题只占一行；被截断的完整内容在条目的悬停提示里（协调者 10-26：列表项只放简短的一行）。
+  const hdmiItem = topology.locator(".device-port-item").filter({ hasText: "HDMI 接口" }).first();
+  const longTextPresentation = await topology.locator(".device-port-list").evaluate((list) => {
+    const previousWidth = list.style.width;
+    // 类别标签不再单占一列（放不下时换到标题下），副标题更宽：挤到 110 px 才会出现被截断的副标题。
+    list.style.width = "110px";
+    const items = [...list.querySelectorAll(".device-port-item")].map((item) => {
+      const secondary = item.querySelector("small");
+      const text = secondary?.textContent?.trim() ?? "";
+      return {
+        text,
+        oneLine: !secondary || secondary.getBoundingClientRect().height <= parseFloat(getComputedStyle(secondary).lineHeight) + 1,
+        truncated: Boolean(secondary && secondary.scrollWidth > secondary.clientWidth + 1),
+        tooltipHasText: (item.getAttribute("title") ?? "").includes(text)
+      };
+    });
+    list.style.width = previousWidth;
+    return items;
+  });
+  assert(longTextPresentation.length > 0
+    && longTextPresentation.every((item) => item.oneLine && item.tooltipHasText)
+    && longTextPresentation.some((item) => item.truncated),
+  `List subtitles are not single lines recoverable from the tooltip: ${JSON.stringify(longTextPresentation)}`);
   // 清单比面板高时，换行的副标题仍在条目边框内（auto 行曾只按条目的 min-height 分配高度，副标题溢出卡片）。
   const constrainedList = await topology.locator(".device-port-list").evaluate((list) => {
     const previousHeight = list.style.height;
@@ -113,11 +140,19 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   `Device list items overflow their cards when the list scrolls: ${JSON.stringify(constrainedList)}`);
   await hdmiItem.focus();
   await page.keyboard.press("Enter");
-  const selectedDetails = (await topology.getByLabel("拓扑详情").textContent())?.trim();
-  assert(selectedDetails?.includes(longTransport),
-    `Keyboard selection did not expose the full device description: ${selectedDetails}`);
+  // 详情头只写一句概括（类别和明确的连接状态），不重复清单副标题和速率；完整内容在下面的格子里（协调者 10-26 走查）。
+  const detailHead = await topology.getByLabel("拓扑详情").evaluate((pane) => ({
+    title: pane.querySelector(".device-port-detail-title > div > strong")?.textContent?.trim(),
+    headline: pane.querySelector(".device-port-detail-title > div > span")?.textContent?.trim(),
+    cells: [...pane.querySelectorAll(".device-detail-summary-item strong")].map((cell) => cell.textContent?.trim())
+  }));
+  const hdmiSubtitle = (await hdmiItem.locator("small").textContent())?.trim();
+  assert(detailHead.title === "HDMI 接口" && detailHead.headline === "外部接口"
+    && detailHead.headline !== hdmiSubtitle && !detailHead.cells.includes(detailHead.headline),
+    `Keyboard selection did not show a short detail headline: ${JSON.stringify({ detailHead, hdmiSubtitle })}`);
 
   const app = await loadAppCopy("zh-CN");
+  const wireFacts = await checkDeviceTopologyWireFacts(page, app, "zh-CN", baseUrl);
   await checkNetworkConnectionStates(page, app, "zh-CN", baseUrl);
   const beforeEdid = (await readTelemetry(page, subscriptionPath)).publications;
   await setScenario(page, { displayEdid: "ready" });
@@ -261,11 +296,17 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const finalDirect = await readTelemetry(page, directPath);
   assert(finalDirect.started === 0,
     `Device topology callback display was overwritten by a direct GET: ${JSON.stringify(finalDirect)}`);
+  // 最后切换语言（要重新加载页面，放在订阅检查之后）：清单的类别标签在英语、德语，1100 和 1440 下都完整可读。
+  const badges = await checkBadgesNotTruncated(page);
   assert(pageErrors.length === 0,
     `Device topology browser failures: ${JSON.stringify(pageErrors)}`);
 
   return {
     dom,
+    panelHeading,
+    machineIdentity,
+    wireFacts,
+    badges,
     nullableProtocolAccepted: true,
     metricFailureClearsOnlyItsOwnData: true,
     failureClearsHiddenRetains: true,

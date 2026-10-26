@@ -1,5 +1,5 @@
 // Reuse the regular topology subscription and UI; these ports follow the production wire shape.
-function networkPort(state) {
+export function networkPort(state) {
   return {
     id: "fixture-network", isPhysicalConnector: false, displayName: "Fixture Ethernet",
     connectorKind: "internal", busKind: "network", hardwareKind: "Network Adapter", protocol: "Ethernet",

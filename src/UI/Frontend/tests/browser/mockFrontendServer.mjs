@@ -16,6 +16,11 @@ const recordedType3State = JSON.parse(await readFile(process.env.RM_EDID_UI_TYPE
 const typeXWirePath = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
 if (typeXWirePath && !isAbsolute(typeXWirePath)) throw new Error("TypeX wire path must be absolute");
 const recordedTypeXState = typeXWirePath ? JSON.parse(await readFile(typeXWirePath, "utf8")) : null;
+// Real device/user data stays in its original file, outside the repository.
+const recordedTopologyPath = process.env.RM_DEVICE_TOPOLOGY_STATE_JSON;
+if (recordedTopologyPath && !isAbsolute(recordedTopologyPath)) throw new Error("Device topology wire path must be absolute");
+const recordedTopologyFile = recordedTopologyPath ? JSON.parse(await readFile(recordedTopologyPath, "utf8")) : null;
+const recordedTopologyState = recordedTopologyFile?.responses ? recordedTopologyFile.responses[0].body : recordedTopologyFile;
 // DisplayID Type V/VI、Adaptive-Sync 与动态时序范围：真实 parser／生产 DTO 生成的仓库夹具，按场景名选用。
 const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.entries({
   typeVVi: "displayEdidTypeVVi.json", typeVViClock: "displayEdidTypeVViClock.json", adaptiveSync: "displayEdidAdaptiveSync.json",
@@ -47,6 +52,11 @@ const defaultScenario = {
   deviceTopologyNullProtocol: false,
   deviceTopologyPortCount: null,
   deviceTopologyPorts: null,
+  deviceTopologyMachineIdentity: null,
+  deviceTopologyGraphicsDock: false,
+  deviceTopologyExternalMachine: false,
+  deviceTopologyNumericUsb: false,
+  deviceTopologyWireless: null,
   displayEdid: "off",
   gpuGrade: "normal",
   cpuGrade: "normal",
@@ -1018,7 +1028,7 @@ function fixtureHdmiPort() {
     transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     hardwareKind: "display-output",
     protocol: "HDMI 2.1",
-    speed: "48 Gbps FRL，支持 7680 × 4320、可变刷新率与高动态范围传输",
+    speed: null,
     physicalMaximumSpeed: "48 Gbps",
     deviceId: "DISPLAY\\FIXTURE_HDMI_1",
     pnpClass: null,
@@ -1303,6 +1313,8 @@ function delay(milliseconds) {
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
 const scenarioChoices = {
+  deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
+  deviceTopologyWireless: [null, "standards", "unknown"],
   metricCatalogAddresses: ["none", "reading-source"],
   settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"]
 };
@@ -2015,7 +2027,12 @@ function fixtureDisplayEdid() {
 }
 function fixtureDeviceTopologyState(capturedAt = now()) {
   if (scenario.deviceTopologyInvalid) return { schemaVersion: "invalid" };
-  return {
+  if (recordedTopologyState) {
+    return applyTopologyFactScenarios({ ...structuredClone(recordedTopologyState),
+      snapshot: { ...structuredClone(recordedTopologyState.snapshot), capturedAt },
+      stateRevision: ++deviceTopologyRevision, lastSuccessAt: capturedAt, lastAttemptAt: capturedAt });
+  }
+  return applyTopologyFactScenarios({
     schemaVersion: "4.0.0",
     state: "ready",
     snapshot: {
@@ -2051,7 +2068,128 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
     lastAttemptAt: capturedAt,
     failureCode: null,
     informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
+  });
+}
+
+function identityFact(value, reason = "source-unavailable") {
+  return { value, reason: value === null ? reason : null };
+}
+
+// The five samples use the backend machineIdentity contract, never snapshot.system.
+function fixtureMachineIdentity(formFactor) {
+  if (formFactor === "unknown") return { formFactor, evidence: {
+    chassisTypes: identityFact(null), systemBatteryPresent: identityFact(null), cpuModels: identityFact(null),
+    gpuModels: identityFact(null), gpuAttachments: identityFact(null), workstationComponents: []
+  } };
+  const portable = formFactor === "laptop" || formFactor === "mobile_workstation";
+  const workstationComponents = formFactor === "workstation" ? [
+    { component: "cpu", model: "AMD Ryzen Threadripper PRO 9955WX 16-Cores", ruleId: "workstation-cpu" },
+    { component: "gpu", model: "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", ruleId: "professional-gpu" }
+  ] : formFactor === "mobile_workstation" ? [
+    { component: "gpu", model: "NVIDIA RTX PRO 5000 Blackwell Generation Laptop GPU", ruleId: "professional-gpu" }
+  ] : [];
+  return { formFactor, evidence: {
+    chassisTypes: identityFact([portable ? 10 : formFactor === "workstation" ? 7 : 3]),
+    systemBatteryPresent: identityFact(portable),
+    cpuModels: identityFact(workstationComponents.filter(item => item.component === "cpu").map(item => item.model)),
+    gpuModels: identityFact(workstationComponents.filter(item => item.component === "gpu").map(item => item.model)),
+    gpuAttachments: identityFact([]), workstationComponents
+  } };
+}
+
+const graphicsDockName = "NVIDIA RTX PRO 6000 External Adapter";
+const externalMachineLink = String.raw`USB4\FIXTURE_PEER_LINK`;
+
+function applyTopologyFactScenarios(state) {
+  const snapshot = state.snapshot;
+  if (scenario.deviceTopologyMachineIdentity !== null)
+    snapshot.machineIdentity = fixtureMachineIdentity(scenario.deviceTopologyMachineIdentity);
+  if (scenario.deviceTopologyGraphicsDock) {
+    snapshot.gpuInformation = [...(snapshot.gpuInformation ?? []), {
+      pnpInstanceId: String.raw`PCI\FIXTURE_GRAPHICS_DOCK`, adapterLuid: "0000000000000400", name: graphicsDockName,
+      pciVendorId: "10DE", pciDeviceId: "1234", driverVersion: null,
+      adapterTypeFlags: 1024, isDetachable: true, attachmentKind: "graphics_dock",
+      attachmentEvidenceSource: "d3dkmt-adapter-type"
+    }];
+    snapshot.machineIdentity = { ...snapshot.machineIdentity, evidence: { ...snapshot.machineIdentity.evidence,
+      gpuModels: identityFact([...(snapshot.machineIdentity.evidence.gpuModels.value ?? []), graphicsDockName]),
+      gpuAttachments: identityFact([...(snapshot.machineIdentity.evidence.gpuAttachments.value ?? []), {
+        model: graphicsDockName, isDetachable: true, adapterTypeFlags: 1024,
+        attachmentKind: "graphics_dock", evidenceSource: "d3dkmt-adapter-type"
+      }])
+    } };
+  }
+  if (scenario.deviceTopologyNumericUsb) snapshot.ports = fixtureNumericUsbPorts();
+  if (scenario.deviceTopologyWireless !== null)
+    snapshot.ports = [...snapshot.ports, fixtureWirelessPort(scenario.deviceTopologyWireless)];
+  if (scenario.deviceTopologyExternalMachine) {
+    snapshot.externalMachines = [{ localLinkDeviceId: externalMachineLink, peerIdentity: null,
+      formFactor: "workstation", model: null, components: [{ component: "soc", model: null }],
+      evidence: { source: "windows-usb4net", compatibleId: String.raw`USB4\USB4NET`, mediaConnectStateRaw: 1,
+        peerPropertiesReason: "windows-peer-properties-unavailable" }
+    }];
+    snapshot.ports = [...snapshot.ports, { ...fixtureWirelessPort("unknown"), id: "fixture-peer-link",
+      displayName: "Fixture USB4 network link", deviceId: externalMachineLink, protocol: "USB4NET",
+      compatibleIds: [String.raw`USB4\USB4NET`],
+      network: { interfaceName: "USB4NET", connectionState: "connected", transmitLinkSpeed: null,
+          receiveLinkSpeed: null, permanentAddress: null, activeMtuBytes: null,
+          hardwareInterface: true, connectorPresent: null, wireless: null }
+    }];
+  }
+  return state;
+}
+
+function fixtureWirelessPort(variant) {
+  return { ...fixtureHdmiPort(), id: "fixture-wireless", isPhysicalConnector: false,
+    displayName: "Misleading Wi-Fi 7 Name", connectorKind: "internal", busKind: "network", hardwareKind: "Network Adapter",
+    protocol: "Wi-Fi 7", speed: null, physicalMaximumSpeed: null, deviceId: String.raw`PCI\FIXTURE_WLAN`, pnpClass: "Net",
+    display: null, network: { interfaceName: "Misleading Wi-Fi 7 Name", connectionState: "connected",
+      transmitLinkSpeed: null, receiveLinkSpeed: null, permanentAddress: null, activeMtuBytes: null,
+      hardwareInterface: true, connectorPresent: null,
+      wireless: { source: "wlan-api", interfaceStateRaw: 1,
+        supportedPhyTypesRaw: variant === "standards" ? [7, 8, 10] : null,
+        supportedStandards: variant === "standards" ? ["802.11n", "802.11ac", "802.11ax"] : null,
+        negotiatedPhyTypeRaw: variant === "standards" ? 8 : null,
+        negotiatedStandard: variant === "standards" ? "802.11ac" : null }
+    }
   };
+}
+
+function fixtureNumericUsbPorts() {
+  const samples = [
+    ["keyboard", [[3, 1, 1]], 0], ["mouse", [[3, 1, 2]], 0],
+    ["audio", [[1, 1, 0], [1, 2, 0], [3, 0, 0]], 239], ["hub", [[9, 0, 0]], 9],
+    ["storage-uas", [[8, 6, 98]], 0], ["storage-bot", [[8, 6, 80]], 0],
+    ["camera", [[14, 1, 0], [14, 2, 0], [1, 1, 0]], 239],
+    ["mobile", [[6, 1, 1], [2, 2, 1], [10, 0, 0], [255, 0, 0]], 239],
+    ["vendor", [[255, 128, 254]], 239], ["unknown", null, null]
+  ];
+  return samples.map(([kind, interfaces, deviceClassCode], index) => {
+    const port = { ...fixtureHdmiPort(), id: `fixture-usb-${kind}`, displayName: `Fixture ${kind}`,
+      deviceId: `USBPORT\\FIXTURE_${kind}`, connectorKind: "usb-a", busKind: "usb", hardwareKind: "USB Device",
+      protocol: "USB 3.x", speed: "5 Gbps", physicalMaximumSpeed: "5 Gbps", display: null,
+      topologyPath: { domain: 5, code: 64, args: [`root/fixture-usb-${kind}`] },
+      usb: { hubDevicePath: String.raw`\\?\usb#root_hub30#fixture`, portNumber: index + 1,
+        deviceConnected: true, connectionStatus: { domain: 5, code: 47, args: [] }, negotiatedSpeed: "5 Gbps",
+        deviceAddress: index + 1, vendorId: "1234", productId: "5678", deviceIsHub: kind === "hub",
+        supportedProtocols: null, operatingAtSuperSpeedOrHigher: null, superSpeedCapableOrHigher: null,
+        operatingAtSuperSpeedPlusOrHigher: null, superSpeedPlusCapableOrHigher: null,
+        portIsUserConnectable: null, portIsDebugCapable: null, portHasMultipleCompanions: null,
+        portConnectorIsTypeC: null, companionPorts: [], deviceSpecification: "USB 3.2", deviceRevision: "1.0",
+        // Deliberately wrong legacy summaries must never select the adapter or label.
+        deviceClass: "Misleading Mass Storage / Composite", interfaceProtocols: ["Misleading Audio Streaming / HID Boot Keyboard"],
+        deviceClassCode, deviceSubClassCode: deviceClassCode === 239 ? 2 : deviceClassCode === null ? null : 0,
+        deviceProtocolCode: deviceClassCode === 239 ? 1 : deviceClassCode === null ? null : 0,
+        interfaces: interfaces?.map(([classCode, subClassCode, protocolCode], interfaceNumber) =>
+          ({ interfaceNumber, alternateSetting: 0, classCode, subClassCode, protocolCode })) ?? null,
+        manufacturerName: "Frontend Harness", productName: `Fixture ${kind}`, serialNumber: null,
+        downstreamHubDevicePath: kind === "hub" ? String.raw`\\?\usb#fixture_hub` : null, endpoints: null }
+    };
+    if (kind === "keyboard" || kind === "mouse") port.hid = { hidType: kind, hidSpecification: "HID 1.11",
+      inputPollingIntervalMicroseconds: 1000, theoreticalReportRateHz: 1000, reportedDpi: null, reportedScanRateHz: null,
+      standardCapabilitySource: { domain: 5, code: 60, args: [] }, vendorCapabilitySource: null };
+    return port;
+  });
 }
 
 function createResourceSoftwareRows(
