@@ -37,23 +37,16 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
     }
 
     [Fact]
-    public async Task EndpointReadWaitsForProducerAndConsumerCancellationDoesNotStartIt()
+    public async Task EndpointReadIsPureAndPublishedBeforeStartReturns()
     {
-        await using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"),
+        await using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:19421/"),
             (_, _) => throw new InvalidOperationException("No forwarding expected."));
-        using var canceledReader = new CancellationTokenSource();
-        var first = proxy.WaitForAddressAsync(canceledReader.Token);
-        var second = proxy.WaitForAddressAsync(CancellationToken.None);
-        Assert.False(first.IsCompleted);
-        Assert.False(second.IsCompleted);
         Assert.Empty(proxy.Address);
-        canceledReader.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
-        Assert.False(second.IsCompleted);
         Assert.Empty(proxy.Address);
         await proxy.StartAsync();
-        Assert.Equal(proxy.Address, await second);
-        Assert.Equal(proxy.Address, await proxy.WaitForAddressAsync(CancellationToken.None));
+        var endpoint = proxy.Address;
+        Assert.NotEmpty(endpoint);
+        Assert.Equal(endpoint, proxy.Address);
     }
 
     [Fact]

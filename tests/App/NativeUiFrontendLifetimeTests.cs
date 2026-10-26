@@ -9,51 +9,6 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeUiFrontendLifetimeTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public Task HostStopCancelsUnpublishedProxyWaitWithoutStartingRuntime(bool stopProxyFirst) => OnStaAsync(async () =>
-    {
-        using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"),
-            (_, _) => throw new InvalidOperationException("No producer was started."));
-        var absentRoot = Path.Combine(Path.GetTempPath(), "rm-unstarted-host-" + Guid.NewGuid().ToString("N"));
-        using var host = new WebView2FrontendHost(new WebView2HostConfiguration(
-            Path.Combine(absentRoot, "profile"), Path.Combine(absentRoot, "preferences.json"), proxy), Color.Black);
-        var initializing = host.InitializeAsync();
-        Assert.False(initializing.IsCompleted);
-        Assert.Empty(proxy.Address);
-        Assert.Null(host.EnvironmentForDiagnostics);
-        if (stopProxyFirst) await proxy.DisposeAsync();
-        var stopping = host.StopAsync();
-        await stopping;
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => initializing);
-        Assert.True(host.View.IsDisposed);
-        Assert.Null(host.EnvironmentForDiagnostics);
-        Assert.Empty(proxy.Address);
-        Assert.False(Directory.Exists(absentRoot));
-    });
-
-    [Fact]
-    public Task WindowStopCancelsStartupWaitingForUnstartedProxy() => OnStaAsync(async () =>
-    {
-        using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"),
-            (_, _) => throw new InvalidOperationException("The producer was not started."));
-        var absentRoot = Path.Combine(Path.GetTempPath(), "rm-unstarted-window-" + Guid.NewGuid().ToString("N"));
-        using var host = new WebView2FrontendHost(new WebView2HostConfiguration(
-            Path.Combine(absentRoot, "profile"), Path.Combine(absentRoot, "preferences.json"), proxy), Color.Black);
-        using var form = new MainForm(_ => { }, () => { }, host);
-        form.ShowBackendReady(FrontendBackendSessionProjection.CreateReady(1));
-        var starting = form.StartFrontendAsync();
-        Assert.False(starting.IsCompleted);
-        var stopping = form.StopFrontendAsync();
-        await stopping;
-        await starting;
-        Assert.True(host.View.IsDisposed);
-        Assert.Null(host.EnvironmentForDiagnostics);
-        Assert.False(Directory.Exists(absentRoot));
-        form.CompleteClose();
-    });
-
     [Fact]
     public async Task ShutdownJoinsLateInitializationAndWaitsForBrowserExit()
     {

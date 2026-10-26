@@ -70,122 +70,132 @@ public sealed class NativeUiBackendConnectionBlockTests
         Assert.False(block.IsReady);
     }
 
-    [Fact]
-    public async Task HealthLossPublishesNonreadyAndWaitsForConsumerRetirementBeforeSessionDisposal()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GenerationStopsItsMonitorBeforePublishingUnavailable(bool stopping)
     {
         var processExit = new TaskCompletionSource<BackendServiceUnavailableEventArgs>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var monitorEntered = Signal();
+        var monitorCanceled = Signal();
+        var releaseMonitor = Signal();
         var monitor = new BackendServiceAvailabilityMonitor(_ => Task.FromResult(true),
             token => processExit.Task.WaitAsync(token),
-            delayAsync: (_, token) => Task.Delay(Timeout.InfiniteTimeSpan, token));
+            delayAsync: async (_, token) =>
+            {
+                monitorEntered.TrySetResult();
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                finally
+                {
+                    monitorCanceled.TrySetResult();
+                    await releaseMonitor.Task;
+                }
+            });
         var session = new BackendServiceSession("http://127.0.0.1:1", availabilityMonitor: monitor);
         var ready = Signal();
-        var lossPublished = Signal();
-        var releaseConsumers = Signal();
-        var delayEntered = Signal();
-        BackendServiceUnavailableEventArgs? publishedLoss = null;
+        var unavailablePublished = Signal();
+        var monitorEndedAtPublication = false;
+        BackendServiceSession.Hold? acquiredAfterEnd = null;
         var block = new NativeUiBackendConnectionBlock(() => session,
-            async (state, value, generation, unavailable) =>
+            (state, value, generation, unavailable) =>
             {
                 if (state == BackendConnectionState.Ready) ready.TrySetResult();
-                if (state == BackendConnectionState.Degraded)
+                if (state == (stopping ? BackendConnectionState.ShuttingDown : BackendConnectionState.Degraded))
                 {
                     Assert.Null(value);
-                    publishedLoss = unavailable;
-                    lossPublished.TrySetResult();
-                    await releaseConsumers.Task;
+                    monitorEndedAtPublication = monitor.Completion.IsCompletedSuccessfully;
+                    acquiredAfterEnd = session.TryAcquire();
+                    unavailablePublished.TrySetResult();
                 }
+                return Task.CompletedTask;
             }, connectAsync: (_, _) =>
             {
                 monitor.Start();
                 return Task.CompletedTask;
-            }, delayAsync: (delay, token) =>
-            {
-                Assert.Equal(BackendReconnectPolicy.GetDelay(0), delay);
-                delayEntered.TrySetResult();
-                return Task.Delay(Timeout.InfiniteTimeSpan, token);
-            });
+            }, delayAsync: (_, token) => Task.Delay(Timeout.InfiniteTimeSpan, token));
         using var stop = new CancellationTokenSource();
         var run = block.RunAsync(new(stop.Token, () => { }));
         try
         {
             await ready.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            var loss = BackendServiceUnavailableEventArgs.OwnedProcessExited(42);
-            processExit.TrySetResult(loss);
-            await lossPublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.Same(loss, publishedLoss);
-            Assert.False(block.IsReady);
-            Assert.Same(session, block.CurrentSession);
-            AssertSessionAlive(session);
-            Assert.False(delayEntered.Task.IsCompleted);
-            releaseConsumers.TrySetResult();
-            await delayEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.Null(block.CurrentSession);
-            AssertSessionDisposed(session);
-            Assert.True(monitor.Completion.IsCompletedSuccessfully);
+            await monitorEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            if (stopping) stop.Cancel();
+            else processExit.TrySetResult(BackendServiceUnavailableEventArgs.OwnedProcessExited(42));
+            await monitorCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(unavailablePublished.Task.IsCompleted);
+            releaseMonitor.TrySetResult();
+            await unavailablePublished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.True(monitorEndedAtPublication);
+            Assert.Null(acquiredAfterEnd);
         }
         finally
         {
-            releaseConsumers.TrySetResult();
+            acquiredAfterEnd?.Dispose();
+            releaseMonitor.TrySetResult();
             stop.Cancel();
             await run.WaitAsync(TimeSpan.FromSeconds(2));
         }
     }
 
     [Fact]
-    public async Task StopWaitsForNonreadyPublicationAndTheNextRunUsesANewGeneration()
+    public async Task ReconnectAndFinalReturnDoNotWaitForConsumersHoldingEitherGeneration()
     {
+        var processExit = new TaskCompletionSource<BackendServiceUnavailableEventArgs>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var monitor = new BackendServiceAvailabilityMonitor(_ => Task.FromResult(true),
+            token => processExit.Task.WaitAsync(token),
+            delayAsync: (_, token) => Task.Delay(Timeout.InfiniteTimeSpan, token));
         var readySessions = Channel.CreateUnbounded<BackendServiceSession>();
-        var stopping = Signal();
-        var releaseConsumers = Signal();
-        var reports = 0;
-        var block = new NativeUiBackendConnectionBlock(NewSession,
-            async (state, session, generation, unavailable) =>
+        var created = 0;
+        var block = new NativeUiBackendConnectionBlock(() => ++created == 1
+                ? new BackendServiceSession("http://127.0.0.1:1", availabilityMonitor: monitor) : NewSession(),
+            (state, session, generation, unavailable) =>
             {
                 if (state == BackendConnectionState.Ready) readySessions.Writer.TryWrite(session!);
-                if (state == BackendConnectionState.ShuttingDown)
-                {
-                    Assert.Null(session);
-                    stopping.TrySetResult();
-                    await releaseConsumers.Task;
-                }
-            }, connectAsync: (_, _) => Task.CompletedTask);
-        using var firstStop = new CancellationTokenSource();
-        var first = block.RunAsync(new(firstStop.Token, () => reports++));
+                return Task.CompletedTask;
+            }, connectAsync: (_, _) =>
+            {
+                if (created == 1) monitor.Start();
+                return Task.CompletedTask;
+            }, delayAsync: (_, _) => Task.CompletedTask);
+        using var stop = new CancellationTokenSource();
+        var run = block.RunAsync(new(stop.Token, () => { }));
+        BackendServiceSession.Hold? firstHold = null;
+        BackendServiceSession.Hold? nextHold = null;
         try
         {
             var session = await readySessions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+            firstHold = Assert.IsType<BackendServiceSession.Hold>(block.TryAcquireCurrentSession());
+            Assert.Same(session, firstHold.Session);
             Assert.Equal(1, block.Generation);
-            firstStop.Cancel();
-            await stopping.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.False(first.IsCompleted);
-            Assert.Same(session, block.CurrentSession);
-            Assert.False(block.IsReady);
+            processExit.TrySetResult(BackendServiceUnavailableEventArgs.OwnedProcessExited(42));
+            var replacement = await readySessions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.NotSame(session, replacement);
+            Assert.Equal(2, block.Generation);
+            Assert.Same(replacement, block.CurrentSession);
+            Assert.Null(session.TryAcquire());
             AssertSessionAlive(session);
-            releaseConsumers.TrySetResult();
-            await first.WaitAsync(TimeSpan.FromSeconds(2));
+            nextHold = Assert.IsType<BackendServiceSession.Hold>(block.TryAcquireCurrentSession());
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Null(block.CurrentSession);
+            Assert.Null(block.TryAcquireCurrentSession());
+            Assert.Null(replacement.TryAcquire());
+            AssertSessionAlive(session);
+            AssertSessionAlive(replacement);
+            firstHold.Dispose();
             AssertSessionDisposed(session);
-
-            using var secondStop = new CancellationTokenSource();
-            var second = block.RunAsync(new(secondStop.Token, () => reports++));
-            try
-            {
-                var replacement = await readySessions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
-                Assert.NotSame(session, replacement);
-                Assert.Equal(2, block.Generation);
-                Assert.Equal(2, reports);
-            }
-            finally
-            {
-                secondStop.Cancel();
-                await second.WaitAsync(TimeSpan.FromSeconds(2));
-            }
+            AssertSessionAlive(replacement);
+            nextHold.Dispose();
+            AssertSessionDisposed(replacement);
         }
         finally
         {
-            releaseConsumers.TrySetResult();
-            firstStop.Cancel();
-            await first.WaitAsync(TimeSpan.FromSeconds(2));
+            firstHold?.Dispose();
+            nextHold?.Dispose();
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(2));
         }
     }
 

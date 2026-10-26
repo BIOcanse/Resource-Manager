@@ -39,6 +39,9 @@ public sealed partial class MainForm
 
     protected override void WndProc(ref Message message)
     {
+        if (TryHandleSessionEndingMessage(ref message))
+            return;
+
         if (message.Msg == WmNcCalcSize && message.WParam != IntPtr.Zero)
         {
             message.Result = IntPtr.Zero;

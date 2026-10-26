@@ -30,6 +30,9 @@ internal sealed class NativeUiBackendConnectionBlock : IBusinessBlock
     internal bool IsReady { get; private set; }
     internal long Generation { get; private set; }
 
+    internal BackendServiceSession.Hold? TryAcquireCurrentSession()
+        => IsReady ? CurrentSession?.TryAcquire() : null;
+
     // A healthy request belongs to the frontend caller; it never replaces a healthy session.
     internal void RequestRetry()
     {
@@ -104,7 +107,7 @@ internal sealed class NativeUiBackendConnectionBlock : IBusinessBlock
                 }
 
                 IsReady = false;
-                // Completion of this publication acknowledges that data consumers released the session.
+                await session.EndAsync();
                 await publish(BackendConnectionState.Degraded, null, Generation, unavailable);
                 await ReleaseSessionAsync();
                 failedAttemptCount = reachedReady ? 0 : reconnecting ? failedAttemptCount + 1 : 0;
@@ -119,6 +122,7 @@ internal sealed class NativeUiBackendConnectionBlock : IBusinessBlock
             IsReady = false;
             try
             {
+                if (session is not null) await session.EndAsync();
                 await publish(BackendConnectionState.ShuttingDown, null, Generation, null);
             }
             finally

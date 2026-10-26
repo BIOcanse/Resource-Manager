@@ -237,7 +237,11 @@ public sealed partial class MainForm : Form
         // Keep the real bounds and window state intact while removing the HWND
         // from the screen before any closing handler can tear down the surface.
         Hide();
-        if (!finalClose && WindowCloseRequested is not null)
+        // WinForms labels a raw WM_CLOSE (including taskbar close) TaskManagerClosing.
+        // Windows session messages enter the application exit path in WndProc.
+        if (!finalClose
+            && args.CloseReason is (CloseReason.UserClosing or CloseReason.TaskManagerClosing)
+            && WindowCloseRequested is not null)
         {
             args.Cancel = true;
             WindowCloseRequested.Invoke(this, EventArgs.Empty);

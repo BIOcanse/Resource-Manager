@@ -11,8 +11,9 @@ public sealed partial class ResourceManagerApplicationContext
     private readonly HashSet<Task> uiCommands = [];
     private NativeUiCallbackLifetime? mainCallbacks;
     private Task? shutdownObservation;
-    private TaskCompletionSource frontendRequested = NewSignal();
     private CancellationToken windowLifetime;
+    private bool activateRequestedWindow = true;
+    private bool secondaryRequestedWindow;
     private readonly NativeUiWindowRequests windowRequests = new();
     private NativeUiProxyBlock? proxyBlock;
 
@@ -41,8 +42,7 @@ public sealed partial class ResourceManagerApplicationContext
         {
             // Preference polling stays inside these owners for this pilot. Their rule migration
             // needs an authoritative preference change source (see the UI tree report).
-            taskManagerShortcutReplacement.Start();
-            forceTerminateHotkey.Start();
+            hotkeys.Start();
             context.ReportRunning();
             await UntilStoppedAsync(context.StopNotification);
         }
@@ -50,8 +50,7 @@ public sealed partial class ResourceManagerApplicationContext
         {
             NativeUiText.Changed -= LanguageChanged;
             await callbacks.StopAsync();
-            taskManagerShortcutReplacement.Dispose();
-            forceTerminateHotkey.Dispose();
+            hotkeys.Dispose();
             await performanceOverlay.DisposeAsync();
             await desktopObservations.DisposeAsync();
             await Task.WhenAll(uiCommands.ToArray());
@@ -62,7 +61,8 @@ public sealed partial class ResourceManagerApplicationContext
     private async Task RunTrayRootAsync(BusinessBlockRunContext context)
     {
         trayMenu = BuildTrayMenu();
-        trayIcon = new NotifyIcon
+        trayIcon = services.CreateTrayIcon is { } createTray
+            ? createTray(trayMenu) : new NotifyIcon
         {
             Icon = SystemIcons.Application,
             Text = NativeUiText.Current.AppName,
@@ -87,9 +87,9 @@ public sealed partial class ResourceManagerApplicationContext
                 if (!context.StopNotification.IsCancellationRequested && !exiting) action();
             }));
         };
-        updateNotice = new TrayUpdateNotice(Preferences.FrontendPreferencesOwner.Current,
+        updateNotice = new TrayUpdateNotice(services.Preferences ?? Preferences.FrontendPreferencesOwner.Current,
             InterfaceVisible, ShowNotice, dispatchTrayNotice);
-        accessRequestNotice = new TrayAccessRequestNotice(Preferences.FrontendPreferencesOwner.Current,
+        accessRequestNotice = new TrayAccessRequestNotice(services.Preferences ?? Preferences.FrontendPreferencesOwner.Current,
             InterfaceVisible, ShowNotice, dispatchTrayNotice);
         UpdateShellStatus();
         context.ReportRunning();
@@ -127,16 +127,21 @@ public sealed partial class ResourceManagerApplicationContext
     {
         using var commands = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
         windowLifetime = commands.Token;
-        frontendRequested = NewSignal();
-        frontendProxy = new FrontendLoopbackProxy(new Uri(ApiBaseAddress + "/"),
+        frontendProxy = new FrontendLoopbackProxy(new Uri((services.ApiBaseAddress ?? ApiBaseAddress).TrimEnd('/') + "/"),
             (request, token) => backendReady && backendSession is { } current
                 ? current.SendFrontendRequestAsync(request, token)
                 : Task.FromException<System.Net.Http.HttpResponseMessage>(
                     new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
         proxyBlock = new NativeUiProxyBlock(frontendProxy);
-        _ = GetOrCreateMainForm();
-        context.ReportRunning();
-        try { await UntilStoppedAsync(context.StopNotification); }
+        try
+        {
+            var window = GetOrCreateMainForm();
+            // Showing is serial preparation of the window. Descendants cannot begin
+            // initialization until their window is visible and reports Running.
+            PresentMainWindow(window, activateRequestedWindow, secondaryRequestedWindow);
+            context.ReportRunning();
+            await UntilStoppedAsync(context.StopNotification);
+        }
         finally
         {
             commands.Cancel();
@@ -156,9 +161,6 @@ public sealed partial class ResourceManagerApplicationContext
         var form = mainForm!;
         try
         {
-            // Keep the existing runtime-install prompt timing: the visible window asks to
-            // initialize after backend readiness. A background launch never creates WebView2.
-            await frontendRequested.Task.WaitAsync(context.StopNotification);
             _ = await form.InitializeFrontendForBlockAsync().WaitAsync(context.StopNotification);
             context.ReportRunning();
             await UntilStoppedAsync(context.StopNotification);
@@ -169,15 +171,17 @@ public sealed partial class ResourceManagerApplicationContext
 
     private async Task RunDesktopAsync(BusinessBlockRunContext context)
     {
-        var session = backendSession;
-        if (session is null) return;
+        using var hold = backendConnection.TryAcquireCurrentSession();
+        if (hold is null) return;
+        var session = hold.Session;
         var callbacks = NewCallbacks();
         void VisibilityChanged(IntPtr window, bool visible)
             => callbacks.Post(() => OnObservedHostWindowVisibilityChanged(window, visible));
         desktopObservations.HostWindowVisibilityChanged += VisibilityChanged;
         try
         {
-            var run = desktopObservations.RunAsync(session, context.StopNotification);
+            var run = services.ObserveDesktop is { } observe
+                ? observe(session, context.StopNotification) : desktopObservations.RunAsync(session, context.StopNotification);
             context.ReportRunning();
             await run;
         }
@@ -190,19 +194,23 @@ public sealed partial class ResourceManagerApplicationContext
 
     private async Task RunOverlayAsync(BusinessBlockRunContext context)
     {
-        var session = backendSession;
-        if (session is null) return;
-        var run = performanceOverlay.RunAsync(session, context.StopNotification);
+        using var hold = backendConnection.TryAcquireCurrentSession();
+        if (hold is null) return;
+        var session = hold.Session;
+        var run = services.ObserveOverlay is { } observe
+            ? observe(session, context.StopNotification) : performanceOverlay.RunAsync(session, context.StopNotification);
         context.ReportRunning();
         await run;
     }
 
     private async Task RunTrayNotificationsAsync(BusinessBlockRunContext context)
     {
-        var session = backendSession;
-        if (session is null) return;
+        using var hold = backendConnection.TryAcquireCurrentSession();
+        if (hold is null) return;
+        var session = hold.Session;
         var callbacks = NewCallbacks();
-        var run = TrayNotificationStream.RunAsync(session.OpenTrayNotificationStreamAsync,
+        var run = services.ObserveTray is { } observe ? observe(session, context.StopNotification)
+            : TrayNotificationStream.RunAsync(session.OpenTrayNotificationStreamAsync,
             new Dictionary<string, Action<System.Text.Json.JsonElement>>
             {
                 ["updates"] = updateNotice.ObserveFrame,
@@ -233,12 +241,6 @@ public sealed partial class ResourceManagerApplicationContext
             SetBackendConnectionState(state, unavailable?.Message);
             if (unavailable is not null) ShowBackendUnavailableBalloon(unavailable.Message);
             await trees.SetBackendSessionReadyAsync(false, generation);
-            // Data-owner retirement: keep the old HTTP clients until all existing users
-            // release them. Each tree withdraws its own children from the shared fact.
-            await Task.WhenAll(
-                trees.WaitForStateAsync(NativeUiBlockIds.DesktopObservation, BusinessBlockState.Stopped),
-                trees.WaitForStateAsync(NativeUiBlockIds.Overlay, BusinessBlockState.Stopped),
-                trees.WaitForStateAsync(NativeUiBlockIds.TrayNotifications, BusinessBlockState.Stopped));
             return;
         }
 

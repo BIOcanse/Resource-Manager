@@ -34,19 +34,24 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     private BackendProcessIdentity? backendProcessIdentity;
     private BackendServiceAvailabilityMonitor? availabilityMonitor;
     private readonly object disposalSync = new();
+    private Task? generationEndCompletion;
     private Task? disposalCompletion;
+    private int holdCount = 1;
+    private bool generationEnded;
     private bool disposed;
 
     internal BackendServiceSession(string baseAddress,
         Func<string?>? apiKeyReader = null,
         Func<BackendProcessIdentity?>? identityReader = null,
-        BackendServiceAvailabilityMonitor? availabilityMonitor = null)
+        BackendServiceAvailabilityMonitor? availabilityMonitor = null,
+        Func<HttpMessageHandler>? handlerFactory = null)
     {
         endpoint = new Uri(baseAddress);
         BackendPath = ResolveBackendPath();
         readApiKey = apiKeyReader ?? new NativeTrustedAccessKeyReader(NativeUiPaths.PackageRoot).Read;
         captureIdentity = identityReader ?? (() => BackendProcessConnection.CaptureInstalledServiceIdentity(BackendPath));
-        HttpMessageHandler CreateHandler() => BackendProcessConnection.CreateHandler(() => backendProcessIdentity);
+        HttpMessageHandler CreateHandler() => handlerFactory?.Invoke()
+            ?? BackendProcessConnection.CreateHandler(() => backendProcessIdentity);
         probeClient = new HttpClient(CreateHandler(), disposeHandler: true)
         {
             BaseAddress = endpoint,
@@ -79,6 +84,23 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     public string BackendPath { get; }
 
     public event EventHandler<BackendServiceUnavailableEventArgs>? AvailabilityLost;
+
+    internal Hold? TryAcquire()
+    {
+        lock (disposalSync)
+        {
+            if (generationEnded) return null;
+            holdCount = checked(holdCount + 1);
+            return new Hold(this);
+        }
+    }
+
+    internal sealed class Hold(BackendServiceSession session) : IDisposable
+    {
+        private BackendServiceSession? session = session;
+        internal BackendServiceSession Session => session ?? throw new ObjectDisposedException(nameof(Hold));
+        public void Dispose() => Interlocked.Exchange(ref session, null)?.ReleaseHold();
+    }
 
     public static BackendServiceSession CreateDefault(string baseAddress)
     {
@@ -275,35 +297,57 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     public async ValueTask DisposeAsync()
         => await BeginDispose().ConfigureAwait(false);
 
+    internal Task EndAsync()
+    {
+        lock (disposalSync)
+        {
+            if (generationEndCompletion is not null) return generationEndCompletion;
+            generationEnded = true;
+            var monitor = availabilityMonitor;
+            availabilityMonitor = null;
+            if (monitor is not null) monitor.AvailabilityLost -= OnAvailabilityLost;
+            generationEndCompletion = EndCoreAsync(monitor);
+            return generationEndCompletion;
+        }
+    }
+
     private Task BeginDispose()
     {
         lock (disposalSync)
         {
             if (disposalCompletion is not null) return disposalCompletion;
-            disposed = true;
-            var monitor = availabilityMonitor;
-            availabilityMonitor = null;
-            if (monitor is not null) monitor.AvailabilityLost -= OnAvailabilityLost;
-            disposalCompletion = DisposeCoreAsync(monitor);
+            disposalCompletion = ReleaseOwnerAsync(EndAsync());
             return disposalCompletion;
         }
     }
 
-    private async Task DisposeCoreAsync(BackendServiceAvailabilityMonitor? monitor)
+    private async Task EndCoreAsync(BackendServiceAvailabilityMonitor? monitor)
     {
         try
         {
             if (monitor is not null) await monitor.DisposeAsync().ConfigureAwait(false);
         }
-        finally
+        finally { backendProcessIdentity = null; }
+    }
+
+    private async Task ReleaseOwnerAsync(Task generationEnd)
+    {
+        try { await generationEnd.ConfigureAwait(false); }
+        finally { ReleaseHold(); }
+    }
+
+    private void ReleaseHold()
+    {
+        lock (disposalSync)
         {
-            probeClient.Dispose();
-            actionClient.Dispose();
-            desktopPublisherClient.Dispose();
-            streamClient.Dispose();
-            frontendClient.Dispose();
-            backendProcessIdentity = null;
+            if (--holdCount != 0) return;
+            disposed = true;
         }
+        probeClient.Dispose();
+        actionClient.Dispose();
+        desktopPublisherClient.Dispose();
+        streamClient.Dispose();
+        frontendClient.Dispose();
     }
 
     private Task<bool> TryConnectAsync(
@@ -443,7 +487,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     {
         lock (disposalSync)
         {
-            ObjectDisposedException.ThrowIf(disposed, this);
+            ObjectDisposedException.ThrowIf(generationEnded, this);
             if (availabilityMonitor is not null) return;
 
             availabilityMonitor = new BackendServiceAvailabilityMonitor(

@@ -42,7 +42,7 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
             Node(NativeUiBlockIds.DesktopObservation, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.BackendConnection),
             Node(NativeUiBlockIds.Overlay, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.BackendConnection),
             Node(NativeUiBlockIds.LoopbackProxy, NativeUiBlockIds.MainWindow, NativeUiBlockIds.BackendConnection),
-            Node(NativeUiBlockIds.WebViewHost, NativeUiBlockIds.MainWindow, NativeUiBlockIds.LoopbackProxy),
+            Node(NativeUiBlockIds.WebViewHost, NativeUiBlockIds.LoopbackProxy, NativeUiBlockIds.LoopbackProxy),
             Node(NativeUiBlockIds.TrayNotifications, NativeUiBlockIds.TrayRoot, NativeUiBlockIds.BackendConnection)
         ]);
         scheduler = new(graph, create, historyLimit, logger, control, [
@@ -51,7 +51,11 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
                 : [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection]),
             new(NativeUiBlockIds.BackendConnection, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
                 ? [NativeUiBlockIds.DesktopObservation, NativeUiBlockIds.Overlay] : []),
-            new(NativeUiBlockIds.MainWindow, [], _ => [NativeUiBlockIds.LoopbackProxy, NativeUiBlockIds.WebViewHost]),
+            new(NativeUiBlockIds.MainWindow, [], _ => [NativeUiBlockIds.LoopbackProxy]),
+            new(NativeUiBlockIds.LoopbackProxy, [BackendSessionReadyFact], input =>
+                input.Facts[BackendSessionReadyFact].Value
+                    || input.Children[NativeUiBlockIds.WebViewHost] != BusinessBlockState.Stopped
+                        ? [NativeUiBlockIds.WebViewHost] : []),
             new(NativeUiBlockIds.TrayRoot, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
                 ? [NativeUiBlockIds.TrayNotifications] : [])
         ], () => Volatile.Read(ref sessionGeneration));

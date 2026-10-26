@@ -15,20 +15,20 @@ public sealed class NativeUiProxyBlockTests
         await using var proxy = Proxy(_ => ++attempts == 1
             ? Task.FromException(new IOException("first listener start")) : Task.CompletedTask);
         var block = new NativeUiProxyBlock(proxy, _ => failed.TrySetResult());
-        var failedEndpoint = proxy.WaitForAddressAsync(CancellationToken.None);
         var run = block.RunAsync(new(stopping.Token, () => running.TrySetResult()));
         try
         {
             await failed.Task;
-            await Assert.ThrowsAsync<IOException>(() => failedEndpoint);
+            Assert.Empty(proxy.Address);
             Assert.Equal(1, attempts);
             Assert.False(running.Task.IsCompleted);
             Assert.False(run.IsCompleted);
-            await Assert.ThrowsAsync<IOException>(() => proxy.WaitForAddressAsync(CancellationToken.None));
+            Assert.Empty(proxy.Address);
             Assert.Equal(1, attempts);
             Assert.True(block.RequestRetry());
-            var address = await proxy.WaitForAddressAsync(CancellationToken.None);
             await running.Task;
+            var address = proxy.Address;
+            Assert.NotEmpty(address);
             Assert.Equal(2, attempts);
             Assert.Equal(proxy.Address, address);
             Assert.False(block.RequestRetry());
@@ -70,15 +70,15 @@ public sealed class NativeUiProxyBlockTests
         await using var proxy = Proxy(_ => ++attempts == 1
             ? Task.FromException(new IOException("first attempt")) : Task.CompletedTask);
         await Assert.ThrowsAsync<IOException>(() => proxy.StartAsync());
-        await Assert.ThrowsAsync<IOException>(() => proxy.WaitForAddressAsync(CancellationToken.None));
+        Assert.Empty(proxy.Address);
         Assert.Equal(1, attempts);
         await proxy.StartAsync();
         Assert.Equal(2, attempts);
-        Assert.Equal(proxy.Address, await proxy.WaitForAddressAsync(CancellationToken.None));
+        Assert.NotEmpty(proxy.Address);
     }
 
     private static FrontendLoopbackProxy Proxy(Func<CancellationToken, Task> beforeStart)
-        => new(new Uri("http://127.0.0.1:9321/"),
+        => new(new Uri("http://127.0.0.1:19421/"),
             (_, _) => throw new InvalidOperationException("No forwarding expected."), beforeStart);
 
     private static TaskCompletionSource Signal()

@@ -14,6 +14,7 @@ internal sealed class WebView2FrontendHost : IFrontendHost
     private readonly FrontendLoopbackProxy proxy;
     private readonly WebView2Control surface;
     private readonly Color backgroundColor;
+    private readonly Func<CancellationToken, Task<BrowserRuntimeResolution>> resolveRuntime;
     private readonly CancellationTokenSource lifetime = new();
     private CoreWebView2Environment? environment;
     private CoreWebView2? coreWebView;
@@ -27,9 +28,11 @@ internal sealed class WebView2FrontendHost : IFrontendHost
     private bool stopping;
     private bool browserExitRequired;
 
-    public WebView2FrontendHost(WebView2HostConfiguration configuration, Color? initialBackgroundColor = null)
+    public WebView2FrontendHost(WebView2HostConfiguration configuration, Color? initialBackgroundColor = null,
+        Func<CancellationToken, Task<BrowserRuntimeResolution>>? resolveRuntime = null)
     {
         this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        this.resolveRuntime = resolveRuntime ?? BrowserRuntimeResolver.ResolveAsync;
         proxy = configuration.Proxy;
         documentPolicy = new TrustedFrontendDocumentPolicy(proxy.ApplicationAddress);
         backgroundColor = initialBackgroundColor
@@ -211,15 +214,19 @@ internal sealed class WebView2FrontendHost : IFrontendHost
 
     private async Task InitializeCoreAsync()
     {
-        var proxyAddress = await proxy.WaitForAddressAsync(lifetime.Token);
+        // Publish initializationTask before a consent dialog can pump messages
+        // and reenter StopAsync, which must join this initialization.
+        await Task.Yield();
         lifetime.Token.ThrowIfCancellationRequested();
+        // The proxy is our parent and publishes its endpoint before running.
+        var proxyAddress = proxy.Address;
         System.Diagnostics.Trace.WriteLine("WebView2 private HTTP proxy endpoint received.");
         Directory.CreateDirectory(configuration.ProfileDirectory);
         Environment.SetEnvironmentVariable(
             "WEBVIEW2_DEFAULT_BACKGROUND_COLOR",
             WebViewAppearanceBootstrap.ToWebViewEnvironmentValue(backgroundColor));
 
-        var runtime = await BrowserRuntimeResolver.ResolveAsync();
+        var runtime = await resolveRuntime(lifetime.Token);
         lifetime.Token.ThrowIfCancellationRequested();
         System.Diagnostics.Trace.WriteLine(
             $"WebView2 runtime selected: {runtime.Version} ({runtime.Source})");

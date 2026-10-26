@@ -3,6 +3,7 @@ param([Parameter(Mandatory = $true)][string]$DownloadDirectory)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 try {
     $directory = [IO.Path]::GetFullPath($DownloadDirectory)

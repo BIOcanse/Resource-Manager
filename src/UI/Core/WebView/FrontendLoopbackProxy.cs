@@ -30,7 +30,6 @@ internal sealed class FrontendLoopbackProxy(
     };
     private readonly string capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly CancellationTokenSource lifetime = new();
-    private TaskCompletionSource<string> addressReady = NewAddressSignal();
     private readonly object sync = new();
     private WebApplication? application;
     private Task? startup;
@@ -41,18 +40,11 @@ internal sealed class FrontendLoopbackProxy(
     internal string ApplicationAddress => backendAddress.AbsoluteUri;
     internal string Capability => capability;
 
-    // Reading the producer's endpoint never starts or restarts its listener.
-    internal Task<string> WaitForAddressAsync(CancellationToken token)
-    {
-        lock (sync) return addressReady.Task.WaitAsync(token);
-    }
-
     internal bool ResetFailedStart()
     {
         lock (sync)
         {
-            if (disposed || !addressReady.Task.IsFaulted) return false;
-            addressReady = NewAddressSignal();
+            if (disposed || startup is not { IsFaulted: true }) return false;
             startup = null;
             return true;
         }
@@ -61,26 +53,15 @@ internal sealed class FrontendLoopbackProxy(
     internal async Task StartAsync()
     {
         Task current;
-        TaskCompletionSource<string> endpoint;
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            // Standalone explicit starts retain their original retry behavior.
-            // The block owner calls ResetFailedStart only for a user retry.
-            if (startup is null && addressReady.Task.IsFaulted) addressReady = NewAddressSignal();
-            endpoint = addressReady;
+            // Explicit starts retain the existing manual retry behavior. A child
+            // reads Address only after its proxy parent has reported Running.
+            if (startup is { IsFaulted: true }) startup = null;
             current = startup ??= StartCoreAsync();
         }
-        try { await current.ConfigureAwait(false); }
-        catch (Exception error)
-        {
-            lock (sync)
-            {
-                if (ReferenceEquals(startup, current)) startup = null;
-                endpoint.TrySetException(error);
-            }
-            throw;
-        }
+        await current.ConfigureAwait(false);
     }
 
     private async Task StartCoreAsync()
@@ -110,7 +91,6 @@ internal sealed class FrontendLoopbackProxy(
             Address = app.Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()!.Addresses.Single().TrimEnd('/') + "/";
             application = app;
-            addressReady.TrySetResult(Address);
         }
         catch
         {
@@ -218,7 +198,6 @@ internal sealed class FrontendLoopbackProxy(
     private async Task DisposeCoreAsync(Task? pending)
     {
         lifetime.Cancel();
-        addressReady.TrySetCanceled(lifetime.Token);
         if (pending is not null)
         {
             try { await pending.ConfigureAwait(false); }
@@ -232,6 +211,4 @@ internal sealed class FrontendLoopbackProxy(
         finally { await app.DisposeAsync().ConfigureAwait(false); }
     }
 
-    private static TaskCompletionSource<string> NewAddressSignal()
-        => new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

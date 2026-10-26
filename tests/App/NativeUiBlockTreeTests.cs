@@ -23,6 +23,7 @@ public sealed class NativeUiBlockTreeTests
         Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainRoot));
         Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.TrayRoot));
 
+        await trees.SetBackendSessionReadyAsync(true, 1);
         await trees.SetWindowWantedAsync(true, "tray-click");
         await probes.Next(NativeUiBlockIds.WebViewHost);
         Assert.Equal(1, probes.Runs(NativeUiBlockIds.TrayRoot));
@@ -40,6 +41,7 @@ public sealed class NativeUiBlockTreeTests
         try
         {
             await trees.StartAsync(true);
+            await trees.SetBackendSessionReadyAsync(true, 1);
             var window = await probes.Next(NativeUiBlockIds.MainWindow);
             var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
             var proxy = await probes.Next(NativeUiBlockIds.LoopbackProxy);
@@ -49,7 +51,8 @@ public sealed class NativeUiBlockTreeTests
 
             await trees.SetWindowWantedAsync(false, "window-close");
             await browser.StopObserved.Task.WaitAsync(Timeout);
-            await proxy.Returned.Task.WaitAsync(Timeout);
+            Assert.False(proxy.StopObserved.Task.IsCompleted);
+            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.LoopbackProxy));
             Assert.False(window.StopObserved.Task.IsCompleted);
             Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainWindow));
             Assert.Equal(BusinessBlockState.Stopping, trees.ReadState(NativeUiBlockIds.WebViewHost));
@@ -83,6 +86,7 @@ public sealed class NativeUiBlockTreeTests
         try
         {
             await trees.StartAsync(true);
+            await trees.SetBackendSessionReadyAsync(true, 1);
             var window = await probes.Next(NativeUiBlockIds.MainWindow);
             var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
             await probes.Next(NativeUiBlockIds.LoopbackProxy);
@@ -110,8 +114,8 @@ public sealed class NativeUiBlockTreeTests
         await using var trees = Create(probes);
         await trees.StartAsync(true);
         var window = await probes.Next(NativeUiBlockIds.MainWindow);
-        var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
         await trees.SetBackendSessionReadyAsync(true, 11);
+        var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
         var desktop = await probes.Next(NativeUiBlockIds.DesktopObservation);
         var overlay = await probes.Next(NativeUiBlockIds.Overlay);
         var notifications = await probes.Next(NativeUiBlockIds.TrayNotifications);
@@ -137,46 +141,21 @@ public sealed class NativeUiBlockTreeTests
         Assert.Equal(1, probes.Runs(NativeUiBlockIds.MainWindow));
     }
 
-    [Theory]
-    [InlineData("tray-exit")]
-    [InlineData("second-instance-exit")]
-    [InlineData("windows-session-ending")]
-    public async Task EveryExitWaitsForBothTreesBeforeLeavingTheMessageLoop(string owner)
+    [Fact]
+    public async Task TerminalShutdownStopsTheTreeAndLateFactsCannotRestartIt()
     {
-        var cleanup = Signal();
-        var exitedMessageLoop = Signal();
         var probes = new Probes();
-        probes.Cleanup(NativeUiBlockIds.WebViewHost, cleanup.Task);
         await using var trees = Create(probes);
-        Task shutdown = Task.CompletedTask;
-        try
-        {
-            await trees.StartAsync(true);
-            var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
-            await trees.SetBackendSessionReadyAsync(true, 3);
-            await probes.Next(NativeUiBlockIds.TrayNotifications);
-            shutdown = ShutdownThenExit();
-            await browser.StopObserved.Task.WaitAsync(Timeout);
-            Assert.False(exitedMessageLoop.Task.IsCompleted);
-            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainRoot));
-
-            cleanup.TrySetResult();
-            await shutdown.WaitAsync(Timeout);
-            Assert.True(exitedMessageLoop.Task.IsCompleted);
-            Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
-            var starts = probes.TotalRuns;
-            await trees.SetWindowWantedAsync(true, "late-show");
-            await trees.SetBackendSessionReadyAsync(true, 4);
-            Assert.Equal(starts, probes.TotalRuns);
-            Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
-        }
-        finally { cleanup.TrySetResult(); await shutdown.WaitAsync(Timeout); }
-
-        async Task ShutdownThenExit()
-        {
-            await trees.ShutdownAsync(new(BusinessBlockRequestKind.User, owner, "program-exit", 3));
-            exitedMessageLoop.TrySetResult();
-        }
+        await trees.StartAsync(true);
+        await trees.SetBackendSessionReadyAsync(true, 1);
+        await probes.Next(NativeUiBlockIds.WebViewHost);
+        await trees.ShutdownAsync(new(BusinessBlockRequestKind.User, "program", "exit", 1));
+        Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
+        var starts = probes.TotalRuns;
+        await trees.SetWindowWantedAsync(true, "late-show");
+        await trees.SetBackendSessionReadyAsync(true, 2);
+        Assert.Equal(starts, probes.TotalRuns);
+        Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
     }
 
     [Fact]

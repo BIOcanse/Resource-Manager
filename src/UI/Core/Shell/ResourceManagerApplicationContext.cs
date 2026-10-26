@@ -20,8 +20,8 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
     private readonly PerformanceOverlayCoordinator performanceOverlay;
     private FrontendLoopbackProxy? frontendProxy;
     private readonly InteractiveDesktopObservationPublisher desktopObservations = new();
-    private readonly TaskManagerShortcutReplacementController taskManagerShortcutReplacement;
-    private readonly ForceTerminateHotkeyController forceTerminateHotkey;
+    private readonly NativeUiApplicationServices services;
+    private readonly INativeUiHotkeys hotkeys;
     private ContextMenuStrip trayMenu = null!;
     private NotifyIcon trayIcon = null!;
     private TrayUpdateNotice updateNotice = null!;
@@ -49,27 +49,26 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
 
     internal ResourceManagerApplicationContext(
         NativeUiSingleInstanceCoordinator singleInstance,
-        bool startInBackground = false)
+        bool startInBackground = false,
+        NativeUiApplicationServices? services = null)
     {
         this.singleInstance = singleInstance;
         this.startInBackground = startInBackground;
+        this.services = services ?? new NativeUiApplicationServices();
         uiDispatcher.CreateControl();
         _ = uiDispatcher.Handle;
         performanceOverlay = new PerformanceOverlayCoordinator(uiDispatcher);
         backendConnection = new NativeUiBackendConnectionBlock(
-            () => BackendServiceSession.CreateDefault(ApiBaseAddress), PublishBackendSessionAsync);
+            this.services.CreateSession ?? (() => BackendServiceSession.CreateDefault(this.services.ApiBaseAddress ?? ApiBaseAddress)),
+            PublishBackendSessionAsync, this.services.ConnectSession, this.services.ReconnectDelay);
         trees = new NativeUiBlockTrees(CreateBlock, new NativeUiTraceLogger<NativeUiBlockTrees>(),
             new NativeUiTraceLogger<BusinessBlockController>());
 
-        taskManagerShortcutReplacement = new TaskManagerShortcutReplacementController(
-            NativeUiPaths.AppSettingsPath,
-            OnTaskManagerShortcutPressed,
-            ShowTaskManagerShortcutReplacementStatus);
-
-        forceTerminateHotkey = new ForceTerminateHotkeyController(
-            NativeUiPaths.AppSettingsPath,
-            OnForceTerminateHotkeyPressed,
-            ShowForceTerminateHotkeyStatus);
+        hotkeys = this.services.Hotkeys ?? new NativeUiHotkeys(
+            new TaskManagerShortcutReplacementController(NativeUiPaths.AppSettingsPath,
+                OnTaskManagerShortcutPressed, ShowTaskManagerShortcutReplacementStatus),
+            new ForceTerminateHotkeyController(NativeUiPaths.AppSettingsPath,
+                OnForceTerminateHotkeyPressed, ShowForceTerminateHotkeyStatus));
 
         Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
         Application.Idle += OnApplicationIdle;
@@ -153,7 +152,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
 
     private async Task StartAsync()
     {
-        await trees.StartAsync(windowWanted: !startInBackground);
+        await trees.StartAsync(windowWanted: false);
         if (!startInBackground)
             await ShowMainWindowAsync(startFrontend: true, activate: true);
     }
@@ -171,9 +170,34 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         // A close already accepted by the window owns its complete resource retirement.
         await windowRequests.WaitForCloseAsync();
         if (exiting) return;
+        var previousWindow = mainForm;
+        activateRequestedWindow = activate;
+        secondaryRequestedWindow = placeOnSecondaryScreen;
         await trees.SetWindowWantedAsync(true, "show-window");
         await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running, shutdown.Token);
         var form = mainForm!;
+        if (ReferenceEquals(previousWindow, form))
+            PresentMainWindow(form, activate, placeOnSecondaryScreen);
+
+        if (!backendReady)
+        {
+            ApplyBackendStateToForm(form);
+            return;
+        }
+
+        if (startFrontend)
+        {
+            await StartMainWindowFrontendIfVisibleAsync();
+        }
+    }
+
+    private void PresentMainWindow(MainForm form, bool activate, bool placeOnSecondaryScreen)
+    {
+        if (services.PresentWindow is { } present)
+        {
+            present(form, activate, placeOnSecondaryScreen);
+            return;
+        }
         var placedOnSecondaryScreen = placeOnSecondaryScreen
             && form.PrepareForPassiveValidationOnSecondaryScreen();
         var shouldPlaceOnPrimaryScreen = !placedOnSecondaryScreen
@@ -209,16 +233,6 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
             form.Activate();
         }
 
-        if (!backendReady)
-        {
-            ApplyBackendStateToForm(form);
-            return;
-        }
-
-        if (startFrontend)
-        {
-            await StartMainWindowFrontendIfVisibleAsync();
-        }
     }
 
     // Called on the UI thread; the listener block owns and joins dispatch.
@@ -243,10 +257,12 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         }
 
         var form = new MainForm(
-            taskManagerShortcutReplacement.SetEnabledFromUi,
-            forceTerminateHotkey.Reload,
-            new WebView2HostConfiguration(
-                NativeUiPaths.WebViewUserDataFolder, NativeUiPaths.FrontendPreferencesPath, frontendProxy!),
+            hotkeys.SetTaskManagerEnabled,
+            hotkeys.ReloadForceTerminate,
+            (services.CreateFrontendHost ?? (static configuration => new WebView2FrontendHost(configuration)))(
+                new WebView2HostConfiguration(
+                    services.WebViewUserDataFolder ?? NativeUiPaths.WebViewUserDataFolder,
+                    services.FrontendPreferencesPath ?? NativeUiPaths.FrontendPreferencesPath, frontendProxy!)),
             batch => backendReady && backendSession is { } session
                 ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
                 : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
@@ -293,7 +309,6 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
     {
         if (mainForm is not { IsDisposed: false, Visible: true } form) return;
         var token = windowLifetime;
-        frontendRequested.TrySetResult();
         await trees.WaitForStateAsync(NativeUiBlockIds.WebViewHost, BusinessBlockState.Running, token);
         if (ReferenceEquals(form, mainForm) && !token.IsCancellationRequested)
             await form.StartFrontendAsync();
@@ -574,7 +589,8 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         }
     }
 
-    private void OnExitRequested(object? sender, EventArgs args) => ExitApplication();
+    private void OnExitRequested(object? sender, EventArgs args) => ExitApplication(
+        args is Microsoft.Win32.SessionEndingEventArgs ? "windows-session-ending" : "tray-exit");
 
     private void OnMainFormClosed(object? sender, FormClosedEventArgs args)
     {

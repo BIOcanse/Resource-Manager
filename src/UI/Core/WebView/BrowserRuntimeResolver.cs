@@ -13,19 +13,31 @@ internal sealed record BrowserRuntimeResolution(
 
 internal static class BrowserRuntimeResolver
 {
-    public static Task<BrowserRuntimeResolution> ResolveAsync()
-        => ResolveAsync(ProbeSystem, ConfirmInstallation, InstallSystemRuntimeAsync);
+    public static Task<BrowserRuntimeResolution> ResolveAsync(CancellationToken cancellationToken = default)
+        => ResolveAsync(ProbeSystem, () => ConfirmInstallation(cancellationToken), InstallSystemRuntimeAsync,
+            cancellationToken);
+
+    internal static Task<BrowserRuntimeResolution> ResolveAsync(
+        Func<string?> probeSystem, Func<bool> confirmInstallation, Func<Task> installSystemRuntime,
+        CancellationToken cancellationToken = default)
+        => ResolveAsync(probeSystem, confirmInstallation,
+            token => installSystemRuntime().WaitAsync(token), cancellationToken);
 
     internal static async Task<BrowserRuntimeResolution> ResolveAsync(
-        Func<string?> probeSystem, Func<bool> confirmInstallation, Func<Task> installSystemRuntime)
+        Func<string?> probeSystem, Func<bool> confirmInstallation,
+        Func<CancellationToken, Task> installSystemRuntime, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var version = probeSystem();
         if (string.IsNullOrWhiteSpace(version))
         {
-            if (!confirmInstallation())
+            var consented = confirmInstallation();
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!consented)
                 throw new BrowserRuntimeInstallationDeclinedException(
                     ToolText.For(NativeUiText.Language).WebViewInstallCancelled);
-            await installSystemRuntime();
+            await installSystemRuntime(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             version = probeSystem();
             if (string.IsNullOrWhiteSpace(version))
                 throw new InvalidOperationException(
@@ -35,10 +47,27 @@ internal static class BrowserRuntimeResolver
         return new BrowserRuntimeResolution(null, version, "SystemShared");
     }
 
-    private static bool ConfirmInstallation()
+    internal static bool ConfirmInstallation(CancellationToken cancellationToken,
+        Func<TaskDialogPage, TaskDialogButton>? showDialog = null,
+        Action<TaskDialogPage>? closeDialog = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var page = CreateConsentPage(ToolText.For(NativeUiText.Language));
-        return TaskDialog.ShowDialog(page) == page.Buttons[0];
+        closeDialog ??= static page => page.BoundDialog?.Close();
+        // TaskDialog runs a nested message loop and must be closed on its STA.
+        // Disposing this invisible dispatcher also releases any queued close.
+        using var dispatcher = new Control();
+        _ = dispatcher.Handle;
+        using var registration = cancellationToken.Register(() =>
+            dispatcher.BeginInvoke(new Action(() => closeDialog(page))));
+        page.Created += (_, _) =>
+        {
+            // Cancellation can arrive before the native dialog has a handle.
+            if (cancellationToken.IsCancellationRequested) closeDialog(page);
+        };
+        var result = (showDialog ?? (static page => TaskDialog.ShowDialog(page)))(page);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result == page.Buttons[0];
     }
 
     internal static TaskDialogPage CreateConsentPage(ToolText text)
@@ -73,8 +102,9 @@ internal static class BrowserRuntimeResolver
         }
     }
 
-    private static async Task InstallSystemRuntimeAsync()
+    private static async Task InstallSystemRuntimeAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var script = Path.Combine(AppContext.BaseDirectory, "InstallWebView2Runtime.ps1");
         var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
             "WindowsPowerShell", "v1.0", "powershell.exe");
@@ -92,11 +122,12 @@ internal static class BrowserRuntimeResolver
 
         using var process = Process.Start(start)
             ?? throw new InvalidOperationException("WebView2 setup could not start.");
-        var output = process.StandardOutput.ReadToEndAsync();
-        var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        Trace.WriteLine(await output);
-        var detail = await error;
+        // InstallWebView2Runtime.ps1 emits no success output and only its caught
+        // error message. Read after exit so stop leaves no pipe-reader workers.
+        // Disposing Process releases our handles; the consented installer lives on.
+        await process.WaitForExitAsync(cancellationToken);
+        Trace.WriteLine(await process.StandardOutput.ReadToEndAsync(cancellationToken));
+        var detail = await process.StandardError.ReadToEndAsync(cancellationToken);
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
                 $"Automatic WebView2 setup failed. Check your internet connection and try again. {detail.Trim()}");
