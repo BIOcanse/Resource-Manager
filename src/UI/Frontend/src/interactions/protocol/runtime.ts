@@ -523,9 +523,19 @@ export class Runtime {
   setAnimationMode(mode: AnimationMode, t: number): void {
     this.animation = mode;
     this.trace.write({ t, kind: "参数", component: "", summary: `动画档位：${ANIMATION_LABELS[mode]}`, lines: [
-      mode === "normal" ? "手放开后按力场推进和到终态逐帧走" : "按力场推进和到终态直接到终点；手带着时位置仍是手的位置",
+      mode === "normal" ? "手放开后按力场推进和到终态逐帧走" : "按力场推进和到终态直接到终点，状态变了当场就画、不等下一帧；手带着时位置仍是手的位置",
       "档位只影响动画输出；业务逻辑输出和框架输出不变，落点照样按力场算",
     ] });
+    // 换到无动画、极简时正在走的运动当场到终点
+    if (mode !== "normal") {
+      for (const inst of this.instances) {
+        if (!inst.ch.motion) continue;
+        this.advance(inst, t);
+        this.finishMotion(inst, t);
+        this.toDraw.add(inst);
+      }
+    }
+    this.wake(t);
   }
 
   feed(raw: RawInput): void {
@@ -538,7 +548,7 @@ export class Runtime {
     } finally {
       this.clock = null;
     }
-    this.wake();
+    this.wake(raw.t);
   }
 
   // ===== 路由（协议第 4.2 节） =====
@@ -1077,7 +1087,7 @@ export class Runtime {
     lines.push("不调用：宿主值不进转移表（不回声）");
     this.toDraw.add(inst);
     this.trace.write({ t, kind: "宿主", component: inst.name, summary: `${inst.name} 宿主值 ${fmt(old)} → ${fmt(next)}`, lines, group: `host:${inst.name}:${inst.mode}` });
-    this.wake();
+    this.wake(t);
   }
 
   /** 推进到时刻 t：读这一段运动在这一刻的位置和速度。 */
@@ -1136,8 +1146,16 @@ export class Runtime {
     return this.toDraw.size > 0 || this.holdRepeat !== null || this.instances.some((inst) => inst.ch.motion !== null);
   }
 
-  /** 要下一帧而还没请过，就请一帧。 */
-  private wake(): void {
+  /**
+   * 要下一帧而还没请过，就请一帧。动画档不是正常时没有中间帧，状态变了的实例当场就画（协议第 4.5 节“动画档位”）：
+   * 同一次输入、宿主变化或换档里就到终态，不等下一帧。t 是这一刻（读手的速度用）；不给时按现在。
+   */
+  private wake(t?: number): void {
+    if (this.animation !== "normal" && this.toDraw.size > 0) {
+      const now = t ?? this.clock ?? performance.now();
+      for (const inst of this.toDraw) inst.view.render(this.driveOf(inst, now));
+      this.toDraw.clear();
+    }
     if (this.frameRequested || !this.needsFrame()) return;
     this.frameRequested = true;
     this.platform.requestFrame();
@@ -1174,7 +1192,7 @@ export class Runtime {
 
   private drive(inst: Instance, t: number): Drive<Value> {
     const ch = inst.ch;
-    const base = { x: ch.x, hand: ch.hand, mode: inst.mode, segment: inst.segment };
+    const base = { x: this.shown(inst), hand: ch.hand, mode: inst.mode, segment: inst.segment };
     // 手只是放置点：力场带向手，加速度是算好的轨迹在这一步速度的变化 ÷ 步长，只有一项
     if (inst.holds() && ch.hand !== null && inst.def.channel.handIsPlacement) {
       const a = ch.motion ? ch.motion.m.at(ch.lastT - ch.motion.t0).a : inst.zero;
@@ -1197,6 +1215,21 @@ export class Runtime {
       return { ...base, v: ch.v, a: field.a, forces: [field], driver: "力场" };
     }
     return { ...base, v: inst.zero, a: inst.zero, forces: [], driver: "停住" };
+  }
+
+  /**
+   * 画面的位置：力场带着物体、而且“输出步数”n 大于 0 时，这一段的推进时长分成 n 步，画面停在每一步开始时的位置，
+   * 每步结束时跳一次，最后一步结束就是终点（和 CSS 的 steps(n) 一样）；手带着、停住或 n 为 0 时就是位置本身。
+   * 只改画面：状态（位置、速度）、接住、落点和宿主值照常按连续的运动算。
+   */
+  private shown(inst: Instance): Value {
+    const ch = inst.ch;
+    const mo = ch.motion;
+    const steps = inst.params.outputSteps.value;
+    if (!mo || inst.holds() || !(steps > 0)) return ch.x;
+    const span = mo.m.durationMs / steps;
+    if (!(span > 0)) return ch.x;
+    return mo.m.at(Math.floor((ch.lastT - mo.t0) / span) * span).x;
   }
 
   // ===== 日志行 =====

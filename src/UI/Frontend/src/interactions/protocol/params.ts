@@ -35,6 +35,7 @@ export type BaseParamId =
   | "pointAbsorb"
   | "boundAbsorb"
   | "settleTime"
+  | "outputSteps"
   | "directionAngle";
 export type ParamId = BaseParamId | (string & {});
 
@@ -102,6 +103,8 @@ export const PARAM_SPECS: readonly ParamSpec[] = [
     source: { kind: "protocol", value: 1 } },
   { id: "settleTime", label: "到位时间", unit: "ms", readers: "到终态：缓存值和物体将停的值不同时，正好这么久带到缓存值",
     source: { kind: "token", token: "--motion-medium（styles/motion.css）", value: 180 } },
+  { id: "outputSteps", label: "输出步数", unit: "步", readers: "运行时：力场带着物体时，画面把这一段的推进时长分成这么多步，每步结束时跳一次（和 CSS 的 steps(n) 一样）；0 是连续。手带着时不分，状态、落点和宿主值不受影响",
+    source: { kind: "protocol", value: 0 } },
   { id: "directionAngle", label: "方向角", unit: "°", readers: "事实：沿运动方向。指针离按下点的位移和运动方向（朝前朝后都算）的夹角不超过它",
     source: { kind: "protocol", value: 45 } },
 ];
