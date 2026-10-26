@@ -237,6 +237,20 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.ellipsis = ellipsis;
 
+  // 9. “更多操作”平时退一半，悬停的行完整显示。
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(250);
+  const actionsOpacity = () => panel.locator('.resource-table-row[aria-label="示例软件 8"] .resource-row-actions')
+    .evaluate((button) => getComputedStyle(button).opacity);
+  const idleActions = await actionsOpacity();
+  await panel.locator('.resource-table-row[aria-label="示例软件 8"] .status-cell').hover();
+  await page.waitForTimeout(250);
+  const hoveredActions = await actionsOpacity();
+  if (idleActions !== "0.5" || hoveredActions !== "1") {
+    throw new Error(`Row actions emphasis: idle ${idleActions}, hovered ${hoveredActions}`);
+  }
+  results.actions = { idleActions, hoveredActions };
+
   // 11. 进程级没有树：名字前不留箭头的空位；PID 用等宽数字。
   await panel.locator(".resource-table-mode-button").nth(1).click();
   await visibleRows("process").first().waitFor();

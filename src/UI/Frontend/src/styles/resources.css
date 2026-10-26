@@ -582,6 +582,11 @@
   color: var(--text);
 }
 
+/* 每一行都有“更多操作”，一整列同样亮的按钮很吵：平时退到一半，行被悬停、是当前行或菜单正对着它时完整显示。 */
+.resource-table-row:not(:hover, :focus-within, .context-target) .resource-row-actions {
+  opacity: 0.5;
+}
+
 .resource-table-cell.status-cell {
   color: var(--muted);
   font-size: 12px;
