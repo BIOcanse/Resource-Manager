@@ -36,3 +36,28 @@ assert.throws(() => assertSubscriptionChannelReleased([
 assert.throws(() => assertSubscriptionChannelReleased([
   start("old", 1), end("old", 11.001)
 ], 1, 10000), /release took/, "a release after ten seconds must fail even if delivered before the assertion");
+
+// The smart-report journey uses the same strict physical maximum and selector
+// multiplicity as the local-system and self-scheduling checks.
+const smartPath = "/api/optimization/smart/state/subscribe";
+const replacement = subscriptionChannelConcurrency([
+  start("old", 1), start("new", 3), end("old", 2)
+]);
+assert.deepEqual({ inFlight: replacement.inFlight,
+  maxInFlight: replacement.maxInFlight * subscriptionPathMaximum([[smartPath], [smartPath]], smartPath)
+}, { inFlight: 1, maxInFlight: 1 }, "late close delivery is not logical overlap");
+const overlap = subscriptionChannelConcurrency([
+  start("old", 1), start("new", 2), end("old", 3)
+]);
+assert.equal(overlap.maxInFlight * subscriptionPathMaximum([[smartPath], [smartPath]], smartPath), 2,
+  "real logical overlap must still fail after the old channel closes");
+const duplicate = subscriptionChannelConcurrency([
+  start("duplicate", 1), end("duplicate", 2), start("new", 3)
+]);
+assert.equal(duplicate.maxInFlight * subscriptionPathMaximum([[smartPath, smartPath], [smartPath]], smartPath), 2,
+  "duplicate selectors within one physical channel must fail");
+const unrelated = subscriptionChannelConcurrency([
+  start("old", 1), end("old", 2), start("other", 3)
+]);
+assert.equal(unrelated.inFlight * subscriptionPathMaximum([["/api/operations/subscribe"]], smartPath), 0,
+  "an unrelated live channel cannot replace the required subscription");

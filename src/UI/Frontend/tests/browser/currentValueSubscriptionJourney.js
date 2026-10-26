@@ -119,13 +119,16 @@ export default async function currentValueSubscriptionJourney(
   await page.waitForTimeout(3_200);
   const smartContinued = await readTelemetry(page, smartPath);
   const smartDirect = await readTelemetry(page, "/api/optimization/smart/state");
+  const smartChannel = await readTelemetry(page, channelPath);
+  const smartBrowser = await channelProbe.assertSinglePhysicalChannel();
+  const smartMaximum = smartBrowser.maxInFlight
+    * subscriptionPathMaximum(smartChannel.subscriptionSets, smartPath);
   assert(smartContinued.publications > smartStarted.publications,
     `Smart report stopped receiving callbacks: ${JSON.stringify({ smartStarted, smartContinued })}`);
   assert(smartContinued.logicalStarted === smartStarted.logicalStarted
-    && smartContinued.logicalMaxInFlight === 1 && smartDirect.started === 0,
-  `Smart report reintroduced requests beside its subscription: ${JSON.stringify({ smartStarted, smartContinued, smartDirect })}`);
-  assertSinglePhysicalChannel(await readTelemetry(page, channelPath), "smart report callback channel");
-  await channelProbe.assertSinglePhysicalChannel();
+    && smartContinued.logicalInFlight === 1 && smartMaximum === 1 && smartDirect.started === 0,
+  `Smart report reintroduced requests beside its subscription: ${JSON.stringify({ smartStarted, smartContinued, smartDirect, smartMaximum })}`);
+  assertSinglePhysicalChannel(smartChannel, "smart report callback channel");
   await page.getByRole("navigation", { name: "页面切换" })
     .getByRole("button", { name: "监视控制台", exact: true }).click();
   await page.waitForFunction(async (path) => {
@@ -143,7 +146,7 @@ export default async function currentValueSubscriptionJourney(
   assertLocalBinding();
 
   return { initial, settled, pageEntryReads, afterIdle,
-    smartStarted, smartContinued, smartDirect, smartRetired, smartInactive };
+    smartStarted, smartContinued, smartBrowser, smartDirect, smartRetired, smartInactive };
 
   function assertLocalBinding() {
     assert(localBindings.length > 0 && new Set(localBindings.map(item => item.id)).size === 1,
