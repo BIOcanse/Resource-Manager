@@ -17,10 +17,7 @@ import trustedAccessRecoveryJourney from "./trustedAccessRecoveryJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
 import stableButtonLabelsJourney from "./stableButtonLabelsJourney.js";
-import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { runBrowserGate } from "./browserGateRunner.mjs";
 import cpuBaselineRatioJourney from "./cpuBaselineRatioJourney.js";
 import cpuCurrentValueSubscriptionJourney from "./cpuCurrentValueSubscriptionJourney.js";
 import cpuManualPlacementSubscriptionJourney from "./cpuManualPlacementSubscriptionJourney.js";
@@ -73,11 +70,11 @@ import targetedRecordingSourceJourney from "./targetedRecordingSourceJourney.js"
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
 import pageTabsConsistencyJourney from "./pageTabsConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
-import usabilityProbe from "./usabilityProbe.js";
 import localizationJourney from "./localizationJourney.js";
 import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 
-const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
+// 旅程登记表：[名称, (page, baseUrl, options) => 结果]。运行机制（工作进程、按语言拆分、输出和计时）在
+// browserGateRunner.mjs，用法见那里的说明。
 const allJourneys = [
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
@@ -166,177 +163,4 @@ const allJourneys = [
   ["r2-remediation", r2RemediationJourney],
   ["accessibility-semantics", accessibilitySemanticsJourney]
 ];
-const journeyFilter = process.env.RM_BROWSER_JOURNEY?.trim();
-const requestedJourneys = new Set(journeyFilter?.split(",").map(name => name.trim()).filter(Boolean));
-const journeys = journeyFilter
-  ? allJourneys.filter(([name]) => requestedJourneys.has(name))
-  : allJourneys;
-if (journeys.length === 0 || (journeyFilter && journeys.length !== requestedJourneys.size)) {
-  throw new Error(`Unknown browser journey: ${journeyFilter}`);
-}
-
-let baseUrl;
-let listeningPort = null;
-const server = spawn(process.execPath, [resolve(projectRoot, "tests/browser/mockFrontendServer.mjs")], {
-  cwd: projectRoot,
-  env: { ...process.env, RM_FRONTEND_HARNESS_PORT: "0" },
-  stdio: ["ignore", "pipe", "pipe", "ipc"]
-});
-server.on("message", message => {
-  if (message?.type === "frontend-harness-ready" && Number.isInteger(message.port)
-    && message.port > 0 && message.port <= 65535) listeningPort = message.port;
-});
-let serverOutput = "";
-server.stdout.on("data", (chunk) => { serverOutput += chunk; });
-server.stderr.on("data", (chunk) => { serverOutput += chunk; });
-
-let browser;
-try {
-  baseUrl = await waitForServer(server);
-  const { chromium } = await loadPlaywright();
-  browser = await launchBrowser(chromium);
-  const results = [];
-
-  for (const [name, journey] of journeys) {
-    await resetFixture(baseUrl);
-    const context = await browser.newContext({ locale: "zh-CN" });
-    const page = await context.newPage();
-    try {
-      const result = await journey(page, baseUrl);
-      const usability = await usabilityProbe(page);
-      const defaultPerformanceState = await readDefaultPerformanceState(page);
-      if (defaultPerformanceState.bootstrapPresent
-        || defaultPerformanceState.apiPresent
-        || defaultPerformanceState.monitorResources.length > 0) {
-        throw new Error(
-          `Default frontend unexpectedly enabled performance instrumentation: ${JSON.stringify(defaultPerformanceState)}`);
-      }
-      results.push({ name, result, usability, defaultPerformanceState });
-      process.stdout.write(`PASS ${name}\n`);
-    } catch (error) {
-      const [requests, pageState] = await Promise.all([
-        fetch(`${baseUrl}/__test/requests`)
-          .then(async (response) => response.ok ? response.json() : ({ status: response.status }))
-          .catch((requestError) => ({ error: String(requestError) })),
-        page.evaluate(() => ({
-          href: location.href,
-          title: document.title,
-          text: document.body?.innerText?.slice(0, 4000) ?? "",
-          readyState: document.readyState
-        })).catch((pageError) => ({ error: String(pageError) }))
-      ]);
-      throw new Error(
-        `${error instanceof Error ? error.message : String(error)}\n`
-        + `Browser gate diagnostic: ${JSON.stringify({ name, requests, pageState, serverOutput })}`,
-        { cause: error });
-    } finally {
-      await context.close();
-    }
-  }
-
-  process.stdout.write(`${JSON.stringify({
-    baseUrl,
-    journeys: results.map(({ name, result, usability, defaultPerformanceState }) => ({
-      name,
-      result,
-      defaultPerformanceState,
-      pageId: usability.pageId,
-      viewport: usability.viewport,
-      unnamedControlCount: usability.visibleUnnamedInputs.length,
-      documentOverflow: usability.document.scrollWidth > usability.document.clientWidth,
-      shellOverflow: Boolean(usability.shell && usability.shell.scrollWidth > usability.shell.clientWidth)
-    }))
-  }, null, 2)}\n`);
-} finally {
-  await browser?.close();
-  await stopChildProcess(server);
-}
-
-async function readDefaultPerformanceState(page) {
-  return page.evaluate(() => ({
-    bootstrapPresent: Object.hasOwn(
-      globalThis,
-      "__resourceManagerFrontendPerformanceBootstrap"),
-    apiPresent: Object.hasOwn(
-      globalThis,
-      "__resourceManagerFrontendPerformance"),
-    monitorResources: performance.getEntriesByType("resource")
-      .map((entry) => entry.name)
-      .filter((name) => name.includes("FrontendPerformanceMonitor-"))
-  }));
-}
-
-async function loadPlaywright() {
-  const candidates = [
-    process.env.RM_PLAYWRIGHT_MODULE,
-    resolve(projectRoot, "node_modules/playwright/index.mjs"),
-  ].filter(Boolean);
-  const modulePath = candidates.find((candidate) => existsSync(candidate));
-  if (!modulePath) {
-    throw new Error("Playwright is unavailable. Set RM_PLAYWRIGHT_MODULE or install Playwright in the frontend project.");
-  }
-  return import(pathToFileURL(modulePath).href);
-}
-
-async function launchBrowser(chromium) {
-  try {
-    return await chromium.launch({ headless: true });
-  } catch (error) {
-    if (!String(error).includes("Executable doesn't exist")) {
-      throw error;
-    }
-  }
-
-  const systemBrowser = [
-    process.env.RM_PLAYWRIGHT_BROWSER,
-    "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    "C:/Program Files/Google/Chrome/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"
-  ].filter(Boolean).find((candidate) => existsSync(candidate));
-  if (!systemBrowser) {
-    throw new Error("No Playwright browser or supported system Edge/Chrome executable is available.");
-  }
-  return chromium.launch({ headless: true, executablePath: systemBrowser });
-}
-
-async function waitForServer(processHandle) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    if (processHandle.exitCode !== null) {
-      throw new Error(`Frontend harness exited early (${processHandle.exitCode}).\n${serverOutput}`);
-    }
-    try {
-      if (listeningPort !== null) {
-        const url = `http://127.0.0.1:${listeningPort}`;
-        const response = await fetch(`${url}/__test/scenario`);
-        if (response.ok) return url;
-      }
-    } catch {
-      // Wait for the bound harness to respond before starting a journey.
-    }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-  }
-  throw new Error(`Frontend harness did not become ready.\n${serverOutput}`);
-}
-
-async function resetFixture(baseUrl) {
-  const response = await fetch(`${baseUrl}/__test/scenario/reset`, { method: "POST" });
-  if (!response.ok) {
-    throw new Error(`Unable to reset the browser fixture: ${response.status}`);
-  }
-}
-
-async function stopChildProcess(processHandle) {
-  if (processHandle.exitCode === null) {
-    const exited = new Promise((resolveExit) => processHandle.once("exit", resolveExit));
-    processHandle.kill();
-    await Promise.race([exited, new Promise((resolveDelay) => setTimeout(resolveDelay, 3000))]);
-    if (processHandle.exitCode === null) {
-      processHandle.kill("SIGKILL");
-      await Promise.race([exited, new Promise((resolveDelay) => setTimeout(resolveDelay, 1000))]);
-    }
-  }
-  processHandle.stdout.destroy();
-  processHandle.stderr.destroy();
-}
+await runBrowserGate(allJourneys, import.meta.url);

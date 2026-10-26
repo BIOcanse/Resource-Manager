@@ -11,7 +11,17 @@ import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney
 import { checkResourceBarSourceText } from "./resourceBarSourceChoiceJourney.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 
-export default async function localizationJourney(page, baseUrl) {
+// 九语旅程按这个顺序逐个切换语言：每种语言都从前一种切过来，第一种是初始的 zh-CN。
+const initialLanguage = "zh-CN";
+export function localizationLanguageOrder() {
+  return [...languageOptions.filter(option => option.id !== "system" && option.id !== "en-US"),
+    languageOptions.find(option => option.id === "en-US")].map(option => option.id);
+}
+
+// options.languages：只检查其中几种语言（语言 id 数组），给浏览器门按语言拆成并行任务用；不给就检查全部。
+// 每种被检查的语言仍从它在完整顺序里的前一种语言切过来：当前语言不是那一种时，先只切换到那一种
+// （不做它的检查），所以每次「旧语言 → 新语言」的切换和完整运行时完全相同。
+export default async function localizationJourney(page, baseUrl, options = {}) {
   const failures = [];
   const typeXChecks = [];
   const declarationChecks = [];
@@ -100,26 +110,48 @@ export default async function localizationJourney(page, baseUrl) {
       body: JSON.stringify({ productUpdateStatus: { stage, errorCode, nextCheckAt: "2026-10-27T08:00:00Z", onlineTimeSinceLastCheckSeconds: 61 } }) });
     if (!response.ok) throw new Error(`update status scenario rejected: ${response.status}`);
   };
+  // 分片从串行循环的同一轮入场：前轮已经验证成功/失败各一次，并停在 verifying 更新状态。
+  // 其他持久化输入由 seedFieldCards 和各检查显式恢复（空资源条、自动来源、固件所有权、未保护）。
+  const firstLanguageIndex = localizationLanguageOrder().findIndex(id => !options.languages?.length || options.languages.includes(id));
+  if (firstLanguageIndex > 0) {
+    verificationFails = true;
+    verificationRequests = firstLanguageIndex * 2;
+    stage = "verifying";
+    await publishUpdateStatus();
+  }
   await page.setViewportSize({ width: 1180, height: 850 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  let previous = "zh-CN";
+  let previous = initialLanguage;
   const checked = [];
-  // RM_LOCALIZATION_LANGUAGES（逗号分隔的语言 id）只跑其中几种，用于把九语旅程拆成几个进程并行；不设就跑全部。
-  const languageFilter = process.env.RM_LOCALIZATION_LANGUAGES?.split(",").map(id => id.trim()).filter(Boolean);
-  const offered = [...languageOptions.filter(option => option.id !== "system" && option.id !== "en-US"),
-    languageOptions.find(option => option.id === "en-US")]
-    .filter(option => !languageFilter?.length || languageFilter.includes(option.id));
-  if (offered.length === 0) throw new Error(`RM_LOCALIZATION_LANGUAGES matched no language: ${process.env.RM_LOCALIZATION_LANGUAGES}`);
-  for (const option of offered) {
-    const oldApp = await loadAppCopy(previous);
-    const oldSettings = await loadSettingsText(previous);
+  const enteredFrom = {};
+  const enteredState = {};
+  const order = localizationLanguageOrder().map(id => languageOptions.find(option => option.id === id));
+  const languageFilter = options.languages;
+  const unknownLanguages = (languageFilter ?? []).filter(id => !order.some(option => option.id === id));
+  if (unknownLanguages.length > 0) throw new Error(`Unknown localization languages: ${unknownLanguages.join(", ")}`);
+  const offered = order.filter(option => !languageFilter?.length || languageFilter.includes(option.id));
+  if (offered.length === 0) throw new Error("The localization journey was given an empty language list");
+  async function switchLanguage(from, option) {
+    const oldApp = await loadAppCopy(from);
+    const oldSettings = await loadSettingsText(from);
     await page.getByRole("navigation").getByRole("button", { name: oldApp.page.settings, exact: true }).click();
     await page.getByRole("button", { name: oldSettings.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: oldSettings.appearance.languageSelectLabel, exact: true }).click();
     await page.getByRole("option", { name: `${option.nativeLabel} · ${option.label}`, exact: true }).click();
     const save = page.getByRole("button", { name: oldSettings.actions.save, exact: true });
-    if (option.id !== previous) await save.click();
+    if (option.id !== from) await save.click();
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
+  }
+  for (const option of offered) {
+    const position = order.indexOf(option);
+    const predecessor = position === 0 ? initialLanguage : order[position - 1].id;
+    if (previous !== predecessor) {
+      await switchLanguage(previous, order[position - 1]);
+      previous = predecessor;
+    }
+    enteredFrom[option.id] = previous;
+    enteredState[option.id] = { stage, verificationFails, verificationRequests, protectedSoftware };
+    await switchLanguage(previous, option);
     const app = await loadAppCopy(option.id);
     const settings = await loadSettingsText(option.id);
     await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
@@ -319,7 +351,7 @@ export default async function localizationJourney(page, baseUrl) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, resourceBarSourceChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, resourceBarSourceChecks, languages: checked, enteredFrom, enteredState, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
     translatedComponentVerificationSuccessAndFailure: true,
     translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };
