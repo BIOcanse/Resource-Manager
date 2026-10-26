@@ -290,8 +290,8 @@ export class Runtime {
   add<V extends Value>(name: string, def: Definition<V>, view: Presentation<V>, host: Host<V>): Instance<V> {
     const inst = new Instance<V>(name, def, view, host, queries(this.exec.mode, (m) => this.mismatch(name, m)));
     this.instances.push(inst as unknown as Instance);
-    // 新加的部件可能是已有部件的母部件：全部重算
-    this.resolveAll();
+    // 新部件只改变自己及其后代的参数层；兄弟和祖先的层不变。
+    this.resolveWithin(inst as unknown as Instance);
     this.unsubscribe.set(inst as unknown as Instance, host.subscribe((old, next, cause) => this.hostChanged(inst as Instance, old, next, cause)));
     view.aria(host.value());
     this.toDraw.add(inst);
@@ -301,20 +301,20 @@ export class Runtime {
 
   addComposite(c: Composite): void {
     this.composites.push(c);
-    this.resolveAll();
+    this.resolveWithin(c);
   }
 
   /**
    * 移除部件（协议第 4.1 节“加入和移除”），元素卸载时调用。组件实例：不再路由、求值，不再调用它的呈现层和宿主，退订宿主；
    * 独占指针时手势直接结束（不求值、不调用），释放捕获；运动和等着的按住重复一起丢掉。组合：区域路由不再经过它。
-   * 它可能是别的部件的母部件：全部重算。结束了什么就写一条“移除”；没加入过或已移除时什么也不做。
+   * 它可能是别的部件的母部件：重算它包含的实例。结束了什么就写一条“移除”；没加入过或已移除时什么也不做。
    */
   remove(part: Part, t: number): void {
     if (!(part instanceof Instance)) {
       const at = this.composites.indexOf(part);
       if (at < 0) return;
       this.composites.splice(at, 1);
-      this.resolveAll();
+      this.resolveWithin(part);
       return;
     }
     const at = this.instances.indexOf(part);
@@ -345,7 +345,7 @@ export class Runtime {
     this.hovered.delete(part);
     this.unsubscribe.get(part)?.();
     this.unsubscribe.delete(part);
-    this.resolveAll();
+    this.resolveWithin(part);
     if (what.length) this.trace.write({ t, kind: "移除", component: part.name, summary: `移除 ${part.name}：结束了${what.join("、")}`, lines: ended });
   }
 
@@ -405,8 +405,8 @@ export class Runtime {
     return specs;
   }
 
-  private resolveAll(): void {
-    for (const inst of this.instances) inst.params = resolveParams(this.system, this.layersOf(inst), declaredSpecs(inst.def));
+  private resolveWithin(part: Part): void {
+    for (const inst of this.governedBy(part)) inst.params = resolveParams(this.system, this.layersOf(inst), declaredSpecs(inst.def));
   }
 
   /** 只算到全局层的表：含全部实例声明的参数。 */
@@ -514,7 +514,10 @@ export class Runtime {
 
   /** 一层管的实例：部件自己和它里面的；全局是全部。 */
   private governedBy(part: Part | null): Instance[] {
-    return part ? this.instances.filter((inst) => inst === part || this.parentsOf(inst).includes(part)) : this.instances;
+    if (!part) return this.instances;
+    const element = this.elementOf(part);
+    return this.instances.filter((inst) => inst === part ||
+      (inst.view.element !== element && this.platform.contains(element, inst.view.element)));
   }
 
   setAnimationMode(mode: AnimationMode, t: number): void {
