@@ -29,8 +29,13 @@ export const DESKTOP_DECEL: Curve = [0.1, 0.9, 0.2, 1];
  */
 export const CARRY_PARTS = {
   // 换页、二级分页、页签面板、设置分区：UIKit 弹簧（画中画复刻），整页这一类大的位移。通道是序号（没有几何，1 单位 = 1 px）。
+  // 停下距离 0.005 个序号：画面上是 24 px 进出距离的 0.5%（0.12 px）以下；0.001 时最后几十毫秒只剩看不见的零点几像素还在动，
+  // 隔几页换页要 700 ms 以上才停（page-motion 旅程 10-26 实测）。
   page: { by: "换页", durationToken: "--motion-page", ease: { ms: 260, curve: DESKTOP_DECEL },
-    spring: { responseMs: 400, damping: 1, stopPx: 0.001 }, source: "UIKit 弹簧（画中画复刻）：响应 400 ms、阻尼比 1" },
+    spring: { responseMs: 400, damping: 1, stopPx: 0.005 }, source: "UIKit 弹簧（画中画复刻）：响应 400 ms、阻尼比 1" },
+  // 弹窗入场：同一个 UIKit 弹簧；Vaul 抽屉的 500 ms、Motion 布局的 450 ms 和它到位的时长相当。通道是开度 0–1，停下距离 0.005（不到 0.03 px）。
+  dialog: { by: "弹窗", durationToken: "--motion-medium", ease: { ms: 180, curve: DESKTOP_DECEL },
+    spring: { responseMs: 400, damping: 1, stopPx: 0.005 }, source: "UIKit 弹簧（画中画复刻）：响应 400 ms、阻尼比 1" },
   // 选中指示条（页签、二级分页、设置导航、分段选择）：分段控件复刻的 Motion 布局是 450 ms 缓动，换成到位时长相当的 UIKit 弹簧。通道是序号。
   selection: { by: "选中指示条", durationToken: "--motion-medium", ease: { ms: 180, curve: DESKTOP_DECEL },
     spring: { responseMs: 400, damping: 1, stopPx: 0.001 }, source: "分段控件复刻（Motion 布局 450 ms）→ UIKit 弹簧：响应 400 ms、阻尼比 1" },

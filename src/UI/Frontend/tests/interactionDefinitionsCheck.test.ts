@@ -11,6 +11,8 @@ import { switchToggleDefinition } from "../src/interactions/components/switchTog
 import { CARD_SLOT_LAYOUT_BOUND, cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
 import { selectionIndicatorDefinition } from "../src/interactions/components/selectionIndicator.ts";
 import { contentTransitionDefinition } from "../src/interactions/components/contentTransition.ts";
+import { dialogEntranceDefinition } from "../src/interactions/components/dialogEntrance.ts";
+import { edgeRubberBandDefinition } from "../src/interactions/components/edgeRubberBand.ts";
 import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 import { animationStyles } from "../src/presentation/animationStyle.ts";
 
@@ -25,8 +27,8 @@ const definitions: readonly [Definition, Geometry][] = [
   // 卡片槽位不读输入，呈现层不报几何；这里给一份只为几何那几项检查。
   [cardSlotLayoutDefinition as unknown as Definition, { center: "槽位上边", atMin: { x: 0, y: 0 }, atMax: { x: CARD_SLOT_LAYOUT_BOUND * 40, y: CARD_SLOT_LAYOUT_BOUND * 40 } }]
 ];
-// 不读输入、只由宿主值带的两种（选中指示条、内容过渡）：没有几何，通道就是序号。
-const hostDriven: readonly Definition[] = [selectionIndicatorDefinition, contentTransitionDefinition];
+// 不读输入、只由宿主值带的（选中指示条、内容过渡、弹窗入场、滚动区边缘回弹）：没有几何，通道是序号、开度或偏移。
+const hostDriven: readonly Definition[] = [selectionIndicatorDefinition, contentTransitionDefinition, dialogEntranceDefinition, edgeRubberBandDefinition];
 
 // 每种动画风格的磁石全局层各检查一遍（docs/animation_style_2026-10-26.md）：弹簧和缓动两种走法都要完备、确定。
 // 值表含定义用到的场声明的参数（协议第 5 节“场和取值自己的参数”）。

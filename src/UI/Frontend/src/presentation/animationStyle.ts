@@ -6,6 +6,7 @@
 import type { ParamOverrides } from "../interactions/protocol/params.ts";
 import type { AnimationMode } from "../interactions/protocol/runtime.ts";
 import { CARRY_PARTS, springParam, SWITCH_PART } from "../interactions/components/springOrEase.ts";
+import { EDGE_BAND_RUBBER, IOS_RUBBER } from "../interactions/components/edgeRubberBand.ts";
 import type { Curve } from "../interactions/components/springOrEase.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 
@@ -49,7 +50,7 @@ const ZERO_DURATIONS = { "--motion-fast": 0, "--motion-medium": 0, "--motion-pag
 
 /**
  * 磁石全局层：每个用弹簧或缓动的部件（interactions/components/springOrEase.ts 的 CARRY_PARTS 和开关）写全
- * 「到终态用弹簧」、缓动的时长和曲线、弹簧的响应和阻尼比，再加回点时间和输出步数。
+ * 「到终态用弹簧」、缓动的时长和曲线、弹簧的响应和阻尼比，再加回点时间、输出步数和滚动区边缘回弹的橡皮筋系数（只有弹簧的风格回弹）。
  * 缓动的时长取这种风格的对应令牌、曲线取它的 --ease-decel（steps 的风格取直线，跳由输出步数做）；弹簧取复刻的参数。
  */
 function lodestoneLayer(spring: boolean, durations: Readonly<Record<MotionDurationToken, number>>,
@@ -61,7 +62,10 @@ function lodestoneLayer(spring: boolean, durations: Readonly<Record<MotionDurati
     [`${prefix}EaseMs`]: ms,
     [`${prefix}EaseX1`]: curve[0], [`${prefix}EaseY1`]: curve[1], [`${prefix}EaseX2`]: curve[2], [`${prefix}EaseY2`]: curve[3]
   });
-  const layer: ParamOverrides = { outputSteps, springTime: durations[SWITCH_PART.durationToken], ...ease(SWITCH_PART.prefix, durations[SWITCH_PART.durationToken]) };
+  const layer: ParamOverrides = {
+    outputSteps, springTime: durations[SWITCH_PART.durationToken], [EDGE_BAND_RUBBER]: spring ? IOS_RUBBER : 0,
+    ...ease(SWITCH_PART.prefix, durations[SWITCH_PART.durationToken])
+  };
   for (const [prefix, part] of Object.entries(CARRY_PARTS)) {
     Object.assign(layer, ease(prefix, durations[part.durationToken]), {
       [`${prefix}SpringResponse`]: part.spring.responseMs,

@@ -298,6 +298,16 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
 
 /** 对话框和遮罩的入场动画都走完。 */
 async function settleDialog(dialog) {
+  // 入场由磁石逐帧画（src/interactions/solid/dialogEntrance.ts），getAnimations 看不见：等它到 1 时清掉内联的变换和 will-change。
+  await dialog.evaluate((element) => new Promise((resolve, reject) => {
+    const started = performance.now();
+    const check = () => {
+      if (!element.style.transform && !element.style.willChange) resolve();
+      else if (performance.now() - started > 3000) reject(new Error(`dialog entrance did not settle: ${element.style.cssText}`));
+      else requestAnimationFrame(check);
+    };
+    check();
+  }));
   await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
 }
 

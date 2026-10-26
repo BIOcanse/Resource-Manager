@@ -65,6 +65,11 @@ body[data-animations="ultra"] {
   --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
 }
 
+/* 滚动区边缘回弹（流畅平滑，interactions/solid/edgeRubberBand.ts）：越过边缘的那一段，滚动区的子元素整体平移，滚动区本身和布局不动。 */
+[data-edge-band] > * {
+  translate: 0 var(--edge-band, 0px);
+}
+
 /* 窗口缩放时清零时长：放在风格之后，同样的特指度下它赢。 */
 body[data-window-resizing="yes"] {
   --motion-fast: 0ms;
@@ -81,10 +86,6 @@ body[data-window-resizing="yes"] {
 
 @keyframes motion-rise-in {
   from { opacity: 0; transform: translateY(4px); }
-}
-
-@keyframes motion-dialog-in {
-  from { opacity: 0; transform: translateY(6px) scale(0.97); }
 }
 
 @keyframes motion-toast-in {
@@ -162,14 +163,8 @@ textarea {
 
 /* --- 页面与分区入场 ---
    换页、切二级分页、页签面板的进出由磁石内容过渡带（interactions/solid/contentTransition.ts），不写 CSS 动画。 */
-/* --- 弹窗与 Toast --- */
-.modal-backdrop {
-  animation: motion-fade-in var(--motion-medium) var(--ease-standard);
-}
-
-.modal {
-  animation: motion-dialog-in var(--motion-medium) var(--ease-decel);
-}
+/* --- 弹窗与 Toast ---
+   弹窗和遮罩的入场由磁石带（interactions/solid/dialogEntrance.ts，按动画风格是弹簧或缓动），不写 CSS 动画。 */
 
 .toast {
   animation: motion-toast-in var(--motion-page) var(--ease-decel);

@@ -11,6 +11,7 @@ import type {
 } from "./frontendRuntime/performance/FrontendPerformanceMonitor";
 import "./styles.css";
 import { observeMotionTokens } from "./presentation/motionTokens.ts";
+import { installEdgeRubberBand } from "./interactions/solid/edgeRubberBand.ts";
 
 const root = document.getElementById("root");
 
@@ -39,8 +40,10 @@ function startApplication(performance: FrontendPerformanceMonitor) {
     ),
     root!);
   runtime.performance.markLifecycle("app-render-returned");
+  const disposeEdgeRubberBand = installEdgeRubberBand(document);
 
   window.addEventListener("pagehide", () => {
+    disposeEdgeRubberBand();
     disposeApp();
     disposeMotionTokens();
     runtime.dispose();

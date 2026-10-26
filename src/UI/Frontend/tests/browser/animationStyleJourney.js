@@ -10,6 +10,7 @@ import { waitForStableRendering } from "./journeyWaits.js";
  * - 每种风格：开关（键盘切换）、弹窗（任务中心）、换设置分区的实际过渡，逐帧在页面里读。
  *   流畅平滑带速度、能接住（动画中再按一次，滑块先顺着原来的方向走一点再回头）；桌面常规按固定时长、不带速度；
  *   终端顿挫按固定步数跳（拖着时连续）；无动画、超高性能在按键的同一个任务里就到终态。
+ * - 滚动区边缘回弹：流畅平滑里滚到顶还往上滚，内容按橡皮筋偏出去再回到边缘，滚动区本身不动；其余风格不偏。
  * - 刷新后保持；旧偏好（animations、motionFeel）按迁移读成新的两项。
  * 自动关闭在回到前台时的选择由 automatic-animation 旅程查。
  */
@@ -64,8 +65,12 @@ export default async function animationStyleJourney(page, baseUrl) {
         const style = getComputedStyle(dialog);
         return { opacity: Math.round(Number(style.opacity) * 1000) / 1000, transform: style.transform };
       },
+      band: () => {
+        const element = document.querySelector("[data-edge-band]");
+        return element ? Number.parseFloat(element.style.getPropertyValue("--edge-band")) : 0;
+      },
       section: () => {
-        const stage = document.querySelector(".settings-content > fieldset");
+        const stage = document.querySelector(".settings-content > fieldset:not(.content-transition-leaving)");
         return { transform: stage?.style.transform ?? null, opacity: stage?.style.opacity ?? null,
           leaving: document.querySelectorAll(".settings-content > .content-transition-leaving").length };
       }
@@ -74,34 +79,39 @@ export default async function animationStyleJourney(page, baseUrl) {
   await installReaders();
 
   /**
-   * 逐帧读一个值：从 startEvent（按键或点击）起，到连续 settleFrames 帧不变（或超时）。
+   * 逐帧读一个值：从 startEvent（按键或点击）起，到 settleMs 里都没变（或超时）。按时间判停，不按帧数：
+   * 无头浏览器的帧可能很密，终端顿挫一步里有好几帧同样的值。settleMs 比最长的一步（--motion-bar 360 ms ÷ 4）长。
    * sameTask 是 sameTaskEvent 冒泡到窗口那一刻（组件的处理之后）读到的值：无动画时这一刻就该是终态。
+   * changes 是每次 sameTaskEvent 的时刻：开关在 keyup 后的 change 里换终态，接住要按这一刻算，不按 keydown。
    */
-  const sample = async ({ reader, startEvent, sameTaskEvent = startEvent, trigger, between, settleFrames = 6, timeoutMs = 2500 }) => {
-    await page.evaluate(({ reader, startEvent, sameTaskEvent, settleFrames, timeoutMs }) => {
+  const sample = async ({ reader, startEvent, sameTaskEvent = startEvent, trigger, between, settleMs = 150, timeoutMs = 2500 }) => {
+    await page.evaluate(({ reader, startEvent, sameTaskEvent, settleMs, timeoutMs }) => {
       const read = window.__styleReaders[reader];
       const stop = new AbortController();
-      const probe = { t0: null, sameTask: undefined, events: [], frames: [], done: false };
+      const probe = { t0: null, sameTask: undefined, events: [], changes: [], frames: [], done: false };
       window.__styleProbe = probe;
       window.addEventListener(startEvent, () => {
         const now = performance.now();
         if (probe.t0 === null) probe.t0 = now;
         probe.events.push(now - probe.t0);
       }, { capture: true, signal: stop.signal });
-      window.addEventListener(sameTaskEvent, () => { if (probe.sameTask === undefined) probe.sameTask = read(); }, { signal: stop.signal });
-      let still = 0;
+      window.addEventListener(sameTaskEvent, () => {
+        if (probe.sameTask === undefined) probe.sameTask = read();
+        if (probe.t0 !== null) probe.changes.push(performance.now() - probe.t0);
+      }, { signal: stop.signal });
+      let changedAt = null;
       const tick = (now) => {
         if (probe.t0 !== null) {
           const value = read();
           const last = probe.frames.at(-1);
-          still = last && JSON.stringify(last.value) === JSON.stringify(value) ? still + 1 : 0;
+          if (!last || JSON.stringify(last.value) !== JSON.stringify(value)) changedAt = now;
           probe.frames.push({ t: now - probe.t0, value });
-          if (still >= settleFrames || now - probe.t0 > timeoutMs) { probe.done = true; stop.abort(); return; }
+          if (now - changedAt >= settleMs || now - probe.t0 > timeoutMs) { probe.done = true; stop.abort(); return; }
         }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
-    }, { reader, startEvent, sameTaskEvent, settleFrames, timeoutMs });
+    }, { reader, startEvent, sameTaskEvent, settleMs, timeoutMs });
     await trigger();
     if (between) await between();
     await page.waitForFunction(() => window.__styleProbe.done, undefined, { timeout: timeoutMs + 3000 });
@@ -112,7 +122,7 @@ export default async function animationStyleJourney(page, baseUrl) {
     for (let index = 1; index < frames.length; index++) {
       if (JSON.stringify(frames[index].value) !== JSON.stringify(frames[index - 1].value)) settledAt = frames[index].t;
     }
-    return { frames, settledAt, sameTask: probe.sameTask, events: probe.events, final: frames.at(-1)?.value };
+    return { frames, settledAt, sameTask: probe.sameTask, events: probe.events, changes: probe.changes, final: frames.at(-1)?.value };
   };
 
   // 开关：「更新」分区的“间隔检查”，空格切换（复选框在 keyup 时改值，change 之后磁石接手）。
@@ -169,7 +179,27 @@ export default async function animationStyleJourney(page, baseUrl) {
     await page.getByRole("dialog", { name: app.taskCenter.title, exact: true }).waitFor({ state: "hidden" });
     return run;
   };
-  const sectionChange = async (section) => sample({ reader: "section", startEvent: "click", trigger: () => openSection(section) });
+  /** 换分区之前等上一段分区过渡走完（退出副本撤掉、内容层没有内联变换）：量的是从静止开始的一段。 */
+  const sectionChange = async (section) => {
+    await page.waitForFunction(() => {
+      const stage = document.querySelector(".settings-content > fieldset:not(.content-transition-leaving)");
+      return !document.querySelector(".settings-content > .content-transition-leaving") && stage && !stage.style.transform;
+    }, undefined, { timeout: 5000 });
+    return sample({ reader: "section", startEvent: "click", trigger: () => openSection(section) });
+  };
+  /** 设置内容滚到顶，指针放在上面往上滚三格：读越过边缘的偏移。 */
+  const edgeBand = async () => {
+    const content = page.locator(".settings-content");
+    await content.evaluate((element) => {
+      for (let node = element; node; node = node.parentElement) node.scrollTop = 0;
+    });
+    const box = await content.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 200));
+    await page.waitForTimeout(50);
+    return sample({ reader: "band", startEvent: "wheel", settleMs: 250, timeoutMs: 3000, trigger: async () => {
+      for (let notch = 0; notch < 3; notch++) { await page.mouse.wheel(0, -100); await page.waitForTimeout(30); }
+    } });
+  };
 
   const distinct = (values) => [...new Set(values.map((value) => JSON.stringify(value)))].map((value) => JSON.parse(value));
   const monotone = (values) => values.every((value, index) => index < 2 || Math.sign(value - values[index - 1]) * Math.sign(values[1] - values[0]) >= 0);
@@ -188,13 +218,21 @@ export default async function animationStyleJourney(page, baseUrl) {
     const dialog = await dialogOpen();
     await openSettings();
     const sections = [await sectionChange("updates"), await sectionChange("appearance")];
+    await page.waitForTimeout(400);
+    const band = await edgeBand();
+    const bandPeak = Math.max(...band.frames.map((frame) => Math.abs(frame.value)));
+    const bandLeft = await page.evaluate(() => document.querySelectorAll("[data-edge-band]").length);
     const entry = { tokenMs, toggle: toggle.map(({ settledAt, sameTask, final }) => ({ settledAt, sameTask, final })),
       toggleFrames: toggle[0].frames.map((frame) => [Math.round(frame.t), frame.value]),
-      caught: caught.frames.map((frame) => [Math.round(frame.t), frame.value]), caughtPresses: caught.events.map(Math.round), drag,
+      caught: caught.frames.map((frame) => [Math.round(frame.t), frame.value]), caughtPresses: caught.events.map(Math.round), caughtChanges: caught.changes.map(Math.round), drag,
       dialog: { settledAt: dialog.settledAt, first: dialog.frames.find((frame) => frame.value)?.value, values: distinct(dialog.frames.filter((frame) => frame.value).map((frame) => frame.value.opacity)) },
+      band: { peak: bandPeak, settledAt: band.settledAt, final: band.final, left: bandLeft },
       sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => frame.value.transform)) })) };
     results[style] = entry;
     const xs = (run) => run.frames.map((frame) => frame.value);
+    if (style === "smooth") {
+      if (!(bandPeak > 5) || band.final !== 0 || bandLeft !== 0 || band.settledAt > 2000) fail(`smooth: the scroll edge does not rubber-band and return: ${JSON.stringify(entry.band)}`);
+    } else if (bandPeak !== 0 || bandLeft !== 0) fail(`${style}: the scroll edge moves: ${JSON.stringify(entry.band)}`);
     if (style === "none" || style === "ultra") {
       // 当帧到终态：按键派发完那一刻滑块已在另一端；弹窗、分区的第一帧就是终态。
       for (const run of toggle) if (run.sameTask !== run.final) fail(`${style}: the switch is not at its end in the same task: ${JSON.stringify(entry.toggle)}`);
@@ -218,7 +256,7 @@ export default async function animationStyleJourney(page, baseUrl) {
       if (dialog.settledAt < medium * 0.75 || dialog.settledAt > medium + 90) fail(`${style}: the dialog settles at ${dialog.settledAt} ms, not ${medium} ms`);
       for (const run of sections) if (run.settledAt < pageMs * 0.75 || run.settledAt > pageMs + 120) fail(`${style}: the section settles at ${run.settledAt} ms, not ${pageMs} ms`);
       for (const run of toggle) if (!monotone(xs(run))) fail(`${style}: the switch overshoots: ${JSON.stringify(entry.toggleFrames)}`);
-      const second = caught.events[1];
+      const second = caught.changes[1];
       const atSecond = caught.frames.filter((frame) => frame.t <= second + 1).at(-1)?.value;
       const after = caught.frames.filter((frame) => frame.t > second + 1).map((frame) => frame.value);
       const firstDirection = Math.sign((atSecond ?? 0) - caught.frames[0].value);
@@ -236,7 +274,7 @@ export default async function animationStyleJourney(page, baseUrl) {
     }
     if (style === "smooth") {
       // 弹簧：能接住、带速度——第二次按下后滑块先顺着原来的方向再走一点，然后回头，中间不跳。
-      const second = caught.events[1];
+      const second = caught.changes[1];
       const atSecond = caught.frames.filter((frame) => frame.t <= second + 1).at(-1)?.value;
       const after = caught.frames.filter((frame) => frame.t > second + 1).map((frame) => frame.value);
       const firstDirection = Math.sign((atSecond ?? 0) - caught.frames[0].value);

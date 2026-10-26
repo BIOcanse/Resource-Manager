@@ -17,6 +17,8 @@ import { controlSliderDefinition } from "../src/interactions/components/controlS
 import { curvePointDefinition } from "../src/interactions/components/curvePoint.ts";
 import { selectionIndicatorDefinition } from "../src/interactions/components/selectionIndicator.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
+import { dialogEntranceDefinition } from "../src/interactions/components/dialogEntrance.ts";
+import { EDGE_BAND_RUBBER, edgeRubberBandDefinition, IOS_RUBBER } from "../src/interactions/components/edgeRubberBand.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
 
@@ -93,7 +95,8 @@ assert.deepEqual(animationStyles.map((style) => [style.id, style.engineMode]),
   [["smooth", "normal"], ["desktop", "normal"], ["terminal", "normal"], ["none", "none"], ["ultra", "ultra"]]);
 const definitions: Array<[string, Definition]> = [
   ["内容过渡", contentTransitionDefinition], ["选中指示条", selectionIndicatorDefinition], ["卡片槽位", cardSlotLayoutDefinition],
-  ["曲线点", curvePointDefinition], ["数值滑条", controlSliderDefinition], ["设置开关", switchToggleDefinition], ["列宽把手", columnResizeHandleDefinition]
+  ["曲线点", curvePointDefinition], ["数值滑条", controlSliderDefinition], ["设置开关", switchToggleDefinition], ["列宽把手", columnResizeHandleDefinition],
+  ["弹窗入场", dialogEntranceDefinition], ["滚动区边缘回弹", edgeRubberBandDefinition]
 ];
 const known = new Set([...PARAM_SPECS.map((spec) => spec.id as string), ...definitions.flatMap(([, def]) => declaredSpecs(def).map((spec) => spec.id as string))]);
 for (const key of keys(desktop)) assert.ok(known.has(key), `Lodestone layer key ${key} is declared by the engine or a component`);
@@ -116,6 +119,12 @@ for (const [prefix, part] of Object.entries(CARRY_PARTS)) {
   }
 }
 assert.equal(byId("smooth").lodestone[springParam(SWITCH_PART.prefix)], 1);
+// 滚动区边缘回弹只在流畅平滑：橡皮筋系数取 iOS 列表复刻的值，其余风格 0（不回弹，组件给的默认）。
+for (const style of animationStyles) assert.equal(style.lodestone[EDGE_BAND_RUBBER], style.id === "smooth" ? IOS_RUBBER : 0, `${style.id}: edge rubber band`);
+assert.equal(resolveParams(null, [], declaredSpecs(edgeRubberBandDefinition))[EDGE_BAND_RUBBER].value, 0, "the component default does not bounce");
+// 弹窗不再有 CSS 入场动画：磁石带。
+assert.ok(!rules.some((rule) => rule.selectors.some((selector) => selector === ".modal" || selector === ".modal-backdrop") && rule.declarations.has("animation")),
+  "the dialog entrance is drawn by Lodestone, not a CSS animation");
 // 范围小的覆盖大的：组件定义里写死的值不受风格影响；没写的项跟风格走。
 for (const style of animationStyles) {
   const layer = globalLayer({ ...style.lodestone });
