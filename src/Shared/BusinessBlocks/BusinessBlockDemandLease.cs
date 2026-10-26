@@ -1,6 +1,5 @@
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
-namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+namespace ResourceManager.Shared.BusinessBlocks;
 
 internal sealed class BusinessBlockDemandLease(BusinessBlockScheduler owner, string key, BusinessBlockReason reason) : IBusinessBlockDependency
 {

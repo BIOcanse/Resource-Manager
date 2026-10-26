@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
-namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+namespace ResourceManager.Shared.BusinessBlocks;
 
 /// <summary>Authoritative scheduling facts. Each fact has its own lock and declared readers.</summary>
 internal sealed class BusinessBlockFactAuthority

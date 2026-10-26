@@ -24,7 +24,7 @@ public sealed class NativeUiStartupTests
 
         Assert.Contains("Microsoft.Web.WebView2", project, StringComparison.Ordinal);
         Assert.DoesNotContain("Vortice", project, StringComparison.Ordinal);
-        Assert.Contains("private readonly WebView2FrontendHost", mainForm, StringComparison.Ordinal);
+        Assert.Contains("private readonly IFrontendHost", mainForm, StringComparison.Ordinal);
         Assert.Contains("new WebView2FrontendHost", mainForm, StringComparison.Ordinal);
         Assert.DoesNotContain("FrontendHostFactory", mainForm, StringComparison.Ordinal);
         Assert.Contains("Microsoft.Web.WebView2.WinForms.WebView2", webViewHost, StringComparison.Ordinal);

@@ -11,7 +11,7 @@ public sealed partial class MainForm : Form
     private const int WsMinimizeBox = 0x00020000;
     private const int WsMaximizeBox = 0x00010000;
 
-    private readonly WebView2FrontendHost frontendHost;
+    private readonly IFrontendHost frontendHost;
     private readonly BackendAvailabilityPanel backendAvailabilityPanel;
     private Task<bool>? frontendHostInitializationTask;
     private bool appNavigationStarted;
@@ -36,12 +36,24 @@ public sealed partial class MainForm : Form
         Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
         Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
             Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null)
+        : this(taskManagerShortcutReplacementChanged, editableHotkeysChanged,
+            new WebView2FrontendHost(hostConfiguration), elevatedProcessAction, elevatedBackendRequest)
+    {
+    }
+
+    internal MainForm(
+        Action<bool> taskManagerShortcutReplacementChanged,
+        Action editableHotkeysChanged,
+        IFrontendHost frontendHost,
+        Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
+        Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
+            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null)
     {
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
         this.editableHotkeysChanged = editableHotkeysChanged;
         this.elevatedProcessAction = elevatedProcessAction;
         this.elevatedBackendRequest = elevatedBackendRequest;
-        frontendHost = new WebView2FrontendHost(hostConfiguration);
+        this.frontendHost = frontendHost;
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;
         Text = NativeUiText.Current.AppName;
@@ -75,6 +87,8 @@ public sealed partial class MainForm : Form
 
     internal event EventHandler? ExitRequested;
 
+    internal event EventHandler? WindowCloseRequested;
+
     public void PrepareForOpenOnPrimaryScreen()
     {
         WindowPlacement.PlaceForOpenOnPrimaryScreen(this);
@@ -85,9 +99,17 @@ public sealed partial class MainForm : Form
         return WindowPlacement.TryPlaceForPassiveValidationOnSecondaryScreen(this);
     }
 
-    public async Task StartFrontendAsync()
+    public Task StartFrontendAsync()
     {
-        if (!backendContentEnabled)
+        if (frontendStopping) return Task.CompletedTask;
+        var starting = StartFrontendCoreAsync();
+        TrackFrontendRequest(starting);
+        return starting;
+    }
+
+    private async Task StartFrontendCoreAsync()
+    {
+        if (frontendStopping || !backendContentEnabled)
         {
             return;
         }
@@ -98,6 +120,7 @@ public sealed partial class MainForm : Form
         }
 
         if (await EnsureFrontendHostAsync()
+            && !frontendStopping
             && backendContentEnabled
             && frontendHost.IsReady)
         {
@@ -131,7 +154,15 @@ public sealed partial class MainForm : Form
     }
 
     internal void StopAndClose()
+        => CompleteClose();
+
+    internal void CompleteClose()
     {
+        if (frontendStopTask is { IsCompleted: false }
+            || (WindowCloseRequested is not null && frontendStopTask is null))
+            throw new InvalidOperationException("Await frontend shutdown before closing the window.");
+        frontendStopTask?.GetAwaiter().GetResult();
+        finalClose = true;
         Hide();
         StopPolling();
         Close();
@@ -206,6 +237,11 @@ public sealed partial class MainForm : Form
         // Keep the real bounds and window state intact while removing the HWND
         // from the screen before any closing handler can tear down the surface.
         Hide();
+        if (!finalClose && WindowCloseRequested is not null)
+        {
+            args.Cancel = true;
+            WindowCloseRequested.Invoke(this, EventArgs.Empty);
+        }
         base.OnFormClosing(args);
     }
 

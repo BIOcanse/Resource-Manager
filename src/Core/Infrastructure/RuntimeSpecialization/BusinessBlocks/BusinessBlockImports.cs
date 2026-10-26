@@ -1,0 +1,2 @@
+global using ResourceManager.Shared.BusinessBlocks;
+global using BusinessBlockScheduler = ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockScheduler;

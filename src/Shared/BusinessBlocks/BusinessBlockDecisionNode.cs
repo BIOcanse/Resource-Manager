@@ -1,6 +1,6 @@
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using Microsoft.Extensions.Logging;
 
-namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+namespace ResourceManager.Shared.BusinessBlocks;
 
 /// <summary>One serial decision loop for one parent's immediate children. It owns no execution policy.</summary>
 internal sealed class BusinessBlockDecisionNode : IDisposable
@@ -35,7 +35,7 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
         ParentId = parentId; this.children = children; FactKeys = factKeys; this.decide = decide;
         this.authority = authority; this.control = control; this.create = create; this.childNode = childNode;
         this.logger = logger; this.historyLimit = historyLimit;
-        permitted = parentId == BackendBlockGraph.Program;
+        permitted = parentId == BusinessBlockGraph.Program;
     }
 
     public Task Wake(string cause, BusinessBlockReason why)
@@ -98,8 +98,8 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
         var facts = FactKeys.ToDictionary(key => key, authority.Read, StringComparer.Ordinal);
         var actual = children.ToDictionary(id => id, control.ReadState, StringComparer.Ordinal);
         // The owner's state is read when deciding, never kept: children run only while the owner runs.
-        var active = permit && (ParentId == BackendBlockGraph.Program || control.ReadState(ParentId) == BusinessBlockState.Running);
-        var wanted = active && !(ParentId == BackendBlockGraph.Program && facts[BusinessBlockScheduler.ShutdownFact].Value)
+        var active = permit && (ParentId == BusinessBlockGraph.Program || control.ReadState(ParentId) == BusinessBlockState.Running);
+        var wanted = active && !(ParentId == BusinessBlockGraph.Program && facts[BusinessBlockScheduler.ShutdownFact].Value)
             ? decide(new(facts, actual)).ToHashSet(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal);
         foreach (var id in wanted)
             if (!actual.ContainsKey(id)) throw new InvalidOperationException($"Decision node {ParentId} cannot control non-child {id}.");
@@ -157,7 +157,7 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
 
     private void PublishDrained(bool value, BusinessBlockReason why)
     {
-        if (ParentId != BackendBlockGraph.Program)
+        if (ParentId != BusinessBlockGraph.Program)
             _ = authority.Publish(BusinessBlockScheduler.ChildrenStoppedFact(ParentId), value, why);
     }
 

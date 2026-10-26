@@ -1,54 +1,58 @@
-using System.Diagnostics;
-
 namespace ResourceManager.NativeUi;
 
 internal sealed record NativeUiShutdownActions(
     Action MarkExiting,
-    Action CancelBackgroundWork,
-    Action HideTray,
-    Action StopAndCloseMainWindow,
+    Func<Task> StopTrees,
     Action ExitMessageLoop)
 {
     public void Validate()
     {
         ArgumentNullException.ThrowIfNull(MarkExiting);
-        ArgumentNullException.ThrowIfNull(CancelBackgroundWork);
-        ArgumentNullException.ThrowIfNull(HideTray);
-        ArgumentNullException.ThrowIfNull(StopAndCloseMainWindow);
+        ArgumentNullException.ThrowIfNull(StopTrees);
         ArgumentNullException.ThrowIfNull(ExitMessageLoop);
     }
 }
 
 internal sealed class NativeUiShutdownCoordinator
 {
-    private int shutdownStarted;
+    private readonly object sync = new();
+    private Task? completion;
 
-    public bool TryShutdown(NativeUiShutdownActions actions)
+    public Task? Completion { get { lock (sync) return completion; } }
+
+    public Task ShutdownAsync(NativeUiShutdownActions actions)
     {
         ArgumentNullException.ThrowIfNull(actions);
         actions.Validate();
-        if (Interlocked.Exchange(ref shutdownStarted, 1) != 0)
+        TaskCompletionSource finished;
+        lock (sync)
         {
-            return false;
+            if (completion is not null) return completion;
+            finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            completion = finished.Task;
         }
 
-        Run(actions.MarkExiting);
-        Run(actions.CancelBackgroundWork);
-        Run(actions.HideTray);
-        Run(actions.StopAndCloseMainWindow);
-        Run(actions.ExitMessageLoop);
-        return true;
+        // Publish completion before calling user code: hiding a window or cancellation can reenter.
+        _ = FinishAsync(actions, finished);
+        return finished.Task;
     }
 
-    private static void Run(Action action)
+    private static async Task FinishAsync(NativeUiShutdownActions actions, TaskCompletionSource finished)
     {
         try
         {
-            action();
+            actions.MarkExiting();
+            await actions.StopTrees();
+            actions.ExitMessageLoop();
+            finished.TrySetResult();
         }
-        catch (Exception ex)
+        catch (OperationCanceledException error)
         {
-            Trace.WriteLine(ex);
+            finished.TrySetCanceled(error.CancellationToken);
+        }
+        catch (Exception error)
+        {
+            finished.TrySetException(error);
         }
     }
 }

@@ -3,7 +3,7 @@ using WebView2Control = Microsoft.Web.WebView2.WinForms.WebView2;
 
 namespace ResourceManager.NativeUi.WebView;
 
-internal sealed class WebView2FrontendHost : IDisposable
+internal sealed class WebView2FrontendHost : IFrontendHost
 {
     private const string BaseBrowserArguments =
         "--disk-cache-size=1048576 --media-cache-size=1 "
@@ -14,20 +14,26 @@ internal sealed class WebView2FrontendHost : IDisposable
     private readonly FrontendLoopbackProxy proxy;
     private readonly WebView2Control surface;
     private readonly Color backgroundColor;
+    private readonly CancellationTokenSource lifetime = new();
     private CoreWebView2Environment? environment;
     private CoreWebView2? coreWebView;
     private Task? initializationTask;
+    private Task? stopTask;
+    private TaskCompletionSource? browserExited;
     private bool requestFilterAdded;
     private bool eventsAttached;
     private bool trustedTopLevelDocumentActive;
     private bool disposed;
+    private bool stopping;
+    private bool browserExitRequired;
 
-    public WebView2FrontendHost(WebView2HostConfiguration configuration)
+    public WebView2FrontendHost(WebView2HostConfiguration configuration, Color? initialBackgroundColor = null)
     {
         this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         proxy = configuration.Proxy;
         documentPolicy = new TrustedFrontendDocumentPolicy(proxy.ApplicationAddress);
-        backgroundColor = WebViewAppearanceBootstrap.LoadBackgroundColor(configuration.SettingsPath);
+        backgroundColor = initialBackgroundColor
+            ?? WebViewAppearanceBootstrap.LoadBackgroundColor(configuration.SettingsPath);
         surface = new WebView2Control
         {
             Dock = DockStyle.Fill,
@@ -40,7 +46,7 @@ internal sealed class WebView2FrontendHost : IDisposable
 
     public Color BackgroundColor => backgroundColor;
 
-    public bool IsReady => coreWebView is not null;
+    public bool IsReady => !stopping && coreWebView is not null;
 
     public string ApplicationAddress => proxy.ApplicationAddress;
 
@@ -78,6 +84,7 @@ internal sealed class WebView2FrontendHost : IDisposable
     public async Task InitializeAsync()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (stopping) throw new InvalidOperationException("The frontend host is stopping.");
         if (IsReady)
         {
             return;
@@ -129,6 +136,33 @@ internal sealed class WebView2FrontendHost : IDisposable
 
     public void Dispose()
     {
+        if (disposed) return;
+        var stopped = StopAsync();
+        if (!stopped.IsCompleted)
+            throw new InvalidOperationException("Await StopAsync on the UI thread before disposing an initialized frontend host.");
+        stopped.GetAwaiter().GetResult();
+    }
+
+    public Task StopAsync()
+    {
+        if (stopTask is not null) return stopTask;
+        stopping = true;
+        lifetime.Cancel();
+        return stopTask = StopCoreAsync();
+    }
+
+    private async Task StopCoreAsync()
+    {
+        try
+        {
+            await FrontendHostShutdown.DrainAsync(initializationTask,
+                CloseSurface, WaitForBrowserExitAsync);
+        }
+        finally { lifetime.Dispose(); }
+    }
+
+    private void CloseSurface()
+    {
         if (disposed)
         {
             return;
@@ -149,27 +183,55 @@ internal sealed class WebView2FrontendHost : IDisposable
         eventsAttached = false;
         trustedTopLevelDocumentActive = false;
         coreWebView = null;
-        environment = null;
+        browserExitRequired = environment is not null
+            && (browserExited?.Task.IsCompleted == true || environment.GetProcessInfos().Count != 0);
         surface.Dispose();
     }
 
+    private async Task WaitForBrowserExitAsync()
+    {
+        var currentEnvironment = environment;
+        if (currentEnvironment is null) return;
+        try
+        {
+            // Initialization has joined, so no new controller can be created.
+            // With no remaining processes there is no future exit to await.
+            if (browserExited is { } exit && browserExitRequired)
+                await exit.Task;
+        }
+        finally
+        {
+            currentEnvironment.BrowserProcessExited -= HandleBrowserProcessExited;
+            environment = null;
+        }
+    }
+
+    private void HandleBrowserProcessExited(object? sender, CoreWebView2BrowserProcessExitedEventArgs args)
+        => browserExited?.TrySetResult();
+
     private async Task InitializeCoreAsync()
     {
-        await proxy.StartAsync();
-        System.Diagnostics.Trace.WriteLine("WebView2 private HTTP proxy started.");
+        var proxyAddress = await proxy.WaitForAddressAsync(lifetime.Token);
+        lifetime.Token.ThrowIfCancellationRequested();
+        System.Diagnostics.Trace.WriteLine("WebView2 private HTTP proxy endpoint received.");
         Directory.CreateDirectory(configuration.ProfileDirectory);
         Environment.SetEnvironmentVariable(
             "WEBVIEW2_DEFAULT_BACKGROUND_COLOR",
             WebViewAppearanceBootstrap.ToWebViewEnvironmentValue(backgroundColor));
 
         var runtime = await BrowserRuntimeResolver.ResolveAsync();
+        lifetime.Token.ThrowIfCancellationRequested();
         System.Diagnostics.Trace.WriteLine(
             $"WebView2 runtime selected: {runtime.Version} ({runtime.Source})");
         environment ??= await CoreWebView2Environment.CreateAsync(
             browserExecutableFolder: runtime.BrowserExecutableFolder,
             userDataFolder: configuration.ProfileDirectory,
             options: new CoreWebView2EnvironmentOptions(ResolveBrowserArguments()
-                + $" --proxy-server={proxy.Address.TrimEnd('/')} --proxy-bypass-list=<-loopback>"));
+                + $" --proxy-server={proxyAddress.TrimEnd('/')} --proxy-bypass-list=<-loopback>"));
+        browserExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        environment.BrowserProcessExited -= HandleBrowserProcessExited;
+        environment.BrowserProcessExited += HandleBrowserProcessExited;
+        lifetime.Token.ThrowIfCancellationRequested();
         System.Diagnostics.Trace.WriteLine("WebView2 environment created.");
         System.Diagnostics.Trace.WriteLine($"WebView2 controller thread: {System.Environment.CurrentManagedThreadId}; apartment: {Thread.CurrentThread.GetApartmentState()}; context: {SynchronizationContext.Current?.GetType().FullName ?? "none"}.");
 

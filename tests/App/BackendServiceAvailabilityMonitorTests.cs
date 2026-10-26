@@ -4,6 +4,48 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class BackendServiceAvailabilityMonitorTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompletionWaitsForRaceLoserCleanupEvenWhenWinnerFaults(bool winnerFaults)
+    {
+        var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new List<BackendServiceUnavailableEventArgs>();
+        var monitor = new BackendServiceAvailabilityMonitor(
+            _ => Task.FromResult(true),
+            _ => winnerFaults
+                ? Task.FromException<BackendServiceUnavailableEventArgs>(new IOException("Process waiter failed."))
+                : Task.FromResult(BackendServiceUnavailableEventArgs.OwnedProcessExited(7)),
+            delayAsync: async (_, token) =>
+            {
+                try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+                finally
+                {
+                    canceled.TrySetResult();
+                    await release.Task;
+                }
+            });
+        monitor.AvailabilityLost += (_, unavailable) => observed.Add(unavailable);
+        monitor.Start();
+        try
+        {
+            await canceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(monitor.Completion.IsCompleted);
+            var disposal = monitor.DisposeAsync().AsTask();
+            Assert.False(disposal.IsCompleted);
+            release.TrySetResult();
+            await disposal.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(winnerFaults ? BackendServiceUnavailableReason.MonitorFault
+                : BackendServiceUnavailableReason.OwnedProcessExited, Assert.Single(observed).Reason);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await monitor.DisposeAsync();
+        }
+    }
+
     [Fact]
     public async Task ProbeFailures_RequireConsecutiveThresholdAndHealthyResetsCount()
     {

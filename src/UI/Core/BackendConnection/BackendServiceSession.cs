@@ -12,7 +12,7 @@ using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
 namespace ResourceManager.NativeUi;
 
-internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource, IDisposable
+internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource, IDisposable, IAsyncDisposable
 {
     private const string ApiKeyHeaderName = TrustedAccessHeaders.KeyHeader;
     private const int MaximumProbeResponseBytes = 16 * 1024;
@@ -33,11 +33,14 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     private readonly Func<BackendProcessIdentity?> captureIdentity;
     private BackendProcessIdentity? backendProcessIdentity;
     private BackendServiceAvailabilityMonitor? availabilityMonitor;
+    private readonly object disposalSync = new();
+    private Task? disposalCompletion;
     private bool disposed;
 
     internal BackendServiceSession(string baseAddress,
         Func<string?>? apiKeyReader = null,
-        Func<BackendProcessIdentity?>? identityReader = null)
+        Func<BackendProcessIdentity?>? identityReader = null,
+        BackendServiceAvailabilityMonitor? availabilityMonitor = null)
     {
         endpoint = new Uri(baseAddress);
         BackendPath = ResolveBackendPath();
@@ -69,6 +72,8 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             BaseAddress = endpoint,
             Timeout = Timeout.InfiniteTimeSpan
         };
+        this.availabilityMonitor = availabilityMonitor;
+        if (availabilityMonitor is not null) availabilityMonitor.AvailabilityLost += OnAvailabilityLost;
     }
 
     public string BackendPath { get; }
@@ -265,26 +270,40 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     }
 
     public void Dispose()
+        => _ = BeginDispose();
+
+    public async ValueTask DisposeAsync()
+        => await BeginDispose().ConfigureAwait(false);
+
+    private Task BeginDispose()
     {
-        if (disposed)
+        lock (disposalSync)
         {
-            return;
-        }
-
-        disposed = true;
-        if (availabilityMonitor is not null)
-        {
-            availabilityMonitor.AvailabilityLost -= OnAvailabilityLost;
-            availabilityMonitor.Dispose();
+            if (disposalCompletion is not null) return disposalCompletion;
+            disposed = true;
+            var monitor = availabilityMonitor;
             availabilityMonitor = null;
+            if (monitor is not null) monitor.AvailabilityLost -= OnAvailabilityLost;
+            disposalCompletion = DisposeCoreAsync(monitor);
+            return disposalCompletion;
         }
+    }
 
-        probeClient.Dispose();
-        actionClient.Dispose();
-        desktopPublisherClient.Dispose();
-        streamClient.Dispose();
-        frontendClient.Dispose();
-        backendProcessIdentity = null;
+    private async Task DisposeCoreAsync(BackendServiceAvailabilityMonitor? monitor)
+    {
+        try
+        {
+            if (monitor is not null) await monitor.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            probeClient.Dispose();
+            actionClient.Dispose();
+            desktopPublisherClient.Dispose();
+            streamClient.Dispose();
+            frontendClient.Dispose();
+            backendProcessIdentity = null;
+        }
     }
 
     private Task<bool> TryConnectAsync(
@@ -422,16 +441,17 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
 
     private void StartAvailabilityMonitor()
     {
-        if (availabilityMonitor is not null)
+        lock (disposalSync)
         {
-            return;
-        }
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (availabilityMonitor is not null) return;
 
-        availabilityMonitor = new BackendServiceAvailabilityMonitor(
-            ProbeCurrentConnectionAsync,
-            waitForOwnedProcessExitAsync: null);
-        availabilityMonitor.AvailabilityLost += OnAvailabilityLost;
-        availabilityMonitor.Start();
+            availabilityMonitor = new BackendServiceAvailabilityMonitor(
+                ProbeCurrentConnectionAsync,
+                waitForOwnedProcessExitAsync: null);
+            availabilityMonitor.AvailabilityLost += OnAvailabilityLost;
+            availabilityMonitor.Start();
+        }
     }
 
     private void OnAvailabilityLost(

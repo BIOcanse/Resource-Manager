@@ -37,6 +37,74 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
     }
 
     [Fact]
+    public async Task EndpointReadWaitsForProducerAndConsumerCancellationDoesNotStartIt()
+    {
+        await using var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"),
+            (_, _) => throw new InvalidOperationException("No forwarding expected."));
+        using var canceledReader = new CancellationTokenSource();
+        var first = proxy.WaitForAddressAsync(canceledReader.Token);
+        var second = proxy.WaitForAddressAsync(CancellationToken.None);
+        Assert.False(first.IsCompleted);
+        Assert.False(second.IsCompleted);
+        Assert.Empty(proxy.Address);
+        canceledReader.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+        Assert.False(second.IsCompleted);
+        Assert.Empty(proxy.Address);
+        await proxy.StartAsync();
+        Assert.Equal(proxy.Address, await second);
+        Assert.Equal(proxy.Address, await proxy.WaitForAddressAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ConcurrentDisposalsBothWaitForActiveForwardingToDrain()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var returned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proxy = new FrontendLoopbackProxy(new Uri("http://127.0.0.1:9321/"), async (_, token) =>
+        {
+            entered.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException)
+            {
+                canceled.SetResult();
+                await release.Task;
+                throw;
+            }
+            finally { returned.SetResult(); }
+            throw new InvalidOperationException("The forwarding operation must be canceled.");
+        });
+        await proxy.StartAsync();
+        using var client = ProxyClient(proxy);
+        using var request = AuthorizedRequest(proxy, "api/wait");
+        var forwarding = client.SendAsync(request);
+        Task? first = null;
+        Task? second = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            first = proxy.DisposeAsync().AsTask();
+            await canceled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            second = proxy.DisposeAsync().AsTask();
+            Assert.Same(first, second);
+            Assert.False(first.IsCompleted);
+            Assert.False(second.IsCompleted);
+            release.SetResult();
+            await Task.WhenAll(first, second);
+            Assert.True(returned.Task.IsCompleted);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await proxy.DisposeAsync();
+            try { using var response = await forwarding; }
+            catch (HttpRequestException) { }
+        }
+    }
+
+    [Fact]
     public async Task PrivateBridgeDeniesMissingCapabilityForeignHostAndForeignOrigin()
     {
         var forwarded = 0;
@@ -251,6 +319,7 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
             output.WriteLine("Checking installed WebView2 runtime without the installer/consent path.");
             Assert.False(string.IsNullOrWhiteSpace(Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString()));
             await using var proxy = new FrontendLoopbackProxy(BackendAddress(backend), session.SendFrontendRequestAsync);
+            await proxy.StartAsync();
             using var form = CreatePassiveTestForm();
             using var startupLog = new StringWriter();
             using var trace = new TextWriterTraceListener(startupLog);
@@ -306,7 +375,7 @@ public sealed class BackendFrontendProxyTests(Xunit.Abstractions.ITestOutputHelp
                     observedEnvironment = host.EnvironmentForDiagnostics;
                     if (observedEnvironment is not null)
                         observedEnvironment.BrowserProcessExited += (_, _) => { browserExited = true; exited.TrySetResult(); };
-                    host.Dispose();
+                    await host.StopAsync();
                     form.Close();
                     if (observedEnvironment is not null)
                     {

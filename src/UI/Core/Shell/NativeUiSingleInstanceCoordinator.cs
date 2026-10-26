@@ -11,7 +11,9 @@ public sealed class NativeUiSingleInstanceCoordinator : IDisposable
     private readonly Mutex mutex;
     private readonly bool ownsMutex;
     private readonly string pipeName;
+    private readonly object listenSync = new();
     private CancellationTokenSource? listenCancellation;
+    private Task? listenTask;
     private int disposed;
 
     private NativeUiSingleInstanceCoordinator(
@@ -66,16 +68,43 @@ public sealed class NativeUiSingleInstanceCoordinator : IDisposable
     }
 
     public void StartListening(CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (!ownsMutex || listenCancellation is not null)
-        {
-            return;
-        }
+        => _ = RunAsync(cancellationToken);
 
-        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        listenCancellation = cancellation;
-        _ = Task.Run(() => ListenAsync(cancellation.Token), CancellationToken.None);
+    // The mutex belongs to the process; each invocation owns only the listener.
+    public Task RunAsync(CancellationToken cancellationToken)
+    {
+        lock (listenSync)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            if (!ownsMutex) return Task.CompletedTask;
+            if (listenTask is { IsCompleted: false }) return listenTask;
+            var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            listenCancellation = cancellation;
+            listenTask = ListenOwnedAsync(cancellation);
+            return listenTask;
+        }
+    }
+
+    public Task StopAsync()
+    {
+        lock (listenSync)
+        {
+            listenCancellation?.Cancel();
+            return listenTask ?? Task.CompletedTask;
+        }
+    }
+
+    private async Task ListenOwnedAsync(CancellationTokenSource cancellation)
+    {
+        try { await ListenAsync(cancellation.Token).ConfigureAwait(false); }
+        finally
+        {
+            lock (listenSync)
+            {
+                if (ReferenceEquals(listenCancellation, cancellation)) listenCancellation = null;
+                cancellation.Dispose();
+            }
+        }
     }
 
     private async Task ListenAsync(CancellationToken cancellationToken)
@@ -90,9 +119,10 @@ public sealed class NativeUiSingleInstanceCoordinator : IDisposable
                     maxNumberOfServerInstances: 1,
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
-                await server.WaitForConnectionAsync(cancellationToken);
+                await server.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
                 using var reader = new StreamReader(server, Encoding.UTF8);
-                var command = await reader.ReadLineAsync(cancellationToken);
+                var command = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 RequestReceived?.Invoke(this, string.IsNullOrWhiteSpace(command) ? "show" : command);
             }
             catch (OperationCanceledException)
@@ -116,9 +146,9 @@ public sealed class NativeUiSingleInstanceCoordinator : IDisposable
             return;
         }
 
-        var cancellation = Interlocked.Exchange(ref listenCancellation, null);
-        cancellation?.Cancel();
-        cancellation?.Dispose();
+        // Final disposal is performed on the original mutex-owning thread,
+        // after the caller has awaited StopAsync / RunAsync.
+        _ = StopAsync();
         if (ownsMutex)
         {
             mutex.ReleaseMutex();

@@ -104,7 +104,7 @@ internal sealed class BackendServiceAvailabilityTerminalGate
         Interlocked.CompareExchange(ref state, Stopped, Active) == Active;
 }
 
-internal sealed class BackendServiceAvailabilityMonitor : IDisposable
+internal sealed class BackendServiceAvailabilityMonitor : IDisposable, IAsyncDisposable
 {
     private readonly object sync = new();
     private readonly Func<CancellationToken, Task<bool>> probeAsync;
@@ -145,12 +145,22 @@ internal sealed class BackendServiceAvailabilityMonitor : IDisposable
     }
 
     public void Start()
+        => _ = RunAsync(CancellationToken.None);
+
+    internal Task RunAsync(CancellationToken cancellationToken)
     {
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            completion ??= RunAsync(shutdown.Token);
+            completion ??= RunCoreAsync(cancellationToken);
+            return completion;
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        await Completion.ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -183,14 +193,17 @@ internal sealed class BackendServiceAvailabilityMonitor : IDisposable
             TaskScheduler.Default);
     }
 
-    private async Task RunAsync(CancellationToken cancellationToken)
+    private async Task RunCoreAsync(CancellationToken cancellationToken)
     {
+        using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token, cancellationToken);
+        var stopToken = runCancellation.Token;
+        using var raceCancellation = CancellationTokenSource.CreateLinkedTokenSource(stopToken);
+        Task<BackendServiceUnavailableEventArgs>? healthTask = null;
+        Task<BackendServiceUnavailableEventArgs>? processTask = null;
         try
         {
-            using var raceCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var healthTask = WaitForHealthFailureAsync(raceCancellation.Token);
-            var processTask = waitForOwnedProcessExitAsync?.Invoke(raceCancellation.Token);
+            healthTask = WaitForHealthFailureAsync(raceCancellation.Token);
+            processTask = waitForOwnedProcessExitAsync?.Invoke(raceCancellation.Token);
 
             BackendServiceUnavailableEventArgs unavailable;
             if (processTask is null)
@@ -201,22 +214,27 @@ internal sealed class BackendServiceAvailabilityMonitor : IDisposable
             {
                 var winner = await Task.WhenAny(healthTask, processTask).ConfigureAwait(false);
                 unavailable = await winner.ConfigureAwait(false);
-                raceCancellation.Cancel();
-                ObserveCanceledRaceTask(ReferenceEquals(winner, healthTask) ? processTask : healthTask);
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
+            stopToken.ThrowIfCancellationRequested();
             PublishAvailabilityLost(unavailable);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
         {
         }
         catch (Exception ex)
         {
-            if (!cancellationToken.IsCancellationRequested)
+            if (!stopToken.IsCancellationRequested)
             {
                 PublishAvailabilityLost(BackendServiceUnavailableEventArgs.MonitorFault(ex));
             }
+        }
+        finally
+        {
+            raceCancellation.Cancel();
+            // Completion covers both competitors, including their cancellation cleanup.
+            if (healthTask is not null) await JoinRaceTaskAsync(healthTask).ConfigureAwait(false);
+            if (processTask is not null) await JoinRaceTaskAsync(processTask).ConfigureAwait(false);
         }
     }
 
@@ -273,12 +291,10 @@ internal sealed class BackendServiceAvailabilityMonitor : IDisposable
         }
     }
 
-    private static void ObserveCanceledRaceTask(Task task)
+    private static async Task JoinRaceTaskAsync(Task task)
     {
-        _ = task.ContinueWith(
-            static completed => _ = completed.Exception,
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        try { await task.ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { Trace.WriteLine(error); }
     }
 }

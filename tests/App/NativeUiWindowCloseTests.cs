@@ -116,9 +116,10 @@ public sealed class NativeUiWindowCloseTests
     {
         var source = File.ReadAllText(Path.Combine(RepositoryRoot(),
             "src/UI/Core/Shell/ResourceManagerApplicationContext.cs"));
-        var exit = source[source.IndexOf("private void ExitApplication()", StringComparison.Ordinal)..];
-        AssertBefore(exit, "mainForm?.Hide();", "shutdownCoordinator.TryShutdown");
-        Assert.Contains("form.StopAndClose();", exit, StringComparison.Ordinal);
+        var exit = source[source.IndexOf("private void ExitApplication(string cause", StringComparison.Ordinal)..];
+        AssertBefore(exit, "mainForm?.Hide();", "shutdownCoordinator.ShutdownAsync");
+        Assert.Contains("await trees.ShutdownAsync", exit, StringComparison.Ordinal);
+        AssertBefore(exit, "await trees.ShutdownAsync", "ExitMessageLoop: ExitThread");
         var contextDisposal = source[source.IndexOf("protected override void Dispose(bool disposing)", StringComparison.Ordinal)..];
         AssertBefore(contextDisposal, "RunDisposalAction(() => mainForm?.Hide());", "RunDisposalAction(shutdown.Cancel);");
         var dispose = source[source.IndexOf("private void DisposeMainForm()", StringComparison.Ordinal)..];
@@ -127,7 +128,8 @@ public sealed class NativeUiWindowCloseTests
         // The tray lifetime still clears the closed window and recreates it on show.
         Assert.Contains("form.FormClosed += OnMainFormClosed;", source, StringComparison.Ordinal);
         Assert.Contains("mainForm = null;", source, StringComparison.Ordinal);
-        Assert.Contains("var form = GetOrCreateMainForm();", source, StringComparison.Ordinal);
+        Assert.Contains("trees.SetWindowWantedAsync(true", source, StringComparison.Ordinal);
+        Assert.Contains("form.CompleteClose();", dispose, StringComparison.Ordinal);
     }
 
     private static FrontendLoopbackProxy CreateOfflineProxy() => new(

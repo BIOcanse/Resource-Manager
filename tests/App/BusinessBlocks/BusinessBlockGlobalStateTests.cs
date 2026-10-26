@@ -318,7 +318,9 @@ public sealed class BusinessBlockGlobalStateTests
     public void OnlyDecisionNodesCallControlAndNoGenericLayerOwnsAlternateCancellation()
     {
         var core = Path.Combine(SourceRoot(), "src", "Core");
-        var files = Directory.EnumerateFiles(core, "*.cs", SearchOption.AllDirectories).ToArray();
+        var shared = Path.Combine(SourceRoot(), "src", "Shared", "BusinessBlocks");
+        var files = Directory.EnumerateFiles(core, "*.cs", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(shared, "*.cs")).ToArray();
         foreach (var operation in new[] { "control.Start(", "control.Stop(" })
         {
             var callers = files.Where(file => File.ReadAllText(file).Contains(operation, StringComparison.Ordinal)).ToArray();
@@ -329,6 +331,7 @@ public sealed class BusinessBlockGlobalStateTests
         // All generic lifecycle layers are covered, including any newly added execution wrapper.
         // Legacy ETW code's internal session cancellation and judgments are explicitly outside this migration.
         var genericLayers = Directory.EnumerateFiles(Path.Combine(core, "Infrastructure", "RuntimeSpecialization", "BusinessBlocks"), "*.cs")
+            .Concat(Directory.EnumerateFiles(shared, "*.cs"))
             .Where(file => Path.GetFileName(file) != "BusinessBlockController.cs");
         foreach (var file in genericLayers)
         {

@@ -8,6 +8,7 @@ public sealed partial class MainForm
 {
     private async Task<bool> EnsureFrontendHostAsync()
     {
+        if (frontendStopping) return false;
         if (frontendHost.IsReady)
         {
             return true;
@@ -27,13 +28,17 @@ public sealed partial class MainForm
         => InitializeFrontendHostAsync(frontendHost.InitializeAsync,
             ex =>
             {
+                if (frontendStopping && ex is OperationCanceledException) return;
                 System.Diagnostics.Trace.WriteLine(ex);
                 WriteWebViewStartupFailure(ex);
             },
-            () => ExitRequested?.Invoke(this, EventArgs.Empty),
             () =>
             {
-                if (backendContentEnabled)
+                if (!frontendStopping) ExitRequested?.Invoke(this, EventArgs.Empty);
+            },
+            () =>
+            {
+                if (!frontendStopping && backendContentEnabled)
                     ShowFrontendUnavailable(NativeUiText.Current.WebViewInitializationFailed);
             });
 
@@ -103,10 +108,11 @@ public sealed partial class MainForm
         HandleWebMessage(args.Json);
     }
 
-    private async void HandleFrontendNavigationCompleted(
+    private void HandleFrontendNavigationCompleted(
         object? sender,
         FrontendNavigationCompletedEventArgs args)
     {
+        if (frontendStopping) return;
         if (args.IsSuccess && args.IsTrustedDocument && backendContentEnabled)
         {
             ClearWebViewStartupFailure();

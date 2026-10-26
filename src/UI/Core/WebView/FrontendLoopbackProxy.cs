@@ -18,7 +18,8 @@ namespace ResourceManager.NativeUi.WebView;
 // A normal HTTP response preserves indefinite subscriptions and browser cancellation.
 internal sealed class FrontendLoopbackProxy(
     Uri backendAddress,
-    Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> forward) : IDisposable, IAsyncDisposable
+    Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> forward,
+    Func<CancellationToken, Task>? beforeStart = null) : IDisposable, IAsyncDisposable
 {
     internal const string CapabilityHeader = "X-Resource-Manager-Native-Bridge";
     private static readonly HashSet<string> ExcludedHeaders = new(StringComparer.OrdinalIgnoreCase)
@@ -29,27 +30,55 @@ internal sealed class FrontendLoopbackProxy(
     };
     private readonly string capability = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly CancellationTokenSource lifetime = new();
+    private TaskCompletionSource<string> addressReady = NewAddressSignal();
     private readonly object sync = new();
     private WebApplication? application;
     private Task? startup;
     private bool disposed;
+    private Task? disposal;
 
     internal string Address { get; private set; } = string.Empty;
     internal string ApplicationAddress => backendAddress.AbsoluteUri;
     internal string Capability => capability;
 
+    // Reading the producer's endpoint never starts or restarts its listener.
+    internal Task<string> WaitForAddressAsync(CancellationToken token)
+    {
+        lock (sync) return addressReady.Task.WaitAsync(token);
+    }
+
+    internal bool ResetFailedStart()
+    {
+        lock (sync)
+        {
+            if (disposed || !addressReady.Task.IsFaulted) return false;
+            addressReady = NewAddressSignal();
+            startup = null;
+            return true;
+        }
+    }
+
     internal async Task StartAsync()
     {
         Task current;
+        TaskCompletionSource<string> endpoint;
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            // Standalone explicit starts retain their original retry behavior.
+            // The block owner calls ResetFailedStart only for a user retry.
+            if (startup is null && addressReady.Task.IsFaulted) addressReady = NewAddressSignal();
+            endpoint = addressReady;
             current = startup ??= StartCoreAsync();
         }
         try { await current.ConfigureAwait(false); }
-        catch
+        catch (Exception error)
         {
-            lock (sync) { if (ReferenceEquals(startup, current)) startup = null; }
+            lock (sync)
+            {
+                if (ReferenceEquals(startup, current)) startup = null;
+                endpoint.TrySetException(error);
+            }
             throw;
         }
     }
@@ -57,6 +86,9 @@ internal sealed class FrontendLoopbackProxy(
     private async Task StartCoreAsync()
     {
         if (application is not null) return;
+        // Injection fixes startup-failure interleavings without reserving ports
+        // or changing the production listener configuration.
+        if (beforeStart is not null) await beforeStart(lifetime.Token).ConfigureAwait(false);
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
             Args = [], ApplicationName = typeof(FrontendLoopbackProxy).Assembly.FullName,
@@ -78,6 +110,7 @@ internal sealed class FrontendLoopbackProxy(
             Address = app.Services.GetRequiredService<IServer>().Features
                 .Get<IServerAddressesFeature>()!.Addresses.Single().TrimEnd('/') + "/";
             application = app;
+            addressReady.TrySetResult(Address);
         }
         catch
         {
@@ -171,16 +204,21 @@ internal sealed class FrontendLoopbackProxy(
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        Task? pending;
         lock (sync)
         {
-            if (disposed) return;
+            if (disposal is not null) return new ValueTask(disposal);
             disposed = true;
-            pending = startup;
+            disposal = DisposeCoreAsync(startup);
+            return new ValueTask(disposal);
         }
+    }
+
+    private async Task DisposeCoreAsync(Task? pending)
+    {
         lifetime.Cancel();
+        addressReady.TrySetCanceled(lifetime.Token);
         if (pending is not null)
         {
             try { await pending.ConfigureAwait(false); }
@@ -193,4 +231,7 @@ internal sealed class FrontendLoopbackProxy(
         try { await app.StopAsync(timeout.Token).ConfigureAwait(false); }
         finally { await app.DisposeAsync().ConfigureAwait(false); }
     }
+
+    private static TaskCompletionSource<string> NewAddressSignal()
+        => new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

@@ -27,7 +27,7 @@ public sealed partial class MainForm
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException
             or ArgumentException or System.ComponentModel.Win32Exception or JsonException or HttpRequestException)
         { response["error"] = "process-action-unavailable"; }
-        if (IsDisposed || !frontendHost.IsReady) return;
+        if (frontendStopping || IsDisposed || !frontendHost.IsReady) return;
         try { frontendHost.PostJsonMessage(JsonSerializer.Serialize(response)); }
         catch (InvalidOperationException) { }
     }

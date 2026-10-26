@@ -34,7 +34,7 @@ public sealed partial class MainForm
             or KeyNotFoundException or OperationCanceledException)
         { error = "unavailable"; }
         finally { if (ownsRequest) Interlocked.Exchange(ref elevatedBackendRequestActive, 0); }
-        if (IsDisposed || !frontendHost.IsReady) return;
+        if (frontendStopping || IsDisposed || !frontendHost.IsReady) return;
         try
         {
             frontendHost.PostJsonMessage(JsonSerializer.Serialize(new ElevatedBackendBridgeResponse(

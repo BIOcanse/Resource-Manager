@@ -6,6 +6,7 @@ public sealed partial class MainForm
 {
     private void HandleWebMessage(string json)
     {
+        if (frontendStopping) return;
         JsonDocument document;
         try
         {
@@ -93,10 +94,10 @@ public sealed partial class MainForm
                 HandleLoginStartupRequest(message, typeProperty.GetString() == "shell.loginStartup.set");
                 break;
             case "shell.processAction":
-                _ = HandleProcessActionRequestAsync(message.Clone());
+                TrackFrontendRequest(HandleProcessActionRequestAsync(message.Clone()));
                 break;
             case "backend.elevatedRequest":
-                _ = HandleElevatedBackendRequestAsync(message.Clone());
+                TrackFrontendRequest(HandleElevatedBackendRequestAsync(message.Clone()));
                 break;
             case "shell.language":
                 Localization.NativeUiText.Apply(

@@ -7,10 +7,13 @@ using ResourceManager.Shared.Runtime;
 namespace ResourceManager.NativeUi.SystemIntegration;
 
 // Window enumeration belongs to the interactive UI, never to the Session 0 service.
-internal sealed class InteractiveDesktopObservationPublisher : IDisposable
+internal sealed class InteractiveDesktopObservationPublisher : IDisposable, IAsyncDisposable
 {
     private static readonly Lazy<PublisherIdentity> Publisher = new(CreatePublisherIdentity);
     private CancellationTokenSource? lifetime;
+    private readonly object lifetimeSync = new();
+    private Task? completion;
+    private bool disposed;
     private long visibilityWindowHandle;
 
     internal event Action<IntPtr, bool>? HostWindowVisibilityChanged;
@@ -19,38 +22,79 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
         Interlocked.Exchange(ref visibilityWindowHandle, handle.ToInt64());
 
     internal void Start(BackendServiceSession session)
-    {
-        Stop();
-        var owner = new CancellationTokenSource();
-        lifetime = owner;
-        _ = RunAsync(session, owner);
-    }
+        => _ = RunAsync(session, CancellationToken.None);
 
-    internal void Stop() => Interlocked.Exchange(ref lifetime, null)?.Cancel();
-    public void Dispose() => Stop();
-
-    private async Task RunAsync(BackendServiceSession session, CancellationTokenSource owner)
+    internal Task RunAsync(BackendServiceSession session, CancellationToken cancellationToken)
     {
         var lastVisibilityWindow = IntPtr.Zero;
         bool? lastVisibility = null;
+        return RunAsync(async token =>
+        {
+            var visibilityWindow = new IntPtr(Interlocked.Read(ref visibilityWindowHandle));
+            var sample = Capture(visibilityWindow, out var hostWindowVisible);
+            if (hostWindowVisible is bool visible
+                && (visibilityWindow != lastVisibilityWindow || visible != lastVisibility))
+            {
+                lastVisibilityWindow = visibilityWindow;
+                lastVisibility = visible;
+                HostWindowVisibilityChanged?.Invoke(visibilityWindow, visible);
+            }
+            using var request = CancellationTokenSource.CreateLinkedTokenSource(token);
+            request.CancelAfter(TimeSpan.FromSeconds(1));
+            await session.PublishDesktopAsync(sample, request.Token).ConfigureAwait(false);
+        }, cancellationToken);
+    }
+
+    // A sample and its publication are one serial step of the observation flow.
+    internal Task RunAsync(Func<CancellationToken, Task> observeAsync, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(observeAsync);
+        lock (lifetimeSync)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (completion is { IsCompleted: false }) return completion;
+            var owner = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            lifetime = owner;
+            completion = RunCoreAsync(observeAsync, owner);
+            return completion;
+        }
+    }
+
+    internal void Stop() => _ = StopAsync();
+
+    internal Task StopAsync()
+    {
+        lock (lifetimeSync)
+        {
+            lifetime?.Cancel();
+            return completion ?? Task.CompletedTask;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (lifetimeSync)
+        {
+            disposed = true;
+            lifetime?.Cancel();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        await StopAsync().ConfigureAwait(false);
+    }
+
+    private async Task RunCoreAsync(Func<CancellationToken, Task> observeAsync, CancellationTokenSource owner)
+    {
         try
         {
             while (!owner.IsCancellationRequested)
             {
                 try
                 {
-                    var visibilityWindow = new IntPtr(Interlocked.Read(ref visibilityWindowHandle));
-                    var sample = Capture(visibilityWindow, out var hostWindowVisible);
-                    if (hostWindowVisible is bool visible
-                        && (visibilityWindow != lastVisibilityWindow || visible != lastVisibility))
-                    {
-                        lastVisibilityWindow = visibilityWindow;
-                        lastVisibility = visible;
-                        HostWindowVisibilityChanged?.Invoke(visibilityWindow, visible);
-                    }
-                    using var request = CancellationTokenSource.CreateLinkedTokenSource(owner.Token);
-                    request.CancelAfter(TimeSpan.FromSeconds(1));
-                    await session.PublishDesktopAsync(sample, request.Token).ConfigureAwait(false);
+                    await observeAsync(owner.Token).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is HttpRequestException or OperationCanceledException
                     or ObjectDisposedException or InvalidOperationException or System.ComponentModel.Win32Exception)
@@ -59,7 +103,14 @@ internal sealed class InteractiveDesktopObservationPublisher : IDisposable
             }
         }
         catch (OperationCanceledException) when (owner.IsCancellationRequested) { }
-        finally { owner.Dispose(); }
+        finally
+        {
+            lock (lifetimeSync)
+            {
+                if (ReferenceEquals(lifetime, owner)) lifetime = null;
+                owner.Dispose();
+            }
+        }
     }
 
     internal static InteractiveDesktopObservation Capture() => Capture(IntPtr.Zero, out _);

@@ -1,7 +1,7 @@
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
-namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+namespace ResourceManager.Shared.BusinessBlocks;
 
 /// <summary>Generic hands: invoke an entry and deliver stop notification.</summary>
 public sealed class BusinessBlockController(ILogger<BusinessBlockController> logger, int historyLimit = 128)

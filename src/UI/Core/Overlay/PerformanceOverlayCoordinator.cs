@@ -7,49 +7,112 @@ using ResourceManager.NativeUi.Preferences;
 
 namespace ResourceManager.NativeUi.Overlay;
 
-internal sealed class PerformanceOverlayCoordinator : IDisposable
+internal sealed class PerformanceOverlayCoordinator : IDisposable, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions StreamJson = new(JsonSerializerDefaults.Web);
-    private readonly Control dispatcher;
+    private readonly Action<Action> dispatch;
+    private readonly object callbackSync = new();
+    private readonly Dictionary<long, Action> pendingCallbacks = [];
     private readonly System.Windows.Forms.Timer windowTimer;
     private readonly Dictionary<OverlayTargetId, DisplayTarget> targets = [];
     private CancellationTokenSource? subscriptionCancellation;
+    private Task? completion;
     private long streamGeneration;
+    private long callbackId;
+    private bool acceptingCallbacks;
     private bool disposed;
 
     public PerformanceOverlayCoordinator(Control dispatcher)
+        : this(action =>
+        {
+            if (dispatcher.IsDisposed || !dispatcher.IsHandleCreated)
+                throw new InvalidOperationException("The overlay dispatcher is unavailable.");
+            dispatcher.BeginInvoke(action);
+        })
     {
-        this.dispatcher = dispatcher;
+    }
+
+    internal PerformanceOverlayCoordinator(Action<Action> dispatch)
+    {
+        this.dispatch = dispatch;
         windowTimer = new System.Windows.Forms.Timer { Interval = 100 };
         windowTimer.Tick += (_, _) => Refresh();
-        NativeUiText.Changed += OnLanguageChanged;
     }
 
     internal int TargetCount => targets.Count;
     internal bool WindowRefreshTimerEnabled => windowTimer.Enabled;
 
     public void Start(BackendServiceSession session)
+        => _ = RunAsync(session, CancellationToken.None);
+
+    public Task RunAsync(BackendServiceSession session, CancellationToken cancellationToken)
+        => RunAsync((post, token) => OverlaySubscriptions.RunAsync(
+            session.ReadStartupModulesAsync, FrontendPreferencesOwner.Current.Read,
+            (subscriptions, streamToken) => ReadStreamAsync(session, subscriptions, post, streamToken),
+            () => post(Clear), TimeSpan.FromMilliseconds(500), token), cancellationToken);
+
+    // Called and awaited on the original UI context, so output cleanup stays on its STA.
+    internal Task RunAsync(Func<Action<Action>, CancellationToken, Task> observeAsync,
+        CancellationToken cancellationToken)
     {
-        Stop();
-        if (disposed) return;
-        var cancellation = new CancellationTokenSource();
+        ArgumentNullException.ThrowIfNull(observeAsync);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completion is { IsCompleted: false }) return completion;
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         subscriptionCancellation = cancellation;
-        UpdateWindowTimerState();
-        var generation = ++streamGeneration;
-        _ = OverlaySubscriptions.RunAsync(session.ReadStartupModulesAsync, FrontendPreferencesOwner.Current.Read,
-            (subscriptions, token) => ReadStreamAsync(session, subscriptions, generation, token),
-            () => Post(() => { if (generation == streamGeneration) Clear(); }),
-            TimeSpan.FromMilliseconds(500), cancellation.Token);
+        long generation;
+        lock (callbackSync)
+        {
+            generation = ++streamGeneration;
+            acceptingCallbacks = true;
+        }
+        NativeUiText.Changed += OnLanguageChanged;
+        completion = RunCoreAsync(observeAsync, cancellation, generation);
+        return completion;
+    }
+
+    private async Task RunCoreAsync(Func<Action<Action>, CancellationToken, Task> observeAsync,
+        CancellationTokenSource cancellation, long generation)
+    {
+        try { await observeAsync(action => Post(action, generation), cancellation.Token); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            RetireCallbacks();
+            if (!disposed)
+            {
+                windowTimer.Stop();
+                Clear();
+            }
+            subscriptionCancellation = null;
+            cancellation.Dispose();
+        }
     }
 
     public void Stop()
     {
         subscriptionCancellation?.Cancel();
-        subscriptionCancellation?.Dispose();
-        subscriptionCancellation = null;
-        streamGeneration++;
+        RetireCallbacks();
         windowTimer.Stop();
         Clear();
+    }
+
+    public async Task StopAsync()
+    {
+        Stop();
+        if (completion is not null) await completion;
+    }
+
+    private void RetireCallbacks()
+    {
+        lock (callbackSync)
+        {
+            acceptingCallbacks = false;
+            streamGeneration++;
+            // Posted thunks retain only an id; retire their actual actions now.
+            pendingCallbacks.Clear();
+        }
+        NativeUiText.Changed -= OnLanguageChanged;
     }
 
     internal void ApplySnapshot(OverlaySnapshot snapshot)
@@ -165,7 +228,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         }
     }
 
-    private async Task ReadStreamAsync(BackendServiceSession session, OverlaySubscription[] subscriptions, long generation,
+    private async Task ReadStreamAsync(BackendServiceSession session, OverlaySubscription[] subscriptions, Action<Action> post,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -196,9 +259,9 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
                     }).ToArray() };
                     snapshots[subscriptionId.GetString()!] = snapshot;
                     var combined = snapshot with { Targets = snapshots.Values.SelectMany(static item => item.Targets).ToArray() };
-                    Post(() =>
+                    post(() =>
                     {
-                        if (!cancellationToken.IsCancellationRequested && generation == streamGeneration) ApplySnapshot(combined);
+                        if (!cancellationToken.IsCancellationRequested) ApplySnapshot(combined);
                     });
                 }
             }
@@ -207,23 +270,36 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
             {
                 Trace.WriteLine(exception);
             }
-            Post(() => { if (generation == streamGeneration) Clear(); });
+            post(Clear);
             try { await Task.Delay(1000, cancellationToken); }
             catch (OperationCanceledException) { break; }
         }
     }
 
-    private void Post(Action action)
+    private void Post(Action action, long generation)
     {
-        if (disposed || dispatcher.IsDisposed || !dispatcher.IsHandleCreated) return;
-        try
+        lock (callbackSync)
         {
-            dispatcher.BeginInvoke(new Action(() =>
+            if (disposed || !acceptingCallbacks || generation != streamGeneration) return;
+            var id = ++callbackId;
+            pendingCallbacks.Add(id, action);
+            try
             {
-                if (!disposed) action();
-            }));
+                dispatch(() =>
+                {
+                    Action? callback;
+                    lock (callbackSync)
+                    {
+                        if (!pendingCallbacks.Remove(id, out callback)) return;
+                    }
+                    callback();
+                });
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException)
+            {
+                pendingCallbacks.Remove(id);
+            }
         }
-        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException) { }
     }
 
     private static string ContentSignature(OverlayTarget target) =>
@@ -233,7 +309,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
     {
         foreach (var target in targets.Values) target.RenderSignature = null;
         Refresh();
-    });
+    }, Volatile.Read(ref streamGeneration));
 
     private void Remove(OverlayTargetId id)
     {
@@ -262,8 +338,13 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         if (disposed) return;
         Stop();
         disposed = true;
-        NativeUiText.Changed -= OnLanguageChanged;
         windowTimer.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await StopAsync(); }
+        finally { Dispose(); }
     }
 
     private sealed class DisplayTarget(OverlayTarget target)

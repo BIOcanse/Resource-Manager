@@ -1,3 +1,5 @@
+using ResourceManager.NativeUi.Blocks;
+using ResourceManager.Shared.BusinessBlocks;
 using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.Overlay;
 using ResourceManager.NativeUi.SystemIntegration;
@@ -6,7 +8,7 @@ using ResourceManager.NativeUi.WebView;
 
 namespace ResourceManager.NativeUi;
 
-public sealed class ResourceManagerApplicationContext : ApplicationContext
+public sealed partial class ResourceManagerApplicationContext : ApplicationContext
 {
     private const string ApiBaseAddress = "http://127.0.0.1:9321";
 
@@ -16,30 +18,27 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly Control uiDispatcher = new();
     private readonly NativeUiShutdownCoordinator shutdownCoordinator = new();
     private readonly PerformanceOverlayCoordinator performanceOverlay;
-    private readonly FrontendLoopbackProxy frontendProxy;
+    private FrontendLoopbackProxy? frontendProxy;
     private readonly InteractiveDesktopObservationPublisher desktopObservations = new();
     private readonly TaskManagerShortcutReplacementController taskManagerShortcutReplacement;
     private readonly ForceTerminateHotkeyController forceTerminateHotkey;
-    private readonly ContextMenuStrip trayMenu;
-    private readonly NotifyIcon trayIcon;
-    private readonly TrayUpdateNotice updateNotice;
-    private readonly TrayAccessRequestNotice accessRequestNotice;
-    private readonly Action<Action> dispatchTrayNotice;
-    private CancellationTokenSource? trayNoticeCancellation;
-    private BackendServiceSession? backendSession;
-    private BackendServiceLossHandler? backendLossHandler;
+    private ContextMenuStrip trayMenu = null!;
+    private NotifyIcon trayIcon = null!;
+    private TrayUpdateNotice updateNotice = null!;
+    private TrayAccessRequestNotice accessRequestNotice = null!;
+    private Action<Action> dispatchTrayNotice = null!;
     private ToolStripMenuItem? backendStatusMenuItem;
     private ToolStripMenuItem? retryBackendMenuItem;
     private ToolStripMenuItem? openMenuItem;
     private ToolStripMenuItem? exitMenuItem;
     private MainForm? mainForm;
-    private Task<bool>? backendConnectionTask;
-    private Task? reconnectLoopTask;
-    private CancellationTokenSource? reconnectDelayCancellation;
+    private readonly NativeUiBlockTrees trees;
+    private readonly NativeUiBackendConnectionBlock backendConnection;
+    private BackendServiceSession? backendSession => backendConnection.CurrentSession;
+    private bool backendReady => backendConnection.IsReady;
     private bool startupScheduled;
-    private bool backendReady;
     private bool exiting;
-    private long backendGeneration;
+    private bool treesDrained;
     private long backendSessionPublicationRevision;
     private FrontendBackendSessionProjection? frontendBackendSessionProjection;
     private BackendConnectionState backendConnectionState = BackendConnectionState.Connecting;
@@ -54,91 +53,36 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     {
         this.singleInstance = singleInstance;
         this.startInBackground = startInBackground;
-        frontendProxy = new FrontendLoopbackProxy(new Uri(ApiBaseAddress + "/"),
-            (request, token) => backendReady && backendSession is { } currentSession
-                ? currentSession.SendFrontendRequestAsync(request, token)
-                : Task.FromException<System.Net.Http.HttpResponseMessage>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
         uiDispatcher.CreateControl();
         _ = uiDispatcher.Handle;
         performanceOverlay = new PerformanceOverlayCoordinator(uiDispatcher);
-        desktopObservations.HostWindowVisibilityChanged += OnObservedHostWindowVisibilityChanged;
-        singleInstance.RequestReceived += OnSingleInstanceRequest;
-        singleInstance.StartListening(shutdown.Token);
-
-        trayMenu = BuildTrayMenu();
-        trayIcon = new NotifyIcon
-        {
-            Icon = SystemIcons.Application,
-            Text = NativeUiText.Current.AppName,
-            Visible = true,
-            ContextMenuStrip = trayMenu
-        };
-        trayIcon.MouseClick += (_, args) =>
-        {
-            if (args.Button == MouseButtons.Left)
-            {
-                _ = ShowMainWindowAsync(startFrontend: true, activate: true);
-            }
-        };
-
-        trayIcon.BalloonTipClicked += (_, _) =>
-            _ = ShowMainWindowAsync(startFrontend: true, activate: true);
-        bool InterfaceVisible() => mainForm is { IsDisposed: false, Visible: true, WindowState: not FormWindowState.Minimized };
-        void ShowNotice(string title, string message) => trayIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info);
-        void DispatchNotice(Action action)
-        {
-            if (exiting || uiDispatcher.IsDisposed) return;
-            try { uiDispatcher.BeginInvoke(action); }
-            catch (InvalidOperationException) when (exiting || uiDispatcher.IsDisposed) { }
-        }
-        updateNotice = new TrayUpdateNotice(Preferences.FrontendPreferencesOwner.Current,
-            InterfaceVisible, ShowNotice, DispatchNotice);
-        accessRequestNotice = new TrayAccessRequestNotice(Preferences.FrontendPreferencesOwner.Current,
-            InterfaceVisible, ShowNotice, DispatchNotice);
-        dispatchTrayNotice = DispatchNotice;
+        backendConnection = new NativeUiBackendConnectionBlock(
+            () => BackendServiceSession.CreateDefault(ApiBaseAddress), PublishBackendSessionAsync);
+        trees = new NativeUiBlockTrees(CreateBlock, new NativeUiTraceLogger<NativeUiBlockTrees>(),
+            new NativeUiTraceLogger<BusinessBlockController>());
 
         taskManagerShortcutReplacement = new TaskManagerShortcutReplacementController(
             NativeUiPaths.AppSettingsPath,
             OnTaskManagerShortcutPressed,
             ShowTaskManagerShortcutReplacementStatus);
-        taskManagerShortcutReplacement.Start();
 
         forceTerminateHotkey = new ForceTerminateHotkeyController(
             NativeUiPaths.AppSettingsPath,
             OnForceTerminateHotkeyPressed,
             ShowForceTerminateHotkeyStatus);
-        forceTerminateHotkey.Start();
 
-        NativeUiText.Changed += OnInterfaceLanguageChanged;
+        Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
         Application.Idle += OnApplicationIdle;
     }
 
-    // 语言由前端设置切换，这里把托盘与窗口上常驻的文案换成当前语言。
+    // Called by the main root's owned UI callback scope.
     private void OnInterfaceLanguageChanged(object? sender, EventArgs args)
     {
-        if (exiting || uiDispatcher.IsDisposed)
-        {
-            return;
-        }
-
-        uiDispatcher.BeginInvoke(new Action(() =>
-        {
-            if (exiting)
-            {
-                return;
-            }
-
-            if (openMenuItem is not null)
-            {
-                openMenuItem.Text = NativeUiText.Current.TrayOpen;
-            }
-            if (exitMenuItem is not null)
-            {
-                exitMenuItem.Text = NativeUiText.Current.TrayExit;
-            }
-            mainForm?.ApplyInterfaceLanguage();
-            UpdateShellStatus();
-        }));
+        if (exiting) return;
+        if (openMenuItem is not null) openMenuItem.Text = NativeUiText.Current.TrayOpen;
+        if (exitMenuItem is not null) exitMenuItem.Text = NativeUiText.Current.TrayExit;
+        mainForm?.ApplyInterfaceLanguage();
+        UpdateShellStatus();
     }
 
     protected override void Dispose(bool disposing)
@@ -148,27 +92,25 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             exiting = true;
             RunDisposalAction(() => mainForm?.Hide());
             RunDisposalAction(shutdown.Cancel);
-            RunDisposalAction(() => reconnectDelayCancellation?.Cancel());
             RunDisposalAction(() => Application.Idle -= OnApplicationIdle);
-            RunDisposalAction(() => NativeUiText.Changed -= OnInterfaceLanguageChanged);
-            RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
-            RunDisposalAction(DisposeMainForm);
-            RunDisposalAction(frontendProxy.Dispose);
-            RunDisposalAction(performanceOverlay.Dispose);
-            RunDisposalAction(() => desktopObservations.HostWindowVisibilityChanged -= OnObservedHostWindowVisibilityChanged);
-            RunDisposalAction(desktopObservations.Dispose);
-            RunDisposalAction(DisposeBackendGeneration);
+            RunDisposalAction(() => Microsoft.Win32.SystemEvents.SessionEnding -= OnSessionEnding);
+            // Concurrent entries have already joined before ExitThread. These are process resources.
             RunDisposalAction(singleInstance.Dispose);
-            RunDisposalAction(taskManagerShortcutReplacement.Dispose);
-            RunDisposalAction(forceTerminateHotkey.Dispose);
             RunDisposalAction(uiDispatcher.Dispose);
-            RunDisposalAction(() => trayIcon.Visible = false);
-            RunDisposalAction(trayIcon.Dispose);
-            RunDisposalAction(trayMenu.Dispose);
             RunDisposalAction(shutdown.Dispose);
         }
 
         base.Dispose(disposing);
+    }
+
+    protected override void ExitThreadCore()
+    {
+        if (!treesDrained)
+        {
+            ExitApplication("message-loop-exit");
+            return;
+        }
+        base.ExitThreadCore();
     }
 
     private ContextMenuStrip BuildTrayMenu()
@@ -180,7 +122,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         };
         var openItem = openMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayOpen);
         openItem.Click += (_, _) =>
-            _ = ShowMainWindowAsync(startFrontend: true, activate: true);
+            ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: true));
         retryBackendMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayReconnectBackend);
         retryBackendMenuItem.Click += (_, _) => RequestBackendRetry();
         var exitItem = exitMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayExit);
@@ -206,22 +148,14 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
         startupScheduled = true;
         Application.Idle -= OnApplicationIdle;
-        _ = StartAsync();
+        ObserveUiCommand(StartAsync());
     }
 
     private async Task StartAsync()
     {
-        if (startInBackground)
-        {
-            _ = await EnsureBackendReadyAsync();
-            return;
-        }
-
-        await ShowMainWindowAsync(startFrontend: false, activate: true);
-        if (await EnsureBackendReadyAsync())
-        {
-            await StartMainWindowFrontendIfVisibleAsync();
-        }
+        await trees.StartAsync(windowWanted: !startInBackground);
+        if (!startInBackground)
+            await ShowMainWindowAsync(startFrontend: true, activate: true);
     }
 
     private async Task ShowMainWindowAsync(
@@ -234,7 +168,12 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             return;
         }
 
-        var form = GetOrCreateMainForm();
+        // A close already accepted by the window owns its complete resource retirement.
+        await windowRequests.WaitForCloseAsync();
+        if (exiting) return;
+        await trees.SetWindowWantedAsync(true, "show-window");
+        await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running, shutdown.Token);
+        var form = mainForm!;
         var placedOnSecondaryScreen = placeOnSecondaryScreen
             && form.PrepareForPassiveValidationOnSecondaryScreen();
         var shouldPlaceOnPrimaryScreen = !placedOnSecondaryScreen
@@ -273,7 +212,6 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         if (!backendReady)
         {
             ApplyBackendStateToForm(form);
-            _ = EnsureBackendAndStartVisibleWindowAsync();
             return;
         }
 
@@ -283,40 +221,18 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         }
     }
 
+    // Called on the UI thread; the listener block owns and joins dispatch.
     private void OnSingleInstanceRequest(object? sender, string command)
     {
-        if (uiDispatcher.IsDisposed)
-        {
-            return;
-        }
-
-        uiDispatcher.BeginInvoke(new Action(() =>
-        {
-            if (exiting)
-            {
-                return;
-            }
-
-            if (command.Equals("exit", StringComparison.OrdinalIgnoreCase))
-            {
-                ExitApplication();
-            }
-            else if (command.Equals("show-passive", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = ShowMainWindowAsync(startFrontend: true, activate: false);
-            }
-            else if (command.Equals("show-passive-secondary", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = ShowMainWindowAsync(
-                    startFrontend: true,
-                    activate: false,
-                    placeOnSecondaryScreen: true);
-            }
-            else if (!command.Equals("ensure-running", StringComparison.OrdinalIgnoreCase))
-            {
-                _ = ShowMainWindowAsync(startFrontend: true, activate: true);
-            }
-        }));
+        if (exiting) return;
+        if (command.Equals("exit", StringComparison.OrdinalIgnoreCase))
+            ExitApplication("second-instance-exit");
+        else if (command.Equals("show-passive", StringComparison.OrdinalIgnoreCase))
+            ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: false));
+        else if (command.Equals("show-passive-secondary", StringComparison.OrdinalIgnoreCase))
+            ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: false, placeOnSecondaryScreen: true));
+        else if (!command.Equals("ensure-running", StringComparison.OrdinalIgnoreCase))
+            ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: true));
     }
 
     private MainForm GetOrCreateMainForm()
@@ -330,7 +246,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             taskManagerShortcutReplacement.SetEnabledFromUi,
             forceTerminateHotkey.Reload,
             new WebView2HostConfiguration(
-                NativeUiPaths.WebViewUserDataFolder, NativeUiPaths.FrontendPreferencesPath, frontendProxy),
+                NativeUiPaths.WebViewUserDataFolder, NativeUiPaths.FrontendPreferencesPath, frontendProxy!),
             batch => backendReady && backendSession is { } session
                 ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
                 : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
@@ -342,6 +258,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested += OnDiagnosticsRequested;
         form.ExitRequested += OnExitRequested;
+        form.WindowCloseRequested += OnWindowCloseRequested;
         form.FormClosed += OnMainFormClosed;
         form.HandleCreated += OnMainFormHandleCreated;
         form.HandleDestroyed += OnMainFormHandleDestroyed;
@@ -364,142 +281,33 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             desktopObservations.SetVisibilityWindow(IntPtr.Zero);
     }
 
+    // Called by the current desktop observation run's owned callback scope.
     private void OnObservedHostWindowVisibilityChanged(IntPtr window, bool visible)
     {
-        if (exiting || uiDispatcher.IsDisposed)
-            return;
-        try
-        {
-            uiDispatcher.BeginInvoke(new Action(() =>
-            {
-                if (mainForm is { IsDisposed: false, IsHandleCreated: true } form
-                    && form.Handle == window)
-                    form.SetDesktopOccluded(!visible);
-            }));
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or ObjectDisposedException)
-        {
-        }
-    }
-
-    private async Task<bool> EnsureBackendReadyAsync()
-    {
-        if (exiting || shutdown.IsCancellationRequested)
-        {
-            return false;
-        }
-
-        if (backendReady && backendSession is not null)
-        {
-            return true;
-        }
-
-        if (backendConnectionTask is not null)
-        {
-            return await backendConnectionTask;
-        }
-
-        var session = backendSession ?? CreateBackendGeneration();
-        var generation = backendGeneration;
-        var connectionTask = ConnectBackendGenerationAsync(session, generation);
-        backendConnectionTask = connectionTask;
-
-        try
-        {
-            return await connectionTask;
-        }
-        finally
-        {
-            if (ReferenceEquals(backendConnectionTask, connectionTask))
-            {
-                backendConnectionTask = null;
-            }
-        }
-    }
-
-    private async Task<bool> ConnectBackendGenerationAsync(
-        BackendServiceSession session,
-        long generation)
-    {
-        try
-        {
-            _ = await session.EnsureConnectedAsync(shutdown.Token);
-            if (!IsCurrentBackendGeneration(session, generation) || exiting)
-            {
-                return false;
-            }
-
-            var projection = SetReadyBackendSessionProjection();
-            backendReady = true;
-            SetBackendConnectionState(BackendConnectionState.Ready);
-            performanceOverlay.Start(session);
-            desktopObservations.Start(session);
-            trayNoticeCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
-            _ = TrayNotificationStream.RunAsync(session.OpenTrayNotificationStreamAsync,
-                new Dictionary<string, Action<System.Text.Json.JsonElement>>
-                {
-                    ["updates"] = updateNotice.ObserveFrame,
-                    [TrayAccessRequestNotice.SubscriptionId] = accessRequestNotice.ObserveFrame
-                }, dispatchTrayNotice, trayNoticeCancellation.Token);
-            if (mainForm is { IsDisposed: false } form)
-            {
-                form.ShowBackendReady(projection);
-            }
-            return true;
-        }
-        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.WriteLine(ex);
-            if (IsCurrentBackendGeneration(session, generation))
-            {
-                HandleBackendUnavailable(
-                    session,
-                    generation,
-                    BackendServiceUnavailableEventArgs.StartupFailed(ex));
-            }
-            return false;
-        }
+        if (!exiting && mainForm is { IsDisposed: false, IsHandleCreated: true } form
+            && form.Handle == window)
+            form.SetDesktopOccluded(!visible);
     }
 
     private async Task StartMainWindowFrontendIfVisibleAsync()
     {
-        if (mainForm is { IsDisposed: false, Visible: true } form)
-        {
+        if (mainForm is not { IsDisposed: false, Visible: true } form) return;
+        var token = windowLifetime;
+        frontendRequested.TrySetResult();
+        await trees.WaitForStateAsync(NativeUiBlockIds.WebViewHost, BusinessBlockState.Running, token);
+        if (ReferenceEquals(form, mainForm) && !token.IsCancellationRequested)
             await form.StartFrontendAsync();
-        }
-    }
-
-    private async Task EnsureBackendAndStartVisibleWindowAsync()
-    {
-        if (await EnsureBackendReadyAsync())
-        {
-            await StartMainWindowFrontendIfVisibleAsync();
-        }
     }
 
     private void OnTaskManagerShortcutPressed()
-    {
-        if (uiDispatcher.IsDisposed)
+        => mainCallbacks?.Post(() =>
         {
-            return;
-        }
-
-        uiDispatcher.BeginInvoke(new Action(() =>
-        {
-            if (!exiting)
-            {
-                _ = ShowMainWindowAsync(startFrontend: true, activate: true);
-            }
-        }));
-    }
+            if (!exiting) ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: true));
+        });
 
     private void ShowTaskManagerShortcutReplacementStatus(string message, ToolTipIcon icon)
     {
-        if (exiting || !trayIcon.Visible)
+        if (exiting || trayIcon is null || !trayIcon.Visible)
         {
             return;
         }
@@ -512,20 +320,10 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     }
 
     private void OnForceTerminateHotkeyPressed(int? foregroundProcessId)
-    {
-        if (uiDispatcher.IsDisposed)
+        => mainCallbacks?.Post(() =>
         {
-            return;
-        }
-
-        uiDispatcher.BeginInvoke(new Action(() =>
-        {
-            if (!exiting)
-            {
-                _ = ExecuteForceTerminateHotkeyAsync(foregroundProcessId);
-            }
-        }));
-    }
+            if (!exiting) ObserveUiCommand(ExecuteForceTerminateHotkeyAsync(foregroundProcessId));
+        });
 
     private async Task ExecuteForceTerminateHotkeyAsync(int? foregroundProcessId)
     {
@@ -571,7 +369,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void ShowForceTerminateHotkeyStatus(string message, ToolTipIcon icon)
     {
-        if (exiting || !trayIcon.Visible)
+        if (exiting || trayIcon is null || !trayIcon.Visible)
         {
             return;
         }
@@ -579,175 +377,33 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         trayIcon.ShowBalloonTip(5000, NativeUiText.Current.ForceTerminateHotkeyBalloonTitle, message, icon);
     }
 
-    private void ExitApplication()
+    private void ExitApplication(string cause = "tray-exit")
     {
-        // Cancellation can run synchronous callbacks. Remove the window first.
+        // Hiding remains synchronous; resource release happens while the message loop is alive.
         mainForm?.Hide();
-        _ = shutdownCoordinator.TryShutdown(new NativeUiShutdownActions(
+        var completion = shutdownCoordinator.ShutdownAsync(new NativeUiShutdownActions(
             MarkExiting: () =>
             {
                 exiting = true;
                 SetBackendConnectionState(BackendConnectionState.ShuttingDown);
-            },
-            CancelBackgroundWork: () =>
-            {
-                reconnectDelayCancellation?.Cancel();
+                if (trayIcon is not null) trayIcon.Visible = false;
                 shutdown.Cancel();
             },
-            HideTray: () =>
+            StopTrees: async () =>
             {
-                trayIcon.Visible = false;
-            },
-            StopAndCloseMainWindow: () =>
-            {
-                if (mainForm is { IsDisposed: false } form)
-                {
-                    form.StopAndClose();
-                }
+                await trees.ShutdownAsync(new(BusinessBlockRequestKind.User, "program", cause, 0));
+                await trees.DisposeAsync();
+                treesDrained = true;
             },
             ExitMessageLoop: ExitThread));
+        // This task is the process join, not work owned by either root.
+        shutdownObservation ??= ObserveShutdownAsync(completion);
     }
 
-    private BackendServiceSession CreateBackendGeneration()
+    private static async Task ObserveShutdownAsync(Task completion)
     {
-        if (backendSession is not null || backendLossHandler is not null)
-        {
-            throw new InvalidOperationException("A backend generation is already active.");
-        }
-
-        var session = BackendServiceSession.CreateDefault(ApiBaseAddress);
-        var generation = checked(++backendGeneration);
-        var lossHandler = new BackendServiceLossHandler(
-            session,
-            () => exiting || uiDispatcher.IsDisposed,
-            action => uiDispatcher.BeginInvoke(action),
-            unavailable => HandleBackendUnavailable(session, generation, unavailable));
-        backendSession = session;
-        backendLossHandler = lossHandler;
-        SetBackendConnectionState(
-            backendConnectionState == BackendConnectionState.Degraded
-                ? BackendConnectionState.Reconnecting
-                : BackendConnectionState.Connecting);
-        return session;
-    }
-
-    private void HandleBackendUnavailable(
-        BackendServiceSession session,
-        long generation,
-        BackendServiceUnavailableEventArgs unavailable)
-    {
-        if (exiting || !IsCurrentBackendGeneration(session, generation))
-        {
-            return;
-        }
-
-        System.Diagnostics.Trace.WriteLine(unavailable.Message);
-        _ = SetUnavailableBackendSessionProjection();
-        backendReady = false;
-        performanceOverlay.Stop();
-        DisposeBackendGeneration();
-        SetBackendConnectionState(BackendConnectionState.Degraded, unavailable.Message);
-        ShowBackendUnavailableBalloon(unavailable.Message);
-        EnsureReconnectLoop(immediate: false);
-    }
-
-    private bool IsCurrentBackendGeneration(
-        BackendServiceSession session,
-        long generation) =>
-        generation == backendGeneration && ReferenceEquals(session, backendSession);
-
-    private void DisposeBackendGeneration()
-    {
-        trayNoticeCancellation?.Cancel();
-        trayNoticeCancellation?.Dispose();
-        trayNoticeCancellation = null;
-        desktopObservations.Stop();
-        var lossHandler = backendLossHandler;
-        var session = backendSession;
-        backendLossHandler = null;
-        backendSession = null;
-        lossHandler?.Dispose();
-        session?.Dispose();
-    }
-
-    private void EnsureReconnectLoop(bool immediate)
-    {
-        if (exiting || backendReady || shutdown.IsCancellationRequested)
-        {
-            return;
-        }
-
-        if (immediate)
-        {
-            reconnectDelayCancellation?.Cancel();
-        }
-
-        if (reconnectLoopTask is { IsCompleted: false })
-        {
-            return;
-        }
-
-        reconnectLoopTask = RunReconnectLoopAsync(immediate);
-    }
-
-    private async Task RunReconnectLoopAsync(bool immediate)
-    {
-        var failedAttemptCount = 0;
-        var skipDelay = immediate;
-        try
-        {
-            while (!exiting && !shutdown.IsCancellationRequested && !backendReady)
-            {
-                if (!skipDelay)
-                {
-                    await WaitForReconnectDelayAsync(
-                        BackendReconnectPolicy.GetDelay(failedAttemptCount));
-                }
-                skipDelay = false;
-                if (exiting || shutdown.IsCancellationRequested || backendReady)
-                {
-                    return;
-                }
-
-                SetBackendConnectionState(BackendConnectionState.Reconnecting);
-                mainForm?.ShowBackendConnecting(reconnecting: true);
-                if (await EnsureBackendReadyAsync())
-                {
-                    await StartMainWindowFrontendIfVisibleAsync();
-                    return;
-                }
-
-                failedAttemptCount++;
-            }
-        }
-        catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            reconnectLoopTask = null;
-        }
-    }
-
-    private async Task WaitForReconnectDelayAsync(TimeSpan delay)
-    {
-        using var delayCancellation =
-            CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
-        reconnectDelayCancellation = delayCancellation;
-        try
-        {
-            await Task.Delay(delay, delayCancellation.Token);
-        }
-        catch (OperationCanceledException) when (!shutdown.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            if (ReferenceEquals(reconnectDelayCancellation, delayCancellation))
-            {
-                reconnectDelayCancellation = null;
-            }
-        }
+        try { await completion; }
+        catch (Exception error) { System.Diagnostics.Trace.WriteLine(error); }
     }
 
     private void RequestBackendRetry()
@@ -757,15 +413,19 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             return;
         }
 
+        // Preserve the existing explicit frontend retry; failed listener startup is
+        // serial work owned by the proxy block, never an automatic scheduler retry.
+        proxyBlock?.RequestRetry();
+
         if (backendReady && backendSession is { } session)
         {
             mainForm?.ShowBackendReady(
                 RequireBackendSessionProjection(ready: true));
-            _ = StartMainWindowFrontendIfVisibleAsync();
+            ObserveUiCommand(StartMainWindowFrontendIfVisibleAsync());
             return;
         }
 
-        EnsureReconnectLoop(immediate: true);
+        backendConnection.RequestRetry();
     }
 
     private void SetBackendConnectionState(
@@ -794,7 +454,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         var snapshot = ShellAvailabilityProjection.Project(
             backendConnectionState,
             frontendConnectionState);
-        trayIcon.Text = string.Format(NativeUiText.Current.TrayTooltipFormat, snapshot.StatusText);
+        if (trayIcon is not null) trayIcon.Text = string.Format(NativeUiText.Current.TrayTooltipFormat, snapshot.StatusText);
         if (backendStatusMenuItem is not null)
         {
             backendStatusMenuItem.Text = string.Format(NativeUiText.Current.TrayStatusFormat, snapshot.StatusText);
@@ -864,7 +524,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void ShowBackendUnavailableBalloon(string message)
     {
-        if (!exiting && trayIcon.Visible)
+        if (!exiting && trayIcon is not null && trayIcon.Visible)
         {
             trayIcon.ShowBalloonTip(
                 5000,
@@ -935,12 +595,14 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private void DisposeMainForm()
     {
         var form = mainForm;
-        mainForm = null;
         if (form is null)
         {
             return;
         }
 
+        form.CompleteClose();
+        form.WindowCloseRequested -= OnWindowCloseRequested;
+        mainForm = null;
         form.BackendRetryRequested -= OnBackendRetryRequested;
         form.FrontendConnectionStateChanged -= OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested -= OnDiagnosticsRequested;
