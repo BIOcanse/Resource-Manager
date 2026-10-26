@@ -266,7 +266,7 @@ export default createSettingsLocale("ja-JP", {
     "animationOptions": {
       "auto": {
         "label": "自動",
-        "description": "前面操作中は標準モーションを使い、低電力のバックグラウンド状態では高性能表示に切り替えます"
+        "description": "ウィンドウが表示され、最近の操作がない状態でフォーカスを再取得した時点に限り、自己スケジューリングの GPU 等級に基づいてアニメーションを選択し、次に条件を満たすまで維持します。"
       },
       "normal": {
         "label": "標準アニメーション",

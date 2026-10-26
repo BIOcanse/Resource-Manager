@@ -266,7 +266,7 @@ export default createSettingsLocale("de-DE", {
     "animationOptions": {
       "auto": {
         "label": "Automatisch",
-        "description": "Im Vordergrund normale Animationen verwenden und im energiesparenden Hintergrund zur besonders sparsamen Darstellung wechseln"
+        "description": "Wählt die Animationsstufe anhand der GPU-Stufe der Selbstplanung nur dann, wenn das sichtbare Fenster ohne kürzliche Eingabe den Fokus wiedererlangt, und behält sie bis zur nächsten zulässigen Rückkehr bei."
       },
       "normal": {
         "label": "Normale Animationen",

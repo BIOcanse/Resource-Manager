@@ -137,7 +137,7 @@ const zhCnSettingsCopy: SettingsCopy = {
       ice: "冰蓝"
     },
     animationOptions: {
-      auto: { label: "自动调度", description: "前台正常动画，后台自动切超高性能。" },
+      auto: { label: "自动调度", description: "仅在窗口可见且重新获得焦点、近期无操作时，按自调度 GPU 档位选择动画效果，并保持至下次符合条件时。" },
       normal: { label: "正常动画", description: "全局过渡动画" },
       none: { label: "无动画", description: "关掉动画，外观不变" },
       ultra: { label: "超高性能", description: "关动画并去掉阴影、高光、模糊，开销最低" }
@@ -529,7 +529,7 @@ const enSettingsCopy: SettingsCopy = {
       ice: "Ice"
     },
     animationOptions: {
-      auto: { label: "Automatic", description: "Use normal motion in the foreground and switch to the ultra-performance appearance in low-power background states" },
+      auto: { label: "Automatic", description: "Select an animation tier from the self-scheduling GPU grade only when the visible window regains focus without recent input, then retain it until the next eligible return." },
       normal: { label: "Normal motion", description: "Enable restrained global transitions" },
       none: { label: "No motion", description: "Disable all transitions and animations, keep the refined look" },
       ultra: { label: "Ultra performance", description: "Disable motion and flatten visuals (no shadows / highlights / blur) for the lowest overhead" }

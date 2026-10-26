@@ -266,7 +266,7 @@ export default createSettingsLocale("ko-KR", {
     "animationOptions": {
       "auto": {
         "label": "자동",
-        "description": "전면 작업 중에는 일반 애니메이션을 사용하고, 저전력 백그라운드 상태에서는 고성능 표시로 전환합니다"
+        "description": "창이 표시되고 최근 입력 없이 포커스를 다시 얻는 시점에만 자체 스케줄링의 GPU 등급에 따라 애니메이션 단계를 선택하며, 다음에 조건을 충족할 때까지 유지합니다."
       },
       "normal": {
         "label": "일반 애니메이션",

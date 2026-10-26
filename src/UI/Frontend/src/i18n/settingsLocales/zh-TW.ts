@@ -265,7 +265,7 @@ export default createSettingsLocale("zh-TW", {
     "animationOptions": {
       "auto": {
         "label": "自動排程",
-        "description": "前景使用正常動畫，低功耗背景自動切換為超高效能外觀。"
+        "description": "僅在視窗可見且重新取得焦點、近期無操作時，依自動排程 GPU 檔位選擇動畫效果，並維持至下次符合條件時。"
       },
       "normal": {
         "label": "正常動畫",

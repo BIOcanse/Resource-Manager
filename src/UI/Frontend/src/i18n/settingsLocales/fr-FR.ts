@@ -266,7 +266,7 @@ export default createSettingsLocale("fr-FR", {
     "animationOptions": {
       "auto": {
         "label": "Automatique",
-        "description": "Utiliser les animations normales au premier plan et l’apparence à très hautes performances en arrière-plan à faible consommation"
+        "description": "Sélectionne le niveau d’animation selon le niveau GPU de l’auto-ordonnancement uniquement lorsque la fenêtre visible reprend le focus sans saisie récente, puis le conserve jusqu’au prochain retour admissible."
       },
       "normal": {
         "label": "Animations normales",

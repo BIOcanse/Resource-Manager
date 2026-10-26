@@ -266,7 +266,7 @@ export default createSettingsLocale("es-ES", {
     "animationOptions": {
       "auto": {
         "label": "Automático",
-        "description": "Usa animaciones normales en primer plano y el aspecto de máximo rendimiento en segundo plano de bajo consumo"
+        "description": "Selecciona el nivel de animación según el nivel de GPU de la autoplanificación solo cuando la ventana visible recupera el foco sin entradas recientes y lo mantiene hasta el siguiente retorno que cumpla estas condiciones."
       },
       "normal": {
         "label": "Animaciones normales",
