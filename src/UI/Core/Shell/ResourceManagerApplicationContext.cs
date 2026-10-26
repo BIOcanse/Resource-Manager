@@ -146,6 +146,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         if (disposing && Interlocked.Exchange(ref disposeStarted, 1) == 0)
         {
             exiting = true;
+            RunDisposalAction(() => mainForm?.Hide());
             RunDisposalAction(shutdown.Cancel);
             RunDisposalAction(() => reconnectDelayCancellation?.Cancel());
             RunDisposalAction(() => Application.Idle -= OnApplicationIdle);
@@ -579,6 +580,8 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void ExitApplication()
     {
+        // Cancellation can run synchronous callbacks. Remove the window first.
+        mainForm?.Hide();
         _ = shutdownCoordinator.TryShutdown(new NativeUiShutdownActions(
             MarkExiting: () =>
             {
@@ -598,8 +601,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             {
                 if (mainForm is { IsDisposed: false } form)
                 {
-                    form.StopPolling();
-                    form.Close();
+                    form.StopAndClose();
                 }
             },
             ExitMessageLoop: ExitThread));
@@ -948,6 +950,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         desktopObservations.SetVisibilityWindow(IntPtr.Zero);
         if (!form.IsDisposed)
         {
+            form.Hide();
             form.StopPolling();
             form.Dispose();
         }

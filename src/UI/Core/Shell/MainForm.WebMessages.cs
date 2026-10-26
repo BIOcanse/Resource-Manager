@@ -48,9 +48,12 @@ public sealed partial class MainForm
                 break;
             case "window.close":
                 // Closing the window closes the frontend; the tray keeps running.
+                // Hide synchronously; WebView2 must be disposed outside its callback.
+                Hide();
                 BeginInvoke(Close);
                 break;
             case "update.applyExit":
+                Hide();
                 BeginInvoke(() => ExitRequested?.Invoke(this, EventArgs.Empty));
                 break;
             case "taskManager.shortcutReplacement:on":

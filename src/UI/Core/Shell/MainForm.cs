@@ -134,6 +134,13 @@ public sealed partial class MainForm : Form
         PublishHostVisibility(forceHidden: true);
     }
 
+    internal void StopAndClose()
+    {
+        Hide();
+        StopPolling();
+        Close();
+    }
+
     internal void SetDesktopOccluded(bool occluded)
     {
         if (desktopOccluded == occluded)
@@ -197,10 +204,20 @@ public sealed partial class MainForm : Form
         SetFrontendConnectionState(FrontendConnectionState.NotStarted);
     }
 
+    protected override void OnFormClosing(FormClosingEventArgs args)
+    {
+        // WM_CLOSE covers Alt+F4, the system menu and the taskbar close command.
+        // Keep the real bounds and window state intact while removing the HWND
+        // from the screen before any closing handler can tear down the surface.
+        Hide();
+        base.OnFormClosing(args);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            Hide();
             Application.RemoveMessageFilter(resizeGripMessageFilter);
             frontendHost.MessageReceived -= HandleFrontendMessageReceived;
             frontendHost.NavigationCompleted -= HandleFrontendNavigationCompleted;
