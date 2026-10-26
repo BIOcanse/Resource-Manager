@@ -111,6 +111,30 @@ try {
     });
   }
 
+  // 悬停提示：CPU 条放到视口顶部（提示只能往下开，正下方是物理内存那一行），悬停第一段，截整个视口。
+  for (const [name, options] of [
+    ["tooltip-standard-light-1100-zh-CN", { uiStyle: "standard", theme: "light", language: "zh-CN" }],
+    ["tooltip-standard-dark-1100-zh-CN", { uiStyle: "standard", theme: "dark", language: "zh-CN" }],
+    ["tooltip-standard-light-1100-de-DE", { uiStyle: "standard", theme: "light", language: "de-DE" }],
+    ["tooltip-standard-dark-1100-de-DE", { uiStyle: "standard", theme: "dark", language: "de-DE" }],
+    ["tooltip-soft-dark-1100-de-DE", { uiStyle: "soft", theme: "dark", language: "de-DE" }],
+    ["tooltip-outline-graphite-1100-de-DE", { uiStyle: "outline", theme: "graphite", language: "de-DE" }],
+    ["tooltip-terminal-phosphor-1100-zh-CN", { uiStyle: "terminal", theme: "phosphor", language: "zh-CN" }],
+    ["tooltip-terminal-amber-1100-de-DE", { uiStyle: "terminal", theme: "amber", language: "de-DE" }]
+  ]) {
+    if (only && !name.includes(only)) continue;
+    await withPage({ ...options, viewport: { width: 1100, height: 800 }, animations: "none" }, async page => {
+      await page.evaluate(() => document.querySelector('.resource-bar-track[data-metric-id="cpu.usage"]').scrollIntoView({ block: "start" }));
+      await page.waitForTimeout(300);
+      const box = await page.locator('.resource-bar-track[data-metric-id="cpu.usage"]').boundingBox();
+      await page.mouse.move(box.x + 30, box.y + box.height / 2);
+      await page.waitForTimeout(500);
+      const path = join(outDir, `${name}.png`);
+      await page.screenshot({ path });
+      manifest.push({ name, path });
+    });
+  }
+
   if (!only || "motion".includes(only) || only === "motion") {
     for (const animations of ["normal", "none"]) {
       await withPage({ uiStyle: "standard", theme: "light", language: "zh-CN", viewport: viewports.wide, animations }, async page => {

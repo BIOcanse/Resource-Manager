@@ -221,13 +221,6 @@
   background-color: transparent;
 }
 
-/* 浮层没有投影，靠边线和底色区分。资源条提示是反色实底：墨色底配纸色字，深色配色里反过来。 */
-:root[data-ui-style="outline"] .resource-tooltip {
-  background: var(--text);
-  color: var(--surface);
-  box-shadow: none;
-}
-
 /* 弹窗标题栏像图纸的标题栏：表头底色加一条实线。 */
 :root[data-ui-style="outline"] .modal-header {
   background: var(--table-header-bg);

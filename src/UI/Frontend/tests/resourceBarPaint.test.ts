@@ -130,7 +130,23 @@ assert.match(breakdown, /class="resource-tooltip-swatch"/);
 assert.match(breakdown, /class="resource-tooltip-basis"/);
 assert.match(resources, /\.resource-tooltip\s*\{[^}]*text-align:\s*left;/);
 const motion = stripComments(read("styles/motion.css"));
-assert.match(motion, /\.resource-tooltip\.visible\s*\{\s*animation:\s*motion-fade-in var\(--motion-fast\) var\(--ease-standard\);/);
+assert.match(motion, /\.resource-tooltip\s*\{\s*animation:\s*motion-fade-in var\(--motion-fast\) var\(--ease-standard\);/);
 assert.match(motion, /body\[data-animations="none"\] \*,[\s\S]*?animation-duration:\s*0s !important;/, "the reduced modes show the tooltip without the fade");
+// 提示挂在页面最顶层（Portal 到 body，position: fixed，和下拉框弹出层同一层），不在资源条那一行里：下一行盖不住它。
+const overlay = read("features/resourceBreakdown/ResourceTooltipOverlay.tsx");
+assert.match(overlay, /<Portal>/);
+assert.match(resources, /\.resource-tooltip\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*1200;/);
+assert.doesNotMatch(breakdown, /<span\s+class="resource-tooltip"/, "no tooltip is rendered inside a bar row any more");
+// 两个浮层同一套外观：提示和下拉框弹出层用同样的表面、细边框和阴影令牌，深色配色下也和后面的卡片分得开；各风格不再单独改提示。
+const tooltipRule = /\.resource-tooltip\s*\{([^}]*)\}/.exec(resources)?.[1] ?? "";
+const popoverRule = /\.standard-select-popover\s*\{([^}]*)\}/.exec(stripComments(read("styles/controls.css")))?.[1] ?? "";
+for (const property of ["border", "background", "color", "box-shadow", "border-radius"]) {
+  const value = (rule: string) => new RegExp(`(?:^|;)\\s*${property}:\\s*([^;]+);`).exec(rule)?.[1]?.trim();
+  assert.equal(value(tooltipRule), value(popoverRule), `tooltip ${property} matches the dropdown popover`);
+}
+for (const style of ["outline", "terminal", "soft"]) {
+  assert.doesNotMatch(read(`styles/ui-styles/${style}.css`), /\.resource-tooltip\s*\{/, `${style} does not restyle the tooltip apart from the popover`);
+}
+assert.equal((breakdown.match(/<ResourceTooltipOverlay /g) ?? []).length, 2, "software and process bars both use the overlay");
 
 console.log("resourceBarPaint: ok");

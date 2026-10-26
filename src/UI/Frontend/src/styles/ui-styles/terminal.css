@@ -249,13 +249,6 @@
   --segment-fg-hover: var(--accent-strong);
 }
 
-/* 资源条提示：标准风格写死了半透明深底白字，这里换成本配色的表面、文字和细线。 */
-:root[data-ui-style="terminal"] .resource-tooltip {
-  background: var(--surface-strong);
-  color: var(--text);
-  box-shadow: 0 0 0 1px var(--line), 0 8px 20px rgb(0 0 0 / 0.5);
-}
-
 /* ---- 表格 ---- */
 
 /* 占用热度条：标准风格的共享分摊是琥珀色，这里改成强调色的两档深浅（实线自有、虚线共享分摊，画法在 resources.css）。 */

@@ -1073,32 +1073,34 @@
   white-space: pre-line;
 }
 
-/* 提示：名字一行加粗，读数各占一行，口径说明在下面隔一条细线、颜色淡一档。左对齐，长说明好读。 */
+/* 提示：名字一行加粗，读数各占一行，只属于这一段的归因说明在下面隔一条细线、颜色淡一档。左对齐。
+   它挂在页面最顶层（ResourceTooltipOverlay，Portal 到 body），和下拉框的弹出层同一层，资源条的行盖不住它；
+   位置由脚本按视口算好写进 left/top，放好之前不显示。 */
 .resource-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  z-index: 40;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
   display: grid;
   gap: 2px;
   width: max-content;
   min-width: 160px;
-  max-width: 300px;
-  transform: translateX(calc(-50% + var(--resource-tooltip-shift-x, 0px)));
-  transform-origin: center bottom;
+  max-width: min(340px, calc(100vw - 16px));
   pointer-events: none;
-  opacity: 0;
-  border-radius: var(--radius-sm);
+  /* 和下拉框的弹出层同一套外观（controls.css .standard-select-popover）：抬起的表面、细边框和弹出层阴影，
+     各风格各配色都由这几个令牌给出，深色配色下也和后面的卡片分得开。 */
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   padding: 7px 10px 8px;
-  background: color(display-p3 0.100 0.115 0.110 / 0.92);
-  color: color(display-p3 1 1 1);
+  background: var(--surface);
+  color: var(--text);
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
-  box-shadow: 0 10px 24px color(display-p3 0.040 0.080 0.070 / 0.22);
+  box-shadow: var(--elev-3), var(--edge-highlight);
 }
 
 .resource-tooltip-title {
@@ -1115,7 +1117,7 @@
   height: 9px;
   border-radius: 2px;
   background: var(--swatch-color);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55);
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 body[data-bar-color="distinct"] .resource-tooltip-swatch {
@@ -1150,15 +1152,8 @@ body[data-bar-color="distinct"] .resource-tooltip-swatch.hatched {
   font-size: 11px;
 }
 
-.resource-tooltip[data-placement="below"] {
-  top: calc(100% + 8px);
-  bottom: auto;
-  transform-origin: center top;
-}
-
-.resource-tooltip.visible {
-  z-index: 80;
-  opacity: 1;
+.resource-tooltip:not([data-placement]) {
+  visibility: hidden;
 }
 
 /* Windows 高对比（强制颜色）：阴影会被去掉，焦点、悬停和选中都改用系统颜色的外框。画布里的分段不受影响。 */

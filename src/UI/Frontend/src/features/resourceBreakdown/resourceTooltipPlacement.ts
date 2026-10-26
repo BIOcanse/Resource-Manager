@@ -6,53 +6,43 @@ export interface TooltipRect {
 }
 
 export interface ResourceTooltipPlacement {
-  shiftX: number;
+  /** 提示左上角在视口里的位置（position: fixed）。 */
+  left: number;
+  top: number;
   vertical: "above" | "below";
 }
 
 const tooltipInset = 8;
 const tooltipGap = 8;
 
+/**
+ * 提示放在悬停的那一段上方或下方，不盖住这一段；整个提示留在视口里。
+ * 上方放得下就放上方，否则下方放得下就放下方；两边都放不下时放在空间大的一边，再收进视口（这时才可能压到这一段）。
+ * 水平方向以这一段为中心，收进视口左右各留 8 px。
+ */
 export function resolveResourceTooltipPlacement(
   anchor: TooltipRect,
-  boundary: TooltipRect,
+  viewport: TooltipRect,
   tooltipWidth: number,
-  tooltipHeight: number,
-  contentTop = boundary.top
+  tooltipHeight: number
 ): ResourceTooltipPlacement {
-  const preferredLeft = (anchor.left + anchor.right - tooltipWidth) / 2;
-  const minimumLeft = boundary.left + tooltipInset;
-  const maximumLeft = Math.max(minimumLeft, boundary.right - tooltipInset - tooltipWidth);
-  const clampedLeft = clamp(preferredLeft, minimumLeft, maximumLeft);
-  const availableAbove = anchor.top - tooltipGap - Math.max(contentTop, boundary.top + tooltipInset);
-  const availableBelow = boundary.bottom - tooltipInset - anchor.bottom - tooltipGap;
-  const vertical = tooltipHeight <= availableAbove || availableAbove >= availableBelow
+  const minimumLeft = viewport.left + tooltipInset;
+  const maximumLeft = Math.max(minimumLeft, viewport.right - tooltipInset - tooltipWidth);
+  const left = clamp((anchor.left + anchor.right - tooltipWidth) / 2, minimumLeft, maximumLeft);
+
+  const availableAbove = anchor.top - tooltipGap - (viewport.top + tooltipInset);
+  const availableBelow = viewport.bottom - tooltipInset - (anchor.bottom + tooltipGap);
+  const vertical = tooltipHeight <= availableAbove
     ? "above"
-    : "below";
-
-  return {
-    shiftX: clampedLeft - preferredLeft,
-    vertical
-  };
-}
-
-export function positionResourceTooltip(anchor: HTMLElement) {
-  const tooltip = anchor.querySelector<HTMLElement>(":scope > .resource-tooltip");
-  const boundary = anchor.closest<HTMLElement>("[data-resource-tooltip-boundary]");
-  if (!tooltip || !boundary) {
-    return;
-  }
-
-  const boundaryHeader = boundary.querySelector<HTMLElement>(
-    ":scope > .resource-breakdown-header, :scope > .resource-process-header");
-  const placement = resolveResourceTooltipPlacement(
-    anchor.getBoundingClientRect(),
-    boundary.getBoundingClientRect(),
-    tooltip.getBoundingClientRect().width,
-    tooltip.getBoundingClientRect().height,
-    boundaryHeader?.getBoundingClientRect().bottom);
-  tooltip.style.setProperty("--resource-tooltip-shift-x", `${placement.shiftX}px`);
-  tooltip.dataset.placement = placement.vertical;
+    : tooltipHeight <= availableBelow || availableBelow > availableAbove
+      ? "below"
+      : "above";
+  const preferredTop = vertical === "above"
+    ? anchor.top - tooltipGap - tooltipHeight
+    : anchor.bottom + tooltipGap;
+  const minimumTop = viewport.top + tooltipInset;
+  const maximumTop = Math.max(minimumTop, viewport.bottom - tooltipInset - tooltipHeight);
+  return { left, top: clamp(preferredTop, minimumTop, maximumTop), vertical };
 }
 
 function clamp(value: number, minimum: number, maximum: number) {

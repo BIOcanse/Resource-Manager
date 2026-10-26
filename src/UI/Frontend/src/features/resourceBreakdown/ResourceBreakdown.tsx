@@ -38,7 +38,7 @@ import {
   activeDescendantOptionId,
   resolveActiveDescendantTarget
 } from "../../ui/primitives/activeDescendantListbox.ts";
-import { positionResourceTooltip } from "./resourceTooltipPlacement.ts";
+import { ResourceTooltipOverlay } from "./ResourceTooltipOverlay.tsx";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
 import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
@@ -401,18 +401,8 @@ function ResourceBreakdownItem(props: {
   const trackGeometry = createResourceTrackGeometry();
   let interactionProxy: HTMLDivElement | undefined;
 
-  createEffect(() => {
-    const hoveredId = hoveredSoftwareId();
-    if (!hoveredId) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      if (hoveredSoftwareId() === hoveredId && interactionProxy) {
-        positionResourceTooltip(interactionProxy);
-      }
-    });
-  });
+  // 提示只跟悬停走：悬停时 interactionEntry 就是悬停的那一段，交互层停在它上面，提示对着交互层摆。
+  const hoveredEntry = () => hoveredSoftwareId() ? interactionEntry() : null;
 
   // 分段过渡期间轨道带 .moving，任务中心诊断里显示为“资源布局过渡”。
   // 画布不看它：分隔线在过渡的每一帧都画，它翻转时也不会打断正在走的过渡。
@@ -480,7 +470,6 @@ function ResourceBreakdownItem(props: {
   return (
     <article
       class="resource-breakdown-item"
-      data-resource-tooltip-boundary
       classList={{ editing: props.editMode }}
       ref={props.reorder.item({ id: () => props.bar.metricId, enabled: () => props.editMode })}
     >
@@ -590,15 +579,15 @@ function ResourceBreakdownItem(props: {
                   aria-setsize={layout().length}
                   data-metric-id={props.bar.metricId}
                   data-software-id={item().segment.softwareId}
-                >
-                  <span
-                    class="resource-tooltip"
-                    classList={{ visible: hoveredSoftwareId() === item().segment.softwareId }}
-                  >
-                    <ResourceTooltipContent parts={resourceSegmentTooltipParts(props.bar, item().segment)} />
-                  </span>
-                </div>
+                />
               </div>
+            )}
+          </Show>
+          <Show when={hoveredEntry()}>
+            {(item) => (
+              <ResourceTooltipOverlay anchor={() => interactionProxy}>
+                <ResourceTooltipContent parts={resourceSegmentTooltipParts(props.bar, item().segment)} />
+              </ResourceTooltipOverlay>
             )}
           </Show>
       </div>
@@ -660,18 +649,7 @@ function ResourceProcessPanel(props: {
   const activeProcessOptionId = () => interactionEntry() ? interactionOptionId() : undefined;
   const trackGeometry = createResourceTrackGeometry();
   let interactionProxy: HTMLDivElement | undefined;
-  createEffect(() => {
-    const hoveredKey = hoveredProcessKey();
-    if (!hoveredKey) {
-      return;
-    }
-
-    queueMicrotask(() => {
-      if (hoveredProcessKey() === hoveredKey && interactionProxy) {
-        positionResourceTooltip(interactionProxy);
-      }
-    });
-  });
+  const hoveredEntry = () => hoveredProcessKey() ? interactionEntry() : null;
   const hasProcesses = () => layout().length > 0;
   const hasResidualCategories = () => {
     if (props.software.softwareId?.startsWith("resource-residual:")) {
@@ -682,7 +660,7 @@ function ResourceProcessPanel(props: {
     return processes.length > 0 && processes.every((process) => isSystemResidualProcess(process));
   };
   return (
-    <div class="resource-process-panel" aria-busy={props.observation.status === "loading"} data-resource-tooltip-boundary>
+    <div class="resource-process-panel" aria-busy={props.observation.status === "loading"}>
       <div class="resource-process-header">
         <strong>{softwareDisplayName(props.software)}</strong>
         <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.processes?.length ?? 0) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>
@@ -759,15 +737,15 @@ function ResourceProcessPanel(props: {
                   aria-label={resourceProcessTooltip(props.bar, item().segment)}
                   aria-posinset={item().index + 1}
                   aria-setsize={layout().length}
-                >
-                  <span
-                    class="resource-tooltip"
-                    classList={{ visible: hoveredProcessKey() === processKey(item().segment) }}
-                  >
-                    <ResourceTooltipContent parts={resourceProcessTooltipParts(props.bar, item().segment)} />
-                  </span>
-                </div>
+                />
               </div>
+            )}
+          </Show>
+          <Show when={hoveredEntry()}>
+            {(item) => (
+              <ResourceTooltipOverlay anchor={() => interactionProxy}>
+                <ResourceTooltipContent parts={resourceProcessTooltipParts(props.bar, item().segment)} />
+              </ResourceTooltipOverlay>
             )}
           </Show>
         </Show>

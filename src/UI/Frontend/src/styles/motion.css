@@ -166,7 +166,7 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
 }
 
 /* 资源条提示出现时淡入；在分段之间移动时提示不重挂，只换内容，不再重放。无动画、超高性能下由全局规则清零，直接出现。 */
-.resource-tooltip.visible {
+.resource-tooltip {
   animation: motion-fade-in var(--motion-fast) var(--ease-standard);
 }
 

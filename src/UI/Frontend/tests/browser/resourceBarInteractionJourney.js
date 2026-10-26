@@ -1,12 +1,14 @@
-import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { readFrontendPreferences, seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 // 资源条的手感回归（混合数据 resourceSoftwareMix: "audit"）：
 // 1. 键盘逐段走时每一步选中框都在（选中类不被展示分组的类名冲掉）；
 // 2. 指针能指到每一段，包括不到 1 px 的小段；
-// 3. 悬停换段时悬停框直接到位，不在指针后面滑；提示不出资源条所在的区域；
+// 3. 悬停换段时悬停框直接到位，不在指针后面滑；提示在视口里；
 // 4. 选中空余段后数据更新，选择还在；
 // 5. 正常动画下数据变化连续过渡、不来回（过渡中外观属性被写成同样的值也不打断），软件退出和回来时条上不露底；无动画下一帧到位；
-// 6. Windows 高对比下焦点和选中用系统颜色外框。
+// 6. Windows 高对比下焦点和选中用系统颜色外框；
+// 7. 提示挂在页面最顶层：资源条下面紧挨着另一条时，提示整个看得见（四角和中心取到的都是提示本身）、在视口里、
+//    不盖住悬停的那一段；1100 和 1920 宽、简体中文和德语都查，德语的读数各占一行。
 export default async function resourceBarInteractionJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -63,7 +65,7 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   }
   assert(total > 10 && reached.size === total, `Pointer could reach ${reached.size} of ${total} segments: ${[...reached].join(", ")}`);
 
-  // 3. 换段时悬停框直接到位，提示不出资源条区域
+  // 3. 换段时悬停框直接到位，提示在视口里
   await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
   await page.waitForTimeout(500);
   await page.mouse.move(box.x + 12, box.y + box.height / 2);
@@ -71,14 +73,14 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   const jump = await page.evaluate(() => {
     const item = document.querySelector('.resource-bar-track[data-metric-id="memory.usage"]').closest(".resource-breakdown-item");
     const layer = item.querySelector(".resource-segment-interaction-layer").getBoundingClientRect();
-    const tooltip = item.querySelector(".resource-tooltip").getBoundingClientRect();
-    const bounds = item.getBoundingClientRect();
+    const tooltip = document.querySelector(".resource-tooltip")?.getBoundingClientRect();
     const trackBox = item.querySelector(".resource-bar-track").getBoundingClientRect();
-    return { layerLeft: layer.left - trackBox.left, tooltipLeft: tooltip.left, tooltipRight: tooltip.right, itemLeft: bounds.left, itemRight: bounds.right };
+    return { layerLeft: layer.left - trackBox.left, tooltipLeft: tooltip?.left ?? -1, tooltipRight: tooltip?.right ?? -1,
+      viewportRight: document.documentElement.clientWidth };
   });
   assert(jump.layerLeft < 4, `Hover ring slid instead of jumping to the hovered segment: ${JSON.stringify(jump)}`);
-  assert(jump.tooltipLeft >= jump.itemLeft && jump.tooltipRight <= jump.itemRight,
-    `Tooltip left the resource bar area: ${JSON.stringify(jump)}`);
+  assert(jump.tooltipLeft >= 0 && jump.tooltipRight <= jump.viewportRight,
+    `Tooltip left the viewport: ${JSON.stringify(jump)}`);
   await page.mouse.move(1, 1);
 
   // 5. 过渡：正常动画连续、不来回；软件退出时不露底
@@ -117,8 +119,81 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   assert(forced.focusVisible && forced.track[0] === "solid" && forced.track[1] === "2px", `Forced-colours focus outline missing: ${JSON.stringify(forced)}`);
   assert(forced.proxy[0] === "solid" && forced.proxy[1] === "3px", `Forced-colours selection outline missing: ${JSON.stringify(forced)}`);
 
+  // 7. 提示层（换了语言、动画和窗口大小，查完还原，门禁之后的页面检查按简体中文找区域）
+  const layer = [];
+  const original = (await readFrontendPreferences(page)).appearance;
+  const originalLanguage = original.language;
+  const originalAnimations = original.animations;
+  for (const [width, height] of [[1100, 800], [1920, 1080]]) {
+    for (const language of ["zh-CN", "de-DE"]) {
+      await writeFrontendPreferences(page, (value) => { value.appearance.language = language; value.appearance.animations = "none"; });
+      await page.setViewportSize({ width, height });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await waitForBar(page);
+      for (const position of ["top", "middle"]) {
+        const result = await tooltipLayerCheck(page, position);
+        layer.push({ width, language, position, ...result });
+        assert(result.tooltip, `${width}/${language}/${position}: no tooltip while hovering`);
+        assert(!result.insideBarRow, `${width}/${language}/${position}: the tooltip is still inside a bar row`);
+        assert(result.hits.every(Boolean), `${width}/${language}/${position}: part of the tooltip is covered ${JSON.stringify(result)}`);
+        assert(result.inViewport, `${width}/${language}/${position}: the tooltip leaves the viewport ${JSON.stringify(result)}`);
+        assert(!result.coversSegment, `${width}/${language}/${position}: the tooltip covers the hovered segment ${JSON.stringify(result)}`);
+        assert(result.lines.every((count) => count === 1), `${width}/${language}/${position}: a reading wraps ${JSON.stringify(result.lines)}`);
+        if (position === "top") {
+          assert(result.placement === "below" && result.overlapsNextBar,
+            `${width}/${language}: the top case must open over the next bar to test the layer ${JSON.stringify(result)}`);
+        }
+      }
+    }
+  }
+
+  await writeFrontendPreferences(page, (value) => { value.appearance.language = originalLanguage; value.appearance.animations = originalAnimations; });
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForBar(page);
+
   assert(errors.length === 0, `Page errors: ${JSON.stringify(errors)}`);
-  return { keyboard, endState, afterUpdate, reached: reached.size, total, jump, values, leave, back, reduced, forced };
+  return { keyboard, endState, afterUpdate, reached: reached.size, total, jump, values, leave, back, reduced, forced, layer };
+}
+
+// CPU 条放到视口顶部（提示只能往下开，正好压在物理内存那一行上）或中间，悬停它的第一段，量提示。
+async function tooltipLayerCheck(page, position) {
+  await page.mouse.move(1, 1);
+  await page.evaluate((where) => {
+    document.querySelector('.resource-bar-track[data-metric-id="cpu.usage"]').scrollIntoView({ block: where === "top" ? "start" : "center" });
+  }, position);
+  await page.waitForTimeout(200);
+  const box = await page.locator('.resource-bar-track[data-metric-id="cpu.usage"]').boundingBox();
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.waitForFunction(() => document.querySelector(".resource-tooltip")?.dataset.placement, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(150);
+  return page.evaluate(() => {
+    const tooltip = document.querySelector(".resource-tooltip");
+    if (!tooltip) return { tooltip: false };
+    const rect = tooltip.getBoundingClientRect();
+    tooltip.style.pointerEvents = "auto";
+    // 角上的点往里收半个圆角（至少 2 px），落在圆角形状里面；收 2 px 在 9 px 圆角外面，取到的是提示下面的元素。
+    const inset = Math.max(2, (Number.parseFloat(getComputedStyle(tooltip).borderTopLeftRadius) || 0) / 2);
+    const points = [[rect.left + inset, rect.top + inset], [rect.right - inset, rect.top + inset], [rect.left + inset, rect.bottom - inset], [rect.right - inset, rect.bottom - inset],
+      [(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2]];
+    const hits = points.map(([x, y]) => { const element = document.elementFromPoint(x, y); return Boolean(element && tooltip.contains(element)); });
+    tooltip.style.pointerEvents = "";
+    const segment = document.querySelector('.resource-bar-track[data-metric-id="cpu.usage"] .resource-segment-interaction-proxy').getBoundingClientRect();
+    const next = document.querySelector('.resource-bar-track[data-metric-id="memory.usage"]').closest(".resource-breakdown-item").getBoundingClientRect();
+    const viewport = document.documentElement;
+    return {
+      tooltip: true,
+      insideBarRow: Boolean(tooltip.closest(".resource-breakdown")),
+      placement: tooltip.dataset.placement,
+      rect: { left: Math.round(rect.left), top: Math.round(rect.top), right: Math.round(rect.right), bottom: Math.round(rect.bottom) },
+      hits,
+      inViewport: rect.left >= 0 && rect.top >= 0 && rect.right <= viewport.clientWidth && rect.bottom <= viewport.clientHeight,
+      coversSegment: rect.top < segment.bottom && rect.bottom > segment.top,
+      overlapsNextBar: rect.bottom > next.top && rect.top < next.bottom,
+      lines: [...tooltip.querySelectorAll(".resource-tooltip-line")].map((line) =>
+        Math.round(line.getBoundingClientRect().height / Number.parseFloat(getComputedStyle(line).lineHeight)))
+    };
+  });
 }
 
 async function waitForBar(page) {
