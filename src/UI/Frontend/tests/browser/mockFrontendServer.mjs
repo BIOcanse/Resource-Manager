@@ -2115,17 +2115,18 @@ async function subscriptionChannelStream(request, response) {
 
   const ids = new Set();
   const subscriptions = [];
+  const rejections = [];
   for (const item of body.subscriptions) {
     if (typeof item?.id !== "string"
       || !/^[A-Za-z0-9._:-]{1,128}$/.test(item.id)
-      || ids.has(item.id)
-      || typeof item.path !== "string") {
+      || ids.has(item.id)) {
       return json(response, 400, { error: "invalid subscription channel item" });
     }
     ids.add(item.id);
     const requestUrl = parseSubscriptionChannelSelector(item.path);
     if (requestUrl === null) {
-      return json(response, 400, { error: "unsupported subscription path" });
+      rejections.push({ id: item.id, value: { statusCode: 400, error: "unsupported-subscription-selector" } });
+      continue;
     }
     const operation = requestUrl.pathname === "/api/operations/subscribe";
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
@@ -2150,6 +2151,8 @@ async function subscriptionChannelStream(request, response) {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff"
   });
+  for (const rejection of rejections) writeSubscriptionChannelFrame(response, rejection.id, rejection.value);
+  if (subscriptions.length === 0) return response.end();
   subscriptionChannelResponses.add(response);
   response.once("close", () => subscriptionChannelResponses.delete(response));
   const releases = [];
@@ -2283,7 +2286,7 @@ function smartCoordinatorStatus() {
 }
 
 function parseSubscriptionChannelSelector(value) {
-  if (!value
+  if (typeof value !== "string" || !value
     || value.length > 8192
     || /[\\#\s\u0000-\u001f\u007f]/u.test(value)) {
     return null;
