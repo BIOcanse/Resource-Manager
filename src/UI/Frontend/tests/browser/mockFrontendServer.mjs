@@ -1,4 +1,5 @@
 import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
+import { canonicalFieldNames } from "../../src/features/monitor/canonicalFields.ts";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -669,6 +670,15 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/resource-breakdown/fields/catalog" && request.method === "GET") {
     return json(response, 200, processFieldCatalog);
+  }
+  if (path === "/api/metrics/fields/snapshot") {
+    let selections;
+    try { selections = parseMetricFieldSelections(url); }
+    catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
+    return json(response, 200, metricFieldsSnapshot(selections));
+  }
+  if (path === "/api/metrics/fields/catalog") {
+    return json(response, 200, metricFieldCatalog());
   }
   if (path === "/api/metrics/snapshot") {
     return json(response, 200, metricSnapshot(url.searchParams.getAll("ids")));
@@ -2132,7 +2142,9 @@ async function subscriptionChannelStream(request, response) {
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
     const eventOnly = operation || managementInventoryRevision || productUpdateStatus;
-    const createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl);
+    let createPayload;
+    try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
+    catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
     if (!eventOnly && createPayload === null) {
       return json(response, 400, { error: "unsupported subscription path" });
     }
@@ -2306,6 +2318,58 @@ function writeSubscriptionChannelFrame(response, subscriptionId, value) {
   })}\n`);
 }
 
+const publicFieldAliases = new Map([
+  ["fan_all_rotational_speed", "fan_all_speed_rpm"],
+  ["fan_all_pwm_reported", "fan_all_reported_pwm_duty"]
+]);
+const knownFieldNames = new Set(canonicalFieldNames);
+const normalizeFieldName = name => publicFieldAliases.get(name) ?? name;
+
+function parseMetricFieldSelections(url) {
+  const devices = url.searchParams.getAll("device");
+  const groups = url.searchParams.getAll("fields");
+  if (devices.some(device => !device.trim()) || (devices.length > 1 && groups.length !== devices.length))
+    throw new Error("metric-field-device-invalid");
+  const names = values => new Set(values.flatMap(value => value.split(",")).map(value => normalizeFieldName(value.trim())).filter(Boolean));
+  const selections = devices.length > 1
+    ? devices.map((device, index) => ({ device, fields: names([groups[index]]) }))
+    : [{ device: devices[0] ?? null, fields: names(groups) }];
+  for (const selection of selections) {
+    const available = selection.device === null ? null : scenario.metricFieldDevices.find(device => device.deviceIdentity === selection.device);
+    if (selection.device !== null && !available) throw new Error("metric-field-device-unknown");
+    if (selection.fields.size === 0 || [...selection.fields].some(name =>
+      available ? !available.fields.some(field => normalizeFieldName(field.name) === name) : !knownFieldNames.has(name)))
+      throw new Error("metric-field-name-unknown");
+  }
+  return selections;
+}
+
+function metricFieldsSnapshot(selections) {
+  if (scenario.invalidMetricFields) return [{}];
+  const projected = new Map();
+  for (const selection of selections) for (const device of scenario.metricFieldDevices) {
+    if (selection.device !== null && selection.device !== device.deviceIdentity) continue;
+    const fields = device.fields.filter(field => selection.fields.has(normalizeFieldName(field.name)))
+      .map(field => ({
+        ...field, name: normalizeFieldName(field.name),
+        ...(field.status === 1 ? {} : { numericValue: null, integerValue: null, bytesValue: null,
+          booleanValue: null, sampleDurationMilliseconds: null, observedAt: null })
+      })).sort((left, right) => left.name.localeCompare(right.name));
+    if (fields.length === 0) continue;
+    if (!projected.has(device.deviceIdentity)) projected.set(device.deviceIdentity, { ...device, fields: [] });
+    const row = projected.get(device.deviceIdentity);
+    for (const field of fields) if (!row.fields.some(current => current.name === field.name)) row.fields.push(field);
+  }
+  return [...projected.values()];
+}
+
+function metricFieldCatalog() {
+  return scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
+    deviceIdentity, device,
+    fields: fields.map(({ name, unit, valueKind, reading }) => ({ name: normalizeFieldName(name), unit, valueKind, meaning: "", reading: reading ?? null }))
+  }));
+}
+
 function subscriptionPayloadFactory(url) {
   switch (url.pathname) {
     case "/api/access-requests/subscribe":
@@ -2317,12 +2381,9 @@ function subscriptionPayloadFactory(url) {
         { objectId: "gpu:test", capabilityId: "gpu.core-voltage-offset", number: 0, unit: "mV" }
       ] });
     case "/api/metrics/subscribe": {
-      if (url.searchParams.has("fields")) {
-        // 按字段订阅：返回绑定了其中任一字段的设备，每台只含它绑定的那些字段。
-        const requested = new Set(url.searchParams.get("fields").split(",").filter(Boolean));
-        return () => scenario.invalidMetricFields ? [{}] : scenario.metricFieldDevices
-          .map((device) => ({ ...device, fields: device.fields.filter((field) => requested.has(field.name)) }))
-          .filter((device) => device.fields.length > 0);
+      if (url.searchParams.has("device") || url.searchParams.has("fields")) {
+        const selections = parseMetricFieldSelections(url);
+        return () => metricFieldsSnapshot(selections);
       }
       const ids = url.searchParams.getAll("ids");
       return (publishedAt) => {
@@ -2331,12 +2392,7 @@ function subscriptionPayloadFactory(url) {
       };
     }
     case "/api/metrics/fields/catalog/subscribe":
-      return () => scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
-        deviceIdentity,
-        device,
-        // 读取项和值上的相同；夹具没写的字段为 null（后端合同里 reading 可空）。
-        fields: fields.map(({ name, unit, valueKind, reading }) => ({ name, unit, valueKind, meaning: "", reading: reading ?? null }))
-      }));
+      return () => metricFieldCatalog();
     case "/api/metrics/gpu-specialized/subscribe":
       return (publishedAt) => ({
         version: 2,
