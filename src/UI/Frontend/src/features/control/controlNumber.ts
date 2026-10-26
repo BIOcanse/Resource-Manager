@@ -67,8 +67,9 @@ export function formatActualNumber(value: number): string {
  * 这两种情况数字框和滑轨上的实际刻度已经说清楚，旁边再写一遍就是同一个值出现两次。
  * 只有设定值和实际读数不同，旁边那行才有新信息。
  */
-export function actualRepeatsNumberEditor(setting: number | undefined, actual: number): boolean {
-  return setting === undefined || formatActualNumber(setting) === formatActualNumber(actual);
+export function actualRepeatsNumberEditor(setting: number | null | undefined, actual: number): boolean {
+  // 设定里没有数（undefined 或 null）时，数字框和 NumberEditor 一样显示实际读数。
+  return setting === undefined || setting === null || formatActualNumber(setting) === formatActualNumber(actual);
 }
 
 /**

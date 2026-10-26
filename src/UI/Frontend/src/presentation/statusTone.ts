@@ -32,7 +32,7 @@ export function controlItemTone(status: ControlItemStatus): StatusTone {
 }
 
 /** 组件卡片上由组件状态给出的标签：安装包缺失要留意，有更新只是提示。 */
-export function componentStateTone(state: string): StatusTone {
+export function componentStateTone(state: string | undefined): StatusTone {
   switch (state) {
     case "payload_missing": return "warning";
     case "update_available": return "info";

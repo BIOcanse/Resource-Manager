@@ -102,6 +102,7 @@ console.log("controlNumber 契约通过");
  */
 assert.equal(actualRepeatsNumberEditor(undefined, 0), true);
 assert.equal(actualRepeatsNumberEditor(undefined, 12.34), true);
+assert.equal(actualRepeatsNumberEditor(null, 7), true);
 assert.equal(actualRepeatsNumberEditor(0, 0), true);
 assert.equal(actualRepeatsNumberEditor(-25, -25.04), true);
 assert.equal(actualRepeatsNumberEditor(-25, -30), false);
