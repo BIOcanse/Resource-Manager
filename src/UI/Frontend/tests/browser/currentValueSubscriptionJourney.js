@@ -12,6 +12,14 @@ export default async function currentValueSubscriptionJourney(
   const schedulingDirectPath = "/api/adapters/resource-manager/scheduling";
   const channelPath = "/api/subscriptions/stream";
   const pageErrors = [];
+  // A shared-channel membership change resends unchanged leases. A new owner
+  // subscription has a new ID, even when its interval happens to be identical.
+  const localBindings = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname !== channelPath) return;
+    const subscriptions = request.postDataJSON().subscriptions;
+    localBindings.push(...subscriptions.filter(item => new URL(item.path, baseUrl).pathname === localStreamPath));
+  });
   page.on("pageerror", (error) => pageErrors.push(String(error)));
   const channelProbe = await observeSubscriptionChannel(page);
 
@@ -46,6 +54,8 @@ export default async function currentValueSubscriptionJourney(
   // Server close delivery can lag a replacement request. Strict browser concurrency
   // plus unique selectors per request measures the client's actual logical maximum.
   initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
+  assertLocalBinding();
+  initial.localBinding = { ...localBindings[0] };
   assertSingleActiveSubscription(initial.local, "local system", initial.browserChannel.maxInFlight
     * subscriptionPathMaximum(initial.channel.subscriptionSets, localStreamPath));
   assert(initial.local.queries.every(query => new URLSearchParams(query).get("intervalMs") === "1000"),
@@ -130,9 +140,17 @@ export default async function currentValueSubscriptionJourney(
     `Smart report kept receiving callbacks while inactive: ${JSON.stringify({ smartRetired, smartInactive })}`);
   assert(pageErrors.length === 0,
     `Current-value subscription journey page errors: ${JSON.stringify(pageErrors)}`);
+  assertLocalBinding();
 
   return { initial, settled, pageEntryReads, afterIdle,
     smartStarted, smartContinued, smartDirect, smartRetired, smartInactive };
+
+  function assertLocalBinding() {
+    assert(localBindings.length > 0 && new Set(localBindings.map(item => item.id)).size === 1,
+      `Local-system owner replaced its startup subscription: ${JSON.stringify(localBindings)}`);
+    assert(localBindings.every(item => new URL(item.path, baseUrl).searchParams.get("intervalMs") === "1000"),
+      `Local-system owner started with a provisional interval: ${JSON.stringify(localBindings)}`);
+  }
 }
 
 function assertSingleActiveSubscription(telemetry, label, maximumInFlight) {
