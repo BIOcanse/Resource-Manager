@@ -13,7 +13,7 @@ import {
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
 import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
+import { ArrowDown, ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
@@ -764,16 +764,26 @@ function VirtualResourceTable(props: {
               >
                 {/* 编辑时整个表头格是拖动排序的把手，排序按钮停用：按下拖动时运行时捕获指针，浏览器把随后的 click 交给表头格，
                     按钮本来也收不到；停用的按钮算表头格的一部分，可用的按钮按在上面交给浏览器（interactions/solid/reorderGroup.ts）。 */}
+                {/* 提示：有口径说明时写口径（第一行就是列名和来源），没有时写列名本身，列窄、名字被截断时也看得到全名。 */}
                 <button
                   class="resource-table-sort-button"
                   type="button"
-                  title={columnText(column()).basis}
+                  title={columnText(column()).basis || columnText(column()).label}
                   disabled={!column().sortable || props.editMode}
                   onClick={() => updateSort(column())}
                 >
                   <span>{columnText(column()).label}</span>
-                  <Show when={props.sortColumnId === columnId}>
-                    <small>{props.sortDirection === "asc" ? "↑" : "↓"}</small>
+                  {/* 排序箭头一直在（不占位置变化）：当前排序列按方向画出，其余可排序列悬停时淡出点下去会得到的降序。
+                      数值列的箭头在列名左边，列名右边缘和下面的数字对齐。 */}
+                  <Show when={column().sortable}>
+                    <ArrowDown
+                      class={props.sortColumnId === columnId && props.sortDirection === "asc"
+                        ? "resource-table-sort-indicator ascending"
+                        : "resource-table-sort-indicator"}
+                      aria-hidden="true"
+                      size={12}
+                      strokeWidth={2.4}
+                    />
                   </Show>
                 </button>
                 <Show when={props.editMode}>

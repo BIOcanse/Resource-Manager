@@ -214,7 +214,8 @@
   border-radius: 0;
   background: transparent;
   color: inherit;
-  padding: 0 14px 0 8px;
+  /* 左右内边距和单元格一样：数值列的列名右边缘和下面的数字右边缘对齐。 */
+  padding: 0 8px;
   font: inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -278,19 +279,55 @@
   justify-content: flex-start;
 }
 
-.resource-table-head-cell:hover,
+/* 悬停是中性的浅底，当前排序列是强调色：两者不再同色，悬停时看得出哪一列才是排序列。 */
+.resource-table-head-cell:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
 .resource-table-head-cell.active {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.resource-table-head-cell.active:hover {
+  background: color-mix(in oklab, var(--accent) 10%, var(--accent-soft));
 }
 
 .resource-table-head-cell:last-child {
   border-right: 0;
 }
 
-.resource-table-sort-button small {
-  color: inherit;
-  font-size: 11px;
+/* 排序箭头：当前排序列实心显示（升序转半圈），其余可排序列悬停时淡出，提示点下去是降序。编辑时不能排序，不提示。 */
+.resource-table-sort-indicator {
+  flex: 0 0 auto;
+  opacity: 0;
+}
+
+.resource-table-sort-indicator.ascending {
+  transform: rotate(180deg);
+}
+
+.resource-table-head-cell.active .resource-table-sort-indicator {
+  opacity: 1;
+}
+
+.resource-table-head-cell:not(.active):not(.editing):hover .resource-table-sort-indicator {
+  opacity: 0.45;
+}
+
+.resource-table-head-cell.editing:not(.active) .resource-table-sort-indicator {
+  display: none;
+}
+
+.resource-table-head-cell:not(:is(
+  [data-column-id="name"],
+  [data-column-id="status"],
+  [data-column-id="pid"],
+  [data-column-id="user"],
+  [data-column-id="architecture"]
+)) .resource-table-sort-indicator {
+  order: -1;
 }
 
 .resource-table-sort-button > span:first-child {

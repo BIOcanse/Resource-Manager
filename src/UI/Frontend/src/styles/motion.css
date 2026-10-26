@@ -188,8 +188,15 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
   transition: --row-tint-amount var(--motion-fast) var(--ease-standard);
 }
 
-.resource-table-head-cell small {
-  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+/* 排序箭头：出现、悬停预览是颜色类（各档都有），换方向的半圈旋转只在正常档。 */
+.resource-table-sort-indicator {
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+
+body[data-animations="normal"] .resource-table-sort-indicator {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
 }
 
 /* --- 监视卡片读数 ---

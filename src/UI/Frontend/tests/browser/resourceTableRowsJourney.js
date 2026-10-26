@@ -109,6 +109,56 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.rowStates = { baseColor, hoverColor, currentColor, contextTarget };
 
+  // 5. 表头：数值列的列名右边缘和数字右边缘对齐；排序箭头换列、换方向时列名不动；悬停和当前排序列不同色；每个表头都有提示。
+  const cpuIndex = await headerIndex(panel, "cpu");
+  const cpuHead = panel.locator('.resource-table-head-cell[data-column-id="cpu"]');
+  const cpuButton = cpuHead.locator(".resource-table-sort-button");
+  const headerState = () => cpuHead.evaluate((cell, index) => {
+    const label = cell.querySelector(".resource-table-sort-button > span").getBoundingClientRect();
+    const indicator = cell.querySelector(".resource-table-sort-indicator");
+    const valueCell = document.querySelectorAll('.resource-table-row.software-row[aria-hidden="false"]')[1]
+      .querySelectorAll(".resource-table-cell")[index];
+    const range = document.createRange();
+    range.selectNodeContents(valueCell);
+    return { labelLeft: label.left, labelRight: label.right, valueRight: range.getBoundingClientRect().right,
+      sort: cell.getAttribute("aria-sort"), opacity: getComputedStyle(indicator).opacity,
+      ascending: indicator.classList.contains("ascending"), indicatorLeftOfLabel: indicator.getBoundingClientRect().right <= label.left + 0.5,
+      background: getComputedStyle(cell).backgroundColor };
+  }, cpuIndex);
+  await page.mouse.move(5, 5);
+  const unsorted = await headerState();
+  await cpuButton.click();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(400);
+  const descending = await headerState();
+  await cpuButton.click();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(400);
+  const ascending = await headerState();
+  const ascendingTransform = await cpuHead.locator(".resource-table-sort-indicator").evaluate((icon) => getComputedStyle(icon).transform);
+  if (Math.abs(unsorted.labelRight - unsorted.valueRight) > 1 || unsorted.opacity !== "0"
+    || descending.sort !== "descending" || descending.opacity !== "1" || descending.ascending || !descending.indicatorLeftOfLabel
+    || ascending.sort !== "ascending" || !ascending.ascending || !/^matrix\(-1, /.test(ascendingTransform)
+    || [descending, ascending].some((state) => Math.abs(state.labelRight - unsorted.labelRight) > 0.5 || Math.abs(state.labelLeft - unsorted.labelLeft) > 0.5)) {
+    throw new Error(`Header sort presentation: ${JSON.stringify({ unsorted, descending, ascending, ascendingTransform })}`);
+  }
+  const diskHead = panel.locator('.resource-table-head-cell[data-column-id="disk"]');
+  await diskHead.hover();
+  await page.waitForTimeout(300);
+  const hovered = await diskHead.evaluate((cell) => ({ background: getComputedStyle(cell).backgroundColor,
+    preview: getComputedStyle(cell.querySelector(".resource-table-sort-indicator")).opacity }));
+  if (hovered.background === ascending.background || Number(hovered.preview) <= 0 || Number(hovered.preview) >= 1) {
+    throw new Error(`Hovered header looks like the sorted one or shows no preview: ${JSON.stringify({ hovered, active: ascending.background })}`);
+  }
+  const titles = await panel.locator(".resource-table-sort-button").evaluateAll((buttons) => buttons.map((button) => ({
+    label: button.querySelector("span").textContent.trim(), title: button.title })));
+  // 有口径说明的列（内存、磁盘）提示写口径，其余写列名本身。
+  const plain = titles.filter(({ label }) => ["名称", "状态", "CPU", "网络"].includes(label));
+  if (titles.some(({ title }) => !title) || plain.length !== 4 || plain.some(({ label, title }) => title !== label)) {
+    throw new Error(`Every header needs a tooltip, the name itself when there is no basis: ${JSON.stringify(titles)}`);
+  }
+  results.header = { unsorted, descending, ascending, hovered, titles };
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }
