@@ -710,12 +710,12 @@ async function handleApi(request, response, url) {
     if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt));
     const breakdown = resourceBreakdown(
       capturedAt,
-      new Set(url.searchParams.getAll("processDetails")),
+      new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase())),
       url.searchParams.getAll("measures"),
-      url.searchParams.getAll("modes"));
+      url.searchParams.getAll("modes"), { ids: url.searchParams.getAll("ids") });
     return json(response, 200, {
       version: 10,
-      capturedAt,
+      capturedAt: breakdown.capturedAt,
       breakdown
     });
   }
@@ -725,7 +725,8 @@ async function handleApi(request, response, url) {
       200,
       resourceBreakdown(
         resourceSlotCapturedAt,
-        new Set(url.searchParams.getAll("processDetails"))));
+        new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase())), [], url.searchParams.getAll("modes"),
+        { ids: url.searchParams.getAll("ids") }));
   }
   if (path === "/api/resource-facts/snapshot") {
     if (!resourceFactItemsKnown(url)) return json(response, 400, { error: "unknown resource fact item" });
@@ -1483,7 +1484,7 @@ const processMemoryFacts = {
 
 // 后端只接受能作资源事实的进程字段作 measures；峰值提交量、未知字段整条请求 400。
 function resourceMeasuresKnown(url) {
-  return url.searchParams.getAll("measures").every(field => Object.hasOwn(processMemoryFacts, field));
+  return normalizeMetricIds(url.searchParams.getAll("measures")).every(field => Object.hasOwn(processMemoryFacts, field.toLowerCase()));
 }
 
 function resourceFactItemsKnown(url) {
@@ -1727,20 +1728,28 @@ function fixtureCpuResidency(capturedAt = now()) {
 }
 
 function resourceProcessDetails(url, capturedAt) {
-  const requested = new Set(url.searchParams.getAll("processDetails").flatMap(value => value.split(",")));
-  const ids = new Set(url.searchParams.getAll("ids").flatMap(value => value.split(",")));
+  const requested = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
   const measures = url.searchParams.getAll("measures");
   // 明细按 measures 给出这个字段的进程，整机总量读不到也照样给。
-  const breakdown = resourceBreakdown(capturedAt, requested, measures, url.searchParams.getAll("modes"), { keepMissingTotals: true });
-  const metrics = breakdown.bars.filter(bar => measures.includes(bar.metricId) || !url.searchParams.has("ids") || ids.has(bar.metricId))
+  const breakdown = resourceBreakdown(capturedAt, requested, measures, url.searchParams.getAll("modes"), { keepMissingTotals: true, ids: url.searchParams.getAll("ids") });
+  const metrics = breakdown.bars
     .map(bar => ({ metricId: bar.metricId, software: bar.software
-      .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0]))
+      .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0].toLowerCase()))
       .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
     .filter(metric => metric.software.length > 0);
   return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
 }
 
-function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false } = {}) {
+function normalizeMetricIds(values) {
+  const ids = new Map();
+  for (const raw of values) for (const part of raw.split(",")) {
+    const id = part.trim();
+    if (id && !ids.has(id.toLowerCase())) ids.set(id.toLowerCase(), id);
+  }
+  return [...ids.values()];
+}
+
+function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false, ids = [] } = {}) {
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
@@ -1752,11 +1761,9 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
     "other",
     "other"
   ]);
-  return {
-    version: 8,
-    capturedAt,
-    softwareCatalog,
-    bars: [
+  const visibleIds = new Set(normalizeMetricIds([...ids, ...measures]).map(id => id.toLowerCase()));
+  const processFields = [...visibleIds].filter(id => Object.hasOwn(processMemoryFacts, id));
+  const bars = [
       {
         metricId: "cpu.usage",
         unit: "%",
@@ -1789,9 +1796,25 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
           (value) => `${(value * 1024).toFixed(2)} MB`,
           processDetailSoftwareIds).map(row => scenario.resourceSharedMemory ? [...row, row[1] / 2] : row)
       },
-      ...resourceMeasureBars(softwareCatalog, measures, modes, processDetailSoftwareIds, keepMissingTotals)
-    ]
-  };
+      ...(scenario.gpuPressureFixture ? [
+        { metricId: "gpu.0.usage", unit: "%", scaleMode: "capacity", totalValue: 96, capacityValue: 100, totalSystemPercent: 96,
+          software: createResourceSoftwareRows(segmentCount, 96, 96, value => String(value) + "%", processDetailSoftwareIds) },
+        { metricId: "gpu.0.vram", unit: "B", scaleMode: "capacity", totalValue: 4 * GiB, capacityValue: 8 * GiB, totalSystemPercent: 50,
+          software: createResourceSoftwareRows(segmentCount, 4 * GiB, 50, value => String(value) + " B", processDetailSoftwareIds) }
+      ] : []),
+      ...resourceMeasureBars(softwareCatalog, processFields, modes, processDetailSoftwareIds, keepMissingTotals)
+    ].filter(bar => visibleIds.has(bar.metricId.toLowerCase()));
+  // Only selected bars contribute software identities, as in the C# wire projection.
+  const selectedCatalog = [];
+  const indexes = new Map();
+  for (const bar of bars) bar.software = bar.software.map(row => {
+    if (!indexes.has(row[0])) {
+      indexes.set(row[0], selectedCatalog.length);
+      selectedCatalog.push(softwareCatalog[row[0]]);
+    }
+    return [indexes.get(row[0]), ...row.slice(1)];
+  });
+  return { version: 8, capturedAt: bars.length ? capturedAt : null, softwareCatalog: selectedCatalog, bars };
 }
 
 // 按进程字段订阅的资源条（后端 ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars 的形状）：
@@ -1808,7 +1831,7 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
     const scaleMode = modeByKey.get(field) ?? modeByKey.get(fact.totalMetricId) ?? "capacity";
     const base = scaleMode === "active" ? fact.totalValue : fact.capacityValue;
     const percent = value => value * 100 / base;
-    const detailed = processDetailSoftwareIds.has(softwareCatalog[0][0]);
+    const detailed = processDetailSoftwareIds.has(softwareCatalog[0][0].toLowerCase());
     const residualId = `resource-residual:${fact.totalMetricId}`;
     let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
     if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
@@ -1976,7 +1999,7 @@ function createResourceSoftwareRows(
       systemPercent,
       1,
       index % 3,
-      processDetailSoftwareIds.has(softwareId) ? [[
+      processDetailSoftwareIds.has(softwareId.toLowerCase()) ? [[
         processId,
         name,
         `C:\\FrontendHarness\\${name}`,
@@ -2313,14 +2336,15 @@ function subscriptionPayloadFactory(url) {
       // 和后端一样，不支持的 measures（例如峰值提交量）在条和明细上都拒绝。
       if (!resourceMeasuresKnown(url)) return null;
       if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt);
-      const processDetails = new Set(url.searchParams.getAll("processDetails"));
+      const processDetails = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
       return (publishedAt) => {
         resourceSlotCapturedAt = publishedAt;
         const capturedAt = resourceSlotCapturedAt;
+        const breakdown = resourceBreakdown(capturedAt, processDetails, url.searchParams.getAll("measures"), url.searchParams.getAll("modes"), { ids: url.searchParams.getAll("ids") });
         return {
           version: 10,
-          capturedAt,
-          breakdown: resourceBreakdown(capturedAt, processDetails, url.searchParams.getAll("measures"), url.searchParams.getAll("modes"))
+          capturedAt: breakdown.capturedAt,
+          breakdown
         };
       };
     }
