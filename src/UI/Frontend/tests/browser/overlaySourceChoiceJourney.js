@@ -55,7 +55,7 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
     await button.click();
     await page.waitForFunction(() => !document.querySelector('.overlay-settings input[type="number"]')?.disabled);
     await page.waitForFunction((label) => [...document.querySelectorAll(".overlay-settings button")]
-      .find((element) => element.textContent?.trim() === label)?.disabled === true, copy.softwareDetail.save);
+      .find((element) => element.innerText?.trim() === label)?.disabled === true, copy.softwareDetail.save);
     for (const body of backendBodies) {
       if (body.includes("metricSources") || body.includes(alternate.fieldName)) {
         throw new Error(`The overlay source entered a backend request: ${body}`);

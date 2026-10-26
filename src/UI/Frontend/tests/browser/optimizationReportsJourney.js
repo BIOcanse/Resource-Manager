@@ -100,7 +100,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await invalidRefresh;
   await page.waitForFunction(() => {
     const button = Array.from(document.querySelectorAll("button"))
-      .find((candidate) => candidate.textContent?.trim() === "刷新");
+      .find((candidate) => candidate.innerText?.trim() === "刷新");
     return button instanceof HTMLButtonElement && !button.disabled;
   });
   assert(await observationStatus.count() === 0,
@@ -112,7 +112,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.waitForFunction(() => {
     const button = Array.from(document.querySelectorAll("button"))
-      .find((candidate) => candidate.textContent?.trim() === "刷新");
+      .find((candidate) => candidate.innerText?.trim() === "刷新");
     return button instanceof HTMLButtonElement && !button.disabled;
   });
   assert(await observationStatus.count() === 0,
