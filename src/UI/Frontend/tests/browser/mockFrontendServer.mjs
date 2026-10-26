@@ -1,6 +1,7 @@
 import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
 import { canonicalFieldNames } from "../../src/features/monitor/canonicalFields.ts";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
+import * as showcase from "./readmeShowcaseFixture.js";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
@@ -136,7 +137,9 @@ const defaultScenario = {
   resourceFrozenBarIds: [],
   // 产品更新状态（GET /api/updates/product/status 与它的推送订阅同源）：只写与默认状态不同的字段；
   // "invalid" 让推送发出不合合同的帧、GET 返回 503，模拟状态不可用。未知字段和不合合同的值直接拒绝。
-  productUpdateStatus: {}
+  productUpdateStatus: {},
+  // README 截图的虚构整机（readmeShowcaseFixture.js）：打开后各页改用那里的值；只给 captureReadmeScreenshots.mjs 用。
+  readmeShowcase: false
 };
 const trustedAccessScenarios = new Set(["ready", "read-failure", "default-key-off"]);
 const trustedAccessDefaultScopes = ["read", "metrics.read", "processes.read", "session", "adapters.register.self",
@@ -415,6 +418,10 @@ async function handleApi(request, response, url) {
   if (scenario.trustedAccess === "default-key-off") {
     return json(response, 401, { error: "access-key-invalid" });
   }
+  if (scenario.readmeShowcase) {
+    const value = showcase.showcaseRestResponse(path, request.method, url);
+    if (value !== undefined) return json(response, 200, value);
+  }
   if (path === "/api/access-keys" && request.method === "GET") {
     if (scenario.trustedAccess === "read-failure") return json(response, 503, { error: "fixture-access-key-read-failure" });
     return json(response, 200, trustedAccessSnapshot());
@@ -573,6 +580,17 @@ async function handleApi(request, response, url) {
       return json(response, 400, { error: "tree requires rootIndex and explicit node/byte budgets, without view parameters" });
     }
     if (scenario.diskUsageResultFailure) return json(response, 503, { error: "fixture tree read failure" });
+    if (scenario.readmeShowcase) {
+      // 虚构整机只给每个根的完整树（一次读完）；往下钻的单个节点不在截图里，按不存在处理。
+      const tree = showcase.showcaseDiskTree(Number(rootIndex));
+      if (!tree || (url.searchParams.has("node") && url.searchParams.get("node") !== String(tree.rootNodeId))) {
+        return json(response, 404, { error: "showcase disk layout was not found" });
+      }
+      response.writeHead(200, { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" });
+      response.end(createDiskUsageLayout(tree.rootPath, tree.rootNodeId, tree.rootSize, tree.tiles.map(tile =>
+        diskUsageTile(tile.nodeId, tile.parentNodeId, tile.depth, tile.sizeBytes, tile.name, tile.isDirectory, tile.fileCount))));
+      return;
+    }
     if (scenario.diskUsageMultiRoot === true) {
       if (rootIndex === "1") {
         await delay(normalizeDelay(scenario.diskUsageRootIndexOneDelayMs));
@@ -859,6 +877,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, resourceFacts(url, resourceSlotCapturedAt));
   }
   if (path === "/api/local-system/status") {
+    if (scenario.readmeShowcase) return json(response, 200, showcase.showcaseLocalSystemStatus(now()));
     return json(response, 200, { capturedAt: now(), bootedAt: now(), uptimeSeconds: 3600 });
   }
   if (path === "/api/cpu/topology") {
@@ -1597,6 +1616,7 @@ function metricCatalogBody(componentState = scenario.metricCatalogComponent) {
       metric("gpu.0.vram", "GPU 显存", "GPU", "B"),
       metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")] : []),
     ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : []),
+    ...(scenario.readmeShowcase ? showcase.showcaseMetricDefinitions() : []),
     ...scenario.metricCatalogExtra]
     .map((definition) => {
       const next = /^gpu\.\d+\./u.test(definition.id)
@@ -1715,7 +1735,9 @@ function metricSnapshot(requestedIds) {
         "gpu.0.memoryClock": { id: "gpu.0.memoryClock", unit: "MHz", status: 1, numericValue: 7000 }
     });
   }
-  const definitions = [...metricCatalog, ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])];
+  if (scenario.readmeShowcase) Object.assign(allItems, showcase.showcaseMetricItems());
+  const definitions = [...metricCatalog, ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : []),
+    ...(scenario.readmeShowcase ? showcase.showcaseMetricDefinitions() : [])];
   const knownMetricIds = new Map([...definitions.map(item => item.id), ...Object.keys(allItems)]
     .map(metricId => [metricId.toLowerCase(), metricId]));
   const selectedIds = normalizeMetricIds(requestedIds).map(id => knownMetricIds.get(id.toLowerCase()) ?? id);
@@ -2077,6 +2099,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
+  if (scenario.readmeShowcase) return showcase.showcaseResourceBreakdown(capturedAt, [...ids, ...measures], processDetailSoftwareIds);
   if (scenario.resourceSoftwareMix === "audit") {
     return auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds, measures, modes, keepMissingTotals);
   }
@@ -2240,6 +2263,7 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
 }
 
 function resourceFacts(url, capturedAt = now()) {
+  if (scenario.readmeShowcase) return showcase.showcaseResourceFacts(new Set(url.searchParams.getAll("items")), capturedAt);
   const count = scenario.resourceTableVariant === "empty" ? 0 : normalizeFixtureCount(scenario.resourceTableRowCount, scenario.resourceTableVariant === "many" ? 80 : 1, 1000);
   const software = Array.from({ length: count }, (_, index) => ({ softwareId: `frontend-harness.software${index ? `.${index}` : ""}`,
     name: index ? `示例软件 ${index}` : "示例软件", kind: "other", attributionKind: "running" }));
@@ -2371,6 +2395,7 @@ function fixtureDisplayEdid() {
 }
 function fixtureDeviceTopologyState(capturedAt = now()) {
   if (scenario.deviceTopologyInvalid) return { schemaVersion: "invalid" };
+  if (scenario.readmeShowcase) return showcase.showcaseDeviceTopology(capturedAt, ++deviceTopologyRevision);
   if (recordedTopologyState) {
     return applyTopologyFactScenarios({ ...structuredClone(recordedTopologyState),
       snapshot: { ...structuredClone(recordedTopologyState.snapshot), capturedAt },
@@ -2965,6 +2990,8 @@ function metricFieldsSnapshot(selections) {
 }
 
 function subscriptionPayloadFactory(url) {
+  const showcaseFactory = scenario.readmeShowcase ? showcase.showcaseSubscription(url.pathname) : null;
+  if (showcaseFactory) return showcaseFactory;
   switch (url.pathname) {
     case "/api/access-requests/subscribe":
       return () => scenario.accessRequests;
