@@ -120,6 +120,10 @@ const defaultScenario = {
   // default-key-off 默认密钥已关闭，界面的每个 /api 请求都返回 401（后端不再接受界面的密钥）。
   trustedAccess: "ready",
   pausedSubscriptionPaths: [],
+  // 这些订阅路径不按自己的间隔发帧，只在 POST /__test/subscriptions/publish 时发一帧（按真机抓到的间隔回放用）。
+  manualPublishPaths: [],
+  // 这些资源条按后端的“无读数”形状发：保留 id、单位和缩放，总量、容量、百分比为 null，没有软件，带 unavailableReason。
+  resourceUnavailableBarIds: [],
   // 产品更新状态（GET /api/updates/product/status 与它的推送订阅同源）：只写与默认状态不同的字段；
   // "invalid" 让推送发出不合合同的帧、GET 返回 503，模拟状态不可用。未知字段和不合合同的值直接拒绝。
   productUpdateStatus: {}
@@ -354,6 +358,15 @@ const server = createServer(async (request, response) => {
       targetedRecordingCompletionTimer = null;
       completeTargetedRecording(targetedRecordingCompletionId, "max-duration");
       return json(response, 200, targetedRecordings.get(targetedRecordingCompletionId)?.header ?? null);
+    }
+    // 按需发一帧：先合并 patch 进场景，再让该路径的每个发布者立刻发布（manualPublishPaths 里的路径只在这里发帧）。
+    if (url.pathname === "/__test/subscriptions/publish" && request.method === "POST") {
+      const body = JSON.parse(await readBody(request));
+      if (typeof body.path !== "string") return json(response, 400, { error: "path" });
+      if (body.patch) applyScenarioPatch(body.patch);
+      const publishers = [...ndjsonPublishers.values()].filter((publisher) => publisher.path === body.path);
+      for (const publisher of publishers) publishNdjsonBoundary(publisher);
+      return json(response, 200, { published: publishers.length, publishedAt: Date.now() });
     }
     if (url.pathname === "/__test/management-inventory-revisions/publish"
       && request.method === "POST") {
@@ -1390,6 +1403,7 @@ function applyScenarioPatch(patch) {
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
+  if (Object.hasOwn(patch, "manualPublishPaths")) rescheduleAllNdjsonPublishers();
   if (Object.hasOwn(patch, "operations")
     || Object.hasOwn(patch, "operationCanceled")
     || Object.hasOwn(patch, "operationQueued")
@@ -1487,6 +1501,7 @@ function resetScenario() {
     delete scenario[key];
   }
   Object.assign(scenario, structuredClone(defaultScenario));
+  rescheduleAllNdjsonPublishers();
   for (const key of Object.keys(appSettings)) {
     delete appSettings[key];
   }
@@ -1940,7 +1955,20 @@ function normalizeMetricIds(values) {
   return [...ids.values()];
 }
 
-function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false, ids = [] } = {}) {
+function resourceBreakdown(...args) {
+  const breakdown = resourceBreakdownFixture(...args);
+  const unavailable = new Set(scenario.resourceUnavailableBarIds);
+  if (unavailable.size === 0) return breakdown;
+  return {
+    ...breakdown,
+    bars: breakdown.bars.map((bar) => unavailable.has(bar.metricId)
+      ? { metricId: bar.metricId, unit: bar.unit, scaleMode: bar.scaleMode, ...(bar.processFieldName ? { processFieldName: bar.processFieldName } : {}),
+        totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null, software: [], unavailableReason: "hardware-source-unavailable" }
+      : bar)
+  };
+}
+
+function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false, ids = [] } = {}) {
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
@@ -2941,6 +2969,7 @@ function sharedPublisherKey(url) {
 
 function acquireNdjsonPublisher(key, subscriber) {
   const publisher = ndjsonPublishers.get(key) ?? {
+    path: key.split("?")[0],
     subscribers: new Set(),
     intervalMs: 0,
     timer: null
@@ -2963,6 +2992,13 @@ function releaseNdjsonPublisher(key, publisher, subscriber) {
   rescheduleNdjsonPublisher(publisher);
 }
 
+// 手动发帧的路径变了（或场景重置）：每个发布者按新的场景重新排期，退出手动的路径恢复按间隔发帧。
+function rescheduleAllNdjsonPublishers() {
+  for (const publisher of ndjsonPublishers.values()) {
+    if (publisher.subscribers.size > 0) rescheduleNdjsonPublisher(publisher);
+  }
+}
+
 function rescheduleNdjsonPublisher(publisher) {
   const intervalMs = Math.min(
     ...[...publisher.subscribers].map((subscriber) => subscriber.intervalMs));
@@ -2970,6 +3006,8 @@ function rescheduleNdjsonPublisher(publisher) {
     clearTimeout(publisher.timer);
   }
   publisher.intervalMs = intervalMs;
+  publisher.timer = null;
+  if (scenario.manualPublishPaths.includes(publisher.path)) return;
   const current = Date.now();
   const nextBoundary = (Math.floor(current / intervalMs) + 1) * intervalMs;
   publisher.timer = setTimeout(

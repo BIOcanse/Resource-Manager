@@ -109,6 +109,7 @@ const allJourneys = [
   ["resource-bar-color-modes", resourceBarColorModesJourney],
   ["resource-bar-proportion", resourceBarProportionJourney],
   ["resource-bar-interaction", async (...args) => (await import("./resourceBarInteractionJourney.js")).default(...args)],
+  ["resource-bar-real-cadence", async (...args) => (await import("./resourceBarRealCadenceJourney.js")).default(...args)],
   ["control-readings", controlReadingsJourney],
   ["fan-management-modes", fanManagementModesJourney],
   ["control-card", controlCardJourney],
