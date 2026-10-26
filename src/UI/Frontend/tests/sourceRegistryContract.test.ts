@@ -54,6 +54,11 @@ assert.match(sources, /key:\s*"runtime\.capabilities"[\s\S]*canRetainStale:\s*\(
 assert.match(sources, /selfScheduling:\s*new BackendPushValueSource/);
 assert.match(sources, /key:\s*"resource-manager\.self-scheduling"/);
 assert.match(sources, /appSettings:\s*sourceRegistry\.define/);
+assert.match(sources, /aiGatewayCredentials:\s*sourceRegistry\.define/);
+const gatewayManager = readSource("features/settings/components/AiGatewayKeyManager.tsx");
+assert.match(gatewayManager, /useSource\(useFrontendRuntime\(\)\.sources\.aiGatewayCredentials/);
+assert.doesNotMatch(gatewayManager, /createResource|getAiGatewayCredentials/);
+assert.doesNotMatch(readSource("api.ts"), /function getAiGatewayCredentials/);
 assert.match(sources, /key:\s*"app\.settings"[\s\S]*getAppSettings\(requestClient, signal\)/);
 assert.match(sources, /metricSnapshot:\s*new BackendPushValueSourceFamily/);
 assert.match(sources, /resourceMonitor:\s*new BackendPushValueSourceFamily/);

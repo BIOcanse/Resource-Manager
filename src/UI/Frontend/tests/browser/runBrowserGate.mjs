@@ -58,6 +58,7 @@ import reorderInteractionJourney from "./reorderInteractionJourney.js";
 import motionFeelJourney from "./motionFeelJourney.js";
 import pageMotionJourney from "./pageMotionJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
+import aiGatewayKeysJourney from "./aiGatewayKeysJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
 import realtimeActionBudgetSettingsJourney from "./realtimeActionBudgetSettingsJourney.js";
 import serviceRecoverySettingsJourney from "./serviceRecoverySettingsJourney.js";
@@ -102,6 +103,7 @@ const allJourneys = [
   ["ui-primitives", uiPrimitivesJourney],
   ["stable-button-labels", stableButtonLabelsJourney],
   ["settings-source", settingsSourceJourney],
+  ["ai-gateway-keys", aiGatewayKeysJourney],
   ["gpu-overflow-settings", gpuOverflowSettingsJourney],
   ["realtime-action-budget-settings", realtimeActionBudgetSettingsJourney],
   ["resource-bar-color-modes", resourceBarColorModesJourney],

@@ -14,7 +14,6 @@ import type {
   BackendMessage,
   AiGatewayCompatibilityProfile,
   AiGatewayCredentialCreatedView,
-  AiGatewayCredentialView,
   ComponentVersionOptions,
   CpuCorePerformanceOverrideRequest,
   CpuCorePerformanceOverrideResult,
@@ -174,10 +173,6 @@ export async function getDashboardSettings() {
 export async function saveDashboardSettings(settings: DashboardSettings) {
   return saveDashboardPreferences(settings);
 }
-export async function getAiGatewayCredentials() {
-  return getJson<AiGatewayCredentialView[]>("/api/ai-gateway/credentials");
-}
-
 export async function createAiGatewayCredential(
   compatibilityProfile: AiGatewayCompatibilityProfile,
   displayName: string)

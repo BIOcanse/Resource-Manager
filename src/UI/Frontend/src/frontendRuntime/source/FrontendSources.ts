@@ -152,12 +152,15 @@ import {
   type MetricFieldQuery
 } from "../../data/metricFields/metricFieldSource.ts";
 import type { SourceFamily, SourceHandle } from "./SourceDescriptor.ts";
+import type { AiGatewayCredentialView } from "../../types.ts";
+import { getAiGatewayCredentials } from "../../data/aiGatewayCredentials.ts";
 import {
   canonicalizeSourceQuery,
   type SourceRegistry
 } from "./SourceRegistry.ts";
 
 export interface FrontendSources {
+  readonly aiGatewayCredentials: SourceHandle<AiGatewayCredentialView[]>;
   readonly resourceProcessDetails: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   readonly appSettings: SourceHandle<CommittedAppSettingsResult>;
   readonly runtimeCapabilities: SourceHandle<BackendStartupCapabilities>;
@@ -216,6 +219,11 @@ export function createFrontendSources(
   subscriptionChannel: BackendSubscriptionChannel
 ): FrontendSources {
   return Object.freeze({
+    aiGatewayCredentials: sourceRegistry.define<AiGatewayCredentialView[]>({
+      key: "ai-gateway.credentials",
+      load: signal => getAiGatewayCredentials(requestClient, signal),
+      retainLastGood: false
+    }),
     appSettings: sourceRegistry.define<CommittedAppSettingsResult>({
       key: "app.settings",
       load: (signal) => getAppSettings(requestClient, signal),

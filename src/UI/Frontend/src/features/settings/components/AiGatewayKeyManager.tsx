@@ -1,6 +1,8 @@
 import { Copy, KeyRound, Trash2 } from "lucide-solid";
-import { createResource, createSignal, For, Show } from "solid-js";
-import { createAiGatewayCredential, getAiGatewayCredentials, revokeAiGatewayCredential } from "../../../api";
+import { createSignal, For, Show } from "solid-js";
+import { createAiGatewayCredential, revokeAiGatewayCredential } from "../../../api";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
 import { userFacingErrorMessage } from "../../../presentation/userFacingText";
 import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../../../types";
 import { SegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
@@ -36,9 +38,13 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [copiedField, setCopiedField] = createSignal<string | null>(null);
-  const [credentials, { refetch }] = createResource(
-    () => props.enabled,
-    async () => getAiGatewayCredentials());
+  const credentials = useSource(useFrontendRuntime().sources.aiGatewayCredentials,
+    () => ({ active: props.enabled, refreshIntervalMs: null }));
+
+  const refetch = async () => {
+    const snapshot = await credentials.refresh();
+    if (snapshot.error) throw snapshot.error;
+  };
 
   const generate = async () => {
     if (!props.enabled || busy()) {
@@ -152,14 +158,14 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
         )}
       </Show>
 
-      <Show when={error() || credentials.error}>
+      <Show when={error() || credentials.snapshot().error}>
         <div class="ai-gateway-error">
-          {error() ?? userFacingErrorMessage(credentials.error, props.labels.aiGatewayLoadFailed)}
+          {error() ?? userFacingErrorMessage(credentials.snapshot().error, props.labels.aiGatewayLoadFailed)}
         </div>
       </Show>
 
       <div class="ai-gateway-credential-list">
-        <For each={credentials() ?? []}>
+        <For each={credentials.snapshot().data ?? []}>
           {(credential) => (
             <div class="ai-gateway-credential-row">
               <div class="ai-gateway-credential-copy">
@@ -185,7 +191,8 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
             </div>
           )}
         </For>
-        <Show when={!credentials.loading && (credentials()?.length ?? 0) === 0}>
+        <Show when={credentials.snapshot().status !== "loading"
+          && (credentials.snapshot().data?.length ?? 0) === 0}>
           <span class="ai-gateway-empty">{props.labels.aiGatewayEmpty}</span>
         </Show>
       </div>
