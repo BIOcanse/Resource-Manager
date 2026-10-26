@@ -1,3 +1,4 @@
+import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
 import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourceBarQuery } from "../../data/resourceMonitor/resourceMonitorApi.ts";
 import type { ResourceBarSettings, ResourceBreakdownBar } from "../../types.ts";
@@ -8,7 +9,6 @@ import {
   processSourceName,
   processResourceSources
 } from "../../presentation/processMemorySources.ts";
-import { currentLanguage } from "../../i18n/appTextStore.ts";
 import { normalizeResourceBarScaleMode } from "./resourceBarScaleCapabilities.ts";
 import { uiText } from "../../text.ts";
 
@@ -80,7 +80,7 @@ export function resourceBarViews(
     if (!bar) continue;
     const text = resourceBarText({ metricId: setting.metricId, source, processFieldName: bar.processFieldName }, fields, bar.additiveAcrossProcesses);
     const window = bar.windowMilliseconds === null ? null
-      : uiText.resourceTable.factsWindow((bar.windowMilliseconds / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 }));
+      : uiText.resourceTable.factsWindow(formatTrimmedDigits(bar.windowMilliseconds / 1000, 3));
     views.push({ ...bar, metricId: setting.metricId, source, label: text.label, sourceBasis: text.basis,
       basis: [text.basis, window].filter(Boolean).join("\n") || undefined });
   }

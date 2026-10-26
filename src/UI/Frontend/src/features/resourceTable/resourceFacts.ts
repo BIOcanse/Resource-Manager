@@ -1,3 +1,4 @@
+import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
 import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
 import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
 import { decodeFactsMetricFacts, requireTimestamp } from "../../api/resourceMetricFactsWire.ts";
@@ -6,7 +7,6 @@ import { createMemo, type Accessor } from "solid-js";
 import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { resourceProcessDisplayName, resourceTableCellText } from "../../presentation/metricLabels.ts";
 import { uiText } from "../../text.ts";
-import { currentLanguage } from "../../i18n/appTextStore.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
@@ -247,7 +247,7 @@ export function resourceFactsTotalBasis(metric: ResourceFactsMetric): string | u
     ? text.factsBalance(value(metric.processSumValue), (metric.residualValue < 0 ? "−" : "") + value(Math.abs(metric.residualValue)))
     : null;
   const lines = [metric.additiveAcrossProcesses ? balance : text.nonAdditiveBasis,
-    metric.windowMilliseconds !== null ? text.factsWindow((metric.windowMilliseconds / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 })) : null];
+    metric.windowMilliseconds !== null ? text.factsWindow(formatTrimmedDigits(metric.windowMilliseconds / 1000, 3)) : null];
   const basis = lines.filter((line): line is string => line !== null).join("\n");
   return basis || undefined;
 }
