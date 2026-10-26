@@ -115,6 +115,8 @@ const defaultScenario = {
   // "ready" 给就绪的页帧帧，"unavailable" 给不可用帧（原因代码见 physicalMemoryResidualReason），"absent" 不给帧。
   physicalMemoryResidual: "off",
   physicalMemoryResidualReason: "capture-time-limit",
+  // 页帧帧自己的采集时间：计数器采集不会改写它，所以它和外层明细帧的 capturedAt 不同（合成值）。
+  physicalMemoryResidualCapturedAt: "2026-10-26T05:59:50.000Z",
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
   dashboardSettings: null,
   gpuPlacementEnabled: false,
@@ -1947,13 +1949,14 @@ function resourceProcessDetails(url, capturedAt) {
       .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0].toLowerCase()))
       .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
     .filter(metric => metric.software.length > 0);
-  // 和后端一样：明细带上 resource-residual:memory.usage、且订阅里有物理私有内存类指标时才读页帧；"absent" 是还没有发布过帧。
+  // 和后端 r3 一样：明细带上 resource-residual:memory.usage，且选了 memory.usage、物理私有内存度量或页帧项
+  // memory.residual.details 时才附上最近发布的页帧帧，带它自己的采集时间和状态；"absent" 是还没有发布过帧。
   const selected = new Set(normalizeMetricIds([...url.searchParams.getAll("ids"), ...measures]).map(id => id.toLowerCase()));
-  const physicalPrivate = ["memory.usage", "process_all_private_working_set_actual"].some(id => selected.has(id));
+  const physicalPrivate = ["memory.usage", "memory.residual.details", "process_all_private_working_set_actual"].some(id => selected.has(id));
   const frame = scenario.physicalMemoryResidual !== "off" && scenario.physicalMemoryResidual !== "absent"
     && requested.has(physicalMemoryResidualSoftwareId) && physicalPrivate
-    ? physicalMemoryResidualFrame(capturedAt) : null;
-  return { version: 1, capturedAt: metrics.length || frame ? capturedAt : null, ...(frame ? { physicalMemoryResidual: frame } : {}), metrics };
+    ? physicalMemoryResidualFrame(scenario.physicalMemoryResidualCapturedAt) : null;
+  return { version: 1, capturedAt: metrics.length ? capturedAt : frame?.capturedAt ?? null, ...(frame ? { physicalMemoryResidual: frame } : {}), metrics };
 }
 
 // 合成的物理内存保留量（只用 1/16 GiB 的整数倍，字节数都是整数）。计数器分项是条上的 PID -1 行，
@@ -2212,6 +2215,11 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
     let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
     if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
     const residual = fact.totalValue - fact.processSum;
+    // 和后端 r3 一样：只选物理私有内存度量、不带 memory.usage 时，它的保留量同样按计数器分项给出（PID -1 的行，
+    // 标识在 attributionKind），分项与这个度量自己的保留量平衡，最后的未分类是余数。
+    const counters = scenario.physicalMemoryResidual !== "off" && field === "process_all_private_working_set_actual";
+    const leaves = counters && processDetailSoftwareIds.has(residualId) ? physicalMemoryFixture.counterLeaves.slice(0, -1) : [];
+    if (leaves.length) leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
     return {
       metricId: field,
       totalMetricId: fact.totalMetricId,
@@ -2225,7 +2233,8 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
       sharedValue: null,
       software: [[0, fact.processSum, percent(fact.processSum), 1, 5, detailed ? [[4242, "example.exe", "C:\\FrontendHarness\\example.exe",
         fact.processSum, percent(fact.processSum), 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + 4242n)]] : []],
-        [residualIndex, residual, percent(residual), 0, 0, []]]
+        [residualIndex, residual, percent(residual), 0, 0,
+          leaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])]]
     };
   });
 }

@@ -43,6 +43,11 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
     }
     throw new Error(`${what}: ${JSON.stringify(last)}`);
   };
+  // 页帧帧自己的采集时间（mock 的合成值，和外层明细帧的 capturedAt 不同），按页面同样的格式写出。
+  const pfnCapturedAt = "2026-10-26T05:59:50.000Z";
+  const capturedAtText = async () => copy.panel.capturedAt(await page.evaluate((value) => new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  }).format(Date.parse(value)), pfnCapturedAt));
   const selectResidual = async () => {
     await track.focus();
     for (let step = 0; step < 12; step++) {
@@ -124,8 +129,15 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
   // 就绪的页帧明细：按帧原样列出。
   await details.waitFor();
   await waitFor(async () => await details.getAttribute("data-residual-state") === "ready" || await details.getAttribute("data-residual-state"), "Ready page frame breakdown");
+  // 后端 r3 只在明细选了 memory.usage、物理私有内存度量或页帧项时附页帧帧；前端的明细订阅满足这个条件。
+  const detailsQueries = (await subscriptions()).filter(({ params }) => params.get("scope") === "details" && params.getAll("processDetails").includes(residualId));
+  if (!detailsQueries.every(({ params }) => params.getAll("ids").flatMap((value) => value.split(",")).includes("memory.usage")
+      || params.getAll("measures").includes("process_all_private_working_set_actual"))) {
+    throw new Error(`The residual details request selects no physical memory metric: ${detailsQueries.map(({ params }) => params.toString())}`);
+  }
+  // 采集时间是页帧帧自己的 capturedAt，不是外层明细帧的时间。
   const header = await details.locator(".resource-residual-details-header span").textContent();
-  if (!header?.startsWith(copy.panel.capturedAt("").trim())) throw new Error(`The capture time is not shown: ${header}`);
+  if (header !== await capturedAtText()) throw new Error(`The capture time is not the page frame's own: ${header}`);
   const rows = await details.locator("tbody tr").evaluateAll((elements) => elements.map((row) => ({
     kind: row.getAttribute("data-kind"), group: row.getAttribute("data-group"),
     cells: [...row.children].map((cell) => cell.textContent?.trim() ?? "")
@@ -178,6 +190,17 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
     if (!unavailableText.includes(expected)) throw new Error(`Unavailable text lacks ${expected}: ${unavailableText}`);
   }
   if (await details.locator("table").count() !== 0) throw new Error("An unavailable frame rendered a table");
+  if (await details.locator(".resource-residual-details-header span").textContent() !== await capturedAtText()) {
+    throw new Error("The unavailable frame does not show its own capture time");
+  }
+  // 清单以外的代码原样显示代码本身，不配猜测的说明。
+  await setScenario({ physicalMemoryResidualReason: "future-reason" });
+  const codeLine = details.locator(".resource-residual-details-code");
+  await waitFor(async () => await codeLine.getAttribute("data-reason-code") === "future-reason" || await codeLine.getAttribute("data-reason-code"), "Unknown reason code");
+  const unknownState = await details.locator(".resource-residual-details-state").evaluate((element) => [...element.children].map((child) => child.textContent));
+  if (JSON.stringify(unknownState) !== JSON.stringify([copy.panel.unavailable, copy.panel.reasonCode("future-reason")])) {
+    throw new Error(`An unknown code is not shown as itself: ${JSON.stringify(unknownState)}`);
+  }
   await page.keyboard.press("Escape");
   await waitFor(async () => await residualDetailsOpen() === 0 || await residualDetailsOpen(), "Released after the unavailable state");
 
