@@ -4,6 +4,8 @@ internal static class HiIn
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "नया एक्सेस अनुरोध",
+        AccessRequestMessageFormat = "स्वघोषित नाम: {0}; निष्पादन योग्य फ़ाइल: {1}। Resource Manager खोलने के लिए क्लिक करें।",
         UpdateAvailableTitle = "अपडेट उपलब्ध है",
         UpdateAvailableMessageFormat = "संस्करण {0} उपलब्ध है। Resource Manager खोलने के लिए क्लिक करें।",
         AppName = "रिसोर्स मैनेजर",

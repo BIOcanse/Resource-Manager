@@ -13,6 +13,8 @@ internal sealed record NativeText
     public required string TrayTooltipFormat { get; init; }
     public required string UpdateAvailableTitle { get; init; }
     public required string UpdateAvailableMessageFormat { get; init; }
+    public required string AccessRequestTitle { get; init; }
+    public required string AccessRequestMessageFormat { get; init; }
 
     // 可用性面板
     public required string AvailabilityPanelName { get; init; }

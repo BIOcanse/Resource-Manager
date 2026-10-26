@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using ResourceManager.NativeUi.Localization;
@@ -25,45 +24,15 @@ internal sealed class TrayUpdateNotice(
         preferences.RecordSystemUpdateNotifiedVersion(version);
     }
 
-    internal async Task RunAsync(Func<CancellationToken, Task<HttpResponseMessage>> openStream,
-        CancellationToken cancellationToken,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+    internal void ObserveFrame(JsonElement value)
     {
-        delay ??= Task.Delay;
-        var retrySeconds = 2;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                using var response = await openStream(cancellationToken).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                using var reader = new StreamReader(stream);
-                while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
-                {
-                    using var frame = JsonDocument.Parse(line);
-                    var root = frame.RootElement;
-                    if (!root.TryGetProperty("subscriptionId", out var id) || id.GetString() != "updates"
-                        || !root.TryGetProperty("value", out var value)
-                        || !value.TryGetProperty("availableVersion", out var available)
-                        || available.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) continue;
-                    var version = available.GetString();
-                    dispatch(() =>
-                    {
-                        if (cancellationToken.IsCancellationRequested) return;
-                        try { ObserveVersion(version); }
-                        catch (Exception error) when (error is not OutOfMemoryException)
-                        { Trace.TraceError("Tray update notification failed: {0}", error); }
-                    });
-                }
-                Trace.TraceInformation("Tray update subscription ended; retrying in {0}s.", retrySeconds);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            catch (Exception error) when (error is not OutOfMemoryException)
-            { Trace.TraceWarning("Tray update subscription failed; retrying in {0}s: {1}", retrySeconds, error); }
-            try { await delay(TimeSpan.FromSeconds(retrySeconds), cancellationToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            retrySeconds = Math.Min(retrySeconds * 2, 30);
-        }
+        if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty("availableVersion", out var available)
+            || available.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) return;
+        ObserveVersion(available.GetString());
     }
+
+    internal Task RunAsync(Func<CancellationToken, Task<HttpResponseMessage>> openStream,
+        CancellationToken cancellationToken, Func<TimeSpan, CancellationToken, Task>? delay = null)
+        => TrayNotificationStream.RunAsync(openStream,
+            new Dictionary<string, Action<JsonElement>> { ["updates"] = ObserveFrame }, dispatch, cancellationToken, delay);
 }

@@ -4,6 +4,8 @@ internal static class FiFi
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Uusi käyttöoikeuspyyntö",
+        AccessRequestMessageFormat = "Itse ilmoitettu nimi: {0}; suoritettava tiedosto: {1}. Avaa Resource Manager napsauttamalla.",
         UpdateAvailableTitle = "Päivitys saatavilla",
         UpdateAvailableMessageFormat = "Versio {0} on saatavilla. Avaa Resource Manager napsauttamalla.",
         AppName = "Resurssienhallinta",

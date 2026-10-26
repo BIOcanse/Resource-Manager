@@ -4,6 +4,8 @@ internal static class ViVn
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Yêu cầu truy cập mới",
+        AccessRequestMessageFormat = "Tên tự khai báo: {0}; tệp thực thi: {1}. Nhấp để mở Resource Manager.",
         UpdateAvailableTitle = "Có bản cập nhật",
         UpdateAvailableMessageFormat = "Đã có phiên bản {0}. Nhấp để mở Resource Manager.",
         AppName = "Trình quản lý tài nguyên",

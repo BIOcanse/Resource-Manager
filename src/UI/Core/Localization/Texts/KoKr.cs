@@ -4,6 +4,8 @@ internal static class KoKr
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "새 액세스 요청",
+        AccessRequestMessageFormat = "자체 신고 이름: {0}, 실행 파일: {1}. 클릭하여 Resource Manager를 여세요.",
         UpdateAvailableTitle = "새 버전 사용 가능",
         UpdateAvailableMessageFormat = "버전 {0}을 사용할 수 있습니다. 클릭하여 Resource Manager를 여세요.",
         AppName = "리소스 관리자",

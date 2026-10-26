@@ -4,6 +4,8 @@ internal static class DaDk
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Ny adgangsanmodning",
+        AccessRequestMessageFormat = "Selvangivet navn: {0}; programfil: {1}. Klik for at åbne Resource Manager.",
         UpdateAvailableTitle = "Opdatering tilgængelig",
         UpdateAvailableMessageFormat = "Version {0} er tilgængelig. Klik for at åbne Resource Manager.",
         AppName = "Ressourcestyring",

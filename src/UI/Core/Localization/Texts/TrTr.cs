@@ -4,6 +4,8 @@ internal static class TrTr
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Yeni erişim isteği",
+        AccessRequestMessageFormat = "Beyan edilen ad: {0}; yürütülebilir dosya: {1}. Resource Manager uygulamasını açmak için tıklayın.",
         UpdateAvailableTitle = "Güncelleme mevcut",
         UpdateAvailableMessageFormat = "{0} sürümü kullanılabilir. Resource Manager uygulamasını açmak için tıklayın.",
         AppName = "Kaynak Yöneticisi",

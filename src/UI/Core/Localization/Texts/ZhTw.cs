@@ -4,6 +4,8 @@ internal static class ZhTw
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "新的存取請求",
+        AccessRequestMessageFormat = "自報名稱：{0}；執行檔：{1}。點擊開啟資源管理器。",
         UpdateAvailableTitle = "發現新版本",
         UpdateAvailableMessageFormat = "版本 {0} 已可用。點擊開啟資源管理器。",
         AppName = "資源管理器",

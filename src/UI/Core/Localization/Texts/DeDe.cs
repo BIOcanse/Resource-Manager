@@ -4,6 +4,8 @@ internal static class DeDe
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Neue Zugriffsanfrage",
+        AccessRequestMessageFormat = "Selbst angegebener Name: {0}; Programmdatei: {1}. Klicken Sie, um Resource Manager zu öffnen.",
         UpdateAvailableTitle = "Update verfügbar",
         UpdateAvailableMessageFormat = "Version {0} ist verfügbar. Klicken Sie, um Resource Manager zu öffnen.",
         AppName = "Ressourcen-Manager",

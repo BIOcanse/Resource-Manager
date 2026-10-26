@@ -4,6 +4,8 @@ internal static class UkUa
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Новий запит доступу",
+        AccessRequestMessageFormat = "Заявлене ім’я: {0}; виконуваний файл: {1}. Натисніть, щоб відкрити Resource Manager.",
         UpdateAvailableTitle = "Доступне оновлення",
         UpdateAvailableMessageFormat = "Доступна версія {0}. Натисніть, щоб відкрити Resource Manager.",
         AppName = "Диспетчер ресурсів",

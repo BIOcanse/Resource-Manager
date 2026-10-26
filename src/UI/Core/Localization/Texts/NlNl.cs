@@ -4,6 +4,8 @@ internal static class NlNl
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nieuw toegangsverzoek",
+        AccessRequestMessageFormat = "Zelf opgegeven naam: {0}; uitvoerbaar bestand: {1}. Klik om Resource Manager te openen.",
         UpdateAvailableTitle = "Update beschikbaar",
         UpdateAvailableMessageFormat = "Versie {0} is beschikbaar. Klik om Resource Manager te openen.",
         AppName = "Resourcebeheer",

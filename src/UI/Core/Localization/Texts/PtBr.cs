@@ -4,6 +4,8 @@ internal static class PtBr
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nova solicitação de acesso",
+        AccessRequestMessageFormat = "Nome declarado: {0}; executável: {1}. Clique para abrir o Resource Manager.",
         UpdateAvailableTitle = "Atualização disponível",
         UpdateAvailableMessageFormat = "A versão {0} está disponível. Clique para abrir o Resource Manager.",
         AppName = "Gerenciador de Recursos",

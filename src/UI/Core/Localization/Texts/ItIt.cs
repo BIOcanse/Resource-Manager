@@ -4,6 +4,8 @@ internal static class ItIt
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nuova richiesta di accesso",
+        AccessRequestMessageFormat = "Nome dichiarato: {0}; eseguibile: {1}. Fai clic per aprire Resource Manager.",
         UpdateAvailableTitle = "Aggiornamento disponibile",
         UpdateAvailableMessageFormat = "È disponibile la versione {0}. Fai clic per aprire Resource Manager.",
         AppName = "Gestione risorse",

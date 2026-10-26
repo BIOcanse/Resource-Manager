@@ -4,6 +4,8 @@ internal static class EnUs
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "New access request",
+        AccessRequestMessageFormat = "Self-declared name: {0}; executable: {1}. Click to open Resource Manager.",
         UpdateAvailableTitle = "Update available",
         UpdateAvailableMessageFormat = "Version {0} is available. Click to open Resource Manager.",
         AppName = "Resource Manager",

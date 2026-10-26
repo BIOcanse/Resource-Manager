@@ -4,6 +4,8 @@ internal static class RoRo
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Cerere nouă de acces",
+        AccessRequestMessageFormat = "Nume declarat: {0}; fișier executabil: {1}. Faceți clic pentru a deschide Resource Manager.",
         UpdateAvailableTitle = "Actualizare disponibilă",
         UpdateAvailableMessageFormat = "Versiunea {0} este disponibilă. Faceți clic pentru a deschide Resource Manager.",
         AppName = "Manager de resurse",

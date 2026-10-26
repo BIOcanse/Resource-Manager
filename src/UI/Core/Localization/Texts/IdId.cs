@@ -4,6 +4,8 @@ internal static class IdId
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Permintaan akses baru",
+        AccessRequestMessageFormat = "Nama yang dinyatakan: {0}; berkas yang dapat dijalankan: {1}. Klik untuk membuka Resource Manager.",
         UpdateAvailableTitle = "Pembaruan tersedia",
         UpdateAvailableMessageFormat = "Versi {0} tersedia. Klik untuk membuka Resource Manager.",
         AppName = "Pengelola Sumber Daya",

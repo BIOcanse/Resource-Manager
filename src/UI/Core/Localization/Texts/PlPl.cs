@@ -4,6 +4,8 @@ internal static class PlPl
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nowa prośba o dostęp",
+        AccessRequestMessageFormat = "Zadeklarowana nazwa: {0}; plik wykonywalny: {1}. Kliknij, aby otworzyć Resource Manager.",
         UpdateAvailableTitle = "Dostępna aktualizacja",
         UpdateAvailableMessageFormat = "Dostępna jest wersja {0}. Kliknij, aby otworzyć Resource Manager.",
         AppName = "Menedżer zasobów",

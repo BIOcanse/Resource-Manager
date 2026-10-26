@@ -4,6 +4,8 @@ internal static class CsCz
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nová žádost o přístup",
+        AccessRequestMessageFormat = "Uvedený název: {0}; spustitelný soubor: {1}. Kliknutím otevřete Resource Manager.",
         UpdateAvailableTitle = "Je dostupná aktualizace",
         UpdateAvailableMessageFormat = "Je dostupná verze {0}. Kliknutím otevřete Resource Manager.",
         AppName = "Správce prostředků",

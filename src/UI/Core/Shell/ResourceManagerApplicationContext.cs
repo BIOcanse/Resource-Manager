@@ -23,7 +23,9 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly ContextMenuStrip trayMenu;
     private readonly NotifyIcon trayIcon;
     private readonly TrayUpdateNotice updateNotice;
-    private CancellationTokenSource? updateNoticeCancellation;
+    private readonly TrayAccessRequestNotice accessRequestNotice;
+    private readonly Action<Action> dispatchTrayNotice;
+    private CancellationTokenSource? trayNoticeCancellation;
     private BackendServiceSession? backendSession;
     private BackendServiceLossHandler? backendLossHandler;
     private ToolStripMenuItem? backendStatusMenuItem;
@@ -81,15 +83,19 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
         trayIcon.BalloonTipClicked += (_, _) =>
             _ = ShowMainWindowAsync(startFrontend: true, activate: true);
+        bool InterfaceVisible() => mainForm is { IsDisposed: false, Visible: true, WindowState: not FormWindowState.Minimized };
+        void ShowNotice(string title, string message) => trayIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info);
+        void DispatchNotice(Action action)
+        {
+            if (exiting || uiDispatcher.IsDisposed) return;
+            try { uiDispatcher.BeginInvoke(action); }
+            catch (InvalidOperationException) when (exiting || uiDispatcher.IsDisposed) { }
+        }
         updateNotice = new TrayUpdateNotice(Preferences.FrontendPreferencesOwner.Current,
-            () => mainForm is { IsDisposed: false, Visible: true, WindowState: not FormWindowState.Minimized },
-            (title, message) => trayIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info),
-            action =>
-            {
-                if (exiting || uiDispatcher.IsDisposed) return;
-                try { uiDispatcher.BeginInvoke(action); }
-                catch (InvalidOperationException) when (exiting || uiDispatcher.IsDisposed) { }
-            });
+            InterfaceVisible, ShowNotice, DispatchNotice);
+        accessRequestNotice = new TrayAccessRequestNotice(Preferences.FrontendPreferencesOwner.Current,
+            InterfaceVisible, ShowNotice, DispatchNotice);
+        dispatchTrayNotice = DispatchNotice;
 
         taskManagerShortcutReplacement = new TaskManagerShortcutReplacementController(
             NativeUiPaths.AppSettingsPath,
@@ -426,8 +432,13 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             SetBackendConnectionState(BackendConnectionState.Ready);
             performanceOverlay.Start(session);
             desktopObservations.Start(session);
-            updateNoticeCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
-            _ = updateNotice.RunAsync(session.OpenProductUpdateStreamAsync, updateNoticeCancellation.Token);
+            trayNoticeCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+            _ = TrayNotificationStream.RunAsync(session.OpenTrayNotificationStreamAsync,
+                new Dictionary<string, Action<System.Text.Json.JsonElement>>
+                {
+                    ["updates"] = updateNotice.ObserveFrame,
+                    [TrayAccessRequestNotice.SubscriptionId] = accessRequestNotice.ObserveFrame
+                }, dispatchTrayNotice, trayNoticeCancellation.Token);
             if (mainForm is { IsDisposed: false } form)
             {
                 form.ShowBackendReady(projection);
@@ -644,9 +655,9 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void DisposeBackendGeneration()
     {
-        updateNoticeCancellation?.Cancel();
-        updateNoticeCancellation?.Dispose();
-        updateNoticeCancellation = null;
+        trayNoticeCancellation?.Cancel();
+        trayNoticeCancellation?.Dispose();
+        trayNoticeCancellation = null;
         desktopObservations.Stop();
         var lossHandler = backendLossHandler;
         var session = backendSession;

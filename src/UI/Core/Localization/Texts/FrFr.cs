@@ -4,6 +4,8 @@ internal static class FrFr
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nouvelle demande d’accès",
+        AccessRequestMessageFormat = "Nom déclaré : {0} ; exécutable : {1}. Cliquez pour ouvrir Resource Manager.",
         UpdateAvailableTitle = "Mise à jour disponible",
         UpdateAvailableMessageFormat = "La version {0} est disponible. Cliquez pour ouvrir Resource Manager.",
         AppName = "Gestionnaire de ressources",

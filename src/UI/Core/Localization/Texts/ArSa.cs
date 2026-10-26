@@ -4,6 +4,8 @@ internal static class ArSa
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "طلب وصول جديد",
+        AccessRequestMessageFormat = "الاسم المعلن ذاتيًا: {0}؛ الملف التنفيذي: {1}. انقر لفتح Resource Manager.",
         UpdateAvailableTitle = "يتوفر تحديث",
         UpdateAvailableMessageFormat = "الإصدار {0} متاح. انقر لفتح Resource Manager.",
         AppName = "مدير الموارد",

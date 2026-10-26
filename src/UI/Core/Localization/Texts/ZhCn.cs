@@ -4,6 +4,8 @@ internal static class ZhCn
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "新的访问请求",
+        AccessRequestMessageFormat = "自报名称：{0}；可执行文件：{1}。点击打开资源管理器。",
         UpdateAvailableTitle = "发现新版本",
         UpdateAvailableMessageFormat = "版本 {0} 已可用。点击打开资源管理器。",
         AppName = "资源管理器",

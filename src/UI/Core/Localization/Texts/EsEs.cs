@@ -4,6 +4,8 @@ internal static class EsEs
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Nueva solicitud de acceso",
+        AccessRequestMessageFormat = "Nombre declarado: {0}; ejecutable: {1}. Haz clic para abrir Resource Manager.",
         UpdateAvailableTitle = "Actualización disponible",
         UpdateAvailableMessageFormat = "La versión {0} está disponible. Haz clic para abrir Resource Manager.",
         AppName = "Administrador de recursos",

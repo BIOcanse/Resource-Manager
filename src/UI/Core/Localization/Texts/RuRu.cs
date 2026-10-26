@@ -4,6 +4,8 @@ internal static class RuRu
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Новый запрос доступа",
+        AccessRequestMessageFormat = "Заявленное имя: {0}; исполняемый файл: {1}. Нажмите, чтобы открыть Resource Manager.",
         UpdateAvailableTitle = "Доступно обновление",
         UpdateAvailableMessageFormat = "Доступна версия {0}. Нажмите, чтобы открыть Resource Manager.",
         AppName = "Диспетчер ресурсов",

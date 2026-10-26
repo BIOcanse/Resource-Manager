@@ -4,6 +4,8 @@ internal static class HuHu
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Új hozzáférési kérelem",
+        AccessRequestMessageFormat = "Saját megadású név: {0}; futtatható fájl: {1}. Kattintson a Resource Manager megnyitásához.",
         UpdateAvailableTitle = "Frissítés érhető el",
         UpdateAvailableMessageFormat = "Elérhető a(z) {0} verzió. Kattintson a Resource Manager megnyitásához.",
         AppName = "Erőforrás-kezelő",

@@ -4,6 +4,8 @@ internal static class SvSe
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Ny åtkomstbegäran",
+        AccessRequestMessageFormat = "Självuppgivet namn: {0}; körbar fil: {1}. Klicka för att öppna Resource Manager.",
         UpdateAvailableTitle = "Uppdatering tillgänglig",
         UpdateAvailableMessageFormat = "Version {0} är tillgänglig. Klicka för att öppna Resource Manager.",
         AppName = "Resurshanteraren",

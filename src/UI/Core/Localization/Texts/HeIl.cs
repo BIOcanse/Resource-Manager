@@ -4,6 +4,8 @@ internal static class HeIl
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "בקשת גישה חדשה",
+        AccessRequestMessageFormat = "שם מוצהר: {0}; קובץ הפעלה: {1}. לחצו לפתיחת Resource Manager.",
         UpdateAvailableTitle = "עדכון זמין",
         UpdateAvailableMessageFormat = "גרסה {0} זמינה. לחצו לפתיחת Resource Manager.",
         AppName = "מנהל המשאבים",

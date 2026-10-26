@@ -4,6 +4,8 @@ internal static class ThTh
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "คำขอเข้าถึงใหม่",
+        AccessRequestMessageFormat = "ชื่อที่แจ้งเอง: {0}; ไฟล์ปฏิบัติการ: {1} คลิกเพื่อเปิด Resource Manager.",
         UpdateAvailableTitle = "มีอัปเดตพร้อมใช้งาน",
         UpdateAvailableMessageFormat = "เวอร์ชัน {0} พร้อมใช้งาน คลิกเพื่อเปิด Resource Manager",
         AppName = "ตัวจัดการทรัพยากร",

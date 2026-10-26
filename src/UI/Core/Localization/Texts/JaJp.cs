@@ -4,6 +4,8 @@ internal static class JaJp
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "新しいアクセス要求",
+        AccessRequestMessageFormat = "自己申告名：{0}、実行ファイル：{1}。クリックして Resource Manager を開きます。",
         UpdateAvailableTitle = "新しいバージョンがあります",
         UpdateAvailableMessageFormat = "バージョン {0} が利用可能です。クリックして Resource Manager を開きます。",
         AppName = "リソース マネージャー",

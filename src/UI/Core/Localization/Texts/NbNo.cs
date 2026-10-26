@@ -4,6 +4,8 @@ internal static class NbNo
 {
     public static readonly NativeText Text = new()
     {
+        AccessRequestTitle = "Ny tilgangsforespørsel",
+        AccessRequestMessageFormat = "Selvoppgitt navn: {0}; programfil: {1}. Klikk for å åpne Resource Manager.",
         UpdateAvailableTitle = "Oppdatering tilgjengelig",
         UpdateAvailableMessageFormat = "Versjon {0} er tilgjengelig. Klikk for å åpne Resource Manager.",
         AppName = "Ressursbehandling",
