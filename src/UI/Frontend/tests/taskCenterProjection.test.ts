@@ -6,6 +6,7 @@ import type {
 import { defineTaskKey } from "../src/frontendRuntime/task/TaskDescriptor.ts";
 import { TaskRegistry } from "../src/frontendRuntime/task/TaskRegistry.ts";
 import {
+  operationTitle,
   TaskCenterProjection
 } from "../src/frontendRuntime/taskCenter/TaskCenterProjection.ts";
 import {
@@ -96,7 +97,8 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
     "transient");
   const projectedOperation = projection.snapshot.items.find((item) =>
     item.source === "operation")!;
-  assert.equal(projectedOperation.title, `${uiText.taskCenter.operation.componentInstall}: internal-component-id`);
+  assert.equal(projectedOperation.title,
+    `${uiText.taskCenter.operation.componentInstall}: ${uiText.status.component.nameFallback}`);
   assert.equal("title" in operation(), false);
   assert.equal(
     projection.snapshot.items.find((item) => item.source === "operation")?.domainKey,
@@ -306,6 +308,31 @@ for (const [status, expected] of [
     true);
   projection.dispose();
   taskRegistry.dispose();
+}
+
+// The title names the target by its typed kind: components and dependencies from the localized catalog,
+// software and paths from the name recorded at acceptance, all volumes from the localized scope label.
+{
+  const subject = { targetName: null, targetId: null, scope: null, mode: null, targetPath: null };
+  const titles = uiText.taskCenter.operation;
+  assert.equal(
+    operationTitle({ kind: "component.install", subject: { ...subject, targetKind: "Component", targetId: "hardware-bridge" } }),
+    `${titles.componentInstall}: ${uiText.status.component.names.hardwareBridge}`);
+  assert.equal(
+    operationTitle({ kind: "dependency.download", subject: { ...subject, targetKind: "Dependency", targetId: "shared-webview2-runtime" } }),
+    `${titles.dependencyDownload}: ${uiText.status.component.names.sharedWebView2Runtime}`);
+  assert.equal(
+    operationTitle({ kind: "software.uninstall", subject: { ...subject, targetKind: "Software", targetId: "software-7", targetName: "Example App" } }),
+    `${titles.softwareUninstall}: Example App`);
+  assert.equal(
+    operationTitle({ kind: "software.uninstall", subject: { ...subject, targetKind: "Software", targetId: "software-7" } }),
+    titles.softwareUninstall);
+  assert.equal(
+    operationTitle({ kind: "disk-usage.scan", subject: { ...subject, targetKind: "Path", targetPath: "D:\\Data", targetName: "D:\\Data" } }),
+    `${titles.diskUsageScan}: D:\\Data`);
+  assert.equal(
+    operationTitle({ kind: "disk-usage.scan", subject: { ...subject, targetKind: "AllVolumes", scope: "global" } }),
+    `${titles.diskUsageScan}: ${uiText.diskUsage.scopeAllVolumes}`);
 }
 
 function operation(

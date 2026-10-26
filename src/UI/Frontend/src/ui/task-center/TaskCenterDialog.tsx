@@ -22,6 +22,7 @@ import { userFacingDateTime } from "../../presentation/userFacingText.ts";
 import {
   operationTitleForKind,
   operationTitle,
+  operationTargetLabel,
   type TaskCenterItem,
   type TaskCenterSnapshot,
   type TaskCenterProjection
@@ -219,7 +220,7 @@ function TaskCenterList(props: {
                     </Show>
                   )}
                 </Show>
-                <Show when={item().domainKey}>
+                <Show when={item().source !== "operation" && item().domainKey}>
                   <p class="task-center-target">{item().domainKey}</p>
                 </Show>
                 <Show when={item().stateUncertain}>
@@ -235,8 +236,8 @@ function TaskCenterList(props: {
                   <summary>{uiText.taskCenter.detailsSummary}</summary>
                   <dl>
                     <div><dt>{uiText.taskCenter.kind}</dt><dd>{taskKindLabel(item())}</dd></div>
-                    <Show when={item().domainKey}>
-                      {(domainKey) => <div><dt>{uiText.taskCenter.target}</dt><dd>{domainKey()}</dd></div>}
+                    <Show when={taskTarget(item())}>
+                      {(target) => <div><dt>{uiText.taskCenter.target}</dt><dd>{target()}</dd></div>}
                     </Show>
                     <div><dt>{uiText.taskCenter.createdAt}</dt><dd>{userFacingDateTime(item().createdAt)}</dd></div>
                     <div><dt>{uiText.taskCenter.updatedAt}</dt><dd>{userFacingDateTime(item().updatedAt)}</dd></div>
@@ -309,6 +310,14 @@ function taskTitle(item: TaskCenterItem): string {
   return item.source === "operation"
     ? operationTitle({ kind: item.kind, subject: item.subject ?? null })
     : item.title;
+}
+
+// An operation's domain key is the backend's internal deduplication key; its target is named from the subject.
+// The operation title already carries that name, so only frontend tasks repeat their key under the title.
+function taskTarget(item: TaskCenterItem): string | null {
+  return item.source === "operation"
+    ? item.subject ? operationTargetLabel(item.subject) : null
+    : item.domainKey;
 }
 
 function taskCancelLabel(item: TaskCenterItem): string {

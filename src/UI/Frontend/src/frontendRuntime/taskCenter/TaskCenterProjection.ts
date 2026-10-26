@@ -6,6 +6,7 @@ import { isTerminalOperation } from "../operations/operationMerge.ts";
 import type { TaskRegistryChange, TaskSnapshot } from "../task/TaskSnapshot.ts";
 import { isTerminalTaskStatus } from "../task/TaskSnapshot.ts";
 import { uiText } from "../../text.ts";
+import { componentDisplayName } from "../../presentation/userFacingText.ts";
 
 export type TaskCenterItemSource = "frontend" | "operation";
 export type TaskCenterItemVisibility = "hidden" | "diagnostics" | "user";
@@ -328,8 +329,24 @@ export function operationTitleForKind(kind: string): string {
 
 export function operationTitle(operation: Pick<OperationSnapshot, "kind" | "subject">): string {
   const action = operationTitleForKind(operation.kind);
-  const target = operation.subject?.targetId ?? operation.subject?.targetPath;
+  const target = operation.subject ? operationTargetLabel(operation.subject) : null;
   return target ? `${action}: ${target}` : action;
+}
+
+// The backend records a name only for software and paths; components, dependencies and all volumes are
+// named from the frontend's own localized catalog by their typed kind, never from the domain key.
+export function operationTargetLabel(subject: OperationSubject): string | null {
+  switch (subject.targetKind) {
+    case "Component":
+    case "Dependency":
+      return subject.targetId ? componentDisplayName(subject.targetId) : null;
+    case "Software":
+      return subject.targetName;
+    case "Path":
+      return subject.targetName ?? subject.targetPath;
+    case "AllVolumes":
+      return uiText.diskUsage.scopeAllVolumes;
+  }
 }
 
 function operationBackendDisconnected(snapshot: OperationRegistrySnapshot): boolean {
