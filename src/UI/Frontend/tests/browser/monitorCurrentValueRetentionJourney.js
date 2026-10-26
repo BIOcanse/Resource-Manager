@@ -4,6 +4,8 @@ import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
 import { waitForContentSettled } from "./contentSettled.js";
 
 export default async function monitorCurrentValueRetentionJourney(page, baseUrl) {
+  // Exit-animation copies are inert siblings; only the live stage owns demand.
+  const stage = page.locator("#pageStage");
   const paths = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe", "/api/resource-facts/subscribe"];
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -13,7 +15,7 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const firstTableValue = await monitorFirstTableValueProbe(page, baseUrl);
   await page.setViewportSize({ width: 1067, height: 800 });
-  await page.locator(".resource-breakdown-panel").scrollIntoViewIfNeeded();
+  await stage.locator(".resource-breakdown-panel").scrollIntoViewIfNeeded();
   await waitForValues();
   const before = await values();
   assert(before.rows.length > 0);
@@ -25,11 +27,11 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   // Sorting and software/process projection consume the same accepted facts locally.
   // With publications paused, both must render immediately without clearing rows.
   const localProjectionBefore = await telemetry();
-  await page.locator('.resource-table-sort-button').filter({ hasText: /^CPU$/ }).click();
-  assert.equal(await page.getByRole("columnheader").filter({ hasText: /^CPU/ }).getAttribute("aria-sort"), "descending");
+  await stage.locator('.resource-table-sort-button').filter({ hasText: /^CPU$/ }).click();
+  assert.equal(await stage.getByRole("columnheader").filter({ hasText: /^CPU/ }).getAttribute("aria-sort"), "descending");
   assert((await values()).rows.length > 0, "Local sort retains accepted facts");
-  await page.locator(".resource-table-mode-switch").getByRole("radio", { name: "进程级", exact: true }).click();
-  await page.locator('.resource-table-row[data-resource-row-id]').filter({ hasText: "example-0.exe" }).waitFor();
+  await stage.locator(".resource-table-mode-switch").getByRole("radio", { name: "进程级", exact: true }).click();
+  await stage.locator('.resource-table-row[data-resource-row-id]').filter({ hasText: "example-0.exe" }).waitFor();
   const localProjectionAfter = await telemetry();
   assert.equal(localProjectionAfter["/api/resource-facts/subscribe"].publications,
     localProjectionBefore["/api/resource-facts/subscribe"].publications, "Local projections need no new fact publication");
@@ -52,7 +54,7 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   // Retained values belong to the current page, while the departing page copy
   // temporarily keeps the same CSS classes. Publications remain paused here.
   await waitForContentSettled(page);
-  await page.locator("#pageStage .resource-table-panel").scrollIntoViewIfNeeded();
+  await stage.locator(".resource-table-panel").scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();
     return current["/api/resource-facts/subscribe"]?.logicalInFlight > 0;
@@ -71,12 +73,12 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   }
   await patch({ pausedSubscriptionPaths: [] });
   await waitForValues();
-  await page.locator('.monitor-work-region[aria-label="资源列表"]').scrollIntoViewIfNeeded();
+  await stage.locator('.monitor-work-region[aria-label="资源列表"]').scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => (await (await fetch("/__test/requests")).json())["/api/resource-facts/subscribe"]?.logicalInFlight > 0);
   await patch({ resourceTableVariant: "empty" });
-  await page.waitForFunction(() => document.querySelectorAll(".resource-table-retained-surface:not([hidden]) .resource-table-row[data-resource-row-id]").length === 0);
-  await page.locator(".resource-table-panel .content-state.empty").getByText("当前没有可显示的资源", { exact: true }).waitFor();
-  assert.equal(await page.locator("#resourceTableStatus").textContent(), "0", "A received zero-row value has a real zero count");
+  await page.waitForFunction(() => document.querySelectorAll("#pageStage .resource-table-retained-surface:not([hidden]) .resource-table-row[data-resource-row-id]").length === 0);
+  await stage.locator(".resource-table-panel .content-state.empty").getByText("当前没有可显示的资源", { exact: true }).waitFor();
+  assert.equal(await stage.locator("#resourceTableStatus").textContent(), "0", "A received zero-row value has a real zero count");
   assert.deepEqual(errors, []);
   return { firstTableValue, before, after, releasedValuesRetained: true, localProjectionsRetainFacts: true, callbacksResumed: true, actualEmptyValueApplied: true };
 
@@ -84,8 +86,8 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
     // Offscreen cards hold no demand. Their visible-return behavior is checked
     // by monitorDemandRetentionProbe, independently of the table publication.
     await page.waitForFunction(() =>
-      document.querySelectorAll(".resource-breakdown-item").length > 0
-      && document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
+      document.querySelectorAll("#pageStage .resource-breakdown-item").length > 0
+      && document.querySelectorAll("#pageStage .resource-table-row[data-resource-row-id]").length > 0);
   }
   async function values() {
     // Leaving animation copies are not the active page's accepted values.
