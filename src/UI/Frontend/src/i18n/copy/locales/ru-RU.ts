@@ -778,6 +778,7 @@ const ruRuAppCopy: AppCopy = {
     resizeColumn: (column: string) => `Изменить ширину столбца «${column}»`,
     moreActions: (name: string) => `Другие действия: ${name}`,
     currentItem: "этот элемент",
+    heatSharedLegend: "Полоса под значением: сплошная — собственные, пунктир — доля общих",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nСобственные ${own} · доля общих ${shared}`,
     moreActionsTitle: "Другие действия",
     unknownStatus: "Состояние неизвестно"

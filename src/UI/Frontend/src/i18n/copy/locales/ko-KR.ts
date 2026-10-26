@@ -778,6 +778,7 @@ const koKrAppCopy: AppCopy = {
     resizeColumn: (column: string) => `${column} 열 너비 조정`,
     moreActions: (name: string) => `추가 작업: ${name}`,
     currentItem: "이 항목",
+    heatSharedLegend: "값 아래 막대: 실선은 전용, 점선은 공유 분담",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\n전용 ${own} · 공유 분담 ${shared}`,
     moreActionsTitle: "추가 작업",
     unknownStatus: "상태 알 수 없음"

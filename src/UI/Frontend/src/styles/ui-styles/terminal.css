@@ -264,18 +264,10 @@
 
 /* ---- 表格 ---- */
 
-/* 占用热度条：标准风格写死了青绿和金黄，这里改成强调色的两档深浅。 */
+/* 占用热度条：标准风格的共享分摊是琥珀色，这里改成强调色的两档深浅（实线自有、虚线共享分摊，画法在 resources.css）。 */
 :root[data-ui-style="terminal"] .resource-table-cell.value-cell {
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--accent) 12%, transparent) 0,
-      color-mix(in srgb, var(--accent) 12%, transparent) var(--private-heat, var(--heat)),
-      color-mix(in srgb, var(--accent) 26%, transparent) var(--private-heat, var(--heat)),
-      color-mix(in srgb, var(--accent) 26%, transparent) var(--heat),
-      transparent var(--heat),
-      transparent 100%
-    );
+  --heat-own: color-mix(in oklab, var(--accent) 70%, var(--row-base));
+  --heat-shared: color-mix(in oklab, var(--accent) 40%, var(--row-base));
 }
 
 :root[data-ui-style="terminal"] .resource-table-cell.value-cell.unavailable {

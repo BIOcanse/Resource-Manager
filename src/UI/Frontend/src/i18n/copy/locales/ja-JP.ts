@@ -778,6 +778,7 @@ const jaJpAppCopy: AppCopy = {
     resizeColumn: (column: string) => `${column}列の幅を変更`,
     moreActions: (name: string) => `その他の操作: ${name}`,
     currentItem: "この項目",
+    heatSharedLegend: "数値の下のバー：実線は専有、破線は共有按分",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\n専有 ${own} · 共有按分 ${shared}`,
     moreActionsTitle: "その他の操作",
     unknownStatus: "状態不明"

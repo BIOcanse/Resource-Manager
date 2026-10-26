@@ -320,6 +320,43 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.forcedColors = forced;
 
+  // 13. 热度条是数字下面的细线，不压在读数上；共享分摊接在自有后面画成虚线，提示写明实线、虚线；总计行同一套规则。
+  //     默认的内存列（驻留）带共享分摊，把种下的私有提交量来源改回自动再载入。
+  await page.evaluate((key) => {
+    const value = JSON.parse(localStorage.getItem(key));
+    for (const column of [...value.dashboard.resourceTableColumns, ...value.dashboard.resourceTableProcessColumns]) {
+      if (column.id === "memory") column.source = null;
+    }
+    localStorage.setItem(key, JSON.stringify(value));
+  }, "resource-manager:frontend-preferences:v1");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await visibleRows().first().waitFor({ timeout: 15_000 });
+  await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
+  await panel.locator(".resource-table-mode-button").nth(0).click();
+  await panel.locator('.resource-table-row[aria-label="示例软件 2"]').waitFor({ timeout: 15_000 });
+  const memoryAt = await headerIndex(panel, "memory");
+  const heatBar = await panel.evaluate((element, index) => {
+    const read = (row) => {
+      const cell = row.querySelectorAll(".resource-table-cell")[index];
+      const style = getComputedStyle(cell);
+      const range = document.createRange();
+      range.selectNodeContents(cell.querySelector(".resource-table-cell-text"));
+      return { image: style.backgroundImage, size: style.backgroundSize, position: style.backgroundPosition,
+        heat: cell.style.getPropertyValue("--heat"), privateHeat: cell.style.getPropertyValue("--private-heat"),
+        textBottom: range.getBoundingClientRect().bottom, barTop: cell.getBoundingClientRect().bottom - 7, title: cell.title };
+    };
+    return { software: read(element.querySelector('.resource-table-row[aria-label="示例软件 2"]')),
+      summary: read(element.querySelector('.resource-table-row.summary-row[aria-hidden="false"]')) };
+  }, memoryAt);
+  for (const [kind, cell] of Object.entries(heatBar)) {
+    if (!cell.image.startsWith("linear-gradient(") || !cell.image.includes("repeating-linear-gradient(") || !cell.image.includes("211, 171, 48")
+      || cell.size !== `100% 3px, ${cell.heat} 3px` || cell.textBottom > cell.barTop + 0.5 || parseFloat(cell.privateHeat) >= parseFloat(cell.heat)
+      || !cell.title.includes(app.resourceTableView.heatSharedLegend)) {
+      throw new Error(`The ${kind} heat bar must be a thin line under the number with an explained shared part: ${JSON.stringify(heatBar)}`);
+    }
+  }
+  results.heatBar = heatBar;
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

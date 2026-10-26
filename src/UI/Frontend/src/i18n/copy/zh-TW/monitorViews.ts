@@ -49,6 +49,7 @@ export const zhMonitorViewsCopy = {
     resizeColumn: (column: string) => `調整 ${column} 列寬`,
     moreActions: (name: string) => `更多操作：${name}`,
     currentItem: "當前專案",
+    heatSharedLegend: "底部細條：實線是自有，虛線是共享分攤",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}
 自有 ${own} · 共享分攤 ${shared}`,
     moreActionsTitle: "更多操作",

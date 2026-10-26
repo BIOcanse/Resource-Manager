@@ -778,6 +778,7 @@ const deDeAppCopy: AppCopy = {
     resizeColumn: (column: string) => `Breite der Spalte ${column} ändern`,
     moreActions: (name: string) => `Weitere Aktionen: ${name}`,
     currentItem: "dieser Eintrag",
+    heatSharedLegend: "Balken unter dem Wert: durchgezogen = eigen, gestrichelt = gemeinsamer Anteil",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nEigen ${own} · gemeinsamer Anteil ${shared}`,
     moreActionsTitle: "Weitere Aktionen",
     unknownStatus: "Status unbekannt"

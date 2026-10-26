@@ -778,6 +778,7 @@ const frFrAppCopy: AppCopy = {
     resizeColumn: (column: string) => `Redimensionner la colonne ${column}`,
     moreActions: (name: string) => `Autres actions : ${name}`,
     currentItem: "cet élément",
+    heatSharedLegend: "Barre sous la valeur : trait plein = part propre, pointillés = part partagée",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label} : ${value}\nPropre ${own} · part partagée ${shared}`,
     moreActionsTitle: "Autres actions",
     unknownStatus: "État inconnu"

@@ -54,6 +54,7 @@ export const enMonitorViewsCopy: Pick<
     resizeColumn: (column: string) => `Resize the ${column} column`,
     moreActions: (name: string) => `More actions: ${name}`,
     currentItem: "this item",
+    heatSharedLegend: "Bar under the value: solid is own, dashed is the shared share",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nOwn ${own} · shared share ${shared}`,
     moreActionsTitle: "More actions",
     unknownStatus: "Status unknown"

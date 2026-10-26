@@ -1282,6 +1282,8 @@ function ResourceTableCell(props: {
           resourceTableCellText(value(), props.column.id),
           formatBytes((value()?.value ?? 0) - value()!.sharedValue!, "memory"),
           formatBytes(value()?.sharedValue, "memory"))
+          // 有共享分摊的格子，底部细条分实线（自有）和虚线（共享分摊）两段，提示里写明。
+          + `\n${uiText.resourceTableView.heatSharedLegend}`
         : value()
           ? `${props.text.label}: ${resourceTableCellText(value(), props.column.id)}`
           : props.text.label)
