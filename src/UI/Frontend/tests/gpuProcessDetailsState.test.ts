@@ -16,7 +16,7 @@ const expected: Record<string, string> = {
   "fr-FR": "3 logiciels · Détails des processus non demandés",
   "de-DE": "3 Software · Prozessdetails nicht angefordert",
   "es-ES": "3 programas · Detalles de procesos no solicitados",
-  "ru-RU": "3 программ · Сведения о процессах не запрошены"
+  "ru-RU": "3 программы · Сведения о процессах не запрошены"
 };
 for (const language of languageOptions.filter(option => option.id !== "system")) {
   await applyLanguage(language.id);
