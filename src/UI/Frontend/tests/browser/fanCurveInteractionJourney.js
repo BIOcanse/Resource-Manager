@@ -5,6 +5,8 @@ import { fanModeFacts } from "./fanModeFacts.js";
  * 风扇曲线走交互协议的运行时（Lodestone 协议第 4.4 节第 2 处迁移），真实鼠标事件：
  * 按在点上是抓住、不跳，拖动时点的圆心跟着指针；按在图里空白处交给横向最近的点，点跳到指针处接着拖；
  * 拖动中按 Esc 回到这次拖动前的值；方向键照旧。只改本地曲线，不点“应用”。
+ * 点和曲线按运行时画出的位置画（docs/ui_interaction_kit.md 第 4 节第 18 项，2026-10-26 裁定）：默认风格（流畅平滑）下
+ * Esc 取消和 Shift+方向键之后逐帧读点的圆心和曲线，要看到中间位置，曲线每一帧都经过点此刻的圆心。
  */
 export default async function fanCurveInteractionJourney(page, baseUrl) {
   await page.route("**/api/control/objects", route => route.fulfill({ json: {
@@ -49,6 +51,41 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
       throw new Error(`${step}: ${await value()}%, expected ${expected}%`);
     }
   };
+  /** 做 action，之后 700 ms 逐帧读这个点的圆心（SVG 坐标）和曲线经过这个温度的那一点。 */
+  const framesAfter = async (action) => {
+    await point.evaluate((element) => {
+      const dot = element.querySelector(".fan-curve-point");
+      const line = element.ownerSVGElement.querySelector(".fan-curve-line");
+      const cx = Number(dot.getAttribute("cx"));
+      const samples = [];
+      window.__fanCurveFrames = samples;
+      let start = null;
+      const tick = (now) => {
+        start ??= now;
+        const lineY = line.getAttribute("d").split(/[ML ]+/).filter(Boolean).map((pair) => pair.split(",").map(Number))
+          .find(([x]) => Math.abs(x - cx) < 0.01)?.[1] ?? null;
+        samples.push({ cy: Number(dot.getAttribute("cy")), lineY });
+        if (now - start < 700) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await action();
+    await page.waitForFunction(() => window.__fanCurveFrames.length > 0, undefined, { timeout: 2000 });
+    await page.waitForTimeout(750);
+    return page.evaluate(() => window.__fanCurveFrames);
+  };
+  /** 画面经过中间位置走到终点，曲线每一帧都经过点的圆心。 */
+  const assertSettling = (frames, step) => {
+    const ys = frames.map((frame) => frame.cy);
+    const from = ys[0];
+    const to = ys.at(-1);
+    const between = new Set(ys.filter((y) => Math.abs(y - from) > 0.01 && Math.abs(y - to) > 0.01).map((y) => y.toFixed(3)));
+    assert.ok(between.size >= 2, `${step}: the point jumps instead of settling: ${JSON.stringify(ys.map((y) => Number(y.toFixed(2))))}`);
+    for (const frame of frames) {
+      assert.ok(frame.lineY !== null && Math.abs(frame.lineY - frame.cy) < 0.01, `${step}: the curve does not pass through the drawn point: ${JSON.stringify(frame)}`);
+    }
+    return { from: Number(from.toFixed(2)), to: Number(to.toFixed(2)), intermediate: between.size };
+  };
   const moveTo = async (from, to) => {
     for (let i = 1; i <= 8; i += 1) await page.mouse.move(from.x + (to.x - from.x) * i / 8, from.y + (to.y - from.y) * i / 8);
   };
@@ -79,9 +116,10 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
   await page.mouse.down();
   await moveTo(start, { x: start.x, y: start.y + 50 });
   await waitValue(await percentAt(start.y + 50), "Before cancelling");
-  await page.keyboard.press("Escape");
+  const cancelFrames = await framesAfter(() => page.keyboard.press("Escape"));
   await waitValue(dragged, "After Escape");
   await page.mouse.up();
+  const cancelSettling = assertSettling(cancelFrames, "Escape");
 
   // 空白处：交给横向最近的点，点跳到指针处，接着拖。
   const box = await chart.boundingBox();
@@ -97,8 +135,9 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
   const v1 = await value();
   await point.press("ArrowUp");
   await waitValue(v1 + 1, "ArrowUp");
-  await point.press("Shift+ArrowDown");
+  const keyFrames = await framesAfter(() => point.press("Shift+ArrowDown"));
   await waitValue(v1 - 9, "Shift+ArrowDown");
+  const keySettling = assertSettling(keyFrames, "Shift+ArrowDown");
   const spoken = await point.evaluate((element) => ({
     name: element.getAttribute("aria-label"),
     valueText: element.getAttribute("aria-valuetext"),
@@ -106,5 +145,5 @@ export default async function fanCurveInteractionJourney(page, baseUrl) {
   }));
   assert.deepEqual(spoken, { name: `60 °C，${v1 - 9}%`, valueText: `${v1 - 9}%`, title: `60 °C，${v1 - 9}%` },
     "The point name carries temperature and speed in the interface language");
-  return { grabbed: v0, dragged, keyboard: v1 - 9 };
+  return { grabbed: v0, dragged, keyboard: v1 - 9, cancelSettling, keySettling };
 }

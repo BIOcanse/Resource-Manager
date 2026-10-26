@@ -1,4 +1,4 @@
-import { createMemo, For } from "solid-js";
+import { createMemo, createSignal, For } from "solid-js";
 import { uiText } from "../../text.ts";
 import { curveStops, percentAt } from "./fanCurve.ts";
 import { curvePointDefinition } from "../../interactions/components/curvePoint.ts";
@@ -17,6 +17,10 @@ import type { Instance, Presentation } from "../../interactions/protocol/runtime
  * 按在点上是抓住，不跳；按在图里的空白处交给横向最近的点，点跳到指针处接着拖（「点哪儿就调哪个，不用精确按中那个小圆」）。
  * Esc 或右键取消，回到这次拖动前的值；窗口失焦后丢失的松开由输入层校正。
  * 改动只改本地，什么时候写下去由外面的「应用」决定。
+ *
+ * 画面：点和曲线都按运行时画出的位置画（2026-10-26 用户裁定「线是前端，按照前端缓存值也就是动画的位置画」，
+ * docs/ui_interaction_kit.md 第 4 节第 18 项）：Esc、右键取消和方向键时看得到点走回去、走过去，曲线跟着点走。
+ * 提交、无障碍的值和名称仍按宿主值（外面给的 stops）。运行时还没画过的点按宿主值画。
  */
 
 /** Fixed plot geometry; screen positions use the actual SVG transform. */
@@ -58,10 +62,13 @@ export function FanCurveChart(props: {
     return padding.left + (ratio * plotWidth);
   }
 
+  /** 运行时最近一次画出的转速（按温度）：点和曲线都按它画（path 是立即求值的 memo，要先声明）。 */
+  const [drawn, setDrawn] = createSignal<ReadonlyMap<number, number>>(new Map());
+  const drawnPercent = (temperature: number, index: number) => drawn().get(temperature) ?? props.stops[index] ?? 0;
   const path = createMemo(() => {
     const points = temperatures().map((stop, index) => ({
       temperatureCelsius: stop,
-      percent: props.stops[index] ?? 0
+      percent: drawnPercent(stop, index)
     }));
     const range = temperatureRange();
     // The curve is piecewise linear. Draw its actual points and the endpoint
@@ -153,8 +160,11 @@ export function FanCurveChart(props: {
               const atMax = toScreen(xOf(temperature), yOf(100));
               return { center: "点的圆心", atMin: { x: atMin.x, y: atMin.y }, atMax: { x: atMax.x, y: atMax.y } };
             },
-            // 点按宿主值画（拖动中每次移动都改宿主值）；这里只标按住的点。
-            render: ({ mode }) => handle.classList.toggle("fan-curve-handle-active", mode !== "静止"),
+            // 点和曲线按运行时画出的位置画；按住的点另外标出来。
+            render: ({ x, mode }) => {
+              setDrawn((current) => new Map(current).set(temperature, x as number));
+              handle.classList.toggle("fan-curve-handle-active", mode !== "静止");
+            },
             aria: (value) => {
               handle.setAttribute("aria-valuenow", String(value));
               handle.setAttribute("aria-valuetext", uiText.control.curvePointValue(value));
@@ -185,8 +195,8 @@ export function FanCurveChart(props: {
               aria-valuemax={100}
             >
               <title>{uiText.control.curvePointName(temperature, percent())}</title>
-              <circle class="fan-curve-hit" cx={xOf(temperature)} cy={yOf(percent())} r={2} />
-              <circle class="fan-curve-point" cx={xOf(temperature)} cy={yOf(percent())} r={1} />
+              <circle class="fan-curve-hit" cx={xOf(temperature)} cy={yOf(drawnPercent(temperature, index()))} r={2} />
+              <circle class="fan-curve-point" cx={xOf(temperature)} cy={yOf(drawnPercent(temperature, index()))} r={1} />
             </g>
           );
         }}
