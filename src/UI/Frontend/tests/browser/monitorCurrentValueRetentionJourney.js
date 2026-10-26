@@ -42,7 +42,7 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
     return paths.every((path) => current[path]?.logicalInFlight === 0);
   }, paths);
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
-  await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
+  await page.locator("#pageStage .resource-table-panel").scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();
     return current["/api/resource-facts/subscribe"]?.logicalInFlight > 0;
@@ -78,10 +78,11 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
       && document.querySelectorAll(".resource-table-row[data-resource-row-id]").length > 0);
   }
   async function values() {
+    // Leaving animation copies are not the active page's accepted values.
     return page.evaluate(() => ({
-      metrics: [...document.querySelectorAll(".dashboard .metric-value")].map((node) => node.textContent),
-      bars: [...document.querySelectorAll(".resource-breakdown-header")].map((node) => node.textContent),
-      rows: [...document.querySelectorAll(".resource-table-row[data-resource-row-id]")].map((node) => node.textContent)
+      metrics: [...document.querySelectorAll("#pageStage .dashboard .metric-value")].map((node) => node.textContent),
+      bars: [...document.querySelectorAll("#pageStage .resource-breakdown-header")].map((node) => node.textContent),
+      rows: [...document.querySelectorAll("#pageStage .resource-table-row[data-resource-row-id]")].map((node) => node.textContent)
     }));
   }
   async function telemetry() {
