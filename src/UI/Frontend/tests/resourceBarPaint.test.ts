@@ -125,7 +125,7 @@ assert.match(forced, /\.resource-segment-interaction-proxy\.pointer-active\s*\{[
 assert.match(forced, /\.resource-segment\.precision-selected[\s\S]*?outline: 3px solid Highlight/);
 
 // ---- 提示 ----
-// 名字一行（前面一个和段同色的色块）、读数各一行、口径说明在下面；左对齐。出现时淡入，无动画、超高性能下直接出现。
+// 名字一行（前面一个和段同色的色块）、读数各一行、只属于这一段的归因说明在下面；左对齐。出现时淡入，无动画、超高性能下直接出现。
 assert.match(breakdown, /class="resource-tooltip-swatch"/);
 assert.match(breakdown, /class="resource-tooltip-basis"/);
 assert.match(resources, /\.resource-tooltip\s*\{[^}]*text-align:\s*left;/);
@@ -133,6 +133,7 @@ const motion = stripComments(read("styles/motion.css"));
 assert.match(motion, /\.resource-tooltip\s*\{\s*animation:\s*motion-fade-in var\(--motion-fast\) var\(--ease-standard\);/);
 assert.match(motion, /body\[data-animations="none"\] \*,[\s\S]*?animation-duration:\s*0s !important;/, "the reduced modes show the tooltip without the fade");
 // 提示挂在页面最顶层（Portal 到 body，position: fixed，和下拉框弹出层同一层），不在资源条那一行里：下一行盖不住它。
+// 整条的口径只说一次（条名的 title 和轨道的 aria-description），各段的提示不再重复它。
 const overlay = read("features/resourceBreakdown/ResourceTooltipOverlay.tsx");
 assert.match(overlay, /<Portal>/);
 assert.match(resources, /\.resource-tooltip\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*1200;/);
@@ -148,5 +149,7 @@ for (const style of ["outline", "terminal", "soft"]) {
   assert.doesNotMatch(read(`styles/ui-styles/${style}.css`), /\.resource-tooltip\s*\{/, `${style} does not restyle the tooltip apart from the popover`);
 }
 assert.equal((breakdown.match(/<ResourceTooltipOverlay /g) ?? []).length, 2, "software and process bars both use the overlay");
+assert.match(breakdown, /aria-description=\{props\.bar\.basis \|\| undefined\}/);
+assert.doesNotMatch(breakdown, /notes: \[bar\.basis/, "the bar-wide basis is not repeated in each segment");
 
 console.log("resourceBarPaint: ok");

@@ -513,6 +513,8 @@ function ResourceBreakdownItem(props: {
         tabIndex={0}
         role="listbox"
         aria-label={uiText.resourceBreakdown.selectionLabel(label())}
+        // 整条的口径说一次：读屏在这里读到，条名上悬停也能看到；各段的提示和名称里不再重复。
+        aria-description={props.bar.basis || undefined}
         aria-activedescendant={activeOptionId()}
         data-metric-id={props.bar.metricId}
         onClick={selectAtPoint}
@@ -672,6 +674,7 @@ function ResourceProcessPanel(props: {
         tabIndex={hasProcesses() ? 0 : -1}
         role={hasProcesses() ? "listbox" : undefined}
         aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software)) : undefined}
+        aria-description={hasProcesses() && props.bar.basis ? props.bar.basis : undefined}
         aria-activedescendant={activeProcessOptionId()}
         onPointerMove={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
@@ -761,7 +764,10 @@ function ResourceProcessPanel(props: {
   );
 }
 
-/** 提示的内容：名字、读数各一行、口径和归因说明。aria-label 和选中后的说明行用同样的内容连成一段文字。 */
+/**
+ * 提示的内容：名字、读数各一行，以及只属于这一段的归因说明（整条的口径不在这里，见资源条的条名和 aria-description）。
+ * aria-label 和选中后的说明行用同样的内容连成一段文字。
+ */
 interface ResourceTooltipParts {
   title: string;
   /** 名字前的小色块，和这一段在条上的颜色一样：没有图例时靠它把颜色和名字对上。 */
@@ -830,7 +836,7 @@ function resourceProcessTooltipParts(bar: ResourceBarView, process: ResourceProc
       `${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}`,
       resourceValueLine(bar, process)
     ],
-    notes: [bar.basis, extra].filter((note): note is string => Boolean(note))
+    notes: extra ? [extra] : []
   };
 }
 
@@ -954,7 +960,7 @@ function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSele
     },
     kind: segment.isEmpty || isReservedSegment(segment) ? null : softwareDisplayKindLabel(segment.kind, segment.displayKind),
     lines: [`${percentLabel} ${formatPercent(segment.systemPercent)}`, resourceValueLine(bar, segment)],
-    notes: bar.basis ? [bar.basis] : []
+    notes: []
   };
 }
 
