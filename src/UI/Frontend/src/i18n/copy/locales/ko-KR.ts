@@ -610,6 +610,7 @@ const koKrAppCopy: AppCopy = {
     needsComponent: "구성 요소 필요",
     noReadingHint: "현재 측정값이 없습니다",
     noReading: "측정값 없음",
+    waitingReading: "첫 측정값을 기다리는 중",
     notInCatalogHint: "이 항목은 메트릭 카탈로그에 없습니다",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

@@ -35,6 +35,7 @@ export const zhMonitorCopy = {
     needsComponent: "需裝元件",
     noReadingHint: "暫時沒有讀數",
     noReading: "無讀數",
+    waitingReading: "正在等待首個讀數",
     notInCatalogHint: "指標目錄裡沒有這一項",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

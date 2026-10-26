@@ -113,6 +113,7 @@ export function MonitorPage(props: MonitorPageProps) {
                   cards={monitor.activeCards()}
                   catalog={monitor.cardCatalog()}
                   snapshot={monitor.cardSnapshot()}
+                  pendingMetricIds={monitor.cardPendingMetricIds()}
                   editMode={monitor.editMode()}
                   metricSelectionAvailable={metricSelectionAvailable()}
                   onOpenMetricModal={monitor.openMetricModal}

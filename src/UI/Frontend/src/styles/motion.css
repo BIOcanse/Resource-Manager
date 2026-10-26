@@ -183,6 +183,22 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
   animation: motion-fade-in var(--motion-fast) var(--ease-standard);
 }
 
+/* --- 监视卡片读数 ---
+   等首个读数时占位条缓慢明暗呼吸（持续循环，自己的周期，不随手感）；读数到了，数值淡入替换占位。
+   数值之后的每次更新原地换字，不做过渡：读数一秒一变，渐变会让数字一直发虚。
+   无动画、超高性能档由下面的全局规则清零时长：占位条静止，数值直接出现。 */
+@keyframes motion-pending-pulse {
+  50% { opacity: 0.45; }
+}
+
+.metric-pending-bar {
+  animation: motion-pending-pulse 1200ms ease-in-out infinite;
+}
+
+.metric-value:not(.pending) {
+  animation: motion-fade-in var(--motion-medium) var(--ease-standard);
+}
+
 /* --- 编辑模式与拖拽反馈 --- */
 .metric-card {
   transition:

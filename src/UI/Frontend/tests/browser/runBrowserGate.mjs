@@ -114,6 +114,7 @@ const allJourneys = [
   ["control-slider-interaction", controlSliderInteractionJourney],
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
+  ["metric-card-states", async (...args) => (await import("./metricCardStatesJourney.js")).default(...args)],
   ["metric-source-choice", async (...args) => (await import("./metricSourceChoiceJourney.js")).default(...args)],
   ["resource-table-source-choice", async (...args) => (await import("./resourceTableSourceChoiceJourney.js")).default(...args)],
   ["resource-table-column-editor", async (...args) => (await import("./resourceTableColumnEditorJourney.js")).default(...args)],

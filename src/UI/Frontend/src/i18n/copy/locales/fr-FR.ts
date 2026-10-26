@@ -610,6 +610,7 @@ const frFrAppCopy: AppCopy = {
     needsComponent: "Composant requis",
     noReadingHint: "Aucun relevé pour le moment",
     noReading: "Aucune mesure",
+    waitingReading: "En attente de la première mesure",
     notInCatalogHint: "Cet élément ne figure pas dans le catalogue de métriques",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

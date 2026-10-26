@@ -19,6 +19,8 @@ interface DashboardProps {
   cards: DashboardCardSettings[];
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
+  /** 还在等首个读数的指标（monitorStore.cardPendingMetricIds）。 */
+  pendingMetricIds: ReadonlySet<string>;
   editMode: boolean;
   metricSelectionAvailable: boolean;
   onOpenMetricModal: (target: { cardId: string; slot: "main" | "small"; index: number; currentMetricId: string | null }) => void;
@@ -73,6 +75,7 @@ export function Dashboard(props: DashboardProps) {
                 metricSelectionAvailable={props.metricSelectionAvailable}
                 catalog={props.catalog}
                 snapshot={props.snapshot}
+                pendingMetricIds={props.pendingMetricIds}
                 reorder={slotReorder}
                 onOpenMetricModal={props.onOpenMetricModal}
                 onClearSlot={props.onClearSlot}
@@ -91,6 +94,7 @@ export function Dashboard(props: DashboardProps) {
                     metricSelectionAvailable={props.metricSelectionAvailable}
                     catalog={props.catalog}
                     snapshot={props.snapshot}
+                    pendingMetricIds={props.pendingMetricIds}
                     reorder={slotReorder}
                     onOpenMetricModal={props.onOpenMetricModal}
                     onClearSlot={props.onClearSlot}
@@ -127,6 +131,7 @@ function MetricSlot(props: {
   metricSelectionAvailable: boolean;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
+  pendingMetricIds: ReadonlySet<string>;
   reorder: ReorderGroup;
   onOpenMetricModal: DashboardProps["onOpenMetricModal"];
   onClearSlot: DashboardProps["onClearSlot"];
@@ -145,7 +150,8 @@ function MetricSlot(props: {
   return (
     <Show
       when={props.editMode}
-      fallback={<MetricView metricId={props.metricId} isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot} />}
+      fallback={<MetricView metricId={props.metricId} isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot}
+        pending={Boolean(props.metricId && props.pendingMetricIds.has(props.metricId))} />}
     >
       <div
         class="edit-slot"
@@ -168,7 +174,8 @@ function MetricSlot(props: {
           }
         >
           <MetricView metricId={props.metricId} binding={props.slot === "main" ? props.card.mainBinding : props.card.smallBindings?.[props.index]}
-            isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot} />
+            isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot}
+            pending={Boolean(props.metricId && props.pendingMetricIds.has(props.metricId))} />
           {/* 槽内操作：悬停或聚焦这一槽时显示。 */}
           <span class="slot-actions">
             <button
@@ -205,6 +212,7 @@ function MetricView(props: {
   isMain: boolean;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
+  pending: boolean;
 }) {
   const absent = () => props.metricId && props.catalog.length > 0 && !dashboardMetricAvailable(props.metricId, props.binding, props.catalog);
   const metric = () => props.metricId && !absent() ? props.snapshot?.items?.[props.metricId] : null;
@@ -240,6 +248,8 @@ function MetricView(props: {
   const reading = () => absent() ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint } : props.metricId
     ? metricCardReading(definition(), metric())
     : { value: "--", gap: "", unit: "", missing: true, title: undefined };
+  // 首个读数还没到：画一条占位，不先写「无读数」再跳成数值。设备不在照常直接写。
+  const waiting = () => props.pending && !absent();
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
       <div class="metric-label" title={labelTitle()}>
@@ -249,11 +259,21 @@ function MetricView(props: {
           {(name) => <span class="metric-device"><ReadingSourceMark mark={definition()?.readingSource?.mark} />{name()}</span>}
         </Show>
       </div>
-      <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
-        <Show when={reading().unit} fallback={reading().value}>
-          <span class="metric-number">{reading().value}</span>{reading().gap}<span class="metric-unit">{reading().unit}</span>
-        </Show>
-      </div>
+      <Show
+        when={!waiting()}
+        fallback={
+          <div class="metric-value pending" title={uiText.dashboard.waitingReading}>
+            <span class="metric-pending-bar" aria-hidden="true" />
+            <span class="sr-only">{uiText.dashboard.waitingReading}</span>
+          </div>
+        }
+      >
+        <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
+          <Show when={reading().unit} fallback={reading().value}>
+            <span class="metric-number">{reading().value}</span>{reading().gap}<span class="metric-unit">{reading().unit}</span>
+          </Show>
+        </div>
+      </Show>
     </div>
   );
 }

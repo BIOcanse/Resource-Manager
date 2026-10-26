@@ -610,6 +610,7 @@ const deDeAppCopy: AppCopy = {
     needsComponent: "Komponente nötig",
     noReadingHint: "Derzeit kein Messwert",
     noReading: "Kein Messwert",
+    waitingReading: "Warten auf den ersten Messwert",
     notInCatalogHint: "Dieser Eintrag fehlt im Metrikkatalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

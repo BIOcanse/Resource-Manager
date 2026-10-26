@@ -12,6 +12,7 @@ import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/R
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import type {
   DashboardCardSettings,
+  DashboardMetricBinding,
   DashboardSettings,
   DashboardSettingsResult,
   MetricDefinition,
@@ -135,6 +136,11 @@ export interface MonitorStore {
   pickerCatalog: Accessor<MetricDefinition[]>;
   /** 卡片显示用的当前值：原有指标快照加上卡片上设备字段的值。 */
   cardSnapshot: Accessor<MetricSnapshot | null>;
+  /**
+   * 还在等首个读数的卡片指标：cardSnapshot 里没有它，且送它的那一路还没交过这次查询的帧
+   * （设备字段的值或目录未到；原有指标的这次查询还在加载）。卡片据此画“读取中”，不写“无读数”。
+   */
+  cardPendingMetricIds: Accessor<ReadonlySet<string>>;
   activeCards: Accessor<DashboardCardSettings[]>;
   resourceBarEditing: Accessor<boolean>;
   activeResourceBars: Accessor<ResourceBarSettings[]>;
@@ -207,6 +213,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [catalogObservation, setCatalogObservation] =
     createSignal<ObservationState>(loadingObservation());
   const [metricSourceSnapshot, setMetricSourceSnapshot] = createSignal<MonitorSourceBinding<MetricSnapshot> | null>(null);
+  // 当前显示的指标帧回答了哪些指标：带数据的那一帧的查询里的指标，查询不限指标时是全部。
+  const [answeredMetricIds, setAnsweredMetricIds] = createSignal<ReadonlySet<string> | "all">(new Set());
   // 布局由前端缓存或本次构建的点值产生；加载前不制造第二份占位默认值。
   const [cards, setCards] = createSignal<DashboardCardSettings[]>([]);
   const [resourceBars, setResourceBars] = createSignal<ResourceBarSettings[]>([]);
@@ -382,6 +390,31 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     // 卡片显示不读目录修订号，沿用指标帧的；还没有指标帧时为空。
     return { version: 5, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
   });
+  // 卡片上的一个指标还在等首个读数：当前值里没有它，且送它的那一路还没回答过它、也没有报错。
+  // 设备字段：值和目录都到之前 fieldCardValues 不写这一项，到了之后每个槽位都写（值、不可用或设备不在）。
+  // 原有指标：当前显示的指标帧回答的是它那次查询里的指标；卡片刚可见、换了查询时，新指标还没被任何一帧回答过，
+  // 这时缺项不能说明没有读数。
+  const cardPendingMetricIds = createMemo<ReadonlySet<string>>(() => {
+    const items = cardSnapshot()?.items ?? {};
+    const answered = answeredMetricIds();
+    const legacyFailed = snapshotObservation().status === "error";
+    const fieldsFailed = pushObservation(fieldDevicesSnapshot()?.source ?? null).status === "error";
+    const pending = new Set<string>();
+    for (const card of activeCards()) {
+      const slots: [string | null | undefined, DashboardMetricBinding | null | undefined][] = [
+        [card.main, card.mainBinding],
+        ...(card.small ?? []).map((metricId, index): [string, DashboardMetricBinding | null | undefined] => [metricId, card.smallBindings?.[index]])
+      ];
+      for (const [metricId, binding] of slots) {
+        if (!metricId || items[metricId]) continue;
+        const waiting = fieldCardSlot(metricId, binding)
+          ? !fieldsFailed
+          : !legacyFailed && answered !== "all" && !answered.has(metricId);
+        if (waiting) pending.add(metricId);
+      }
+    }
+    return pending;
+  });
 
   createEffect(() => {
     const binding = JSON.parse(metricSubscriptionKey()) as {
@@ -400,6 +433,9 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       (value) => {
         if (accepting) {
           setMetricSourceSnapshot({ queryKey, source: value });
+          if (value.data) {
+            setAnsweredMetricIds(binding.query.ids === null ? "all" : new Set(binding.query.ids));
+          }
           if (value.data && value.data.catalogRevision !== backendCatalogRevision) {
             backendCatalogRevision = value.data.catalogRevision;
             void followBackendCatalog(value.data.catalogRevision);
@@ -1112,6 +1148,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     cardCatalog,
     pickerCatalog,
     cardSnapshot,
+    cardPendingMetricIds,
     activeCards,
     resourceBarEditing,
     activeResourceBars,

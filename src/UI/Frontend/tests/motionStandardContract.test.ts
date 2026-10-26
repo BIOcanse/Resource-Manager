@@ -68,6 +68,13 @@ for (const selector of [".standard-select-popover", ".standard-context-menu", ".
 }
 assert.equal(declarationsOf(".ui-tabs-panel").get("animation"), "motion-fade-in var(--motion-fast) var(--ease-standard)");
 
+// 监视卡片：等首个读数的占位条呼吸，读数到了数值淡入（分区入场的节奏）；之后的更新不做过渡。
+// 槽内按钮淡入；卡片只过渡真会变的属性（拖动源的半透明、阴影、悬停边框），没有不生效的 padding、transform。
+assert.equal(declarationsOf(".metric-pending-bar").get("animation"), "motion-pending-pulse 1200ms ease-in-out infinite");
+assert.equal(declarationsOf(".metric-value:not(.pending)").get("animation"), "motion-fade-in var(--motion-medium) var(--ease-standard)");
+assert.ok(!rules.some((rule) => rule.selectors.some((selector) => /^\.metric-value(?![:\w-])/.test(selector)) && rule.declarations.has("transition")),
+  "card readings change in place; a transition would blur a value that updates every second");
+
 // 组件样式不写过渡；持续循环的加载转圈是唯一写在组件里的动画。
 const cssFiles: string[] = [];
 const pending = [srcRoot];
