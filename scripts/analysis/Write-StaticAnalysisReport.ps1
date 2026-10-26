@@ -88,7 +88,7 @@ foreach($package in $versions.packages) {
 $lines.Add('')
 $lines.Add('重跑：在 worker 的短 PATH（dotnet/pwsh/zig/gcc）中执行 `pwsh -NoProfile -File scripts/analysis/Invoke-DotnetStaticAnalysis.ps1 -RestoreAnalyzers`。每个重型步骤由入口逐项提交 JobQueue Run，4 GiB 上限、BelowNormal；CodeQL 2 线程/3072 MiB，构建禁用 build servers。不要将整个入口再次套入队列。')
 $lines.Add('')
-$lines.Add("覆盖：37 个 C# 项目全部尝试；$($status.roslyn.Count-$failed.Count) 个构建成功，15 个产品项目全部成功。3 个测试夹具缺口：FanCoreProtocolProbe 的外部项目路径不存在；LegacyAdapterInitializationProbe 缺指定验证批次的原生输出；ReadWriteCore/PackageConsumer 固定包缺 CpuModelName API。失败编译中的诊断仅计数，不作为完整覆盖证明。CodeQL no-build 使用推断依赖，排除私有 NonAdaptedOptimizationLab，171 个查询完成；不等于精确构建图或安全无缺陷证明。")
+$lines.Add("覆盖：37 个 C# 项目全部尝试；$($status.roslyn.Count-$failed.Count) 个构建成功，15 个产品项目全部成功。历史分析中的其余测试夹具缺口：LegacyAdapterInitializationProbe 缺指定验证批次的原生输出；ReadWriteCore/PackageConsumer 固定包缺 CpuModelName API。失败编译中的诊断仅计数，不作为完整覆盖证明。CodeQL no-build 使用推断依赖，排除私有 NonAdaptedOptimizationLab，171 个查询完成；不等于精确构建图或安全无缺陷证明。")
 $lines.Add('')
 $lines.Add('普通构建证明：Shared 项目在注入前/后均用 `dotnet build -t:Rebuild --disable-build-servers` 成功；唯一警告均为 `src/Shared/HostManager/Operations/NativeCoreLibraryResolver.cs:12` 的原有 CA2255，机器比较 sameWarnings=true。分析 targets 仅由入口显式导入，产品项目无新增 PackageReference、warning level 或 TreatWarningsAsErrors。')
 $lines.Add('')
