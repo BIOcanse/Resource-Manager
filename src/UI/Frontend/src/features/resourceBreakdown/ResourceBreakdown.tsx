@@ -13,7 +13,8 @@ import type {
   ResourceBreakdownBar,
   ResourceProcessSegment,
   ResourceProcessDetailsSnapshot,
-  ResourceSoftwareSegment
+  ResourceSoftwareSegment,
+  PhysicalMemoryResidualFrame
 } from "../../types";
 import {
   resourceSegmentLayerStyle,
@@ -46,6 +47,7 @@ import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { formatResourceBarValue } from "./resourceBreakdownValue";
+import { PhysicalMemoryResidualDetails } from "./PhysicalMemoryResidualDetails.tsx";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
 import type { ObservationState } from "../../observation/observationState";
 import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
@@ -55,6 +57,7 @@ import {
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
+  physicalMemoryResidualSoftwareId,
   type ResourceBarView
 } from "./resourceBarSources.ts";
 
@@ -610,7 +613,8 @@ function ResourceBreakdownItem(props: {
               processes={props.processDetails === null ? null : props.processDetails.metrics
                 .find(metric => metric.metricId === (props.bar.source ?? props.bar.metricId))?.software
                 .find(item => item.softwareId === software().softwareId)?.processes ?? []}
-              observation={props.processDetailsObservation} />}
+              observation={props.processDetailsObservation}
+              physicalMemoryResidual={props.processDetails?.physicalMemoryResidual} />}
           </Show>
         )}
       </Show>
@@ -623,6 +627,7 @@ function ResourceProcessPanel(props: {
   software: ResourceSoftwareSegment;
   processes: ResourceProcessSegment[] | null;
   observation: ObservationState;
+  physicalMemoryResidual: PhysicalMemoryResidualFrame | undefined;
 }) {
   const layout = createMemo(() => resourceSegmentLayout(props.processes ?? [], props.software.value > 0 ? props.software.value : 1, { fill: true }));
   const layoutIndex = createMemo(() => {
@@ -761,6 +766,10 @@ function ResourceProcessPanel(props: {
             {resourceProcessTooltip(props.bar, props.software, process())}
           </p>
         )}
+      </Show>
+      {/* 物理内存类的条（residualSource 为 counters）展开保留量时，明细订阅带着它的 id，后端另给页帧明细帧。 */}
+      <Show when={props.software.softwareId === physicalMemoryResidualSoftwareId && props.bar.residualSource === "counters"}>
+        <PhysicalMemoryResidualDetails frame={props.physicalMemoryResidual} />
       </Show>
     </div>
   );

@@ -1073,6 +1073,120 @@
   white-space: pre-line;
 }
 
+/* 物理内存保留量展开后的页帧明细：放在分项轨道下面，沿用面板的标题行、说明文字和分隔线。 */
+.resource-residual-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  user-select: text;
+}
+
+.resource-residual-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.resource-residual-details-header strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.resource-residual-details-header span,
+.resource-residual-details-note,
+.resource-residual-details-code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resource-residual-details-state {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border-left: 2px solid var(--line);
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resource-residual-details-state strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.resource-residual-details-state p,
+.resource-residual-details-note {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.resource-residual-details-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-residual-details-table th,
+.resource-residual-details-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--divider-soft);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.resource-residual-details-table th:first-child {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.resource-residual-details-table thead th,
+.resource-residual-details-table thead th:first-child {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.resource-residual-details-group th {
+  color: var(--muted);
+}
+
+.resource-residual-details-table tr.grouped th:first-child {
+  padding-left: 18px;
+}
+
+.resource-residual-details-table tfoot th,
+.resource-residual-details-table tfoot td {
+  border-bottom: 0;
+  border-top: 1px solid var(--divider);
+  font-weight: 600;
+}
+
+.resource-residual-details-totals {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  margin: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-residual-details-totals dt {
+  color: var(--muted);
+}
+
+.resource-residual-details-totals dd {
+  margin: 0;
+  text-align: right;
+}
+
+
 /* 提示：名字一行加粗，读数各占一行，只属于这一段的归因说明在下面隔一条细线、颜色淡一档。左对齐。
    它挂在页面最顶层（ResourceTooltipOverlay，Portal 到 body），和下拉框的弹出层同一层，资源条的行盖不住它；
    位置由脚本按视口算好写进 left/top，放好之前不显示。 */

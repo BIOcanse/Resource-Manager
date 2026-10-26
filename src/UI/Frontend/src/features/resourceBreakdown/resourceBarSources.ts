@@ -48,6 +48,12 @@ export function resourceBarSource(bar: Pick<ResourceBarSettings, "metricId" | "s
   return bar.source && memoryBarIds.has(bar.metricId) ? bar.source : null;
 }
 
+/**
+ * 物理内存条的“系统/驱动保留”在后端的软件 id。物理内存类的条（自动选择或选了来源，整机比较指标都是 memory.usage）
+ * 都把保留量放在这一行，分项是它下面 PID 为 -1 的行；进程明细（scope=details）带上这个 id 时，后端另外给出页帧明细帧。
+ */
+export const physicalMemoryResidualSoftwareId = "resource-residual:memory.usage";
+
 /** 资源条在订阅里的样子：指标 id、缩放和来源（自动选择为 null，按 ids= 订阅；选了来源按这个字段的 measures= 订阅）。 */
 export function resourceBarQuery(bar: ResourceBarSettings): ResourceBarQuery {
   return { metricId: bar.metricId, scaleMode: normalizeResourceBarScaleMode(bar.metricId, bar.scaleMode), source: resourceBarSource(bar) };
