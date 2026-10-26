@@ -66,7 +66,10 @@ async function run(job) {
   const log = resolve(logDir, `${job.name}.log`);
   let output = "";
   const code = await new Promise((resolveCode) => {
-    const child = spawn(process.execPath, [resolve(projectRoot, "tests/browser/runBrowserGate.mjs")], {
+    // 与 package.json 的 test:browser 相同：旅程导入 .ts 源码，需要 --experimental-transform-types。
+    const nodeFlags = process.execArgv.includes("--experimental-transform-types")
+      ? process.execArgv : [...process.execArgv, "--experimental-transform-types"];
+    const child = spawn(process.execPath, [...nodeFlags, resolve(projectRoot, "tests/browser/runBrowserGate.mjs")], {
       cwd: projectRoot,
       env: job.env,
       stdio: ["ignore", "pipe", "pipe"]
