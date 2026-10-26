@@ -10,10 +10,11 @@
   max-height: calc(100vh - var(--modal-viewport-top) - 36px);
 }
 
+/* 竖排：可选的同步提示在上，页签组占剩下的高度。用网格行时没有提示的那次页签组落进 auto 行，跟着内容长高，列表不滚。 */
 .task-center-body {
   flex: 1 1 auto;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-height: 0;
   overflow: hidden;
@@ -32,6 +33,7 @@
 }
 
 .task-center-tabs {
+  flex: 1 1 auto;
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

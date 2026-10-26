@@ -170,6 +170,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await dialog.getByRole("tab", { name: /历史/ }).click();
   await dialog.locator(".task-center-item").nth(23)
     .waitFor({ state: "attached", timeout: 3000 });
+  await waitForContentSettled(page);
   const longListGeometry = await dialogGeometry(page, dialog);
   assertDialogContained(longListGeometry, "long-history Task Center");
   assert(longListGeometry.panel
@@ -179,16 +180,18 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await dialog.waitFor({ state: "hidden", timeout: 3000 });
 
   await setScenario({ operations: "empty", operationCanceled: false });
-  await page.setViewportSize({ width: 1280, height: 720 });
   await taskButton.click();
   await dialog.waitFor({ state: "visible", timeout: 3000 });
   await dialog.getByText("此筛选下没有任务", { exact: true }).first()
     .waitFor({ state: "visible", timeout: 3000 });
   await settleDialog(dialog);
-  const emptyDesktopGeometry = await dialogGeometry(page, dialog);
-  assert(Math.abs(emptyDesktopGeometry.dialog.height - filledHeight) <= 1,
-    `Empty Task Center changes height: ${JSON.stringify(emptyDesktopGeometry)} vs ${filledHeight}`);
+  // 高度只跟视口走，不跟内容走：和有任务时同一个视口（900×640）比。
+  const emptyGeometry = await dialogGeometry(page, dialog);
+  assert(Math.abs(emptyGeometry.dialog.height - filledHeight) <= 1,
+    `Empty Task Center changes height: ${JSON.stringify(emptyGeometry)} vs ${filledHeight}`);
   assert(await dialog.getByText("此筛选下没有任务", { exact: true }).count() === 1, "The empty state is said more than once");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const emptyDesktopGeometry = await dialogGeometry(page, dialog);
   assertDialogContained(emptyDesktopGeometry, "desktop empty Task Center");
   await page.setViewportSize({ width: 800, height: 500 });
   const emptyNarrowGeometry = await dialogGeometry(page, dialog);
