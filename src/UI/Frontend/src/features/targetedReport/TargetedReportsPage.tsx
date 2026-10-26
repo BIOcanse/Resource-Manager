@@ -9,7 +9,6 @@ import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
-import { formatBytes, formatBytesPerSecond } from "../../presentation/byteUnits.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import { currentLanguage, uiText } from "../../text.ts";
@@ -18,6 +17,7 @@ import {
   type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
 import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
+import { curveScale } from "./targetedReportAxis.ts";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
@@ -341,14 +341,14 @@ export function TargetedReportsPage() {
                 <section class="targeted-report-card">
                   <h4>{uiText.targetedReport.frameTime}</h4>
                   <TargetedReportChart points={framePoints()} from={start()} to={end()}
-                    mode="frames" unit="ms" ariaLabel={uiText.targetedReport.frameTime} />
+                    mode="frames" axis={{ unit: "ms", divisor: 1, integerTicks: false }} ariaLabel={uiText.targetedReport.frameTime} />
                 </section>
                 <section class="targeted-report-card">
                   <h4>{uiText.targetedReport.distribution}</h4>
                   <TargetedReportChart points={distributionPoints()}
                     from={distributionPoints()[0]?.x ?? 0}
                     to={(distributionPoints().at(-1)?.x ?? 0) + 10}
-                    mode="bars" unit={uiText.targetedReport.frameCount} ariaLabel={uiText.targetedReport.distribution} />
+                    mode="bars" axis={{ unit: uiText.targetedReport.frameCount, divisor: 1, integerTicks: true }} ariaLabel={uiText.targetedReport.distribution} />
                 </section>
               </div>
             </Show>
@@ -362,9 +362,9 @@ export function TargetedReportsPage() {
                   const latest = () => current().resourceSamples.at(-1)?.[curve.scope][curve.metric] ?? null;
                   const label = () => `${curve.scope === "software" ? uiText.targetedReport.software : uiText.targetedReport.system} · ${localizedMetricLabel(curve.metric)}`;
                   return <section class="targeted-report-card">
-                    <h5><span class="targeted-report-card-label">{label()}</span> <span class="targeted-report-card-value">{displayMetric(curve.metric, latest())}</span></h5>
+                    <h5><span class="targeted-report-card-label">{label()}</span> <span class="targeted-report-card-value">{latest() === null ? "–" : scale().format(latest() as number)}</span></h5>
                     <TargetedReportChart points={points()} from={start()} to={end()} mode="line"
-                      unit={metricUnit(curve.metric)} ariaLabel={label()} />
+                      axis={scale().axis} ariaLabel={label()} />
                   </section>;
                 }}
               </For>
@@ -372,6 +372,7 @@ export function TargetedReportsPage() {
           </div>
         )}
       </Show>
+                  const scale = () => curveScale(curve.metric, points());
     </section>
   );
 }
@@ -393,20 +394,4 @@ function dateTime(value: string) {
   return Number.isFinite(timestamp) ? new Intl.DateTimeFormat(currentLanguage(), {
     year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
   }).format(timestamp) : value;
-}
-
-function metricUnit(id: string) {
-  if (/^(disk\.|network\.)/.test(id)) return "B/s";
-  if (/^(memory\.|virtualMemory\.)/.test(id) || /\.vram$/.test(id)) return "B";
-  if (/temperature$/.test(id)) return "°C";
-  if (/frequency$/.test(id)) return "MHz";
-  return "%";
-}
-
-function displayMetric(id: string, value: number | null) {
-  if (value === null) return "–";
-  const unit = metricUnit(id);
-  if (unit === "B") return formatBytes(value, "memory");
-  if (unit === "B/s") return formatBytesPerSecond(value);
-  return `${value.toFixed(1)} ${unit}`;
 }

@@ -79,6 +79,21 @@ export function scaleBytes(
   return { value, unit: units[index] };
 }
 
+/**
+ * 一组同类数值共用一档（例如图表纵轴和它的标题）：按参考值（通常是这组的最大值）选档，
+ * 返回这一档的单位和除数；组里每个数除以 divisor 后配同一个 unit 显示。
+ */
+export function byteUnitScale(
+  referenceBytes: number,
+  kind: ByteQuantityKind,
+  mode: ByteUnitMode = activeMode()
+): { unit: string; divisor: number } {
+  const scaled = scaleBytes(referenceBytes, kind, mode);
+  const binary = usesBinaryUnits(kind, mode);
+  const units: readonly string[] = binary ? binaryUnits : decimalUnits;
+  return { unit: scaled.unit, divisor: (binary ? 1024 : 1000) ** Math.max(0, units.indexOf(scaled.unit)) };
+}
+
 export function formatByteUnitValue(scaled: ByteUnitValue) {
   return `${scaled.value.toFixed(byteDigits(scaled))} ${scaled.unit}`;
 }

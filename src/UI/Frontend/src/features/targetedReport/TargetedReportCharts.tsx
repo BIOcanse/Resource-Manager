@@ -1,7 +1,11 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import { axisTicks, formatTick, type ChartAxis } from "./targetedReportAxis.ts";
+
+export type { ChartAxis };
 
 export interface ChartPoint { x: number; y: number | null }
+
 
 export function TargetedReportChart(props: {
   points: readonly ChartPoint[];
@@ -9,7 +13,7 @@ export function TargetedReportChart(props: {
   to: number;
   mode: "frames" | "line" | "bars";
   ariaLabel: string;
-  unit: string;
+  axis: ChartAxis;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let frame = 0;
@@ -17,13 +21,14 @@ export function TargetedReportChart(props: {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      draw(canvas, props.points, props.from, props.to, props.mode, props.unit);
+      draw(canvas, props.points, props.from, props.to, props.mode, props.axis);
     });
   };
   createEffect(() => {
     props.points;
     props.from;
     props.to;
+    props.axis;
     drawSoon();
   });
   onMount(() => {
@@ -41,7 +46,7 @@ export function TargetedReportChart(props: {
 }
 
 function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint[], from: number,
-  to: number, mode: "frames" | "line" | "bars", unit: string) {
+  to: number, mode: "frames" | "line" | "bars", axis: ChartAxis) {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -64,10 +69,12 @@ function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint
   const bottom = cssHeight - 27;
   const chartWidth = Math.max(1, right - left);
   const chartHeight = Math.max(1, bottom - top);
-  let maximum = 1;
+  let largest = 0;
   for (const point of points) {
-    if (point.y !== null && point.y > maximum) maximum = point.y;
+    if (point.y !== null && point.y > largest) largest = point.y;
   }
+  const ticks = axisTicks(largest / axis.divisor, axis.integerTicks);
+  const maximum = ticks.top * axis.divisor;
   const x = (value: number) => left + Math.max(0, Math.min(1, (value - from) / Math.max(1, to - from))) * chartWidth;
   const y = (value: number) => bottom - Math.max(0, Math.min(1, value / maximum)) * chartHeight;
 
@@ -79,16 +86,16 @@ function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint
   context.strokeStyle = color("--line", "#e0e5e2");
   context.fillStyle = color("--muted", "#48534e");
   context.font = "11px Segoe UI, sans-serif";
-  for (let index = 0; index <= 4; index++) {
-    const level = maximum * index / 4;
-    const yy = y(level);
+  for (let index = 0; index <= ticks.count; index++) {
+    const level = ticks.step * index;
+    const yy = y(level * axis.divisor);
     context.beginPath();
     context.moveTo(left, yy);
     context.lineTo(right, yy);
     context.stroke();
-    context.fillText(formatAxis(level), 2, yy + 4);
+    context.fillText(formatTick(level), 2, yy + 4);
   }
-  context.fillText(unit, 3, 11);
+  context.fillText(axis.unit, 3, 11);
   context.fillText(mode === "bars" ? String(from) : "0", left, cssHeight - 8);
   context.textAlign = "right";
   context.fillText(mode === "bars" ? String(to) : `${((to - from) / 1000).toFixed(0)} s`, right, cssHeight - 8);
@@ -136,9 +143,3 @@ function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint
   context.restore();
 }
 
-function formatAxis(value: number) {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}G`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return value.toFixed(value >= 10 ? 0 : 1);
-}
