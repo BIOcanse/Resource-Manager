@@ -1786,6 +1786,11 @@ function resourceProcessDetails(url, capturedAt) {
   return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
 }
 
+// 后端只在物理内存条（memory.usage 和 process_all_private_working_set_actual 字段条）上写 residualSource。
+function physicalResidualSource(metricId) {
+  return metricId === "memory.usage" || metricId === "process_all_private_working_set_actual" ? "counters" : null;
+}
+
 function normalizeMetricIds(values) {
   const ids = new Map();
   for (const raw of values) for (const part of raw.split(",")) {
@@ -1829,6 +1834,8 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
         metricId: "memory.usage",
         // 后端在自动的整机内存条上写出实际读的进程字段。
         processFieldName: automaticProcessFields["memory.usage"],
+        // 后端物理内存条的残差来自计数器（residualSource "counters"，见 runtime_process_attribution_and_io_network_telemetry.md 的 Wire 节）。
+        residualSource: physicalResidualSource("memory.usage"),
         unit: scenario.resourceSharedMemory ? "B" : "GB",
         scaleMode: "capacity",
         totalValue: scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,
@@ -1886,6 +1893,7 @@ function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetai
       metricId: field,
       totalMetricId: fact.totalMetricId,
       processFieldName: field,
+      ...(physicalResidualSource(field) ? { residualSource: physicalResidualSource(field) } : {}),
       unit: "B",
       scaleMode,
       totalValue: fact.totalValue,
@@ -1924,14 +1932,14 @@ function resourceFacts(url, capturedAt = now()) {
         rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
           processes: [{ processIndex, value: residual, systemPercent: percent(residual), softwarePercent: 100, baseScore: 0, sharedValue: null }] });
       }
-      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, totalValue: fact.totalValue, capacityValue: fact.capacityValue,
+      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, residualSource: physicalResidualSource(metricId), totalValue: fact.totalValue, capacityValue: fact.capacityValue,
         totalSystemPercent: percent(fact.totalValue), processSumValue: count > 0 ? fact.processSum : 0, sharedValue: null, software: rows };
     }
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
     const sharedValue = memory ? 134217728 : null;
     return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
-      totalMetricId: null, processFieldName: automaticProcessFields[metricId] ?? null, totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
+      totalMetricId: null, processFieldName: automaticProcessFields[metricId] ?? null, residualSource: physicalResidualSource(metricId), totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
       software: software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
         baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
         processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };
