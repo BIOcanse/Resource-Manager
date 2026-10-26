@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { waitForCondition } from "./journeyWaits.js";
 
 // 策略页“调度参与”：保护（只防降级，独立端点、立即保存）与三个“不参与”开关（进策略草稿）互不联动；
 // 退出某个域只禁用该域的设置区，保存时三个开关原样写回，已删除的旧字段不再出现。
@@ -62,6 +63,8 @@ export default async function softwareParticipationJourney(page, baseUrl) {
   const readsBeforeHidden = placementReads;
   await setVisible(false);
   await waitTelemetry(t => t["/api/cpu/topology/subscribe"]?.logicalInFlight === 0);
+  // Observe all 150 ms after hiding: topology retirement alone cannot establish
+  // that the independent placement-policy reader stays released throughout it.
   await page.waitForTimeout(150);
   assert.equal(placementReads, readsBeforeHidden, "Hidden detail must release its reads");
   const resumedPolicy = page.waitForResponse(response => response.request().method() === "GET"
@@ -113,12 +116,9 @@ export default async function softwareParticipationJourney(page, baseUrl) {
     }, value);
   }
   async function waitTelemetry(predicate) {
-    const deadline = Date.now() + 10000;
-    while (Date.now() < deadline) {
+    await waitForCondition(page, async () => {
       const telemetry = await (await fetch(`${baseUrl}/__test/requests`)).json();
-      if (predicate(telemetry)) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    throw new Error("Software detail reads did not reach expected state");
+      return predicate(telemetry);
+    }, { timeoutMs: 10_000, description: "software detail reads reach expected state" });
   }
 }

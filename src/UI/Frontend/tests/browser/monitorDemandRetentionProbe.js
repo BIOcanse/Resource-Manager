@@ -30,17 +30,22 @@ export default async function monitorDemandRetentionProbe(page, baseUrl) {
     await table.scrollIntoViewIfNeeded();
     await waitForDemand(false);
     // Demand is verified released, then remains off for longer than its debounce.
+    // Keep the complete 350 ms real release window; current inactive demand is not
+    // evidence that the owner stayed released longer than its debounce.
     await page.waitForTimeout(350);
     await dashboard.scrollIntoViewIfNeeded();
     await waitForDemand(true);
+    // Sample every visible rAF over the original 200 ms, including transient gaps.
     await page.waitForTimeout(200);
     const navigation = page.getByRole("navigation", { name: "页面切换" });
     await navigation.getByRole("button", { name: "组件与软件", exact: true }).click();
     await waitForDemand(false);
+    // Page release must also persist through the complete 350 ms debounce window.
     await page.waitForTimeout(350);
     await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
     await dashboard.scrollIntoViewIfNeeded();
     await waitForDemand(true);
+    // Preserve the second 200 ms visible-frame observation window after remount.
     await page.waitForTimeout(200);
     const result = await page.evaluate(() => {
       window.__monitorRetentionProbe.running = false;
@@ -101,6 +106,8 @@ export async function monitorFirstTableValueProbe(page, baseUrl) {
   try {
     await table.scrollIntoViewIfNeeded();
     await table.locator(".content-state.waiting").waitFor({ state: "visible" });
+    // Preserve all 180 ms pending frames before the first server publication;
+    // waiting for one good frame would miss transient sampled-empty/zero states.
     await page.waitForTimeout(180);
     const pendingHeight = await table.locator(".resource-table-panel").evaluate(node => node.getBoundingClientRect().height);
     assert.equal((await page.request.post(`${baseUrl}/__test/scenario`, { data: { pausedSubscriptionPaths: [] } })).ok(), true);

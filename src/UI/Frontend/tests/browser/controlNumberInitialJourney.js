@@ -48,8 +48,12 @@ export default async function controlNumberInitialJourney(page, baseUrl) {
   assert.equal(writes[0].settings[0].number, 47);
   await b.getByRole("spinbutton").fill("60");
   await b.getByRole("spinbutton").press("Enter");
+  const bApplied = page.waitForEvent("requestfinished", {
+    predicate: request => request.method() === "PUT" && new URL(request.url()).pathname === "/api/control/state/B",
+    timeout: 5000
+  });
   await b.getByRole("button", { name: "应用", exact: true }).click();
-  await page.waitForTimeout(100);
+  await bApplied;
   assert.equal(writes[1].settings[0].number, 60);
   assert.deepEqual(writes.map(write => write.id), ["A", "B"], "Only editable objects are submitted");
   return { actualInitial: 47, unknownInitial: "", userEntered: 60, fixedRangeRetainsUsableCatalog: true };

@@ -1,3 +1,5 @@
+import { waitForCondition, waitForStableRendering } from "./journeyWaits.js";
+
 export default async function resourceTableScrollStabilityJourney(
   page,
   baseUrl = "http://127.0.0.1:4177"
@@ -30,7 +32,9 @@ export default async function resourceTableScrollStabilityJourney(
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".resource-table-frame").waitFor({ state: "visible", timeout: 7000 });
   await page.locator(".resource-breakdown-item").first().waitFor({ state: "visible", timeout: 7000 });
-  await page.waitForTimeout(500);
+  await page.locator('.resource-table-row.software-row[aria-hidden="false"]').first().waitFor({ timeout: 7000 });
+  await waitForCondition(page, () => factSubscriptions.length > 0, { timeoutMs: 7000, description: "Initial facts subscription" });
+  await waitForStableRendering(page, ["main.app-shell", ".monitor-work-region", ".resource-table-frame", ".resource-breakdown-item"], { timeoutMs: 7000 });
 
   const before = await page.evaluate(() => {
     const viewport = document.querySelector("main.app-shell");
@@ -68,7 +72,8 @@ export default async function resourceTableScrollStabilityJourney(
   };
   const initialNames = await page.locator('.resource-table-row.software-row[aria-hidden="false"]').evaluateAll(rows => rows.map(row => row.getAttribute("aria-label")));
   await page.locator(".resource-table-sort-button", { hasText: "名称" }).click();
-  await page.waitForTimeout(150);
+  await waitForNameSort(page, "descending", initialNames);
+  await waitForStableRendering(page, ["main.app-shell", ".monitor-work-region", ".resource-table-frame", ".resource-table-row"], { timeoutMs: 3000 });
 
   const after = await page.evaluate(() => {
     const viewport = document.querySelector("main.app-shell");
@@ -99,8 +104,10 @@ export default async function resourceTableScrollStabilityJourney(
 
   assertSameFactsLease("Sorting");
   // A new sort column starts descending; repeat it to exercise ascending too.
+  const descendingNames = await page.locator('.resource-table-row.software-row[aria-hidden="false"]').evaluateAll(rows => rows.map(row => row.getAttribute("aria-label")));
   await page.locator(".resource-table-sort-button", { hasText: "名称" }).click();
-  await page.waitForTimeout(50);
+  await waitForNameSort(page, "ascending", descendingNames);
+  await waitForStableRendering(page, [".resource-table-frame", ".resource-table-row"], { timeoutMs: 3000 });
   const sortedNames = await page.locator('.resource-table-row.software-row[aria-hidden="false"]').evaluateAll(rows => rows.map(row => row.getAttribute("aria-label")));
   if (sortedNames.length < 2 || sortedNames.some((name, index) => index > 0 && sortedNames[index - 1].localeCompare(name, undefined, { sensitivity: "base", numeric: true }) > 0)) {
     throw new Error(`Name sorting did not reorder the frontend rows: ${JSON.stringify(sortedNames)}`);
@@ -151,6 +158,8 @@ export default async function resourceTableScrollStabilityJourney(
   const widthAfter = Number(await nameResizer.getAttribute("aria-valuenow"));
   if (widthAfter <= widthBefore || widthAfter > 520) throw new Error(`Local column resize failed: ${widthBefore} -> ${widthAfter}`);
   // 列宽只是前端呈现：调整宽度不得改变提交的读取项，也就不重建资源事实订阅。
+  // Keep the full 150 ms negative observation window: a width commit alone
+  // cannot prove that a delayed demand effect will not recreate the lease.
   await page.waitForTimeout(150);
   assertSameFactsLease("Resizing a column");
   const editor = page.locator(".resource-table-column-editor");
@@ -165,12 +174,26 @@ export default async function resourceTableScrollStabilityJourney(
     const latest = factSubscriptions.at(-1);
     return latest ? new URL(latest.path, baseUrl).searchParams.getAll("items").sort() : [];
   };
-  const hideDeadline = Date.now() + 5_000;
-  while (JSON.stringify(latestItems()) !== JSON.stringify(identityOnlyItems) && Date.now() < hideDeadline) await page.waitForTimeout(100);
+  await waitForCondition(page, () => JSON.stringify(latestItems()) === JSON.stringify(identityOnlyItems), {
+    timeoutMs: 5000, description: "Identity-only facts demand after hiding numeric columns"
+  }).catch(() => {
+    throw new Error(`Hiding numeric columns did not submit exactly the shown items: ${JSON.stringify(factSubscriptions.at(-1))}`);
+  });
   if (JSON.stringify(latestItems()) !== JSON.stringify(identityOnlyItems)) {
     throw new Error(`Hiding numeric columns did not submit exactly the shown items: ${JSON.stringify(factSubscriptions.at(-1))}`);
   }
   await page.locator(".resource-table-panel").getByRole("button", { name: /取消/ }).click();
 
   return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter, nameOnlyRowsPreserved: true };
+}
+
+async function waitForNameSort(page, direction, previousNames) {
+  await page.waitForFunction(({ direction, previousNames }) => {
+    const button = [...document.querySelectorAll(".resource-table-sort-button")]
+      .find(element => element.textContent?.trim().startsWith("名称"));
+    const names = [...document.querySelectorAll('.resource-table-row.software-row[aria-hidden="false"]')]
+      .map(row => row.getAttribute("aria-label"));
+    return button?.closest(".resource-table-head-cell")?.getAttribute("aria-sort") === direction
+      && names.length >= 2 && JSON.stringify(names) !== JSON.stringify(previousNames);
+  }, { direction, previousNames }, { timeout: 3000 });
 }

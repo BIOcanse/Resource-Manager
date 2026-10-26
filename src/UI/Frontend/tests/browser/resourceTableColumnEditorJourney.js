@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { waitForCondition, waitForNextPaint, waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 资源表列编辑栏“先选项目、再选来源”的交互（用户 2026-10-25：「子项勾选判定范围减小，现在必须点那个方格子才能改变勾选状态，
@@ -42,14 +43,16 @@ export default async function resourceTableColumnEditorJourney(page, baseUrl) {
     return active ? `${active.tagName.toLowerCase()}:${active.getAttribute("aria-label") ?? active.textContent?.trim()}` : null;
   });
   const expect = async (what, read, expected) => {
-    const deadline = Date.now() + 5_000;
+    // Several checks deliberately expect the previous selection to remain.
+    // Cross the completed click/key dispatch before accepting that old value.
+    await waitForNextPaint(page, { timeoutMs: 5000 });
     let last;
-    while (Date.now() < deadline) {
+    await waitForCondition(page, async () => {
       last = await read();
-      if (JSON.stringify(last) === JSON.stringify(expected)) return;
-      await page.waitForTimeout(50);
-    }
-    throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(last)}`);
+      return JSON.stringify(last) === JSON.stringify(expected);
+    }, { timeoutMs: 5000, description: `${what}: expected ${JSON.stringify(expected)}` }).catch(() => {
+      throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(last)}`);
+    });
   };
   // 选中某列后来源行只能是这一列的：没有来源可选时一行都没有，有来源时恰好一行、名字是这一列的来源。
   const expectSourceRowFor = async (label, hasSources) => {
@@ -57,14 +60,17 @@ export default async function resourceTableColumnEditorJourney(page, baseUrl) {
     if (hasSources && await sourceGroup(label).count() !== 1) throw new Error(`The source row is not ${label}'s`);
   };
   const hasSources = async (label) => {
-    await page.waitForTimeout(50);
+    // The caller has proved this chip's aria-pressed update. Cross its paint
+    // before reading an optional source row (which may legitimately be absent).
+    await expect(`Selected chip before reading ${label} sources`, pressed, [label]);
+    await waitForNextPaint(page, { timeoutMs: 3000 });
     return await sourceGroup(label).count() === 1;
   };
 
   // 给用户看的截图：资源列表面板的上部（编辑栏、来源行和前几行），只截页面。
   const shoot = async (file) => {
     await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
-    await page.waitForTimeout(200);
+    await waitForStableRendering(page, [".resource-table-panel", ".resource-table-column-editor"], { timeoutMs: 3000 });
     const box = await panel.boundingBox();
     await page.screenshot({ path: join(shots, file), clip: { x: box.x, y: Math.max(0, box.y), width: box.width, height: Math.min(box.height, 460) } });
   };
@@ -168,7 +174,7 @@ export default async function resourceTableColumnEditorJourney(page, baseUrl) {
   const originalLook = await page.evaluate(() => ({ uiStyle: document.documentElement.dataset.uiStyle, theme: document.documentElement.dataset.theme }));
   for (const [uiStyle, theme] of [["standard", "light"], ["standard", "dark"], ["soft", "dark"], ["terminal", "phosphor"], ["outline", "paper"], ["outline", "blueprint"]]) {
     await page.evaluate(([style, palette]) => { document.documentElement.dataset.uiStyle = style; document.documentElement.dataset.theme = palette; }, [uiStyle, theme]);
-    await page.waitForTimeout(250);
+    await waitForStableRendering(page, [".resource-table-column-option", ".resource-table-column-select"], { timeoutMs: 3000 });
     const look = async (label) => chip(label).evaluate((element) => {
       const style = getComputedStyle(element);
       return { background: style.backgroundColor, color: style.color, border: style.borderColor };

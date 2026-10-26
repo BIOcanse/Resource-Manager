@@ -1,3 +1,5 @@
+import { waitForCondition, waitForNextPaint } from "./journeyWaits.js";
+
 /**
  * 拖动排序走交互协议的运行时（Lodestone 协议第 4.4 节第 3 处），真实鼠标事件：
  * 仪表盘卡片拖到另一张卡片上，松开时提交一次（卡片移到目标的位置）；拖动中源半透明、目标虚线框；拖完的松开不产生点击；
@@ -25,12 +27,13 @@ export default async function reorderInteractionJourney(page, baseUrl) {
     return next;
   };
   const waitOrder = async (read, expected, step) => {
-    const deadline = Date.now() + 3000;
     let actual = await read();
-    while (!same(actual, expected) && Date.now() < deadline) {
-      await page.waitForTimeout(50);
+    await waitForCondition(page, async () => {
       actual = await read();
-    }
+      return same(actual, expected);
+    }, { timeoutMs: 3000, description: step }).catch(() => {
+      throw new Error(`${step}: order ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+    });
     if (!same(actual, expected)) throw new Error(`${step}: order ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
   };
   const box = async (locator) => {
@@ -47,9 +50,22 @@ export default async function reorderInteractionJourney(page, baseUrl) {
   // 点击计数：拖完的松开被认领，紧随其后的 click 在捕获阶段被拦掉，到不了页面。
   await page.evaluate(() => {
     window.__reorderClicks = 0;
+    window.__reorderPointerUps = 0;
+    window.addEventListener("pointerup", () => { window.__reorderPointerUps += 1; }, true);
     document.addEventListener("click", () => { window.__reorderClicks += 1; });
   });
   const clicks = () => page.evaluate(() => window.__reorderClicks);
+  // Observe this release before crossing a paint: unchanged order/click counts
+  // cannot themselves prove that pointerup and its synthesized click ran.
+  const release = async (options) => {
+    const before = await page.evaluate(() => window.__reorderPointerUps);
+    await page.mouse.up(options);
+    await page.waitForFunction(before => window.__reorderPointerUps > before, before, { timeout: 3000 });
+    await waitForNextPaint(page, { timeoutMs: 3000 });
+  };
+  const waitForDragClear = () => page.waitForFunction(() =>
+    document.querySelectorAll(".drag-source, .drag-over").length === 0
+      && !document.body.classList.contains("reordering"), null, { timeout: 3000 });
 
   // ---- 仪表盘卡片 ----
   await page.locator('[data-focus-key="monitor-dashboard-edit"]').click();
@@ -78,10 +94,10 @@ export default async function reorderInteractionJourney(page, baseUrl) {
     .catch(async () => { throw new Error(`Dragged card is not marked as the source: ${await classes(card(0))}`); });
   const targetClasses = await classes(card(1));
   if (!targetClasses.includes("drag-over")) throw new Error(`Target card has no dashed frame: ${targetClasses}`);
-  await page.mouse.up();
+  await release();
   const cards1 = moved(cards0, 0, 1);
   await waitOrder(cardOrder, cards1, "Card drag committed once");
-  await page.waitForTimeout(100);
+  await waitForDragClear();
   if (await clicks() !== clicksBefore) throw new Error("The release after a card drag produced a click");
   const leftover = await page.evaluate(() => ({
     source: document.querySelectorAll(".metric-card.drag-source").length,
@@ -97,8 +113,8 @@ export default async function reorderInteractionJourney(page, baseUrl) {
   await page.mouse.down();
   await glide(from, to);
   await page.keyboard.press("Escape");
-  await page.mouse.up();
-  await page.waitForTimeout(100);
+  await release();
+  await waitForDragClear();
   await waitOrder(cardOrder, cards1, "Escape cancels the card drag");
 
   // 右键取消。
@@ -106,9 +122,11 @@ export default async function reorderInteractionJourney(page, baseUrl) {
   await page.mouse.down();
   await glide(from, to);
   await page.mouse.down({ button: "right" });
+  // With the left button still held, releasing right emits mouseup but no
+  // pointerup; the final left release below supplies the sequence barrier.
   await page.mouse.up({ button: "right" });
-  await page.mouse.up();
-  await page.waitForTimeout(100);
+  await release();
+  await waitForDragClear();
   await waitOrder(cardOrder, cards1, "Right click cancels the card drag");
 
   // 窗口失焦取消：回来后指针报告左键已松开，也不提交。
@@ -120,8 +138,8 @@ export default async function reorderInteractionJourney(page, baseUrl) {
     window.dispatchEvent(new Event("focus"));
     document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, isPrimary: true, pointerId: 1, pointerType: "mouse", buttons: 0, clientX: x, clientY: y }));
   }, to);
-  await page.mouse.up();
-  await page.waitForTimeout(100);
+  await release();
+  await waitForDragClear();
   await waitOrder(cardOrder, cards1, "Blur cancels the card drag");
   if (await page.evaluate(() => document.querySelectorAll(".drag-source, .drag-over").length || document.body.classList.contains("reordering"))) {
     throw new Error("Drag visuals left after cancelling");
@@ -147,8 +165,8 @@ export default async function reorderInteractionJourney(page, baseUrl) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(from.x + 1, from.y + 1);
-  await page.mouse.up();
-  await page.waitForTimeout(150);
+  await release();
+  await waitForDragClear();
   await waitOrder(columnOrder, columns0, "A tiny movement does not reorder columns");
   if (await head(1).getAttribute("aria-sort") !== sortBefore) throw new Error("A tiny movement on the header in edit mode changed the sort");
 
@@ -160,10 +178,10 @@ export default async function reorderInteractionJourney(page, baseUrl) {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await glide(from, to);
-  await page.mouse.up();
+  await release();
   const columns1 = moved(columns0, 1, 3);
   await waitOrder(columnOrder, columns1, "Column drag committed");
-  await page.waitForTimeout(100);
+  await waitForDragClear();
   if (await clicks() !== clicksBeforeColumn) throw new Error("The release after a column drag produced a click");
   const movedHead = page.locator(`.resource-table-head-cell[data-column-id="${columns0[1]}"]`);
   if (await movedHead.getAttribute("aria-sort") !== sortBefore) throw new Error("The column drag also changed the sort");
@@ -194,7 +212,7 @@ export default async function reorderInteractionJourney(page, baseUrl) {
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await glide(from, to);
-    await page.mouse.up();
+    await release();
     barsCommitted = moved(bars0, 0, 1);
     await waitOrder(barOrder, barsCommitted, "Resource bar drag committed");
     await page.locator(".resource-breakdown-panel").getByRole("button", { name: /取消/ }).click();

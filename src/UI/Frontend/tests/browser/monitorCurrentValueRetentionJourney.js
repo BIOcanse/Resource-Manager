@@ -1,10 +1,13 @@
 import { monitorFirstTableValueProbe } from "./monitorDemandRetentionProbe.js";
 import assert from "node:assert/strict";
+import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
+import { waitForContentSettled } from "./contentSettled.js";
 
 export default async function monitorCurrentValueRetentionJourney(page, baseUrl) {
   const paths = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe", "/api/resource-facts/subscribe"];
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
+  const frameProbe = await observeSubscriptionFrames(page, baseUrl);
   await patch({ pausedSubscriptionPaths: ["/api/resource-facts/subscribe"] });
   await page.setViewportSize({ width: 800, height: 500 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -16,7 +19,9 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   assert(before.rows.length > 0);
 
   await patch({ pausedSubscriptionPaths: paths });
-  await page.waitForTimeout(100);
+  // Pause ACK stops future writes, but already-written frames must reach the
+  // application's reader and commit before we capture the retained current value.
+  await frameProbe.drain(paths, [".resource-table-panel", ".resource-breakdown-panel", ".dashboard"]);
   // Sorting and software/process projection consume the same accepted facts locally.
   // With publications paused, both must render immediately without clearing rows.
   const localProjectionBefore = await telemetry();
@@ -32,7 +37,9 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
   await waitForValues();
 
   await patch({ pausedSubscriptionPaths: paths });
-  await page.waitForTimeout(100);
+  // Drain the exact pre-pause publication counts again before release/reacquire;
+  // an already populated table alone cannot prove queued frames were consumed.
+  await frameProbe.drain(paths, [".resource-table-panel", ".resource-breakdown-panel", ".dashboard"]);
   const paused = await telemetry();
   const retained = await values();
   const navigation = page.getByRole("navigation", { name: "页面切换" });
@@ -42,6 +49,9 @@ export default async function monitorCurrentValueRetentionJourney(page, baseUrl)
     return paths.every((path) => current[path]?.logicalInFlight === 0);
   }, paths);
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
+  // Retained values belong to the current page, while the departing page copy
+  // temporarily keeps the same CSS classes. Publications remain paused here.
+  await waitForContentSettled(page);
   await page.locator("#pageStage .resource-table-panel").scrollIntoViewIfNeeded();
   await page.waitForFunction(async () => {
     const current = await (await fetch("/__test/requests")).json();

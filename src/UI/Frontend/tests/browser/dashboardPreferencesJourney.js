@@ -2,6 +2,7 @@ import { waitForContentSettled } from "./contentSettled.js";
 import assert from "node:assert/strict";
 import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { waitForCondition } from "./journeyWaits.js";
 
 export default async function dashboardPreferencesJourney(page, baseUrl) {
   const errors = [];
@@ -62,6 +63,8 @@ export default async function dashboardPreferencesJourney(page, baseUrl) {
   }, key);
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator('.monitor-work-region[aria-label="资源列表"]').scrollIntoViewIfNeeded();
+  // Full 500 ms absence window after mounting an empty table. There is no exposed
+  // demand-calculation completion event; logicalInFlight=0 alone can pass pre-mount.
   await page.waitForTimeout(500);
   assert.equal((await telemetry())["/api/resource-facts/subscribe"]?.logicalInFlight ?? 0, 0,
     "An explicit empty table selection holds no subscription");
@@ -79,14 +82,11 @@ export default async function dashboardPreferencesJourney(page, baseUrl) {
 
   async function telemetry() { return await (await fetch(`${baseUrl}/__test/requests`)).json(); }
   async function waitIds(expected) {
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
+    await waitForCondition(page, async () => {
       const values = (await telemetry())["/api/metrics/subscribe"]?.inFlightByQuery ?? {};
       const ids = [...new Set(Object.entries(values).filter(([, n]) => n > 0)
         .flatMap(([query]) => (new URLSearchParams(query).get("ids") ?? "").split(",").filter(Boolean)))].sort();
-      if (JSON.stringify(ids) === JSON.stringify(expected)) return;
-      await page.waitForTimeout(50);
-    }
-    throw new Error(`Expected visible metrics ${JSON.stringify(expected)}`);
+      return JSON.stringify(ids) === JSON.stringify(expected);
+    }, { timeoutMs: 15_000, description: `visible metrics ${JSON.stringify(expected)}` });
   }
 }

@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 手感（docs/motion_feel_2026-10-25.md）：设置 → 外观 → 手感，简体中文，真实点击和保存。
@@ -77,7 +78,15 @@ export default async function motionFeelJourney(page, baseUrl) {
       await page.waitForFunction(() => window.__motionFeelProbe.travel !== undefined, undefined, { timeout: 5000 });
       travels.push(await page.evaluate(() => window.__motionFeelProbe.travel));
       if (await box.isChecked() === before) throw new Error("Space did not toggle the switch");
-      await page.waitForTimeout(400);
+      // The measurement above still stops at the original ±0.5 px threshold.
+      // Before the reverse measurement, wait for this travel's actual endpoint
+      // and stable JS-rendered knob/track, not a fixed post-measurement delay.
+      await page.waitForFunction(([element, target]) => {
+        const value = getComputedStyle(element).translate;
+        const x = value === "none" ? 0 : Number.parseFloat(value);
+        return Math.abs(x - target) <= 0.05;
+      }, [await knob.elementHandle(), before ? 0 : 20], { timeout: 5000 });
+      await waitForStableRendering(page, [".settings-switch-knob", ".settings-switch-track"]);
     }
     await openSection("appearance");
     return travels;

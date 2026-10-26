@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { waitForStableRendering } from "./journeyWaits.js";
 const viewports = [
   { width: 800, height: 500 },
   { width: 1067, height: 667 }
@@ -93,7 +94,8 @@ async function setScenario(page, baseUrl, patch) {
 }
 
 async function assertContentStateLayout(page, label) {
-  await page.waitForTimeout(50);
+  await page.locator(".resource-table-panel .content-state").waitFor({ state: "visible", timeout: 3000 });
+  await waitForStableRendering(page, [".resource-table-panel", ".resource-table-panel .content-state"], { timeoutMs: 3000 });
   const state = await page.evaluate(() => {
     const panel = document.querySelector(".resource-table-panel");
     const content = panel?.querySelector(".content-state");

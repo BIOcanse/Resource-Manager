@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { waitForStableRendering } from "./journeyWaits.js";
 import { creditSources } from "../../src/i18n/settingsCredits.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
@@ -98,7 +99,7 @@ export default async function creditsJourney(page, baseUrl) {
   const layouts = [];
   for (const width of [1280, 760]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.waitForTimeout(100);
+    await waitForStableRendering(page, [".settings-credits-panel", ".settings-credit-item", ".settings-credit-link"], { timeoutMs: 3000 });
     const layout = await mainColumns();
     assert(layout.scrollWidth <= layout.width + 1 && layout.overflowingItems === 0, `Credits overflow at ${width}px: ${JSON.stringify(layout)}`);
     assert(layout.overlaps.length === 0, `Credit names run into the descriptions at ${width}px: ${layout.overlaps}`);

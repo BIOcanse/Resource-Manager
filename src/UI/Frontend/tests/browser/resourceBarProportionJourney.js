@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForStableRendering } from "./journeyWaits.js";
 
 const DEFAULT_ARTIFACT_DIRECTORY = resolve("../../../.local/browser-gate/resource-bar-proportion");
 
@@ -17,7 +18,7 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
       await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
       const canvas = page.locator('.resource-bar-track[data-metric-id="cpu.usage"] canvas');
       await canvas.waitFor({ state: "visible" });
-      await page.waitForTimeout(600);
+      await waitForBarPaint(page, "cpu.usage");
       const result = await canvas.evaluate((canvas, value) => {
         const ctx = canvas.getContext("2d");
         const y = Math.floor(canvas.height / 4);
@@ -41,7 +42,7 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     const canvas = page.locator('.resource-bar-track[data-metric-id="memory.usage"] canvas');
     await canvas.waitFor({ state: "visible" });
-    await page.waitForTimeout(600);
+    await waitForBarPaint(page, "memory.usage");
     results.push(await canvas.evaluate(canvas => {
       const pixels = canvas.getContext("2d").getImageData(0, Math.floor(canvas.height / 4), canvas.width, 1).data;
       const yellow = [];
@@ -60,4 +61,16 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
     await page.screenshot({ path: resolve(output, `shared-${width}.png`) });
   }
   return results;
+}
+
+async function waitForBarPaint(page, metricId) {
+  const selector = `.resource-bar-track[data-metric-id="${metricId}"]`;
+  await page.waitForFunction((selector) => {
+    const track = document.querySelector(selector);
+    const canvas = track?.querySelector("canvas");
+    return canvas instanceof HTMLCanvasElement && canvas.width > 0 && canvas.height > 0
+      && Number(canvas.dataset.resourceSegmentCount) === 1 && !track.classList.contains("moving")
+      && canvas.getContext("2d").getImageData(0, Math.floor(canvas.height / 4), 1, 1).data[3] > 0;
+  }, selector, { timeout: 7000 });
+  await waitForStableRendering(page, [selector], { timeoutMs: 7000, includeCanvas: true });
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
 import { readFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForCondition, waitForStableRendering } from "./journeyWaits.js";
 
 /*
  * 发现新版本就提示一次（update-notice 合同“自动更新”一节）：更新方式三档、间隔检查与 24–168 小时间隔、
@@ -45,6 +46,25 @@ export default async function updateNoticeJourney(page, baseUrl) {
   const option = id => text.modeOptions.find(item => item.id === id).label;
   const periodic = () => page.getByRole("checkbox", { name: text.periodicTitle, exact: true });
   const interval = () => page.getByRole("textbox", { name: text.intervalTitle, exact: true });
+  const settleNoticeEffect = async (version, inApp, notifiedVersion) => {
+    // The version text and App's notice effect consume the same productUpdates.status.
+    // After reload the status starts null; 1.3.0 is a new publication in this document.
+    await page.getByText(`${text.availableVersion}${version}`, { exact: true }).waitFor({ timeout: 5_000 });
+    // settingsStore cannot project loadState=ready before preferenceOwner.read has
+    // set frontendNotifications. The fieldset exposes this real owner-ready state.
+    await page.locator('.settings-readonly-boundary[aria-disabled="false"]:not(.content-transition-leaving)')
+      .waitFor({ state: "visible", timeout: 5_000 });
+    await waitForCondition(page, async () => {
+      const notifications = (await readFrontendPreferences(page))?.notifications;
+      return notifications?.updateInApp === inApp
+        && notifications?.updateInAppNotifiedVersion === notifiedVersion
+        && await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked() === (inApp === "on");
+    }, { timeoutMs: 5_000, description: `notice preferences loaded for ${version}` });
+    // bindProductUpdateNotice's createEffect synchronously decides show/record;
+    // it has no timer. Cross real render frames after both inputs have committed
+    // before retaining the original no-toast assertion at the call site.
+    await waitForStableRendering(page, [".settings-page"], { timeoutMs: 5_000 });
+  };
 
   await page.route("**/api/updates/product/versions", route => route.fulfill({ json: {
     installedVersion: "1.0.0", status: "loaded", complete: true, checkedAt: "2026-10-27T08:30:00+00:00",
@@ -120,7 +140,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await openUpdates();
   await page.getByText(`${text.availableVersion}1.1.0`, { exact: true }).waitFor();
-  await page.waitForTimeout(300);
+  await settleNoticeEffect("1.1.0", "on", "1.1.0");
   assert.equal(await notices().count(), 0, "the same version was noticed again after reload");
 
   // 更高的版本再提示一次；已准备好时提示带“立即应用”；“查看更新与版本”打开更新区。
@@ -153,12 +173,15 @@ export default async function updateNoticeJourney(page, baseUrl) {
     const notifications = JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.notifications;
     return notifications?.updateSystem === "off" && notifications?.accessRequestSystem === "off";
   });
+  // writePreferences sets the saved notification signal before saveDraft marks
+  // this preferences-only save complete; localStorage alone is an earlier signal.
+  await page.getByText(settings.saveState.saved, { exact: true }).waitFor({ timeout: 5_000 });
   assert.equal(patches.length, patchCount, "notification switches reached the backend settings");
   const saved = await readFrontendPreferences(page);
   assert.deepEqual(saved.notifications, { updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" });
   await publish({ checkResult: "available", availableVersion: "1.3.0" });
   await page.getByText(`${text.availableVersion}1.3.0`, { exact: true }).waitFor();
-  await page.waitForTimeout(300);
+  await settleNoticeEffect("1.3.0", "off", "1.2.0");
   assert.equal(await notices().count(), 0, "a notice while the in-app switch is off");
   assert.equal((await readFrontendPreferences(page)).notifications.updateInAppNotifiedVersion, "1.2.0");
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -180,7 +203,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), true);
   assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), true);
   await page.getByText(`${text.availableVersion}1.2.0`, { exact: true }).waitFor();
-  await page.waitForTimeout(300);
+  await settleNoticeEffect("1.2.0", "on", "1.2.0");
   assert.equal(await notices().count(), 0, "the same version was noticed again after resetting the interface preferences");
 
   assert.deepEqual(errors, []);

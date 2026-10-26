@@ -1,4 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { waitForStableRendering } from "./journeyWaits.js";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
 /**
@@ -49,7 +50,7 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
     // 鼠标移开、等过渡走完：读到的是静止的未选中和选中，不是悬停。
     const size = page.viewportSize();
     await page.mouse.move(size.width - 4, size.height - 4);
-    await page.waitForTimeout(450);
+    await waitForStableRendering(page, [".page-tab, .segment"], { timeoutMs: 3000 });
   };
   /** 一组选择项里静止的选中项和一个未选中项。 */
   const pair = (scope, item) => ({

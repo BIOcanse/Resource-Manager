@@ -64,8 +64,10 @@ export default async function controlCardJourney(page, baseUrl) {
   const slider = a.getByRole("slider", { name: /^60 °C，\d+%$/ });
   await slider.press("ArrowUp");
   holdWrite = new Promise(resolve => { releaseWrite = resolve; });
+  const writeStarted = page.waitForRequest(request => request.method() === "PUT"
+    && new URL(request.url()).pathname === "/api/control/state/A", { timeout: 5000 });
   await a.getByRole("button", { name: "应用", exact: true }).click();
-  await page.waitForTimeout(100);
+  await writeStarted;
   await slider.press("ArrowUp");
   releaseWrite();
   await page.waitForFunction(() => !document.querySelector(".control-object-actions button:last-child").disabled);

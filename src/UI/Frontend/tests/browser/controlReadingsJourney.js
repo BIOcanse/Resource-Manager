@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { waitForCondition, waitForStableRendering } from "./journeyWaits.js";
 
 export default async function controlReadingsJourney(page, baseUrl) {
   const writes = [];
@@ -24,17 +25,31 @@ export default async function controlReadingsJourney(page, baseUrl) {
   await boost.getByRole("radio", { name: "开启", exact: true }).waitFor();
   if (await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).count() !== 0)
     throw new Error("Toggle capability must not keep the row checkbox next to its three-way choice");
-  const refresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"));
+  // A changed catalog label proves this refresh was committed; the old checked/enabled
+  // values alone could already be true before the response was consumed.
+  let catalogRefresh = 0;
+  await page.route("**/api/control/objects", async route => {
+    const response = await route.fetch();
+    const catalog = await response.json();
+    catalogRefresh += 1;
+    for (const object of catalog.objects) {
+      object.reportedName = `${object.reportedName ?? object.id} [catalog refresh ${catalogRefresh}]`;
+    }
+    await route.fulfill({ response, json: catalog });
+  });
+  const refresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"), { timeout: 5000 });
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await refresh;
-  await page.waitForTimeout(100);
+  await page.locator(".control-object").filter({ hasText: "[catalog refresh 1]" }).first().waitFor({ timeout: 5000 });
+  await waitForStableRendering(page, [".control-object"]);
   if (await boost.getByRole("radio", { name: "开启", exact: true }).isDisabled())
     throw new Error("Catalog refresh lost software-management intent and relocked the control");
   await boost.getByRole("radio", { name: "开启", exact: true }).click();
-  const editedRefresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"));
+  const editedRefresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"), { timeout: 5000 });
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await editedRefresh;
-  await page.waitForTimeout(100);
+  await page.locator(".control-object").filter({ hasText: "[catalog refresh 2]" }).first().waitFor({ timeout: 5000 });
+  await waitForStableRendering(page, [".control-object"]);
   if (await boost.getByRole("radio", { name: "开启", exact: true }).getAttribute("aria-checked") !== "true")
     throw new Error("Catalog refresh discarded the edited setting");
   if (await page.getByRole("checkbox", { name: "Voltage", exact: true }).count() !== 0)
@@ -72,11 +87,8 @@ export default async function controlReadingsJourney(page, baseUrl) {
     }, visible);
   }
   async function wait(predicate) {
-    const deadline = Date.now() + 10000;
-    while (Date.now() < deadline) {
-      if (predicate(await (await fetch(`${baseUrl}/__test/requests`)).json())) return;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    throw new Error("Control subscription telemetry did not reach expected state");
+    await waitForCondition(page, async () => predicate(await (await fetch(`${baseUrl}/__test/requests`)).json()), {
+      timeoutMs: 10000, description: "Control subscription telemetry did not reach expected state"
+    });
   }
 }

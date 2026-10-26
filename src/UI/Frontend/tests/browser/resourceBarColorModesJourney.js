@@ -1,4 +1,5 @@
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForStableRendering } from "./journeyWaits.js";
 
 export default async function resourceBarColorModesJourney(page, baseUrl) {
   const errors = [];
@@ -114,9 +115,13 @@ async function readMemoryBar(page) {
   await page.waitForFunction(() => {
     const element = document.querySelector('.resource-bar-track[data-metric-id="memory.usage"] canvas');
     return element instanceof HTMLCanvasElement && element.width > 100
-      && Number(element.dataset.resourceSegmentCount) === 8;
-  });
-  await page.waitForTimeout(450);
+      && Number(element.dataset.resourceSegmentCount) === 8
+      && !element.closest(".resource-bar-track").classList.contains("moving")
+      && element.getContext("2d").getImageData(0, Math.floor(element.height / 4), 1, 1).data[3] > 0;
+  }, null, { timeout: 7000 });
+  // .moving belongs to the layout-settle task; canvas motion itself runs in JS,
+  // so also compare actual painted pixels across frames before the original probes.
+  await waitForStableRendering(page, ['.resource-bar-track[data-metric-id="memory.usage"]'], { timeoutMs: 7000, includeCanvas: true });
   return canvas.evaluate((element) => {
     const context = element.getContext("2d");
     if (!context) throw new Error("Resource bar has no 2D context");

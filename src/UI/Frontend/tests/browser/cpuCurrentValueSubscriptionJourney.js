@@ -1,4 +1,5 @@
 import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+import { waitForCondition } from "./journeyWaits.js";
 
 export default async function cpuCurrentValueSubscriptionJourney(
   page,
@@ -112,6 +113,8 @@ export default async function cpuCurrentValueSubscriptionJourney(
     topology: retired.topology.publications,
     residency: retired.residency.publications
   };
+  // Observe the complete 1.2 s real-server inactivity window: page clocks do not
+  // advance Node publication timers, and current retired state cannot prove silence.
   await page.waitForTimeout(1_200);
   const inactive = {
     topology: await readTelemetry(page, topologySubscriptionPath),
@@ -169,16 +172,12 @@ async function resetTelemetry(page) {
 }
 
 async function waitForTelemetry(page, path, predicate) {
-  const deadline = Date.now() + 6_500;
-  let value = await readTelemetry(page, path);
-  while (Date.now() < deadline) {
-    if (predicate(value)) {
-      return value;
-    }
-    await page.waitForTimeout(50);
+  let value;
+  await waitForCondition(page, async () => {
     value = await readTelemetry(page, path);
-  }
-  throw new Error(`Timed out waiting for ${path}: ${JSON.stringify(value)}`);
+    return predicate(value);
+  }, { timeoutMs: 6_500, description: `CPU telemetry ${path}` });
+  return value;
 }
 
 async function readTelemetry(page, path) {

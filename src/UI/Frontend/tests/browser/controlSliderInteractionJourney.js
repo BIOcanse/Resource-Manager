@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fanModeFacts } from "./fanModeFacts.js";
 import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForCondition, waitForNextPaint, waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 控制面的数值滑条走交互协议的运行时（features/control/ControlNumberSlider.tsx），真实鼠标事件，简体中文。
@@ -74,14 +75,13 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await slider.waitFor();
   await slider.scrollIntoViewIfNeeded();
 
-  /** 每 25 ms 读一次，3 s 内等到期望的值，否则报这一步读到了什么。 */
+  /** 每个绘制周期检查期望值，3 s 硬超时，并保留步骤诊断。 */
   const waitFor = async (step, read, expected) => {
-    const deadline = Date.now() + 3000;
-    while (Date.now() < deadline) {
-      if (await read() === expected) return;
-      await page.waitForTimeout(25);
+    try {
+      await waitForCondition(page, async () => await read() === expected, { timeoutMs: 3000, description: step });
+    } catch {
+      throw new Error(`${step}: ${await read()}, expected ${expected}`);
     }
-    throw new Error(`${step}: ${await read()}, expected ${expected}`);
   };
   const thumb = () => slider.inputValue();
   const shown = () => box.inputValue();
@@ -128,7 +128,11 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   const moveTo = async (fromX, toX) => {
     for (let i = 1; i <= 8; i += 1) await page.mouse.move(fromX + (toX - fromX) * i / 8, y);
   };
-  const settle = () => page.waitForTimeout(400);
+  const settleRendering = async () => {
+    // Always cross the input/DOM commit before accepting an unchanged value.
+    await waitForNextPaint(page);
+    await waitForStableRendering(page, [".control-object input[type=range]", ".control-object"]);
+  };
 
   // 单击和换算都和原生 range 相同：在同一处换上一个原样的原生 range，从同一个值出发，真实鼠标依次单击同一串位置，
   // 记下它每次的值；再在这里单击同一串位置比。有点在滑块上的（原生 range 不改值），也有按在相邻两档分界 ±1.5 px 处的
@@ -145,12 +149,14 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   }
   await swapBack(native);
   await page.mouse.move(track.x + track.width / 2, y + 200);
-  await settle();
+  await settleRendering();
   for (const entry of parity) {
     await page.mouse.move(entry.x, y);
     await page.mouse.down();
     await page.mouse.up();
-    await settle();
+    await settleRendering();
+    await waitFor(`Clicking at ${entry.x}: thumb`, thumb, entry.native);
+    await waitFor(`Clicking at ${entry.x}: number box`, shown, entry.native);
     entry.ours = await thumb();
     assert.equal(entry.ours, entry.native, `Clicking at ${entry.x} like the native range: ${JSON.stringify(parity)}`);
     assert.equal(await shown(), entry.native, `Clicking at ${entry.x} writes the value`);
@@ -162,7 +168,9 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   takeFrames();
   await page.mouse.move(xOf(20), y);
   await page.mouse.down();
-  await settle();
+  // Keep the full 400 ms: pressing alone must not change either value, and the
+  // per-frame recorder needs this observation window before the drag (>10 frames).
+  await page.waitForTimeout(400);
   assert.equal(await thumb(), before, "Pressing alone does not move the thumb");
   assert.equal(await shown(), before, "Pressing alone does not change the number box");
   for (const target of [35, 50, 65]) {
@@ -175,7 +183,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   assert.ok(dragging.length > 10 && dragging.every(frame => !frame.pending), "Dragging never writes the desired state");
   await page.mouse.up();
   await waitFor("Release writes the value", pendingWrite, true);
-  await settle();
+  await settleRendering();
   assert.equal(await shown(), "65");
   assert.equal(await thumb(), "65");
   await applyAndSettle(65, "Drag");
@@ -185,7 +193,9 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await page.mouse.down();
   // 离开拖动框（半宽 2 px）但不到半档：抓住时还在 65，跳到指针下（偏右 7.5 px）就是 70。
   await page.mouse.move(xOf(65) + 7.5, y);
-  await settle();
+  // This is a committed pointer movement at the same quantized value, so cross
+  // its paint and wait for the input/number rendering rather than the old value alone.
+  await settleRendering();
   assert.equal(await thumb(), "65", "Grabbing the thumb off-centre does not jump it under the pointer");
   await moveTo(xOf(65) + 7.5, xOf(80) + 5);
   await waitFor("Grabbed thumb keeps the offset", thumb, "80");
@@ -196,7 +206,8 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await page.mouse.move(xOf(80) - 6, y);
   await page.mouse.down();
   await page.mouse.up();
-  await settle();
+  // Keep 400 ms to observe that an on-thumb click never queues a desired write.
+  await page.waitForTimeout(400);
   assert.equal(await thumb(), "80");
   assert.equal(await pendingWrite(), false, "Clicking the thumb writes nothing");
   await box.fill("65");
@@ -215,7 +226,9 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await waitFor("Number box after Escape", shown, "65");
   await moveTo(xOf(30), xOf(10));
   await page.mouse.up();
-  await settle();
+  // Keep 400 ms after the remaining move/up events: Escape must stop all later
+  // pointer changes and desired writes, including the recorder's intervening frames.
+  await page.waitForTimeout(400);
   assert.equal(await thumb(), "65", "After Escape the pointer no longer moves the thumb");
   assert.equal(await pendingWrite(), false, "Escape writes nothing");
 
@@ -228,7 +241,9 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await page.mouse.up({ button: "right" });
   await waitFor("Thumb after the right button", thumb, "65");
   await page.mouse.up();
-  await settle();
+  // Keep the complete 400 ms after right-button cancellation to observe no
+  // delayed desired write; takeFrames below still checks every sampled frame.
+  await page.waitForTimeout(400);
   assert.equal(await shown(), "65");
   assert.equal(await pendingWrite(), false, "The right button writes nothing");
   assert.ok((await takeFrames()).every(frame => !frame.pending), "Cancelled drags never wrote the desired state");
@@ -250,7 +265,8 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await applyAndSettle(0, "Keyboard");
   // 在端点上再按 Home 不写。
   await slider.press("Home");
-  await settle();
+  // Keep 400 ms to observe that Home at the existing endpoint never queues a write.
+  await page.waitForTimeout(400);
   assert.equal(await pendingWrite(), false, "Home at the start writes nothing");
 
   // 外观：四种界面风格、可用和置灰，滑条和原样的原生 range 逐字节相同。

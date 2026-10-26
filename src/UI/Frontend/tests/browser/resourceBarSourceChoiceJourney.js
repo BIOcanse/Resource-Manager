@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
+import { waitForCondition } from "./journeyWaits.js";
 
 /**
  * 资源条先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
@@ -32,14 +33,13 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
     return { ids: params.getAll("ids"), measures: params.getAll("measures"), modes: params.getAll("modes"), processDetails: params.getAll("processDetails") };
   };
   const waitFor = async (check, what) => {
-    const deadline = Date.now() + 15_000;
     let last;
-    while (Date.now() < deadline) {
+    await waitForCondition(page, async () => {
       last = await check().catch((error) => error.message);
-      if (last === true) return;
-      await page.waitForTimeout(200);
-    }
-    throw new Error(`${what}: ${JSON.stringify(last)}`);
+      return last === true;
+    }, { timeoutMs: 15_000, description: what }).catch(() => {
+      throw new Error(`${what}: ${JSON.stringify(last)}`);
+    });
   };
   const editButton = page.getByRole("button", { name: view.editLabel, exact: true });
   const saveButton = page.getByRole("button", { name: view.saveLabel, exact: true });

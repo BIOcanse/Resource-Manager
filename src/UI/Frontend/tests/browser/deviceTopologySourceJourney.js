@@ -7,6 +7,8 @@ import { checkDeviceTopologyWireFacts } from "./deviceTopologyWireProbe.js";
 import { checkMachineIdentity } from "./deviceMachineIdentityProbe.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 import { checkBadgesNotTruncated } from "./deviceBadgeProbe.js";
+import { waitForCondition } from "./journeyWaits.js";
+import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
@@ -14,6 +16,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
   const channelProbe = await observeSubscriptionChannel(page);
+  const frameProbe = await observeSubscriptionFrames(page, baseUrl);
 
   await page.setViewportSize({ width: 800, height: 500 });
   // Configure the isolated server before the only document/owner is created.
@@ -247,7 +250,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   assert((await protocolRow.locator("dd").textContent()) === app.deviceTopology.deviceCategory.unknown, "Only the nullable port protocol shows localized unknown");
   await page.keyboard.press("Escape");
   await protocolDialog.waitFor({ state: "hidden" });
-  const scrolledSelection = await checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath);
+  const scrolledSelection = await checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath, frameProbe);
   await setScenario(page, { deviceTopologyInvalid: true });
   await topology.locator(".observation-state.error").waitFor();
   assert(await topology.locator(".device-port-item").count() === 0, "Decode failure clears the current topology");
@@ -278,6 +281,8 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const retired = await waitForTelemetry(page, subscriptionPath, (value) =>
     value.logicalInFlight === 0 && value.logicalRetired >= 1);
   const retiredPublicationCount = retired.publications;
+  // Observe the complete real 1.2 s server publication window after retirement;
+  // browser time advancement cannot prove Node publication timers stayed silent.
   await page.waitForTimeout(1_200);
   const inactive = await readTelemetry(page, subscriptionPath);
   assert(inactive.publications === retiredPublicationCount && inactive.logicalInFlight === 0,
@@ -354,7 +359,7 @@ async function checkDetachedDisplayDialog(page, app) {
 
 // 清单滚到下面点选一项后，后续推送不能让清单跳回顶部，也不能把条目和详情行整块重建
 // （每次推送节点对象都是新的，按对象做键时整张清单被删掉重建，带焦点的按钮一删清单就回到顶部）。
-async function checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath) {
+async function checkScrolledSelectionSurvivesPublications(page, topology, subscriptionPath, frameProbe) {
   const portCount = 24;
   const rootCount = await topology.locator(".device-port-item:not(.nested)").count();
   await setScenario(page, { deviceTopologyPortCount: portCount, displayEdid: "off" });
@@ -373,7 +378,9 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
     `The fixture list does not scroll far enough to observe a jump: ${JSON.stringify(before)}`);
   const published = (await readTelemetry(page, subscriptionPath)).publications;
   await waitForTelemetry(page, subscriptionPath, value => value.publications >= published + 2);
-  await page.waitForTimeout(100);
+  // Server write counts precede delivery. Wait until the same complete frames have
+  // reached the application's reader, then cross its synchronous publish/render.
+  await frameProbe.drain([subscriptionPath], [".device-topology-panel"]);
   const after = await list.evaluate((element) => {
     const probe = element.querySelector('[data-scroll-probe="selected"]');
     return {
@@ -397,7 +404,8 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
   });
   const dialogPublished = (await readTelemetry(page, subscriptionPath)).publications;
   await waitForTelemetry(page, subscriptionPath, value => value.publications >= dialogPublished + 2);
-  await page.waitForTimeout(100);
+  // Do not let old row identity pass before the new frames are actually consumed.
+  await frameProbe.drain([subscriptionPath], [".user-details-modal"]);
   const keptRows = await dialog.evaluate((element) =>
     element.querySelectorAll('.user-details-row[data-publication-probe="kept"]').length);
   assert(rowCount > 0 && keptRows === rowCount,
@@ -432,16 +440,12 @@ async function resetTelemetry(page) {
 }
 
 async function waitForTelemetry(page, path, predicate) {
-  const deadline = Date.now() + 6_500;
-  let actual = await readTelemetry(page, path);
-  while (Date.now() < deadline) {
-    if (predicate(actual)) {
-      return actual;
-    }
-    await page.waitForTimeout(50);
+  let actual;
+  await waitForCondition(page, async () => {
     actual = await readTelemetry(page, path);
-  }
-  throw new Error(`Timed out waiting for ${path}: ${JSON.stringify(actual)}`);
+    return predicate(actual);
+  }, { timeoutMs: 6_500, description: `device telemetry ${path}` });
+  return actual;
 }
 
 async function readTelemetry(page, path) {

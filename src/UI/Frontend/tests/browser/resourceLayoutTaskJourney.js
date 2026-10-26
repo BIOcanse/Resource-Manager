@@ -161,6 +161,8 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   await installMotionObserver();
   await setScenario({ resourceBreakdownGeneration: 3 });
   await waitForCpuTotal("55%");
+  // Observe the full negative animation window. The MutationObserver must catch
+  // any transient moving=true; current moving=false would permit early pass.
   await page.waitForTimeout(disabledMotionObservationMs);
   const disabled = await readMotion();
   assert(disabled.moving === false

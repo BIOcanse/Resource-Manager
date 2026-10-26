@@ -1,5 +1,6 @@
 import { customRefresh, seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { observeSubscriptionChannel, subscriptionPathMaximum } from "./subscriptionChannelProbe.js";
+import { waitForCondition } from "./journeyWaits.js";
 
 export default async function currentValueSubscriptionJourney(
   page,
@@ -58,6 +59,8 @@ export default async function currentValueSubscriptionJourney(
     `Self-scheduling value used periodic/direct GET: ${JSON.stringify(initial.schedulingDirect)}`);
 
   await resetTelemetry(page);
+  // Full real-server 1.2 s window checks stable leases and absence of direct GETs;
+  // a currently active lease or the first publication cannot establish this.
   await page.waitForTimeout(1_200);
   const settled = {
     local: await readTelemetry(page, localStreamPath),
@@ -82,6 +85,7 @@ export default async function currentValueSubscriptionJourney(
     components: await readTelemetry(page, "/api/components"),
     software: await readTelemetry(page, "/api/software")
   };
+  // Inventory must remain free of periodic GETs throughout this real 2.2 s window.
   await page.waitForTimeout(2_200);
   const afterIdle = {
     components: await readTelemetry(page, "/api/components"),
@@ -100,6 +104,8 @@ export default async function currentValueSubscriptionJourney(
   await smartPanel.locator(".smart-details-summary").waitFor({ state: "visible" });
   const smartPath = "/api/optimization/smart/state/subscribe";
   const smartStarted = await readTelemetry(page, smartPath);
+  // Keep the full 3.2 s server window: it checks continued publications together
+  // with no lease recreation/direct GET, rather than only the first new frame.
   await page.waitForTimeout(3_200);
   const smartContinued = await readTelemetry(page, smartPath);
   const smartDirect = await readTelemetry(page, "/api/optimization/smart/state");
@@ -117,6 +123,7 @@ export default async function currentValueSubscriptionJourney(
     return telemetry[path]?.logicalInFlight === 0;
   }, smartPath);
   const smartRetired = await readTelemetry(page, smartPath);
+  // Node owns publication timers; observe all 3.2 s after retirement for silence.
   await page.waitForTimeout(3_200);
   const smartInactive = await readTelemetry(page, smartPath);
   assert(smartInactive.publications === smartRetired.publications,
@@ -173,16 +180,12 @@ async function resetTelemetry(page) {
 }
 
 async function waitForStarted(page, path) {
-  const deadline = Date.now() + 6_500;
-  let telemetry = await readTelemetry(page, path);
-  while (Date.now() < deadline) {
-    if (telemetry.started >= 1) {
-      return telemetry;
-    }
-    await page.waitForTimeout(50);
+  let telemetry;
+  await waitForCondition(page, async () => {
     telemetry = await readTelemetry(page, path);
-  }
-  throw new Error(`Timed out waiting for ${path}: ${JSON.stringify(telemetry)}`);
+    return telemetry.started >= 1;
+  }, { timeoutMs: 6_500, description: `subscription started ${path}` });
+  return telemetry;
 }
 
 async function readTelemetry(page, path) {

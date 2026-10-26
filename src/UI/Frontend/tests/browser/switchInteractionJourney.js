@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { waitForNextPaint, waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 设置开关的滑块走交互协议的运行时（ui/primitives/Switch.tsx），真实鼠标事件，简体中文：
@@ -38,7 +39,7 @@ export default async function switchInteractionJourney(page, baseUrl) {
       throw new Error(`${step}: checked ${await box.isChecked()}, expected ${on}`);
     }
   };
-  const settle = () => page.waitForTimeout(400);
+  const settleRendering = () => waitForStableRendering(page, [".settings-switch-knob", ".settings-switch-track"]);
   const knobCentre = async () => {
     const rect = await knob.boundingBox();
     return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -58,14 +59,16 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await root.click();
   await waitChecked(!initial, "Click");
   await waitKnob(!initial, "Knob after click");
-  await settle();
+  // Keep the full 400 ms to observe that this click never causes a second toggle.
+  await page.waitForTimeout(400);
   if (await box.isChecked() === initial) throw new Error("A click toggled the switch twice");
 
   // 拖到另一端：切换一次，拖完的 click 不再切换回来。
   await drag(initial ? 30 : -30);
   await waitChecked(initial, "Drag to the other end");
   await waitKnob(initial, "Knob after the drag");
-  await settle();
+  // Keep the full 400 ms after the drag's synthesized click to observe no toggle back.
+  await page.waitForTimeout(400);
   if (await box.isChecked() !== initial) throw new Error("The click after the drag toggled the switch back");
 
   // 拖一点再拖回原处：不改值，滑块回到原来那一端。
@@ -74,7 +77,9 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await page.mouse.down();
   for (const dx of [3, 6, 8, 4, 1, 0]) await page.mouse.move(from.x + (initial ? -dx : dx), from.y);
   await page.mouse.up();
-  await settle();
+  // Keep 400 ms after release: returning to the starting position must leave the
+  // checked value unchanged even after deferred click and motion callbacks.
+  await page.waitForTimeout(400);
   await waitChecked(initial, "Drag and return");
   await waitKnob(initial, "Knob after drag and return");
 
@@ -87,17 +92,17 @@ export default async function switchInteractionJourney(page, baseUrl) {
   await page.keyboard.press("Space");
   await waitChecked(!initial, "Space before the colour check");
   await waitKnob(!initial, "Knob before the colour check");
-  await settle();
+  await settleRendering();
   const otherColour = await trackColour();
   await page.keyboard.press("Space");
   await waitChecked(initial, "Space back before the colour check");
   await waitKnob(initial, "Knob back before the colour check");
-  await settle();
+  await settleRendering();
   const half = await knobCentre();
   await page.mouse.move(half.x, half.y);
   await page.mouse.down();
   for (let i = 1; i <= 8; i += 1) await page.mouse.move(half.x + (initial ? -10 : 10) * i / 8, half.y);
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await waitForNextPaint(page);
   const middle = await track.evaluate((element) => ({
     colour: getComputedStyle(element).backgroundColor,
     openness: Number.parseFloat(element.style.getPropertyValue("--switch-openness"))
@@ -105,7 +110,9 @@ export default async function switchInteractionJourney(page, baseUrl) {
   const middleChecked = await box.isChecked();
   await page.mouse.move(half.x, half.y);
   await page.mouse.up();
-  await settle();
+  // Keep 400 ms after returning from the colour probe: release/click must not
+  // change the draft after the unchanged checked state would already pass.
+  await page.waitForTimeout(400);
   await waitChecked(initial, "Release after the colour check");
   const numbers = (colour) => (colour.match(/-?\d*\.?\d+(e-?\d+)?/g) ?? []).map(Number);
   const [off, on] = initial ? [otherColour, restColour] : [restColour, otherColour];

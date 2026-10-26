@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
+import { waitForCondition } from "./journeyWaits.js";
 
 /**
  * 资源表内存列先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
@@ -29,14 +30,13 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   const softwareRow = () => visibleRow("software").filter({ hasText: "示例软件" }).first();
   const residualRow = () => visibleRow("software").filter({ hasText: table.systemResidualRow("").trim() }).first();
   const waitForText = async (read, expected, what) => {
-    const deadline = Date.now() + 15_000;
     let last;
-    while (Date.now() < deadline) {
+    await waitForCondition(page, async () => {
       last = await read().catch(() => undefined);
-      if (last === expected) return;
-      await page.waitForTimeout(200);
-    }
-    throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(last)}`);
+      return last === expected;
+    }, { timeoutMs: 15_000, description: `${what}: expected ${JSON.stringify(expected)}` }).catch(() => {
+      throw new Error(`${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(last)}`);
+    });
   };
   const lastFactsQuery = async () => {
     const telemetry = await (await fetch(`${baseUrl}/__test/requests`)).json();

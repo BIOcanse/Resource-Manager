@@ -1,3 +1,5 @@
+import { waitForNextPaint, waitForStableRendering } from "./journeyWaits.js";
+
 /**
  * 资源表列宽把手走交互协议的运行时（Lodestone 协议第 4.4 节第 1 处迁移），真实鼠标事件：
  * 编辑模式里拖动时把手跟着指针走（表格把多余宽度分给各列，存的宽度变得比指针位移多，把手的屏幕位置仍和指针一致），
@@ -92,7 +94,10 @@ export default async function columnResizeInteractionJourney(page, baseUrl) {
       document.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, isPrimary: true, pointerId: 1, pointerType: "mouse", buttons: 0, clientX: x + dx, clientY: y }));
     }
   }, { x: start.x + 30, y: start.y });
-  await page.waitForTimeout(100);
+  // Dispatch above has completed; cross its render commit before accepting the
+  // unchanged width/handle position (which were also true before these events).
+  await waitForNextPaint(page);
+  await waitForStableRendering(page, [".resource-table-column-resizer"]);
   await waitWidth(lost, "After the corrected release");
   await waitHandleAt(start.x + 30, "Handle after the corrected release");
   await page.mouse.up();

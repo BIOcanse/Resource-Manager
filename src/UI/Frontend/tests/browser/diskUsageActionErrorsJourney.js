@@ -1,4 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { waitForStableRendering } from "./journeyWaits.js";
 
 // 磁盘占用页的动作失败要当场给出错误提示，不能变成未处理的 Promise 拒绝：
 // 浏览器里没有桌面桥，选文件夹必然失败；打开位置和属性的接口在测试服务器上不存在；剪贴板拒绝写入。
@@ -52,7 +53,9 @@ export default async function diskUsageActionErrorsJourney(page, baseUrl) {
     `Treemap canvas name: ${await canvas.getAttribute("aria-label")}`);
   await canvas.focus();
   await page.keyboard.press("Shift+F10");
-  await page.waitForTimeout(300);
+  // keyboard.press has dispatched the key sequence; let its synchronous context-menu
+  // handler and resulting render commit finish before asserting the absence of a menu.
+  await waitForStableRendering(page, [".disk-usage-result"], { timeoutMs: 3_000 });
   assert(await page.locator(".disk-usage-context-menu").count() === 0, "Shift+F10 opened a menu with no selected tile");
   const checkedMenuActions = [];
   for (const [label, failure] of [

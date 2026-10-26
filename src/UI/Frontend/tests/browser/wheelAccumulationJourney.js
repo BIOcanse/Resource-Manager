@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForStableRendering } from "./journeyWaits.js";
 
 /**
  * 滚轮按格累积（interactions/wheelNotches.ts）：
@@ -37,7 +38,7 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
     const canvas = page.locator(".disk-usage-treemap-canvas");
     await canvas.scrollIntoViewIfNeeded();
     await page.waitForFunction(() => window.__treemapDraws.length > 0);
-    await page.waitForTimeout(300);
+    await waitForStableRendering(page, ".disk-usage-treemap-canvas", { includeCanvas: true });
     return canvas;
   };
   /**
@@ -84,10 +85,13 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
   };
 
   let canvas = await openTreemap();
+  const initialTreemapWidth = await page.evaluate(() => window.__treemapDraws.at(-1).width);
   // 触控板：十下 10 px，每 8 ms 一下。
   const trackpad = checkSmooth(await wheel(canvas, Array(10).fill(-10), 8, 400), "Trackpad wheel", 4, 0.5);
   await page.getByRole("button", { name: copy.diskUsage.resetView, exact: true }).click();
-  await page.waitForTimeout(400);
+  await page.waitForFunction(width => Math.abs(window.__treemapDraws.at(-1).width - width) < 0.1,
+    initialTreemapWidth, { timeout: 5000 });
+  await waitForStableRendering(page, ".disk-usage-treemap-canvas", { includeCanvas: true });
   // 鼠标一格：几帧带过去，不是一帧到位。
   const notch = checkSmooth(await wheel(canvas, [-100], 0, 400), "Mouse notch", 2, 0.85);
 
@@ -107,7 +111,9 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
   const track = page.locator('.resource-bar-track[data-metric-id="memory.usage"]');
   await page.waitForFunction(() => Number(document.querySelector('.resource-bar-track[data-metric-id="memory.usage"] canvas')?.dataset.resourceSegmentCount) === 8);
   // 画布落定（分段的过渡走完）再点。
-  await page.waitForTimeout(450);
+  await page.waitForFunction(() => !document.querySelector('.resource-bar-track[data-metric-id="memory.usage"]')?.classList.contains("moving"),
+    null, { timeout: 5000 });
+  await waitForStableRendering(page, '.resource-bar-track[data-metric-id="memory.usage"]', { includeCanvas: true });
   const bounds = await track.boundingBox();
   assert(bounds, "Memory bar bounds are missing");
   // 点一下选中一个分段，再按 Home 回到第一段（分段宽度、顺序跟占用走，点中的是哪段不固定），然后用滚轮换。
@@ -118,7 +124,8 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
   await page.waitForFunction(() => document.querySelector('.resource-bar-track[data-metric-id="memory.usage"] .precision-selected') !== null);
   await track.focus();
   await page.keyboard.press("Home");
-  await page.waitForTimeout(100);
+  await page.waitForFunction(() => document.querySelector('.resource-bar-track[data-metric-id="memory.usage"] .precision-selected')
+    ?.getAttribute("aria-posinset") === "1", null, { timeout: 5000 });
   const start = await selected();
   assert(start >= 1 && start <= 6, `Unexpected starting segment ${start}`);
   /** 发一串 deltaY，交回每个事件之后选中的是第几段。 */
