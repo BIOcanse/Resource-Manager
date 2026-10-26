@@ -278,26 +278,22 @@
 }
 
 /* ---------- 分页（WinUI NavigationView）----------
+   只改分页的变量（page-tabs.css），页签和会滑的选中指示条都读它们。
    未选中是透明的文字项；悬停和选中都是一层浅底（正文色 4% / 6%，深色配色里就是白色的同等透明度，对应 WinUI 的 subtle 填充），
-   选中项下沿再加一条强调色指示线（内嵌阴影，不改边框宽度）。所有分页同一个样子，设置页的竖排导航也一样（用户 10-25 分页一致）。 */
-:root[data-ui-style="standard"] .page-tab {
-  border-color: transparent;
-  background: transparent;
-  color: var(--text);
-}
-
-:root[data-ui-style="standard"] .page-tab:not(.active):not(:disabled):hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--text) 4%, transparent);
-  color: var(--text);
-}
-
-:root[data-ui-style="standard"] .page-tab.active,
-:root[data-ui-style="standard"] .page-tab.active:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--text) 6%, transparent);
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--accent);
+   选中项下沿再加一条 2px 强调色指示线（内嵌阴影，不改边框宽度），随指示条一起滑。所有分页同一个样子（用户 10-25 分页一致）。 */
+:root[data-ui-style="standard"] {
+  --page-tab-bg: transparent;
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--text);
+  --page-tab-bg-hover: color-mix(in srgb, var(--text) 4%, transparent);
+  --page-tab-border-hover: transparent;
+  --page-tab-fg-hover: var(--text);
+  --page-tab-active-bg: color-mix(in srgb, var(--text) 6%, transparent);
+  --page-tab-active-border: transparent;
+  --page-tab-active-fg: var(--text);
+  --page-tab-active-shadow: inset 0 -2px 0 var(--accent);
+  --page-tab-active-bg-hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --page-tab-active-border-hover: transparent;
 }
 
 /* ---------- 输入框（WinUI TextBox）：1px 浅描边、下沿深一级；聚焦时底色变白、下沿一条强调色线 ---------- */
@@ -409,37 +405,20 @@
 }
 
 /* ---------- 分段控件（WinUI SelectorBar / 分段按钮）----------
-   轨道是浅填充加中性描边；选中段是表面色的小块，下沿一条强调色线，文字用正文色。 */
-:root[data-ui-style="standard"] .segmented {
-  border-color: var(--line-soft) var(--line-soft) var(--line);
-  background: var(--line-soft);
-}
-
-:root[data-ui-style="standard"] .segment:not(:disabled) {
-  background: var(--surface-soft);
-  color: var(--muted);
-}
-
-:root[data-ui-style="standard"] .segment:not(.active):not(:disabled):hover {
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-:root[data-ui-style="standard"] .segment.active:not(:disabled) {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-/* 轨道裁掉溢出，焦点画在分段内侧。 */
-:root[data-ui-style="standard"] .segment:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: -2px;
-}
-
-:root[data-ui-style="standard"] .segment.active:disabled {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  color: var(--text);
+   只改分段的变量（segmented.css），分段和会滑的选中指示条都读它们。
+   轨道是浅填充，分段之间的缝露出轨道色；选中段是表面色的小块，下沿一条强调色线，文字用正文色。 */
+:root[data-ui-style="standard"] {
+  --segment-track-bg: var(--line-soft);
+  --segment-track-border: var(--line-soft);
+  --segment-bg: var(--surface-soft);
+  --segment-fg: var(--muted);
+  --segment-bg-hover: var(--hover-bg);
+  --segment-fg-hover: var(--text);
+  --segment-active-bg: var(--surface);
+  --segment-active-fg: var(--text);
+  --segment-active-shadow: inset 0 -2px 0 var(--accent);
+  --segment-active-disabled-bg: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --segment-active-disabled-fg: var(--text);
 }
 
 :root[data-ui-style="standard"] .optimization-mode.pending {
