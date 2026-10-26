@@ -1,5 +1,6 @@
 // 资源条画布上与绘制无关的几步，画布组件（ResourceSegmentPaintPlane.tsx）只管把结果画出来：
 // 一段过渡里每一帧各段在哪、离开的段收到哪里、新来的段从哪里长出来；
+// 标签截到多长才放得下。
 
 export interface ResourcePaintSegment {
   key: string;
@@ -11,6 +12,7 @@ export interface ResourcePaintSegment {
   distinctColor?: string;
   /** 斜纹：系统/驱动保留这类不是软件的段。 */
   hatched?: boolean;
+  /** 放得下才画（按像素宽度判断）。 */
   label?: string;
   labelColor?: string;
 }
@@ -78,6 +80,39 @@ export function transitionFrame(
       };
     })
   ];
+}
+
+/** 放进 availableWidth 的标签：放不下时截短加省略号；截到不足 minimumCharacters 个字时不画（返回空串）。 */
+export function fitCanvasLabel(
+  textWidth: (text: string) => number,
+  label: string,
+  availableWidth: number,
+  minimumCharacters = 1)
+{
+  if (textWidth(label) <= availableWidth) {
+    return label;
+  }
+
+  const suffix = "…";
+  if (textWidth(suffix) > availableWidth) {
+    return "";
+  }
+
+  let low = 0;
+  let high = label.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = `${label.slice(0, middle)}${suffix}`;
+    if (textWidth(candidate) <= availableWidth) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  // 截在空格后面时去掉末尾空格，省略号紧跟着字（“Microsoft…”而不是“Microsoft …”）。
+  const kept = label.slice(0, low).trimEnd();
+  return kept.length >= minimumCharacters ? `${kept}${suffix}` : "";
 }
 
 function lerpNumber(from: number, to: number, progress: number) {

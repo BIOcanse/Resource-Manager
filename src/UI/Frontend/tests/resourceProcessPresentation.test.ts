@@ -86,7 +86,8 @@ assert.equal(processCatalog.find(process => process.processId === 42)!.name, "wo
 
 // The tested production helper supplies canvas labels, tooltip/accessibility text and the projected table name.
 const component = readFileSync(new URL("../src/features/resourceBreakdown/ResourceBreakdown.tsx", import.meta.url), "utf8");
-assert.match(component, /label: item\.width >= 10 \? resourceProcessDisplayName\(item\.segment, metricId\)/);
+// 进程段的名字照样交给画布，放不放得下由画布按像素宽度决定。
+assert.match(component, /label: resourceProcessDisplayName\(item\.segment, metricId\)/);
 assert.match(component, /\$\{resourceProcessDisplayName\(process, bar\.metricId\)\}/);
 assert.match(component, /aria-label=\{resourceProcessTooltip\(props\.bar, item\(\)\.segment\)\}/);
 const table = readFileSync(new URL("../src/features/resourceTable/ResourceTable.tsx", import.meta.url), "utf8");

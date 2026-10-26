@@ -10,6 +10,7 @@ import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
 import { readMotionDurationMs, readMotionEase } from "../../presentation/motionTokens.ts";
 import {
   enteringSources,
+  fitCanvasLabel,
   leavingSegments,
   transitionFrame,
   type ResourcePaintSegment
@@ -56,6 +57,8 @@ const hatchStripeColor = "var(--resource-reserved-stripe)";
 const hatchSpacingPx = 6;
 // 比这窄（设备像素）的段本身就是一条细线，两边不再画分隔线，免得把它盖掉。
 const sliverDevicePx = 3;
+// 标签至少留下这么多个字（再加省略号）才画，只剩一两个字的标签不画。
+const minimumLabelCharacters = 3;
 
 export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps) {
   let canvas: HTMLCanvasElement | undefined;
@@ -333,7 +336,7 @@ function drawSegmentLabels(
       continue;
     }
 
-    const label = fitCanvasLabel((text) => paintStyle.textWidth(context, text), segment.label, availableWidth);
+    const label = fitCanvasLabel((text) => paintStyle.textWidth(context, text), segment.label, availableWidth, minimumLabelCharacters);
     if (!label) {
       continue;
     }
@@ -353,35 +356,6 @@ function drawSegmentLabels(
       pixelHeight / (2 * devicePixelRatio));
     context.restore();
   }
-}
-
-function fitCanvasLabel(
-  textWidth: (text: string) => number,
-  label: string,
-  availableWidth: number)
-{
-  if (textWidth(label) <= availableWidth) {
-    return label;
-  }
-
-  const suffix = "...";
-  if (textWidth(suffix) > availableWidth) {
-    return "";
-  }
-
-  let low = 0;
-  let high = label.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    const candidate = `${label.slice(0, middle)}${suffix}`;
-    if (textWidth(candidate) <= availableWidth) {
-      low = middle;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return `${label.slice(0, low)}${suffix}`;
 }
 
 function drawSegmentDividers(
@@ -448,7 +422,7 @@ function segmentPixelKey(segments: ResourcePaintSegment[], pixelWidth: number) {
 
 function paintSegmentSignature(segments: ResourcePaintSegment[]) {
   return segments
-    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}:${segment.hatched ? 1 : 0}`)
+    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}:${segment.hatched ? 1 : 0}:${segment.label ?? ""}`)
     .join("|");
 }
 

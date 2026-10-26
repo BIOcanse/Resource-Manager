@@ -922,7 +922,8 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
     color: resourceSegmentPaintColor(item.segment, "type"),
     distinctColor: resourceSegmentPaintColor(item.segment, "distinct"),
     hatched: isReservedSegment(item.segment),
-    label: item.width >= 8 ? segmentLabel(item.segment) : undefined,
+    // 放不放得下由画布按像素宽度决定。
+    label: segmentLabel(item.segment),
     labelColor: item.segment.isEmpty ? "var(--text)" : segmentTextColor
   }));
 }
@@ -935,7 +936,7 @@ function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProce
     right: item.right,
     color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length],
     hatched: isSystemResidualProcess(item.segment),
-    label: item.width >= 10 ? resourceProcessDisplayName(item.segment, metricId) : undefined,
+    label: resourceProcessDisplayName(item.segment, metricId),
     labelColor: segmentTextColor
   }));
 }

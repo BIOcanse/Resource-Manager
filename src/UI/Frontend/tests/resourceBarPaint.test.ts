@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   enteringSources,
+  fitCanvasLabel,
   leavingSegments,
   transitionFrame,
   type ResourcePaintSegment
@@ -104,4 +105,12 @@ for (const eased of [0, 0.25, 0.5, 0.75, 1]) {
     assert.ok(Math.abs(frame[index].left - frame[index - 1].right) < 1e-9, `${frame[index].key} is attached to ${frame[index - 1].key} at ${eased}`);
   }
 }
+
+// ---- 标签 ----
+// 放不下时用省略号，截得只剩一两个字就不画。
+const width = (value: string) => value.length * 7;
+assert.equal(fitCanvasLabel(width, "Microsoft Edge", 200, 3), "Microsoft Edge");
+assert.equal(fitCanvasLabel(width, "Microsoft Edge", 50, 3), "Micros…");
+assert.equal(fitCanvasLabel(width, "Microsoft Edge", 20, 3), "", "a label cut to fewer than three characters is not drawn");
+assert.equal(fitCanvasLabel(width, "Microsoft Edge", 77, 3), "Microsoft…", "no space is left before the ellipsis");
 
