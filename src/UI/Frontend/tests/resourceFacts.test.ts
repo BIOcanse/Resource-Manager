@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { decodeResourceFacts, projectResourceFacts } from "../src/features/resourceTable/resourceFacts.ts";
 import { buildResourceMonitorSubscriptionUrl, normalizeResourceMonitorQuery } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
-import { accountResourceTableVisibility } from "../src/features/resourceTable/resourceTableAccounting.ts";
+import { accountResourceTableVisibility, resourceTableBusinessRowCount } from "../src/features/resourceTable/resourceTableAccounting.ts";
+import { classifyResourceTableContentState } from "../src/features/resourceTable/resourceTableContentState.ts";
 import { uiText } from "../src/text.ts";
 import { resourceFactUnavailableText, resourceProcessDisplayName, resourceTableCellText } from "../src/presentation/metricLabels.ts";
 import { factsMetricKeys } from "./resourceFactsWireFixture.ts";
@@ -129,9 +130,15 @@ for (const mode of ["software", "process"] as const) {
     const searched = accountResourceTableVisibility(result.rows, shown, mode, result.columns);
     assert.equal(searched.filter(row => isPeer(row) || row.kind === "filtered").reduce((sum, row) => sum + (row.values[id]?.value ?? 0), 0), 100 + index);
     assert.equal(searched.filter(row => row.kind === "filtered").length, 1);
+    assert.equal(resourceTableBusinessRowCount(searched), shown.filter(row => row.kind !== "summary").length,
+      "The hidden-row bucket is not a matching business row");
     const noMatch = accountResourceTableVisibility(result.rows, [result.rows[0]], mode, result.columns);
     assert.equal(noMatch[1].values[id].value, 100 + index);
     assert.equal(noMatch[1].values[id].basis, undefined, "The bucket does not borrow the total's process sum and residual");
+    assert.equal(resourceTableBusinessRowCount(noMatch), 0, "No matches remain empty even though accounting retains a hidden-row bucket");
+    assert.equal(classifyResourceTableContentState({ hasSnapshot: true, status: "ready",
+      businessRowCount: resourceTableBusinessRowCount(result.rows), visibleBusinessRowCount: resourceTableBusinessRowCount(noMatch),
+      searchActive: true }), "filtered-empty", "A search with no matching rows shows the table empty state in both views");
   }
   assert.strictEqual(accountResourceTableVisibility(result.rows, result.rows, mode, result.columns), result.rows, "Cleared search removes the bucket");
   if (mode === "software") {

@@ -40,7 +40,7 @@ import {
 import { pinResourceTableRow } from "./resourceTableRowPin";
 import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity";
 import { projectResourceTableHeat } from "./resourceTableHeat";
-import { accountResourceTableVisibility } from "./resourceTableAccounting.ts";
+import { accountResourceTableVisibility, resourceTableBusinessRowCount } from "./resourceTableAccounting.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
@@ -117,13 +117,12 @@ export function ResourceTable(props: ResourceTableProps) {
       ? rows.filter((row) => row.kind === "software").length
       : rows.filter((row) => row.kind !== "summary").length;
   });
-  const visibleBusinessCount = createMemo(() => projectedRows()
-    .filter((row) => row.kind !== "summary").length);
+  const visibleBusinessCount = createMemo(() => resourceTableBusinessRowCount(visibleRows()));
   const contentState = createMemo(() => classifyResourceTableContentState({
     hasSnapshot: props.snapshot !== null,
     status: props.observation.status,
     businessRowCount: baseCount(),
-    visibleBusinessRowCount: visibleRows().filter(row => row.kind !== "summary").length,
+    visibleBusinessRowCount: visibleBusinessCount(),
     searchActive: Boolean(normalizeSearchText(searchQuery()))
   }));
   const statusText = createMemo(() => {

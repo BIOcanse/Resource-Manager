@@ -1,6 +1,11 @@
 import type { ResourceTableColumn, ResourceTableRow, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
 import { uiText } from "../../text.ts";
 
+/** Totals and hidden-row accounting entries are not visible search results. Attribution leaves are. */
+export function resourceTableBusinessRowCount(rows: readonly ResourceTableRow[]): number {
+  return rows.filter(row => row.kind !== "summary" && row.kind !== "filtered").length;
+}
+
 /**
  * Search-hidden peers are grouped in one "filtered" row so the visible rows still account for the total.
  * Parent rows already include collapsed children, so only peers of the current view count. A column is summed
