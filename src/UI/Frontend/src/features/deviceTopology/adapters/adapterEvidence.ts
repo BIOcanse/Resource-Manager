@@ -136,6 +136,7 @@ function internalTransport(port: DeviceTopologyPort) {
   const service = port.service?.toLocaleLowerCase() ?? "";
   const parent = `${port.nativeParentDeviceId ?? ""} ${port.nativeParentDisplayName ?? ""}`;
 
+  if (port.busKind.toLocaleLowerCase() === "usb") return "USB";
   if (deviceId.startsWith("HDAUDIO\\")) return "HD Audio";
   if (deviceId.startsWith("BTH") || service.startsWith("bth") || service === "umpass") return "Bluetooth";
   if (service.startsWith("ucmucsi")) return "UCSI / ACPI";
@@ -145,7 +146,7 @@ function internalTransport(port: DeviceTopologyPort) {
   if (port.display?.internal) return displayValue(port.display.connectorTechnology, uiText.deviceAdapters.internalDisplay);
   if (port.pnpClass?.toLocaleLowerCase() === "display" || deviceId.startsWith("PCI\\")) return "PCI Express";
   if (port.busKind.toLocaleLowerCase() === "network") return displayValue(portProtocol(port), uiText.deviceAdapters.internalNetworkBus);
-  if (port.busKind.toLocaleLowerCase() === "usb" || deviceId.startsWith("USB\\")) return "USB";
+  if (deviceId.startsWith("USB\\")) return "USB";
   if (deviceId.startsWith("HID\\") && /I2C/i.test(parent)) return "I2C HID";
   if (deviceId.startsWith("ACPI\\")) return "ACPI";
   return displayValue(portProtocol(port), port.busKind);
