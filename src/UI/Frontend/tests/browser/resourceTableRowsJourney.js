@@ -42,6 +42,18 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.residualStatus = residualStatus;
 
+  // 2. 系统/驱动保留行和普通软件行分得开：文字退一档，底上有斜纹。
+  const residualLook = await residual.evaluate((row) => ({
+    residualClass: row.classList.contains("residual-row"),
+    image: getComputedStyle(row).backgroundImage,
+    nameColor: getComputedStyle(row.querySelector(".resource-row-name")).color,
+    muted: (() => { const probe = document.createElement("span"); probe.style.color = "var(--muted)"; row.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })()
+  }));
+  const ordinaryImage = await panel.locator('.resource-table-row[aria-label="示例软件"]').evaluate((row) => getComputedStyle(row).backgroundImage);
+  if (!residualLook.residualClass || !residualLook.image.includes("repeating-linear-gradient") || ordinaryImage !== "none"
+    || residualLook.nameColor !== residualLook.muted) {
+    throw new Error(`Residual row is not set apart: ${JSON.stringify({ residualLook, ordinaryImage })}`);
+  }
 
   // 3. 行位复用：展开时换成进程行的行位底色直接换，不经过中间色；状态色（悬停）才有过渡。
   const expandFrames = await panel.evaluate(async () => {

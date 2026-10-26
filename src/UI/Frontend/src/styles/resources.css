@@ -413,6 +413,18 @@
   --row-tint-amount: 20%;
 }
 
+/* 系统/驱动保留：不是一个软件，是整机读数减去各进程之和的差额。文字退一档，底上一层斜纹（复用中性色，四种风格通用）。 */
+.resource-table-row.residual-row {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in oklab, var(--text) 5%, transparent) 6px 7px
+  );
+}
+
+.resource-table-row.residual-row :is(.resource-row-name, .status-cell) {
+  color: var(--muted);
+}
 
 .resource-table-row.empty-row {
   border-bottom: 0;
