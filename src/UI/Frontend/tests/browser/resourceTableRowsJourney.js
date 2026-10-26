@@ -159,6 +159,27 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.header = { unsorted, descending, ascending, hovered, titles };
 
+  // 6. 列宽把手：平时不接指针（表头格边缘点下去是排序），编辑时以列边为中线 12 px 宽，好按中。
+  const edgeHit = () => panel.locator('.resource-table-head-cell[data-column-id="status"]').evaluate((cell) => {
+    const rect = cell.getBoundingClientRect();
+    const y = (rect.top + rect.bottom) / 2;
+    const hit = (x) => document.elementFromPoint(x, y)?.closest(".resource-table-column-resizer, .resource-table-sort-button")?.className ?? null;
+    const resizer = cell.querySelector(".resource-table-column-resizer");
+    return { inside: hit(rect.right - 3), outside: hit(rect.right + 4), width: resizer.getBoundingClientRect().width,
+      cursor: getComputedStyle(resizer).cursor };
+  });
+  const browsing = await edgeHit();
+  await panel.locator('[data-focus-key="resource-table-edit"]').click();
+  await panel.locator(".resource-table-head-cell.editing").first().waitFor();
+  const editing = await edgeHit();
+  await panel.getByRole("button", { name: app.resourceTableView.cancelEditLabel, exact: true }).click();
+  if (browsing.inside !== "resource-table-sort-button" || browsing.cursor === "col-resize"
+    || editing.inside !== "resource-table-column-resizer" || editing.outside !== "resource-table-column-resizer"
+    || editing.width !== 12 || editing.cursor !== "col-resize") {
+    throw new Error(`Column resize handle hit area: ${JSON.stringify({ browsing, editing })}`);
+  }
+  results.resizeHandle = { browsing, editing };
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

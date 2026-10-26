@@ -336,15 +336,24 @@
   text-overflow: ellipsis;
 }
 
+/*
+  列宽把手只在编辑模式能用（ResourceTable.tsx）：平时不接指针，表头格边缘照常点下去排序，也不显示改宽度的光标；
+  编辑时把手以列的右边缘为中线左右各 6 px，中间一条把手线，悬停、拖动时变成强调色。
+*/
 .resource-table-column-resizer {
   position: absolute;
   top: 0;
-  right: -4px;
+  right: -6px;
   z-index: 2;
-  width: 8px;
+  width: 12px;
   height: 100%;
-  cursor: col-resize;
+  pointer-events: none;
   touch-action: none;
+}
+
+.resource-table-head-cell.editing .resource-table-column-resizer {
+  pointer-events: auto;
+  cursor: col-resize;
 }
 
 .resource-table-column-resizer::after {
@@ -352,12 +361,17 @@
   position: absolute;
   top: 7px;
   bottom: 7px;
-  left: 3px;
-  width: 1px;
+  left: calc(50% - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.resource-table-head-cell.editing .resource-table-column-resizer::after {
   background: var(--line);
 }
 
-.resource-table-column-resizer:hover::after {
+.resource-table-head-cell.editing .resource-table-column-resizer:is(:hover, :active)::after {
   background: var(--accent);
 }
 
