@@ -9,6 +9,9 @@ import { curvePointDefinition } from "../src/interactions/components/curvePoint.
 import { REORDER_BOUND, reorderItemDefinition } from "../src/interactions/components/reorderItem.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
 import { CARD_SLOT_LAYOUT_BOUND, cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
+import { selectionIndicatorDefinition } from "../src/interactions/components/selectionIndicator.ts";
+import { contentTransitionDefinition } from "../src/interactions/components/contentTransition.ts";
+import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 
 // 产品里每份磁石定义都过一遍机器检查（协议第 4.3 节）：发行用“优化”执行方式，不跑检查，所以开发期在这里跑。
 // 系统参数和产品一样不读（null）；几何取和产品呈现层同方向的两端，只为几何那几项检查，像素数不影响完备和确定。
@@ -21,6 +24,8 @@ const definitions: readonly [Definition, Geometry][] = [
   // 卡片槽位不读输入，呈现层不报几何；这里给一份只为几何那几项检查。
   [cardSlotLayoutDefinition as unknown as Definition, { center: "槽位上边", atMin: { x: 0, y: 0 }, atMax: { x: CARD_SLOT_LAYOUT_BOUND * 40, y: CARD_SLOT_LAYOUT_BOUND * 40 } }]
 ];
+// 不读输入、只由宿主值带的两种（选中指示条、内容过渡）：没有几何，通道就是序号。
+const hostDriven: readonly Definition[] = [selectionIndicatorDefinition, contentTransitionDefinition];
 
 for (const [definition, geometry] of definitions) {
   const params = resolveParams(null, [partLayer(definition.name, definition.params ?? {})]);
@@ -29,4 +34,12 @@ for (const [definition, geometry] of definitions) {
   assert.equal(result.counts.missing, 0, `${definition.name} has missing cells`);
   assert.equal(result.counts.conflict, 0, `${definition.name} has conflicting cells`);
 }
-console.log(`PASS interaction definitions: ${definitions.length} checked`);
+for (const definition of hostDriven) {
+  const params = resolveParams(null, [partLayer(definition.name, definition.params ?? {})], declaredSpecs(definition as unknown as Definition<Value>));
+  const result = checkDefinition(definition as unknown as Definition<Value>, null, params);
+  assert.ok(result.ok, `${definition.name} failed the machine check:\n${result.lines.join("\n")}`);
+  assert.equal(result.counts.missing, 0, `${definition.name} has missing cells`);
+  assert.equal(result.counts.conflict, 0, `${definition.name} has conflicting cells`);
+  assert.deepEqual(definition.rows, [], `${definition.name} reads no input`);
+}
+console.log(`PASS interaction definitions: ${definitions.length + hostDriven.length} checked`);

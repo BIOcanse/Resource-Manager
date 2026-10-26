@@ -4,6 +4,7 @@
 // 一种手感两部分一起换：CSS 动效令牌，和磁石（Lodestone）全局层的覆盖（协议第 5 节，范围小的覆盖大的，组件定义写的值不受影响）。
 
 import type { ParamOverrides } from "../interactions/protocol/params.ts";
+import { CONTENT_TRANSITION_PREFIX } from "../interactions/components/contentTransition.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 
 export type MotionFeelId = "standard" | "smooth" | "crisp";
@@ -15,7 +16,11 @@ export interface MotionFeelDefinition {
   id: MotionFeelId;
   durationsMs: Readonly<Record<MotionDurationToken, number>>;
   easings: Readonly<Record<MotionEaseToken, readonly [number, number, number, number]>>;
-  /** 磁石全局层整层换成这一组（到位时间 settleTime、回点时间 springTime 跟 --motion-medium 一致）；空的是不覆盖，取引擎来源值。 */
+  /**
+   * 磁石全局层整层换成这一组；空的是不覆盖，取引擎来源值和组件给的默认。
+   * 到位时间 settleTime、回点时间 springTime 跟 --motion-medium 一致；
+   * 换页缓动（内容过渡，pageEase*）的时长和曲线跟 --motion-page、--ease-decel 一致。
+   */
   lodestone: Readonly<ParamOverrides>;
 }
 
@@ -33,16 +38,22 @@ export const motionFeels: readonly MotionFeelDefinition[] = [
     id: "smooth",
     durationsMs: { "--motion-fast": 150, "--motion-medium": 260, "--motion-page": 380, "--motion-panel": 420, "--motion-bar": 480 },
     easings: { "--ease-decel": [0.32, 0.72, 0, 1], "--ease-standard": [0.4, 0, 0.1, 1] },
-    lodestone: { settleTime: 260, springTime: 260 }
+    lodestone: { settleTime: 260, springTime: 260, ...contentEase(380, [0.32, 0.72, 0, 1]) }
   },
   {
     // 标准的曲线，时长约 0.65 倍。
     id: "crisp",
     durationsMs: { "--motion-fast": 70, "--motion-medium": 120, "--motion-page": 170, "--motion-panel": 200, "--motion-bar": 240 },
     easings: { "--ease-decel": [0.1, 0.9, 0.2, 1], "--ease-standard": [0.2, 0, 0, 1] },
-    lodestone: { settleTime: 120, springTime: 120 }
+    lodestone: { settleTime: 120, springTime: 120, ...contentEase(170, [0.1, 0.9, 0.2, 1]) }
   }
 ];
+
+/** 内容过渡的换页缓动参数（easeField 按前缀声明的五项）。 */
+function contentEase(ms: number, curve: readonly [number, number, number, number]): ParamOverrides {
+  const p = CONTENT_TRANSITION_PREFIX;
+  return { [`${p}EaseMs`]: ms, [`${p}EaseX1`]: curve[0], [`${p}EaseY1`]: curve[1], [`${p}EaseX2`]: curve[2], [`${p}EaseY2`]: curve[3] };
+}
 
 export const motionFeelIds: readonly MotionFeelId[] = motionFeels.map((feel) => feel.id);
 
