@@ -279,7 +279,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             SanitizePercent(systemPercent),
             knownProcessIds));
         return new ResourceSoftwareSegment(
-            // 名字为空：前端按这个 id 里的度量名出「系统/驱动保留 · 某度量」。
             $"resource-residual:{metricId}",
             string.Empty,
             SoftwareKinds.WindowsSystem,

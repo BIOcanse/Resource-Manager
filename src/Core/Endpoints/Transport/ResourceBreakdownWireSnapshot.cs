@@ -17,6 +17,7 @@ public sealed class ResourceBreakdownWireSnapshot
         IReadOnlyList<ResourceSoftwareSegment> softwareCatalog,
         IReadOnlyDictionary<string, int> softwareIndexes,
         IReadOnlySet<string> processDetailSoftwareIds,
+        IReadOnlySet<string> residualDetailMetricIds,
         ProcessMetricFieldSnapshot? processFields)
     {
         CapturedAt = capturedAt;
@@ -24,6 +25,7 @@ public sealed class ResourceBreakdownWireSnapshot
         SoftwareCatalog = softwareCatalog;
         SoftwareIndexes = softwareIndexes;
         ProcessDetailSoftwareIds = processDetailSoftwareIds;
+        ResidualDetailMetricIds = residualDetailMetricIds;
         ProcessFields = processFields;
     }
 
@@ -36,6 +38,7 @@ public sealed class ResourceBreakdownWireSnapshot
     internal IReadOnlyDictionary<string, int> SoftwareIndexes { get; }
 
     internal IReadOnlySet<string> ProcessDetailSoftwareIds { get; }
+    internal IReadOnlySet<string> ResidualDetailMetricIds { get; }
     internal ProcessMetricFieldSnapshot? ProcessFields { get; }
 
     internal static ResourceBreakdownWireSnapshot Create(
@@ -44,7 +47,8 @@ public sealed class ResourceBreakdownWireSnapshot
         IReadOnlySet<string>? processDetailSoftwareIds = null,
         SchedulingProcessFactSnapshot? foundations = null,
         IReadOnlyDictionary<string, string>? scaleModes = null,
-        IReadOnlyList<string>? processMeasureIds = null)
+        IReadOnlyList<string>? processMeasureIds = null,
+        IReadOnlySet<string>? residualDetailMetricIds = null)
     {
         var visibleIds = visibleMetricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var currentDatasets = source.Datasets
@@ -89,7 +93,17 @@ public sealed class ResourceBreakdownWireSnapshot
             indexes,
             processDetailSoftwareIds
                 ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            residualDetailMetricIds ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             processFields);
+    }
+
+    internal static bool IncludesProcessDetails(ResourceBreakdownBar bar, ResourceSoftwareSegment segment,
+        IReadOnlySet<string> softwareIds, IReadOnlySet<string>? residualMetricIds)
+    {
+        var totalMetricId = bar.TotalMetricId ?? bar.MetricId;
+        return segment.SoftwareId.Equals("resource-residual:" + totalMetricId, StringComparison.OrdinalIgnoreCase)
+            ? residualMetricIds?.Contains(totalMetricId) == true
+            : softwareIds.Contains(segment.SoftwareId);
     }
 
     internal static IEnumerable<ResourceBreakdownBar> ProjectResourceBars(
@@ -218,7 +232,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
                 JsonSerializer.Serialize(writer, bar.GpuEngine, options);
                 writer.WriteString("engineClass", bar.EngineClass);
             }
-            WriteSoftwareRows(writer, value, bar.Software);
+            WriteSoftwareRows(writer, value, bar);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
@@ -227,11 +241,11 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
     private static void WriteSoftwareRows(
         Utf8JsonWriter writer,
         ResourceBreakdownWireSnapshot value,
-        IReadOnlyList<ResourceSoftwareSegment> software)
+        ResourceBreakdownBar bar)
     {
         writer.WritePropertyName("software");
         writer.WriteStartArray();
-        foreach (var segment in software)
+        foreach (var segment in bar.Software)
         {
             writer.WriteStartArray();
             writer.WriteNumberValue(value.SoftwareIndexes[segment.SoftwareId]);
@@ -242,7 +256,8 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             WriteProcessRows(
                 writer,
                 segment.Processes,
-                value.ProcessDetailSoftwareIds.Contains(segment.SoftwareId));
+                ResourceBreakdownWireSnapshot.IncludesProcessDetails(bar, segment,
+                    value.ProcessDetailSoftwareIds, value.ResidualDetailMetricIds));
             if (segment.SharedValue is { } shared) writer.WriteNumberValue(shared);
             writer.WriteEndArray();
         }

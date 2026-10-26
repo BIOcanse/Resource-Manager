@@ -14,7 +14,7 @@ public sealed class PhysicalMemoryPfnTests
     public void DetailsReuseOnlyASelectedPublishedPfnValueWithItsOwnTime(string metric, bool selected)
     {
         var at = At.AddSeconds(2);
-        var owners = new HashSet<string> { "resource-residual:memory.usage" };
+        var residualMetrics = new HashSet<string> { "memory.usage" };
         var hasCounter = metric == "memory.usage";
         var source = new ResourceBreakdownSnapshot(at, hasCounter
             ? [new ResourceBreakdownBar(metric, "B", "capacity", 100, 200, 50, [])] : [])
@@ -22,14 +22,14 @@ public sealed class PhysicalMemoryPfnTests
             Datasets = hasCounter ? [new(SamplingDatasetIds.ForProcessMetric(metric), "ready", 1, 1,
                 at, at, at, at.AddSeconds(5), null, null)] : []
         };
-        var absent = ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot.Create(source, [metric], owners);
+        var absent = ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot.Create(source, [metric], new HashSet<string>(), residualDetailMetricIds: residualMetrics);
         Assert.Null(absent.PhysicalMemoryResidual);
         Assert.Equal(hasCounter ? at : (DateTimeOffset?)null, absent.CapturedAt);
 
         foreach (var frame in new[] { Frame(), PhysicalMemoryResidualFrame.Unavailable(At, "capture-output-missing") })
         {
             var wire = ResourceManager.App.Endpoints.Transport.ResourceProcessDetailsWireSnapshot.Create(
-                source with { PhysicalMemoryResidual = frame }, [metric], owners);
+                source with { PhysicalMemoryResidual = frame }, [metric], new HashSet<string>(), residualDetailMetricIds: residualMetrics);
             Assert.Equal(selected ? frame : null, wire.PhysicalMemoryResidual);
             Assert.Equal(hasCounter ? at : selected ? At : (DateTimeOffset?)null, wire.CapturedAt);
             if (selected) Assert.NotEqual(source.CapturedAt, wire.PhysicalMemoryResidual!.CapturedAt);

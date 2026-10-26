@@ -9,9 +9,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             || id.Equals("process_all_private_working_set_actual", StringComparison.OrdinalIgnoreCase);
 
     private static ResourceBreakdownSampleRequest SelectPhysicalResidualDetails(
-        ResourceBreakdownSampleRequest request, ResourceMonitorScope scope, IReadOnlySet<string> softwareIds)
+        ResourceBreakdownSampleRequest request, ResourceMonitorScope scope, IReadOnlySet<string> residualDetailMetricIds)
     {
-        if (scope != ResourceMonitorScope.Details || !softwareIds.Any(static id => id.Equals("resource-residual:memory.usage", StringComparison.OrdinalIgnoreCase))
+        if (scope != ResourceMonitorScope.Details || !residualDetailMetricIds.Contains(ResourceBreakdownMetricIds.MemoryUsage)
             || !request.MetricIds.Any(IsPhysicalPrivateMetric))
             return request;
         // Preserve the requested counter facts. PFNs remain a separate dataset/item;

@@ -583,7 +583,7 @@ public sealed partial class ResourceMonitorDetailsSubscriptionTests
             { PhysicalMemoryResidual = expected });
         await using var app = await StartAsync(source);
         using var client = Client(app);
-        var selector = $"scope=details&ids={metric}&processDetails=resource-residual:memory.usage";
+        var selector = $"scope=details&ids={metric}&residualDetails=memory.usage";
         using var direct = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?"+selector));
         Assert.Equal("pfn",direct.RootElement.GetProperty("physicalMemoryResidual").GetProperty("source").GetString());
         Assert.Equal([metric, PhysicalMemoryResidualFrame.MetricId],Assert.Single(source.SnapshotRequests).MetricIds);

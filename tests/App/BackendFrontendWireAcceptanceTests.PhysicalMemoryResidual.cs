@@ -58,7 +58,7 @@ public sealed partial class BackendFrontendWireAcceptanceTests
             : PhysicalMemoryPfnTests.Frame(scenario == "negative-private");
         var source = new ResourceBreakdownSnapshot(PhysicalMemoryPfnTests.At, []) { PhysicalMemoryResidual = frame };
         var wire = ResourceProcessDetailsWireSnapshot.Create(source,["memory.usage"],
-            new HashSet<string>(["resource-residual:memory.usage"]));
+            new HashSet<string>(), residualDetailMetricIds: new HashSet<string>(["memory.usage"]));
         var decoded = await DecodePhysicalResidual("pfn-details",wire);
         using var expected = JsonDocument.Parse(JsonSerializer.Serialize(frame,WebJson));
         Assert.True(JsonElement.DeepEquals(expected.RootElement,decoded));

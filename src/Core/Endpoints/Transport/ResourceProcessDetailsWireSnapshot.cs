@@ -30,7 +30,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
         IReadOnlySet<string> requestedSoftwareIds,
         SchedulingProcessFactSnapshot? foundations = null,
         IReadOnlyDictionary<string, string>? scaleModes = null,
-        IReadOnlyList<string>? processMeasureIds = null)
+        IReadOnlyList<string>? processMeasureIds = null,
+        IReadOnlySet<string>? residualDetailMetricIds = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(metricIds);
@@ -40,7 +41,7 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             .Select(static id => id.Trim())
             .Where(static id => id.Length > 0)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (softwareIds.Count == 0)
+        if (softwareIds.Count == 0 && residualDetailMetricIds is not { Count: > 0 })
         {
             return new ResourceProcessDetailsWireSnapshot(null, []);
         }
@@ -67,7 +68,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             }
 
             var software = bar.Software
-                .Where(segment => softwareIds.Contains(segment.SoftwareId))
+                .Where(segment => ResourceBreakdownWireSnapshot.IncludesProcessDetails(
+                    bar, segment, softwareIds, residualDetailMetricIds))
                 .Select(static segment => new ResourceProcessDetailsSoftware(
                     segment.SoftwareId,
                     segment.Processes))
@@ -87,9 +89,9 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             }
         }
 
-        // A residual owner alone is not PFN demand. Reuse only the published PFN
-        // value, retaining its own capture time and status across counter captures.
-        var physical = softwareIds.Contains("resource-residual:memory.usage")
+        // Reuse only the selected published PFN value, retaining its own capture
+        // time and status across counter captures.
+        var physical = residualDetailMetricIds?.Contains(ResourceBreakdownMetricIds.MemoryUsage) == true
             && metricIds.Any(static id => id.Equals("memory.usage", StringComparison.OrdinalIgnoreCase)
                 || id.Equals("process_all_private_working_set_actual", StringComparison.OrdinalIgnoreCase)
                 || id.Equals(PhysicalMemoryResidualFrame.MetricId, StringComparison.OrdinalIgnoreCase))

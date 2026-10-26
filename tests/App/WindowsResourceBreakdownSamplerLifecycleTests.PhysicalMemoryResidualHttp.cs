@@ -69,7 +69,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         try
         {
             using var client = TrustedAccessEndpointTestAuthentication.Client(app);
-            var selector = $"scope=details&{selection}&processDetails=resource-residual:memory.usage";
+            var selector = $"scope=details&{selection}&residualDetails=memory.usage";
             using var empty = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?" + selector, deadline.Token));
             Assert.False(empty.RootElement.TryGetProperty("physicalMemoryResidual", out _));
             Assert.Empty(empty.RootElement.GetProperty("metrics").EnumerateArray());
@@ -113,7 +113,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             AssertCounterDetails(cached.RootElement, metric);
             Assert.Equal(pfnAt, cached.RootElement.GetProperty("physicalMemoryResidual").GetProperty("capturedAt").GetDateTimeOffset());
             using var unrelated = JsonDocument.Parse(await client.GetStringAsync(
-                "/api/resource-monitor/snapshot?scope=details&ids=cpu.usage&processDetails=resource-residual:memory.usage", deadline.Token));
+                "/api/resource-monitor/snapshot?scope=details&ids=cpu.usage&residualDetails=memory.usage", deadline.Token));
             Assert.False(unrelated.RootElement.TryGetProperty("physicalMemoryResidual", out _));
             Assert.DoesNotContain("system-memory/", unrelated.RootElement.GetRawText());
             Assert.Equal(publishedWalks, Volatile.Read(ref walks));

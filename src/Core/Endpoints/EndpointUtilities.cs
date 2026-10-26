@@ -105,6 +105,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
+    static IReadOnlySet<string> ParseResourceResidualDetailMetricIds(IQueryCollection query)
+    {
+        var totalMetricIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var metricId in query["residualDetails"].SelectMany(static value => (value ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        {
+            if (ResourceBreakdownMetricIds.IsSupported(metricId))
+            {
+                totalMetricIds.Add(metricId);
+                continue;
+            }
+            var field = ProcessMetricFieldRegistry.Find(metricId);
+            if (field?.ResourceFactTotalMetricId is not { } totalMetricId || field.AdditiveAcrossProcesses != true)
+                throw new ArgumentException($"Resource residual details metric '{metricId}' is unsupported.");
+            totalMetricIds.Add(totalMetricId);
+        }
+        return totalMetricIds;
+    }
+
     static ProcessSampleDetailLevel? ParseProcessSampleDetailLevel(string value)
     {
         return value.Trim().ToLowerInvariant() switch

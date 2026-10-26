@@ -53,11 +53,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : [];
             var scaleModes = ParseResourceScaleModes(request);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
+            IReadOnlySet<string> residualDetailMetricIds;
+            try { residualDetailMetricIds = ParseResourceResidualDetailMetricIds(request.Query); }
+            catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             var snapshot = await sampler.GetSnapshotAsync(metricIds, scaleModes, cancellationToken);
             return Results.Ok(ResourceBreakdownWireSnapshot.Create(
                 snapshot,
                 metricIds,
-                processDetailSoftwareIds, scaleModes: scaleModes, processMeasureIds: []));
+                processDetailSoftwareIds, scaleModes: scaleModes, processMeasureIds: [], residualDetailMetricIds: residualDetailMetricIds));
         }).AllowAnonymous();
 
         app.MapGet("/api/resource-monitor/snapshot", async (
@@ -72,13 +75,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var scaleModes = ParseResourceScaleModes(request);
             var processDetailSoftwareIds = ParseResourceBreakdownProcessDetailSoftwareIds(request);
             string[] measures;
-            try { measures = ParseResourceBarMeasures(request.Query); }
+            IReadOnlySet<string> residualDetailMetricIds;
+            try
+            {
+                measures = ParseResourceBarMeasures(request.Query);
+                residualDetailMetricIds = ParseResourceResidualDetailMetricIds(request.Query);
+            }
             catch (ArgumentException error) { return Results.BadRequest(new EndpointErrorPayload(error.Message)); }
             metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var sampleRequest = new ResourceBreakdownSampleRequest(
                 metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
             { ProcessMemoryFactIds = measures };
-            sampleRequest = SelectPhysicalResidualDetails(sampleRequest, scope, processDetailSoftwareIds);
+            sampleRequest = SelectPhysicalResidualDetails(sampleRequest, scope, residualDetailMetricIds);
             var sampledBreakdown = await breakdownSampler.GetSnapshotAsync(sampleRequest, cancellationToken);
             var foundations = ReadResourceFoundations(sampleRequest, request.HttpContext.RequestServices);
             if (scope == ResourceMonitorScope.Details)
@@ -86,14 +94,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 return Results.Ok(ResourceProcessDetailsWireSnapshot.Create(
                     sampledBreakdown,
                     metricIds,
-                    processDetailSoftwareIds, foundations, scaleModes, measures));
+                    processDetailSoftwareIds, foundations, scaleModes, measures, residualDetailMetricIds));
             }
 
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
                 processDetailSoftwareIds,
-                foundations, scaleModes, measures);
+                foundations, scaleModes, measures, residualDetailMetricIds);
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
                 breakdownWire.CapturedAt,

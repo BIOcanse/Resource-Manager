@@ -510,11 +510,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var processDetailSoftwareIds =
             ParseResourceBreakdownProcessDetailSoftwareIds(subscription.Query);
         var measures = ParseResourceBarMeasures(subscription.Query);
+        var residualDetailMetricIds = ParseResourceResidualDetailMetricIds(subscription.Query);
         metricIds = metricIds.Concat(measures).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var sampleRequest = new ResourceBreakdownSampleRequest(
             metricIds, scaleModes, ProcessSampleDetailLevel.ResourceTableBasic)
         { ProcessMemoryFactIds = measures };
-        sampleRequest = SelectPhysicalResidualDetails(sampleRequest, scope, processDetailSoftwareIds);
+        sampleRequest = SelectPhysicalResidualDetails(sampleRequest, scope, residualDetailMetricIds);
         var source = services.GetRequiredService<IResourceBreakdownPushSource>();
         if (scope == ResourceMonitorScope.Details)
         {
@@ -531,7 +532,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         ResourceProcessDetailsWireSnapshot.Create(
                             sampledBreakdown,
                             metricIds,
-                            processDetailSoftwareIds, ReadResourceFoundations(sampleRequest, services), scaleModes, measures),
+                            processDetailSoftwareIds, ReadResourceFoundations(sampleRequest, services), scaleModes, measures, residualDetailMetricIds),
                         cancellationToken);
                 }
             });
@@ -549,7 +550,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     sampledBreakdown,
                     metricIds,
                     processDetailSoftwareIds,
-                    ReadResourceFoundations(sampleRequest, services), scaleModes, measures);
+                    ReadResourceFoundations(sampleRequest, services), scaleModes, measures, residualDetailMetricIds);
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(
