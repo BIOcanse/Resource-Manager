@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhDetailsCopy = {
   cpuTopology: {
     modelLabel: "CPU 拓撲模型",
@@ -11,7 +12,7 @@ export const zhDetailsCopy = {
     cancel: "取消",
     reset: "重置",
     save: "儲存",
-    setCoreScore: (core: string) => `設定${core}效能分`,
+    setCoreScore: (core: string) => cjkText`設定${core}效能分`,
     logicalProcessorLabel: (id: number, executionTime: string) => `邏輯處理器 ${id}，執行時長 ${executionTime}`,
     logicalProcessorTitle: (group: number, index: number, executionTime: string) =>
       `處理器組 ${group} / 邏輯處理器 ${index} · 執行時長 ${executionTime}`,
@@ -49,7 +50,7 @@ export const zhDetailsCopy = {
     cacheSharedBy: (count: number) => `${count} 個物理核心共享`,
     cacheSingleCore: "單物理核心",
     cacheDetail: (level: string, size: string, scope: string, logicalIds: string) =>
-      `${level}級快取 ${size} · ${scope} · 邏輯處理器 ${logicalIds}`,
+      cjkText`${level}級快取 ${size} · ${scope} · 邏輯處理器 ${logicalIds}`,
     numaNode: (node: number, parts: string) => `NUMA 節點 ${node} · ${parts}`,
     numaCapacity: (value: string) => `容量：${value}`,
     numaAvailable: (value: string) => `可用：${value}`,

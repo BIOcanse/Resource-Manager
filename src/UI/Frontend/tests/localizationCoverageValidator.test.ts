@@ -32,3 +32,7 @@ assert.throws(() => flattenCopy(cycle), /contains a cycle/);
 const shared = { title: "NVAPI" };
 assert.deepEqual([...flattenCopy({ left: shared, right: shared })].sort(), [["left.title", "NVAPI"], ["right.title", "NVAPI"]]);
 console.log("Localization validator detects missing/type/empty/prose/function/parameter/script defects and preserves neutral terms.");
+assert.equal(inspectText("zh-CN", "app.fan", "CPU风扇", "CPU fan").some(issue => issue.kind === "cjk-spacing"), true);
+assert.equal(inspectText("zh-CN", "app.fan", "CPU 风扇", "CPU fan").some(issue => issue.kind === "cjk-spacing"), false);
+assert.equal(inspectText("ja-JP", "app.rows", "1行あたり", "Per row").some(issue => issue.kind === "cjk-spacing"), true);
+assert.equal(inspectText("ko-KR", "app.gpu", "GPU를", "GPU").some(issue => issue.kind === "cjk-spacing"), false);

@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 
 export const zhMonitorCopy = {
@@ -24,15 +25,15 @@ export const zhMonitorCopy = {
     emptyMetric: "空指標",
     slotLabel: (card: number, index: number) => `第 ${card} 張卡片第 ${index} 項`,
     addSlot: (card: number) => `在第 ${card} 張卡片新增監控項目`,
-    resizeSlot: (slot: string, metric: string) => `變更${slot}的大小：${metric}`,
+    resizeSlot: (slot: string, metric: string) => cjkText`變更${slot}的大小：${metric}`,
     slotSize: { small: "最小", medium: "中", large: "大", full: "超大" },
     slotSizeHint: { small: "1 個單位", medium: "2 個單位", large: "3 個單位", full: "佔滿整張卡片" },
     currentSize: "目前大小",
-    trendLabel: (label: string, count: number) => `${label}最近 ${count} 次讀數的趨勢`,
+    trendLabel: (label: string, count: number) => cjkText`${label}最近 ${count} 次讀數的趨勢`,
     trendLow: "最低",
     trendHigh: "最高",
-    replaceMetric: (slot: string, metric: string) => `更換${slot}：${metric}`,
-    removeMetric: (slot: string, metric: string) => `刪除${slot}：${metric}`,
+    replaceMetric: (slot: string, metric: string) => cjkText`更換${slot}：${metric}`,
+    removeMetric: (slot: string, metric: string) => cjkText`刪除${slot}：${metric}`,
     catalogUnavailable: "指標目錄暫不可用",
     metricUnavailable: "指標不可用",
     deviceAbsent: "裝置不在",
@@ -128,7 +129,7 @@ export const zhMonitorCopy = {
       }
     },
     systemResidualRow: (metric: string) => `系統/驅動保留 · ${metric}`,
-    columnSourceLabel: (column: string) => `${column}的來源`,
+    columnSourceLabel: (column: string) => cjkText`${column}的來源`,
     memoryQuantities: {
       working_set_including_shared: "工作集（含共享頁）",
       private_working_set: "私有工作集",

@@ -24,7 +24,7 @@ export const zhSoftwareActionsCopy = {
     openPropertiesFailed: "開啟屬性失敗",
     processActionDone: "程序操作已完成",
     processActionResult: (succeeded: number, total: number) => `已完成 ${succeeded} / ${total} 個程序操作。`,
-    criticalProcessProtected: "Windows關鍵程序受到保護，無法結束。",
+    criticalProcessProtected: "Windows 關鍵程序受到保護，無法結束。",
     processActionNeedsElevation: "此程序操作需要管理員授權。",
     uninstallerLaunchRequested: "已向使用者桌面請求啟動解除安裝程式；需要提升權限時由 Windows 提示。完成後請重新整理軟體清單。",
     uninstallerSessionUnavailable: "使用者工作階段已結束或變更，未啟動解除安裝程式。",

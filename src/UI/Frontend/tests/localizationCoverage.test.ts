@@ -28,6 +28,8 @@ interface FunctionCase<T> {
   requiresTranslation: boolean;
 }
 const appCases: FunctionCase<AppCopy>[] = [
+  // 插值是拉丁字母开头时，中文和日文在边界上空一格（"正在加载 GPU 调度数据"）。
+  { path: "observationNotice.loading", render: copy => copy.observationNotice.loading("GPU scheduling"), parameters: ["GPU scheduling"], requiresTranslation: true },
   { path: "resourceBreakdown.etwResidualProcess", render: copy => copy.resourceBreakdown.etwResidualProcess("worker.exe"), parameters: ["worker.exe", "DXGKrnl/VidMm"], requiresTranslation: true },
   { path: "smartReport.processTarget", render: copy => copy.smartReport.processTarget("Tool-A", 42), parameters: ["Tool-A", "42"], requiresTranslation: true },
   { path: "optimization.evaluationFailed", render: copy => copy.optimization.evaluationFailed(), parameters: [], requiresTranslation: true },

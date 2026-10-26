@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 import { zhControlPresentationCopy } from "./controlPresentation.ts";
 export const zhShellCopy = {
   common: {
@@ -187,7 +188,7 @@ export const zhShellCopy = {
         root: "root 模式下某些設定調整極度危險，極大可能造成系統不穩定或者永久性硬體損傷，"
           + "調整硬體配置造成的一切後果本軟體概不負責。"
       },
-      confirmTitle: (name: string) => `切到${name}檔？`,
+      confirmTitle: (name: string) => cjkText`切到${name}檔？`,
       confirmAction: "切過去",
       cancel: "取消",
       saveFailed: "切換失敗，還在原來那一檔。"
@@ -239,7 +240,7 @@ export const zhShellCopy = {
       "hwmon": "核心風扇通道 (hwmon)",
       portable: "膝上型電腦",
       fixed: "桌面主機",
-      cpu: "CPU風扇",
+      cpu: "CPU 風扇",
       gpu: "顯示卡風扇",
       intake: "內吹風扇",
       case: "機箱風扇"

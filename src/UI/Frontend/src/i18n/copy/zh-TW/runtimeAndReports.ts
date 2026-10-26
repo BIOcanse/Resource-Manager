@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhRuntimeAndReportsCopy = {
   smartReport: {
     processTarget: (name: string, pid: number) => `${name}（處理程序 ${pid}）`,
@@ -11,7 +12,7 @@ export const zhRuntimeAndReportsCopy = {
     empty: "暫無智慧排程記錄。",
     details: "詳細資訊",
     fallbackTarget: "排程",
-    detailTitle: (target: string) => `${target}詳細資訊`,
+    detailTitle: (target: string) => cjkText`${target}詳細資訊`,
     readFailed: "智慧排程報告讀取失敗",
     section: {
       result: "排程結果",
@@ -65,11 +66,11 @@ export const zhRuntimeAndReportsCopy = {
     noBrowsers: "未發現可複用的瀏覽器。",
     currentFallback: "當前備用",
     fallbackRuntimeName: "執行時",
-    detailTitle: (name: string) => `${name}詳細資訊`,
+    detailTitle: (name: string) => cjkText`${name}詳細資訊`,
     version: (value: string) => `版本 ${value}`,
     unknown: "未知",
     details: "詳細資訊",
-    detailsOf: (name: string) => `${name}詳細資訊`,
+    detailsOf: (name: string) => cjkText`${name}詳細資訊`,
     sharedRuntimePurpose: "供本機 WebView2 軟體共同使用的共享介面執行時。",
     externalBrowserPurpose: "供支援外部瀏覽器的軟體開啟 Web 介面；不能作為 WebView2 嵌入執行時。",
     chromiumReusePurpose: "供支援外部 Chromium 瀏覽器的軟體複用。",

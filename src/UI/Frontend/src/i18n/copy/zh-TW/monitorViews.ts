@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhMonitorViewsCopy = {
   resourceBreakdownView: {
     itemCount: (count: number) => `${count} 個專案`,
@@ -102,10 +103,10 @@ export const zhMonitorViewsCopy = {
     additionalRoots: (count: number) => `另有 ${count} 個目錄`
   },
   observationNotice: {
-    loading: (label: string) => `正在載入${label}`,
-    stale: (label: string) => `正在顯示最近一次${label}`,
-    unavailable: (label: string) => `${label}暫不可用`,
-    profileDisabled: (label: string) => `${label}在當前啟動配置中不可用`,
+    loading: (label: string) => cjkText`正在載入${label}`,
+    stale: (label: string) => cjkText`正在顯示最近一次${label}`,
+    unavailable: (label: string) => cjkText`${label}暫不可用`,
+    profileDisabled: (label: string) => cjkText`${label}在當前啟動配置中不可用`,
     profileDisabledDetail: "當前啟動配置未提供該資料來源。",
     staleDetail: "實時重新整理失敗，以下內容不是當前狀態。",
     capturedAt: (time: string) => `採集於 ${time}`,

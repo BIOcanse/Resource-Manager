@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhOptimizationCopy = {
   optimization: {
     evaluationPending: "尚未完成報告評估。",
@@ -9,7 +10,7 @@ export const zhOptimizationCopy = {
     modeLimited: "記憶體排程",
     modeCpu: "CPU 排程",
     modeGpu: "GPU 排程",
-    modeApplyCountdown: (seconds: number, mode: string) => `${seconds}秒後應用：${mode}`,
+    modeApplyCountdown: (seconds: number, mode: string) => cjkText`${seconds}秒後應用：${mode}`,
     modeSwitching: "切換中",
     scheduleStateUnknown: "排程狀態未知",
     smartSchedulerRunning: "排程執行中",
@@ -66,7 +67,7 @@ export const zhOptimizationCopy = {
     },
     title: {
       gameBackgroundResourceUsage: (name: string) => `${name} 在遊戲執行時仍有後臺佔用`,
-      backgroundHighUsage: (name: string, resource: string) => `${name} 的後臺${resource}佔用較高`,
+      backgroundHighUsage: (name: string, resource: string) => cjkText`${name} 的後臺${resource}佔用較高`,
       backgroundPersistentMicroUsage: (name: string) => `${name} 持續產生少量後臺佔用`,
       vramResidency: (name: string) => `${name} 長時間佔用視訊記憶體`,
       diskPressure: (name: string) => `${name} 的可用空間不足`,
@@ -97,7 +98,7 @@ export const zhOptimizationCopy = {
       cpuSustainedThermalThrottling: "處理器效能正在因溫度持續降低。",
       systemInterruptPressure: "硬體或驅動活動正在佔用較多處理器時間。",
       generic: (resource: string, current: string, average: string) =>
-        `當前${resource}為 ${current}，觀察平均值為 ${average}。`
+        cjkText`當前${resource}為 ${current}，觀察平均值為 ${average}。`
     },
     detail: {
       currentSituation: "當前情況",

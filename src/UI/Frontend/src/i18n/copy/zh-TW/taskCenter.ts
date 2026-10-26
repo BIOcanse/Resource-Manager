@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhTaskCenterCopy = {
   taskCenter: {
     tabActive: "進行中",
@@ -12,7 +13,7 @@ export const zhTaskCenterCopy = {
     noTasksInFilter: "此篩選下沒有任務",
     sourceOperation: "後端操作",
     sourceFrontend: "介面任務",
-    progressLabel: (title: string) => `${title}進度`,
+    progressLabel: (title: string) => cjkText`${title}進度`,
     needsResync: "任務狀態需要與本機服務重新確認。",
     taskFailed: "任務未完成",
     taskCompleted: "任務已完成",

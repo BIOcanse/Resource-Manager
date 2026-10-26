@@ -25,7 +25,7 @@ export const componentCatalog: AppCopy["componentCatalog"] = {
     "cpuFanPercent": "CPU ファンの割合",
     "gpuFanRpm": "GPU ファン回転数",
     "gpuFanPercent": "GPU ファンの割合",
-    "vendorAdapters": "ノートPCメーカー用アダプター",
+    "vendorAdapters": "ノート PC メーカー用アダプター",
     "gpuClocks": "GPU クロック",
     "gpuMemory": "ビデオメモリ",
     "gpuPower": "GPU 消費電力",

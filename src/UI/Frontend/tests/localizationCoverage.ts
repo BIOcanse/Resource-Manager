@@ -1,7 +1,9 @@
+import { cjkLatinGaps } from "../src/i18n/cjkSpacing.ts";
+
 export interface LocalizationIssue {
   language: string;
   path: string;
-  kind: "missing" | "type" | "empty" | "untranslated-english" | "unexpected-han" | "simplified-chinese" | "parameter" | "consumer";
+  kind: "missing" | "type" | "empty" | "untranslated-english" | "unexpected-han" | "simplified-chinese" | "parameter" | "consumer" | "cjk-spacing";
   actual: unknown;
 }
 
@@ -52,6 +54,10 @@ export function inspectText(language: string, path: string, actual: unknown, eng
   }
   if (!/^(?:zh|ja)-/.test(language) && /\p{Script=Han}/u.test(actual)) {
     issues.push(issue("unexpected-han"));
+  }
+  // 中文和日文：汉字、假名与拉丁字母、数字之间空一格（i18n/cjkSpacing.ts）。
+  if (/^(?:zh|ja)-/.test(language) && cjkLatinGaps(actual).length > 0) {
+    issues.push(issue("cjk-spacing"));
   }
   return issues;
 }

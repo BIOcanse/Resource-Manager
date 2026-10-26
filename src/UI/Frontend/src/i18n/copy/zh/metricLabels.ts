@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 // 指标名称按后端稳定 id 映射；{index} 代表 GPU / 磁盘 / 风扇序号。
 export const zhMetricLabelsCopy = {
   metricLabel: {
@@ -47,7 +48,7 @@ export const zhMetricLabelsCopy = {
     "disk.total.readBytesPerSec": "磁盘读取",
     "disk.total.writeBytesPerSec": "磁盘写入",
     "disk.total.queueLength": "磁盘队列",
-    "disk.{index}.temperature": (index: string) => `磁盘${index} 温度`,
+    "disk.{index}.temperature": (index: string) => cjkText`磁盘${index} 温度`,
     "network.total.receiveBytesPerSec": "网络接收",
     "network.total.sendBytesPerSec": "网络发送",
     "network.total.utilizationPercent": "网络利用率",
@@ -55,8 +56,8 @@ export const zhMetricLabelsCopy = {
     "system.motherboardVoltage": "主板电压",
     "system.vrmTemperature": "供电温度",
     "system.chipsetTemperature": "芯片组温度",
-    "fan.{index}.speed": (index: string) => `风扇${index}`,
-    "fan.{index}.speedPercent": (index: string) => `风扇${index} 百分比`,
+    "fan.{index}.speed": (index: string) => cjkText`风扇${index}`,
+    "fan.{index}.speedPercent": (index: string) => cjkText`风扇${index} 百分比`,
     "gpu.{index}.usage": (index: string) => `GPU${index} 占用率`,
     "gpu.{index}.graphicsClock": (index: string) => `GPU${index} 频率`,
     "gpu.{index}.graphicsClockPercent": (index: string) => `GPU${index} 频率百分比`,

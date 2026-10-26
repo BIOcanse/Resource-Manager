@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhRuntimeErrorsCopy = {
   apiError: {
     readFailed: "讀取資料失敗，請稍後重試",
@@ -110,7 +111,7 @@ export const zhRuntimeErrorsCopy = {
     softwareMetadataReadFailed: "讀取軟體說明失敗，請稍後重試",
     settingsNotCommitted: "服務端未提交設定",
     close: "關閉",
-    keyFacts: (deviceType: string) => `${deviceType}關鍵資訊`,
+    keyFacts: (deviceType: string) => cjkText`${deviceType}關鍵資訊`,
     optimizationRuntimeDisabled: "當前啟動模式未啟用最佳化執行時",
     precisePlacementDisabled: "當前啟動模式未啟用精確 GPU 放置",
     publicServicesNotRunning: "當前啟動配置未執行公共服務。以下專案顯示已儲存配置，不表示對應服務正在執行。",
@@ -124,11 +125,11 @@ export const zhRuntimeErrorsCopy = {
     transportCanceled: "請求已取消",
     transportTimeout: "等待本機服務響應超時，請重試",
     transportUnreadable: "本機服務返回的資料無法讀取，請重試",
-    pageUnavailable: (name: string) => `${name}暫時不可用`,
-    pageRetryFailed: (name: string) => `${name}重試失敗`,
+    pageUnavailable: (name: string) => cjkText`${name}暫時不可用`,
+    pageRetryFailed: (name: string) => cjkText`${name}重試失敗`,
     retrying: "正在重試",
     retry: "重試",
-    lastGoodContent: (name: string) => `${name}上次可用內容`,
+    lastGoodContent: (name: string) => cjkText`${name}上次可用內容`,
     detailsTab: {
       device: "裝置拓撲",
       gpu: "GPU 排程模型",
@@ -148,7 +149,7 @@ export const zhRuntimeErrorsCopy = {
     waitingFirstPerformance: "正在等待第一組效能資料。",
     details: "詳細資訊",
     fallbackOperation: "操作",
-    operationDetailTitle: (name: string) => `${name}詳情`,
+    operationDetailTitle: (name: string) => cjkText`${name}詳情`,
     relatedInfo: "相關資訊",
     content: "內容",
     infoIndex: (index: number) => `資訊 ${index}`,

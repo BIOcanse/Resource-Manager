@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhDeviceDetailsCopy = {
   deviceSpecialized: {
     metricFields: {
@@ -6,7 +7,7 @@ export const zhDeviceDetailsCopy = {
       amdNpuHint: "AMD ADLX 針對這張顯示卡回報的廠商數值，與 NPU 裝置的系統忙碌率不是同一口徑，也不代表對應哪一個 NPU 裝置。",
       unavailable: "無法使用"
     },
-    sectionLabel: (deviceType: string) => `${deviceType}專屬資訊`,
+    sectionLabel: (deviceType: string) => cjkText`${deviceType}專屬資訊`,
     keyboardInput: "鍵盤輸入",
     pointerInput: "指標輸入",
     activeResolution: "活動解析度",

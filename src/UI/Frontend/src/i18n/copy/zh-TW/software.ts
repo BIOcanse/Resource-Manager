@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhSoftwareCopy = {
   softwareKind: {
     Unclassified: "未分類",
@@ -63,13 +64,13 @@ export const zhSoftwareCopy = {
     issueHeading: "問題提示",
     issueCurrentReport: "當前報告",
     issueKnownCatalog: "已知問題目錄",
-    issueReferences: (label: string) => `${label}參考資料`
+    issueReferences: (label: string) => cjkText`${label}參考資料`
   },
   managementPage: {
     browserRuntimeTab: "執行時管理",
     migrationTab: "遷移工作臺",
-    pageLabel: (kind: string) => `${kind}管理`,
-    searchLabel: (kind: string) => `${kind}搜尋`,
+    pageLabel: (kind: string) => cjkText`${kind}管理`,
+    searchLabel: (kind: string) => cjkText`${kind}搜尋`,
     search: "搜尋",
     itemCount: (count: number) => `${count} 項`,
     softwareRegistrySupplement: "軟體登記補充項",

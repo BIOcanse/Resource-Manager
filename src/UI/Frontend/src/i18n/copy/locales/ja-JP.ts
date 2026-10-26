@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ja-JP-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
@@ -66,7 +67,7 @@ const jaJpAppCopy: AppCopy = {
     "retry": "再読み込み",
     "defaultValue": "既定値",
     "reset": "既定値に戻す",
-    "executableNamesHelp": "実行ファイル名を拡張子なしで1行に1つ入力します（node.exe ではなく node）。空のリストではレポートは生成されません。",
+    "executableNamesHelp": "実行ファイル名を拡張子なしで 1 行に 1 つ入力します（node.exe ではなく node）。空のリストではレポートは生成されません。",
     "ruleLabels": {
       "cpu_throttle_temperature": "CPU 温度",
       "cpu_throttle_usage": "CPU 使用率",
@@ -101,7 +102,7 @@ const jaJpAppCopy: AppCopy = {
       "not-editable": "この項目は編集できません。",
       "out-of-range": "値が許容範囲外です。",
       "clear-on-wrong-side": "解除しきい値は有効化しきい値の安全側に設定してください。",
-      "invalid-executable-names": "ツール一覧が無効です。最大256件、各1～260文字で、/、\\、: および大文字小文字を区別しない重複は使用できません。"
+      "invalid-executable-names": "ツール一覧が無効です。最大 256 件、各 1～260 文字で、/、\\、: および大文字小文字を区別しない重複は使用できません。"
     }
   },
   control: {
@@ -335,7 +336,7 @@ const jaJpAppCopy: AppCopy = {
   "control-range-fixed": "ドライバーが報告した範囲は変更できません。",
   "control-number-required": "この設定には有効な数値が必要です。",
   "control-toggle-required": "この設定にはオン・オフの値が必要です。",
-  "control-nonnegative-integer-required": "電力オフセットには範囲内の0以上の整数が必要です。",
+  "control-nonnegative-integer-required": "電力オフセットには範囲内の 0 以上の整数が必要です。",
   "control-firmware-locked": "ファームウェアがこの設定をロックしているため、ドライバーは変更を拒否します。",
   "control-reading-missing": "ドライバーからこの設定の現在値が提供されていません。",
   "control-permission-required": "この設定の変更にはドライバーが管理者権限を要求しています。",
@@ -384,8 +385,8 @@ const jaJpAppCopy: AppCopy = {
       },
       clockRangeRejected: (minimum: number, maximum: number, unit: string) => `ドライバーがクロック範囲 [${minimum}, ${maximum}] ${unit} を拒否しました。`,
   readbackMismatch: (requested: number, observed: number, unit: string) => `要求値 ${requested} ${unit}、読み取り値 ${observed} ${unit}。適用を確認できません。`,
-      presetNameLimit: (limit: number) => `プリセット名は1〜${limit}文字にしてください。`,
-      presetCountLimit: (limit: number) => `デバイスごとに保存できるプリセットは${limit}個までです。先に1つ削除してください。`,
+      presetNameLimit: (limit: number) => cjkText`プリセット名は 1〜${limit}文字にしてください。`,
+      presetCountLimit: (limit: number) => cjkText`デバイスごとに保存できるプリセットは${limit}個までです。先に 1 つ削除してください。`,
       "powerLimitPl1": "持続電力の上限（PL1）",
       "fanName": (index        ) => `ファン ${index}`,
       "gpuFanControllerName": (index        ) => `グラフィックスファンコントローラー（GPU${index}）`,
@@ -487,8 +488,8 @@ const jaJpAppCopy: AppCopy = {
   managementPage: {
     browserRuntimeTab: "ランタイム",
     migrationTab: "移行ワークベンチ",
-    pageLabel: (kind: string) => `${kind}の管理`,
-    searchLabel: (kind: string) => `${kind}を検索`,
+    pageLabel: (kind: string) => cjkText`${kind}の管理`,
+    searchLabel: (kind: string) => cjkText`${kind}を検索`,
     search: "検索",
     itemCount: (count: number) => `${count} 件`,
     softwareRegistrySupplement: "ソフトウェア レジストリの追加分",
@@ -568,7 +569,7 @@ const jaJpAppCopy: AppCopy = {
     issueHeading: "問題のお知らせ",
     issueCurrentReport: "現在のレポート",
     issueKnownCatalog: "既知の問題カタログ",
-    issueReferences: (label: string) => `${label}の参考資料`
+    issueReferences: (label: string) => cjkText`${label}の参考資料`
   },
   manualSoftware: {
     addAdapted: "対応済みソフトウェアを追加",
@@ -599,15 +600,15 @@ const jaJpAppCopy: AppCopy = {
     emptyMetric: "空のメトリック",
     slotLabel: (card: number, index: number) => `カード ${card} の項目 ${index}`,
     addSlot: (card: number) => `カード ${card} にメトリックを追加`,
-    resizeSlot: (slot: string, metric: string) => `${slot}のサイズを変更: ${metric}`,
+    resizeSlot: (slot: string, metric: string) => cjkText`${slot}のサイズを変更: ${metric}`,
     slotSize: { small: "小", medium: "中", large: "大", full: "全面" },
     slotSizeHint: { small: "1 単位", medium: "2 単位", large: "3 単位", full: "カード全体" },
     currentSize: "現在のサイズ",
     trendLabel: (label: string, count: number) => `${label}: 直近 ${count} 回の読み取り値の推移`,
     trendLow: "最低",
     trendHigh: "最高",
-    replaceMetric: (slot: string, metric: string) => `${slot}を置き換え: ${metric}`,
-    removeMetric: (slot: string, metric: string) => `${slot}を削除: ${metric}`,
+    replaceMetric: (slot: string, metric: string) => cjkText`${slot}を置き換え: ${metric}`,
+    removeMetric: (slot: string, metric: string) => cjkText`${slot}を削除: ${metric}`,
     catalogUnavailable: "メトリック カタログを取得できません",
     metricUnavailable: "メトリックを取得できません",
     deviceAbsent: "デバイスがありません",
@@ -655,7 +656,7 @@ const jaJpAppCopy: AppCopy = {
     statusFallback: "データなし",
     scaleCapacity: "空きを含む",
     scaleActive: "現在の使用量",
-    selectionLabel: (metric: string) => `${metric}のソフトウェア使用量の選択`,
+    selectionLabel: (metric: string) => cjkText`${metric}のソフトウェア使用量の選択`,
     empty: "空き",
     emptyPercent: "空きの割合",
     systemPercent: "システムの割合",
@@ -703,7 +704,7 @@ const jaJpAppCopy: AppCopy = {
       }
     },
     systemResidualRow: (metric: string) => `システム／ドライバー予約 · ${metric}`,
-    columnSourceLabel: (column: string) => `${column}のソース`,
+    columnSourceLabel: (column: string) => cjkText`${column}のソース`,
     memoryQuantities: {
       working_set_including_shared: "ワーキングセット（共有ページを含む）",
       private_working_set: "プライベートワーキングセット",
@@ -739,10 +740,10 @@ const jaJpAppCopy: AppCopy = {
     emptyDetail: "編集モードに入って、表示するリソース メトリックを選んでください。",
     noDataDetail: "表示できるデータがまだ届いていません。データ ソースの準備ができ次第、自動的に更新されます。",
     editorLabel: "リソース使用量項目のエディター",
-    scaleModeLabel: (metric: string) => `${metric}のスケール モード`,
-    moveUp: (label: string) => `${label}を上へ移動`,
+    scaleModeLabel: (metric: string) => cjkText`${metric}のスケール モード`,
+    moveUp: (label: string) => cjkText`${label}を上へ移動`,
     moveUpTitle: "上へ移動",
-    moveDown: (label: string) => `${label}を下へ移動`,
+    moveDown: (label: string) => cjkText`${label}を下へ移動`,
     moveDownTitle: "下へ移動",
     unavailable: "取得できません",
     processUsage: (name: string) => `${name} のプロセス使用量`,
@@ -770,12 +771,12 @@ const jaJpAppCopy: AppCopy = {
     emptyTitle: "現在表示できるリソースがありません",
     emptyDetail: "サンプリングは完了しましたが、このビューにはソフトウェアやプロセスのレコードがありません。",
     columnEditorLabel: "リソース一覧の列エディター",
-    showColumn: (column: string) => `${column}列を表示`,
-    moveColumnLeft: (column: string) => `${column}列を左へ移動`,
+    showColumn: (column: string) => cjkText`${column}列を表示`,
+    moveColumnLeft: (column: string) => cjkText`${column}列を左へ移動`,
     moveLeftTitle: "左へ移動",
-    moveColumnRight: (column: string) => `${column}列を右へ移動`,
+    moveColumnRight: (column: string) => cjkText`${column}列を右へ移動`,
     moveRightTitle: "右へ移動",
-    resizeColumn: (column: string) => `${column}列の幅を変更`,
+    resizeColumn: (column: string) => cjkText`${column}列の幅を変更`,
     moreActions: (name: string) => `その他の操作: ${name}`,
     currentItem: "この項目",
     heatSharedLegend: "数値の下のバー：実線は専有、破線は共有按分",
@@ -830,10 +831,10 @@ const jaJpAppCopy: AppCopy = {
     additionalRoots: (count: number) => `他に ${count} 個のディレクトリ`
   },
   observationNotice: {
-    loading: (label: string) => `${label}を読み込み中`,
-    stale: (label: string) => `最後の${label}を表示しています`,
-    unavailable: (label: string) => `${label}を取得できません`,
-    profileDisabled: (label: string) => `この起動プロファイルでは${label}を利用できません`,
+    loading: (label: string) => cjkText`${label}を読み込み中`,
+    stale: (label: string) => cjkText`最後の${label}を表示しています`,
+    unavailable: (label: string) => cjkText`${label}を取得できません`,
+    profileDisabled: (label: string) => cjkText`この起動プロファイルでは${label}を利用できません`,
     profileDisabledDetail: "この起動プロファイルはそのデータ ソースを提供しません。",
     staleDetail: "ライブ更新に失敗したため、以下の内容は現在の状態ではありません。",
     capturedAt: (time: string) => `取得時刻 ${time}`,
@@ -1035,7 +1036,7 @@ const jaJpAppCopy: AppCopy = {
     },
     title: {
       gameBackgroundResourceUsage: (name: string) => `ゲームの実行中も ${name} がリソースを使い続けています`,
-      backgroundHighUsage: (name: string, resource: string) => `${name} のバックグラウンド${resource}使用量が多くなっています`,
+      backgroundHighUsage: (name: string, resource: string) => cjkText`${name} のバックグラウンド${resource}使用量が多くなっています`,
       backgroundPersistentMicroUsage: (name: string) => `${name} が小さなバックグラウンド使用を続けています`,
       vramResidency: (name: string) => `${name} が VRAM を長時間占有しています`,
       diskPressure: (name: string) => `${name} の空き容量が不足しています`,
@@ -1066,7 +1067,7 @@ const jaJpAppCopy: AppCopy = {
       cpuSustainedThermalThrottling: "温度によってプロセッサのパフォーマンスが下げられています。",
       systemInterruptPressure: "ハードウェアまたはドライバーの処理がプロセッサ時間を多く使っています。",
       generic: (resource: string, current: string, average: string) =>
-        `現在の${resource}は ${current}、観測された平均は ${average} です。`
+        cjkText`現在の${resource}は ${current}、観測された平均は ${average} です。`
     },
     detail: {
       currentSituation: "現在の状況",
@@ -1130,7 +1131,7 @@ const jaJpAppCopy: AppCopy = {
       "progressive": "プログレッシブ",
       "source": "宣言の出所と位置",
       "code": "元のコード",
-      "descriptor": "元の記述子（16進数）",
+      "descriptor": "元の記述子（16 進数）",
       "formula": "式",
       "reduced": "短縮ブランキング",
       "native": "ネイティブフラグ",
@@ -1166,7 +1167,7 @@ const jaJpAppCopy: AppCopy = {
       "pixelRepetition": "水平ピクセル反復数",
       "gtfStart": "GTF 開始水平周波数",
       "cvtVersion": "CVT バージョン",
-      "maxActivePixels": "1行あたりの最大有効ピクセル",
+      "maxActivePixels": "1 行あたりの最大有効ピクセル",
       "aspectRatioMask": "対応アスペクト比マスク",
       "aspectRatioCode": "優先アスペクト比コード",
       "standardBlanking": "標準ブランキング",
@@ -1205,11 +1206,11 @@ const jaJpAppCopy: AppCopy = {
     refresh: "更新",
     unavailable: "デバイス トポロジを取得できません",
     loading: "デバイス トポロジを読み取り中...",
-    listLabel: (scope: string) => `${scope}の一覧`,
+    listLabel: (scope: string) => cjkText`${scope}の一覧`,
     itemCount: (count: number) => `${count} 件`,
-    searchPlaceholder: (scope: string) => `${scope}を検索`,
+    searchPlaceholder: (scope: string) => cjkText`${scope}を検索`,
     noMatch: "一致する項目はありません。",
-    noneFound: (scope: string) => `${scope}は検出されませんでした。`,
+    noneFound: (scope: string) => cjkText`${scope}は検出されませんでした。`,
     topView: "コンピューターの上面図",
     baseBoardManufacturerUnknown: "マザーボードのメーカー不明",
     baseBoardProductUnknown: "マザーボードのモデル不明",
@@ -1407,7 +1408,7 @@ const jaJpAppCopy: AppCopy = {
       amdNpuHint: "AMD ADLX がこのグラフィックス カードについて報告するベンダー値です。NPU デバイスのシステム使用率とは測り方が異なり、どの NPU デバイスの値かを示すものではありません。",
       unavailable: "利用不可"
     },
-    sectionLabel: (deviceType: string) => `${deviceType}固有の情報`,
+    sectionLabel: (deviceType: string) => cjkText`${deviceType}固有の情報`,
     keyboardInput: "キーボード入力",
     pointerInput: "ポインター入力",
     activeResolution: "現在の解像度",
@@ -1698,7 +1699,7 @@ const jaJpAppCopy: AppCopy = {
     cancel: "キャンセル",
     reset: "リセット",
     save: "保存",
-    setCoreScore: (core: string) => `${core}のパフォーマンス スコアを設定`,
+    setCoreScore: (core: string) => cjkText`${core}のパフォーマンス スコアを設定`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `論理プロセッサ ${id}、実行時間 ${executionTime}`,
     logicalProcessorTitle: (group: number, index: number, executionTime: string) =>
@@ -2045,7 +2046,7 @@ const jaJpAppCopy: AppCopy = {
     openPropertiesFailed: "プロパティを開けませんでした",
     processActionDone: "プロセスの操作が完了しました",
     processActionResult: (succeeded: number, total: number) => `${total} 件中 ${succeeded} 件のプロセス操作が完了しました。`,
-    criticalProcessProtected: "Windowsの重要なプロセスは保護されているため、終了できません。",
+    criticalProcessProtected: "Windows の重要なプロセスは保護されているため、終了できません。",
     processActionNeedsElevation: "このプロセス操作には管理者の承認が必要です。",
     uninstallerLaunchRequested: "デスクトップでアンインストーラーの起動を要求しました。権限昇格が必要な場合は Windows が確認します。完了後にソフトウェア一覧を更新してください。",
     uninstallerSessionUnavailable: "ユーザーセッションが終了または変更されたため、アンインストーラーを起動しませんでした。",
@@ -2478,7 +2479,7 @@ const jaJpAppCopy: AppCopy = {
     browserRuntimeState: "ブラウザー ランタイムの状態"
   },
   appShellExtras: {
-    metricNeedsComponent: (metric: string, component: string) => `${metric}には${component}が必要です`,
+    metricNeedsComponent: (metric: string, component: string) => cjkText`${metric}には${component}が必要です`,
     currentState: (state: string) => `現在の状態: ${state}`,
     goToComponents: "「コンポーネントとソフトウェア」を開いてインストールまたは確認しますか?",
     cancelTaskFailed: "タスクをキャンセルできませんでした"
@@ -2499,7 +2500,7 @@ const jaJpAppCopy: AppCopy = {
     softwareMetadataReadFailed: "ソフトウェアの説明の読み取りに失敗しました。しばらくしてから再試行してください",
     settingsNotCommitted: "サービスが設定を確定しませんでした",
     close: "閉じる",
-    keyFacts: (deviceType: string) => `${deviceType}の主な情報`,
+    keyFacts: (deviceType: string) => cjkText`${deviceType}の主な情報`,
     optimizationRuntimeDisabled: "この起動プロファイルは最適化ランタイムを有効にしません",
     precisePlacementDisabled: "この起動プロファイルは精密な GPU 配置を有効にしません",
     publicServicesNotRunning: "この起動プロファイルは公開サービスを実行しません。以下の項目は保存された構成であり、実行中のサービスではありません。",
@@ -2513,11 +2514,11 @@ const jaJpAppCopy: AppCopy = {
     transportCanceled: "要求はキャンセルされました",
     transportTimeout: "ローカル サービスの待機がタイムアウトしました。再試行してください",
     transportUnreadable: "ローカル サービスが返したデータを読み取れませんでした。再試行してください",
-    pageUnavailable: (name: string) => `${name}は一時的に利用できません`,
-    pageRetryFailed: (name: string) => `${name}の再試行に失敗しました`,
+    pageUnavailable: (name: string) => cjkText`${name}は一時的に利用できません`,
+    pageRetryFailed: (name: string) => cjkText`${name}の再試行に失敗しました`,
     retrying: "再試行中",
     retry: "再試行",
-    lastGoodContent: (name: string) => `${name}の最後に利用できた内容`,
+    lastGoodContent: (name: string) => cjkText`${name}の最後に利用できた内容`,
     detailsTab: {
       device: "デバイス トポロジ",
       gpu: "GPU スケジューリング モデル",

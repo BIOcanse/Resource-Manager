@@ -1,3 +1,4 @@
+import { cjkText } from "../../cjkSpacing.ts";
 export const zhDeviceTopologyCopy = {
   deviceTopology: {
     edid: {
@@ -104,11 +105,11 @@ export const zhDeviceTopologyCopy = {
     refresh: "重新整理",
     unavailable: "裝置拓撲不可用",
     loading: "讀取裝置拓撲...",
-    listLabel: (scope: string) => `${scope}清單`,
+    listLabel: (scope: string) => cjkText`${scope}清單`,
     itemCount: (count: number) => `${count} 項`,
-    searchPlaceholder: (scope: string) => `搜尋${scope}`,
+    searchPlaceholder: (scope: string) => cjkText`搜尋${scope}`,
     noMatch: "沒有匹配項。",
-    noneFound: (scope: string) => `未識別到${scope}。`,
+    noneFound: (scope: string) => cjkText`未識別到${scope}。`,
     topView: "電腦俯檢視",
     baseBoardManufacturerUnknown: "主機板廠商未知",
     baseBoardProductUnknown: "主機板型號未知",
